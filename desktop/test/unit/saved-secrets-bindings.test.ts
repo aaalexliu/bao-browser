@@ -5,11 +5,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { liveReplayArgs } from "../../src/cdp-live/live-replay";
-import { applyCapturedData, bindStep, parseTable, type DataEvent } from "../../src/v1/data-steps";
-import { replay, type Driver } from "../../src/v1/replay";
+import { applyCapturedData, bindStep, materializeOutputs, parseTable, type DataEvent } from "../../src/v1/data-steps";
+import { beginFilesRun, endFilesRun, filesFor, prepareFilesDatesRun, renderTemplate, type TemplateScope } from "../../src/v1/files-dates";
+import { interpret, type TrailEvent } from "../../src/v1/interpret";
+import { expectedText, replay, type Driver } from "../../src/v1/replay";
 import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
-import { validateWorkflow, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { subst, validateWorkflow, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
+import { projectTeach, type TeachDecision } from "../../src/v1/teach";
 import { draftVersion, versionDocument } from "../../src/v1/versions";
 
 const PRIVATE = "arbitrary-private-value";
@@ -86,26 +89,29 @@ async function assertStopped(doc: WorkflowV2): Promise<void> {
   assert.deepEqual(calls, []);
 }
 
+function writerSurfaces(library: Library, doc: WorkflowV2): [string, () => WorkflowV2][] {
+  const file = (relative: string) => JSON.parse(readFileSync(path.join(library.root, relative), "utf8"));
+  return [
+    ["workflow", () => { library.save(doc); const saved = file(`workflows/${doc.id}.json`); assert.deepEqual(library.read(doc.id), saved); return saved; }],
+    ["trail", () => { library.saveTrail(doc.id, [doc]); return (library.readTrail(doc.id) as WorkflowV2[])[0]!; }],
+    ["append", () => { library.saveTrail(doc.id, []); library.appendTrail(doc.id, doc); return (library.readTrail(doc.id) as WorkflowV2[])[0]!; }],
+    ["run", () => { library.saveRun({ id: doc.id, workflowId: doc.id, status: "failed", at: 1, steps: [], heals: [doc] }); return library.readRun(doc.id).heals[0] as WorkflowV2; }],
+    ["version", () => { library.save(doc); const row = draftVersion(library, doc, "edit"); return versionDocument(library, doc.id, row.n); }],
+    ["promotion", () => { const promotion = { workflowId: doc.id, document: doc }; library.savePromotion(promotion); return file(`promotions/${doc.id}.json`).document; }],
+    ["kept heal", () => { library.noteHealPromotion(doc.id, doc); return library.readKeptHeal(doc.id) as WorkflowV2; }],
+    ["eval", () => { library.saveIntentEval(doc.id, doc); return library.readIntentEval(doc.id) as WorkflowV2; }],
+    ["teach case", () => { library.saveTeachIntentCase(doc.id, doc); return file(`evals/intent/cases/${doc.id}.json`); }],
+  ];
+}
+
 test("all binding representations strip across workflow, trail, run, version and metadata saves", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-binding-surfaces-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
   for (const [name, doc] of samples()) {
     const original = structuredClone(doc);
-    const file = (relative: string) => JSON.parse(readFileSync(path.join(home, relative), "utf8"));
-    const surfaces: [string, () => unknown][] = [
-      ["workflow", () => { library.save(doc); return library.read(doc.id); }],
-      ["trail", () => { library.saveTrail(doc.id, [doc]); return (library.readTrail(doc.id) as WorkflowV2[])[0]; }],
-      ["append", () => { library.saveTrail(doc.id, []); library.appendTrail(doc.id, doc); return (library.readTrail(doc.id) as WorkflowV2[])[0]; }],
-      ["run", () => { library.saveRun({ id: doc.id, workflowId: doc.id, status: "failed", at: 1, steps: [], heals: [doc] }); return library.readRun(doc.id).heals[0]; }],
-      ["version", () => { library.save(doc); const row = draftVersion(library, doc, "edit"); return versionDocument(library, doc.id, row.n); }],
-      ["promotion", () => { const promotion = { workflowId: doc.id, document: doc }; library.savePromotion(promotion); return file(`promotions/${doc.id}.json`).document; }],
-      ["kept heal", () => { library.noteHealPromotion(doc.id, doc); return library.readKeptHeal(doc.id); }],
-      ["eval", () => { library.saveIntentEval(doc.id, doc); return library.readIntentEval(doc.id); }],
-      ["teach case", () => { library.saveTeachIntentCase(doc.id, doc); return file(`evals/intent/cases/${doc.id}.json`); }],
-    ];
-    for (const [surface, save] of surfaces) {
-      const saved = save() as WorkflowV2;
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
       assert.equal(JSON.stringify(saved).includes(PRIVATE), false, `${name} / ${surface}`);
       const source = saved.inputs.find((input) => input.name === (name.includes("{{") || name === "recorded" ? "rows" : "value"))!;
       const table = source.type === "table";
@@ -121,6 +127,377 @@ test("all binding representations strip across workflow, trail, run, version and
       assert.deepEqual(doc, original, `${name} / ${surface} mutated live data`);
       if (surface === "workflow") await assertStopped(saved);
     }
+  }
+});
+
+test("copied password rows retain producer token spans through every writer and replay with fresh rows", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-copied-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const inputs: WorkflowInput[] = [];
+  const rows = [{ password: "pass" }, { password: "password" }];
+  const captured = applyCapturedData<DataEvent>([
+    { events: [{ op: "copy", list: { as: "rows", rows } }], step: entry({ action: "click" }) },
+    ...rows.map((row) => ({
+      events: [{ op: "type", value: row.password, sensitive: true }],
+      step: entry({
+        sensitive: true, input: "entry", value: row.password,
+        postcondition: { kind: "text", match: `Filled ${row.password}`, timeoutMs: 0 },
+        expect: { kind: "text", match: "Checked {{entry}}", timeoutMs: 0 },
+      }),
+    })),
+  ], inputs);
+  assert.equal(captured.pieces.length, 1);
+  assert.equal(captured.pieces[0]!.step.action, "for_each");
+  const doc = workflow(captured.pieces.map(({ step }) => step), inputs);
+  doc.inputs.find((input) => input.name === "rows")!.default = "password\npass\npassword\n";
+  const original = structuredClone(doc);
+  const producer = doc.steps[0]!.forEach!.steps[0]!;
+  assert.deepEqual([producer.value, producer.label, producer.postcondition?.match, producer.expect?.match], [
+    "{{row.password}}", "Type {{row.password}}", "Filled {{row.password}}", "Checked {{row.password}}",
+  ]);
+  const library = new Library(home);
+  const args = { rows: "password\nfresh-alpha\nfresh-beta\n" };
+  const originalArgs = structuredClone(args);
+  for (const [surface, save] of writerSurfaces(library, doc)) {
+    const saved = save();
+    const target = saved.steps[0]!.forEach!.steps[0]!;
+    assert.deepEqual([target.value, target.label, target.postcondition?.match, target.expect?.match], [
+      "{{row.password}}", "Type {{row.password}}", "Filled {{row.password}}", "Checked {{row.password}}",
+    ], surface);
+    assert.equal(saved.inputs.find((input) => input.name === "rows")!.default, "password\n[secret stripped]\n[secret stripped]\n", surface);
+    for (const [index, row] of parseTable(args.rows).entries()) {
+      const bound = bindStep(target, row, index);
+      const fresh = index === 0 ? "fresh-alpha" : "fresh-beta";
+      assert.equal(bound.value, fresh, surface);
+      assert.equal(expectedText(bound.postcondition!.match!, args), `Filled ${fresh}`, surface);
+      assert.equal(expectedText(bound.expect!.match!, args), `Checked ${fresh}`, surface);
+    }
+    assert.deepEqual(validateWorkflow(saved), [], surface);
+    assert.deepEqual(scrubSaved(saved), saved, surface);
+    assert.deepEqual(doc, original, surface);
+    if (surface === "workflow") {
+      const fills: string[] = [];
+      let value = "";
+      const driver = {
+        tree: async () => ({ nodes: [FIELD], texts: [`Filled ${value}`, `Checked ${value}`], url: saved.startUrl }),
+        snapshot: async () => ({}),
+        fill: async (_node: unknown, text: string) => { value = text; fills.push(text); },
+        sleep: async () => {},
+      } as unknown as Driver;
+      const run = await replay(saved, args, driver, { heal: { available: () => false, propose: async () => null } });
+      assert.equal(run.status, "passed");
+      assert.deepEqual(fills, ["fresh-alpha", "fresh-beta"]);
+    }
+    assert.deepEqual(args, originalArgs, surface);
+  }
+});
+
+test("scoped row and index spans survive literal redaction in loop metadata", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-scoped-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const cases: [string, string, string][] = [
+    ["{{row.password}}", "pass", "fresh-cell"],
+    ["{{ row.password }}", "password", "fresh-cell"],
+    ["{{row_index}}", "row_index", "3"],
+    ["{{ row_index }}", "index", "3"],
+  ];
+  for (const [token, secret, resolved] of cases) {
+    const mixed = `${secret} ${token}`;
+    const doc = workflow([loop([entry({
+      sensitive: true, value: mixed, label: mixed, intent: mixed,
+      postcondition: { kind: "text", match: mixed, timeoutMs: 0 },
+      expect: { kind: "text", match: mixed, timeoutMs: 0 },
+    })])], [{ name: "rows", type: "table", default: "password\nordinary-cell\n" }, { name: "row_index", type: "text", default: "separate-value" }]);
+    const original = structuredClone(doc);
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
+      const step = saved.steps[0]!.forEach!.steps[0]!;
+      assert.deepEqual([step.value, step.label, step.intent, step.postcondition!.match, step.expect!.match], Array(5).fill(`${STRIPPED_SECRET} ${token}`), surface);
+      const bound = bindStep(step, { password: "fresh-cell" }, 2);
+      assert.equal(bound.value, `${STRIPPED_SECRET} ${resolved}`, surface);
+      assert.equal(expectedText(bound.postcondition!.match!, {}), `${STRIPPED_SECRET} ${resolved}`, surface);
+      assert.equal(expectedText(bound.expect!.match!, {}), `${STRIPPED_SECRET} ${resolved}`, surface);
+      assert.equal(saved.inputs[1]!.name, "row_index", surface);
+      assert.equal(saved.inputs[1]!.default, "separate-value", surface);
+      assert.deepEqual(validateWorkflow(saved), [], surface);
+      assert.deepEqual(scrubSaved(saved), saved, surface);
+      assert.deepEqual(doc, original, surface);
+    }
+  }
+});
+
+function interpretedBindings(): WorkflowV2 {
+  const events: TrailEvent[] = [
+    { id: "person", ts: 1, kind: "act", op: "type", parameter: "name", value: "Ada sample", identity: { ...FIELD, id: "person" } },
+    { id: "account", ts: 2, kind: "act", op: "type", parameter: "username", value: "Grace sample", identity: { ...FIELD, id: "account" } },
+    { id: "login", ts: 3, kind: "act", op: "login", afterText: "Welcome Grace sample" },
+    { id: "choice", ts: 4, kind: "act", op: "select", value: "Blue", identity: { ...FIELD, id: "choice", role: "combobox" } },
+    { id: "upload", ts: 5, kind: "act", op: "upload", fileName: "sample.txt", identity: { ...FIELD, id: "upload" } },
+    { id: "digit", ts: 6, kind: "act", op: "osClick", identity: { surface: "ax", role: "AXButton", name: "7", path: [] } },
+  ];
+  return interpret(events, { id: "bindings", name: "Bindings", startUrl: "https://example.test/" });
+}
+
+test("interpreted input labels and login checks survive secret collisions across all writers", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-named-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const secret of ["name", "user", "pass", "password"]) {
+    const doc = interpretedBindings();
+    assert.deepEqual(doc.steps.map((step) => step.label), [
+      "Type {{name}}", "Type {{username}}", "ensure logged in (import from chrome, else wait for user)", "Select {{choice}}", "Upload file", "Enter {{a}}",
+    ]);
+    assert.equal(doc.steps[2]!.postcondition!.match, "Welcome {{username}}");
+    assert.equal(doc.steps[2]!.expect!.match, "Welcome {{username}}");
+    doc.steps.push(entry({ id: "private", index: doc.steps.length, sensitive: true, value: secret }));
+    const original = structuredClone(doc);
+    const args = { name: "Fresh Person", username: "fresh-account", choice: "Green", file: { name: "fresh.txt", path: "/throwaway/fresh.txt" }, a: 42 };
+    const originalArgs = structuredClone(args);
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
+      const message = `${secret} / ${surface}`;
+      assert.deepEqual(saved.steps.slice(0, 2).map((step) => [step.value, step.label]), [
+        ["{{name}}", "Type {{name}}"], ["{{username}}", "Type {{username}}"],
+      ], message);
+      assert.deepEqual(saved.steps.slice(3, 6).map((step) => step.value), ["{{choice}}", "{{file}}", "{{a}}"], message);
+      assert.equal(saved.steps[3]!.label, "Select {{choice}}", message);
+      assert.equal(saved.steps[5]!.label, "Enter {{a}}", message);
+      assert.equal(saved.steps[6]!.value, "[secret stripped]", message);
+      assert.equal(subst(saved.steps[0]!.label, args), "Type Fresh Person", message);
+      assert.equal(subst(saved.steps[1]!.value!, args), "fresh-account", message);
+      assert.equal(subst(saved.steps[3]!.label, args), "Select Green", message);
+      assert.equal(subst(saved.steps[5]!.label, args), "Enter 42", message);
+      assert.equal(expectedText(saved.steps[4]!.postcondition!.match!, args), "fresh.txt", message);
+      for (const check of [saved.steps[2]!.postcondition!, saved.steps[2]!.expect!]) {
+        assert.equal(check.match, "Welcome {{username}}", message);
+        assert.equal(expectedText(check.match!, args), "Welcome fresh-account", message);
+      }
+      assert.deepEqual(validateWorkflow(saved), [], message);
+      assert.deepEqual(scrubSaved(saved), saved, message);
+      assert.deepEqual(doc, original, message);
+      assert.deepEqual(args, originalArgs, message);
+    }
+  }
+});
+
+test("canonical metadata scrubs literal segments but preserves declared input spans in every writer", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-mixed-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const secret of ["name", "user", "pass", "password"]) {
+    const mixed = `${secret} {{name}}`;
+    const doc = workflow([
+      entry({
+        sensitive: true, value: mixed, label: mixed, intent: mixed,
+        postcondition: { kind: "text", match: mixed, timeoutMs: 0 },
+        expect: { kind: "text", match: mixed, timeoutMs: 0 },
+        waitFor: { kind: "text", match: mixed, timeoutMs: 0 },
+        gone: { kind: "text", match: mixed, timeoutMs: 0 },
+        readBack: { source: "text", match: mixed, timeoutMs: 0 },
+      }),
+      entry({ id: "private", sensitive: true, value: secret }),
+    ], [{ name: "name", type: "text" }]);
+    doc.readBack = { source: "text", match: mixed, timeoutMs: 0 };
+    const original = structuredClone(doc);
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
+      const step = saved.steps[0]!;
+      assert.deepEqual([
+        step.value, step.label, step.intent, step.postcondition!.match, step.expect!.match,
+        step.waitFor!.match, step.gone!.match, step.readBack!.match, saved.readBack!.match,
+      ], Array(9).fill("[secret stripped] {{name}}"), `${secret} / ${surface}`);
+      assert.equal(subst(step.value!, { name: "Fresh Person" }), "[secret stripped] Fresh Person");
+      assert.equal(expectedText(step.expect!.match!, { name: "Fresh Person" }), "[secret stripped] Fresh Person");
+      assert.deepEqual(validateWorkflow(saved), []);
+      assert.deepEqual(scrubSaved(saved), saved);
+      assert.deepEqual(doc, original);
+    }
+  }
+});
+
+test("undeclared, numeric and out-of-loop tokens in structural values remain secret data", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-unknown-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const value of ["{{private}}", "secret{{1}}", "{{row.password}}", "{{row_index}}"]) {
+    const doc = workflow([entry({ sensitive: true, value })], [{ name: "name", type: "text" }]);
+    const original = structuredClone(doc);
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
+      assert.equal(saved.steps[0]!.value, "[secret stripped]", `${value} / ${surface}`);
+      assert.equal(saved.steps[0]!.unresolved?.reason, NEEDS_SECRET_VALUE);
+      assert.deepEqual(validateWorkflow(saved), []);
+      assert.deepEqual(scrubSaved(saved), saved);
+      assert.deepEqual(doc, original);
+    }
+  }
+});
+
+test("runtime arguments and trail records never gain document binding ownership from their shape", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-data-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const doc = workflow([entry({ sensitive: true, input: "name", value: "{{name}}", label: "Type {{name}}" })], [{ name: "name", type: "secret" }]);
+  const original = structuredClone(doc);
+  library.save(doc);
+  const args = { name: "{{name}}", ordinary: "keep this" };
+  const originalArgs = structuredClone(args);
+  library.savePublicInputs(doc.id, args);
+  assert.deepEqual(library.readPublicInputs(doc.id), { name: "[secret stripped]", ordinary: "keep this" });
+  for (const record of [
+    { op: "type", parameter: "name", sensitive: true, value: "{{name}}" },
+    { action: "type", input: "name", sensitive: true, value: "{{name}}" },
+  ]) {
+    const live = structuredClone(record);
+    const expected = { ...record, value: "[secret stripped]", ...("action" in record ? { unresolved: { reason: NEEDS_SECRET_VALUE } } : {}) };
+    library.saveTrail(doc.id, [record]);
+    assert.deepEqual(library.readTrail(doc.id), [expected]);
+    const runtime = { name: "{{name}}", typed: record };
+    const originalRuntime = structuredClone(runtime);
+    assert.deepEqual(scrubSaved(runtime, { workflow: doc, args: runtime }), {
+      name: "[secret stripped]", typed: expected,
+    });
+    assert.deepEqual(runtime, originalRuntime);
+    assert.deepEqual(record, live);
+    assert.deepEqual(scrubSaved(runtime, { workflow: doc, args: runtime }), scrubSaved(scrubSaved(runtime, { workflow: doc, args: runtime }), { workflow: doc }));
+  }
+  assert.equal(library.read(doc.id).steps[0]!.value, "{{name}}");
+  assert.deepEqual(doc, original);
+  assert.deepEqual(args, originalArgs);
+});
+
+test("files templates keep their own grammar across every writer", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-file-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const doc = workflow([
+    entry({ action: "download", download: { output: "report", name: "{{run.date}}-{{ name }}-{{suggested}}-{{run.id}}", url: "https://example.test/{{ name }}" } }),
+    entry({ id: "open-url", action: "open", open: { target: "url", url: "https://example.test/{{name}}" } }),
+    entry({ id: "open-file", action: "open", open: { target: "file", file: "{{ report.name }}" } }),
+    entry({ id: "private", sensitive: true, value: "name" }),
+  ], [{ name: "name", type: "text" }]);
+  doc.version = 3;
+  doc.filesDates = 1;
+  const scope: TemplateScope = {
+    args: { name: "fresh" }, run: { date: "2026-04-01", id: "fresh-run" }, suggested: "source.csv",
+    outputs: new Map([["report", { kind: "file", name: "fresh-report.csv", path: "/throwaway/fresh-report.csv", size: 1, sha256: "hash" }]]),
+  };
+  const originalArgs = structuredClone(scope.args);
+  for (const secret of ["name", "date", "suggested", "report"]) {
+    doc.steps[3]!.value = secret;
+    const original = structuredClone(doc);
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
+      assert.equal(saved.steps[0]!.download!.name, "{{run.date}}-{{ name }}-{{suggested}}-{{run.id}}", surface);
+      assert.equal(saved.steps[0]!.download!.url, "https://example.test/{{ name }}", surface);
+      assert.equal(saved.steps[1]!.open!.url, "https://example.test/{{name}}", surface);
+      assert.equal(saved.steps[2]!.open!.file, "{{ report.name }}", surface);
+      assert.equal(renderTemplate(saved.steps[0]!.download!.name, scope), "2026-04-01-fresh-source.csv-fresh-run", surface);
+      assert.equal(renderTemplate(saved.steps[0]!.download!.url!, scope), "https://example.test/fresh", surface);
+      assert.equal(renderTemplate(saved.steps[1]!.open!.url!, scope), "https://example.test/fresh", surface);
+      assert.equal(renderTemplate(saved.steps[2]!.open!.file!, scope), "fresh-report.csv", surface);
+      assert.equal(saved.steps[3]!.value, "[secret stripped]", surface);
+      assert.deepEqual(validateWorkflow(saved), [], surface);
+      assert.deepEqual(scrubSaved(saved), saved, surface);
+      assert.deepEqual(doc, original, surface);
+      assert.deepEqual(scope.args, originalArgs, surface);
+    }
+  }
+});
+
+test("binding declarations and direct references survive name collisions through their real consumers", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-reference-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const receiptFile = path.join(home, "receipt.txt");
+  writeFileSync(receiptFile, "receipt body");
+  for (const secret of ["report", "date", "file", "name"]) {
+    const doc = workflow([
+      entry({ action: "download", download: { output: "report", name: "{{run.date}}-{{suggested}}" } }),
+      entry({ id: "upload", action: "upload", input: "file", value: "{{file}}", fileFrom: "report" }),
+      entry({ id: "date-range", action: "click", datePicker: { input: "date", endInput: "date_end" } }),
+      entry({ id: "read", action: "verify", expect: { kind: "settled", timeoutMs: 0 }, readBack: { source: "file", fileInput: "file", match: "receipt body", timeoutMs: 0 } }),
+      entry({ id: "private", sensitive: true, value: secret }),
+    ], [{ name: "file", type: "file", fromOutput: "report" }, { name: "date", type: "date" }, { name: "date_end", type: "date" }, { name: "name", type: "table" }]);
+    doc.version = 3;
+    doc.filesDates = 1;
+    doc.outputs = [{ name: "result", type: "text", from: "name" }];
+    doc.readBack = { source: "file", fileInput: "file", match: "receipt body", timeoutMs: 0 };
+    const original = structuredClone(doc);
+    for (const [surface, save] of writerSurfaces(library, doc)) {
+      const saved = save();
+      assert.equal(saved.steps[0]!.download!.output, "report", surface);
+      assert.equal(saved.steps[1]!.fileFrom, "report", surface);
+      assert.equal(saved.inputs[0]!.fromOutput, "report", surface);
+      assert.deepEqual(saved.steps[2]!.datePicker, { input: "date", endInput: "date_end" }, surface);
+      assert.equal(saved.steps[3]!.readBack!.fileInput, "file", surface);
+      assert.equal(saved.readBack!.fileInput, "file", surface);
+      assert.equal(saved.outputs![0]!.from, "name", surface);
+      assert.equal(saved.steps[4]!.value, STRIPPED_SECRET, surface);
+      assert.deepEqual(validateWorkflow(saved), [], surface);
+      const run = prepareFilesDatesRun(saved, { date: "2026-04-01", date_end: "2026-04-02" }, {
+        now: new Date("2026-04-01T12:00:00Z"), zone: "UTC", runId: "binding-consumer", downloadDir: home,
+      });
+      assert.equal(run.dates.get(saved.steps[2]!.datePicker!.input)!.iso, "2026-04-01", surface);
+      assert.equal(run.dates.get(saved.steps[2]!.datePicker!.endInput!)!.iso, "2026-04-02", surface);
+      run.outputs.set("report", { kind: "file", name: "fresh.txt", path: receiptFile, size: 12, sha256: "hash" });
+      beginFilesRun(run);
+      try {
+        assert.deepEqual(filesFor(run.runId, saved.steps[1]!, saved), [{ name: "fresh.txt", path: receiptFile }], surface);
+        assert.deepEqual(filesFor(run.runId, { ...saved.steps[1]!, fileFrom: undefined }, saved), [{ name: "fresh.txt", path: receiptFile }], surface);
+      } finally {
+        endFilesRun(run.runId);
+      }
+      assert.deepEqual(materializeOutputs(saved, new Map([["name", [{ note: "public-row" }]]])), [{ name: "result", type: "text", label: undefined, value: "public-row" }], surface);
+      for (const atStep of [false, true]) {
+        const proof = workflow([entry({ action: "verify", expect: { kind: "settled", timeoutMs: 0 }, ...(atStep ? { readBack: saved.steps[3]!.readBack } : {}) })], [{ name: "file", type: "text" }]);
+        if (!atStep) proof.readBack = saved.readBack;
+        const driver = { tree: async () => ({ nodes: [], texts: [], values: [], url: proof.startUrl }), snapshot: async () => ({}) } as unknown as Driver;
+        const checked = await replay(proof, { file: receiptFile }, driver, { heal: { available: () => false, propose: async () => null } });
+        assert.equal(checked.status, "passed", `${surface}: ${checked.failure?.reason}`);
+        assert.equal(checked.receipts!.at(-1)!.pass, true, surface);
+      }
+      assert.deepEqual(scrubSaved(saved), saved, surface);
+      assert.deepEqual(doc, original, surface);
+    }
+  }
+});
+
+test("teaching projections preserve owned card and decision spans without treating their trail as templates", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-teach-binding-spans-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const events: TrailEvent[] = [{ id: "typed", ts: 1, kind: "act", op: "type", parameter: "name", value: "Ada sample", identity: FIELD }];
+  const decisions: TeachDecision[] = [{ ts: 2, cardId: "typed", kind: "input", name: "name", detail: "input {{name}}" }];
+  const projection = projectTeach(events, decisions, { id: "bindings", startUrl: "https://example.test/" });
+  projection.workflow.steps.push(entry({ id: "private", index: projection.workflow.steps.length, sensitive: true, value: "name" }));
+  const rawTrail: TrailEvent[] = [...events, { id: "raw-secret", ts: 3, kind: "act", op: "type", parameter: "name", sensitive: true, value: "{{name}}", identity: FIELD }];
+  const pair = { schema: "bao.intent-eval/v1", id: "bindings", ...projection, decisions, rawTrail };
+  const original = structuredClone(pair);
+  for (const surface of ["eval", "teach case", "trail"]) {
+    let saved: typeof pair;
+    if (surface === "eval") {
+      library.saveIntentEval(pair.id, pair);
+      saved = library.readIntentEval(pair.id) as typeof pair;
+    } else if (surface === "teach case") {
+      library.saveTeachIntentCase(pair.id, pair);
+      saved = JSON.parse(readFileSync(path.join(home, "evals/intent/cases/bindings.json"), "utf8"));
+    } else {
+      library.saveTrail(pair.id, [pair]);
+      saved = (library.readTrail(pair.id) as (typeof pair)[])[0]!;
+    }
+    assert.equal(saved.cards[0]!.intent, "Type {{name}} into Entry", surface);
+    assert.equal(saved.cards[0]!.outcome, "the field shows {{name}}", surface);
+    assert.deepEqual(saved.cards[0]!.values, [{ role: "input", name: "name", label: "{{name}}" }], surface);
+    assert.equal(saved.decisions[0]!.detail, "input {{name}}", surface);
+    assert.equal(saved.rawTrail[1]!.value, "[secret stripped]", surface);
+    assert.equal(subst(saved.cards[0]!.intent, { name: "Fresh Person" }), "Type Fresh Person into Entry", surface);
+    assert.equal(saved.workflow.steps[0]!.value, "{{name}}", surface);
+    assert.equal(saved.workflow.steps[1]!.value, "[secret stripped]", surface);
+    assert.deepEqual(validateWorkflow(saved.workflow), [], surface);
+    assert.deepEqual(scrubSaved(saved), saved, surface);
+    assert.deepEqual(pair, original, surface);
   }
 });
 

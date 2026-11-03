@@ -1,4 +1,4 @@
-import { bindingTokens, INPUT_BINDING, onlyBindings, ROW_BINDING } from "./bindings";
+import { bindingTokens, fileBindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { keyMayInsertText } from "../cdp-live/keys";
 import { mapCsv, parseTable, sanitizeName } from "./data-steps";
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "./schema";
@@ -47,6 +47,12 @@ const TOKENS = /(?<![A-Za-z0-9_-])(?:(?:sk-|gh[pousr]_|github_pat_|xox[a-z]-|AKI
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): RecordValue {
   return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
+}
+
+function mapLiteralText(text: string, tokens: ReadonlySet<string> | undefined, replace: (literal: string) => string): string {
+  if (!tokens?.size) return replace(text);
+  const escaped = [...tokens].map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return text.split(new RegExp(`(${escaped.join("|")})`, "g")).map((part) => tokens.has(part) ? part : replace(part)).join("");
 }
 
 function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordValue; inputs: Set<string>; rows: Set<string>; row: boolean }[] {
@@ -142,7 +148,7 @@ export interface SavedContext {
 export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
   const secrets = new Set<string>();
   const tables = new WeakMap<object, Map<string, Set<string>>>();
-  const templates = new WeakMap<object, Set<string>>();
+  const templates = new WeakMap<object, Map<string, Set<string>>>();
   const options = new WeakMap<object, Set<string>>();
   const rootData = context.args === value || (Array.isArray(context.args) && context.args.some((args) => args === value));
   const preserve = (owner: object, ...keys: string[]) => {
@@ -150,23 +156,53 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     keys.forEach((key) => fields.add(key));
     options.set(owner, fields);
   };
+  const template = (owner: object, key: string, tokens: Set<string>): void => {
+    const fields = templates.get(owner) ?? new Map<string, Set<string>>();
+    fields.set(key, tokens);
+    templates.set(owner, fields);
+  };
   const remember = (item: unknown, tokens?: ReadonlySet<string>): void => {
     if (Array.isArray(item)) { item.forEach((child) => remember(child)); return; }
     if (item && typeof item === "object") { Object.values(item).forEach((child) => remember(child)); return; }
     if (typeof item === "number" && Number.isFinite(item)) item = String(item);
-    if (typeof item === "string" && item && item !== STRIPPED_SECRET && !(tokens && onlyBindings(item, tokens))) secrets.add(item);
+    if (typeof item !== "string" || !item || item === STRIPPED_SECRET) return;
+    if (tokens?.size) mapLiteralText(item, tokens, (literal) => { remember(literal.trim()); return literal; });
+    else secrets.add(item);
   };
   const collectBindings = (workflow: RecordValue, args: RecordValue = {}, data = false): void => {
     if (!Array.isArray(workflow.steps) || !Array.isArray(workflow.inputs)) return;
     const bound = boundSteps(workflow.steps);
     const declared = workflow.inputs.map(record);
     const names = new Set(declared.flatMap((input) => typeof input.name === "string" ? [input.name] : []));
-    if (!data) for (const { step, row } of bound) {
-      templates.set(step, bindingTokens(step.value, names, row));
-      const when = record(step.when);
-      if (declared.some((input) => input.type === "choice" && input.name === when.input)) preserve(when, "value");
+    if (!data) {
+      const files = new Set([...names, "run.date", "run.id", "suggested"]);
+      for (const { step } of bound) {
+        const output = record(step.download).output;
+        if (typeof output === "string") for (const field of ["kind", "name", "path", "size", "sha256"]) files.add(`${output}.${field}`);
+      }
+      const readBack = record(workflow.readBack);
+      template(readBack, "match", bindingTokens(readBack.match, names));
+      preserve(readBack, "fileInput");
+      for (const output of Array.isArray(workflow.outputs) ? workflow.outputs : []) preserve(record(output), "from");
+      for (const { step, row } of bound) {
+        for (const key of ["value", "label", "intent"]) template(step, key, bindingTokens(step[key], names, row));
+        for (const key of ["postcondition", "expect", "waitFor", "gone", "readBack"]) {
+          const check = record(step[key]);
+          template(check, "match", bindingTokens(check.match, names, row && (key === "postcondition" || key === "expect")));
+          if (key === "readBack") preserve(check, "fileInput");
+        }
+        for (const [owner, keys] of [[record(step.download), ["name", "url"]], [record(step.open), ["url", "file"]]] as const) {
+          for (const key of keys) template(owner, key, fileBindingTokens(owner[key], files));
+        }
+        preserve(record(step.download), "output");
+        preserve(step, "fileFrom");
+        preserve(record(step.datePicker), "endInput");
+        const when = record(step.when);
+        if (declared.some((input) => input.type === "choice" && input.name === when.input)) preserve(when, "value");
+      }
     }
     for (const input of declared) {
+      if (!data) preserve(input, "fromOutput");
       const name = input.name;
       if (typeof name !== "string") continue;
       const targets = bound.filter(({ inputs }) => inputs.has(name));
@@ -204,8 +240,22 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     const node = record(item);
     collectBindings(node, {}, data);
     if (!data) {
-      if (!templates.has(node) && typeof node.action === "string" && typeof node.input === "string") {
-        templates.set(node, bindingTokens(node.value, new Set([node.input])));
+      const workflow = record(node.workflow);
+      if (Array.isArray(workflow.steps) && Array.isArray(workflow.inputs)) {
+        const names = new Set([workflow, record(node.baseline)].flatMap((doc) => Array.isArray(doc.inputs)
+          ? doc.inputs.flatMap((input) => typeof record(input).name === "string" ? [record(input).name as string] : [])
+          : []));
+        for (const card of Array.isArray(node.cards) ? node.cards.map(record) : []) {
+          for (const key of ["intent", "outcome"]) template(card, key, bindingTokens(card[key], names));
+          for (const value of Array.isArray(card.values) ? card.values.map(record) : []) {
+            if (value.role !== "input" || typeof value.name !== "string" || !names.has(value.name)) continue;
+            preserve(value, "name");
+            template(value, "label", bindingTokens(value.label, names));
+          }
+        }
+        for (const decision of Array.isArray(node.decisions) ? node.decisions.map(record) : []) {
+          for (const key of ["intent", "outcome", "detail"]) template(decision, key, bindingTokens(decision[key], names));
+        }
       }
       if (fixedSavedChoice(node)) preserve(node, "value", "valueBefore", "valueAfter");
       if (node.type === "choice") preserve(node, "default", "choices");
@@ -214,7 +264,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     const structural = node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field);
     if (structural && (data || !fixedSavedChoice(node))) {
       remember(record(node.identity).value);
-      for (const key of ["value", "text", "valueBefore", "valueAfter"]) remember(node[key], key === "value" ? templates.get(node) : undefined);
+      for (const key of ["value", "text", "valueBefore", "valueAfter"]) remember(node[key], !data ? templates.get(node)?.get(key) : undefined);
       if (typeof node.key === "string" && keyMayInsertText(node.key)) remember(node.key);
     }
     if (node.type === "secret") remember(node.default);
@@ -231,12 +281,11 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
   }
   collect(value, rootData);
   const ordered = [...secrets].sort((a, b) => b.length - a.length);
-  const cleanText = (text: string, tokens?: ReadonlySet<string>): string => {
-    if (tokens && onlyBindings(text, tokens)) return text;
-    if (secrets.has(text)) return STRIPPED_SECRET;
-    for (const secret of ordered) if (secret.length >= 4) text = text.split(secret).join(STRIPPED_SECRET);
-    return redactSavedText(text);
-  };
+  const cleanText = (text: string, tokens?: ReadonlySet<string>): string => mapLiteralText(text, tokens, (literal) => {
+    if (secrets.has(literal)) return STRIPPED_SECRET;
+    for (const secret of ordered) if (secret.length >= 4) literal = literal.split(secret).join(STRIPPED_SECRET);
+    return redactSavedText(literal);
+  });
   const cleanTable = (item: unknown, columns: Set<string>): unknown => {
     if (typeof item === "string") {
       return mapCsv(item, (value, column) => columns.has(column) && value ? STRIPPED_SECRET : redactSavedText(value));
@@ -257,7 +306,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       const payload = data || payloadField(key, child);
       if (columns) return [key, cleanTable(child, columns)];
       const metadata = !data && (STRUCTURE.has(key) || bindingName || (typeof child === "string" && ENUMS.get(key)?.has(child)));
-      const binding = !data && key === "value" ? templates.get(raw) : undefined;
+      const binding = !data ? templates.get(raw)?.get(key) : undefined;
       return [key, MEDIA.has(key) || options.get(raw)?.has(key) || metadata ? child : clean(child, binding, payload)];
     }));
     if (ENTRY.has(String(node.action || "")) && [node.value, node.key].some(hasStrippedSecret)) {

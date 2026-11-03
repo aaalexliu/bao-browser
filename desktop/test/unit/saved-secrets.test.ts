@@ -137,7 +137,7 @@ test("structural redaction keeps schema words and input bindings intact", (t) =>
   }
 });
 
-test("only declared workflow bindings protect pure brace tokens", (t) => {
+test("declared workflow bindings protect spans without exempting literal secrets", (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-braces-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const library = new Library(home);
@@ -156,7 +156,8 @@ test("only declared workflow bindings protect pure brace tokens", (t) => {
     candidate.inputs = [{ name: "entry", type: "text" }];
     assert.deepEqual(validateWorkflow(candidate), value === "{{entry}}" ? [] : ["secret literal entry"]);
     library.save(candidate);
-    assert.equal(library.read(candidate.id).steps[0]!.value, value === "{{entry}}" ? value : STRIPPED_SECRET);
+    const expected = value === "{{entry}}" ? value : value === "prefix{{entry}}suffix" ? `${STRIPPED_SECRET}{{entry}}${STRIPPED_SECRET}` : STRIPPED_SECRET;
+    assert.equal(library.read(candidate.id).steps[0]!.value, expected);
   }
   const doc = workflow({ identity, value: "{{private}}", label: "Copied {{private}}" });
   doc.inputs = [{ name: "entry", type: "text", default: "{{private}}" }];
