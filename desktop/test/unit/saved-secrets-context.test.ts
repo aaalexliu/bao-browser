@@ -79,8 +79,8 @@ test("Library saves use structural bindings even when text inputs have no defaul
       const saved = library.readRun(run.id);
       const label = `${kind} / ${binding}`;
       assert.deepEqual(saved.inputs, expected, label);
-      assert.deepEqual(saved.failure, { reason: STRIPPED_SECRET }, label);
-      assert.deepEqual(saved.steps, [{ id: "entry", reason: STRIPPED_SECRET }], label);
+      assert.deepEqual(saved.failure, { reason: String(hidden) }, label);
+      assert.deepEqual(saved.steps, [{ id: "entry", reason: String(hidden) }], label);
       assert.deepEqual(library.readPublicInputs(doc.id), expected, label);
       assert.deepEqual(library.read(doc.id), JSON.parse(JSON.stringify(doc)), label);
       assert.deepEqual({ doc, args, run }, original, `${label} changed live values`);
@@ -88,7 +88,7 @@ test("Library saves use structural bindings even when text inputs have no defaul
   }
 });
 
-test("row context strips saved cell copies as well as the source table", (t) => {
+test("row context strips source tables and receipt values but preserves step metadata", (t) => {
   const home = fixtureHome(t, "bao-secret-cell-context-");
   const library = new Library(home);
   const doc = workflow("cells", [entry({ id: "loop", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [entry({ value: "{{ row.holder }}", identity: { ...FIELD, autocomplete: "cc-name" } })] } })]);
@@ -99,12 +99,12 @@ test("row context strips saved cell copies as well as the source table", (t) => 
   library.saveRun(run);
   const saved = library.readRun(run.id);
   assert.deepEqual(saved.inputs, { rows: `holder,note\n${STRIPPED_SECRET},ordinary\n${STRIPPED_SECRET},Grace Hopper\n` });
-  assert.deepEqual(saved.steps, [{ id: "entry", reason: STRIPPED_SECRET }]);
+  assert.deepEqual(saved.steps, [{ id: "entry", reason: PRIVATE }]);
   assert.deepEqual(saved.receipts, [{ actual: "Grace Hopper", expected: STRIPPED_SECRET }]);
   assert.equal(args.rows.includes(PRIVATE), true);
 });
 
-test("numeric structural values scrub copied numbers and strings without changing metadata or live args", (t) => {
+test("numeric structural values scrub bound inputs without changing metadata or live args", (t) => {
   const home = fixtureHome(t, "bao-secret-numeric-context-");
   const library = new Library(home);
   for (const secret of [483921, 0, 2, "483921", "0", "type", "dom", "bao.workflow/v2"]) {
@@ -118,7 +118,7 @@ test("numeric structural values scrub copied numbers and strings without changin
     library.saveRun(run);
     library.savePublicInputs(doc.id, args);
     assert.deepEqual(library.readRun(run.id).inputs, { value: STRIPPED_SECRET, ordinary: "-17" });
-    assert.deepEqual(library.readRun(run.id).steps, [{ numeric: STRIPPED_SECRET, text: STRIPPED_SECRET, ordinary: -17, ordinaryText: "-17" }]);
+    assert.deepEqual(library.readRun(run.id).steps, [copies]);
     assert.deepEqual(library.readPublicInputs(doc.id), { value: STRIPPED_SECRET, ordinary: -17 });
     assert.deepEqual(library.read(doc.id), doc);
     assert.deepEqual({ doc, args, run }, original);
@@ -126,12 +126,12 @@ test("numeric structural values scrub copied numbers and strings without changin
 
   const doc = workflow("array-context", [entry({ input: "value", identity: { ...FIELD, autocomplete: "one-time-code" } })]);
   const args = { value: [0, [2, "483921"]], ordinary: -17 };
-  const payload = { schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom", inputs: args, copies: [0, "0", 2, "2", 483921, "483921", -17, "-17"] };
+  const payload = { workflowId: doc.id, schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom", inputs: args, copies: [0, "0", 2, "2", 483921, "483921", -17, "-17"], private: 0 };
   const original = structuredClone({ args, payload });
   assert.deepEqual(scrubSaved(payload, { workflow: doc, args }), {
-    schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom",
+    workflowId: doc.id, schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom",
     inputs: { value: [STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET]], ordinary: -17 },
-    copies: [STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"],
+    copies: [0, "0", 2, "2", 483921, "483921", -17, "-17"], private: 0,
   });
   assert.deepEqual({ args, payload }, original);
 });
@@ -143,7 +143,8 @@ test("without workflow context, ordinary names and short codes stay outside heur
   const expected = { ...args, card: STRIPPED_SECRET, token: STRIPPED_SECRET };
   library.savePublicInputs("unknown-workflow", args);
   assert.deepEqual(library.readPublicInputs("unknown-workflow"), expected);
-  assert.deepEqual(scrubSaved(args), expected);
+  assert.deepEqual(scrubSaved(args), args);
+  assert.deepEqual(scrubSaved(args, { args }), expected);
   const doc = workflow("context", [entry({ input: "value", identity: { ...FIELD, autocomplete: "cc-name" } })]);
   const value = { note: `Hello ${PRIVATE}`, ordinary: "keep this" };
   assert.deepEqual(scrubSaved(value), value);
@@ -165,10 +166,10 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
     "runs/old.json": { workflowId: doc.id, inputs, failure: { reason: `Rejected ${PRIVATE}` } },
     "resumes/old.json": { workflowId: doc.id, publicInputs: inputs, ask: `Review ${PRIVATE}` },
     "reports/old.json": { workflowId: doc.id, args: inputs, reason: `Rejected ${PRIVATE}` },
-    "reports/linked.json": { workflowId: doc.id, reason: PRIVATE },
     "pending-prompt.json": { ask: { workflowId: doc.id }, inputs, text: `Review ${PRIVATE}` },
   };
   const unchanged: Record<string, unknown> = {
+    "reports/linked.json": { workflowId: doc.id, reason: PRIVATE },
     [`inputs/${ordinary.id}.json`]: inputs,
     "inputs/orphan.json": inputs,
     "runs/orphan.json": { workflowId: "missing", inputs, reason: PRIVATE },
@@ -204,7 +205,7 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   assert.deepEqual(json(home, "runs/old.json"), { workflowId: doc.id, inputs: expected, failure: { reason: `Rejected ${PRIVATE}` } });
   assert.deepEqual(json(home, "resumes/old.json"), { workflowId: doc.id, publicInputs: expected, ask: `Review ${PRIVATE}` });
   assert.deepEqual(json(home, "reports/old.json"), { workflowId: doc.id, args: expected, reason: `Rejected ${PRIVATE}` });
-  assert.deepEqual(json(home, "reports/linked.json"), { workflowId: doc.id, reason: STRIPPED_SECRET });
+  assert.deepEqual(json(home, "reports/linked.json"), { workflowId: doc.id, reason: PRIVATE });
   assert.deepEqual(json(home, "pending-prompt.json"), { ask: { workflowId: doc.id }, inputs: expected, text: `Review ${PRIVATE}` });
   for (const file of Object.keys(unchanged)) assert.equal(readFileSync(path.join(home, file), "utf8"), originals.get(file));
   assert.equal(readFileSync(path.join(home, relative), "utf8"), bytes);
@@ -253,7 +254,7 @@ test("CLI associates Library array trails with their workflow filenames", (t) =>
   assert.deepEqual((JSON.parse(cli(home, "--home", home, "--write")) as ScrubReport).files, []);
 });
 
-test("CLI strips numeric bound args and their copies but keeps structural numbers", (t) => {
+test("CLI strips numeric bound args but keeps metadata copies and structural numbers", (t) => {
   const home = fixtureHome(t, "bao-secret-numeric-cli-");
   const library = new Library(home);
   const doc = workflow("numeric-history", [entry({ input: "value", identity: { ...FIELD, autocomplete: "one-time-code" } })]);
@@ -267,7 +268,7 @@ test("CLI strips numeric bound args and their copies but keeps structural number
   const written = JSON.parse(cli(home, "--home", home, "--write")) as ScrubReport;
   assert.deepEqual(written.files, [relative]);
   assert.equal(readFileSync(path.join(written.backup!, relative), "utf8"), original);
-  assert.deepEqual(json(home, relative), { workflowId: doc.id, version: 2, index: 0, args: { value: STRIPPED_SECRET, ordinary: -17 }, actual: STRIPPED_SECRET, expected: STRIPPED_SECRET });
+  assert.deepEqual(json(home, relative), { workflowId: doc.id, version: 2, index: 0, args: { value: STRIPPED_SECRET, ordinary: -17 }, actual: 0, expected: "0" });
 });
 
 test("ReceiptLog scrubs string read-backs of numeric OTP args before hashing", (t) => {

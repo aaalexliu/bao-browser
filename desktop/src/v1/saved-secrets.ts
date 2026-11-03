@@ -1,48 +1,47 @@
 import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "../cdp-live/keys";
 import { mapCsv, parseTable, sanitizeName } from "./data-steps";
-import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "./schema";
+import type { ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import type { TrailEvent } from "./interpret";
+import type { ReceiptBody } from "./receipt";
+import type { WorkflowOutcome } from "../mcp/catalog";
 
 export const STRIPPED_SECRET = "[secret stripped]";
 export const NEEDS_SECRET_VALUE = "This step needs a value. Its saved value was stripped because it may contain a secret.";
 
-const ENTRY = new Set(["type", "input", "fill", "key", "keypress", "digits"]);
-const MEDIA = new Set(["screenshot", "png", "base64", "image", "video"]);
-const STRUCTURE = new Set(["schema", "id", "toolCallId", "op", "action", "kind", "type", "role", "inputType", "autocomplete", "surface", "input", "parameter", "as", "workflowId", "runId", "stepId", "sessionId", "eventId", "eventIds", "cardId", "secretIds", "takes", "versionId", "hash", "prev", "version", "index", "n", "ts", "at", "createdAt", "updatedAt", "timeoutMs", "stepIndex", "stepCount", "filesDates", "tag", "subrole", "changed", "ref", "identifier", "testId", "nameAttr", "bundleId", "label", "intent", "match", "url", "startUrl", "beforeUrl", "afterUrl", "requestedUrl", "href", "src", "selector", "query", "cssPath", "xpath", "fileInput", "fileFrom", "fromOutput", "endInput"]);
-const ENUMS = new Map(Object.entries({
-  status: "running passed failed paused pending skipped needs_human idle completed timed-out stopped provisional promoted reverted",
-  outcome: "ok needs_human needs_signin needs_approval failed",
-  phase: "wait_for find action expect auth start end closed",
-  driver: "playwright extension cdp-live",
-  heal: "auto approve ask never",
-  class: "bot_wall login_wall clutter changed",
-  mode: "auto approve element list",
-  decision: "keep revert",
-  repair: "wait overlay label anchor reveal",
-  timing: "lt1s lt10s lt60s slower",
-  by: "name title text value",
-  relation: "below above right left",
-  state: "checked unchecked enabled disabled visible",
-  gate: "login confirm",
-  confidence: "low",
-  optional: "dismiss",
-  target: "url file",
-  space: "viewport image screen",
-  read: "text href src value title rating",
-  pausedKind: "signin confirm wall",
-  pageEngine: "old agent-browser",
-  drift: "pending passed failed",
-  dialogType: "alert confirm prompt",
-  dialogDecision: "accept dismiss",
-  valueMode: "full",
-  via: "ax cdp",
-  cleared: "email name path phone ssn",
-  source: "value text url file recorded heal revert rollback saved edit restore conflict dom iframe header cookie title status",
-  adapter: "playwright extension cdp-live",
-  agent: "live-model",
-  vendor: "bao",
-}).map(([key, values]) => [key, new Set(values.split(" "))] as const));
+const ENTRY = new Set(["type", "input", "fill", "key", "keypress", "digits", "osType", "osSetValue", "osKey"]);
 const TOKENS = /^(?:(?:sk-|gh[pousr]_|github_pat_|xox[a-z]-|AKIA|GOCSPX-)[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})$/;
+
+type ValueFields = {
+  step: readonly (keyof WorkflowStep)[];
+  event: readonly (keyof (TrailEvent & { text?: string }))[];
+  effect: readonly (keyof TrailEvent)[];
+  dialog: readonly (keyof TrailEvent)[];
+  input: readonly (keyof WorkflowInput)[];
+  field: readonly "value"[];
+  receipt: readonly (keyof ReceiptBody)[];
+  result: readonly (keyof WorkflowOutcome["receipts"][number])[];
+  runtime: readonly ("inputs" | "publicInputs" | "args" | "raw")[];
+  table: readonly "rows"[];
+  output: readonly "value"[];
+  teaching: readonly "secrets"[];
+  replay: readonly ("texts" | "secret")[];
+};
+const USER_VALUE_FIELDS = {
+  step: ["value", "key"],
+  event: ["value", "text", "key", "valueBefore", "valueAfter", "endValue", "dialogValue"],
+  effect: ["valueBefore", "valueAfter", "endValue"],
+  dialog: ["dialogValue"],
+  input: ["default"],
+  field: ["value"],
+  receipt: ["expected", "actual"],
+  result: ["readBack"],
+  runtime: ["inputs", "publicInputs", "args", "raw"],
+  table: ["rows"],
+  output: ["value"],
+  teaching: ["secrets"],
+  replay: ["texts", "secret"],
+} as const satisfies ValueFields;
 
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): RecordValue {
@@ -92,10 +91,6 @@ export function fixedSavedChoice(value: unknown): boolean {
   return [node.action, node.op].some((action) => action === "select" || action === "check") || choiceField(node) || choiceField(node.identity) || choiceField(node.field);
 }
 
-function payloadField(key: string, value: unknown): boolean {
-  return ["value", "text", "valueBefore", "valueAfter", "publicInputs", "args", "default", "rows"].includes(key) || (key === "inputs" && !Array.isArray(value));
-}
-
 export function hasStrippedSecret(value: unknown): boolean {
   return Array.isArray(value) ? value.some(hasStrippedSecret) : typeof value === "string" && value.includes(STRIPPED_SECRET);
 }
@@ -137,161 +132,185 @@ export interface SavedContext {
   secrets?: readonly string[];
 }
 
+type ValuePolicy = { secret?: boolean; choice?: boolean; columns?: Set<string>; arguments?: boolean };
+type StepScope = { names: Set<string>; row: boolean; secret: boolean };
+
 /** Copy only: dispatch and the caller's live values never change. */
 export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
   const secrets = new Set<string>();
-  const tables = new WeakMap<object, Map<string, Set<string>>>();
-  type StepScope = { names: Set<string>; row: boolean; secret: boolean };
+  const slots = new WeakMap<object, Map<string, ValuePolicy>>();
+  const argumentsFor = new WeakMap<object, Map<string, ValuePolicy>>();
   const steps = new WeakMap<object, StepScope>();
   const copies = new Map<string, StepScope>();
-  const fields = new WeakMap<object, Map<string, boolean>>();
-  const secretInputs = new WeakSet<object>();
+  const workflows = new WeakSet<object>();
   const rootData = context.args === value || (Array.isArray(context.args) && context.args.some((args) => args === value));
-  const preserve = (owner: object, keys: string[], data = false): void => {
-    const kept = fields.get(owner) ?? new Map<string, boolean>();
-    keys.forEach((key) => kept.set(key, data || kept.get(key) === true));
-    fields.set(owner, kept);
-  };
-  const kept = (owner: object, key: string, data: boolean): boolean => fields.get(owner)?.has(key) === true && (!data || fields.get(owner)?.get(key) === true);
   const remember = (item: unknown): void => {
     if (Array.isArray(item)) { item.forEach(remember); return; }
     if (item && typeof item === "object") { Object.values(item).forEach(remember); return; }
     if (typeof item === "number" && Number.isFinite(item)) item = String(item);
     if (typeof item === "string" && item && item !== STRIPPED_SECRET) secrets.add(item);
   };
-  const collectBindings = (workflow: RecordValue, args: RecordValue = {}): void => {
+  const select = (node: RecordValue, owner: keyof ValueFields, policy: ValuePolicy = {}): void => {
+    const fields = slots.get(node) ?? new Map<string, ValuePolicy>();
+    for (const key of USER_VALUE_FIELDS[owner]) if (key in node) fields.set(key, policy);
+    slots.set(node, fields);
+  };
+  const bind = (workflow: RecordValue, args?: RecordValue): void => {
     if (!Array.isArray(workflow.steps) || !Array.isArray(workflow.inputs)) return;
     const bound = boundSteps(workflow.steps);
     const declared = workflow.inputs.map(record);
     const names = new Set(declared.flatMap((input) => typeof input.name === "string" ? [input.name] : []));
-    for (const output of Array.isArray(workflow.outputs) ? workflow.outputs : []) preserve(record(output), ["from"]);
     for (const { step, row, inputs } of bound) {
-      const secret = secretNode(step) || declared.some((input) => input.type === "secret" && typeof input.name === "string" && inputs.has(input.name));
-      const scope = { names, row, secret };
+      const scope = { names, row, secret: secretNode(step) || declared.some((input) => input.type === "secret" && typeof input.name === "string" && inputs.has(input.name)) };
       steps.set(step, scope);
       if (workflow === context.workflow && typeof step.id === "string") copies.set(step.id, scope);
-      const when = record(step.when);
-      if (declared.some((input) => input.type === "choice" && input.name === when.input)) preserve(when, ["value"]);
     }
+    const policies = new Map<string, ValuePolicy>();
     for (const input of declared) {
       const name = input.name;
       if (typeof name !== "string") continue;
       const targets = bound.filter(({ inputs }) => inputs.has(name));
       const consumers = targets.filter(({ step }) => secretNode(step));
       const secret = input.type === "secret" || consumers.length > 0;
-      if (!secret && (input.type === "choice" || (targets.length > 0 && targets.every(({ step }) => fixedSavedChoice(step))))) {
-        preserve(input, ["default", "choices"], true);
-        preserve(args, [name], true);
-      }
-      if (!secret && input.type !== "table") continue;
-      if (secret) secretInputs.add(input);
-      for (const [owner, key] of [[input, "default"], [args, name]] as const) {
-        const value = owner[key];
-        if (input.type !== "table") { remember(value); continue; }
-        const columns = new Set<string>();
+      const choice = !secret && (input.type === "choice" || (targets.length > 0 && targets.every(({ step }) => fixedSavedChoice(step))));
+      const policy: ValuePolicy = { secret, choice };
+      if (input.type === "table") {
+        policy.columns = new Set<string>();
         for (const { step, rows } of consumers) {
           if (!rows.has(name)) {
-            for (const row of parseTable(value)) for (const column of Object.keys(row)) columns.add(column);
+            for (const row of [...parseTable(input.default), ...parseTable(args?.[name])]) for (const column of Object.keys(row)) policy.columns.add(column);
           }
-          if (typeof step.value !== "string") continue;
-          for (const match of step.value.matchAll(ROW_BINDING)) columns.add(match[1]!);
+          if (typeof step.value === "string") for (const match of step.value.matchAll(ROW_BINDING)) policy.columns.add(match[1]!);
         }
-        const fields = tables.get(owner) ?? new Map<string, Set<string>>();
-        fields.set(key, columns);
-        tables.set(owner, fields);
-        for (const row of parseTable(value)) for (const column of columns) remember(row[column]);
       }
+      select(input, "input", policy);
+      policies.set(name, policy);
     }
+    if (args) argumentsFor.set(args, policies);
   };
-  const collect = (item: unknown, data = false): void => {
+  const tableSecrets = (item: unknown, columns: Set<string>): void => {
+    for (const row of parseTable(item)) for (const column of columns) remember(row[column]);
+  };
+  const collectData = (item: unknown): void => {
     if (!item || typeof item !== "object") return;
-    if (Array.isArray(item)) { item.forEach((child) => collect(child, data)); return; }
+    if (Array.isArray(item)) { item.forEach(collectData); return; }
     const node = record(item);
-    if (!data) collectBindings(node);
-    const scope = !data ? steps.get(node) ?? (typeof node.action === "string" && typeof node.id === "string" ? copies.get(node.id) : undefined) : undefined;
+    if (secretNode(node)) {
+      for (const key of USER_VALUE_FIELDS.event) if (key !== "key" || typeof node.key === "string" && keyMayInsertText(node.key)) remember(node[key]);
+      remember(record(node.identity).value);
+    }
+    Object.values(node).forEach(collectData);
+  };
+  const evidence = (item: unknown, policy: ValuePolicy): void => {
+    if (policy.choice) return;
+    if (policy.columns) tableSecrets(item, policy.columns);
+    else if (policy.secret) remember(item);
+    collectData(item);
+  };
+  const collectArgs = (args: RecordValue): void => {
+    if (context.workflow) bind(context.workflow as unknown as RecordValue, args);
+    if (!argumentsFor.has(args)) argumentsFor.set(args, new Map());
+    collectData(args);
+    for (const [name, item] of Object.entries(args)) evidence(item, argumentsFor.get(args)?.get(name) ?? {});
+  };
+  const field = (node: RecordValue): boolean => secretSavedField(node) || [node.role, node.tag].some((value) => typeof value === "string" && ["textbox", "input", "textarea", "select", "radio", "checkbox", "axtextfield", "axsecuretextfield", "axtextarea"].includes(value.toLowerCase()));
+  const collect = (item: unknown): void => {
+    if (!item || typeof item !== "object") return;
+    if (Array.isArray(item)) { item.forEach(collect); return; }
+    const node = record(item);
+    if ((node.schema === "bao.workflow/v2" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
+      workflows.add(node);
+      bind(node);
+    }
+    const action = String(node.action || node.op || "");
+    const scope = steps.get(node) ?? (typeof node.action === "string" && typeof node.id === "string" ? copies.get(node.id) : undefined);
+    const event = typeof node.op === "string";
+    const entry = ENTRY.has(action) || ["select", "check"].includes(action);
     const structural = scope?.secret || secretNode(node);
-    if (!data) {
-      if (scope) {
-        if (bindingTokens(node.value, scope.names, scope.row).size) preserve(node, ["value"]);
-        preserve(record(node.download), ["name", "url", "output"]);
-        preserve(record(node.open), ["url", "file"]);
-      }
-      for (const key of ["identity", "field"]) preserve(record(node[key]), ["name", "text", "title", "description", "app", "windowTitle", "siblingIndex"]);
-      preserve(record(node.provenance), ["x", "y", "space"]);
-      preserve(record(node.model), ["provider", "name", "version"]);
-      preserve(record(node.inference), ["provider", "model", "status"]);
-      preserve(record(node.source), ["agent", "vendor", "adapter", "model"]);
-      if (["css", "xpath", "text", "testid", "role"].includes(String(node.kind))) preserve(node, ["value", "name"]);
+    if (event && field(record(node.identity))) select(node, "effect", { secret: structural, choice: fixedSavedChoice(node) && !structural });
+    if (event && node.dialogType === "prompt") select(node, "dialog", { secret: structural });
+    if (entry) {
+      select(node, event ? "event" : "step", { secret: structural });
+      const fields = slots.get(node)!;
+      if (fixedSavedChoice(node) && !structural) for (const key of ["value", "valueBefore", "valueAfter"]) fields.delete(key);
+      if (scope && bindingTokens(node.value, scope.names, scope.row).size) fields.delete("value");
       if (typeof node.key === "string") {
         const name = canonicalKey(node.key).split("+").at(-1) || "";
-        if ((name.length === 1 || KEY_EVENTS[name]) && !keyMayInsertText(node.key)) preserve(node, ["key"]);
+        if ((name.length === 1 || KEY_EVENTS[name]) && !keyMayInsertText(node.key)) fields.delete("key");
       }
-      if (node.role === "input" && typeof node.name === "string") preserve(node, ["name"]);
-      if (fixedSavedChoice(node) && !structural) preserve(node, ["value", "valueBefore", "valueAfter"], true);
-      if (node.type === "choice") preserve(node, secretInputs.has(node) ? ["choices"] : ["default", "choices"], true);
-      if (Array.isArray(node.options)) for (const option of node.options) preserve(record(option), ["value", "label"], true);
     }
-    if (structural) {
-      remember(record(node.identity).value);
-      for (const key of ["value", "text", "valueBefore", "valueAfter"]) if (!kept(node, key, data)) remember(node[key]);
-      if (typeof node.key === "string" && keyMayInsertText(node.key)) remember(node.key);
+    const identity = record(node.identity);
+    const form = field(identity) && ["dom", "ax", "atspi"].includes(String(identity.surface));
+    const control = node.kind === "field" && field(record(node.field));
+    if (entry || event || form || control) {
+      for (const child of [identity, record(node.field)]) if (field(child)) select(child, "field", { secret: structural || secretNode(child), choice: fixedSavedChoice(node) && !structural });
+      if (!entry && !event) select(node, "field", { secret: structural, choice: fixedSavedChoice(node) && !structural });
     }
-    if (node.type === "secret") remember(node.default);
-    if (context.workflow && !data) {
-      for (const key of ["inputs", "publicInputs", "args"]) collectBindings(context.workflow as unknown as RecordValue, record(node[key]));
+    if (node.kind === "read-back") select(node, "receipt");
+    const runtime = event || typeof node.workflowId === "string" || typeof node.runId === "string" || typeof record(node.ask).workflowId === "string";
+    if (runtime) {
+      select(node, "runtime", { arguments: true });
+      for (const receipt of Array.isArray(node.receipts) ? node.receipts : []) {
+        select(record(receipt), "receipt");
+        select(record(receipt), "result");
+      }
+      for (const output of Array.isArray(node.outputs) ? node.outputs : []) {
+        const result = record(output);
+        if (result.type === "table") select(result, "table");
+        else if (result.type === "text" || result.type === "number") select(result, "output");
+      }
     }
-    for (const [key, child] of Object.entries(node)) if (!MEDIA.has(key) && !kept(node, key, data)) collect(child, data || payloadField(key, child));
+    if (event) select(record(node.list), "table");
+    if (node.schema === "bao.intent-case/v1") {
+      select(node, "teaching");
+      for (const replay of Array.isArray(node.replays) ? node.replays : []) select(record(replay), "replay");
+    }
+    for (const [key, child] of Object.entries(node)) {
+      const policy = slots.get(node)?.get(key);
+      if (policy?.arguments && child && typeof child === "object" && !Array.isArray(child)) collectArgs(record(child));
+      else if (policy) evidence(child, policy);
+      else collect(child);
+    }
   };
   context.secrets?.forEach(remember);
-  if (context.workflow) {
-    collect(context.workflow);
-    for (const args of Array.isArray(context.args) ? context.args : [context.args]) {
-      collectBindings(context.workflow as unknown as RecordValue, args);
-    }
-  }
-  collect(value, rootData);
-  const cleanScalar = (item: string | number): string | number => {
+  if (context.workflow) collect(context.workflow);
+  for (const args of Array.isArray(context.args) ? context.args : [context.args]) if (args) collectArgs(args);
+  if (!rootData) collect(value);
+  const scalar = (item: string | number, known = true): string | number => {
     if (item === STRIPPED_SECRET) return item;
-    const text = String(item);
-    return secrets.has(text) || redactSavedValue(text) === STRIPPED_SECRET ? STRIPPED_SECRET : item;
+    return (known && secrets.has(String(item))) || redactSavedValue(String(item)) === STRIPPED_SECRET ? STRIPPED_SECRET : item;
   };
-  const cleanTable = (item: unknown, columns: Set<string>): unknown => {
-    if (typeof item === "string") {
-      return mapCsv(item, (value, column) => columns.has(column) && value ? STRIPPED_SECRET : redactSavedValue(value));
-    }
-    if (Array.isArray(item)) return item.map((row) => Object.fromEntries(Object.entries(record(row)).map(([key, value]) => {
-      if (columns.has(sanitizeName(key, 0)) && String(value ?? "")) return [key, STRIPPED_SECRET];
-      if (value && typeof value === "object") return [key, clean(value, true)];
-      const scalar = (typeof value === "string" || typeof value === "number") && redactSavedValue(String(value)) === STRIPPED_SECRET ? STRIPPED_SECRET : value;
-      return [key, scalar];
+  const data = (item: unknown): unknown => {
+    if (typeof item === "string" || typeof item === "number") return scalar(item);
+    if (Array.isArray(item)) return item.map(data);
+    if (item && typeof item === "object") return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, data(child)]));
+    return item;
+  };
+  const table = (item: unknown, columns: Set<string>): unknown => {
+    if (typeof item === "string") return mapCsv(item, (value, column) => columns.has(column) && value ? STRIPPED_SECRET : redactSavedValue(value));
+    if (Array.isArray(item)) return item.map((row) => Object.fromEntries(Object.entries(record(row)).map(([key, child]) => {
+      if (columns.has(sanitizeName(key, 0)) && child != null && child !== "") return [key, STRIPPED_SECRET];
+      return [key, typeof child === "string" || typeof child === "number" ? scalar(child, false) : data(child)];
     })));
     return item;
   };
-  const clean = (item: unknown, data = false): unknown => {
-    if (typeof item === "string" || typeof item === "number") return cleanScalar(item);
-    if (Array.isArray(item)) return item.map((child) => clean(child, data));
+  const cleanArgs = (item: unknown): unknown => Array.isArray(item) ? item.map(cleanArgs) : Object.fromEntries(Object.entries(record(item)).map(([key, child]) => [key, cleanValue(child, argumentsFor.get(record(item))?.get(key) ?? {})]));
+  const cleanValue = (item: unknown, policy: ValuePolicy): unknown => policy.choice ? structuredClone(item) : policy.columns ? table(item, policy.columns) : policy.arguments && item && typeof item === "object" && !Array.isArray(item) ? cleanArgs(item) : data(item);
+  const clean = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(clean);
     if (!item || typeof item !== "object") return item;
     const raw = record(item);
     const node = Object.fromEntries(Object.entries(raw).map(([key, child]) => {
-      // Keep enum values and binding names intact even when someone typed that same word.
-      const schemaName = key === "name" && ["schema", "type", "kind", "role"].some((field) => typeof raw[field] === "string");
-      const columns = tables.get(raw)?.get(key);
-      const payload = data || payloadField(key, child);
-      if (columns) return [key, cleanTable(child, columns)];
-      const metadata = !data && (STRUCTURE.has(key) || schemaName || (typeof child === "string" && ENUMS.get(key)?.has(child)));
-      return [key, MEDIA.has(key) || kept(raw, key, data) || metadata ? child : clean(child, payload)];
+      const policy = slots.get(raw)?.get(key);
+      return [key, policy ? cleanValue(child, policy) : clean(child)];
     }));
-    if (ENTRY.has(String(node.action || "")) && [node.value, node.key].some(hasStrippedSecret)) {
-      node.unresolved = { reason: NEEDS_SECRET_VALUE };
-    }
-    if (Array.isArray(node.steps) && Array.isArray(node.inputs)) {
+    if (ENTRY.has(String(node.action || "")) && [node.value, node.key].some(hasStrippedSecret)) node.unresolved = { reason: NEEDS_SECRET_VALUE };
+    if (workflows.has(raw) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
       for (const { step, inputs, rows } of boundSteps(node.steps)) {
-        if (node.inputs.map(record).some((input) => typeof input.name === "string" && inputs.has(input.name) && missingBoundValue(input.default, input.type === "table" && rows.has(input.name)))) {
-          step.unresolved = { reason: NEEDS_SECRET_VALUE };
-        }
+        if (node.inputs.map(record).some((input) => typeof input.name === "string" && inputs.has(input.name) && missingBoundValue(input.default, input.type === "table" && rows.has(input.name)))) step.unresolved = { reason: NEEDS_SECRET_VALUE };
       }
     }
     return node;
   };
-  return clean(value, rootData) as T;
+  return (rootData ? cleanArgs(value) : clean(value)) as T;
 }

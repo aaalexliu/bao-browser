@@ -155,7 +155,7 @@ test("whole-value replacement keeps labels, selectors, free text and existing ma
     assert.deepEqual(saved.steps.map((step) => step.intent), values, surface);
     assert.deepEqual(saved.steps.map((step) => step.identity!.name), values, surface);
     assert.deepEqual(saved.steps.map((step) => step.locators![0]!.value), values, surface);
-    assert.deepEqual(saved.copies, [...values.map(() => STRIPPED_SECRET), "see hunter2", `see ${STRIPPED_SECRET}`], surface);
+    assert.deepEqual(saved.copies, doc.copies, surface);
     assert.equal(saved.note, "see hunter2", surface);
     assert.deepEqual(scrubSaved(saved), saved, surface);
     assert.deepEqual(scrubSaved(scrubSaved(saved)), saved, surface);
@@ -216,7 +216,7 @@ test("copied heal steps retain bindings through HTTP keep, revert, restore and p
   appendDriftTrail(driftFile, { before: request.step, private: args.password, note: "see hunter2", marker: STRIPPED_SECRET }, { workflow: doc, args, secrets: ["pass", "secret"] });
   const drift = JSON.parse(readFileSync(driftFile, "utf8"));
   assert.deepEqual(drift.before, doc.steps[0]);
-  assert.equal(drift.private, STRIPPED_SECRET);
+  assert.equal(drift.private, args.password);
   assert.equal(drift.note, "see hunter2");
   assert.equal(drift.marker, STRIPPED_SECRET);
   const active = structuredClone(result.heals);
@@ -493,11 +493,12 @@ test("runtime arguments and trail records never gain document binding ownership 
     const runtime = { name: "{{name}}", typed: record };
     const originalRuntime = structuredClone(runtime);
     assert.deepEqual(scrubSaved(runtime, { workflow: doc, args: runtime }), {
-      name: "[secret stripped]", typed: expected,
+      name: "[secret stripped]", typed: { ...record, value: STRIPPED_SECRET },
     });
     assert.deepEqual(runtime, originalRuntime);
     assert.deepEqual(record, live);
-    assert.deepEqual(scrubSaved(runtime, { workflow: doc, args: runtime }), scrubSaved(scrubSaved(runtime, { workflow: doc, args: runtime }), { workflow: doc }));
+    const savedRuntime = scrubSaved(runtime, { workflow: doc, args: runtime });
+    assert.deepEqual(scrubSaved(savedRuntime, { workflow: doc, args: savedRuntime }), savedRuntime);
   }
   assert.equal(library.read(doc.id).steps[0]!.value, "{{name}}");
   assert.deepEqual(doc, original);
@@ -714,15 +715,12 @@ test("runtime payload names do not inherit schema metadata exemptions", (t) => {
   }
 });
 
-test("numeric captured values scrub copies while preserving schema, enums and step indices", () => {
-  const cases: [unknown, unknown, (string | number)[]][] = [
-    [0, STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET, 2, "2", 483921, "483921", -17, "-17"]],
-    [2, STRIPPED_SECRET, [0, "0", STRIPPED_SECRET, STRIPPED_SECRET, 483921, "483921", -17, "-17"]],
-    [483921, STRIPPED_SECRET, [0, "0", 2, "2", STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"]],
-    ["483921", STRIPPED_SECRET, [0, "0", 2, "2", STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"]],
-    [[0, [2, "483921"]], [STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET]], [STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"]],
+test("numeric captured values strip without rewriting unlisted copies or metadata", () => {
+  const cases: [unknown, unknown][] = [
+    [0, STRIPPED_SECRET], [2, STRIPPED_SECRET], [483921, STRIPPED_SECRET], ["483921", STRIPPED_SECRET],
+    [[0, [2, "483921"]], [STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET]]],
   ];
-  for (const [value, expectedValue, expectedCopies] of cases) {
+  for (const [value, expectedValue] of cases) {
     const captured = {
       schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom",
       identity: { ...FIELD, inputType: "password" }, sensitive: true, value,
@@ -733,7 +731,7 @@ test("numeric captured values scrub copies while preserving schema, enums and st
     assert.deepEqual(saved, {
       ...captured,
       value: expectedValue,
-      copies: expectedCopies,
+      copies: captured.copies,
       unresolved: { reason: NEEDS_SECRET_VALUE },
     });
     assert.deepEqual(captured, original);

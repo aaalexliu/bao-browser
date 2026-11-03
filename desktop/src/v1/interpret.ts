@@ -632,7 +632,7 @@ function normalizeFile(event: TrailEvent): TrailEvent {
 
 function scrub(value: string | undefined, secrets: string[]): string | undefined {
   if (!value) return value;
-  const saved = scrubSaved(value, { secrets });
+  const saved = scrubSaved({ op: "type", value }, { secrets }).value;
   return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
 }
 
@@ -664,7 +664,7 @@ function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | 
 function isSecret(event: TrailEvent, secrets: string[]): boolean {
   if (event.sensitive || secretSavedField(event.identity)) return true;
   if (fixedSavedChoice(event)) return false;
-  return !!event.value && (secrets.includes(event.value) || scrubSaved(event.value) === STRIPPED_SECRET);
+  return !!event.value && (secrets.includes(event.value) || scrubSaved({ op: "type", value: event.value }).value === STRIPPED_SECRET);
 }
 
 function openMatch(url: string): string {

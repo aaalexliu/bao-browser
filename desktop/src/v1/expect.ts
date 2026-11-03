@@ -194,7 +194,7 @@ export function isBrowserError(url: string | undefined): boolean {
 
 function scrub(value: string | undefined, secrets: readonly string[]): string | undefined {
   if (!value) return undefined;
-  const saved = scrubSaved(value, { secrets });
+  const saved = scrubSaved({ op: "type", value }, { secrets }).value;
   return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
 }
 

@@ -43,7 +43,13 @@ test("persisted model identifiers stay stable without exempting argument, defaul
   const doc = workflow();
   const privateArgs = { password: model.provider, other: model.name, revision: model.version };
   const payload = { model, inference, source: { model: model.name }, rows: [model] };
-  const run = { id: "run", workflowId: doc.id, status: "failed", at: 1, inputs: { ...privateArgs, payload }, steps: [{ args: payload, publicInputs: payload, default: payload, rows: [payload] }], heals: [heal(doc)] };
+  const metadata = { args: payload, publicInputs: payload, default: payload, rows: [payload] };
+  const run = {
+    id: "run", workflowId: doc.id, status: "failed", at: 1, inputs: { ...privateArgs, payload },
+    steps: [{ op: "type", ...metadata }, metadata, { op: "extract", list: { headers: Object.keys(model), rows: [model] } }],
+    outputs: [{ name: "models", type: "table", columns: Object.keys(model).map((name) => ({ name, type: "text" })), rows: [model] }],
+    heals: [heal(doc)],
+  };
   const original = structuredClone({ doc, run });
   library.save(doc);
   library.saveRun(run as unknown as Parameters<Library["saveRun"]>[0]);
@@ -53,13 +59,18 @@ test("persisted model identifiers stay stable without exempting argument, defaul
   assert.deepEqual(saved.inputs.other, STRIPPED_SECRET);
   assert.deepEqual(saved.inputs.revision, STRIPPED_SECRET);
   const strippedModel = { provider: STRIPPED_SECRET, name: STRIPPED_SECRET, version: STRIPPED_SECRET };
-  for (const data of [saved.inputs.payload, saved.steps[0].args, saved.steps[0].publicInputs, saved.steps[0].default, saved.steps[0].rows[0]]) {
+  for (const data of [saved.inputs.payload, saved.steps[0].args, saved.steps[0].publicInputs]) {
     assert.deepEqual(data.model, strippedModel);
     assert.equal(data.inference.provider, STRIPPED_SECRET);
     assert.equal(data.inference.model, STRIPPED_SECRET);
     assert.equal(data.source.model, STRIPPED_SECRET);
     assert.deepEqual(data.rows, [strippedModel]);
   }
+  assert.deepEqual(saved.steps[0].default, payload);
+  assert.deepEqual(saved.steps[0].rows, [payload]);
+  assert.deepEqual(saved.steps[1], metadata);
+  assert.deepEqual(saved.steps[2].list.rows, [strippedModel]);
+  assert.deepEqual(saved.outputs[0].rows, [strippedModel]);
   const rendered = healDetail({ id: saved.id, workflowId: saved.workflowId, status: saved.status }, saved.heals[0]);
   assert.ok(rendered.includes("gpt-4o test"));
   assert.deepEqual({ doc, run }, original);
@@ -71,7 +82,7 @@ test("persisted model identifiers stay stable without exempting argument, defaul
   library.save(defaults);
   const stored = JSON.parse(readFileSync(path.join(home, "workflows/models.json"), "utf8"));
   assert.deepEqual(stored.inference, inference);
-  assert.equal(stored.inputs[3].default, STRIPPED_SECRET);
+  assert.deepEqual(stored.inputs.map((input: { default: string }) => input.default), [STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET]);
   assert.deepEqual(library.read(doc.id).inference, inference);
 
   library.noteHealPromotion(doc.id, heal(doc));
@@ -97,12 +108,18 @@ test("canonical scalar records survive collisions while their payload copies str
     const secrets = Object.values(payload).flatMap((record) => Object.values(record).map(String));
     const args = Object.fromEntries(secrets.map((value, n) => [`private${n}`, value]));
     const doc = workflow();
-    doc.inputs = Object.keys(args).map((name) => ({ name, type: "secret" }));
+    doc.inputs = Object.entries(args).map(([name, value]) => ({ name, type: "secret", default: value }));
     doc.steps = [];
     library.save(doc);
-    const step = { ...payload, args: payload, publicInputs: payload, default: payload, rows: [payload] };
+    const stored = JSON.parse(readFileSync(path.join(home, "workflows/models.json"), "utf8"));
+    assert.deepEqual(stored.inputs.map((input: { default: string }) => input.default), secrets.map(() => STRIPPED_SECRET));
+    const step = { op: "type", ...payload, args: payload, publicInputs: payload, default: payload, rows: [payload] };
     const original = structuredClone(step);
-    library.saveRun({ id: `source-${index}`, workflowId: doc.id, status: "passed", at: 1, steps: [step], heals: [], inputs: args });
+    library.saveRun({
+      id: `source-${index}`, workflowId: doc.id, status: "passed", at: 1,
+      steps: [step, { op: "extract", list: { headers: Object.keys(args), rows: [args] } }], heals: [], inputs: args,
+      outputs: [{ name: "sources", type: "table", columns: Object.keys(args).map((name) => ({ name, type: "text" })), rows: [args] }],
+    });
     const saved = JSON.parse(readFileSync(path.join(home, `runs/source-${index}.json`), "utf8"));
     assert.deepEqual(saved.steps[0].source, source);
     assert.deepEqual(saved.steps[0].inference, inference);
@@ -111,7 +128,12 @@ test("canonical scalar records survive collisions while their payload copies str
     const stripped = Object.fromEntries(Object.entries(payload).map(([key, record]) => [key,
       Object.fromEntries(Object.keys(record).map((field) => [field, STRIPPED_SECRET])),
     ]));
-    for (const data of [saved.steps[0].args, saved.steps[0].publicInputs, saved.steps[0].default, saved.steps[0].rows[0]]) assert.deepEqual(data, stripped);
+    for (const data of [saved.steps[0].args, saved.steps[0].publicInputs]) assert.deepEqual(data, stripped);
+    assert.deepEqual(saved.steps[0].default, payload);
+    assert.deepEqual(saved.steps[0].rows, [payload]);
+    const strippedRow = Object.fromEntries(Object.keys(args).map((key) => [key, STRIPPED_SECRET]));
+    assert.deepEqual(saved.steps[1].list.rows, [strippedRow]);
+    assert.deepEqual(saved.outputs[0].rows, [strippedRow]);
     assert.deepEqual(step, original);
   }
   const event = typeTrailEvent("cursor", undefined, Object.values(LIVE_SOURCE));

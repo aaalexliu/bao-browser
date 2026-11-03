@@ -124,7 +124,7 @@ test("whole-value rules and metadata stability cross every saved surface", async
         else if (surface === "session summary") actual = parsed.intent;
         else if (surface === "pending prompt") actual = parsed.ask.label;
         else actual = parsed[field];
-        const metadata = surface === "session summary" || surface === "pending prompt" || surface === "AX proxy trail";
+        const metadata = surface === "session summary" || surface === "pending prompt" || surface === "AX proxy trail" || surface === "AX audit";
         const expected = surface === "session summary" ? publicLiveSession({ status: "passed", intent: value })!.intent : sample.secret && !metadata ? STRIPPED_SECRET : value;
         assert.equal(actual, expected, context);
         assert.deepEqual(scrubSaved(parsed), parsed, `${context} must be idempotent`);
@@ -144,8 +144,8 @@ test("cursor heal handoffs retain whole-value evidence without rewriting free te
   const saved = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8"));
   assert.equal(saved.step.value, STRIPPED_SECRET);
   assert.equal(saved.step.label, "Type hunter2");
-  assert.equal(saved.reason, STRIPPED_SECRET);
-  assert.deepEqual(saved.dom.values, [...secrets.map(() => STRIPPED_SECRET), STRIPPED_SECRET, "see hunter2", `see ${STRIPPED_SECRET}`]);
+  assert.equal(saved.reason, "hunter2");
+  assert.deepEqual(saved.dom.values, [...secrets, STRIPPED_SECRET, "see hunter2", `see ${STRIPPED_SECRET}`]);
   assert.deepEqual(scrubSaved(saved, { secrets }), saved);
   assert.deepEqual({ step, failure, secrets }, original);
 });
@@ -243,7 +243,7 @@ test("known secret collisions preserve metadata across public saved writers", as
     };
     const before = structuredClone(event);
     const copied = `Copied ${value}`;
-    const expectedEvent = { ...event, value: STRIPPED_SECRET, outcome: copied, note: STRIPPED_SECRET, detail: copied };
+    const expectedEvent = { ...event, value: STRIPPED_SECRET, outcome: copied, note: value, detail: copied };
     const session: LiveSessionRecord = {
       id: "session", intent: "Fill form", status: "failed", host: "example.test", updatedAt: 1,
       steps: [{ name: "Fill form", status: "passed", ms: 1 }],
@@ -253,7 +253,7 @@ test("known secret collisions preserve metadata across public saved writers", as
     const artifact = [event, session, { ...metadataCollision, reason: value, label: `Copied ${value}`, detail: value }];
     const expected = [expectedEvent, {
       ...session, note: copied,
-    }, { ...metadataCollision, reason: STRIPPED_SECRET, label: copied, detail: STRIPPED_SECRET }];
+    }, { ...metadataCollision, reason: value, label: copied, detail: value }];
     const activeArtifact = structuredClone(artifact);
     library.saveTrail("collision", artifact);
     const savedArtifact = library.readTrail("collision");
@@ -297,7 +297,7 @@ test("known secret collisions preserve metadata across public saved writers", as
     const run = { id: "collision", workflowId: doc.id, at: 1, status: "failed", heals: [], inputs: args, steps: [event], failure: { reason: value } };
     const activeRun = structuredClone(run);
     library.saveRun(run);
-    assert.deepEqual(library.readRun(run.id), { ...run, inputs: redactedArgs, steps: [expectedEvent], failure: { reason: STRIPPED_SECRET } }, value);
+    assert.deepEqual(library.readRun(run.id), { ...run, inputs: redactedArgs, steps: [expectedEvent] }, value);
     assert.deepEqual(run, activeRun);
     assert.deepEqual(scrubSaved(args, { workflow: doc, args }), redactedArgs, value);
     assert.deepEqual(args, Object.fromEntries(Object.keys(args).map((key) => [key, value])));
@@ -397,7 +397,7 @@ test("option tokens survive password collisions while whole copied data values s
     const expected = [
       { ...select, note: copied }, radio, checkbox,
       { ...password, value: STRIPPED_SECRET },
-      { options, controls, label: value, reason: copied, detail: STRIPPED_SECRET },
+      { options, controls, label: value, reason: copied, detail: value },
     ];
     assert.deepEqual(library.readTrail("options"), expected, value);
     assert.deepEqual(artifact, active);
@@ -521,17 +521,19 @@ test("scrub CLI defaults to a read-only plan, backs up every changed file and is
   const files: Record<string, string> = {
     "workflows/old.json": JSON.stringify(workflow({ value: "ghp_fixture123" })),
     "workflows/sensitive.json": JSON.stringify(workflow({ value: "private-entry", sensitive: true })),
-    "reports/old.json": JSON.stringify({ failure: "ghp_fixture123", steps: [null], inputs: [null] }),
-    "resumes/old.json": JSON.stringify({ publicInputs: { entry: "ghp_fixture123" } }),
+    "reports/old.json": JSON.stringify({ workflowId: "old", failure: "ghp_fixture123", steps: [null], inputs: { entry: "ghp_fixture123" } }),
+    "resumes/old.json": JSON.stringify({ workflowId: "old", publicInputs: { entry: "ghp_fixture123" } }),
     "versions/old.json": JSON.stringify([{ document: workflow({ value: "private-entry", identity: { surface: "dom", role: "password", path: [] } }) }]),
-    "heals/old.json": JSON.stringify({ heal: { note: "sk-fixture123" } }),
     "trail.jsonl": JSON.stringify({ op: "type", value: "private-entry", sensitive: true }) + "\n",
     "runs/old.json": JSON.stringify({ failure: "sk-fixture123", trail: [{ op: "type", value: "private-entry", identity: { inputType: "password" } }] }),
     "trails/old.json": JSON.stringify([{ op: "key", key: "Shift+q", identity: { autocomplete: "one-time-code" } }]),
     "live-session/trail.jsonl": JSON.stringify({ op: "type", value: "private-entry", identity: { autocomplete: "cc-name" } }) + "\n",
+  };
+  const unchanged: Record<string, string> = {
+    "heals/old.json": JSON.stringify({ heal: { note: "sk-fixture123" } }),
     "live-session/session.json": JSON.stringify({ intent: "Use github_pat_fixture123", note: "github_pat_fixture123" }),
   };
-  for (const [file, contents] of Object.entries(files)) {
+  for (const [file, contents] of Object.entries({ ...files, ...unchanged })) {
     mkdirSync(path.dirname(path.join(home, file)), { recursive: true });
     writeFileSync(path.join(home, file), contents);
   }
@@ -558,6 +560,10 @@ test("scrub CLI defaults to a read-only plan, backs up every changed file and is
     assert.equal(readFileSync(path.join(result.backup!, file), "utf8"), contents);
     assert.equal(statSync(path.join(result.backup!, file)).mode & 0o777, 0o600);
     assert.ok(readFileSync(path.join(home, file), "utf8").includes(STRIPPED_SECRET));
+  }
+  for (const [file, contents] of Object.entries(unchanged)) {
+    assert.equal(readFileSync(path.join(home, file), "utf8"), contents);
+    assert.equal(existsSync(path.join(result.backup!, file)), false);
   }
   assert.equal(readFileSync(path.join(home, "shots", "image.png"), "utf8"), "ghp_fixture123");
   assert.equal(readFileSync(path.join(home, "settings.json"), "utf8"), '{"key":"ghp_fixture123"}');

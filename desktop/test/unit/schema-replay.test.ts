@@ -285,7 +285,7 @@ test("replay stops with a structured failure when healing is off", async () => {
   assert.equal(result.status, "failed");
   assert.equal(calls, 0);
   assert.equal(result.failure?.reason, "below-threshold");
-  assert.deepEqual(result.failure!.snapshot.dom, { value: STRIPPED_SECRET, text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
+  assert.deepEqual(result.failure!.snapshot.dom, { value: "SuperSecretPassword!", text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
   assert.equal(d.clicks, 0);
 });
 
@@ -313,7 +313,7 @@ test("auto heal applies a patch, records the audit, and does not edit the workfl
   assert.equal(result.heals[0]?.model?.name, "test");
   assert.equal(result.heals[0]?.model?.version, "test");
   assert.equal(result.heals[0]?.executed?.identity?.testId, "real");
-  assert.deepEqual(result.heals[0]!.snapshot.dom, { value: STRIPPED_SECRET, text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
+  assert.deepEqual(result.heals[0]!.snapshot.dom, { value: "SuperSecretPassword!", text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
   assert.equal(result.heals[0]!.prompt, proposal.prompt);
   assert.equal(result.heals[0]!.rawResponse, proposal.rawResponse);
   assert.equal(canonical(doc), before);

@@ -50,7 +50,23 @@ In `live-session/session.json`, `start` and `navigate` audit labels that parse a
 
 ### Secret text in saved files
 
-Bao strips detected secrets when it saves live trails, run records and workflows. It replaces whole secret data values with `[secret stripped]`, not fragments inside other strings. A structured table cell counts as one field; harmless columns stay intact. Field structure comes first: password types and `current-password`, `new-password`, `one-time-code` or `cc-*` autocomplete tokens. Value checks cover whole values that match Luhn-valid card numbers, SSN shapes, JWTs or common API-token prefixes. These checks do not change or block live typing. Labels, binding expressions, selectors, URLs, option definitions and existing markers stay stable. Unmarked dropdown, radio and checkbox values remain unchanged, even when a value matches a secret pattern. A secret-marked choice field still strips its selected and default values. Secrets embedded in free text, such as an API token pasted into a sentence, remain. These checks do not find every possible secret. Saved runtime arguments also use the associated workflow's field and input bindings. Cleanup uses those workflow links and saved argument bags when they exist. Older or orphaned files may lack that evidence, so the scrub cannot identify every private value. Screenshots and videos stay unchanged.
+Bao strips detected secrets in owned user-value fields when it saves live trails, run records and workflows. Firstmate 009 limits replacement to the typed `USER_VALUE_FIELDS` allowlist in `desktop/src/v1/saved-secrets.ts`:
+
+| Owner | Saved values checked |
+| --- | --- |
+| Typed workflow step or trail event | Typed values, inserting keys, field values before/after an action, date-range end values and prompt responses |
+| Workflow input | Default values, including captured table cells |
+| Form field or field read-back | The field's value, not its label or identity |
+| Runtime record or tool event | Values inside input and argument bags, including raw tool arguments |
+| Captured list or run output | Table cells and scalar output values, not headers or column definitions |
+| Read-back receipt or MCP result | Receipt `expected`/`actual` before hashing, and the result's `readBack` value |
+| Teaching case | Replay text/secret values and the case's secret-value list |
+
+Bao replaces an eligible whole value with `[secret stripped]`, never a fragment inside another string. An arbitrary metadata property named `value`, `text` or `default` does not qualify. Once a real argument, default or row container is selected, its contents remain data: model-, schema- and media-shaped keys do not exempt payload values. Field structure comes first: password types and `current-password`, `new-password`, `one-time-code` or `cc-*` autocomplete tokens. Value checks cover whole values that match Luhn-valid card numbers, SSN shapes, JWTs or common API-token prefixes. Secret table columns strip their cells; harmless columns and raw headers stay intact.
+
+These checks do not change or block live typing. Identifiers, labels, vendor/model names, selectors, URLs, templates, option definitions and all other metadata remain unchanged, even when they equal a secret or match a value check. Genuine workflow-owned bindings remain templates; a raw secret argument that looks like a template is still data. Existing markers remain unchanged. Unmarked dropdown, radio and checkbox values remain unchanged, even when a value matches a secret pattern. A secret-marked choice field still strips its selected and default values.
+
+Known gaps include secrets embedded in free text, unlisted metadata fields, snapshot text, prompts and responses. The sanitizer does not search those fields, even for a whole secret value. Saved runtime arguments use the associated workflow's field and input bindings. Cleanup uses those workflow links and saved argument bags when they exist. Older or orphaned files may lack that evidence. Screenshots and videos stay unchanged. Existing outbound sync guards can refuse a workflow that contains a stripped secret default or literal; workflows with preserved bindings and no secret defaults can still sync. This change does not relax those guards.
 
 Replay stops at a stripped step with “This step needs a value.” It never types the marker or sends it to healing. Supply a fresh runtime input to replace a stripped saved default, or edit the saved step and its input before replaying it.
 
@@ -60,7 +76,7 @@ To inspect existing saved text in one Bao home, quit active sessions and run:
 bao scrub-secrets --home /path/to/bao-home
 ```
 
-The command defaults to a dry run and lists the files it would change. Add `--write` to scrub them. Before changing any saved file, Bao backs up every affected original under `<home>/secret-scrub-backups/<run>/`, with private directory and file permissions. Those backups still contain the original secrets. Keep them private and remove them once you no longer need recovery. The command skips symlinks, browser profiles, settings, screenshots and videos. It also lists append-only receipt chains as skipped, with a reason, in both dry-run and write output. Those chains stay byte-for-byte unchanged and may still contain historical secrets. New receipts are stripped before hashing so their chains remain valid. `bao scrub-secrets --help` describes this limit. Invalid JSON in a file to be scrubbed stops the scrub before it writes anything. Run it again to check that no saved text still needs a change.
+The command defaults to a dry run and lists the files it would change. Add `--write` to scrub them. Before changing any saved file, Bao backs up every affected original under `<home>/secret-scrub-backups/<run>/`, with private directory and file permissions. Those backups still contain the original secrets. Keep them private and remove them once you no longer need recovery. The command skips symlinks, browser profiles, settings, screenshots and videos. It also lists append-only receipt chains as skipped, with a reason, in both dry-run and write output. Those chains stay byte-for-byte unchanged and may still contain historical secrets. New receipts are stripped before hashing so their chains remain valid. `bao scrub-secrets --help` describes this limit. Invalid JSON in a file to be scrubbed stops the scrub before it writes anything. Run it again to check that the supported value fields no longer need a change.
 
 ## What each one costs in speed
 
