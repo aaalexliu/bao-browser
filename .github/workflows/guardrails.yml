@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
       BAO_HEAL_CURSOR_ACCOUNT: "0"
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +41,11 @@ jobs:
       - run: npm run arch:check
       - run: npm run test:guardrails
       - run: npx playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
       - name: Hermetic desktop, web and legacy extension tests
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
