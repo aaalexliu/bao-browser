@@ -74,21 +74,28 @@ export function dumpPage(): PageDump {
     return document.getElementById(id);
   };
 
+  const labelText = (source: Node | null, control: Element | null): string => {
+    if (!source || control?.contains(source)) return "";
+    if (source.nodeType === Node.TEXT_NODE) return source.textContent || "";
+    return Array.from(source.childNodes, (child) => labelText(child, control)).join("");
+  };
+
   const labelFor = (el: Element): string => {
+    const control = el.tagName === "LABEL" ? null : el;
     const aria = norm(el.getAttribute("aria-label") || "");
     if (aria) return aria;
     const labelled = el.getAttribute("aria-labelledby");
     if (labelled) {
-      const text = labelled.split(/\s+/).map((id) => byId(id, el)?.textContent || "").join(" ");
+      const text = labelled.split(/\s+/).map((id) => labelText(byId(id, el), control)).join(" ");
       if (norm(text)) return norm(text);
     }
     if (el.id) {
       const label = document.querySelector(`label[for="${cssEscape(el.id)}"]`);
-      if (label) return norm(label.textContent || "");
+      if (label) return norm(labelText(label, control));
     }
     let wrap: Element | null = el;
     while (wrap && wrap.tagName !== "LABEL") wrap = parentOf(wrap);
-    if (wrap && wrap.tagName === "LABEL") return norm(wrap.textContent || "");
+    if (wrap && wrap.tagName === "LABEL") return norm(labelText(wrap, control));
     return norm(el.getAttribute("title") || "");
   };
 

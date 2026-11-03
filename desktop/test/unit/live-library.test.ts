@@ -75,6 +75,44 @@ test("live field metadata comes from the page, not the typed value", async () =>
   } finally { await browser.close(); }
 });
 
+test("live textarea and select tokens exclude control text from every label source", async () => {
+  const browser = await testChromium.launch();
+  try {
+    const page = await browser.newPage();
+    for (const source of ["wrapping", "for", "aria-labelledby"] as const) {
+      for (const tag of ["textarea", "select"] as const) {
+        const label = tag === "textarea" ? "Quarterly revenue notes" : "Apple choice";
+        const value = tag === "textarea" ? "quarterly revenue" : "Apple";
+        const contents = tag === "textarea" ? value : "<option>Apple</option><option>Banana</option>";
+        const control = `<${tag} id="field"${source === "aria-labelledby" ? ' aria-labelledby="caption extra"' : ""}>${contents}</${tag}>`;
+        const markup = source === "wrapping" ? `<label><span>${label}</span>${control}</label>`
+          : source === "for" ? `<label for="field"><span>${label}</span>${control}</label>`
+            : `<div id="caption"><span>${label}</span>${control}</div><span id="extra">Details</span>`;
+        await page.setContent(markup);
+        const originalText = await page.locator("#field").textContent();
+        const tree = await page.evaluate(dumpPage);
+        const field = tree.nodes.find(node => node.id === "field");
+        assert.ok(field);
+        const expectedLabel = label + (source === "aria-labelledby" ? " Details" : "");
+        assert.equal(field.label, expectedLabel);
+        assert.equal(field.name, expectedLabel);
+        assert.equal(await page.locator("#field").textContent(), originalText);
+        assert.equal(await page.locator("#field").inputValue(), value);
+        const workflow = workflowFromTrail({
+          id: "wf-label", name: "Labeled form", intent: "Fill a form", startUrl: "https://example.test/", createdAt: 1, savedAt: 2,
+          events: [{ id: "event", ts: 1, kind: "act", op: tag === "select" ? "select" : "type", source: LIVE_TRAIL_SOURCE,
+            identity: field, value, beforeUrl: "https://example.test/", afterUrl: "https://example.test/" }],
+          guard: guardPreset("generic"),
+        });
+        const token = expectedLabel.toLowerCase().replace(/ /g, "_");
+        assert.deepEqual(workflow.inputs.map(input => input.name), [token]);
+        assert.equal(workflow.steps[0]?.input, token);
+        assert.equal(subst(workflow.steps[0]?.value || "", { [token]: "replacement" }), "replacement");
+      }
+    }
+  } finally { await browser.close(); }
+});
+
 test("saved generic input tokens stay usable without a migration", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
   try {
@@ -98,7 +136,11 @@ test("finished live captures show their end status without uncounted model-call 
     assert.doesNotMatch(libraryTable([{ ...workflow, steps: workflow.steps.length }], [run]), />recording</);
   }
   const replay: RunSummary = { id: "run-replay", workflowId: workflow.id, status: "passed", at: 1, modelCalls: 3, heals: [], steps: [] };
-  assert.match(runsList([replay], []), /3 model calls/);
+  for (const modelCalls of [1, 3]) {
+    const counted = { ...replay, modelCalls };
+    assert.doesNotMatch(runsList([counted], []), /model calls?/);
+    assert.match(runViewer(counted, workflow), new RegExp(`id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}<`));
+  }
   assert.match(runsList([{ ...replay, modelCalls: 0 }], []), /0 model calls/);
 });
 

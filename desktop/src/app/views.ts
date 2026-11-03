@@ -1716,7 +1716,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
   const rows = runs.map((run) => {
     const kind = runKind(run);
     const calls = countedModelCalls(run);
-    const bolt = calls === undefined ? "" : `<span class="badge${calls === 0 ? " quiet-badge" : ""}">${calls} model call${calls === 1 ? "" : "s"}</span>`;
+    const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
     const when = typeof run.at === "number" ? formatWhen(run.at) : "";
     return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;
   }).join("");
