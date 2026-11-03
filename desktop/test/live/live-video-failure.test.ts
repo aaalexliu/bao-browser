@@ -81,7 +81,7 @@ test("video encoding failure keeps saved captures and action status across all s
         const expected = mode === "refused" ? "failed" : mode === "halted" ? "needs_human" : "passed";
         assert.equal(run.kind, "capture");
         assert.equal(run.status, expected);
-        assert.equal(run.modelCalls, 0);
+        assert.equal(run.modelCalls, undefined);
         assert.equal(run.video, undefined);
         assert.equal(run.traceUnavailable, "video unavailable: CDP video encoding failed");
         assert.equal((JSON.parse(await readFile(path.join(home, "live-session", "session.json"), "utf8")) as { status: string }).status, expected);

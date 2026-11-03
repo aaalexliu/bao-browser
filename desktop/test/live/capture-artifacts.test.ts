@@ -190,7 +190,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
           assert.equal(runs[0]!.video, path.basename(destination));
           assert.equal(runs[0]!.kind, "capture");
           assert.equal(runs[0]!.status, mode === "refused" ? "failed" : mode === "halted" ? "needs_human" : "passed");
-          assert.equal(runs[0]!.modelCalls, 0);
+          assert.equal(runs[0]!.modelCalls, undefined);
           assert.equal(runs[0]!.traceUnavailable, undefined);
           assert.ok((await stat(destination)).size > 1000);
         } else {
