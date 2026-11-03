@@ -220,6 +220,39 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   assert.match(help, /new receipts.*before hashing/i);
 });
 
+test("CLI associates Library array trails with their workflow filenames", (t) => {
+  const home = fixtureHome(t, "bao-secret-trail-context-");
+  const library = new Library(home);
+  const event = { op: "type", input: "value", value: PRIVATE, label: "Type {{value}}", note: `Hello ${PRIVATE}` };
+  const originals = new Map<string, string>();
+  for (const source of ["default", "args"] as const) {
+    const doc = workflow(`trail-${source}`, [entry({ input: "value", identity: { ...FIELD, autocomplete: "cc-name" } })]);
+    // Write the trail through the public producer before its historical workflow exists.
+    library.saveTrail(doc.id, [event]);
+    if (source === "args") library.savePublicInputs(doc.id, { value: PRIVATE });
+    library.save(doc);
+    if (source === "default") {
+      doc.inputs[0]!.default = PRIVATE;
+      writeFileSync(path.join(home, "workflows", `${doc.id}.json`), JSON.stringify(doc));
+    }
+    for (const relative of [`trails/${doc.id}.json`, source === "default" ? `workflows/${doc.id}.json` : `inputs/${doc.id}.json`]) {
+      originals.set(relative, readFileSync(path.join(home, relative), "utf8"));
+    }
+    assert.deepEqual(library.readTrail(doc.id), [event]);
+  }
+  library.saveTrail("orphan", [event]);
+  const orphan = readFileSync(path.join(home, "trails", "orphan.json"), "utf8");
+  const dry = JSON.parse(cli(home, "--home", home)) as ScrubReport;
+  assert.deepEqual(dry.files, [...originals.keys()].sort());
+  for (const [relative, bytes] of originals) assert.equal(readFileSync(path.join(home, relative), "utf8"), bytes);
+  const written = JSON.parse(cli(home, "--home", home, "--write")) as ScrubReport;
+  assert.deepEqual(written.files, dry.files);
+  for (const [relative, bytes] of originals) assert.equal(readFileSync(path.join(written.backup!, relative), "utf8"), bytes);
+  for (const source of ["default", "args"]) assert.deepEqual(library.readTrail(`trail-${source}`), [{ ...event, value: STRIPPED_SECRET }]);
+  assert.equal(readFileSync(path.join(home, "trails", "orphan.json"), "utf8"), orphan);
+  assert.deepEqual((JSON.parse(cli(home, "--home", home, "--write")) as ScrubReport).files, []);
+});
+
 test("CLI strips numeric bound args and their copies but keeps structural numbers", (t) => {
   const home = fixtureHome(t, "bao-secret-numeric-cli-");
   const library = new Library(home);

@@ -60,7 +60,8 @@ export function scrubHome(home: string, write = false): ScrubReport {
     const node = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
     const ask = node.ask && typeof node.ask === "object" ? node.ask as Record<string, unknown> : {};
     const inputs = path.dirname(file) === path.join(root, "inputs");
-    const id = inputs ? path.basename(file, ".json") : node.workflowId ?? ask.workflowId;
+    const named = inputs || path.dirname(file) === path.join(root, "trails");
+    const id = named ? path.basename(file, path.extname(file)) : node.workflowId ?? ask.workflowId;
     const args = inputs ? [node] : [node.inputs, node.publicInputs, node.args].filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item));
     return { file, before, parsed, id: typeof id === "string" ? id : undefined, args };
   });
