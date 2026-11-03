@@ -56,7 +56,7 @@ chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true })
 // after, so it lives on `self` (the SW global) rather than in chrome.storage for M0.
 self.__baoSteps = self.__baoSteps || [];
 
-chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg: Msg | undefined, sender, sendResponse): true | void => {
   if (!msg) return;
   if (msg.cmd === "bao-reset") { self.__baoSteps = []; return; }
   if (msg.cmd === "bao-frame-steps" && Array.isArray(msg.steps)) {

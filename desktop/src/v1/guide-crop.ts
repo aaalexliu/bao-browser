@@ -24,7 +24,7 @@ export function prepareGuideCrop(png: Buffer, kind: GuideCropKind): Buffer {
  */
 function fillValueBox(rgba: Uint8Array, width: number, height: number, secret: boolean): void {
   const bg = cornerColor(rgba, width);
-  const core = lowestRun(rgba, width, height, (i) => differs(rgba, i, bg));
+  const core = lowestRun(width, height, (i) => differs(rgba, i, bg));
   if (!core) return;
   let top = core.top;
   let bottom = core.bottom;
@@ -58,7 +58,6 @@ function fillValueBox(rgba: Uint8Array, width: number, height: number, secret: b
 }
 
 function lowestRun(
-  rgba: Uint8Array,
   width: number,
   height: number,
   hit: (i: number) => boolean,

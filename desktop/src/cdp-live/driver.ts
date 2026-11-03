@@ -667,15 +667,6 @@ export class CdpLiveDriver implements Driver {
     this.rememberTrust(events);
   }
 
-  private async chord(key: string, code: string, modifiers: number, virtualKey: number): Promise<void> {
-    await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyDown", key, code, modifiers, windowsVirtualKeyCode: virtualKey,
-    }, this.sessionId);
-    await this.cdp.send("Input.dispatchKeyEvent", {
-      type: "keyUp", key, code, modifiers, windowsVirtualKeyCode: virtualKey,
-    }, this.sessionId);
-  }
-
   async screenshotPng(): Promise<Buffer> {
     this.assertHost();
     if (this.pageEngine) return this.pageEngine.screenshot();

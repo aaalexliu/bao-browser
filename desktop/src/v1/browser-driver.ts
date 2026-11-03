@@ -525,7 +525,7 @@ export class BrowserDriver implements Driver {
     }));
     const phrase = `Dropped file: ${want}`;
     const handle = this.handle(node);
-    const landed = await this.page.evaluate(({ handle, payload, phrase }) => {
+    const landed = await this.page.evaluate(({ handle, payload }) => {
       const el = document.querySelector(`[data-bao-i="${handle}"]`);
       if (!el) throw new Error("drop target missing");
       const dt = new DataTransfer();
@@ -670,11 +670,6 @@ export class BrowserDriver implements Driver {
 
   private sel(node: Identity): string {
     return `[data-bao-i="${this.handle(node)}"]`;
-  }
-
-  /** A step identity is not the tree node, so download and date open use a stable selector. */
-  private locatorFor(node: Identity): string {
-    return selectorForIdentity(node) || this.sel(node);
   }
 
   /** Date fields often have no id. The recorded css path still tells the two inputs apart. */

@@ -41,6 +41,7 @@ test("live reads record a safe region and return fresh output through MCP and th
       ${req.url === "/redaction" ? '<section id="credentials"><p><span>PIN:</span><strong>123456</strong></p><p>Password: hunter2</p><p>Token: supersecret</p></section>' : ""}
       <section id="long">${"Readable text. ".repeat(600)}</section>
       <div class="duplicate">One</div><div class="duplicate">Two</div></main>`);
+    return undefined;
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
@@ -137,6 +138,7 @@ test("live reads record a safe region and return fresh output through MCP and th
         <p>123 45 6789</p><p>${jwt}</p><p>sk-abc123</p><p>ghp_abc123</p>
         <p>www.experian.com; usa.experian.com/mfe/member; version 1.2.3; report.pdf</p>
         <p>4111 1111 1111 1111 12/26</p><p>4111-1111-1111-1111 12/26</p><p>4111111111111111 12/26</p></section></main>`);
+      return undefined;
     });
     const outcome = await tool<WorkflowOutcome>("run_workflow", { id: workflow.id, leaveOpen: true });
     assert.equal(outcome.outcome, "ok", JSON.stringify(outcome));

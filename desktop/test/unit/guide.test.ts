@@ -185,7 +185,7 @@ test("a focus click folds into the type step and recorded values stay out of the
   assert.ok(password.rgba[edge] > 200, "password mask overflows the card");
   assert.equal(countColor(password, (r, g, b) => r < 20 && g < 20 && b < 20), 14 * 5);
   assert.equal(variance(password, { x: 6, y: 16, w: 52, h: 16 }, isDot), 0);
-  assert.ok(countColor(password, (r, g, b) => r > 90 && r < 140 && g > 90 && g < 140) > 4);
+  assert.ok(countColor(password, (r, g) => r > 90 && r < 140 && g > 90 && g < 140) > 4);
   assert.ok(countColor(password, (r, g, b) => r > 180 && r > g + 40 && b < 100) > 20);
   const apply = readGuidePng(images[3]);
   assert.ok(apply);
