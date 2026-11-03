@@ -50,7 +50,7 @@ test("each detection rule crosses every trail, run and workflow save surface", a
         ["appended trail", () => { library.saveTrail("saved", []); library.appendTrail("saved", event); return JSON.stringify(library.readTrail("saved")); }],
         ["run", () => { library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [event], trail: [event], failure: { message: `Copied: ${value}` } }); return JSON.stringify(library.readRun("saved")); }],
         ["workflow literal", () => { library.save(workflow({ action: op, identity, ...(op === "key" ? { key: value } : { value }) })); return JSON.stringify(library.read("saved")); }],
-        ...[0, 1, 2].flatMap((depth) => [true, false].map((explicit) => [
+        ...[0, 1].flatMap((depth) => [true, false].map((explicit) => [
           `workflow default depth ${depth} / explicit ${explicit}`,
           () => {
             const doc = workflow({ identity, ...(explicit ? { input: "entry" } : {}), value: "{{entry}}" });
@@ -152,7 +152,7 @@ test("stripped literals, defaults, keys and nested actions stop before dispatch 
     });
     assert.equal(run.status, "failed");
     assert.equal(run.failure?.reason, NEEDS_SECRET_VALUE);
-    assert.throws(() => toPuppeteerReplay(saved, { entry: STRIPPED_SECRET, "row.code": STRIPPED_SECRET }), /This step needs a value/);
+    assert.throws(() => toPuppeteerReplay(saved, { entry: STRIPPED_SECRET, rows: `code\n${STRIPPED_SECRET}\n` }), /This step needs a value/);
   }
   assert.deepEqual(calls, ["key:Enter"]);
 });

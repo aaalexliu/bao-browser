@@ -14,16 +14,26 @@ function record(value: unknown): RecordValue {
   return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
 }
 
-function boundSteps(steps: unknown[]): RecordValue[] {
+function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordValue; inputs: Set<string> }[] {
   return steps.flatMap((item) => {
     const step = record(item);
-    const nested = record(step.forEach).steps;
-    return [step, ...(Array.isArray(nested) ? boundSteps(nested) : [])];
+    const loop = record(step.forEach);
+    const over = record(loop.over);
+    const source = over.kind === "input" && typeof over.name === "string" ? over.name : undefined;
+    const inputs = new Set<string>();
+    if (typeof step.input === "string") inputs.add(step.input);
+    if (source) inputs.add(source);
+    if (typeof step.value === "string") {
+      for (const match of step.value.matchAll(/\{\{([^}]+)\}\}/g)) {
+        if (rowInput !== undefined && /^\s*row\.[A-Za-z][A-Za-z0-9_]*\s*$/.test(match[1]!)) {
+          if (rowInput) inputs.add(rowInput);
+        } else if (rowInput === undefined || !/^\s*row_index\s*$/.test(match[1]!)) {
+          inputs.add(match[1]!);
+        }
+      }
+    }
+    return [{ step, inputs }, ...(Array.isArray(loop.steps) ? boundSteps(loop.steps, source ?? null) : [])];
   });
-}
-
-function bindsInput(step: RecordValue, name: unknown): boolean {
-  return step.input === name || (typeof step.value === "string" && typeof name === "string" && step.value.includes(`{{${name}}}`));
 }
 
 function secretSavedField(value: unknown): boolean {
@@ -38,11 +48,12 @@ export function hasStrippedSecret(value: unknown): boolean {
 }
 
 export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, args: ReplayArgs): boolean {
-  if (step.unresolved?.reason === NEEDS_SECRET_VALUE || step.unresolved?.reason === "redacted key") return true;
-  if ([step.value, step.key].some(hasStrippedSecret)) return true;
-  if (step.input && [args[step.input], workflow.inputs.find((input) => input.name === step.input)?.default].some(hasStrippedSecret)) return true;
-  if (step.value?.replace(/\{\{([^}]+)\}\}/g, (_match, name: string) => String(args[name] ?? "")).includes(STRIPPED_SECRET)) return true;
-  return step.forEach?.steps.some((nested) => stepNeedsSecretValue(nested, workflow, args)) ?? false;
+  return boundSteps([step]).some(({ step: nested, inputs }) => {
+    const reason = record(nested.unresolved).reason;
+    if (reason === NEEDS_SECRET_VALUE || reason === "redacted key") return true;
+    if ([nested.value, nested.key].some(hasStrippedSecret)) return true;
+    return [...inputs].some((name) => [args[name], workflow.inputs.find((input) => input.name === name)?.default].some(hasStrippedSecret));
+  });
 }
 
 function redactSavedText(value: string): string {
@@ -83,10 +94,10 @@ export function scrubSaved<T>(value: T): T {
     }
     if (node.type === "secret") remember(node.default);
     if (Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const step of boundSteps(node.steps)) {
+      for (const { step, inputs } of boundSteps(node.steps)) {
         if (!step.sensitive && !secretSavedField(step.identity)) continue;
         for (const input of node.inputs.map(record)) {
-          if (bindsInput(step, input.name)) remember(input.default);
+          if (typeof input.name === "string" && inputs.has(input.name)) remember(input.default);
         }
       }
     }
@@ -119,8 +130,8 @@ export function scrubSaved<T>(value: T): T {
       node.unresolved = { reason: NEEDS_SECRET_VALUE };
     }
     if (Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const step of boundSteps(node.steps)) {
-        if (node.inputs.map(record).some((input) => bindsInput(step, input.name) && hasStrippedSecret(input.default))) {
+      for (const { step, inputs } of boundSteps(node.steps)) {
+        if (node.inputs.map(record).some((input) => typeof input.name === "string" && inputs.has(input.name) && hasStrippedSecret(input.default))) {
           step.unresolved = { reason: NEEDS_SECRET_VALUE };
         }
       }

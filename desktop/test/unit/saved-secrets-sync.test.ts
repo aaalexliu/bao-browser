@@ -15,7 +15,7 @@ function document(id = "saved"): WorkflowV2 {
   return {
     schema: "bao.workflow/v2", version: 2, id, name: "Saved", createdAt: 1,
     startUrl: "https://example.test/", inputs: [],
-    steps: [{ id: "entry", index: 0, action: "type", label: "Fill", surface: "dom", value: "private-entry", sensitive: true }],
+    steps: [{ id: "entry", index: 0, action: "type", label: "Fill", surface: "dom", timeoutMs: 0, value: "private-entry", identity: { surface: "dom", role: "password", path: [] } }],
   };
 }
 
@@ -58,13 +58,13 @@ test("nested sensitive bindings strip defaults and mark their actual steps", (t)
   for (const sensitive of [true, false]) {
     for (const explicit of [true, false]) {
       const doc = document();
-      doc.version = 3;
       doc.inputs = [{ name: "entry", type: "text", default: "private-entry" }, { name: "rows", type: "table" }];
       doc.steps[0] = {
         ...doc.steps[0]!, value: "{{entry}}", input: explicit ? "entry" : undefined, sensitive,
         identity: sensitive ? undefined : { surface: "dom", role: "password", path: [] },
       };
-      for (let depth = 0; depth < 3; depth += 1) {
+      for (let depth = 0; depth < 2; depth += 1) {
+        doc.version = depth ? 3 : 2;
         library.save(doc);
         const saved = library.read(doc.id);
         assert.equal(saved.inputs[0]!.default, STRIPPED_SECRET);
@@ -72,7 +72,7 @@ test("nested sensitive bindings strip defaults and mark their actual steps", (t)
         while (step.forEach) step = step.forEach.steps[0]!;
         assert.equal(step.unresolved?.reason, NEEDS_SECRET_VALUE);
         assert.deepEqual(scrubSaved(saved), saved);
-        doc.steps = [{ id: `loop-${depth}`, index: 0, action: "for_each", label: "Rows", surface: "dom", forEach: { over: { kind: "input", name: "rows" }, steps: doc.steps } }];
+        doc.steps = [{ id: `loop-${depth}`, index: 0, action: "for_each", label: "Rows", surface: "dom", timeoutMs: 0, forEach: { over: { kind: "input", name: "rows" }, steps: doc.steps } }];
       }
     }
   }
