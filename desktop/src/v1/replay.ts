@@ -1977,7 +1977,7 @@ async function takeReadBack(
     expected,
     actual,
     pass,
-  });
+  }, { workflow, args });
   if (pass) return undefined;
   return fail(driver, step, "expect", `read-back expected "${expected}", read "${actual}"`, undefined, secrets);
 }

@@ -55,7 +55,7 @@ export class SessionLog {
       await writeAtomic(path.join(folder, shot), row.png);
     }
     const prior = replaceLast ? this.record.audit.at(-1) : undefined;
-    const clean = publicLiveSession({
+    const clean = publicLiveSession(scrubSaved({
       ...this.record,
       audit: [...(replaceLast ? this.record.audit.slice(0, -1) : this.record.audit), {
         action: row.action,
@@ -67,7 +67,7 @@ export class SessionLog {
         shot: shot || prior?.shot || "",
         via: row.via || prior?.via || "cdp",
       }],
-    });
+    }));
     if (clean) this.record = clean;
     await this.flush(this.record.status);
     return shot;
@@ -98,7 +98,7 @@ export class SessionLog {
     if (note) this.record.note = note;
     if (host) this.record.host = host;
     this.record.updatedAt = Date.now();
-    const clean = publicLiveSession(this.record);
+    const clean = publicLiveSession(scrubSaved(this.record));
     if (!clean) return;
     this.record = clean;
     await mkdir(this.dir, { recursive: true });

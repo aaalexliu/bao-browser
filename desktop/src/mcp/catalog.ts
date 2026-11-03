@@ -22,7 +22,6 @@ import { shotFile } from "../v1/shots";
 import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
-import { scrubSaved } from "../v1/saved-secrets";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
@@ -539,7 +538,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-  return storeOutcome(library, outcome, live.secrets);
+  return storeOutcome(library, outcome, live.secrets, live.inputs);
 }
 
 async function cancelWorkflow(library: Library, token: string): Promise<WorkflowOutcome> {
@@ -589,7 +588,7 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
       deadline: result.deadline,
     },
   });
-  return storeOutcome(library, result, live.secrets);
+  return storeOutcome(library, result, live.secrets, live.inputs);
 }
 
 async function releaseBrowser(
@@ -673,7 +672,7 @@ function rememberRun(
     });
     result.resume_token = result.resume;
   }
-  return storeOutcome(library, result, secrets);
+  return storeOutcome(library, result, secrets, inputs);
 }
 
 function saveWorkflowRun(
@@ -739,7 +738,7 @@ function remember(
   result.ask = reason;
   result.deadline = deadline ? formatClock(deadline) : "No timeout";
   result.resume_token = result.resume;
-  return storeOutcome(library, result, secretStrings(workflow, inputs));
+  return storeOutcome(library, result, secretStrings(workflow, inputs), inputs);
 }
 
 function baseOutcome(
@@ -832,10 +831,10 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
   return out;
 }
 
-function storeOutcome(library: Library, outcome: WorkflowOutcome, secrets: string[]): WorkflowOutcome {
+function storeOutcome(library: Library, outcome: WorkflowOutcome, secrets: string[], inputs: ReplayArgs): WorkflowOutcome {
   let json = JSON.stringify(outcome);
   for (const secret of secrets) json = json.split(secret).join("[secret]");
-  const parsed = JSON.parse(json) as WorkflowOutcome;
+  const parsed = library.scrub(JSON.parse(json) as WorkflowOutcome, outcome.workflowId, inputs);
   writeReport(library, parsed);
   return parsed;
 }
@@ -844,7 +843,7 @@ function writeReport(library: Library, outcome: WorkflowOutcome): void {
   if (!outcome.runId) return;
   const file = reportPath(library, outcome.runId);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(scrubSaved(outcome), null, 2));
+  writeFileSync(file, JSON.stringify(library.scrub(outcome, outcome.workflowId), null, 2));
 }
 
 function reportPath(library: Library, runId: string): string {
@@ -872,7 +871,7 @@ function writeResume(
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };
-  writeFileSync(file, JSON.stringify(scrubSaved(body)));
+  writeFileSync(file, JSON.stringify(library.scrub(body, workflowId)));
   return token;
 }
 

@@ -10,12 +10,19 @@ import { launchOwnedChrome } from "../../src/launch";
 import { applyHermeticApp } from "../runtime";
 import { LiveTrail } from "../../src/cdp-live/live-trail";
 import { SessionLog } from "../../src/cdp-live/audit";
+import { logAx } from "../../src/cdp-live/ax";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
 import { toPuppeteerReplay } from "../../src/v1/export-replay";
 import { Library } from "../../src/v1/store";
 import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
 import { scrubHome } from "../../src/v1/scrub-home";
+import { draftVersion, versionDocument } from "../../src/v1/versions";
+import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
+import { writeFindDebug } from "../../src/v1/find-debug";
+import { writePendingPrompt, readPendingPrompt } from "../../src/v1/pending-prompt";
+import { makeAsk } from "../../src/v1/human-ask";
+import { cursorHeal } from "../../src/v1/heal";
 import { validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 function workflow(step: Partial<WorkflowStep> = {}): WorkflowV2 {
@@ -26,12 +33,13 @@ function workflow(step: Partial<WorkflowStep> = {}): WorkflowV2 {
   };
 }
 
-const cases: { name: string; value: string; field?: Partial<Identity>; secret: boolean }[] = [
+const cases: { name: string; value: string; field?: Partial<Identity>; sensitive?: boolean; secret: boolean }[] = [
+  { name: "sensitive flag", value: "private-entry", sensitive: true, secret: true },
   { name: "password type", value: "private-entry", field: { inputType: "password" }, secret: true },
   { name: "password role", value: "private-entry", field: { role: "password" }, secret: true },
-  ...["current-password", "new-password", "one-time-code", "cc-name", "cc-number", "cc-csc", "cc-exp", "section-pay shipping cc-given-name"].map((autocomplete) => ({ name: autocomplete, value: "private-entry", field: { autocomplete }, secret: true })),
-  ...["4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111", "4111111111111111 12/26", "123-45-6789", "123 45 6789", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl", "sk-fixture123", "ghp_fixture123", "gho_fixture123", "github_pat_fixture123", "xoxb-fixture123", "xoxp-fixture123", "xoxa-fixture123", "AKIAFIXTURE123456789", "GOCSPX-fixture123"].map((value) => ({ name: value, value, secret: true })),
-  ...["ordinary text", "Password", "4111111111111112", "2026-11-03", "742", "hello@example.com"].map((value) => ({ name: value, value, secret: false })),
+  ...["current-password", "new-password", "one-time-code", "cc-name", "cc-given-name", "cc-additional-name", "cc-family-name", "cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year", "cc-type", "cc-future-token", "section-pay shipping cc-given-name"].map((autocomplete) => ({ name: autocomplete, value: "private-entry", field: { autocomplete }, secret: true })),
+  ...["4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111", "4111111111111111 12/26", "123-45-6789", "123 45 6789", "123456789", " 123456789 ", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.c2lnbmF0dXJl", "sk-fixture123", "ghp_fixture123", "gho_fixture123", "github_pat_fixture123", "xoxb-fixture123", "xoxp-fixture123", "xoxa-fixture123", "AKIAFIXTURE123456789", "GOCSPX-fixture123"].map((value) => ({ name: value, value, secret: true })),
+  ...["ordinary text", "Password", "4111111111111112", "2026-11-03", "742", "hello@example.com", "reference 123456789 next", "1234567890"].map((value) => ({ name: value, value, secret: false })),
   { name: "Password button", value: "ordinary text", field: { role: "button", tag: "button", name: "Password" }, secret: false },
 ];
 
@@ -41,19 +49,43 @@ test("each detection rule crosses every trail, run and workflow save surface", a
   const library = new Library(home);
   for (const sample of cases) {
     for (const op of ["type", "key"] as const) {
-      const value = sample.field && sample.secret && op === "key" ? "Shift+q" : sample.value;
+      const value = (sample.field || sample.sensitive) && sample.secret && op === "key" ? "Shift+q" : sample.value;
       const identity: Identity = { surface: "dom", role: "textbox", tag: "input", path: [], ...sample.field };
-      const event: TrailEvent = { id: "entry", ts: 1, kind: "act", op, identity, ...(op === "key" ? { key: value } : { value }), note: `Copied: ${value}` };
+      const event: TrailEvent = { id: "entry", ts: 1, kind: "act", op, identity, sensitive: sample.sensitive, ...(op === "key" ? { key: value } : { value }), note: `Copied: ${value}` };
+      const contextDoc = workflow({ identity, sensitive: sample.sensitive, input: "entry", value: "{{entry}}" });
+      contextDoc.inputs = [{ name: "entry", type: "text" }];
+      const literal = workflow({ action: op, identity, ...(op === "key" ? { key: value } : { value }) });
+      if (sample.sensitive) {
+        literal.steps[0] = { ...literal.steps[0]!, sensitive: true, input: "entry", value: "{{entry}}" };
+        literal.inputs = [{ name: "entry", type: "text", default: value }];
+      }
       const surfaces: [string, () => Promise<string> | string][] = [
         ["live trail", async () => { const trail = await LiveTrail.open(home); await trail.add(event); return readFileSync(trail.file, "utf8"); }],
         ["library trail", () => { library.saveTrail("saved", [event]); return JSON.stringify(library.readTrail("saved")); }],
         ["appended trail", () => { library.saveTrail("saved", []); library.appendTrail("saved", event); return JSON.stringify(library.readTrail("saved")); }],
         ["run", () => { library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [event], trail: [event], failure: { message: `Copied: ${value}` } }); return JSON.stringify(library.readRun("saved")); }],
-        ["workflow literal", () => { library.save(workflow({ action: op, identity, ...(op === "key" ? { key: value } : { value }) })); return JSON.stringify(library.read("saved")); }],
+        ["workflow literal", () => { library.save(literal); return JSON.stringify(library.read("saved")); }],
+        ["remembered inputs", () => { library.save(contextDoc); library.savePublicInputs("saved", { entry: value }); return JSON.stringify(library.readPublicInputs("saved")); }],
+        ["runtime run", () => { library.save(contextDoc); library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [{ id: "entry" }], inputs: { entry: value } }); return JSON.stringify(library.readRun("saved")); }],
+        ["promotion", () => { const row = { workflowId: "saved", event }; library.savePromotion(row); return readFileSync(path.join(home, "promotions", "saved.json"), "utf8"); }],
+        ["kept heal", () => { library.noteHealPromotion("saved", event); return JSON.stringify(library.readKeptHeal("saved")); }],
+        ["intent eval", () => { library.saveIntentEval("saved", event); return JSON.stringify(library.readIntentEval("saved")); }],
+        ["teach case", () => { library.saveTeachIntentCase("saved", event); return readFileSync(path.join(home, "evals", "intent", "cases", "saved.json"), "utf8"); }],
+        ["version", () => { library.save(contextDoc); const row = draftVersion(library, literal, "edit"); return JSON.stringify(versionDocument(library, "saved", row.n)); }],
+        ["find debug", () => { writeFindDebug(path.join(home, "debug"), "saved", event); return readFileSync(path.join(home, "debug", "saved.json"), "utf8"); }],
+        ["receipt", () => { const log = new ReceiptLog(path.join(home, "trails", "matrix.receipts.jsonl")); log.append({ kind: "read-back", ts: 1, runId: "saved", workflowId: "saved", stepId: "entry", source: "text", expected: value, actual: value, pass: true }, { workflow: contextDoc, args: { entry: value } }); const bytes = readFileSync(path.join(home, "trails", "matrix.receipts.jsonl"), "utf8"); assert.equal(verifyReceiptChain(bytes.trim().split("\n").map((line) => JSON.parse(line))), true); return JSON.stringify(log.entries[0]); }],
+        ["heal handoff", async () => { const step = workflow({ identity, sensitive: sample.sensitive, value }).steps[0]!; await cursorHeal(path.join(home, "handoff"), { BAO_HEAL_WAIT_MS: "0" }).propose({ stepId: step.id, index: 0, intent: "Fill", phase: "action", reason: value, snapshot: { dom: [] } }, step); return readFileSync(path.join(home, "handoff", "heal-request.json"), "utf8"); }],
+        ["observer", () => { const child = spawnSync(process.execPath, [path.resolve("desktop/mcp/claude/hooks/observe.mjs")], { input: JSON.stringify({ tool_name: "computer", tool_input: event }), encoding: "utf8", env: { ...process.env, BAO_HOME: home, HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" } }); assert.equal(child.status, 0, child.stderr); const lines = readFileSync(path.join(home, "observer", "trail.jsonl"), "utf8").trim().split("\n"); return lines.at(-1)!; }],
+        ...(!sample.field && !sample.sensitive && op === "type" ? [
+          ["AX audit", async () => { const file = path.join(home, "ax.jsonl"); await logAx(file, { at: "now", what: value, via: "BaoOSHelper" }); return readFileSync(file, "utf8").trim().split("\n").at(-1)!; }],
+          ["AX proxy trail", () => { const file = path.join(home, "proxy.json"); const child = spawnSync(process.execPath, [path.resolve(__dirname, "../../src/proxy/mcp-bao.js")], { input: JSON.stringify({ id: 1, method: "tools/call", params: { name: "unknown", arguments: {} } }) + "\n", encoding: "utf8", env: { ...process.env, HOME: home, BAO_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_WORK: path.join(home, "proxy-work"), BAO_TRAIL: file, BAO_VENDOR: value } }); assert.equal(child.status, 0, child.stderr); return readFileSync(file, "utf8"); }],
+          ["session summary", async () => { const log = new SessionLog(path.join(home, "summary"), value); await log.flush("passed"); return readFileSync(path.join(home, "summary", "session.json"), "utf8"); }],
+          ["pending prompt", () => { writePendingPrompt(home, { runId: "saved", ask: makeAsk({ kind: "login", workflowId: "saved", workflowName: "Saved", stepId: "entry", stepIndex: 1, stepCount: 1, label: value, site: "example.test", timeoutMs: 50 }) }); return JSON.stringify(readPendingPrompt(home)); }],
+        ] as [string, () => Promise<string> | string][] : []),
         ...[0, 1].flatMap((depth) => [true, false].map((explicit) => [
           `workflow default depth ${depth} / explicit ${explicit}`,
           () => {
-            const doc = workflow({ identity, ...(explicit ? { input: "entry" } : {}), value: "{{entry}}" });
+            const doc = workflow({ identity, sensitive: sample.sensitive, ...(explicit ? { input: "entry" } : {}), value: "{{entry}}" });
             doc.inputs = [{ name: "entry", type: "text", default: value }];
             for (let level = 0; level < depth; level += 1) {
               doc.steps = workflow({ action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: doc.steps } }).steps;
@@ -70,7 +102,7 @@ test("each detection rule crosses every trail, run and workflow save surface", a
         const saved = await save();
         assert.equal(JSON.stringify(event), before, "save mutated the live action");
         const context = `${sample.name} / ${op} / ${surface}`;
-        assert.equal(saved.includes(value), !sample.secret, context);
+        if (surface !== "session summary" || sample.secret) assert.equal(saved.includes(value), !sample.secret, context);
         assert.equal(saved.includes(STRIPPED_SECRET), sample.secret, context);
         const parsed = JSON.parse(saved) as unknown;
         assert.deepEqual(scrubSaved(parsed), parsed, `${context} must be idempotent`);

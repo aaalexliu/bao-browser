@@ -2,6 +2,7 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. Keeping a patch stores a draft. The live workflow changes when that draft is promoted.
 
+import { scrubSaved } from "./saved-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
 import { withHealVersion, withRevertVersion } from "./element-history";
@@ -257,14 +258,14 @@ export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env, se
         writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
       }
       const prompt = buildPrompt(failure, step, secrets);
-      writeFileSync(path.join(dir, "heal-request.json"), maskText(JSON.stringify({
+      writeFileSync(path.join(dir, "heal-request.json"), maskText(JSON.stringify(scrubSaved({
         intent: failure.intent,
         phase: failure.phase,
         reason: failure.reason,
         step,
         dom: failure.snapshot.dom,
         prompt,
-      }, null, 2), secrets));
+      }), null, 2), secrets));
       const responsePath = path.join(dir, "heal-response.json");
       try { unlinkSync(responsePath); } catch { /* first request */ }
       const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);

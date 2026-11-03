@@ -216,6 +216,8 @@ export function recorderSource(): string {
         id: el.id || undefined,
         nameAttr: el.getAttribute("name") || undefined,
         tag: el.tagName.toLowerCase(),
+        inputType: kind || undefined,
+        autocomplete: el.getAttribute("autocomplete") || undefined,
         cssPath: cssPathOf(el),
         href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
         name: shown || undefined,

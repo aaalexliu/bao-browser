@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { liveChromeBlock } from "../helper-capabilities";
+import { scrubSaved } from "../v1/saved-secrets";
 import { checkboxReach } from "./consent";
 import { AxUnavailable, checkboxState, chromeHelper } from "./ax";
 import { listenPid, readDevToolsActivePort } from "./endpoint";
@@ -257,7 +258,7 @@ async function main(): Promise<void> {
     const report = await diagnose(cdp);
     const dir = path.join(process.cwd(), ".evidence");
     await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, "login-diff.json"), `${JSON.stringify(report, null, 2)}\n`);
+    await writeFile(path.join(dir, "login-diff.json"), `${JSON.stringify(scrubSaved(report), null, 2)}\n`);
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } finally {
     cdp?.close();

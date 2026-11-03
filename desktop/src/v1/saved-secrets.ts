@@ -1,4 +1,5 @@
 import { keyMayInsertText } from "../cdp-live/keys";
+import { parseTable } from "./data-steps";
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "./schema";
 
 export const STRIPPED_SECRET = "[secret stripped]";
@@ -36,7 +37,7 @@ function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordV
   });
 }
 
-function secretSavedField(value: unknown): boolean {
+export function secretSavedField(value: unknown): boolean {
   const field = record(value);
   if ([field.type, field.inputType, field.role].some((item) => typeof item === "string" && item.toLowerCase() === "password")) return true;
   return typeof field.autocomplete === "string" && field.autocomplete.toLowerCase().split(/\s+/).some((token) =>
@@ -57,6 +58,7 @@ export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, a
 }
 
 function redactSavedText(value: string): string {
+  if (/^\s*\d{3}-?\d{2}-?\d{4}\s*$/.test(value)) return STRIPPED_SECRET;
   return value.replace(TOKENS, STRIPPED_SECRET)
     .replace(/\b\d{3}[- ]\d{2}[- ]\d{4}\b/g, STRIPPED_SECRET)
     .replace(/\b\d(?:[ -]?\d){12,18}\b/g, (number) => {
@@ -77,13 +79,42 @@ function redactSavedText(value: string): string {
     });
 }
 
+export interface SavedContext {
+  workflow?: Pick<WorkflowV2, "inputs" | "steps">;
+  args?: Record<string, unknown> | Record<string, unknown>[];
+}
+
 /** Copy only: dispatch and the caller's live values never change. */
-export function scrubSaved<T>(value: T): T {
+export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
   const secrets = new Set<string>();
   const remember = (item: unknown, template = false) => {
     if (typeof item === "string" && item && item !== STRIPPED_SECRET && !(template && item.includes("{{"))) secrets.add(item);
   };
+  const collectBindings = (workflow: RecordValue, args: RecordValue = {}): void => {
+    if (!Array.isArray(workflow.steps) || !Array.isArray(workflow.inputs)) return;
+    const bound = boundSteps(workflow.steps);
+    for (const input of workflow.inputs.map(record)) {
+      const name = input.name;
+      if (typeof name !== "string") continue;
+      const consumers = bound.filter(({ step, inputs }) => inputs.has(name) && (step.sensitive === true || secretSavedField(step.identity)));
+      if (input.type !== "secret" && !consumers.length) continue;
+      for (const value of [input.default, args[name]]) {
+        remember(value);
+        if (input.type !== "table") continue;
+        for (const { step } of consumers) {
+          if (typeof step.value !== "string") continue;
+          for (const match of step.value.matchAll(/\{\{\s*row\.([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g)) {
+            for (const row of parseTable(value)) remember(row[match[1]!]);
+          }
+        }
+      }
+    }
+  };
   const collect = (item: unknown): void => {
+    if (typeof item === "string") {
+      if (redactSavedText(item) === STRIPPED_SECRET) remember(item);
+      return;
+    }
     if (Array.isArray(item)) { item.forEach(collect); return; }
     const node = record(item);
     const structural = node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field);
@@ -93,16 +124,18 @@ export function scrubSaved<T>(value: T): T {
       if (typeof node.key === "string" && keyMayInsertText(node.key)) remember(node.key);
     }
     if (node.type === "secret") remember(node.default);
-    if (Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const { step, inputs } of boundSteps(node.steps)) {
-        if (!step.sensitive && !secretSavedField(step.identity)) continue;
-        for (const input of node.inputs.map(record)) {
-          if (typeof input.name === "string" && inputs.has(input.name)) remember(input.default);
-        }
-      }
+    collectBindings(node);
+    if (context.workflow) {
+      for (const key of ["inputs", "publicInputs", "args"]) collectBindings(context.workflow as unknown as RecordValue, record(node[key]));
     }
     for (const [key, child] of Object.entries(node)) if (!MEDIA.has(key)) collect(child);
   };
+  if (context.workflow) {
+    collect(context.workflow);
+    for (const args of Array.isArray(context.args) ? context.args : [context.args]) {
+      collectBindings(context.workflow as unknown as RecordValue, args);
+    }
+  }
   collect(value);
   const ordered = [...secrets].sort((a, b) => b.length - a.length);
   const cleanText = (text: string, template: boolean): string => {

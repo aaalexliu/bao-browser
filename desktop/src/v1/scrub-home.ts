@@ -2,10 +2,12 @@ import { lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, wr
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { scrubSaved } from "./saved-secrets";
+import type { WorkflowV2 } from "./schema";
 
 export interface ScrubReport {
   mode: "dry-run" | "write";
   files: string[];
+  skipped: { file: string; reason: string }[];
   backup?: string;
 }
 
@@ -24,30 +26,56 @@ export function scrubHome(home: string, write = false): ScrubReport {
       else if (entry.isFile() && /\.jsonl?$/.test(entry.name)) files.push(file);
     }
   };
-  for (const name of ["workflows", "trails", "runs", "inputs", "promotions", "conflicts", "evals", "reports", "resumes", "versions", "heals"]) {
+  for (const name of ["workflows", "trails", "runs", "inputs", "promotions", "conflicts", "evals", "reports", "resumes", "versions", "heals", "observer", "relay-results"]) {
     const dir = path.join(root, name);
     try { if (!lstatSync(dir).isDirectory()) continue; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
     walk(dir);
   }
-  for (const name of ["trail.jsonl", "live-session/trail.jsonl", "live-session/session.json"]) {
+  for (const name of ["trail.jsonl", "live-session/trail.jsonl", "live-session/session.json", "pending-prompt.json", "last-view.json"]) {
     const file = path.join(root, name);
     const dir = path.dirname(file);
     try { if (lstatSync(dir).isDirectory() && lstatSync(file).isFile()) files.push(file); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
-  const changes = files.sort().flatMap((file) => {
+  const skipped: ScrubReport["skipped"] = [];
+  const artifacts = files.sort().filter((file) => {
+    if (!/(?:^|\.)receipts\.jsonl$/.test(path.basename(file))) return true;
+    skipped.push({ file: path.relative(root, file), reason: "Append-only receipt chain; historical secrets may remain. Never rewritten." });
+    return false;
+  }).map((file) => {
     const before = readFileSync(file, "utf8");
     let parsed: unknown;
     try {
       parsed = file.endsWith(".jsonl") ? before.split(/\r?\n/).filter((line) => line.trim()).map((line) => JSON.parse(line)) : JSON.parse(before);
     } catch { throw new Error(`Cannot scrub invalid JSON: ${path.relative(root, file)}`); }
-    const clean = scrubSaved(parsed);
+    return { file, before, parsed };
+  });
+  const workflows = new Map<string, WorkflowV2>();
+  for (const { file, parsed } of artifacts) {
+    if (path.dirname(file) !== path.join(root, "workflows")) continue;
+    if (parsed && typeof parsed === "object" && "id" in parsed && typeof parsed.id === "string") workflows.set(parsed.id, parsed as WorkflowV2);
+  }
+  const associated = artifacts.map(({ file, before, parsed }) => {
+    const node = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    const ask = node.ask && typeof node.ask === "object" ? node.ask as Record<string, unknown> : {};
+    const inputs = path.dirname(file) === path.join(root, "inputs");
+    const id = inputs ? path.basename(file, ".json") : node.workflowId ?? ask.workflowId;
+    const args = inputs ? [node] : [node.inputs, node.publicInputs, node.args].filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item));
+    return { file, before, parsed, id: typeof id === "string" ? id : undefined, args };
+  });
+  const argumentsByWorkflow = new Map<string, Record<string, unknown>[]>();
+  for (const { id, args } of associated) {
+    if (id) argumentsByWorkflow.set(id, [...(argumentsByWorkflow.get(id) ?? []), ...args]);
+  }
+  const changes = associated.flatMap(({ file, before, parsed, id }) => {
+    const workflow = id ? workflows.get(id) : undefined;
+    const clean = scrubSaved(parsed, { workflow, args: id ? argumentsByWorkflow.get(id) : undefined });
     if (JSON.stringify(parsed) === JSON.stringify(clean)) return [];
     const after = file.endsWith(".jsonl") ? (clean as unknown[]).map((row) => JSON.stringify(row)).join("\n") + "\n" : JSON.stringify(clean, null, 2) + "\n";
     return [{ file, before, after }];
   });
-  const report: ScrubReport = { mode: write ? "write" : "dry-run", files: changes.map(({ file }) => path.relative(root, file)) };
+  const report: ScrubReport = { mode: write ? "write" : "dry-run", files: changes.map(({ file }) => path.relative(root, file)), skipped };
   if (!write || !changes.length) return report;
   const backupRoot = path.join(root, "secret-scrub-backups");
   try {

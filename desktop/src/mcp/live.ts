@@ -27,6 +27,7 @@ interface Hit {
   blank: boolean;
   tag?: string;
   type?: string;
+  autocomplete?: string;
   id?: string;
   nameAttr?: string;
   text?: string;
@@ -306,6 +307,8 @@ function identityFromHit(hit: Hit): Identity | undefined {
   return {
     surface: "dom",
     role,
+    inputType: hit.type,
+    autocomplete: hit.autocomplete,
     id: hit.id,
     nameAttr: hit.nameAttr,
     text: hit.text || undefined,
@@ -329,6 +332,7 @@ function describeAt(point: { x: number; y: number }): Hit {
     blank: false,
     tag: node.tagName.toLowerCase(),
     type: input.type || "",
+    autocomplete: node.getAttribute("autocomplete") || undefined,
     id: node.id || undefined,
     nameAttr: node.getAttribute("name") || undefined,
     text,
@@ -344,6 +348,7 @@ function focused(): Hit {
     blank: false,
     tag: node.tagName.toLowerCase(),
     type: input.type || "",
+    autocomplete: node.getAttribute("autocomplete") || undefined,
     id: node.id || undefined,
     nameAttr: node.getAttribute("name") || undefined,
     text: ((node as HTMLElement).innerText || "").replace(/\s+/g, " ").trim().slice(0, 80),

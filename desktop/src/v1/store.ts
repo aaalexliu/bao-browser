@@ -139,6 +139,15 @@ export class Library {
     return doc;
   }
 
+  scrub<T>(value: T, workflowId?: string, args?: Record<string, unknown>): T {
+    let workflow: WorkflowV2 | undefined;
+    if (workflowId) {
+      try { workflow = JSON.parse(readFileSync(this.file(workflowId), "utf8")) as WorkflowV2; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    return scrubSaved(value, { workflow, args });
+  }
+
   save(doc: WorkflowV2): void {
     const errors = validateWorkflow(doc);
     if (errors.length) throw new Error(errors.join(", "));
@@ -168,7 +177,7 @@ export class Library {
   }
 
   saveTrail(id: string, events: unknown): void {
-    writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(scrubSaved(events), null, 2));
+    writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(this.scrub(events, id), null, 2));
   }
 
   appendTrail(id: string, event: unknown): unknown[] {
@@ -179,13 +188,13 @@ export class Library {
       events = Array.isArray(current) ? current : [current];
     } catch { /* first event */ }
     events.push(event);
-    writeFileSync(file, JSON.stringify(scrubSaved(events), null, 2));
+    writeFileSync(file, JSON.stringify(this.scrub(events, id), null, 2));
     return events;
   }
 
   savePromotion(promotion: unknown & { workflowId: string }): void {
     mkdirSync(path.join(this.root, "promotions"), { recursive: true });
-    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(scrubSaved(promotion), null, 2));
+    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(this.scrub(promotion, promotion.workflowId), null, 2));
   }
 
   readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string; version?: number } | undefined {
@@ -233,7 +242,7 @@ export class Library {
   }
 
   saveRun(run: StoredRun): void {
-    writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(scrubSaved(run), null, 2));
+    writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(this.scrub(run, run.workflowId), null, 2));
   }
 
   readRun(id: string): StoredRun {
@@ -301,7 +310,7 @@ export class Library {
 
   savePublicInputs(id: string, inputs: Record<string, string | number>): void {
     mkdirSync(path.join(this.root, "inputs"), { recursive: true });
-    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(scrubSaved(inputs), null, 2));
+    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(this.scrub(inputs, id, inputs), null, 2));
   }
 
   readPublicInputs(id: string): Record<string, string | number> {
@@ -315,7 +324,7 @@ export class Library {
   /** Kept heal for the next sync push. Separate from the promotion tracker. */
   noteHealPromotion(id: string, heal: unknown): void {
     mkdirSync(path.join(this.root, "promotions"), { recursive: true });
-    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(scrubSaved(withoutShots(heal)), null, 2));
+    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(this.scrub(withoutShots(heal), id), null, 2));
   }
 
   readKeptHeal(id: string): unknown {

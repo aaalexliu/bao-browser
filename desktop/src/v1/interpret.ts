@@ -9,7 +9,7 @@ import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE } from "./saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, secretSavedField } from "./saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -669,8 +669,9 @@ function isSecret(event: TrailEvent, secrets: string[]): boolean {
   if (event.value && secrets.includes(event.value)) return true;
   if (event.value && isSensitiveValue(event.value)) return true;
   const id = event.identity;
-  return isSensitiveField({
-    type: id?.role === "password" ? "password" : undefined,
+  return secretSavedField(id) || isSensitiveField({
+    type: id?.role === "password" ? "password" : id?.inputType,
+    autocomplete: id?.autocomplete,
     name: id?.nameAttr,
     id: id?.id,
     ariaLabel: id?.label || id?.name,

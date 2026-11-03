@@ -40,6 +40,10 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "scrub-secrets") {
+    if (rest.includes("--help")) {
+      console.log("usage: bao scrub-secrets --home dir [--write]\nDry-run by default. Write mode backs up originals first.\nAppend-only receipt chains are listed as skipped and never rewritten; historical secrets may remain. New receipts are stripped before hashing.");
+      return;
+    }
     const home = flag(rest, "--home");
     if (!home || home.startsWith("--") || rest.some((arg) => arg.startsWith("--") && !["--home", "--write"].includes(arg))) {
       throw new Error("usage: bao scrub-secrets --home dir [--write]");

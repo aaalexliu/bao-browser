@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OutputTable } from "../v1/data-steps";
 import { unavailableHeal } from "../v1/heal";
+import { scrubSaved } from "../v1/saved-secrets";
 import { replay, type RunResult } from "../v1/replay";
 import { validateWorkflow, type WorkflowV2 } from "../v1/schema";
 import { DEVTOOLS_ACTIVE_PORT, readDevToolsActivePort } from "./endpoint";
@@ -171,7 +172,7 @@ async function main(): Promise<void> {
       banner: { during, afterClose: after },
       runs,
     };
-    await writeFile(path.join(evidence, "cdp-live-run.json"), `${JSON.stringify(body, null, 2)}\n`);
+    await writeFile(path.join(evidence, "cdp-live-run.json"), `${JSON.stringify(scrubSaved(body), null, 2)}\n`);
     progress("wrote .evidence/cdp-live-run.json");
     process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
   } finally {

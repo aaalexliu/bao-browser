@@ -4,6 +4,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isSensitiveValue } from "../../../src/mask";
+import { scrubSaved } from "../v1/saved-secrets";
 import { AuditTrail, type AuditSource } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { MacOsHelper, type AxNode } from "./os-macos";
@@ -63,15 +64,15 @@ function log(line: string): void {
   process.stderr.write(`${line}\n`);
   const trace = process.env.BAO_TRACE;
   if (!trace) return;
-  void import("node:fs").then((fs) => fs.appendFileSync(trace, `${line}\n`));
+  void import("node:fs").then((fs) => fs.appendFileSync(trace, `${scrubSaved(line)}\n`));
 }
 
 async function saveTrail(): Promise<void> {
   if (!trailPath) return;
-  await writeFile(trailPath, JSON.stringify({
+  await writeFile(trailPath, JSON.stringify(scrubSaved({
     source: { agent: source.agent, vendor: source.vendor, model: source.adapter },
     events: trail.events,
-  }, null, 2));
+  }), null, 2));
   if (ownedPath) await writeFile(ownedPath, JSON.stringify(owned));
 }
 

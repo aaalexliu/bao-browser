@@ -24,6 +24,7 @@ import { resolveGuardFlags } from "./presets";
 import { classifyPage } from "../v1/page-class";
 import { validateWorkflow } from "../v1/schema";
 import { Library } from "../v1/store";
+import { scrubSaved } from "../v1/saved-secrets";
 import type { CdpSocket } from "./socket";
 
 const PACE_MS = 2500;
@@ -1041,15 +1042,15 @@ async function runGuarded(
           ask: confirm?.label || "Stop before confirm",
         },
       });
-      await writeFile(path.join(evidence, "unfreeze-workflow.json"), `${JSON.stringify(workflow, null, 2)}\n`);
+      await writeFile(path.join(evidence, "unfreeze-workflow.json"), `${JSON.stringify(scrubSaved(workflow), null, 2)}\n`);
     } else {
       progress(`workflow draft invalid ${workflowErrors.join(",")}`);
     }
   }
   await liveLog.setSteps(steps.map((step) => ({ name: step.name, status: step.name, ms: step.ms })));
   await liveLog.flush(status, code || "", body.host);
-  await writeFile(outFile, `${JSON.stringify(body, null, 2)}\n`);
-  await writeFile(draftFile, `${JSON.stringify(draft, null, 2)}\n`);
+  await writeFile(outFile, `${JSON.stringify(scrubSaved(body), null, 2)}\n`);
+  await writeFile(draftFile, `${JSON.stringify(scrubSaved(draft), null, 2)}\n`);
   progress(`wrote ${path.basename(outFile)}`);
   process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
   if (status !== "passed") process.exitCode = 2;

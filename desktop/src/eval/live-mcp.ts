@@ -13,6 +13,7 @@ import { frameRpc, takeRpcChunk, type RpcFraming } from "../mcp/frame";
 import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { pageApi, type PageRequest } from "./page";
 import { resolveHome } from "../home";
+import { scrubSaved } from "../v1/saved-secrets";
 
 export { frameRpc, takeRpcChunk, type RpcFraming };
 
@@ -91,7 +92,7 @@ export async function liveMcpMain(): Promise<void> {
       delete copy.inputType;
       event = { ...event, identity: copy };
     }
-    appendFileSync(trailPath, JSON.stringify({ id: `e${seq++}`, ...event }) + "\n");
+    appendFileSync(trailPath, JSON.stringify(scrubSaved({ id: `e${seq++}`, ...event })) + "\n");
   }
 
   async function perform(name: string, args: Record<string, unknown>): Promise<{ text: string; image?: Buffer; isError?: boolean }> {
@@ -194,7 +195,7 @@ export async function liveMcpMain(): Promise<void> {
     }
     const after = await statusText().catch(() => ({ status: undefined, url: page.url() }));
     const view = await ask({ op: "view" }).catch(() => null);
-    if (view) writeFileSync(path.join(home, "last-view.json"), JSON.stringify(view));
+    if (view) writeFileSync(path.join(home, "last-view.json"), JSON.stringify(scrubSaved(view)));
     const image = await shot();
     const act = fileAct({ op: recordedOp, args, value, fileName, identity });
     if (act.file) {
