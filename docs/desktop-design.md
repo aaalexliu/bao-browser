@@ -399,9 +399,10 @@ interface OsExecutor {
 - `build.mjs` bundles five extension entries to IIFE in `dist/`. Content scripts
   cannot import at runtime; esbuild inlines whatever they import. That is how
   sharing works without changing the manifest.
-- `npm run typecheck` is `tsc --noEmit` with `include: ["src"]` and `types:
-  ["chrome"]`. A desktop file that imports `playwright` or `@tauri-apps/api` must
-  not be in that program, or the extension typecheck grows a second runtime.
+- The root `tsconfig.json` checks `src` with `types: ["chrome"]`. A desktop file
+  that imports `playwright` or `@tauri-apps/api` must not be in that program, or
+  the extension typecheck grows a second runtime. See [guardrails](guardrails.md)
+  for the aggregate static checks.
 - `npm test` builds the extension and loads **the repo root** as an unpacked
   extension (`test/e2e.mjs`). Moving `manifest.json` or `src/` breaks that. Do not
   turn the repo into a workspace that relocates the extension.
@@ -430,8 +431,7 @@ desktop/                      # excluded from build.mjs and from the root tsconf
   src/os/                     # client of the Rust helper
   src-tauri/                  # after the spikes, not before
 tsconfig.json                 # include grows to ["src", "core"] at extract time
-tsconfig.desktop.json         # include ["desktop", "core"], types node. Not the
-                              # script `npm run typecheck` runs.
+tsconfig.desktop.json         # include ["desktop", "core"], types node.
 ```
 
 `desktop/package.json` is a separate package so Tauri and a pinned Playwright do

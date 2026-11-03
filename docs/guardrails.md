@@ -41,10 +41,8 @@ as source. Null comparisons may use `== null` or `!= null`. Inline ESLint
 configuration cannot bypass the checked-in rules. TypeScript suppression
 comments are forbidden.
 
-The initial `eslint-suppressions.json` records 350 existing findings in 55
-files. The counts match the report: 70 floating promises, 17 misused promises,
-1 await of a non-thenable, 256 unsafe-value findings, and 6 duplicate imports.
-These counts mark migration work, not 350 proven product bugs. Background work
+`eslint-suppressions.json` owns the migration budgets by file and rule.
+These entries mark migration work, not proven product bugs. Background work
 should catch errors or use a task helper that reports them. `void` alone does
 not handle a rejection.
 
@@ -66,13 +64,10 @@ shipped desktop imports of eval/proof modules. The current mixed `v1/` directory
 is not treated as a pure domain layer. A full services/adapters split remains
 future work.
 
-The graph baseline explicitly lists 69 existing edges: 44 from desktop to
-other products, 4 from extension, 3 from legacy, 3 from replay to view types,
-and 15 from runtime to dev tools. It covers all directions
-between products, including desktop's imports of legacy types/masking helpers
-and the extension's host grant helper, not just the five path pairs measured
-in the report. The report's domain-to-view edges target `app/view-types.ts`.
-Both `views.ts` and `view-types.ts` are protected.
+`.dependency-cruiser-known-violations.json` owns the explicit existing
+rule/source/target exceptions. The product rules cover all directions,
+including desktop's imports of legacy types/masking helpers and the extension's
+host grant helper. Both `views.ts` and `view-types.ts` are protected.
 
 `.dependency-cruiser.runtime.cjs` checks a second graph with type-only edges
 removed. Runtime cycles have no baseline and must stay at zero. Type-only
@@ -137,8 +132,8 @@ quiet serial rerun and is not excluded.
 
 All four projects enable `noFallthroughCasesInSwitch`, `noUnusedLocals`,
 `noUnusedParameters`, and `noImplicitReturns`. The extension also enables
-`noUncheckedIndexedAccess`. The prerequisite cleanup removes the 25 unused
-declarations and makes the seven return intents explicit. It retains the
+`noUncheckedIndexedAccess`. The prerequisite cleanup removes unused
+declarations and makes return intents explicit. It retains the
 sign-in route's consent check and the side effects of discarded initializers.
 Root/desktop indexed-access work, web's two indexed-access diagnostics, exact
 optional properties, broad assertion cleanup, source-wide formatting, the run

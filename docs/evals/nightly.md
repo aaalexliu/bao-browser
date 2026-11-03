@@ -16,7 +16,7 @@ regression heldout/batch5/node-synopsis step node-synopsis-0: expected pass, got
 
 `npm run eval:nightly -- --save-baseline` copies the run onto that baseline.
 
-This repository has no CI configuration, so there is no scheduled job. The command above is the nightly run.
+The [Guardrails workflow](../guardrails.md) does not schedule this eval. The command above is the nightly run.
 
 After the Label column in [judge-labels.md](judge-labels.md) is filled with `good` or `bad`:
 
