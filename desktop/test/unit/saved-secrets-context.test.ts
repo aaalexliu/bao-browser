@@ -187,6 +187,13 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   const relative = "runs/legacy.receipts.jsonl";
   const bytes = `${JSON.stringify(receipt)}\n`;
   writeFileSync(path.join(home, relative), bytes);
+  unchanged["runs/legacy-copy.json"] = { workflowId: doc.id, receipts: [receipt] };
+  unchanged[`trails/${doc.id}.json`] = [receipt];
+  for (const file of ["runs/legacy-copy.json", `trails/${doc.id}.json`]) {
+    const original = JSON.stringify(unchanged[file]);
+    writeFileSync(path.join(home, file), original);
+    originals.set(file, original);
+  }
   const dry = JSON.parse(cli(home, "--home", home)) as ScrubReport;
   assert.equal(dry.mode, "dry-run");
   assert.deepEqual(dry.files, Object.keys(fixtures).sort());
@@ -210,6 +217,8 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   for (const file of Object.keys(unchanged)) assert.equal(readFileSync(path.join(home, file), "utf8"), originals.get(file));
   assert.equal(readFileSync(path.join(home, relative), "utf8"), bytes);
   assert.equal(verifyReceiptChain([receipt]), true);
+  assert.equal(verifyReceiptChain(json(home, "runs/legacy-copy.json").receipts as Receipt[]), true);
+  assert.equal(verifyReceiptChain(json(home, `trails/${doc.id}.json`) as Receipt[]), true);
   const again = JSON.parse(cli(home, "--home", home, "--write")) as ScrubReport;
   assert.deepEqual(again.files, []);
   assert.deepEqual(again.skipped, dry.skipped);

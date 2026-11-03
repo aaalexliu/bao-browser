@@ -214,10 +214,12 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     for (const [name, item] of Object.entries(args)) evidence(item, argumentsFor.get(args)?.get(name) ?? {});
   };
   const field = (node: RecordValue): boolean => secretSavedField(node) || [node.role, node.tag].some((value) => typeof value === "string" && ["textbox", "input", "textarea", "select", "radio", "checkbox", "axtextfield", "axsecuretextfield", "axtextarea"].includes(value.toLowerCase()));
+  const signedReceipt = (node: RecordValue): boolean => node.kind === "read-back" && typeof node.hash === "string" && node.hash.length > 0;
   const collect = (item: unknown): void => {
     if (!item || typeof item !== "object") return;
     if (Array.isArray(item)) { item.forEach(collect); return; }
     const node = record(item);
+    if (signedReceipt(node)) return;
     if ((node.schema === "bao.workflow/v2" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
       workflows.add(node);
       bind(node);
@@ -251,6 +253,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (runtime) {
       select(node, "runtime", { arguments: true });
       for (const receipt of Array.isArray(node.receipts) ? node.receipts : []) {
+        if (signedReceipt(record(receipt))) continue;
         select(record(receipt), "receipt");
         select(record(receipt), "result");
       }
@@ -300,6 +303,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (Array.isArray(item)) return item.map(clean);
     if (!item || typeof item !== "object") return item;
     const raw = record(item);
+    if (signedReceipt(raw)) return structuredClone(raw);
     const node = Object.fromEntries(Object.entries(raw).map(([key, child]) => {
       const policy = slots.get(raw)?.get(key);
       return [key, policy ? cleanValue(child, policy) : clean(child)];
