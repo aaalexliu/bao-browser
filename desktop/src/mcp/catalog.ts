@@ -66,7 +66,7 @@ export interface WorkflowOutcome {
   /** Set when a marketplace listing has not been allowed. */
   permissions?: PermissionPreview;
   /** Structured human step. `completed` is the same run after resume. */
-  status?: OutcomeName | "completed" | "timed-out" | "stopped" | "ok";
+  status?: OutcomeName | "completed" | "timed-out" | "timeout" | "stopped" | "passed" | "paused" | "running" | "idle" | "needs-sign-in";
   run_id?: string;
   step?: string;
   ask?: string;
@@ -336,17 +336,21 @@ function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string
 }
 
 export function getRun(library: Library, runId: string): WorkflowOutcome {
-  const { run, report } = library.lookupRun(runId);
-  if (report) return report;
-  const stored = run!;
+  const file = reportPath(library, runId);
+  if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
+  const stored = library.readRun(runId);
   const envelope = stored.envelope;
   const status = envelope?.status || stored.status;
   const outcome: OutcomeName = status === "passed" || status === "ok" || status === "completed" ? "ok"
+    : status === "needs-sign-in" ? "needs_signin"
     : status === "needs_signin" || status === "needs_approval" || status === "needs_human" ? status
-    : status === "paused" || status === "running" ? "needs_human" : "failed";
+    : status === "paused" || status === "running" || status === "idle" ? "needs_human" : "failed";
   const failure = stored.failure as RunResult["failure"];
-  const reason = envelope?.reason || failure?.reason;
-  const step = envelope?.step || failure?.stepId;
+  const stoppedStep = (stored.steps as { id?: string; status?: string; reason?: string }[])
+    .find((item) => item?.status === "paused" || item?.status === "failed" || item?.status === "timeout");
+  const reason = envelope?.reason || failure?.reason || stoppedStep?.reason;
+  const step = envelope?.step || failure?.stepId || stoppedStep?.id;
+  const lastClass = stored.pageClasses?.[stored.pageClasses.length - 1];
   const receipts = stored.steps.flatMap((item) => {
     const receipt = item as { id?: string; status?: string };
     return receipt?.id && receipt.status ? [{ id: receipt.id, status: receipt.status, readBack: "" }] : [];
@@ -362,13 +366,21 @@ export function getRun(library: Library, runId: string): WorkflowOutcome {
     link: linkFor(stored.workflowId),
     outputs: stored.outputs,
     pageLeftOpen: stored.pageLeftOpen,
-    ...(envelope ? {
-      status: status as WorkflowOutcome["status"],
-      step: envelope.step,
-      ask: envelope.ask,
-      deadline: envelope.deadline,
-      resume: envelope.resume_token,
-      resume_token: envelope.resume_token,
+    status: status as WorkflowOutcome["status"],
+    step,
+    ask: envelope?.ask || (outcome !== "ok" ? reason : undefined),
+    deadline: envelope?.deadline,
+    resume: envelope?.resume_token,
+    resume_token: envelope?.resume_token,
+    ...(lastClass && (lastClass.class === "bot_wall" || lastClass.class === "login_wall") ? {
+      pageClass: {
+        class: lastClass.class,
+        reason: lastClass.reason,
+        vendor: lastClass.vendor,
+        stepId: lastClass.stepId,
+        evidence: lastClass.evidence,
+        line: lastClass.line,
+      },
     } : {}),
   };
 }

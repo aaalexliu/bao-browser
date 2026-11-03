@@ -89,9 +89,9 @@ async function remoteGetRun(library: Library): Promise<void> {
   }
 }
 
-for (const location of ["runs", "reports"]) {
-  for (const [shape, record] of [["stored", stored], ["report", report]] as const) {
-    test(`${location}/${shape}: every run lookup finds an imported run with a temp HOME`, async (t) => {
+test("runs/stored: every run lookup finds an imported run with a temp HOME", async (t) => {
+      const location = "runs";
+      const record = stored;
       const root = mkdtempSync(path.join(tmpdir(), "bao-run-lookup-"));
       const previous = { HOME: process.env.HOME, BAO_HOME: process.env.BAO_HOME };
       process.env.HOME = path.join(root, "user");
@@ -165,8 +165,8 @@ for (const location of ["runs", "reports"]) {
         },
         "video API": async () => {
           const response = await fetch(`${base}/api/runs/${stored.id}/video`);
-          assert.equal(response.status, shape === "stored" ? 200 : 404);
-          if (shape === "stored") assert.deepEqual(Buffer.from(await response.arrayBuffer()), video);
+          assert.equal(response.status, 200);
+          assert.deepEqual(Buffer.from(await response.arrayBuffer()), video);
         },
         "JSON output API": async () => {
           const response = await fetch(`${base}/api/runs/${stored.id}/outputs.json`);
@@ -184,9 +184,7 @@ for (const location of ["runs", "reports"]) {
         }
         rmSync(root, { recursive: true, force: true });
       }
-    });
-  }
-}
+});
 
 test("paired records deduplicate history and preserve stored metadata and the full MCP report", () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-run-pair-"));
@@ -201,20 +199,69 @@ test("paired records deduplicate history and preserve stored metadata and the fu
     writeFileSync(path.join(root, "reports", `${stored.id}.json`), JSON.stringify(paused));
     assert.deepEqual(library.listRuns(), [stored]);
     assert.deepEqual(getRun(library, stored.id), paused);
-    rmSync(path.join(root, "runs", `${stored.id}.json`));
-    const fallback = library.readRun(stored.id);
-    assert.equal(fallback.status, "needs_signin");
-    assert.equal(fallback.envelope?.resume_token, paused.resume_token);
-    assert.equal(fallback.envelope?.ask, paused.ask);
     const decision = { ts: 1, healId: "heal", decision: "keep" as const };
     library.appendDecision(stored.id, decision);
     assert.deepEqual(library.readRun(stored.id).decisions, [decision]);
     assert.equal(library.listRuns().length, 1);
     assert.deepEqual(getRun(library, stored.id), paused);
+    rmSync(path.join(root, "runs", `${stored.id}.json`));
+    assert.throws(() => library.readRun(stored.id), /run not found/);
+    assert.deepEqual(library.listRuns(), []);
+    assert.deepEqual(getRun(library, stored.id), paused);
+    assert.equal(guideCrops(root, workflow).size, 0);
+    assert.equal(readFileSync(path.join(root, "reports", `${stored.id}.json`), "utf8"), JSON.stringify(paused));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const [status, outcome] of [
+  ["passed", "ok"], ["ok", "ok"], ["completed", "ok"],
+  ["needs-sign-in", "needs_signin"], ["needs_signin", "needs_signin"],
+  ["needs_approval", "needs_approval"], ["needs_human", "needs_human"],
+  ["paused", "needs_human"], ["running", "needs_human"], ["idle", "needs_human"],
+  ["failed", "failed"], ["timed-out", "failed"], ["timeout", "failed"], ["stopped", "failed"],
+] as const) {
+  for (const withEnvelope of [false, true]) {
+    test(`stored MCP status ${status}, envelope ${withEnvelope}`, () => {
+      const root = mkdtempSync(path.join(tmpdir(), "bao-run-status-"));
+      try {
+        const library = new Library(root);
+        const run: StoredRun = {
+          ...stored, status, steps: [], failure: { reason: "Saved stop reason" },
+          ...(withEnvelope ? { envelope: { status, reason: "Envelope reason", ask: "Act now", step: "human", deadline: null, resume_token: "r_saved" } } : {}),
+        };
+        library.saveRun(run);
+        const before = readFileSync(path.join(root, "runs", `${stored.id}.json`), "utf8");
+        const result = getRun(library, stored.id);
+        assert.equal(result.outcome, outcome);
+        assert.equal(result.status, status);
+        assert.equal(result.reason, withEnvelope ? "Envelope reason" : "Saved stop reason");
+        assert.equal(result.ask, withEnvelope ? "Act now" : outcome === "ok" ? undefined : "Saved stop reason");
+        assert.equal(result.step, withEnvelope ? "human" : undefined);
+        assert.equal(result.resume_token, withEnvelope ? "r_saved" : undefined);
+        if (withEnvelope) assert.equal(result.deadline, null);
+        assert.equal(readFileSync(path.join(root, "runs", `${stored.id}.json`), "utf8"), before);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+}
+
+for (const wall of ["bot_wall", "login_wall", "normal"]) {
+  test(`stored MCP projects the final page classification: ${wall}`, () => {
+    const root = mkdtempSync(path.join(tmpdir(), "bao-run-wall-"));
+    try {
+      const library = new Library(root);
+      const pageClass = { class: wall, stepId: "read", reason: "Wall evidence", vendor: "site", evidence: [{ source: "dom", detail: "Blocked" }], line: "Blocked" };
+      library.saveRun({ ...stored, pageClasses: [{ ...pageClass, class: "login_wall" }, pageClass] });
+      assert.deepEqual(getRun(library, stored.id).pageClass, wall === "normal" ? undefined : pageClass);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test("stored-only MCP lookup keeps failure and human-step details", () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-run-outcome-"));
@@ -231,13 +278,23 @@ test("stored-only MCP lookup keeps failure and human-step details", () => {
     assert.equal(paused.outcome, "needs_human");
     assert.equal(paused.ask, "Check the page");
     assert.equal(paused.resume_token, "r_check");
+    library.saveRun({ ...stored, status: "needs_human", steps: [{ id: "read", status: "paused", reason: "Check the page" }] });
+    const bare = getRun(library, stored.id);
+    assert.equal(bare.status, "needs_human");
+    assert.equal(bare.step, "read");
+    assert.equal(bare.ask, "Check the page");
+    assert.deepEqual(bare.stops, [{ stepId: "read", outcome: "needs_human", reason: "Check the page" }]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("missing runs, bad ids, and corrupt files do not become successful lookups", () => {
+test("missing runs, bad ids, and corrupt files do not become successful lookups", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-run-errors-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = path.join(root, "user");
+  mkdirSync(process.env.HOME);
+  let app: Awaited<ReturnType<typeof startApp>> | undefined;
   try {
     const library = new Library(root);
     assert.deepEqual(library.listRuns(), []);
@@ -249,7 +306,22 @@ test("missing runs, bad ids, and corrupt files do not become successful lookups"
     writeFileSync(path.join(root, "runs", "broken.json"), "{broken");
     assert.throws(() => library.readRun("broken"), SyntaxError);
     assert.throws(() => getRun(library, "broken"), SyntaxError);
+    library.saveRun(stored);
+    app = await startApp({ home: root, port: 0 });
+    for (const location of ["runs", "reports"]) {
+      mkdirSync(path.join(root, location), { recursive: true });
+      for (const corrupt of ["{broken", "null", "{}", "[]"]) {
+        writeFileSync(path.join(root, location, "broken.json"), corrupt);
+        assert.deepEqual(library.listRuns(), [stored]);
+        const response = await fetch(`http://127.0.0.1:${app.port}/api/state`);
+        assert.equal(response.status, 200);
+        const state = await response.json() as { runs: StoredRun[] };
+        assert.deepEqual(state.runs.map((run) => run.id), [stored.id]);
+      }
+    }
   } finally {
+    await app?.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
     rmSync(root, { recursive: true, force: true });
   }
 });

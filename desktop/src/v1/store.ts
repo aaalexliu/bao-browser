@@ -1,8 +1,7 @@
 // The library is files under one directory. Sync state lives beside it, not in here.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { WorkflowOutcome } from "../mcp/catalog";
 import type { HealSettings } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
@@ -106,8 +105,6 @@ export interface StoredRun {
     resume_token?: string;
   };
 }
-
-const RUN_DIRS = ["runs", "reports"] as const;
 
 const DEFAULT_SETTINGS: Settings = {
   heal: "auto",
@@ -238,54 +235,21 @@ export class Library {
     writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(run, null, 2));
   }
 
-  lookupRun(id: string): { run?: StoredRun; report?: WorkflowOutcome; at: number } {
-    if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("bad id");
-    let run: StoredRun | undefined;
-    let report: WorkflowOutcome | undefined;
-    let at = 0;
-    for (const dir of RUN_DIRS) {
-      const file = path.join(this.root, dir, `${id}.json`);
-      let raw: string;
-      try {
-        raw = readFileSync(file, "utf8");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-        throw error;
-      }
-      const record = JSON.parse(raw) as StoredRun | WorkflowOutcome;
-      if ("id" in record) {
-        run ??= record;
-      } else if (!report) {
-        report = record;
-        at = statSync(file).mtimeMs;
-      }
-    }
-    if (!run && !report) throw new Error("run not found");
-    return { run, report, at };
-  }
-
   readRun(id: string): StoredRun {
-    const { run, report, at } = this.lookupRun(id);
-    if (run) return run;
-    const outcome = report!;
-    return {
-      ...outcome,
-      id,
-      status: outcome.outcome === "ok" ? "passed" : outcome.status || outcome.outcome,
-      at,
-      heals: [],
-      steps: outcome.receipts,
-      ...(outcome.reason ? { failure: { reason: outcome.reason, stepId: outcome.step } } : {}),
-      ...(outcome.status ? { envelope: {
-        status: outcome.status,
-        run_id: outcome.run_id || id,
-        step: outcome.step,
-        reason: outcome.reason,
-        ask: outcome.ask,
-        deadline: outcome.deadline,
-        resume_token: outcome.resume_token,
-      } } : {}),
-    };
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("bad id");
+    let raw: string;
+    try {
+      raw = readFileSync(path.join(this.root, "runs", `${id}.json`), "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error("run not found");
+      throw error;
+    }
+    const run = JSON.parse(raw) as StoredRun;
+    if (!run || run.id !== id || typeof run.workflowId !== "string" || typeof run.status !== "string"
+      || typeof run.at !== "number" || !Array.isArray(run.steps) || !Array.isArray(run.heals)) {
+      throw new Error("invalid run");
+    }
+    return run;
   }
 
   appendDecision(runId: string, decision: NonNullable<StoredRun["decisions"]>[number]): StoredRun {
@@ -299,25 +263,16 @@ export class Library {
     return next;
   }
 
-  listRunIds(): string[] {
-    const ids = new Set<string>();
-    for (const dir of RUN_DIRS) {
-      let names: string[];
-      try {
-        names = readdirSync(path.join(this.root, dir));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-        throw error;
-      }
-      for (const name of names) {
-        if (name.endsWith(".json")) ids.add(name.slice(0, -5));
-      }
-    }
-    return [...ids];
-  }
-
   listRuns(): StoredRun[] {
-    return this.listRunIds().map((id) => this.readRun(id));
+    return readdirSync(path.join(this.root, "runs"))
+      .filter((name) => name.endsWith(".json"))
+      .flatMap((name) => {
+        try {
+          return [this.readRun(name.replace(/\.json$/, ""))];
+        } catch {
+          return [];
+        }
+      });
   }
 
   settings(): Settings {
