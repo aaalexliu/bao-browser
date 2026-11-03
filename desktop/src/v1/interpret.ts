@@ -708,9 +708,11 @@ function nameHint(event: TrailEvent, secret: boolean): string {
 }
 
 function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: string): WorkflowInput {
-  let name = hint || "text";
+  const base = hint || "text";
+  const suffix = /\d$/.test(base) ? `${base}_` : base;
+  let name = base;
   let n = 2;
-  while (inputs.some((item) => item.name === name)) name = `${hint}${n++}`;
+  while (inputs.some((item) => item.name === name)) name = `${suffix}${n++}`;
   const input: WorkflowInput = { name, type, required: true, label: name };
   inputs.push(input);
   return input;

@@ -14,9 +14,9 @@ import { blankPng, redactedPng } from "../../src/v1/redacted-png";
 import { subst, type Identity } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
-function recorded(identities: Partial<Identity>[]) {
+function recorded(identities: Partial<Identity>[], op: "type" | "select" = "type") {
   const events: TrailEvent[] = identities.map((identity, i) => ({
-    id: `live-${i}`, ts: i + 1, kind: "act", op: "type", source: LIVE_TRAIL_SOURCE,
+    id: `live-${i}`, ts: i + 1, kind: "act", op, source: LIVE_TRAIL_SOURCE,
     identity: { surface: "dom", role: "textbox", tag: "input", path: [], ...identity },
     value: `value-${i}`, beforeUrl: "https://example.test/", afterUrl: "https://example.test/",
   }));
@@ -39,6 +39,29 @@ test("live inputs use field labels, placeholders and names with safe unique toke
     assert.equal(subst(step.value || "", { [step.input!]: "replacement" }), "replacement");
   }
 });
+
+for (const op of ["type", "select"] as const) {
+  test(`live ${op} inputs separate numbered field labels from duplicate counters`, () => {
+    const workflow = recorded([
+      { label: "App name" },
+      { label: "App name" },
+      { label: "URIs 1" },
+      { label: "URIs 1" },
+      { label: "URIs 1" },
+      { label: "URIs 12" },
+      { label: "URIs 12" },
+      { label: "URIs 1 2" },
+    ], op);
+    assert.deepEqual(workflow.inputs.map(input => input.name), [
+      "app_name", "app_name2", "uris_1", "uris_1_2", "uris_1_3", "uris_12", "uris_12_2", "uris_1_2_2",
+    ]);
+    for (const step of workflow.steps.filter(step => step.action === op)) {
+      assert.equal(subst(step.value || "", { [step.input!]: "replacement" }), "replacement");
+    }
+    const occupied = recorded([{ label: "URIs 1" }, { label: "URIs 1 2" }, { label: "URIs 1" }], op);
+    assert.deepEqual(occupied.inputs.map(input => input.name), ["uris_1", "uris_1_2", "uris_1_3"]);
+  });
+}
 
 test("live field metadata comes from the page, not the typed value", async () => {
   const browser = await testChromium.launch();
