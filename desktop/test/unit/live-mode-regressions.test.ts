@@ -292,7 +292,12 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
           cover.style.cssText = "position:fixed;inset:0;background:white;z-index:9999";
           document.body.append(cover);
         }, null);
-        assert.deepEqual((await call({ op: "live_select", ref: ref(reply, "Audience"), option: "external" })).outcome, { kind: "refused", reason: "element is covered" });
+        reply = await call({ op: "live_select", ref: ref(reply, "Audience"), option: "external" });
+        const covered = reply.outcome;
+        assert.equal(covered.kind, "refused");
+        assert.equal(covered.reason, "element is covered");
+        if (careful) assert.deepEqual(covered, { kind: "refused", reason: "element is covered" });
+        else assert.ok(Object.hasOwn(covered, "blocker"));
         await live!.evaluateFunction(() => document.querySelector("#cover")?.remove(), null);
         for (const [option, reason] of [["absent", "option not found"], ["Duplicate", "ambiguous option"], ["repeated", "ambiguous option"], ["disabled", "option is disabled"], ["grouped", "option is disabled"]]) {
           const result = await call({ op: "live_select", ref: ref(reply, "Audience"), option });

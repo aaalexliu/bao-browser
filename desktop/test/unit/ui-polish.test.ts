@@ -11,7 +11,7 @@ import { applyHermeticApp } from "../runtime";
 test("Live, Runs and Capture keep their content aligned in the app", { timeout: 60_000 }, async () => {
   const dirs = applyHermeticApp("ui-polish");
   const app = await startApp({ home: dirs.home, port: 0, chromeProfilesRoot: path.join(dirs.home, "profiles") });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const base = `http://127.0.0.1:${app.port}`;
   try {
@@ -46,6 +46,8 @@ test("Live, Runs and Capture keep their content aligned in the app", { timeout: 
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${base}/?screen=live`);
       await page.locator("#live-shots img").waitFor();
+      assert.equal(await page.getByRole("columnheader", { name: "View time", exact: true }).count(), 1);
+      assert.doesNotMatch(await page.locator("#main").innerText(), /Page text is blurred/);
       await page.locator("#live-shots img").evaluate((img: HTMLImageElement) => img.decode());
       assert.match(await page.locator("#live-audit").innerText(), /http:\/\/127\.0\.0\.1:47811\/member/);
       const shot = await page.locator("#live-shots img").boundingBox();

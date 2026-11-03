@@ -3,6 +3,7 @@
 
 import { navigationGuard } from "./allowlist";
 import { canonicalKey, keyMayInsertText } from "./keys";
+import { readLiveBlocker, type LiveBlocker } from "./live-coverage";
 import type { CdpLiveDriver } from "./driver";
 import {
   buildView,
@@ -19,6 +20,7 @@ import {
   selectLiveMark,
   targetVerdict,
   selectLiveOption,
+  safeFieldValue,
   type LabelGuard,
   type LiveRead,
   type PageFacts,
@@ -44,7 +46,7 @@ export interface LiveActTarget {
 }
 
 export type LiveActOutcome =
-  | { kind: "refused" | "halted"; reason: string }
+  | { kind: "refused" | "halted"; reason: string; blocker?: LiveBlocker }
   | { kind: "reached"; reason: "experian_commit"; instruction: string }
   | { kind: "applied"; label: string; control: string; scroll?: ScrollFacts };
 
@@ -73,6 +75,27 @@ function controlOf(read: LiveRead, ref: string) {
   return ref ? read.view.controls.find((item) => item.ref === ref) : undefined;
 }
 
+async function coverageRefusal(target: LiveActTarget, index: number): Promise<LiveActOutcome> {
+  const outcome: LiveActOutcome = { kind: "refused", reason: "element is covered" };
+  if (target.guard.careful !== false) return outcome;
+  const found = await target.driver.evaluateFunction<ReturnType<typeof readLiveBlocker>>(readLiveBlocker, { markIndex: index });
+  if (!found) return outcome;
+  const { dismissHandle, ...blocker } = found;
+  blocker.text = safeFieldValue({ index: -1, kind: "field", label: "", value: blocker.text })?.slice(0, 240) || "[redacted]";
+  let dismissIdentity: string | undefined;
+  if (dismissHandle) {
+    const facts = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1, markHandle: dismissHandle });
+    dismissIdentity = facts.controls.find((control) => control.index === facts.marked)?.identity;
+  }
+  const fresh = await target.reread();
+  if (dismissIdentity) {
+    const entry = [...fresh.targets.byRef].find(([, target]) => target.identity === dismissIdentity);
+    const dismiss = fresh.view.controls.find((control) => control.ref === entry?.[0]);
+    if (dismiss) return { ...outcome, blocker: { ...blocker, dismissRef: dismiss.ref } };
+  }
+  return { ...outcome, blocker };
+}
+
 /** Guard checks run before dispatch; the final Experian freeze stop returns reached without a click. */
 export async function clickLive(target: LiveActTarget, ref: string): Promise<LiveActOutcome> {
   const plan = planClick(target.read, ref);
@@ -93,7 +116,7 @@ export async function clickLive(target: LiveActTarget, ref: string): Promise<Liv
     await target.driver.clickCss(plan.selector);
   } catch (err) {
     const reason = err instanceof Error ? err.message : "click failed";
-    if (reason === "element is covered") return { kind: "refused", reason };
+    if (reason === "element is covered") return coverageRefusal(target, index);
     throw err;
   }
   const blockedNav = target.driver.takeBlockedNav();
@@ -120,11 +143,15 @@ export async function typeLive(target: LiveActTarget, ref: string, text: string,
   await target.driver.evaluateFunction(focusLiveMark, { markIndex: index });
   if (replace) await target.driver.evaluateFunction(selectLiveMark, { markIndex: index });
   try {
-    await target.driver.insertText(text, prior, index);
+    if (replace && !text) await target.driver.pressMarked("Backspace", index);
+    else await target.driver.insertText(text, prior, index);
   } catch (err) {
     const reason = err instanceof Error ? err.message : "focus_moved";
     if (reason === "credential_field" || reason === "focus_moved") return { kind: "halted", reason };
     throw err;
+  }
+  if (replace && target.guard.careful === false && await target.driver.evaluateFunction<string>(markedFieldValue, { markIndex: index }) !== text) {
+    return { kind: "refused", reason: "field_value_mismatch" };
   }
   return { kind: "applied", label, control: control?.kind || "" };
 }
@@ -140,7 +167,8 @@ export async function selectLive(target: LiveActTarget, ref: string, option: str
   try {
     await target.driver.actionPoint(plan.selector);
   } catch (error) {
-    if (error instanceof Error && (error.message === "element is covered" || error.message === "element has no box")) return { kind: "refused", reason: error.message };
+    if (error instanceof Error && error.message === "element is covered") return coverageRefusal(target, entry.index);
+    if (error instanceof Error && error.message === "element has no box") return { kind: "refused", reason: error.message };
     throw error;
   }
   const reason = await target.driver.evaluateFunction<string | null>(selectLiveOption, { markIndex: entry.index, option });

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveHome } from "../home";
-import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep } from "./live-record";
+import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep, type LiveToolTiming } from "./live-record";
 
 export {
   liveShotUrl,
@@ -74,6 +74,15 @@ export class SessionLog {
 
   setSteps(steps: LiveStep[]): void {
     this.record.steps = steps;
+  }
+
+  toolTimings(): LiveToolTiming[] {
+    return structuredClone(this.record.tools || []);
+  }
+
+  async recordTool(tool: LiveToolTiming): Promise<void> {
+    (this.record.tools ||= []).push(tool);
+    await this.flush(this.record.status);
   }
 
   async patchLast(isTrusted: boolean | null): Promise<void> {

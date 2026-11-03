@@ -105,13 +105,13 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_click",
-    description: "Click one ref from the latest snapshot. By default Bao performs the action. In careful mode confirm buttons and preset deny labels are guarded. Stale refs and controls covered by another element are refused.",
+    description: "Click one ref from the latest snapshot. By default Bao performs the action. In careful mode confirm buttons and preset deny labels are guarded. Stale refs and controls covered by another element are refused. In YOLO, a covered refusal describes the blocker and offers a verified dismissRef when one is available. Bao never clicks through the blocker or dismisses it for you. Applied means dispatch, not a verified save; inspect the returned readiness marker and verify the result.",
     inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
   },
   {
     name: "live_type",
-    description: "Type into one field or contenteditable from the latest snapshot. By default Bao performs the action, including credentials, long text, and digit strings. Careful mode refuses credential fields, secret-looking text, and text longer than 80 characters. Typing stops if focus is no longer that field. To search, type the query into the site's search box, then press Enter on that box with live_key.",
-    inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" } }, required: ["ref", "text"] },
+    description: "Type into one field or contenteditable from the latest snapshot. By default Bao performs the action, including credentials, long text, and digit strings. Careful mode refuses credential fields, secret-looking text, and text longer than 80 characters. Text inserts at the caret by default. In default YOLO mode, pass replace: true to replace the whole field, or replace: true with empty text to clear it. Snapshots show safe field values for verification. Typing stops if focus is no longer that field. To search, type the query into the site's search box, then press Enter on that box with live_key.",
+    inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" }, replace: { type: "boolean" } }, required: ["ref", "text"] },
   },
   {
     name: "live_key",
@@ -133,7 +133,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_screenshot",
-    description: "Save a readable screenshot into this Mac's live session. Careful mode blurs screenshots and video. The reply is the shot name, not the picture bytes.",
+    description: "Save a readable screenshot into this Mac's live session. Careful mode blurs screenshots and video. The reply includes the short shot name and shotPath, an absolute path in the active Bao home that you can open directly. It does not return picture bytes.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -183,6 +183,7 @@ export interface LiveControlFact {
   /** A field's form submits through this button on Enter. Absent when there is no form or no submit button. */
   formSubmit?: string;
   options?: { value: string; label: string; selected: boolean; disabled: boolean }[];
+  value?: string;
 }
 
 export interface PageFacts {
@@ -195,6 +196,8 @@ export interface PageFacts {
   controls: LiveControlFact[];
   /** The index of the control readLivePage marked by its tree() handle. -1 when that element is not a listed control. */
   marked?: number;
+  panel?: string;
+  ready?: boolean;
 }
 
 export interface LiveControlView {
@@ -202,6 +205,8 @@ export interface LiveControlView {
   label: string;
   kind: string;
   options?: LiveControlFact["options"];
+  value?: string;
+  valueTruncated?: true;
 }
 
 export interface LiveView {
@@ -366,9 +371,19 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
     const kind: TargetKind = control.kind === "field" ? "field" : "click";
     const enter = kind === "field" && guard.careful !== false ? enterRefusal(control, guard, facts) : "";
     byRef.set(ref, { index: control.index, identity: control.identity, kind, selector, href, enter });
-    view.controls.push({ ref, label, kind: control.kind, ...(control.options ? { options: control.options } : {}) });
+    const value = guard.careful === false ? safeFieldValue(control) : undefined;
+    view.controls.push({ ref, label, kind: control.kind, ...(control.options ? { options: control.options } : {}), ...(value !== undefined ? { value, ...(control.value!.length > value.length ? { valueTruncated: true as const } : {}) } : {}) });
   }
   return { careful: guard.careful, view, targets: { byRef, passwordRef } };
+}
+
+export function safeFieldValue(control: LiveControlFact): string | undefined {
+  if (control.kind !== "field" || control.value === undefined || credentialField(control)) return undefined;
+  const hint = `${control.label} ${control.field?.name || ""} ${control.field?.autocomplete || ""}`;
+  const secretLabel = /password|passcode|\bssn\b|social.?security|card.?number|\bcvv\b|\bcvc\b|security.?code|verification.?code|one.?time.?code|\botp\b|\bpin\b|\btoken\b|api.?key|\bsecret\b|client.?secret|authorization|account.?number|routing.?number/i;
+  if (secretLabel.test(hint) || secretLabel.test(control.value)) return undefined;
+  if (/(?:sk-|ghp_|gho_|xox[bp]-|AKIA|eyJ)[A-Za-z0-9_-]+|GOCSPX-|\d(?:[ -]?\d){8,}/.test(control.value)) return undefined;
+  return control.value.slice(0, 2000);
 }
 
 /** One page of the view's controls. A page past either end is clamped to that end. */
@@ -548,7 +563,7 @@ export function selectLiveMark(ask: { markIndex: number }): void {
 export function markedFieldValue(ask: { markIndex: number }): string {
   const el = document.querySelector(`[data-bao-live="${ask.markIndex}"]`);
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return String(el.value || "");
-  if (el instanceof HTMLElement && el.isContentEditable) return el.innerText;
+  if (el instanceof HTMLElement && el.isContentEditable) return el.textContent ? el.innerText : "";
   return "";
 }
 
@@ -571,7 +586,7 @@ export function markedState(ask: { markIndex: number }): MarkedState {
   const field = el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement
       && !/^(password|button|submit|reset|image|checkbox|radio|file|hidden)$/.test((el.getAttribute("type") || "text").toLowerCase()));
-  const value = el.isContentEditable ? el.innerText : field ? String((el as HTMLInputElement | HTMLTextAreaElement).value || "").slice(0, 2000) : "";
+  const value = el.isContentEditable ? (el.textContent ? el.innerText : "") : field ? String((el as HTMLInputElement | HTMLTextAreaElement).value || "").slice(0, 2000) : "";
   return { handle: el.getAttribute("data-bao-i") || "", text, value, missing: false };
 }
 
@@ -675,6 +690,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
     const button = field && form ? Array.from(form.elements).find(submits) : undefined;
     if (button) fact.formSubmit = textOf(button);
     if (el instanceof HTMLSelectElement) fact.options = resolveLiveOptions(el).options;
+    if (kind === "field") fact.value = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : el.textContent ? (el as HTMLElement).innerText : "";
     controls.push(fact);
     index += 1;
   };
@@ -700,10 +716,14 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
     });
   }
   const headings = [...document.querySelectorAll("h1, h2")].slice(0, 8).map((el) => (el.textContent || "").replace(/\s+/g, " ").trim());
+  const panel = document.querySelector('main, [role="main"]')?.cloneNode(true) as Element | undefined;
+  panel?.querySelectorAll('button, [role="button"], [role="status"], [role="alert"], script, style').forEach((el) => el.remove());
   return {
     path: `${location.pathname || "/"}${location.hash || ""}`,
     url: location.href,
     title: document.title || "",
+    panel: (panel?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 4000),
+    ready: document.readyState === "complete" && !document.querySelector('[aria-busy="true"]'),
     headings,
     blocked: credentialHalt ? "login" : "",
     text: (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1500),

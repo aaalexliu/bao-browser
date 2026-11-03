@@ -12,6 +12,7 @@ import { WORKFLOW_SCHEMA_ID } from "./schema";
 
 export interface TrailEvent {
   id: string;
+  toolCallId?: string;
   ts: number;
   kind: "read" | "act" | "decision";
   op: string;
@@ -80,6 +81,8 @@ export interface TrailEvent {
   parameter?: string;
   /** Typed text that replay types as recorded. It does not become an input, and the step's label names the field, not the text. */
   literal?: boolean;
+  /** The recorder read the whole field, rather than a typed chunk. */
+  valueMode?: "full";
   /** Text or a control name this step leaves on the page. Replay skips the step when the page already shows it. */
   skipWhen?: string;
   /** A number in skipWhen matches any number, so "1 in cart" also matches "3 in cart". */
@@ -218,7 +221,7 @@ export function trailDrops(events: readonly TrailEvent[]): TrailDrop[] {
     const prev = merged[merged.length - 1];
     if (prev && isType(prev) && isType(event) && sameTarget(prev, event)) {
       dropped.push({ id: event.id, reason: "merged into the previous type" });
-      prev.value = event.sensitive ? undefined : mergeTypedValue(prev.value || "", event.value || "");
+      prev.value = event.sensitive ? undefined : event.valueMode === "full" ? event.value : mergeTypedValue(prev.value || "", event.value || "");
       prev.sensitive = prev.sensitive || event.sensitive;
       prev.ts = event.ts;
       continue;
@@ -300,7 +303,7 @@ function mergeTyping(events: TrailEvent[]): TrailEvent[] {
   for (const event of events) {
     const prev = out[out.length - 1];
     if (prev && isType(prev) && isType(event) && sameTarget(prev, event) && !event.sensitive && !prev.sensitive) {
-      prev.value = mergeTypedValue(prev.value || "", event.value || "");
+      prev.value = event.valueMode === "full" ? event.value : mergeTypedValue(prev.value || "", event.value || "");
       prev.afterUrl = event.afterUrl || prev.afterUrl;
       prev.afterText = event.afterText || prev.afterText;
       prev.ts = event.ts;
@@ -359,7 +362,12 @@ export function isConstantType(event: TrailEvent): boolean {
   return /\b(currency|unit)\b/i.test(id);
 }
 
+export function sameTrailPage(a: Pick<TrailEvent, "beforeUrl">, b: Pick<TrailEvent, "beforeUrl">): boolean {
+  return a.beforeUrl === b.beforeUrl;
+}
+
 function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
+  if (!sameTrailPage(a, b)) return false;
   const left = a.identity;
   const right = b.identity;
   if (!left || !right) return false;
@@ -522,7 +530,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
     const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(event, secret);
     const input = addInput(inputs, kind, named);
-    if (!secret && event.value && !event.rawPath) input.default = event.value;
+    if (!secret && event.value !== undefined && !event.rawPath) input.default = event.value;
     return {
       ...step,
       action: "type",

@@ -32,7 +32,7 @@ export function liveCliBody(cmd: string, args: string[]): Record<string, unknown
   }
   if (cmd === "live_read") return { op: cmd, name: flag(args, "--name") || "", selector: flag(args, "--selector") ?? "body" };
   if (cmd === "live_click") return { op: cmd, ref: flag(args, "--ref") || "" };
-  if (cmd === "live_type") return { op: cmd, ref: flag(args, "--ref") || "", text: flag(args, "--text") || "" };
+  if (cmd === "live_type") return { op: cmd, ref: flag(args, "--ref") || "", text: flag(args, "--text") || "", ...(args.includes("--replace") ? { replace: true } : {}) };
   if (cmd === "live_key") return { op: cmd, key: flag(args, "--key") || "", ref: flag(args, "--ref") || "" };
   if (cmd === "live_scroll") return { op: cmd, direction: flag(args, "--direction") || "", ref: flag(args, "--ref") || "" };
   return { op: cmd };

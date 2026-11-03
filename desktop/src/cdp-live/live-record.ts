@@ -17,6 +17,14 @@ export interface LiveStep {
   ms: number;
 }
 
+export interface LiveToolTiming {
+  id: string;
+  name: string;
+  startedAt: number;
+  ms: number;
+  spans: Record<string, number>;
+}
+
 export interface LiveSessionRecord {
   id: string;
   intent: string;
@@ -26,6 +34,7 @@ export interface LiveSessionRecord {
   updatedAt: number;
   steps: LiveStep[];
   audit: AuditRow[];
+  tools?: LiveToolTiming[];
   note: string;
 }
 
@@ -113,6 +122,13 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
     updatedAt: Number.isFinite(raw.updatedAt) ? Math.round(Number(raw.updatedAt)) : 0,
     steps,
     audit,
+    ...(Array.isArray(raw.tools) ? { tools: raw.tools.map((tool) => ({
+      id: String(tool.id || "").replace(/[^\w.-]/g, "").slice(0, 80),
+      name: String(tool.name || "").replace(/[^\w]/g, "").slice(0, 40),
+      startedAt: Number.isFinite(tool.startedAt) ? tool.startedAt : 0,
+      ms: Number.isFinite(tool.ms) ? Math.max(0, tool.ms) : 0,
+      spans: Object.fromEntries(Object.entries(tool.spans || {}).filter(([key, ms]) => /^[a-z]+$/.test(key) && Number.isFinite(ms) && ms >= 0)),
+    })) } : {}),
     note: redactLabel(String(raw.note || "")).slice(0, 160),
   };
 }

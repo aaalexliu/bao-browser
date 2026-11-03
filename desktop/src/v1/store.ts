@@ -55,6 +55,7 @@ export interface Settings extends HealSettings {
 export interface StoredRun {
   id: string;
   kind?: "replay" | "capture";
+  toolTimings?: import("../cdp-live/live-record").LiveToolTiming[];
   /** Explicit permission for Experian freeze changes in this capture session, never inherited by replay. */
   allowCommit?: boolean;
   pageEngine?: "old" | "agent-browser";
