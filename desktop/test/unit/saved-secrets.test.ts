@@ -321,6 +321,49 @@ test("known secret collisions preserve metadata across public saved writers", as
   }
 });
 
+test("marked select fields strip whole selected values and defaults but unmarked options stay stable", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-marked-choice-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const [autocomplete, value] of [["cc-exp", "03/28"], ["cc-number", "4111111111111111"], ["one-time-code", "483921"]]) {
+    for (const marked of [true, false]) {
+      const identity: Identity = { surface: "dom", role: "combobox", tag: "select", name: "Choice", path: [], ...(marked ? { autocomplete } : {}) };
+      const event: TrailEvent = { id: "select", ts: 1, kind: "act", op: "select", identity, value, valueBefore: value, valueAfter: value };
+      const expected = marked ? STRIPPED_SECRET : value;
+      const original = structuredClone(event);
+      library.saveTrail("choice", [event]);
+      const live = await LiveTrail.open(home);
+      await live.add(event);
+      for (const saved of [(library.readTrail("choice") as TrailEvent[])[0]!, JSON.parse(readFileSync(live.file, "utf8").trim().split("\n").at(-1)!)]) {
+        assert.deepEqual([saved.value, saved.valueBefore, saved.valueAfter], [expected, expected, expected]);
+      }
+      for (const choice of [false, true]) {
+        const doc = interpret([event], { id: "choice", startUrl: "https://example.test/" });
+        if (choice) doc.inputs[0] = { ...doc.inputs[0]!, type: "choice", choices: [value!, "other"] };
+        const input = doc.inputs[0]!.name;
+        library.save(doc);
+        const saved = library.read(doc.id);
+        assert.equal(saved.inputs[0]!.default, expected);
+        assert.equal(saved.steps[0]!.value, `{{${input}}}`);
+        assert.deepEqual(validateWorkflow(saved), []);
+        if (choice) assert.deepEqual(saved.inputs[0]!.choices, [value, "other"]);
+        library.savePublicInputs(doc.id, { [input]: value });
+        assert.deepEqual(library.readPublicInputs(doc.id), { [input]: expected });
+      }
+      assert.deepEqual(event, original);
+    }
+  }
+  for (const role of ["radio", "checkbox"]) {
+    const event: TrailEvent = { id: role, ts: 1, kind: "act", op: "check", checked: true, value: "483921", identity: { surface: "dom", role, inputType: role, autocomplete: "one-time-code", value: "483921", path: [] } };
+    library.saveTrail("toggles", [event]);
+    const saved = (library.readTrail("toggles") as TrailEvent[])[0]!;
+    assert.equal(saved.value, STRIPPED_SECRET);
+    assert.equal(saved.identity!.value, STRIPPED_SECRET);
+    assert.equal(saved.checked, true);
+    assert.equal(event.value, "483921");
+  }
+});
+
 test("option tokens survive password collisions while whole copied data values strip", (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-secret-options-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
@@ -377,7 +420,7 @@ test("option tokens survive password collisions while whole copied data values s
     assert.equal(saved.inputs.find((input) => input.name === selectedInput)!.default, value);
     assert.deepEqual(saved.inputs.find((input) => input.name === "route"), { name: "route", type: "choice", choices: [value, "other-route"], default: value });
     assert.equal(saved.steps[0]!.value, `{{${selectedInput}}}`);
-    assert.equal(saved.steps[1]!.value, value);
+    assert.equal(saved.steps[1]!.value, STRIPPED_SECRET);
     assert.deepEqual(saved.steps[2]!.when, { input: "route", value });
     assert.equal(saved.steps[2]!.identity!.value, value);
     assert.equal(saved.steps[3]!.identity!.value, value);

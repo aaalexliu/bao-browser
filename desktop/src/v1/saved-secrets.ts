@@ -78,6 +78,10 @@ export function secretSavedField(value: unknown): boolean {
     token === "current-password" || token === "new-password" || token === "one-time-code" || token.startsWith("cc-"));
 }
 
+function secretNode(node: RecordValue): boolean {
+  return node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field);
+}
+
 function choiceField(value: unknown): boolean {
   const field = record(value);
   return [field.type, field.inputType, field.role, field.tag, field.kind].some((item) => typeof item === "string" && ["select", "radio", "checkbox", "option"].includes(item.toLowerCase()));
@@ -139,6 +143,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
   const steps = new WeakMap<object, StepScope>();
   const copies = new Map<string, StepScope>();
   const fields = new WeakMap<object, Map<string, boolean>>();
+  const secretInputs = new WeakSet<object>();
   const rootData = context.args === value || (Array.isArray(context.args) && context.args.some((args) => args === value));
   const preserve = (owner: object, keys: string[], data = false): void => {
     const kept = fields.get(owner) ?? new Map<string, boolean>();
@@ -160,7 +165,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (!data) {
       for (const output of Array.isArray(workflow.outputs) ? workflow.outputs : []) preserve(record(output), ["from"]);
       for (const { step, row, inputs } of bound) {
-        const secret = step.sensitive === true || secretSavedField(step.identity) || declared.some((input) => input.type === "secret" && typeof input.name === "string" && inputs.has(input.name));
+        const secret = secretNode(step) || declared.some((input) => input.type === "secret" && typeof input.name === "string" && inputs.has(input.name));
         const scope = { names, row, secret };
         steps.set(step, scope);
         if (workflow === context.workflow && typeof step.id === "string") copies.set(step.id, scope);
@@ -172,12 +177,14 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       const name = input.name;
       if (typeof name !== "string") continue;
       const targets = bound.filter(({ inputs }) => inputs.has(name));
-      if (!data && (input.type === "choice" || (targets.length > 0 && targets.every(({ step }) => fixedSavedChoice(step))))) {
+      const consumers = targets.filter(({ step }) => secretNode(step));
+      const secret = input.type === "secret" || consumers.length > 0;
+      if (!data && !secret && (input.type === "choice" || (targets.length > 0 && targets.every(({ step }) => fixedSavedChoice(step))))) {
         preserve(input, ["default", "choices"], true);
         preserve(args, [name], true);
       }
-      const consumers = targets.filter(({ step }) => !fixedSavedChoice(step) && (step.sensitive === true || secretSavedField(step.identity)));
-      if (input.type !== "secret" && !consumers.length) continue;
+      if (!secret) continue;
+      secretInputs.add(input);
       for (const [owner, key] of [[input, "default"], [args, name]] as const) {
         const value = owner[key];
         if (input.type !== "table") { remember(value); continue; }
@@ -203,6 +210,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     const node = record(item);
     collectBindings(node, {}, data);
     const scope = !data ? steps.get(node) ?? (typeof node.action === "string" && typeof node.id === "string" ? copies.get(node.id) : undefined) : undefined;
+    const structural = scope?.secret || secretNode(node);
     if (!data) {
       if (scope) {
         if (bindingTokens(node.value, scope.names, scope.row).size) preserve(node, ["value"]);
@@ -216,12 +224,11 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
         if ((name.length === 1 || KEY_EVENTS[name]) && !keyMayInsertText(node.key)) preserve(node, ["key"]);
       }
       if (node.role === "input" && typeof node.name === "string") preserve(node, ["name"]);
-      if (fixedSavedChoice(node)) preserve(node, ["value", "valueBefore", "valueAfter"], true);
-      if (node.type === "choice") preserve(node, ["default", "choices"], true);
+      if (fixedSavedChoice(node) && !structural) preserve(node, ["value", "valueBefore", "valueAfter"], true);
+      if (node.type === "choice") preserve(node, secretInputs.has(node) ? ["choices"] : ["default", "choices"], true);
       if (Array.isArray(node.options)) for (const option of node.options) preserve(record(option), ["value", "label"], true);
     }
-    const structural = scope?.secret || node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field);
-    if (structural && (data || !fixedSavedChoice(node))) {
+    if (structural) {
       remember(record(node.identity).value);
       for (const key of ["value", "text", "valueBefore", "valueAfter"]) if (!kept(node, key, data)) remember(node[key]);
       if (typeof node.key === "string" && keyMayInsertText(node.key)) remember(node.key);
