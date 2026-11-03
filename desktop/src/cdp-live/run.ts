@@ -9,7 +9,7 @@ import { DEVTOOLS_ACTIVE_PORT, readDevToolsActivePort } from "./endpoint";
 import { liveChromeBlock, usesScreenRecording } from "../helper-capabilities";
 import { AxUnavailable, chromeHelper, chromeTree } from "./ax";
 import { remoteDebuggingDeps, setRemoteDebugging } from "./remote-debugging";
-import { CdpLiveDriver, openLiveWindow, type PageObservation } from "./driver";
+import { openLiveWindow, type PageObservation } from "./driver";
 import { connectAndAllow } from "./connect";
 import type { CdpSocket } from "./socket";
 

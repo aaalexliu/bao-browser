@@ -73,7 +73,7 @@ export async function captureWeb(): Promise<{ captured: CapturedWeb[]; stale?: W
       ["internet-dynamic", "Dynamic loading", DYNAMIC, undefined, "media", recordDynamic],
     ] as const) {
       try {
-        captured.push(await captureOne(page, spec[0], spec[1], spec[2], spec[3], spec[4], spec[5]));
+        captured.push(await captureOne(page, spec[0], spec[1], spec[3], spec[4], spec[5]));
       } catch (err) {
         errors.push(failRow(spec[0], "record", err));
       }
@@ -93,7 +93,6 @@ async function captureOne(
   page: Page,
   id: string,
   name: string,
-  url: string,
   langUrl: string | undefined,
   theme: CapturedWeb["theme"],
   record: (page: Page) => Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }>,
@@ -591,7 +590,7 @@ async function driftDesktopApp(opts: {
   const home = mkdtempSync(path.join(tmpdir(), `bao-${opts.id}-`));
   const baseEnv = appEnv(home, {});
   stopApp(opts.cmd[0] || opts.id);
-  const child = startApp(opts.cmd, baseEnv);
+  startApp(opts.cmd, baseEnv);
   try {
     const nodes = await waitApp(opts.bin, opts.screen, opts.matchApp);
     await sleep(600);
@@ -700,7 +699,7 @@ async function waitCalcResult(bin: string, screen: string): Promise<boolean> {
   return false;
 }
 
-async function recordGedit(bin: string, screen: string, nodes: OsNode[]): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
+async function recordGedit(_bin: string, _screen: string, nodes: OsNode[]): Promise<{ workflow: WorkflowV2; trajectory: TrajectoryStep[] }> {
   const text = nodes.find((node) => node.role === "text" && !node.name);
   if (!text) {
     const seen = nodes.filter((node) => /text/i.test(node.role)).map((node) => `${node.role}:${node.name}`).slice(0, 20);

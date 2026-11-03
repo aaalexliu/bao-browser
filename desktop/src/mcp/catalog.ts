@@ -3,8 +3,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { replayRefusal } from "../cdp-live/launch-guard";
@@ -1001,15 +1000,6 @@ function localGreenAt(library: Library, id: string): number | undefined {
     if (run.at > latest) latest = run.at;
   }
   return latest || undefined;
-}
-
-function latestGreen(...values: unknown[]): number | undefined {
-  let best = 0;
-  for (const value of values) {
-    const at = epoch(value);
-    if (at > best) best = at;
-  }
-  return best || undefined;
 }
 
 function epoch(value: unknown): number {

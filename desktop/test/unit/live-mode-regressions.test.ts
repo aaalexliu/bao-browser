@@ -215,6 +215,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       <fieldset disabled><label>Disabled fieldset<select><option value="nested">Nested</option></select></label></fieldset>
       <p id="result">Audience: Internal</p><form onsubmit="event.preventDefault();document.querySelector('#result').textContent='Created'"><button>Create</button></form>
       <a href="/popup" target="_blank">New tab</a>`);
+    return undefined;
   });
   const secureHits: string[] = [];
   const cert = selfSignedCert(["www.instacart.com", "instacart.com", "other.example"]);
@@ -227,6 +228,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     }
     res.setHeader("content-type", "text/html");
     res.end(`<title>Local navigation</title>${pathname === "/landing-login" ? '<label>Password<input type="password"></label>' : ""}<button onclick="document.querySelector('#nav-result').textContent='${pathname === "/nav-start" ? "Wrong page" : "Right page"}';this.textContent='Opened'">Open result</button><p id="nav-result">Ready</p>`);
+    return undefined;
   });
   before(async () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

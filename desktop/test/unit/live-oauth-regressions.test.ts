@@ -51,6 +51,7 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
     if (req.url === "/empty") return res.end(`<title>Routing</title><nav>Old breadcrumb</nav><main></main><button onclick="history.pushState({},'', '/empty-next');document.title='Clients';document.querySelector('nav').textContent='Clients'">Open panel</button>`);
     if (req.url === "/cover") return res.end(`<title>Covered Save</title><style>#save,select{position:fixed;top:100px;left:100px;width:140px;height:40px}select{top:180px}.notice{position:fixed;left:90px;top:90px;width:300px;height:150px;background:white;z-index:100}</style><button id="save" onclick="document.body.dataset.saved='yes'">Save</button><select aria-label="Audience"><option>Internal</option><option>External</option></select><div class="notice" role="status">Branding changes saved!<button aria-label="Dismiss notice" onclick="this.parentElement.remove()">Close</button></div>`);
     res.end(`<title>OAuth local form</title><style>label{display:block;margin:20px}[contenteditable]{min-height:24px}</style><main><h1>App details</h1><label>App name<input value="五秒"></label><label>Note<textarea aria-label="Note">old note</textarea></label><div contenteditable aria-label="Editor">old text</div><label>Client secret<input value="private-oauth-value"></label><label>Note key<input value="sk-fixture_secret_12345678901234567890"></label><label>Password<input type="password" value="private-password"></label></main>`);
+    return undefined;
   });
   before(async () => {
     pinTestBrowser();

@@ -220,7 +220,6 @@ test("teach the interstitial fix as a guarded branch", { timeout: 180000 }, asyn
     };
     assert.equal(failed.status, "failed", JSON.stringify(failed.failure));
     assert.equal(failed.modelCalls, 0);
-    const stepId = failed.failure?.stepId || recorded.steps[0]?.id || "";
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click('button[data-screen="runs"]');
     await page.click(`[data-open-run="${failed.runId}"]`);

@@ -125,7 +125,7 @@ import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
-import { migrate, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
 import { decideOpen, parseBaoLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -1678,7 +1678,7 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/login-import/sign-in") {
         const body = await readBody(req) as LoginBody;
-        const click = clickFrom(body);
+        clickFrom(body);
         const config = rememberSite(sites, body);
         await signIn?.close();
         const signInUrl = config.probeUrl || config.origin;

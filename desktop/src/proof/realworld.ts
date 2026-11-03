@@ -1056,7 +1056,7 @@ function scoreP3(input: ScoreInput): { pass: boolean; cause: string; detail: str
   return { pass: true, cause: "", detail: `${nights} nights, total ${gotTotal}, halted before Reserve Now` };
 }
 
-function scoreP4(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+function scoreP4(_input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   return { pass: true, cause: "", detail: "download checked separately" };
 }
 

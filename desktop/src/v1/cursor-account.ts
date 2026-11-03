@@ -24,12 +24,6 @@ export interface AgentStatus {
   source: "login" | "env" | "none";
 }
 
-interface PrintResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
 interface RunResult {
   code: number;
   stdout: string;
