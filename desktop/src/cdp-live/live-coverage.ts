@@ -22,7 +22,7 @@ export function readLiveBlocker(ask: { markIndex: number }): (Omit<LiveBlocker, 
   const candidates = Array.from(root.querySelectorAll('button, [role="button"]')).filter((el) => {
     if (root === document.body || root === document.documentElement || el.matches(':disabled, [aria-disabled="true"]')) return false;
     const label = el.getAttribute("aria-label") || el.textContent || "";
-    if (!/^(?:dismiss|close)\b|^(?:ok|got it)$/i.test(label.trim())) return false;
+    if (!/^(?:(?:dismiss|close)(?: (?:notice|notification|dialog|popup|message|banner))?|[x×])$/i.test(label.trim())) return false;
     const r = el.getBoundingClientRect();
     const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
     return r.width > 0 && r.height > 0 && !!top && (top === el || el.contains(top));

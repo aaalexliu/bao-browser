@@ -20,7 +20,6 @@ import {
   selectLiveMark,
   targetVerdict,
   selectLiveOption,
-  safeFieldValue,
   type LabelGuard,
   type LiveRead,
   type PageFacts,
@@ -81,7 +80,7 @@ async function coverageRefusal(target: LiveActTarget, index: number): Promise<Li
   const found = await target.driver.evaluateFunction<ReturnType<typeof readLiveBlocker>>(readLiveBlocker, { markIndex: index });
   if (!found) return outcome;
   const { dismissHandle, ...blocker } = found;
-  blocker.text = safeFieldValue({ index: -1, kind: "field", label: "", value: blocker.text })?.slice(0, 240) || "[redacted]";
+  blocker.text = blocker.text.replace(/(?:sk-|ghp_|gho_|xox[bp]-|AKIA|eyJ|GOCSPX-)[A-Za-z0-9_-]+/g, "[redacted]").slice(0, 240);
   let dismissIdentity: string | undefined;
   if (dismissHandle) {
     const facts = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1, markHandle: dismissHandle });

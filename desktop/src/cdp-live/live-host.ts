@@ -592,7 +592,7 @@ export function createLiveHost(opts: LiveHostOptions): {
   async function readyRead(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts; readiness?: { state: "ready" | "transitional" } }> {
     if (state.guard.careful !== false) return reread(state);
     const before = state.facts;
-    const signature = (facts: PageFacts) => JSON.stringify([facts.title, facts.headings, facts.panel || facts.text]);
+    const signature = (facts: PageFacts) => facts.panel ?? "";
     const deadline = Date.now() + 1800;
     let last = "";
     let stableAt = Date.now();
@@ -619,8 +619,9 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
-    const started = Date.now();
+    const snapshotBefore = currentTool?.spans.snapshot || 0;
     const { read, facts, readiness } = await readyRead(open);
+    const viewMs = (currentTool?.spans.snapshot || 0) - snapshotBefore;
     open.read = read;
     const detected = pageHalt({
       blocked: facts.blocked,
@@ -635,7 +636,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     const reached = action !== "start" && !halt && open.read.view.reached;
     const reason = halt || (reached ? "experian_commit" : "");
     const message = reason ? await stopForOwner(open, reason) : "";
-    const shot = await record(action, message || (action === "key" ? "key" : open.read.view.title || action), Date.now() - started, reason ? "needs_human" : "passed", null);
+    const shot = await record(action, message || (action === "key" ? "key" : open.read.view.title || action), viewMs, reason ? "needs_human" : "passed", null);
     if (open.guard.freezeCommit && !reason) await open.log.flush("running", "", open.host);
     if (["click", "type", "key", "scroll"].includes(action)) {
       const event = open.trail.list().at(-1);

@@ -717,7 +717,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
   }
   const headings = [...document.querySelectorAll("h1, h2")].slice(0, 8).map((el) => (el.textContent || "").replace(/\s+/g, " ").trim());
   const panel = document.querySelector('main, [role="main"]')?.cloneNode(true) as Element | undefined;
-  panel?.querySelectorAll('button, [role="button"], [role="status"], [role="alert"], script, style').forEach((el) => el.remove());
+  panel?.querySelectorAll('h1, h2, button, [role="button"], [role="status"], [role="alert"], script, style').forEach((el) => el.remove());
   return {
     path: `${location.pathname || "/"}${location.hash || ""}`,
     url: location.href,
