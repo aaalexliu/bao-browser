@@ -21,7 +21,7 @@ import { osNodes, osPress, type OsNode } from "../proxy/os";
 import { DEFAULT_PROMOTE_AFTER, noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
 import { replay, type LocatorMode } from "./replay";
 import type { WorkflowV2 } from "./schema";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved, type SavedContext } from "./saved-secrets";
 
 export interface CapturedWeb {
   id: string;
@@ -792,6 +792,10 @@ function displaySize(): string {
   return "1400x900";
 }
 
+export function appendDriftTrail(file: string, event: unknown, context: SavedContext): void {
+  appendFileSync(file, JSON.stringify(scrubSaved(event, context)) + "\n");
+}
+
 export async function runHeal(dir: string, trailPath: string, headed: boolean): Promise<string> {
   const home = mkdtempSync(path.join(tmpdir(), "bao-heal-profile-"));
   const ctx = await launchOwnedChrome({
@@ -810,7 +814,7 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
       settings: { heal: "auto" },
     });
     const heal = result.heals[0];
-    appendFileSync(trailPath, JSON.stringify(scrubSaved({
+    appendDriftTrail(trailPath, {
       kind: "heal",
       status: result.status,
       model: heal?.model,
@@ -819,7 +823,7 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
       repairs: result.repairs,
       reason: result.failure?.reason,
       brokenAttr: result.failure?.brokenAttr,
-    })) + "\n");
+    }, { workflow });
     if (result.status !== "passed" || !heal?.proposedPatch) {
       return `heal did not pass: ${result.failure?.reason || "no patch"}`;
     }
@@ -831,16 +835,16 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
       patch: heal.proposedPatch,
       before: heal.failedStep,
     });
-    appendFileSync(trailPath, JSON.stringify(scrubSaved(promotionEvent(promotion, Date.now()))) + "\n");
+    appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()), { workflow });
     const driftOk = await promotionPasses(page, saved);
     promotion = noteDrift(promotion, driftOk);
-    appendFileSync(trailPath, JSON.stringify(scrubSaved(promotionEvent(promotion, Date.now()))) + "\n");
+    appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()), { workflow });
     if (!driftOk) return "heal reverted on drift";
     for (let i = 0; i < DEFAULT_PROMOTE_AFTER; i++) {
       await page.goto(ADD, { waitUntil: "domcontentloaded", timeout: 45000 });
       const again = await replay(saved, {}, new BrowserDriver(page), { locators: "all", heal: unavailableHeal() });
       promotion = noteReplay(promotion, again.status === "passed");
-      appendFileSync(trailPath, JSON.stringify(scrubSaved(promotionEvent(promotion, Date.now()))) + "\n");
+      appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()), { workflow });
       if (again.status !== "passed") return "heal reverted on replay";
     }
     saved = keepPatch(saved, heal.failedStep.id, heal.proposedPatch);

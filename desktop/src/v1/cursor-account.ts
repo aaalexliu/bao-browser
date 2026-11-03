@@ -13,9 +13,7 @@ import {
   patchFromText,
   type HealProposal,
   type HealProvider,
-  type StepFailure,
 } from "./heal";
-import type { WorkflowStep } from "./schema";
 import { resolveHome } from "../home";
 
 export interface AgentStatus {
@@ -241,10 +239,10 @@ function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: Curso
     available() {
       return cursorAccountModelLabel(env) === "cursor account" && !!bin;
     },
-    async propose(failure, step) {
+    async propose(failure, step, context) {
       if (!bin || cursorAccountModelLabel(env) !== "cursor account") return null;
       const prompt = [
-        buildPrompt(failure, step, secrets),
+        buildPrompt(failure, step, secrets, context),
         "Do not edit files. Do not call tools. Reply with the JSON object only.",
       ].join("\n");
       const asked = await askCursorAgent(prompt, env, agent);
@@ -266,10 +264,10 @@ function chainHeal(providers: HealProvider[]): HealProvider {
     available() {
       return providers.some((provider) => provider.available());
     },
-    async propose(failure: StepFailure, step: WorkflowStep) {
+    async propose(failure, step, context) {
       for (const provider of providers) {
         if (!provider.available()) continue;
-        const proposal = await provider.propose(failure, step);
+        const proposal = await provider.propose(failure, step, context);
         if (proposal) return proposal;
       }
       return null;

@@ -660,7 +660,7 @@ export async function replay(
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    const proposal = await heal.propose(failure, step);
+    const proposal = await heal.propose(failure, step, { workflow, args, secrets });
     const prompt = proposal?.prompt || "";
     const record: HealRecord = {
       id: `heal-${heals.length + 1}`,

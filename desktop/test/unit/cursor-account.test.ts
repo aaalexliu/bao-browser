@@ -14,6 +14,7 @@ import {
 } from "../../src/v1/cursor-account";
 import type { StepFailure } from "../../src/v1/heal";
 import type { WorkflowStep } from "../../src/v1/schema";
+import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
 
 const SECRET = "SuperSecretPassword!";
 
@@ -122,7 +123,8 @@ test("a logged-in CLI print is the heal and the prompt stays off the command lin
   assert.equal(proposal.model.name, "Composer");
   assert.equal(proposal.model.version, "login");
   assert.equal(proposal.patch.identity?.testId, "login");
-  assert.equal(proposal.prompt.includes(SECRET), false);
+  assert.ok(proposal.prompt.includes(`Intent: ${failure.intent}`));
+  assert.equal(JSON.parse(proposal.prompt.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)).dom.note, STRIPPED_SECRET);
   assert.equal(proposal.rawResponse.includes(SECRET), false);
   const args = JSON.parse(readFileSync(log, "utf8")) as string[];
   assert.equal(args.includes("--api-key"), false);
@@ -131,7 +133,7 @@ test("a logged-in CLI print is the heal and the prompt stays off the command lin
   assert.equal(JSON.stringify(args).includes(SECRET), false);
   assert.equal(JSON.stringify(args).includes("Intent:"), false);
   const sent = readFileSync(stdin, "utf8");
-  assert.equal(sent.includes(SECRET), false);
+  assert.equal(sent, proposal.prompt);
   assert.match(sent, /testId/);
   resetCursorAccountCache();
 });
@@ -163,8 +165,10 @@ test("a logged-out CLI falls back to the response file", async () => {
   assert.equal(proposal.model.name, "cursor");
   assert.equal(proposal.model.version, "live");
   assert.equal(proposal.patch.identity?.testId, "login");
-  const request = readFileSync(path.join(dir, "heal-request.json"), "utf8");
-  assert.equal(request.includes(SECRET), false);
+  const request = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8"));
+  assert.equal(request.intent, failure.intent);
+  assert.equal(request.dom.note, STRIPPED_SECRET);
+  assert.equal(request.prompt, proposal.prompt);
   resetCursorAccountCache();
 });
 

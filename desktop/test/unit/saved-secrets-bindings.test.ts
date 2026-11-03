@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { liveReplayArgs } from "../../src/cdp-live/live-replay";
 import { startApp } from "../../src/app/server";
 import { scriptedHeal, type HealRecord } from "../../src/v1/heal";
+import { cursorAccountHeal } from "../../src/v1/cursor-account";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
+import { appendDriftTrail } from "../../src/v1/real-drift";
 import { applyCapturedData, bindStep, materializeOutputs, parseTable, type DataEvent } from "../../src/v1/data-steps";
 import { beginFilesRun, endFilesRun, filesFor, prepareFilesDatesRun, renderTemplate, type TemplateScope } from "../../src/v1/files-dates";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
@@ -194,13 +196,31 @@ test("copied heal steps retain bindings through HTTP keep, revert, restore and p
     tree: async () => ({ nodes: [identity], texts: [`Checked ${actual}`], values: [{ identity, value: actual }], url: doc.startUrl }),
     snapshot: async () => ({ dom: [] }), fill: async (_node: unknown, value: string) => { actual = value; filled.push(value); }, sleep: async () => {}, notify: async () => {},
   }) as unknown as Driver;
+  const requestFile = path.join(home, "heal-request.json");
+  const responseFile = path.join(home, "heal-response.json");
+  const respond = setInterval(() => {
+    if (existsSync(requestFile) && !existsSync(responseFile)) writeFileSync(responseFile, JSON.stringify({ identity: current }));
+  }, 10);
+  t.after(() => clearInterval(respond));
   const result = await replay(doc, args, driver(current), {
-    runId: "copy-run", settings: { heal: "auto" }, heal: scriptedHeal({ patch: { identity: current, postcondition: doc.steps[0]!.postcondition }, model: { provider: "fixture", name: "fixture" }, prompt: "fixture", rawResponse: "{}" }),
+    runId: "copy-run", settings: { heal: "auto" },
+    heal: await cursorAccountHeal({ BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: home, BAO_HEAL_WAIT_MS: "3000" }, ["pass", args.password]),
   });
   assert.equal(result.status, "passed", result.failure?.reason);
   assert.equal(result.heals.length, 1);
+  const request = JSON.parse(readFileSync(requestFile, "utf8"));
+  assert.deepEqual(request.step, doc.steps[0]);
+  assert.deepEqual(JSON.parse(request.prompt.split("\n").find((line: string) => line.startsWith("Step: ")).slice(6)), doc.steps[0]);
+  const driftFile = path.join(home, "drift.jsonl");
+  appendDriftTrail(driftFile, { before: request.step, private: args.password, note: "see hunter2", marker: STRIPPED_SECRET }, { workflow: doc, args, secrets: ["pass", "secret"] });
+  const drift = JSON.parse(readFileSync(driftFile, "utf8"));
+  assert.deepEqual(drift.before, doc.steps[0]);
+  assert.equal(drift.private, STRIPPED_SECRET);
+  assert.equal(drift.note, "see hunter2");
+  assert.equal(drift.marker, STRIPPED_SECRET);
   const active = structuredClone(result.heals);
-  library.saveRun({ id: "copy-run", workflowId: doc.id, status: result.status, at: 1, steps: result.steps, heals: result.heals, inputs: args });
+  const copiedHeals = result.heals.map((heal) => ({ ...heal, failedStep: request.step }));
+  library.saveRun({ id: "copy-run", workflowId: doc.id, status: result.status, at: 1, steps: result.steps, heals: copiedHeals, inputs: args });
   const saved = library.readRun("copy-run");
   const heal = (saved.heals as HealRecord[])[0]!;
   assert.deepEqual(heal.failedStep, doc.steps[0]);
