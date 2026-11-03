@@ -20,6 +20,8 @@ Collected before replay starts. The CLI and MCP pass the same JSON object the fo
 
 A step refers to an input with `input` and a template `value` such as `"{{username}}"`. `subst` replaces those tokens at replay.
 
+New `cdp-live` recordings name type and select inputs from the first usable field label, accessible name, placeholder, or HTML `name`, in that order. Label text excludes the control and its descendants, so textarea contents and select options do not become part of the name. Names use lowercase ASCII letters, digits, and underscores; a leading digit gets `field_`. When no field name is usable, the existing type-based fallback applies. Duplicate names get counters starting at 2; a base ending in a digit gets an underscore before the counter (`uris_1`, `uris_1_2`). Search text stays literal under the [live recording rules](cdp-live-chrome.md#agent-entry-point). Existing saved input names and template tokens stay unchanged; this does not migrate older workflows. `desktop/test/unit/live-library.test.ts` covers naming and saved-token compatibility.
+
 ## Steps
 
 `action` is `click`, `type`, `key`, `upload`, `drop`, `digits`, `check`, `confirm`, `login`, or `verify`. `surface` is `dom` or `os`. A `confirm` or `login` step waits for the person. Replay does not click or type it. A `verify` step has no target. It re-reads an `expect` after the earlier steps.
