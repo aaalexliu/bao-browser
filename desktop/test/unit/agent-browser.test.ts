@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import net from "node:net";
 import test from "node:test";
 import { AgentBrowserPage, EngineUncertain, pageEngineName, type EvaluationPhase } from "../../src/engines/agent-browser";
 import { CdpLiveDriver } from "../../src/cdp-live/driver";
@@ -15,7 +16,7 @@ async function fakeEngine(mode = "ok", commandMs: number | null = 150, timeouts:
 const fs = require('node:fs');
 const net = require('node:net');
 fs.appendFileSync(${JSON.stringify(output)}, JSON.stringify({pid: process.pid, argv: process.argv, env: process.env}) + '\\n');
-net.createServer(socket => {
+const server = net.createServer(socket => {
   let buffer = '';
   socket.on('data', chunk => {
     buffer += chunk;
@@ -23,16 +24,24 @@ net.createServer(socket => {
     if (line < 0) return;
     const cmd = JSON.parse(buffer.slice(0, line));
     fs.appendFileSync(${JSON.stringify(output)}, JSON.stringify(cmd) + '\\n');
+    if (cmd.action === 'launch' && ${JSON.stringify(mode)} === 'launch-ended') { socket.end(); return; }
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'hang') return;
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'malformed') { socket.end('not-json\\n'); return; }
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'error') { socket.end(JSON.stringify({ id: cmd.id, success: false, error: cmd.text }) + '\\n'); return; }
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'missing-result') { socket.end(JSON.stringify({ id: cmd.id, success: true, data: {} }) + '\\n'); return; }
     if (cmd.action === 'keyboard' && ${JSON.stringify(mode)} === 'ended') { socket.end(); return; }
     if (cmd.action === 'screenshot') fs.writeFileSync(cmd.path, Buffer.from('89504e470d0a1a0a', 'hex'));
-    const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: ${mode === "credential"}} } : cmd.action === 'keyboard' ? {inserted: true} : cmd.action === 'press' ? {pressed: cmd.key} : cmd.action === 'screenshot' ? {path: cmd.path} : cmd.action === 'tab_switch' ? {targetId: ${mode === "wrongtab" ? "'WRONG'" : "cmd.tabId"}} : {};
+    const data = cmd.action === 'evaluate' ? { result: {count: ${mode === "ambiguous" ? 2 : 1}, credential: ${mode === "credential"}} } : cmd.action === 'keyboard' ? {inserted: true} : cmd.action === 'press' ? {pressed: cmd.key} : cmd.action === 'screenshot' ? {path: cmd.path} : cmd.action === 'tab_switch' ? {targetId: ${mode.startsWith("wrongtab") ? "'WRONG'" : "cmd.tabId"}} : {};
     socket.end(JSON.stringify({id: cmd.id, success: true, data}) + '\\n');
   });
-}).listen(process.env.AGENT_BROWSER_SOCKET_DIR + '/bao.sock');
+});
+const socketPath = process.env.AGENT_BROWSER_SOCKET_DIR + '/bao.sock';
+if (${JSON.stringify(mode)}.endsWith('delayed-ready')) {
+  require('node:child_process').spawnSync(process.execPath, ['-e', "require('node:net').createServer().listen(process.argv[1], () => process.kill(process.pid, 'SIGKILL'))", socketPath + '.stale']);
+  fs.renameSync(socketPath + '.stale', socketPath);
+  if (${JSON.stringify(mode)} === 'never-delayed-ready') setInterval(() => {}, 1000);
+  else setTimeout(() => { server.listen(socketPath + '.ready', () => fs.renameSync(socketPath + '.ready', socketPath)); }, 250);
+} else server.listen(socketPath);
 `, { mode: 0o700 });
   let page: AgentBrowserPage;
   try { page = await AgentBrowserPage.open({ endpoint: "ws://127.0.0.1:12345/devtools/browser/test", targetId: "ABC123", ownership: "external", executable, ...timeouts, ...(commandMs === null ? {} : { commandMs }) }); }
@@ -235,6 +244,57 @@ test("live activity resets the idle timeout without extending the absolute cap",
 
 test("a mismatched native tab response stops startup before any page action", async () => {
   await assert.rejects(fakeEngine("wrongtab"), (error: Error) => error instanceof EngineUncertain && error.message.includes("(action-result)"));
+});
+
+for (const mode of ["delayed-ready", "wrongtab-delayed-ready"]) {
+  test(`${mode}: startup waits only before launch bytes are written`, async (t) => {
+    const connect = net.createConnection;
+    let refused = 0;
+    let writes = 0;
+    t.mock.method(net, "createConnection", (...args: Parameters<typeof net.createConnection>) => {
+      const socket = connect(...args);
+      socket.on("error", (error: NodeJS.ErrnoException) => { if (error.code === "ECONNREFUSED") refused++; });
+      const write = socket.write.bind(socket);
+      t.mock.method(socket, "write", (...args: Parameters<typeof socket.write>) => { writes++; return write(...args); });
+      return socket;
+    });
+    if (mode.startsWith("wrongtab")) {
+      await assert.rejects(fakeEngine(mode), (error: Error) => error instanceof EngineUncertain && error.message.includes("(action-result)"));
+    } else {
+      const fake = await fakeEngine(mode);
+      try {
+        assert.equal((await fake.records()).filter((command) => command.action === "launch").length, 1);
+      } finally { await fake.close(); }
+    }
+    assert.ok(refused > 0, "controlled fixture must refuse a pre-write connection");
+    assert.equal(writes, 2, "launch and tab_switch each dispatch once");
+  });
+}
+
+test("startup readiness keeps its five-second deadline without writing a launch", async (t) => {
+  const connect = net.createConnection;
+  let writes = 0;
+  t.mock.method(net, "createConnection", (...args: Parameters<typeof net.createConnection>) => {
+    const socket = connect(...args);
+    const write = socket.write.bind(socket);
+    t.mock.method(socket, "write", (...args: Parameters<typeof socket.write>) => { writes++; return write(...args); });
+    return socket;
+  });
+  await assert.rejects(fakeEngine("never-delayed-ready"), (error: Error) => error instanceof EngineUncertain && error.message.includes("(deadline)"));
+  assert.equal(writes, 0);
+});
+
+test("a launch response ending after write is fatal and never redispatched", async (t) => {
+  const connect = net.createConnection;
+  let writes = 0;
+  t.mock.method(net, "createConnection", (...args: Parameters<typeof net.createConnection>) => {
+    const socket = connect(...args);
+    const write = socket.write.bind(socket);
+    t.mock.method(socket, "write", (...args: Parameters<typeof socket.write>) => { writes++; return write(...args); });
+    return socket;
+  });
+  await assert.rejects(fakeEngine("launch-ended"), (error: Error) => error instanceof EngineUncertain && error.message.includes("(socket-ended)"));
+  assert.equal(writes, 1);
 });
 
 test("a missing native executable and remote endpoint cannot cause a browser launch", async () => {

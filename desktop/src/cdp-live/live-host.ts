@@ -493,7 +493,7 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function reread(state: OpenState): Promise<{ read: LiveRead; facts: PageFacts }> {
     state.epoch += 1;
-    const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1, careful: state.guard.careful });
+    const facts = await state.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
     state.read = buildView(facts, state.epoch, state.guard);
     state.facts = facts;
     return { read: state.read, facts };

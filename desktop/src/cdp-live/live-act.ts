@@ -59,7 +59,7 @@ function planRefusal(reason: string): LiveActOutcome {
 
 /** Marks the control again and keeps the plan only if the mark is still the control the plan named. */
 async function stillMarked(target: Pick<LiveActTarget, "driver" | "read" | "guard">, ref: string, index: number): Promise<boolean> {
-  const marked = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: index, careful: target.guard.careful });
+  const marked = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: index });
   return sameTarget(target.read, buildView(marked, target.read.view.epoch, target.guard), ref);
 }
 

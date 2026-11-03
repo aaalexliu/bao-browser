@@ -172,8 +172,10 @@ export function dumpPage(): PageDump {
       if (chosen && chosen.length < 180) texts.push(chosen);
     }
     const input = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
-    if (input && input.type !== "password" && input.type !== "file") {
-      values.push({ handle, value: input.value });
+    const value = input ? (input.type !== "password" ? input.value : undefined)
+      : el.isContentEditable ? el.innerText : undefined;
+    if (value !== undefined && input?.type !== "file") {
+      values.push({ handle, value });
     }
     const path: { role: string; name?: string }[] = [];
     let parent: Element | null = parentOf(el);
@@ -198,7 +200,7 @@ export function dumpPage(): PageDump {
       cssPath: cssPath(el),
       xpath: xpathOf(el),
       path,
-      value: input && input.type !== "password" ? input.value : undefined,
+      value,
       bbox: (() => {
         const rect = el.getBoundingClientRect();
         return { x: rect.x, y: rect.y, w: rect.width, h: rect.height };

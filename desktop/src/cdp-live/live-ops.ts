@@ -174,6 +174,7 @@ export const LIVE_REPLAY = "live_replay";
 
 export interface LiveControlFact {
   index: number;
+  identity?: string;
   label: string;
   kind: string;
   form?: string;
@@ -230,6 +231,7 @@ type TargetKind = "click" | "field" | "commit" | "credential" | "deny";
 
 interface RefTarget {
   index: number;
+  identity?: string;
   kind: TargetKind;
   selector: string;
   href: string;
@@ -348,7 +350,7 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
       }
     }
     const label = guard.careful === false ? control.label : redactLabel(control.label);
-    if (!label && guard.careful !== false) continue;
+    if (!label && guard.careful !== false && facts.marked !== control.index) continue;
     if (guard.careful !== false && denied(control, guard.deny)) {
       view.stopBeforeConfirm.push({ label });
       byRef.set(ref, { index: control.index, kind: "deny", selector, href, enter: "denied" });
@@ -363,7 +365,7 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
     }
     const kind: TargetKind = control.kind === "field" ? "field" : "click";
     const enter = kind === "field" && guard.careful !== false ? enterRefusal(control, guard, facts) : "";
-    byRef.set(ref, { index: control.index, kind, selector, href, enter });
+    byRef.set(ref, { index: control.index, identity: control.identity, kind, selector, href, enter });
     view.controls.push({ ref, label, kind: control.kind, ...(control.options ? { options: control.options } : {}) });
   }
   return { careful: guard.careful, view, targets: { byRef, passwordRef } };
@@ -389,7 +391,8 @@ export function sameTarget(before: LiveRead, after: LiveRead, ref: string): bool
   if (!was || !now || was.kind !== now.kind || was.href !== now.href || was.enter !== now.enter) return false;
   const label = before.view.controls.find((control) => control.ref === ref);
   const next = after.view.controls.find((control) => control.ref === ref);
-  return !!label && !!next && label.label === next.label && label.kind === next.kind;
+  return !!label && !!next && label.label === next.label && label.kind === next.kind
+    && (!!label.label || (was.identity !== undefined && was.identity === now.identity));
 }
 
 function parsedRef(ref: string): { epoch: number; index: number } | null {
@@ -605,12 +608,14 @@ export function focusStillMarked(ask: { markIndex: number; careful?: boolean }):
  * markIndex marks the control at that index. markHandle marks the control that
  * tree() gave that data-bao-i handle, and the reply says which index it has.
  */
-export function readLivePage(ask: { markIndex: number; markHandle?: string; careful?: boolean }): PageFacts {
+export function readLivePage(ask: { markIndex: number; markHandle?: string }): PageFacts {
   const mark = typeof ask?.markIndex === "number" ? ask.markIndex : -1;
   const handle = typeof ask?.markHandle === "string" ? ask.markHandle : "";
   if (mark >= 0 || handle) {
     document.querySelectorAll("[data-bao-live]").forEach((el) => el.removeAttribute("data-bao-live"));
   }
+  const state = window as typeof window & { __baoLiveIdentity?: WeakMap<Element, string> };
+  const identities = state.__baoLiveIdentity ||= new WeakMap<Element, string>();
   const controls: LiveControlFact[] = [];
   let index = 0;
   let marked = -1;
@@ -654,10 +659,9 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string; care
   const visit = (el: Element, kind: string, field?: { type: string; name: string; autocomplete: string }): void => {
     if (concealed(el)) return;
     const label = textOf(el);
-    if (!label && ask.careful !== false) return;
     if (mark === index || (handle && el.getAttribute("data-bao-i") === handle)) {
       el.setAttribute("data-bao-live", String(index));
-      if (handle) marked = index;
+      marked = index;
     }
     const form = ownerOf(el);
     const search = !!form && (!!form.querySelector("input[type=search]") || !!form.closest("[role=search], search"));
@@ -666,7 +670,8 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string; care
     if (field && /\b(security code|pin|verification code|one-time code|one time code|2fa|two-factor|two factor|otp)\b/.test(blob)) {
       credentialHalt = true;
     }
-    const fact: LiveControlFact = { index, label, kind, form: search ? "search" : "", href, field };
+    if (!identities.has(el)) identities.set(el, crypto.getRandomValues(new Uint32Array(4)).join("-"));
+    const fact: LiveControlFact = { index, identity: identities.get(el), label, kind, form: search ? "search" : "", href, field };
     const button = field && form ? Array.from(form.elements).find(submits) : undefined;
     if (button) fact.formSubmit = textOf(button);
     if (el instanceof HTMLSelectElement) fact.options = resolveLiveOptions(el).options;
@@ -703,7 +708,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string; care
     blocked: credentialHalt ? "login" : "",
     text: (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1500),
     controls,
-    ...(handle ? { marked } : {}),
+    ...(handle || mark >= 0 ? { marked } : {}),
   };
 }
 

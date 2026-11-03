@@ -96,7 +96,7 @@ export class AgentBrowserPage {
       const deadline = Date.now() + 5_000;
       while (!existsSync(page.socketPath) && !page.stopped && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
       if (!existsSync(page.socketPath)) throw new Error(`agent-browser socket unavailable: ${page.stopped ? page.stopReason : "startup deadline exceeded"}`);
-      await page.request("launch", { cdpUrl: options.endpoint, noWebmcp: true });
+      await page.request("launch", { cdpUrl: options.endpoint, noWebmcp: true }, undefined, deadline);
       await page.request("tab_switch", { tabId: options.targetId, pinTab: true });
       return page;
     } catch (error) {
@@ -118,7 +118,7 @@ export class AgentBrowserPage {
     this.idleTimer.unref();
   }
 
-  private async request(action: string, fields: Data = {}, deadlineMs?: number): Promise<Data> {
+  private async request(action: string, fields: Data = {}, deadlineMs?: number, startupUntil?: number): Promise<Data> {
     if (this.stopped) throw new Error(`agent-browser run stopped: ${this.stopReason}`);
     if (this.busy) throw new Error(`agent-browser concurrent ${action} command refused`);
     this.busy = true;
@@ -126,13 +126,16 @@ export class AgentBrowserPage {
     const id = String(++this.sequence);
     try {
       return await new Promise<Data>((resolve, reject) => {
-        const socket = createConnection(this.socketPath);
+        let socket: ReturnType<typeof createConnection>;
+        let retry: NodeJS.Timeout | undefined;
+        let written = false;
         let bytes = Buffer.alloc(0);
         let finished = false;
         const finish = (error?: Error, data?: Data) => {
           if (finished) return;
           finished = true;
           clearTimeout(timer);
+          clearTimeout(retry);
           socket.destroy();
           if (error) reject(error); else resolve(data!);
         };
@@ -144,45 +147,65 @@ export class AgentBrowserPage {
           finish(new EngineUncertain(action, cause));
         };
         // Native navigation waits up to 25 seconds even when its general wait env is shorter.
-        const timer = setTimeout(() => uncertain("deadline"), this.options.commandMs ?? deadlineMs ?? (action === "navigate" ? 30_000 : 12_000));
-        socket.once("error", () => uncertain("socket-error"));
-        socket.once("end", () => { if (!finished) uncertain("socket-ended"); });
-        socket.once("connect", () => socket.write(JSON.stringify({ ...fields, id, action }) + "\n"));
-        socket.on("data", (chunk) => {
-          bytes = Buffer.concat([bytes, chunk]);
-          if (bytes.length > MAX_OUTPUT) return uncertain("output-limit");
-          const newline = bytes.indexOf(10);
-          if (newline < 0) return;
-          try {
-            const reply: unknown = JSON.parse(bytes.subarray(0, newline).toString("utf8"));
-            if (!reply || typeof reply !== "object") return uncertain("response-shape");
-            const value = reply as Data;
-            if (value.id !== id) return uncertain("response-id");
-            if (typeof value.success !== "boolean") return uncertain("response-shape");
-            if (!value.success) {
-              // Upstream errors can echo page text or typed values. Never include them in Bao logs.
-              this.stopped = true;
-              this.stopReason = `${action} failed`;
-              this.child?.kill("SIGKILL");
-              return finish(new Error(`agent-browser ${action} failed; run stopped (no retry)`));
+        const commandMs = this.options.commandMs ?? deadlineMs ?? (action === "navigate" ? 30_000 : 12_000);
+        let timer = setTimeout(() => uncertain("deadline"), startupUntil === undefined ? commandMs : Math.max(1, startupUntil - Date.now()));
+        const connect = () => {
+          if (finished) return;
+          socket = createConnection(this.socketPath);
+          socket.once("error", (error: NodeJS.ErrnoException) => {
+            if (!written && startupUntil !== undefined && error.code === "ECONNREFUSED" && !this.stopped) {
+              if (Date.now() >= startupUntil) return uncertain("deadline");
+              socket.destroy();
+              retry = setTimeout(connect, 20);
+            } else uncertain("socket-error");
+          });
+          socket.once("end", () => { if (!finished) uncertain("socket-ended"); });
+          socket.once("connect", () => {
+            if (finished) return;
+            if (startupUntil !== undefined) {
+              clearTimeout(timer);
+              timer = setTimeout(() => uncertain("deadline"), commandMs);
             }
-            if (!value.data || typeof value.data !== "object" || Array.isArray(value.data)) return uncertain("response-shape");
-            const data = value.data as Data;
-            const lifecycle = data.lifecycle as Data | undefined;
-            if (data.dialogOpened === true || data.dialogBlocked === true) return uncertain("dialog");
-            if (data.tabGone === true) return uncertain("tab-gone");
-            if (data.revived === true) return uncertain("renderer-revived");
-            if (value.warnings) return uncertain("warning");
-            if (action !== "launch" && (lifecycle?.launched === true || lifecycle?.relaunchedBrowser === true)) return uncertain("browser-relaunch");
-            const expected: Record<string, string> = { click: "clicked", press: "pressed", screenshot: "path" };
-            const field = expected[action];
-            if ((action === "tab_switch" && data.targetId !== this.options.targetId)
-              || (field && typeof data[field] !== "string")
-              || (action === "evaluate" && !("result" in data))
-              || (action === "keyboard" && data.inserted !== true)) return uncertain("action-result");
-            finish(undefined, data);
-          } catch { uncertain("invalid-json"); }
-        });
+            written = true;
+            socket.write(JSON.stringify({ ...fields, id, action }) + "\n");
+          });
+          socket.on("data", (chunk) => {
+            bytes = Buffer.concat([bytes, chunk]);
+            if (bytes.length > MAX_OUTPUT) return uncertain("output-limit");
+            const newline = bytes.indexOf(10);
+            if (newline < 0) return;
+            try {
+              const reply: unknown = JSON.parse(bytes.subarray(0, newline).toString("utf8"));
+              if (!reply || typeof reply !== "object") return uncertain("response-shape");
+              const value = reply as Data;
+              if (value.id !== id) return uncertain("response-id");
+              if (typeof value.success !== "boolean") return uncertain("response-shape");
+              if (!value.success) {
+                // Upstream errors can echo page text or typed values. Never include them in Bao logs.
+                this.stopped = true;
+                this.stopReason = `${action} failed`;
+                this.child?.kill("SIGKILL");
+                return finish(new Error(`agent-browser ${action} failed; run stopped (no retry)`));
+              }
+              if (!value.data || typeof value.data !== "object" || Array.isArray(value.data)) return uncertain("response-shape");
+              const data = value.data as Data;
+              const lifecycle = data.lifecycle as Data | undefined;
+              if (data.dialogOpened === true || data.dialogBlocked === true) return uncertain("dialog");
+              if (data.tabGone === true) return uncertain("tab-gone");
+              if (data.revived === true) return uncertain("renderer-revived");
+              if (value.warnings) return uncertain("warning");
+              if (action !== "launch" && (lifecycle?.launched === true || lifecycle?.relaunchedBrowser === true)) return uncertain("browser-relaunch");
+              const expected: Record<string, string> = { click: "clicked", press: "pressed", screenshot: "path" };
+              const field = expected[action];
+              if ((action === "tab_switch" && data.targetId !== this.options.targetId)
+                || (field && typeof data[field] !== "string")
+                || (action === "evaluate" && !("result" in data))
+                || (action === "keyboard" && data.inserted !== true)) return uncertain("action-result");
+              finish(undefined, data);
+            } catch { uncertain("invalid-json"); }
+          });
+        };
+        connect();
       });
     } finally { this.busy = false; this.touch(); }
   }
