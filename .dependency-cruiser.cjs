@@ -31,7 +31,7 @@ module.exports = {
     includeOnly: "^(desktop/src|extension/src|src|web/src)/",
     exclude: "\\.test\\.tsx?$",
     doNotFollow: { path: "node_modules" },
-    tsConfig: { fileName: "tsconfig.desktop.json" },
+    tsConfig: { fileName: "web/tsconfig.json" },
     tsPreCompilationDeps: true,
     baseline: { staleEntriesSeverity: "error" },
     enhancedResolveOptions: { exportsFields: ["exports"], conditionNames: ["import", "require", "node", "default"] },

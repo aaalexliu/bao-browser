@@ -69,6 +69,12 @@ rule/source/target exceptions. The product rules cover all directions,
 including desktop's imports of legacy types/masking helpers and the extension's
 host grant helper. Both `views.ts` and `view-types.ts` are protected.
 
+Both graph passes use `web/tsconfig.json` to resolve the existing `@/*`
+imports from the web product. Other products use relative imports. Reusing the
+web mapping keeps alias imports in the graph instead of dropping unresolved
+edges at the source-root filter. Regression tests cover a web runtime cycle
+through `@/` and forbidden web imports through relative and alias paths.
+
 `.dependency-cruiser.runtime.cjs` checks a second graph with type-only edges
 removed. Runtime cycles have no baseline and must stay at zero. Type-only
 cycles are not runtime initialization bugs and are not banned here. Static
