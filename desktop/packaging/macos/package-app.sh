@@ -94,6 +94,7 @@ bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"
 codesign --force --sign "$IDENTITY" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
+node "$ROOT/desktop/packaging/macos/prove-apple-events.mjs" "$APP"
 hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
 echo "WROTE $APP"
 echo "WROTE $DIST/Bao.dmg"

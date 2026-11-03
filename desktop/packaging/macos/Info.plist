@@ -12,5 +12,7 @@
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSMultipleInstancesProhibited</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Bao opens Chrome's remote-debugging page so your agent can use your Chrome.</string>
 </dict>
 </plist>
