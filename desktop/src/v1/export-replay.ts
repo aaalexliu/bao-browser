@@ -1,8 +1,8 @@
 // One-way export to a Chrome DevTools Recorder / puppeteer-replay JSON file.
 // Anchor locators have no selector in that format, so they are left out.
 
-import { subst, type ReplayArgs, type StepLocator, type WorkflowV2 } from "./schema";
-import { NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
+import { subst, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
 
 export interface PuppeteerReplayFile {
   title: string;
@@ -28,8 +28,14 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
       assertedEvents: [{ type: "navigation" }],
     });
   }
+  const needsValue = (step: WorkflowStep): boolean => {
+    if (stepNeedsSecretValue(step, workflow, args)) return true;
+    const source = step.forEach?.over;
+    if (source?.kind === "input" && [args[source.name], workflow.inputs.find((input) => input.name === source.name)?.default].some(hasStrippedSecret)) return true;
+    return step.forEach?.steps.some(needsValue) ?? false;
+  };
   for (const step of workflow.steps) {
-    if (stepNeedsSecretValue(step, workflow, args)) throw new Error(NEEDS_SECRET_VALUE);
+    if (needsValue(step)) throw new Error(NEEDS_SECRET_VALUE);
     const selectors = selectorChains(step.locators);
     if (step.action === "navigate") continue;
     if (step.action === "click" || step.action === "check") {

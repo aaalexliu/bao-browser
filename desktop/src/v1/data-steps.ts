@@ -247,11 +247,21 @@ export function parseTable(value: unknown): Record<string, string>[] {
   return [];
 }
 
-export function tableToCsv(columns: string[], rows: Record<string, string>[]): string {
+function csvText(rows: string[][]): string {
   const esc = (value: string) => /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-  const lines = [columns.map(esc).join(",")];
-  for (const row of rows) lines.push(columns.map((column) => esc(row[column] ?? "")).join(","));
-  return `${lines.join("\n")}\n`;
+  return rows.map((row) => row.map(esc).join(",")).join("\n") + "\n";
+}
+
+export function tableToCsv(columns: string[], rows: Record<string, string>[]): string {
+  return csvText([columns, ...rows.map((row) => columns.map((column) => row[column] ?? ""))]);
+}
+
+export function mapCsv(text: string, map: (value: string, column: string) => string): string {
+  const rows = csvRows(text);
+  const header = rows.findIndex((row) => row.some((cell) => cell.trim()));
+  if (header < 0 || rows.length <= header + 1) return text;
+  const columns = rows[header]!.map((cell, index) => sanitizeName(cell, index));
+  return csvText(rows.map((row, index) => index <= header ? row : row.map((cell, column) => map(cell, columns[column] ?? ""))));
 }
 
 function csvRows(text: string): string[][] {

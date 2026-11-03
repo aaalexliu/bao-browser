@@ -172,9 +172,10 @@ async function main(): Promise<void> {
       banner: { during, afterClose: after },
       runs,
     };
-    await writeFile(path.join(evidence, "cdp-live-run.json"), `${JSON.stringify(scrubSaved(body), null, 2)}\n`);
+    const savedBody = scrubSaved(body);
+    await writeFile(path.join(evidence, "cdp-live-run.json"), `${JSON.stringify(savedBody, null, 2)}\n`);
     progress("wrote .evidence/cdp-live-run.json");
-    process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(savedBody, null, 2)}\n`);
   } finally {
     cdp.close();
   }

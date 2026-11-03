@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { liveReplayArgs } from "../../src/cdp-live/live-replay";
-import { applyCapturedData, type DataEvent } from "../../src/v1/data-steps";
+import { applyCapturedData, bindStep, parseTable, type DataEvent } from "../../src/v1/data-steps";
 import { replay, type Driver } from "../../src/v1/replay";
 import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
 import { validateWorkflow, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
@@ -108,9 +108,14 @@ test("all binding representations strip across workflow, trail, run, version and
       const saved = save() as WorkflowV2;
       assert.equal(JSON.stringify(saved).includes(PRIVATE), false, `${name} / ${surface}`);
       const source = saved.inputs.find((input) => input.name === (name.includes("{{") || name === "recorded" ? "rows" : "value"))!;
-      assert.equal(source.default, STRIPPED_SECRET, `${name} / ${surface}`);
+      const table = source.type === "table";
+      assert.equal(source.default, table ? `password\n${STRIPPED_SECRET}\n${STRIPPED_SECRET}\n` : STRIPPED_SECRET, `${name} / ${surface}`);
       const target = saved.steps[0]!.forEach?.steps[0] ?? saved.steps[0]!;
-      assert.equal(target.unresolved?.reason, NEEDS_SECRET_VALUE, `${name} / ${surface}`);
+      assert.equal(target.unresolved?.reason, table ? undefined : NEEDS_SECRET_VALUE, `${name} / ${surface}`);
+      if (table) {
+        assert.deepEqual(parseTable(source.default), [{ password: STRIPPED_SECRET }, { password: STRIPPED_SECRET }]);
+        assert.equal(bindStep(target, parseTable(source.default)[0]!, 0).value, STRIPPED_SECRET);
+      }
       assert.deepEqual(validateWorkflow(saved), [], `${name} / ${surface}`);
       assert.deepEqual(scrubSaved(saved), saved, `${name} / ${surface}`);
       assert.deepEqual(doc, original, `${name} / ${surface} mutated live data`);
@@ -156,6 +161,123 @@ test("CLI cleanup handles the binding matrix in JSON and JSONL without changing 
   assert.deepEqual(cli(true).files, []);
 });
 
+test("cell stripping preserves raw headers, quoted cells and harmless duplicate values", () => {
+  const csv = '"Card\nholder",note\n"Ada ""Enchantress"" Lovelace","leave ""at"", door"\n0,0\n';
+  const rows = parseTable(csv);
+  const column = Object.keys(rows[0]!)[0]!;
+  const doc = workflow([loop([entry({ value: `{{ row.${column} }}`, identity: { ...FIELD, autocomplete: "cc-name" } })])], [{ name: "rows", type: "table", default: csv }]);
+  const original = structuredClone(doc);
+  const saved = scrubSaved(doc);
+  assert.equal(saved.inputs[0]!.default, `"Card\nholder",note\n${STRIPPED_SECRET},"leave ""at"", door"\n${STRIPPED_SECRET},0\n`);
+  assert.deepEqual(parseTable(saved.inputs[0]!.default), rows.map((row) => ({ ...row, [column]: STRIPPED_SECRET })));
+  assert.deepEqual(scrubSaved(saved), saved);
+  assert.deepEqual(doc, original);
+});
+
+test("a sensitive target bound to an entire table strips cells and refuses marker dispatch", async () => {
+  for (const explicit of [true, false]) {
+    const doc = workflow([entry({ sensitive: true, ...(explicit ? { input: "rows" } : { value: "{{rows}}" }) })], [{ name: "rows", type: "table", default: "holder,note\nAda Lovelace,leave at door\n" }]);
+    doc.version = 3;
+    const saved = scrubSaved(doc);
+    assert.equal(saved.inputs[0]!.default, `holder,note\n${STRIPPED_SECRET},${STRIPPED_SECRET}\n`);
+    await assertStopped(saved);
+  }
+});
+
+test("runtime payload names do not inherit schema metadata exemptions", (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-numeric-metadata-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  for (const name of ["index", "version", "id", "type", "name"]) {
+    const doc = workflow([entry({ input: name, value: `{{${name}}}`, identity: { ...FIELD, autocomplete: "one-time-code" } })], [{ name, type: "number" }]);
+    const args = { [name]: 0, ordinary: -17 };
+    library.save(doc);
+    library.savePublicInputs(doc.id, args);
+    assert.deepEqual(library.readPublicInputs(doc.id), { [name]: STRIPPED_SECRET, ordinary: -17 });
+    assert.deepEqual(args, { [name]: 0, ordinary: -17 });
+    assert.equal(library.read(doc.id).steps[0]!.value, `{{${name}}}`);
+  }
+});
+
+test("numeric captured values scrub copies while preserving schema, enums and step indices", () => {
+  const cases: [unknown, unknown, (string | number)[]][] = [
+    [0, STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET, 2, "2", 483921, "483921", -17, "-17"]],
+    [2, STRIPPED_SECRET, [0, "0", STRIPPED_SECRET, STRIPPED_SECRET, 483921, "483921", -17, "-17"]],
+    [483921, STRIPPED_SECRET, [0, "0", 2, "2", STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"]],
+    ["483921", STRIPPED_SECRET, [0, "0", 2, "2", STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"]],
+    [[0, [2, "483921"]], [STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET]], [STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"]],
+  ];
+  for (const [value, expectedValue, expectedCopies] of cases) {
+    const captured = {
+      schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom",
+      identity: { ...FIELD, inputType: "password" }, sensitive: true, value,
+      copies: [0, "0", 2, "2", 483921, "483921", -17, "-17"],
+    };
+    const original = structuredClone(captured);
+    const saved = scrubSaved(captured);
+    assert.deepEqual(saved, {
+      ...captured,
+      value: expectedValue,
+      copies: expectedCopies,
+      unresolved: { reason: NEEDS_SECRET_VALUE },
+    });
+    assert.deepEqual(captured, original);
+  }
+});
+
+test("cell markers retain CSV shape and let a harmless column run before plain secret failure", async () => {
+  for (const template of ["{{row.code}}", "{{ row.code }}"]) {
+    const body = [entry({ id: "note", value: "{{ row.note }}" }), entry({ id: "code", index: 1, value: template, identity: { ...FIELD, autocomplete: "one-time-code" } })];
+    const doc = workflow([loop(body)], [{ name: "rows", type: "table", default: "note,code\nGrace Hopper,0\nordinary,483921\n" }]);
+    const original = structuredClone(doc);
+    const saved = scrubSaved(doc);
+    assert.equal(saved.inputs[0]!.default, `note,code\nGrace Hopper,${STRIPPED_SECRET}\nordinary,${STRIPPED_SECRET}\n`);
+    assert.deepEqual(parseTable(saved.inputs[0]!.default), [{ note: "Grace Hopper", code: STRIPPED_SECRET }, { note: "ordinary", code: STRIPPED_SECRET }]);
+    const row = parseTable(saved.inputs[0]!.default)[0]!;
+    assert.equal(bindStep(saved.steps[0]!.forEach!.steps[0]!, row, 0).value, "Grace Hopper");
+    assert.equal(bindStep(saved.steps[0]!.forEach!.steps[1]!, row, 0).value, STRIPPED_SECRET);
+    const calls: string[] = [];
+    const driver = {
+      tree: async () => ({ nodes: [FIELD], texts: [], url: doc.startUrl }), snapshot: async () => ({}),
+      fill: async (_node: unknown, value: string) => { calls.push(value); },
+    } as unknown as Driver;
+    const run = await replay(saved, liveReplayArgs(saved, {}), driver, {
+      heal: { available: () => true, propose: async () => { calls.push("heal"); return null; } },
+    });
+    assert.equal(run.status, "failed");
+    assert.equal(run.failure?.reason, NEEDS_SECRET_VALUE);
+    assert.deepEqual(calls, ["Grace Hopper"]);
+    assert.deepEqual(doc, original);
+    const historical = structuredClone(saved);
+    historical.inputs[0]!.default = STRIPPED_SECRET;
+    await assertStopped(historical);
+  }
+});
+
+test("array tables keep their shape and mark only bound secret cells", () => {
+  const doc = workflow([loop([entry({ value: "{{ row.code }}", identity: { ...FIELD, autocomplete: "one-time-code" } })])], [{ name: "rows", type: "table" }]);
+  const args = { rows: [{ note: "Grace Hopper", code: 0 }, { note: "keep this", code: "483921" }], ordinary: -17 };
+  const original = structuredClone(args);
+  const saved = scrubSaved(args, { workflow: doc, args });
+  assert.deepEqual(saved, { rows: [{ note: "Grace Hopper", code: STRIPPED_SECRET }, { note: "keep this", code: STRIPPED_SECRET }], ordinary: -17 });
+  const rows = parseTable(saved.rows);
+  assert.deepEqual(rows, [{ note: "Grace Hopper", code: STRIPPED_SECRET }, { note: "keep this", code: STRIPPED_SECRET }]);
+  assert.equal(bindStep(doc.steps[0]!.forEach!.steps[0]!, rows[0]!, 0).value, STRIPPED_SECRET);
+  assert.deepEqual(args, original);
+});
+
+test("array table cells use the binder's normalized column names", () => {
+  const rows = [{ "One-time code": 0, note: "0" }, { "One-time code": 483921, note: "keep this" }];
+  const column = Object.keys(parseTable(rows)[0]!)[0]!;
+  const doc = workflow([loop([entry({ value: `{{ row.${column} }}`, identity: { ...FIELD, autocomplete: "one-time-code" } })])], [{ name: "rows", type: "table" }]);
+  const args = { rows };
+  const original = structuredClone(args);
+  const saved = scrubSaved(args, { workflow: doc, args });
+  assert.deepEqual(saved.rows, rows.map((row) => ({ ...row, "One-time code": STRIPPED_SECRET })));
+  assert.deepEqual(parseTable(saved.rows), rows.map((row) => ({ [column]: STRIPPED_SECRET, note: row.note })));
+  assert.deepEqual(args, original);
+});
+
 test("ordinary, unrelated, computed and extract-backed row sources retain their defaults", async () => {
   const inputs: WorkflowInput[] = [
     { name: "rows", type: "table", default: CSV },
@@ -174,7 +296,7 @@ test("ordinary, unrelated, computed and extract-backed row sources retain their 
   }
   const sensitive = workflow([loop([entry({ value: "{{row.password}}", sensitive: true })])], inputs);
   const saved = scrubSaved(sensitive);
-  assert.equal(saved.inputs[0]!.default, STRIPPED_SECRET);
+  assert.equal(saved.inputs[0]!.default, `password\n${STRIPPED_SECRET}\n${STRIPPED_SECRET}\n`);
   assert.deepEqual(saved.inputs.slice(1), inputs.slice(1));
   const calls: string[] = [];
   const driver = { tree: async () => ({ nodes: [FIELD], texts: [], url: ordinary.startUrl }), snapshot: async () => ({}), fill: async (_node: unknown, value: string) => { calls.push(value); } } as unknown as Driver;

@@ -86,12 +86,6 @@ export async function liveMcpMain(): Promise<void> {
   }
 
   function record(event: Record<string, unknown>): void {
-    const identity = event.identity as (Identity & { inputType?: string }) | undefined;
-    if (identity && "inputType" in identity) {
-      const copy = { ...identity };
-      delete copy.inputType;
-      event = { ...event, identity: copy };
-    }
     appendFileSync(trailPath, JSON.stringify(scrubSaved({ id: `e${seq++}`, ...event })) + "\n");
   }
 

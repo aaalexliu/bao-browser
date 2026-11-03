@@ -258,8 +258,9 @@ async function main(): Promise<void> {
     const report = await diagnose(cdp);
     const dir = path.join(process.cwd(), ".evidence");
     await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, "login-diff.json"), `${JSON.stringify(scrubSaved(report), null, 2)}\n`);
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    const savedReport = scrubSaved(report);
+    await writeFile(path.join(dir, "login-diff.json"), `${JSON.stringify(savedReport, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(savedReport, null, 2)}\n`);
   } finally {
     cdp?.close();
     releaseCdpLock(AGENT);

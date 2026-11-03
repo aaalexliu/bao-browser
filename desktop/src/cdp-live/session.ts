@@ -1049,10 +1049,11 @@ async function runGuarded(
   }
   await liveLog.setSteps(steps.map((step) => ({ name: step.name, status: step.name, ms: step.ms })));
   await liveLog.flush(status, code || "", body.host);
-  await writeFile(outFile, `${JSON.stringify(scrubSaved(body), null, 2)}\n`);
+  const savedBody = scrubSaved(body);
+  await writeFile(outFile, `${JSON.stringify(savedBody, null, 2)}\n`);
   await writeFile(draftFile, `${JSON.stringify(scrubSaved(draft), null, 2)}\n`);
   progress(`wrote ${path.basename(outFile)}`);
-  process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(savedBody, null, 2)}\n`);
   if (status !== "passed") process.exitCode = 2;
 }
 

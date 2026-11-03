@@ -47,9 +47,11 @@ function cli(home: string, ...args: string[]): string {
 test("Library saves use structural bindings even when text inputs have no default", (t) => {
   const home = fixtureHome(t, "bao-secret-context-library-");
   const library = new Library(home);
-  const structures: [string, Partial<WorkflowStep>, string][] = [
+  const structures: [string, Partial<WorkflowStep>, string | number][] = [
     ["cc-name", { identity: { ...FIELD, autocomplete: "section-payment billing cc-name" } }, PRIVATE],
     ["otp", { identity: { ...FIELD, autocomplete: "one-time-code" } }, "483921"],
+    ["numeric-otp", { identity: { ...FIELD, autocomplete: "one-time-code" } }, 483921],
+    ["zero-otp", { identity: { ...FIELD, autocomplete: "one-time-code" } }, 0],
     ["password", { identity: { ...FIELD, inputType: "password" } }, "unusual-private-phrase"],
     ["sensitive", { sensitive: true }, "private-memo-value"],
   ];
@@ -64,11 +66,11 @@ test("Library saves use structural bindings even when text inputs have no defaul
       if (nested) doc.inputs.push({ name: "rows", type: "table" });
       const bound = binding === "row" ? "rows" : "value";
       const args = { value: binding === "row" ? "unrelated value" : secret, ordinary: "keep this", ...(nested ? { rows: binding === "row" ? `cell\n${secret}\n` : "cell\npublic row\n" } : {}) };
-      const hidden = args[bound];
-      const expected = { ...args, [bound]: STRIPPED_SECRET };
+      const hidden = secret;
+      const expected = { ...args, [bound]: binding === "row" ? `cell\n${STRIPPED_SECRET}\n` : STRIPPED_SECRET };
       const run: StoredRun = {
-        id: `run-${doc.id}`, workflowId: doc.id, status: "failed", at: 1, inputs: args,
-        steps: [{ id: "entry", reason: `Observed ${hidden}` }], heals: [], failure: { reason: `Rejected ${hidden}` },
+        id: `run-${doc.id}`, workflowId: doc.id, status: "failed", at: 1, inputs: Object.fromEntries(Object.entries(args).map(([key, value]) => [key, String(value)])),
+        steps: [{ id: "entry", reason: String(hidden) }], heals: [], failure: { reason: String(hidden) },
       };
       const original = structuredClone({ doc, args, run });
       library.save(doc);
@@ -77,8 +79,8 @@ test("Library saves use structural bindings even when text inputs have no defaul
       const saved = library.readRun(run.id);
       const label = `${kind} / ${binding}`;
       assert.deepEqual(saved.inputs, expected, label);
-      assert.deepEqual(saved.failure, { reason: `Rejected ${STRIPPED_SECRET}` }, label);
-      assert.deepEqual(saved.steps, [{ id: "entry", reason: `Observed ${STRIPPED_SECRET}` }], label);
+      assert.deepEqual(saved.failure, { reason: STRIPPED_SECRET }, label);
+      assert.deepEqual(saved.steps, [{ id: "entry", reason: STRIPPED_SECRET }], label);
       assert.deepEqual(library.readPublicInputs(doc.id), expected, label);
       assert.deepEqual(library.read(doc.id), JSON.parse(JSON.stringify(doc)), label);
       assert.deepEqual({ doc, args, run }, original, `${label} changed live values`);
@@ -92,14 +94,46 @@ test("row context strips saved cell copies as well as the source table", (t) => 
   const doc = workflow("cells", [entry({ id: "loop", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [entry({ value: "{{ row.holder }}", identity: { ...FIELD, autocomplete: "cc-name" } })] } })]);
   doc.inputs = [{ name: "rows", type: "table" }];
   library.save(doc);
-  const args = { rows: `holder,note\n${PRIVATE},ordinary\nGrace Hopper,keep this\n` };
+  const args = { rows: `holder,note\n${PRIVATE},ordinary\nKatherine Johnson,Grace Hopper\n` };
   const run: StoredRun = { id: "cells", workflowId: doc.id, at: 1, status: "passed", inputs: args, steps: [{ id: "entry", reason: PRIVATE }], heals: [], receipts: [{ actual: "Grace Hopper", expected: PRIVATE }] };
   library.saveRun(run);
   const saved = library.readRun(run.id);
-  assert.deepEqual(saved.inputs, { rows: STRIPPED_SECRET });
+  assert.deepEqual(saved.inputs, { rows: `holder,note\n${STRIPPED_SECRET},ordinary\n${STRIPPED_SECRET},Grace Hopper\n` });
   assert.deepEqual(saved.steps, [{ id: "entry", reason: STRIPPED_SECRET }]);
-  assert.deepEqual(saved.receipts, [{ actual: STRIPPED_SECRET, expected: STRIPPED_SECRET }]);
+  assert.deepEqual(saved.receipts, [{ actual: "Grace Hopper", expected: STRIPPED_SECRET }]);
   assert.equal(args.rows.includes(PRIVATE), true);
+});
+
+test("numeric structural values scrub copied numbers and strings without changing metadata or live args", (t) => {
+  const home = fixtureHome(t, "bao-secret-numeric-context-");
+  const library = new Library(home);
+  for (const secret of [483921, 0, 2, "483921", "0", "type", "dom", "bao.workflow/v2"]) {
+    const doc = workflow(`numeric-${String(secret).replace(/\W/g, "-")}-${typeof secret}`, [entry({ input: "value", identity: { ...FIELD, autocomplete: "one-time-code" } })]);
+    doc.inputs[0]!.type = "number";
+    const args = { value: secret, ordinary: -17 };
+    const copies = { numeric: Number.isFinite(Number(secret)) ? Number(secret) : secret, text: String(secret), ordinary: -17, ordinaryText: "-17" };
+    const run: StoredRun = { id: doc.id, workflowId: doc.id, at: 1, status: "passed", inputs: Object.fromEntries(Object.entries(args).map(([key, value]) => [key, String(value)])), steps: [copies], heals: [] };
+    const original = structuredClone({ doc, args, run });
+    library.save(doc);
+    library.saveRun(run);
+    library.savePublicInputs(doc.id, args);
+    assert.deepEqual(library.readRun(run.id).inputs, { value: STRIPPED_SECRET, ordinary: "-17" });
+    assert.deepEqual(library.readRun(run.id).steps, [{ numeric: STRIPPED_SECRET, text: STRIPPED_SECRET, ordinary: -17, ordinaryText: "-17" }]);
+    assert.deepEqual(library.readPublicInputs(doc.id), { value: STRIPPED_SECRET, ordinary: -17 });
+    assert.deepEqual(library.read(doc.id), doc);
+    assert.deepEqual({ doc, args, run }, original);
+  }
+
+  const doc = workflow("array-context", [entry({ input: "value", identity: { ...FIELD, autocomplete: "one-time-code" } })]);
+  const args = { value: [0, [2, "483921"]], ordinary: -17 };
+  const payload = { schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom", inputs: args, copies: [0, "0", 2, "2", 483921, "483921", -17, "-17"] };
+  const original = structuredClone({ args, payload });
+  assert.deepEqual(scrubSaved(payload, { workflow: doc, args }), {
+    schema: "bao.workflow/v2", version: 2, index: 0, action: "type", surface: "dom",
+    inputs: { value: [STRIPPED_SECRET, [STRIPPED_SECRET, STRIPPED_SECRET]], ordinary: -17 },
+    copies: [STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, STRIPPED_SECRET, -17, "-17"],
+  });
+  assert.deepEqual({ args, payload }, original);
 });
 
 test("without workflow context, ordinary names and short codes stay outside heuristic detection", (t) => {
@@ -185,6 +219,43 @@ test("CLI associates historical artifacts with workflows and skips legacy receip
   assert.match(help, /new receipts.*before hashing/i);
 });
 
+test("CLI strips numeric bound args and their copies but keeps structural numbers", (t) => {
+  const home = fixtureHome(t, "bao-secret-numeric-cli-");
+  const library = new Library(home);
+  const doc = workflow("numeric-history", [entry({ input: "value", identity: { ...FIELD, autocomplete: "one-time-code" } })]);
+  library.save(doc);
+  const relative = "reports/numeric.json";
+  mkdirSync(path.join(home, "reports"), { recursive: true });
+  const original = JSON.stringify({ workflowId: doc.id, version: 2, index: 0, args: { value: 0, ordinary: -17 }, actual: 0, expected: "0" });
+  writeFileSync(path.join(home, relative), original);
+  assert.deepEqual((JSON.parse(cli(home, "--home", home)) as ScrubReport).files, [relative]);
+  assert.equal(readFileSync(path.join(home, relative), "utf8"), original);
+  const written = JSON.parse(cli(home, "--home", home, "--write")) as ScrubReport;
+  assert.deepEqual(written.files, [relative]);
+  assert.equal(readFileSync(path.join(written.backup!, relative), "utf8"), original);
+  assert.deepEqual(json(home, relative), { workflowId: doc.id, version: 2, index: 0, args: { value: STRIPPED_SECRET, ordinary: -17 }, actual: STRIPPED_SECRET, expected: STRIPPED_SECRET });
+});
+
+test("ReceiptLog scrubs string read-backs of numeric OTP args before hashing", (t) => {
+  const home = fixtureHome(t, "bao-secret-numeric-receipts-");
+  const doc = workflow("numeric-receipts", [entry({ input: "value", identity: { ...FIELD, autocomplete: "one-time-code" } })]);
+  const file = path.join(home, "runs", "numeric.receipts.jsonl");
+  const receipts: Receipt[] = [];
+  for (const secret of [0, 483921, "483921"]) {
+    const args = { value: secret, ordinary: -17 };
+    const body: ReceiptBody = { kind: "read-back", ts: 2, runId: "numeric", workflowId: doc.id, stepId: "entry", source: "text", expected: String(secret), actual: String(secret), pass: true };
+    const original = structuredClone({ body, args });
+    const saved = new ReceiptLog(file).append(body, { workflow: doc, args });
+    assert.equal(saved.expected, STRIPPED_SECRET);
+    assert.equal(saved.actual, STRIPPED_SECRET);
+    assert.equal(saved.ts, 2);
+    receipts.push(saved);
+    assert.equal(verifyReceiptChain(receipts), true);
+    assert.deepEqual({ body, args }, original);
+  }
+  assert.deepEqual(readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line)), receipts);
+});
+
 test("ReceiptLog strips before hashing, preserves live bodies, and extends legacy chains without rewriting", (t) => {
   const home = fixtureHome(t, "bao-secret-context-receipts-");
   const file = path.join(home, "runs", "future.receipts.jsonl");
@@ -218,6 +289,41 @@ test("ReceiptLog strips before hashing, preserves live bodies, and extends legac
   assert.equal(after.slice(0, legacyBytes.length), legacyBytes);
   assert.deepEqual(after.trim().split("\n").map((line) => JSON.parse(line)), [legacy, appended]);
   assert.equal(verifyReceiptChain([legacy, appended]), true);
+});
+
+test("MCP keeps numeric OTP args live while stripping paused and resumed artifacts", async (t) => {
+  const home = fixtureHome(t, "bao-secret-numeric-mcp-");
+  const library = new Library(home);
+  for (const [index, secret] of [0, 483921, "483921"].entries()) {
+    const doc = { ...workflow(`numeric-mcp-${index}`, [entry({ input: "value", value: "{{value}}", identity: { ...FIELD, autocomplete: "one-time-code" } })]), driver: "cdp-live" as const };
+    library.save(doc);
+    const seen: Record<string, unknown>[] = [];
+    const live: LiveReplayer = async (_workflow, inputs) => {
+      seen.push(structuredClone(inputs));
+      const paused = seen.length === 1;
+      return {
+        runId: `${doc.id}-${paused ? "paused" : "resumed"}`, status: paused ? "paused" : "passed",
+        steps: [{ id: "entry", status: paused ? "paused" : "passed" }],
+        heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
+      };
+    };
+    const inputs = { value: secret, ordinary: -17 };
+    const original = structuredClone(inputs);
+    const paused = await runWorkflow(library, { id: doc.id, inputs }, undefined, { live });
+    assert.equal(paused.outcome, "needs_human");
+    assert.equal(typeof paused.resume, "string");
+    assert.deepEqual(json(home, `resumes/${paused.resume}.json`).publicInputs, { value: STRIPPED_SECRET, ordinary: -17 });
+    assert.deepEqual(library.readRun(`${doc.id}-paused`).inputs, { value: STRIPPED_SECRET, ordinary: "-17" });
+    const fresh = { value: 912345 };
+    const resumed = await runWorkflow(library, { resume: paused.resume, inputs: fresh }, undefined, { live });
+    assert.equal(resumed.outcome, "ok", resumed.reason);
+    assert.deepEqual(getRun(library, `${doc.id}-resumed`).receipts, [{ id: "entry", status: "passed", readBack: STRIPPED_SECRET }]);
+    assert.deepEqual(library.readRun(`${doc.id}-resumed`).inputs, { value: STRIPPED_SECRET, ordinary: "-17" });
+    assert.deepEqual(library.readPublicInputs(doc.id), { value: STRIPPED_SECRET, ordinary: -17 });
+    assert.deepEqual(seen, [inputs, { value: 912345, ordinary: -17 }]);
+    assert.deepEqual(inputs, original);
+    assert.deepEqual(fresh, { value: 912345 });
+  }
 });
 
 test("MCP pause writes a stripped resume and report, then fresh args reach the injected live replayer", async (t) => {
