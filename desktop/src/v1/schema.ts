@@ -16,6 +16,12 @@ export type HealMode = "auto" | "approve";
 export type Surface = "dom" | "ax" | "atspi";
 export type StepAction = "navigate" | "click" | "type" | "key" | "upload" | "drop" | "digits" | "check" | "select" | "confirm" | "login" | "verify" | "note" | "download" | "open" | "extract" | "for_each";
 
+export interface WorkflowReceipt {
+  id: string;
+  status: string;
+  readBack: string;
+}
+
 export interface WorkflowInput {
   name: string;
   type: InputType;

@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import { stripUnsafe } from "./guard";
+import { isSealedArtifact } from "../../../desktop/src/v1/saved-secrets";
 
 export interface ReleaseChange {
   path: string;
@@ -21,7 +22,7 @@ const RULES: { reason: string; re: RegExp }[] = [
 
 export function redactForRelease(document: unknown): { document: unknown; changes: ReleaseChange[] } {
   const secrets = secretDefaults(document);
-  const cloned = stripUnsafe(JSON.parse(JSON.stringify(document)), secrets) as Record<string, unknown>;
+  const cloned = stripUnsafe(document, secrets) as Record<string, unknown>;
   const changes: ReleaseChange[] = [];
   if (secrets.length) {
     changes.push({ path: "inputs", before: "[secret]", after: "", reason: "secret" });
@@ -93,6 +94,7 @@ function secretDefaults(document: unknown): string[] {
 }
 
 function walkFields(node: unknown, path: string, changes: ReleaseChange[]): void {
+  if (isSealedArtifact(node)) return;
   if (Array.isArray(node)) {
     node.forEach((item, index) => walkFields(item, `${path}[${index}]`, changes));
     return;

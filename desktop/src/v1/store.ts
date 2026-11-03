@@ -2,7 +2,7 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { scrubSaved } from "./saved-secrets";
+import { isSealedArtifact, scrubSaved } from "./saved-secrets";
 import type { HealSettings } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
@@ -370,11 +370,12 @@ export class Library {
 }
 
 function withoutShots(value: unknown): unknown {
+  if (isSealedArtifact(value)) return structuredClone(value);
   if (Array.isArray(value)) return value.map(withoutShots);
   if (!value || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (key === "screenshot") continue;
+    if (key === "screenshot" && !isSealedArtifact(child)) continue;
     out[key] = withoutShots(child);
   }
   return out;

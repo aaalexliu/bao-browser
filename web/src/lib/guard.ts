@@ -2,6 +2,7 @@
 // screenshot fails the check. Private sync may still carry a non-secret literal
 // such as a username. Sharing and publishing clear personal values separately.
 
+import { isSealedArtifact, scrubSaved, type SavedContext } from "../../../desktop/src/v1/saved-secrets";
 import { isElementCrop } from "./png";
 
 export class SyncRejected extends Error {
@@ -54,7 +55,7 @@ export function buildPushBody(
 ): SyncPush {
   const secrets = collectSecretStrings(document, opts.heal);
   const cleaned = stripUnsafe(structuredClone(document), secrets) as WorkflowLike;
-  const heal = opts.heal === undefined ? undefined : stripUnsafe(structuredClone(opts.heal), secrets);
+  const heal = opts.heal === undefined ? undefined : stripUnsafe(structuredClone(opts.heal), secrets, { workflow: document as SavedContext["workflow"] });
   const steps = Array.isArray(cleaned.steps) ? cleaned.steps : [];
   const body: SyncPush = {
     baseVersion: opts.baseVersion,
@@ -111,8 +112,9 @@ function elementShots(
   return shots;
 }
 
-export function stripUnsafe(value: unknown, secrets: string[]): unknown {
+export function stripUnsafe(value: unknown, secrets: string[], context?: SavedContext): unknown {
   const walk = (current: unknown): unknown => {
+    if (isSealedArtifact(current)) return structuredClone(current);
     if (typeof current === "string") {
       let out = current;
       for (const secret of secrets) {
@@ -125,7 +127,7 @@ export function stripUnsafe(value: unknown, secrets: string[]): unknown {
     const obj = current as Record<string, unknown>;
     const next: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(obj)) {
-      if (DROP_KEY.test(key) || key === "screenshot") continue;
+      if (DROP_KEY.test(key) || key === "screenshot" && !isSealedArtifact(child)) continue;
       next[key] = walk(child);
     }
     if (next.type === "secret") {
@@ -137,7 +139,7 @@ export function stripUnsafe(value: unknown, secrets: string[]): unknown {
     }
     return next;
   };
-  return walk(value);
+  return walk(scrubSaved(value, { ...context, secrets }));
 }
 
 function secretNames(payload: unknown): Set<string> {

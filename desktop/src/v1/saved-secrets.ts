@@ -1,10 +1,9 @@
 import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "../cdp-live/keys";
 import { mapCsv, parseTable, sanitizeName } from "./data-steps";
-import type { ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import type { ReplayArgs, WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "./schema";
 import type { TrailEvent } from "./interpret";
 import type { ReceiptBody } from "./receipt";
-import type { WorkflowOutcome } from "../mcp/catalog";
 
 export const STRIPPED_SECRET = "[secret stripped]";
 export const NEEDS_SECRET_VALUE = "This step needs a value. Its saved value was stripped because it may contain a secret.";
@@ -20,7 +19,7 @@ type ValueFields = {
   input: readonly (keyof WorkflowInput)[];
   field: readonly "value"[];
   receipt: readonly (keyof ReceiptBody)[];
-  result: readonly (keyof WorkflowOutcome["receipts"][number])[];
+  result: readonly (keyof WorkflowReceipt)[];
   runtime: readonly ("inputs" | "publicInputs" | "args" | "raw")[];
   table: readonly "rows"[];
   output: readonly "value"[];
@@ -46,6 +45,13 @@ const USER_VALUE_FIELDS = {
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): RecordValue {
   return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
+}
+
+export function isSealedArtifact(value: unknown): boolean {
+  if (typeof value === "string") return /^sha256:[a-f0-9]{64}$/.test(value);
+  const node = record(value);
+  return node.kind === "read-back" && typeof node.hash === "string" && node.hash.length > 0
+    || typeof node.documentHash === "string" && node.documentHash.length > 0 && record(node.document).schema === "bao.workflow/v2";
 }
 
 function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordValue; inputs: Set<string>; rows: Set<string>; row: boolean }[] {
@@ -214,12 +220,11 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     for (const [name, item] of Object.entries(args)) evidence(item, argumentsFor.get(args)?.get(name) ?? {});
   };
   const field = (node: RecordValue): boolean => secretSavedField(node) || [node.role, node.tag].some((value) => typeof value === "string" && ["textbox", "input", "textarea", "select", "radio", "checkbox", "axtextfield", "axsecuretextfield", "axtextarea"].includes(value.toLowerCase()));
-  const signedReceipt = (node: RecordValue): boolean => node.kind === "read-back" && typeof node.hash === "string" && node.hash.length > 0;
   const collect = (item: unknown): void => {
     if (!item || typeof item !== "object") return;
     if (Array.isArray(item)) { item.forEach(collect); return; }
     const node = record(item);
-    if (signedReceipt(node)) return;
+    if (isSealedArtifact(node)) return;
     if ((node.schema === "bao.workflow/v2" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
       workflows.add(node);
       bind(node);
@@ -253,7 +258,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (runtime) {
       select(node, "runtime", { arguments: true });
       for (const receipt of Array.isArray(node.receipts) ? node.receipts : []) {
-        if (signedReceipt(record(receipt))) continue;
+        if (isSealedArtifact(receipt)) continue;
         select(record(receipt), "receipt");
         select(record(receipt), "result");
       }
@@ -303,7 +308,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (Array.isArray(item)) return item.map(clean);
     if (!item || typeof item !== "object") return item;
     const raw = record(item);
-    if (signedReceipt(raw)) return structuredClone(raw);
+    if (isSealedArtifact(raw)) return structuredClone(raw);
     const node = Object.fromEntries(Object.entries(raw).map(([key, child]) => {
       const policy = slots.get(raw)?.get(key);
       return [key, policy ? cleanValue(child, policy) : clean(child)];

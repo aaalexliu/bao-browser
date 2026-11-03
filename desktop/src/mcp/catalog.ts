@@ -17,7 +17,7 @@ import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
-import { migrate, toJson, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
@@ -58,7 +58,7 @@ export interface WorkflowOutcome {
   resume?: string;
   runId?: string;
   workflowId: string;
-  receipts: { id: string; status: string; readBack: string }[];
+  receipts: WorkflowReceipt[];
   stops: { stepId: string; outcome: OutcomeName; reason: string }[];
   link: string;
   source?: string;
@@ -1060,7 +1060,7 @@ function materializeWorkflow(library: Library, found: Located): void {
   const state = loadState(library.root);
   state.workflows[doc.id] = {
     version: found.version,
-    hash: createHash("sha256").update(toJson(doc)).digest("hex"),
+    hash: createHash("sha256").update(toJson(library.read(doc.id))).digest("hex"),
   };
   saveState(library.root, state);
 }
