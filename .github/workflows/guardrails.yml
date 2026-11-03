@@ -53,6 +53,6 @@ jobs:
           trap 'rm -rf "$HOME"' EXIT
           npm run build:desktop
           # Existing main failure, proof: docs/guardrails.md#known-existing-failure
-          node desktop/test/run-v1.mjs --test-concurrency=2 --test-skip-pattern='^teach the fixture, correct three cards, replay twice, and splice a fix$'
+          node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit --test-skip-pattern='^teach the fixture, correct three cards, replay twice, and splice a fix$'
           npm --prefix web test
           npm test
