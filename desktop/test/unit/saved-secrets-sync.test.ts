@@ -10,6 +10,8 @@ import { Library } from "../../src/v1/store";
 import { loadState, resolveConflict, saveState, syncAll } from "../../src/v1/sync";
 import { clearConflict, draftVersion, listVersions, noteConflict, promoteVersion, restoreVersion } from "../../src/v1/versions";
 import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import type { HealRecord } from "../../src/v1/heal";
+import { replay, type Driver } from "../../src/v1/replay";
 
 function document(id = "saved"): WorkflowV2 {
   return {
@@ -154,4 +156,72 @@ test("sync hashes match saved documents after pull and every conflict choice", a
   await resolveConflict(library, "saved", "keep-theirs");
   await check();
   assert.equal(docs[0]!.steps[0]!.value, "secret{{1}}");
+});
+
+test("two homes sync a kept HealRecord without stripping its owned binding", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-kept-heal-sync-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const sender = new Library(path.join(home, "sender"));
+  const receiver = new Library(path.join(home, "receiver"));
+  const doc = document("login");
+  doc.inputs = [{ name: "password", type: "text" }];
+  doc.steps[0] = { ...doc.steps[0]!, sensitive: true, input: "password", value: "{{password}}", identity: { surface: "dom", role: "textbox", id: "entry", path: [] } };
+  const kept: HealRecord = {
+    id: "kept", ts: 1, workflowId: doc.id, runId: "run", mode: "auto", failedStep: { ...doc.steps[0]! },
+    intent: "Fill", snapshot: {}, prompt: "", model: { provider: "openai", name: "gpt-4o", version: "test" }, kept: true,
+  };
+  const original = structuredClone(kept);
+  sender.save(doc);
+  sender.noteHealPromotion(doc.id, kept);
+  assert.deepEqual(sender.readKeptHeal(doc.id), kept);
+  sender.noteHealPromotion("unowned", { ...kept, failedStep: { ...kept.failedStep, id: "unknown" } });
+  assert.equal((sender.readKeptHeal("unowned") as HealRecord).failedStep.value, STRIPPED_SECRET);
+  let uploaded: { document: WorkflowV2; heal: HealRecord } | undefined;
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    let body: unknown = { ok: true };
+    if (req.method === "POST" && url.pathname.endsWith("/versions")) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      uploaded = JSON.parse(Buffer.concat(chunks).toString());
+      body = { version: 1 };
+    } else if (url.pathname === "/api/workflows") body = { workflows: uploaded ? [{ id: doc.id }] : [] };
+    else if (url.pathname === `/api/workflows/${doc.id}`) body = { version: 1, document: uploaded?.document, shots: [] };
+    else if (url.pathname === "/api/sync/snapshot") body = { heals: uploaded ? [
+      { id: "kept", workflowId: doc.id, heal: uploaded.heal },
+      { id: "bare", workflowId: doc.id, heal: { ...uploaded.heal, failedStep: { ...uploaded.heal.failedStep, id: "unknown" } } },
+    ] : [] };
+    else if (url.pathname === "/api/devices") body = { devices: [], categories: [] };
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const address = server.address() as { port: number };
+  for (const library of [sender, receiver]) saveState(library.root, {
+    server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture", deviceId: path.basename(library.root), deviceName: "Fixture",
+    backedUp: true, workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+  });
+  await syncAll(sender, "push");
+  assert.deepEqual(uploaded?.heal, kept);
+  await syncAll(receiver, "pull");
+  const stored = JSON.parse(readFileSync(path.join(receiver.root, "heals/kept.json"), "utf8"));
+  assert.deepEqual(stored.heal, kept);
+  const bare = JSON.parse(readFileSync(path.join(receiver.root, "heals/bare.json"), "utf8"));
+  assert.equal(bare.heal.failedStep.value, STRIPPED_SECRET);
+  assert.equal(bare.heal.failedStep.unresolved.reason, NEEDS_SECRET_VALUE);
+  const saved = receiver.read(doc.id);
+  assert.equal(saved.steps[0]!.value, "{{password}}");
+  const fills: string[] = [];
+  const driver = {
+    tree: async () => ({ nodes: [saved.steps[0]!.identity], texts: [], url: saved.startUrl }), snapshot: async () => ({}),
+    fill: async (_node: unknown, value: string) => { fills.push(value); }, sleep: async () => {},
+  } as unknown as Driver;
+  const proof = { ...saved, steps: [stored.heal.failedStep] };
+  const result = await replay(proof, { password: "fresh-runtime-value" }, driver, {
+    heal: { available: () => false, propose: async () => { throw new Error("unexpected heal"); } },
+  });
+  assert.equal(result.status, "passed");
+  assert.deepEqual(fills, ["fresh-runtime-value"]);
+  assert.deepEqual(kept, original);
 });

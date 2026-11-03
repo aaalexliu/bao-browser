@@ -438,7 +438,7 @@ function applyCatchUp(library: Library, state: SyncState, snapshot: SyncSnapshot
     for (const heal of snapshot.heals ?? []) {
       const id = String(heal.id || "");
       if (!safeKey(id) || existsSync(path.join(dir, `${id}.json`))) continue;
-      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(scrubSaved({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }), null, 2));
+      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(library.scrub({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, safeKey(String(heal.workflowId || "")) ? heal.workflowId : undefined), null, 2));
     }
   }
   if (categoryOn(state, "settings") && snapshot.settings && snapshot.settingsUpdatedAt && snapshot.settingsUpdatedAt !== state.settingsCloudAt) {

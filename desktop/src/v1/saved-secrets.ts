@@ -218,6 +218,9 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       }
       for (const key of ["identity", "field"]) preserve(record(node[key]), ["name", "text", "title", "description", "app", "windowTitle", "siblingIndex"]);
       preserve(record(node.provenance), ["x", "y", "space"]);
+      preserve(record(node.model), ["provider", "name", "version"]);
+      preserve(record(node.inference), ["provider", "model"]);
+      preserve(record(node.source), ["model"]);
       if (["css", "xpath", "text", "testid", "role"].includes(String(node.kind))) preserve(node, ["value", "name"]);
       if (typeof node.key === "string") {
         const name = canonicalKey(node.key).split("+").at(-1) || "";
