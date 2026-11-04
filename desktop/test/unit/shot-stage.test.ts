@@ -72,32 +72,36 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click("[data-screen=runs]");
     await page.click(`[data-open-run=${runId}]`);
+    await page.waitForSelector("#step-list [data-select-step=shot]");
     for (const [step, which, width, height] of [
       ["shot", "after", 320, 720], ["shot", "before", 1280, 720], ["shot", "after", 320, 720], ["crop", "after", 1280, 80], ["jpeg", "after", 1280, 720], ["jpeg", "before", 1280, 720],
     ] as const) {
-      await page.click(`#step-list [data-select-step=${step}]`);
+      const selected = `#step-list [data-select-step=${step}].on`;
+      if (await page.locator(selected).count() === 0) {
+        await page.click(`#step-list [data-select-step=${step}]`);
+        await page.waitForSelector(selected);
+      }
       await page.click(`[data-frame=${which}]`);
-      const imageHandle = await page.waitForFunction(([w, h]) => {
+      const fitHandle = await page.waitForFunction(([w, h]) => {
         const image = document.querySelector<HTMLImageElement>("#shot-stage.has-shot img");
-        return image?.complete && image.naturalWidth === w && image.naturalHeight === h ? image : null;
-      }, [width, height]);
-      const fit = await imageHandle.evaluate(async (image) => {
-        if (!image) throw new Error("shot image missing");
-        await image.decode();
+        if (!image?.isConnected || !image.complete || image.naturalWidth !== w || image.naturalHeight !== h) return null;
         const stage = image.parentElement!;
         const rect = stage.getBoundingClientRect();
         const style = getComputedStyle(stage);
-        return { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
+        const fit = { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
           height: rect.height - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
           ratio: image.naturalWidth / image.naturalHeight, objectFit: getComputedStyle(image).objectFit };
-      });
-      await imageHandle.dispose();
+        return Number.isFinite(fit.width) && fit.width > 0 && Number.isFinite(fit.height) && fit.height > 0 ? fit : null;
+      }, [width, height]);
+      const fit = await fitHandle.jsonValue();
+      await fitHandle.dispose();
       assert.ok(fit);
       assert.ok(Math.abs(fit.width - fit.height * fit.ratio) < 2, `${which}: frame ${fit.width}x${fit.height} does not match captured ratio ${fit.ratio}`);
       assert.equal(fit.objectFit, "contain", "keep every part of the captured page visible");
     }
     assert.ok(gaps.some((gap) => gap.complete && !gap.ready && gap.frame === 220), "exercise a loaded image before the app leaves its placeholder state");
     await page.click("#step-list [data-select-step=missing]");
+    await page.waitForSelector("#step-list [data-select-step=missing].on");
     await page.waitForSelector("#shot-stage:not(.has-shot)");
     assert.equal(await page.locator("#shot-stage img").count(), 0);
     assert.ok((await page.locator("#shot-stage").boundingBox())!.height >= 200, "missing-image message keeps its height");
@@ -110,6 +114,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     assert.equal(await page.locator("#shot-stage img").count(), 0, "a missing after must not show the before picture");
     assert.equal(await page.locator("[data-shot-error]").innerText(), "Chrome timed out taking this picture.");
     await page.click("#step-list [data-select-step=gone]");
+    await page.waitForSelector("#step-list [data-select-step=gone].on");
     await page.waitForFunction(() => document.querySelector("[data-shot-error]")?.textContent === "The saved picture could not be loaded.");
   } finally {
     await browser.close();

@@ -412,7 +412,7 @@ else:
   return { x, y, w, h };
 }
 
-async function grant(link: ExtensionLink, chrome: ChromeRun, origins: string[]): Promise<void> {
+async function grant(chrome: ChromeRun, origins: string[]): Promise<void> {
   const port = 9333 + Math.floor(Math.random() * 40);
   await chrome.launch({ debugPort: port });
   await sleep(800);
@@ -1665,7 +1665,7 @@ async function main(): Promise<void> {
   const chrome = new ChromeRun(link, PROFILE);
   try {
     log("grant");
-    await grant(link, chrome, origins);
+    await grant(chrome, origins);
     if (!existsSync(RATES_PROFILE)) {
       run("cp", ["-a", PROFILE, RATES_PROFILE]);
       unlock(RATES_PROFILE);

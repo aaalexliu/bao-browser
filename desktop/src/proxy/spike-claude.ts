@@ -395,7 +395,7 @@ async function main(): Promise<void> {
     const scaledBack = (click?.provenance?.y ?? 0) * (claude.viewport.h / claude.image.h);
     const persisted = JSON.stringify(claude.trail) + JSON.stringify(claude.workflow) +
       JSON.stringify(claude.transcript) + JSON.stringify(openai.workflow) + JSON.stringify(openai.transcript);
-    const loggedIn = (body: { captured?: { url: string; flash: string } } | undefined, workflow: Workflow) => {
+    const loggedIn = (_body: { captured?: { url: string; flash: string } } | undefined, workflow: Workflow) => {
       const enter = workflow.steps.find((step) => step.action === "keypress" && step.key === "Enter");
       return !!enter?.submits && selectorBlob(enter).includes("password");
     };

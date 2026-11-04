@@ -97,7 +97,6 @@ export function createRemoteAgent(opts: {
   let stopped = false;
   let clicking = false;
   let context: BrowserContext | undefined;
-  let approval: ((decision: "allow" | "deny") => void) | null = null;
   let approvalTimer: ReturnType<typeof setTimeout> | null = null;
   let wake: (() => void) | null = null;
   let socket: LiteSocket | null = null;
@@ -119,7 +118,6 @@ export function createRemoteAgent(opts: {
   function disarmApproval(): void {
     if (approvalTimer) clearTimeout(approvalTimer);
     approvalTimer = null;
-    approval = null;
   }
 
   function allow(): void {
@@ -288,7 +286,6 @@ export function createRemoteAgent(opts: {
       }
       if (effect.type === "abort-run") {
         generation += 1;
-        approval = null;
         opts.stop();
         const open = context;
         setTimeout(() => { void open?.close().catch(() => undefined); }, 400);
@@ -302,10 +299,6 @@ export function createRemoteAgent(opts: {
         disarmApproval();
         approvalTimer = setTimeout(() => deny(), 45_000);
         approvalTimer.unref();
-        approval = (decision) => {
-          if (decision === "allow") allow();
-          else deny();
-        };
         continue;
       }
       if (effect.type === "start-run") {
@@ -374,7 +367,6 @@ export function createRemoteAgent(opts: {
 
   async function run(job: AssignedJob): Promise<Record<string, unknown>> {
     const id = job.workflowId || stringArg(job.args.id);
-    const workflowName = job.workflowName || workflowLabel(id);
     opts.clearStop();
     await releaseContext();
     let workflow: WorkflowV2;

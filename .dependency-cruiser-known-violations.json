@@ -1,0 +1,973 @@
+[
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/capture.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/deeplink.ts",
+    "to": "web/src/lib/import-sheet.ts",
+    "unresolvedTo": "../../../web/src/lib/import-sheet",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/server.ts",
+    "to": "extension/src/host-grant.ts",
+    "unresolvedTo": "../../../extension/src/host-grant",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/server.ts",
+    "to": "web/src/lib/import-sheet.ts",
+    "unresolvedTo": "../../../web/src/lib/import-sheet",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/views.ts",
+    "to": "extension/src/host-grant.ts",
+    "unresolvedTo": "../../../extension/src/host-grant",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/cdp-live/ax.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/extension/driver.ts",
+    "to": "extension/src/host-grant.ts",
+    "unresolvedTo": "../../../extension/src/host-grant",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/mcp/catalog.ts",
+    "to": "web/src/lib/import-sheet.ts",
+    "unresolvedTo": "../../../web/src/lib/import-sheet",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/mcp/catalog.ts",
+    "to": "web/src/lib/permissions.ts",
+    "unresolvedTo": "../../../web/src/lib/permissions",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/mcp/catalog.ts",
+    "to": "web/src/lib/publish.ts",
+    "unresolvedTo": "../../../web/src/lib/publish",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/mcp/catalog.ts",
+    "to": "web/src/lib/rank.ts",
+    "unresolvedTo": "../../../web/src/lib/rank",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/audit.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/executor.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/focus.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/interpret-os.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/macos-exec.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/macos-replay.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/mcp-bao.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/neutral.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/os-macos.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/replay.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-claude.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-claude.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-focus.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-macos-calc.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-macos-edit.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-macos-live.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-macos.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike-native.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/proxy/spike.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/session.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/spike1.ts",
+    "to": "src/types.ts",
+    "unresolvedTo": "../../src/types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/remote-agent.ts",
+    "to": "web/src/lib/audit-redact.ts",
+    "unresolvedTo": "../../../web/src/lib/audit-redact",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/remote-agent.ts",
+    "to": "web/src/lib/relay-tools.ts",
+    "unresolvedTo": "../../../web/src/lib/relay-tools",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/remote-agent.ts",
+    "to": "web/src/lib/remote-policy.ts",
+    "unresolvedTo": "../../../web/src/lib/remote-policy",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/remote-agent.ts",
+    "to": "web/src/lib/ws-lite.ts",
+    "unresolvedTo": "../../../web/src/lib/ws-lite",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/save-intent.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/schema.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/sync.ts",
+    "to": "web/src/lib/guard.ts",
+    "unresolvedTo": "../../../web/src/lib/guard",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/sync.ts",
+    "to": "web/src/lib/png.ts",
+    "unresolvedTo": "../../../web/src/lib/png",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/sync.ts",
+    "to": "web/src/lib/publish.ts",
+    "unresolvedTo": "../../../web/src/lib/publish",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/time.ts",
+    "to": "web/src/lib/time.ts",
+    "unresolvedTo": "../../../web/src/lib/time",
+    "dependencyTypes": [
+      "local",
+      "export"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/workflow-name.ts",
+    "to": "src/mask.ts",
+    "unresolvedTo": "../../../src/mask",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-desktop-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/heal.ts",
+    "to": "desktop/src/app/view-types.ts",
+    "unresolvedTo": "../app/view-types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-domain-to-views"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/run-trace.ts",
+    "to": "desktop/src/app/view-types.ts",
+    "unresolvedTo": "../app/view-types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-domain-to-views"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/try-step.ts",
+    "to": "desktop/src/app/view-types.ts",
+    "unresolvedTo": "../app/view-types",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-domain-to-views"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "extension/src/content.ts",
+    "to": "desktop/src/v1/data-page.ts",
+    "unresolvedTo": "../../desktop/src/v1/data-page",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-extension-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "extension/src/content.ts",
+    "to": "desktop/src/v1/dom-page.ts",
+    "unresolvedTo": "../../desktop/src/v1/dom-page",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-extension-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "extension/src/content.ts",
+    "to": "desktop/src/v1/page-class.ts",
+    "unresolvedTo": "../../desktop/src/v1/page-class",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-extension-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "extension/src/recorder-wrap.ts",
+    "to": "desktop/src/v1/recorder.ts",
+    "unresolvedTo": "../../desktop/src/v1/recorder",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-extension-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/background.ts",
+    "to": "web/src/lib/time.ts",
+    "unresolvedTo": "../web/src/lib/time",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-legacy-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/dashboard.ts",
+    "to": "web/src/lib/time.ts",
+    "unresolvedTo": "../web/src/lib/time",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-legacy-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/wf-view.ts",
+    "to": "web/src/lib/time.ts",
+    "unresolvedTo": "../web/src/lib/time",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-legacy-cross-product-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/agent-instacart.ts",
+    "unresolvedTo": "../eval/agent-instacart",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/drivers.ts",
+    "unresolvedTo": "../eval/drivers",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/capture.ts",
+    "unresolvedTo": "../eval/heldout/capture",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/record-alerts.ts",
+    "unresolvedTo": "../eval/heldout/record-alerts",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/run.ts",
+    "unresolvedTo": "../eval/heldout/run",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/tasks2.ts",
+    "unresolvedTo": "../eval/heldout/tasks2",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/tasks3.ts",
+    "unresolvedTo": "../eval/heldout/tasks3",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/tasks4.ts",
+    "unresolvedTo": "../eval/heldout/tasks4",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/tasks5.ts",
+    "unresolvedTo": "../eval/heldout/tasks5",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/heldout/tasks6.ts",
+    "unresolvedTo": "../eval/heldout/tasks6",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/intent/run.ts",
+    "unresolvedTo": "../eval/intent/run",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/judge-agree.ts",
+    "unresolvedTo": "../eval/judge-agree",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/app/cli.ts",
+    "to": "desktop/src/eval/nightly/run.ts",
+    "unresolvedTo": "../eval/nightly/run",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/mcp/server.ts",
+    "to": "desktop/src/eval/live-mcp.ts",
+    "unresolvedTo": "../eval/live-mcp",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "desktop/src/v1/save-intent.ts",
+    "to": "desktop/src/eval/intent/model.ts",
+    "unresolvedTo": "../eval/intent/model",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-runtime-to-dev-tools"
+    }
+  }
+]

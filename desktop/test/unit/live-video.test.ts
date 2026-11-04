@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { after, before, describe, it } from "node:test";
 import { startApp } from "../../src/app/server";
 import { CdpLiveDriver } from "../../src/cdp-live/driver";
@@ -51,12 +52,23 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
         modes.push(opts.noBlur);
         await startVideo.call(this, dest, opts);
       });
-      t.mock.method(CdpLiveDriver.prototype, "finishVideo", async function (this: CdpLiveDriver) {
-        assert.equal(closed, finished + 1);
-        assert.equal(existsSync(lockFile), false);
-        const targets = await (await fetch(`${browser.cdpUrl}/json/list`)).json() as { id: string }[];
-        assert.ok(!targets.some((target) => target.id === this.targetId));
-        try { return await finishVideo.call(this); } finally { finished += 1; }
+      const finishing: ReturnType<typeof finishVideo>[] = [];
+      t.mock.method(CdpLiveDriver.prototype, "finishVideo", function (this: CdpLiveDriver) {
+        const result = (async () => {
+          assert.equal(closed, finished + 1);
+          assert.equal(existsSync(lockFile), false);
+          const deadline = Date.now() + 5_000;
+          let targets: { id: string }[];
+          do {
+            targets = await (await fetch(`${browser.cdpUrl}/json/list`)).json() as { id: string }[];
+            if (!targets.some((target) => target.id === this.targetId)) break;
+            await delay(25);
+          } while (Date.now() < deadline);
+          assert.ok(!targets.some((target) => target.id === this.targetId), "target must disappear before encoding");
+          try { return await finishVideo.call(this); } finally { finished += 1; }
+        })();
+        finishing.push(result);
+        return result;
       });
       const host = createLiveHost({ home, lockFile, target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0, videoDir, evalVideoNoBlur });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
@@ -80,8 +92,12 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
         assert.ok(replayed.run?.video?.endsWith(".mp4"));
         assert.ok(readdirSync(videoDir).every((name) => name.endsWith(".mp4")), "new recordings do not leave a WebM copy");
         assert.deepEqual(modes, [evalVideoNoBlur, undefined, evalVideoNoBlur]);
-        t.mock.method(CdpLiveDriver.prototype, "goto", async () => { throw new Error("failed start"); });
-        assert.equal((await call({ op: "live_session_start", intent: "failed start", url: fixture.url("/store/costco/storefront") })).outcome?.kind, "rejected");
+        const failedGoto = t.mock.method(CdpLiveDriver.prototype, "goto", async () => { throw new Error("failed start"); });
+        const rejected = await call({ op: "live_session_start", intent: "failed start", url: fixture.url("/store/costco/storefront") });
+        assert.equal(rejected.outcome?.kind, "rejected");
+        assert.equal(rejected.outcome?.reason, "failed start");
+        assert.equal(failedGoto.mock.callCount(), 1);
+        await Promise.all(finishing);
         assert.equal(finished, 4);
       } finally { await host.close(); }
     });

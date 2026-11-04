@@ -183,7 +183,7 @@ function ref(reply: Reply, label: string): string {
 
 const secretLabels = ["API key", "Client secret", "CVV", "CVC", "Security code", "Verification code", "One-time code", "OTP"];
 
-describe("live session behavioral regressions", { timeout: 120_000 }, () => {
+describe("live session behavioral regressions", () => {
   const dirs = applyHermeticApp("live-mode-regressions");
   let browser: Awaited<ReturnType<typeof launchOwnedChrome>>;
   let url: string;
@@ -215,6 +215,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       <fieldset disabled><label>Disabled fieldset<select><option value="nested">Nested</option></select></label></fieldset>
       <p id="result">Audience: Internal</p><form onsubmit="event.preventDefault();document.querySelector('#result').textContent='Created'"><button>Create</button></form>
       <a href="/popup" target="_blank">New tab</a>`);
+    return undefined;
   });
   const secureHits: string[] = [];
   const cert = selfSignedCert(["www.instacart.com", "instacart.com", "other.example"]);
@@ -227,6 +228,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     }
     res.setHeader("content-type", "text/html");
     res.end(`<title>Local navigation</title>${pathname === "/landing-login" ? '<label>Password<input type="password"></label>' : ""}<button onclick="document.querySelector('#nav-result').textContent='${pathname === "/nav-start" ? "Wrong page" : "Right page"}';this.textContent='Opened'">Open result</button><p id="nav-result">Ready</p>`);
+    return undefined;
   });
   before(async () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -245,7 +247,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
   });
   const newHost = (name: string) => createLiveHost({ home: path.join(dirs.home, name), lockFile: path.join(dirs.home, `${name}.lock`), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, idleMs: 0 });
 
-  test("YOLO ignores configured driver stop paths during navigation", async (t) => {
+  test("YOLO ignores configured driver stop paths during navigation", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
@@ -260,7 +262,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("careful navigation returns a typed login halt with the owner instruction", async () => {
+  test("careful navigation returns a typed login halt with the owner instruction", { timeout: 120_000 }, async () => {
     const host = newHost("navigate-login-careful");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     try {
@@ -270,7 +272,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("invalid selections recover, never click, and recorded selections replay guarded", async (t) => {
+  test("invalid selections recover, never click, and recorded selections replay guarded", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
@@ -345,7 +347,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("exact option labels select and replay the matched element despite duplicate values", async () => {
+  test("exact option labels select and replay the matched element despite duplicate values", { timeout: 120_000 }, async () => {
     const host = newHost("exact-select");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     try {
@@ -372,7 +374,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("normalized labels precede values, ambiguity refuses, and exact options replay in both modes", async (t) => {
+  test("normalized labels precede values, ambiguity refuses, and exact options replay in both modes", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
@@ -407,7 +409,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("redirect navigation replays on the observed host while saved host and login guards remain", async () => {
+  test("redirect navigation replays on the observed host while saved host and login guards remain", { timeout: 120_000 }, async () => {
     const host = newHost("redirect");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     const target = "https://www.instacart.com/redirect?mode=edit#section";
@@ -450,7 +452,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("explicit navigation records its target, scrubs its audit, and replays before clicking", async () => {
+  test("explicit navigation records its target, scrubs its audit, and replays before clicking", { timeout: 120_000 }, async () => {
     const host = newHost("navigate");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     const target = url + "/nav-target?code=demo-navigation-secret#section";
@@ -484,7 +486,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("userinfo is refused at start, navigate, link clicks, and Enter without reaching the target", async () => {
+  test("userinfo is refused at start, navigate, link clicks, and Enter without reaching the target", { timeout: 120_000 }, async () => {
     const host = newHost("userinfo");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     try {
@@ -514,7 +516,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("MCP saves typed credentials as secret inputs without defaults and keeps ordinary text", async () => {
+  test("MCP saves typed credentials as secret inputs without defaults and keeps ordinary text", { timeout: 120_000 }, async () => {
     const home = path.join(dirs.home, "credentials");
     const app = await startApp({ home, port: 0, liveTarget: `throwaway:${path.join(dirs.chromeUserData, "DevToolsActivePort")}`, liveLockFile: path.join(home, "lock") });
     const pinned = process.env.BAO_TEST_BROWSER;
@@ -556,7 +558,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     }
   });
 
-  test("named keys replay through stable identities without storing the editable value", async () => {
+  test("named keys replay through stable identities without storing the editable value", { timeout: 120_000 }, async () => {
     const host = newHost("named-key");
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     try {
@@ -581,7 +583,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("MCP records redacted text-capable keys on every field without copying editable identities", async (t) => {
+  test("MCP records redacted text-capable keys on every field without copying editable identities", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
@@ -662,7 +664,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await mcp.close(); await app.close(); }
   });
 
-  test("Shift inserts shifted characters while shortcuts insert no text", async (t) => {
+  test("Shift inserts shifted characters while shortcuts insert no text", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
@@ -687,7 +689,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("MCP select-all deletes and replaces input, textarea, and editable text", async () => {
+  test("MCP select-all deletes and replaces input, textarea, and editable text", { timeout: 120_000 }, async () => {
     const home = path.join(dirs.home, "editing");
     const app = await startApp({ home, port: 0, liveTarget: `throwaway:${path.join(dirs.chromeUserData, "DevToolsActivePort")}`, liveLockFile: path.join(home, "lock") });
     const pinned = process.env.BAO_TEST_BROWSER;
@@ -723,7 +725,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     }
   });
 
-  test("YOLO reads secret-named regions but redacts only their secret values", async (t) => {
+  test("YOLO reads secret-named regions but redacts only their secret values", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) { live = this; await start.call(this); });
@@ -744,7 +746,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
     } finally { await host.close(); }
   });
 
-  test("switching an owned popup allows a cross-host navigation during adoption", async (t) => {
+  test("switching an owned popup allows a cross-host navigation during adoption", { timeout: 120_000 }, async (t) => {
     let navigateDuringStart = false;
     const start = CdpLiveDriver.prototype.start;
     t.mock.method(CdpLiveDriver.prototype, "start", async function (this: CdpLiveDriver) {

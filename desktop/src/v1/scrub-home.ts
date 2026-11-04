@@ -47,7 +47,7 @@ export function scrubHome(home: string, write = false): ScrubReport {
     const before = readFileSync(file, "utf8");
     let parsed: unknown;
     try {
-      parsed = file.endsWith(".jsonl") ? before.split(/\r?\n/).filter((line) => line.trim()).map((line) => JSON.parse(line)) : JSON.parse(before);
+      parsed = file.endsWith(".jsonl") ? before.split(/\r?\n/).filter((line) => line.trim()).map((line): unknown => JSON.parse(line)) : JSON.parse(before);
     } catch { throw new Error(`Cannot scrub invalid JSON: ${path.relative(root, file)}`); }
     return { file, before, parsed };
   });

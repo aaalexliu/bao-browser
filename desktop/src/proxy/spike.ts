@@ -3,7 +3,7 @@
 // schema. No OpenAI client, no model.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page, Request } from "playwright";

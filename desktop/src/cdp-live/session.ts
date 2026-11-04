@@ -468,7 +468,7 @@ async function main(): Promise<void> {
   await clearInbox(guard.inbox, true);
   const awake = keepAwake();
   try {
-  await runGuarded(root, guard, evidence, axLog, outFile, draftFile);
+  await runGuarded(guard, evidence, axLog, outFile, draftFile);
   } finally {
     releaseAwake(awake);
     releaseCdpLock(guard.agent, guard.lockFile);
@@ -476,7 +476,6 @@ async function main(): Promise<void> {
 }
 
 async function runGuarded(
-  root: string,
   guard: Guard,
   evidence: string,
   axLog: string,

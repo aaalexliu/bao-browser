@@ -8,6 +8,14 @@
   },
   "scripts": {
     "test": "node build.mjs && node test/all.mjs",
+    "lint": "eslint desktop/src desktop/test extension/src src web/src shared --max-warnings 0",
+    "lint:prune": "npm run lint -- --prune-suppressions",
+    "arch:check": "depcruise desktop/src extension/src src web/src shared --config .dependency-cruiser.cjs --ignore-known && depcruise desktop/src extension/src src web/src shared --config .dependency-cruiser.runtime.cjs",
+    "arch:prune": "depcruise desktop/src extension/src src web/src shared --config .dependency-cruiser.cjs --baseline --baseline-mode shrink-only",
+    "baselines:check": "node scripts/check-baselines.mjs",
+    "check:static": "npm run baselines:check && npm run typecheck && npm run lint && npm run arch:check",
+    "hooks:enable": "git config core.hooksPath .githooks",
+    "test:guardrails": "node --test test/guardrails.test.mjs",
     "test:assert": "node build.mjs && node test/assert.mjs",
     "test:download": "node build.mjs && node test/download.mjs",
     "test:grounding": "node build.mjs && node test/grounding.mjs",
@@ -74,10 +82,13 @@
     "@types/chrome": "^0.2.2",
     "@types/node": "^22.20.5",
     "ajv": "^8.20.0",
+    "dependency-cruiser": "18.7.2",
     "esbuild": "^0.28.1",
+    "eslint": "10.14.0",
     "fast-check": "^4.10.2",
     "playwright": "^1.49.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "8.72.1"
   },
   "dependencies": {
     "classic-level": "^2.0.0"

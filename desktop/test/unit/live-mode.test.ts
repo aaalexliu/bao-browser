@@ -79,6 +79,7 @@ test("real MCP clicks Create and Confirm and continues on sign-in copy by defaul
       <div role="button" tabindex="0" onclick="this.textContent='Role clicked'">Role button</div>
       <section id="token-details" aria-label="Account number"><p>Status: ready</p><p>Password: hunter2</p></section>`);
     res.end('<h1>New project</h1><form action="/confirm"><input aria-label="Project name"><button>Create</button></form>');
+    return undefined;
   });
   await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${(fixture.address() as { port: number }).port}`;

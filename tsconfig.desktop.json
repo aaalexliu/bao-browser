@@ -7,11 +7,15 @@
     "outDir": "desktop/dist",
     "rootDir": ".",
     "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["desktop/src/**/*.ts", "desktop/test/**/*.ts", "src/types.ts", "src/mask.ts", "extension/src/host-grant.ts"]
+  "include": ["desktop/src/**/*.ts", "desktop/test/**/*.ts", "shared/**/*.ts", "src/types.ts", "src/mask.ts", "extension/src/host-grant.ts"]
 }

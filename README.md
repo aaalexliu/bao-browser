@@ -26,6 +26,7 @@ node scripts/check-node.mjs
 | Legacy extension dev | `npm run watch` |
 | Registry dev | `npm --prefix web run dev` |
 | Typecheck | `npm run typecheck` checks `src`, `desktop`, `extension`, and `web`. |
+| Static guardrails | See [guardrails](docs/guardrails.md) for lint, import checks, baseline pruning, CI, and the pre-push hook. |
 | Unit tests | `npm run test:desktop:unit` for desktop. `npm test` for the root extension. `npm --prefix web test` for the registry. |
 | Aggregate | `npm run check` runs the typecheck and the desktop unit suite. |
 | Local browser integration | `npm run test:desktop:integration` runs the local fixture capture in `browser.test` and `drift.test`. |
