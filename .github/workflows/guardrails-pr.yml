@@ -22,7 +22,7 @@ jobs:
       - id: manifest
         name: Read the single essential manifest
         run: |
-          node -e 'const m = require("./test/essential.json"); console.log("matrix=" + JSON.stringify({include: Object.entries(m).map(([group, v]) => ({group, ffmpeg: !!v.ffmpeg, web: v.kind === "web"}))}));' >> "$GITHUB_OUTPUT"
+          node -e 'const m = require("./test/essential.json"); console.log("matrix=" + JSON.stringify({include: Object.entries(m).map(([group, v]) => ({group, ffmpeg: !!v.ffmpeg}))}));' >> "$GITHUB_OUTPUT"
 
   static:
     name: static (${{ matrix.gate }})
@@ -85,8 +85,7 @@ jobs:
             package-lock.json
             web/package-lock.json
       - run: npm ci
-      - if: matrix.web
-        run: npm --prefix web ci
+      - run: npm --prefix web ci
       - uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
