@@ -44,6 +44,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+      - name: Install the CDP video encoder
+        run: sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Hermetic desktop, web and legacy extension tests
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright

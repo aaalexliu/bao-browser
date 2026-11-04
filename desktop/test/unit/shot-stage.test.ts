@@ -75,7 +75,11 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     for (const [step, which, width, height] of [
       ["shot", "after", 320, 720], ["shot", "before", 1280, 720], ["shot", "after", 320, 720], ["crop", "after", 1280, 80], ["jpeg", "after", 1280, 720], ["jpeg", "before", 1280, 720],
     ] as const) {
-      await page.click(`#step-list [data-select-step=${step}]`);
+      const selected = `#step-list [data-select-step=${step}].on`;
+      if (await page.locator(selected).count() === 0) {
+        await page.click(`#step-list [data-select-step=${step}]`);
+        await page.waitForSelector(selected);
+      }
       await page.click(`[data-frame=${which}]`);
       const imageHandle = await page.waitForFunction(([w, h]) => {
         const image = document.querySelector<HTMLImageElement>("#shot-stage.has-shot img");
@@ -98,6 +102,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     }
     assert.ok(gaps.some((gap) => gap.complete && !gap.ready && gap.frame === 220), "exercise a loaded image before the app leaves its placeholder state");
     await page.click("#step-list [data-select-step=missing]");
+    await page.waitForSelector("#step-list [data-select-step=missing].on");
     await page.waitForSelector("#shot-stage:not(.has-shot)");
     assert.equal(await page.locator("#shot-stage img").count(), 0);
     assert.ok((await page.locator("#shot-stage").boundingBox())!.height >= 200, "missing-image message keeps its height");
@@ -110,6 +115,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     assert.equal(await page.locator("#shot-stage img").count(), 0, "a missing after must not show the before picture");
     assert.equal(await page.locator("[data-shot-error]").innerText(), "Chrome timed out taking this picture.");
     await page.click("#step-list [data-select-step=gone]");
+    await page.waitForSelector("#step-list [data-select-step=gone].on");
     await page.waitForFunction(() => document.querySelector("[data-shot-error]")?.textContent === "The saved picture could not be loaded.");
   } finally {
     await browser.close();
