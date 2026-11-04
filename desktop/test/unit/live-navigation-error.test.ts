@@ -42,6 +42,7 @@ test("Chrome failed documents cannot pass a live session or its Library capture"
   const dirs = applyHermeticApp("live-navigation-error");
   const fixture = createServer((req, res) => {
     if (req.url === "/empty") return req.socket.destroy();
+    if (req.url === "/redirect") { res.writeHead(302, { location: "/empty" }); return res.end(); }
     res.setHeader("content-type", "text/html");
     res.end('<title>Local navigation</title><h1>Ready</h1><a href="/blocked">Open destination</a>');
   });
@@ -98,6 +99,14 @@ test("Chrome failed documents cannot pass a live session or its Library capture"
       assert.ok(JSON.stringify(capture.failure).includes(url + "/blocked"));
       assert.equal(app.library.read(start.session).startUrl, url);
     }
+    const redirected = await call("live_session_start", { intent: "Read a failed local redirect", url: url + "/redirect" });
+    assert.equal(redirected.outcome.kind, "rejected", JSON.stringify(redirected));
+    assert.match(redirected.outcome.reason || "", /ERR_EMPTY_RESPONSE/);
+    assert.ok(redirected.outcome.reason?.includes(url + "/empty"), "the error names the failed redirect, not just the requested start");
+    assert.equal((await state()).liveSession.navigationFailure?.url, url + "/empty");
+    assert.equal(app.library.read(redirected.session).startUrl, url + "/redirect");
+    const redirectCapture = app.library.listRuns().find(run => run.workflowId === redirected.session);
+    assert.equal((redirectCapture?.failure as { url?: string })?.url, url + "/empty");
     const empty = await call("live_session_start", { intent: "Read an unavailable local page", url: url + "/empty" });
     assert.equal(empty.outcome.kind, "rejected", JSON.stringify(empty));
     assert.match(empty.outcome.reason || "", /ERR_EMPTY_RESPONSE/);
@@ -105,7 +114,7 @@ test("Chrome failed documents cannot pass a live session or its Library capture"
     assert.equal(capture?.status, "failed");
     assert.ok(JSON.stringify(capture?.failure).includes(url + "/empty"));
     const workflow = app.library.read(empty.session);
-    app.library.save({ ...workflow, id: "wf-replay-unavailable", startUrl: url + "/empty" });
+    app.library.save({ ...workflow, id: "wf-replay-unavailable", startUrl: url + "/redirect" });
     const replay = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "wf-replay-unavailable", args: {} }) }).then(response => response.json()) as RunResult;
     assert.equal(replay.status, "failed", JSON.stringify(replay));
     assert.match(replay.failure?.reason || "", /ERR_EMPTY_RESPONSE/);

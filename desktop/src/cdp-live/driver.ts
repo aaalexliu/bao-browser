@@ -525,6 +525,7 @@ export class CdpLiveDriver implements Driver {
     }
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
     this.navigationProblem = undefined;
+    this.mainRequest = { id: "", url };
     this.assertHost();
     const epoch = this.loadEpoch;
     this.takeBlockedNav();
@@ -532,7 +533,7 @@ export class CdpLiveDriver implements Driver {
       if (this.pageEngine) await this.pageEngine.goto(url);
       else {
         const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
-        if (nav.errorText) throw new LiveNavigationFailure(url, nav.errorText);
+        if (nav.errorText) throw new LiveNavigationFailure(this.mainRequest?.url || url, nav.errorText);
       }
       await this.waitForLoad(epoch, timeoutMs);
       if (this.blockedNav) throw new Error("navigation blocked");
