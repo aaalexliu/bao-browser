@@ -101,6 +101,8 @@ Run focused checks first. A full pass is **both** `npm run check` (four typechec
 
 Read the log and record the exit code. If main adds a lint/CI command, run it too. The mutex's existence is not permission to remove it: do not break another worker's lock. Coordinate a stale lock with its owner. A load-gated or lock-gated wait is not a suite pass. Never invoke public live suites as a substitute for this pass.
 
+Known pre-existing failure, confirmed on untouched `origin/main` at `1c2852f9d01fe1f5201409958bb14e8d2592e97c`: `desktop/test/unit/teach-app.test.ts`, test **teach the fixture, correct three cards, replay twice, and splice a fix**, fails its `/mark/` assertion. The main-branch proof is `/Users/alexliu/dev/firstmate/data/bao-lint-guardrails/main-proof.md`, with raw output at `/Users/alexliu/dev/firstmate/data/bao-lint-guardrails/main-proof.log`. The CI exception is tracked in https://github.com/aaalexliu/bao-browser/pull/184 and names only that test. These local proof paths are evidence from the authoring run, not prerequisites for another machine. Report this as a known exception, never a green suite. It does not excuse another failure or authorize broader skips. Remove this note once the test is fixed.
+
 ## Cleanup
 
 Normal and failed drives run `finally`: close the MCP client, stop only the named browser bridge, close the owned UI Chromium, stop `bao serve`, stop the fixture browser/server, and remove the temp Library, manifest, and profiles. Cleanup never removes `PROOF`.
