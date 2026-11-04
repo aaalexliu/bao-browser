@@ -20,7 +20,7 @@ if (plan.missing.length) {
 
 const files = plan.run.map((name) => path.join(distDir, name));
 const env = laneChildEnv("hermetic", process.env);
-const child = spawn(process.execPath, ["--test", isolationArg(), ...process.argv.slice(2), ...files], {
+const child = spawn(process.execPath, ["--test", isolationArg(), "--test-concurrency=2", ...process.argv.slice(2), ...files], {
   env,
   stdio: "inherit",
 });

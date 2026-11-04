@@ -145,7 +145,7 @@
   },
   "core": {
     "kind": "desktop",
-    "reason": "Coverage: every remaining test file above 100 exclusive covered lines/second, plus bot-wall, human-check, secret, and video-privacy safety cases.",
+    "reason": "Coverage: every remaining test file above 100 exclusive covered lines/second, plus bot-wall, human-check, secret, video-privacy, and bounded test-runner safety cases.",
     "tests": [
       "desktop/test/unit/artifact-dir.test.ts",
       "desktop/test/unit/ax-fixtures.test.ts",
@@ -155,6 +155,7 @@
       "desktop/test/unit/cdp-video-privacy.test.ts",
       "desktop/test/unit/checks.test.ts",
       "desktop/test/unit/data-steps.test.ts",
+      "desktop/test/unit/desktop-runner.test.ts",
       "desktop/test/unit/dialog-recorder.test.ts",
       "desktop/test/unit/effect-replay-lint.test.ts",
       "desktop/test/unit/element-history.test.ts",
@@ -168,6 +169,7 @@
       "desktop/test/unit/heal-cursor.test.ts",
       "desktop/test/unit/helper-pid-keys.test.ts",
       "desktop/test/unit/identity.test.ts",
+      "desktop/test/unit/imperva-hcaptcha.test.ts",
       "desktop/test/unit/interpret-os.test.ts",
       "desktop/test/unit/invalid-fixture.test.ts",
       "desktop/test/unit/listing-stat.test.ts",

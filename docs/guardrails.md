@@ -6,10 +6,11 @@ rules. A workflow alone cannot turn on branch protection.
 
 Run the checks locally with the commands below. The
 [PR workflow](../.github/workflows/guardrails-pr.yml) owns the blocking invocation.
-The [full workflow](../.github/workflows/guardrails.yml) runs only with the
-`full-suite` PR label or manual dispatch. It has no nightly schedule and is not a
-required check. [Testing guidance](TESTING.md#choose-the-pr-checks) explains when
-to opt in. Always state that choice and its reason in the PR body.
+The [full workflow](../.github/workflows/guardrails.yml) runs all desktop tests
+without test-name exclusions, only with the `full-suite` PR label or manual
+dispatch. It has no nightly schedule and is not a required check.
+[Testing guidance](TESTING.md#choose-the-pr-checks) explains when to opt in.
+Always state that choice and its reason in the PR body.
 
 ```sh
 npm ci
@@ -149,31 +150,13 @@ that floating promises, type-only and runtime forbidden imports, runtime
 cycles, increased/new suppressions, and unused entries fail. It also proves
 safe `node:test` registration, type-only cycles, and budget pruning pass.
 
-## Known existing failure
+## Desktop runner
 
-Untouched `origin/main` at `1c2852f9d01fe1f5201409958bb14e8d2592e97c`
-fails **teach the fixture, correct three cards, replay twice, and splice a fix**
-in `desktop/test/unit/teach-app.test.ts`. A quiet, serial Node 24.18.0 run with
-one test, a throwaway `HOME`, no model keys, and pinned Playwright Chromium
-reproduced the same `/mark/` assertion as the task branch. The review UI shows
-`Bao stopped. Open Chrome to check the page before continuing.` for two events.
-The untouched-main run exited 1 with one failure and no skipped tests.
-
-Full local proof and raw output are
-`/Users/alexliu/dev/firstmate/data/bao-lint-guardrails/main-proof.md` and
-`main-proof.log` in that directory. The original blocking check skipped this
-exact name after main reproduced it. The opt-in full check has no such exclusion.
-`teach-app.test.ts` is outside the essential set because of its measured cost,
-not because a failure may be ignored in a required test. Report any full-check
-failure, including this known one, until the separate repair lands.
-
-`desktop/test/run-v1.mjs` forwards Node test-runner options. CI uses
-`--test-concurrency=2` to bound browser load. The full check has no name filter.
-TAP reports failures at once. `--test-force-exit` ends each
-test process after its tests finish, so a failed browser startup cannot leave
-a fixture server open until the job times out. Failed assertions still fail
-the job. A full local run's `extension-shots` timeout passed in a
-quiet serial rerun and is not excluded.
+See [Desktop tests](../desktop/test/README.md) for the runner's concurrency
+default and override options. CI uses TAP to report failures at once.
+`--test-force-exit` ends each test process after its tests finish, so a failed
+browser startup cannot leave a fixture server open until the job times out.
+Failed assertions still fail the job.
 
 ## Compiler floor
 

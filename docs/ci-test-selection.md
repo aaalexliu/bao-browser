@@ -2,6 +2,12 @@
 
 ## Evidence and scope
 
+The measurements below describe `16b7351`, before merging repaired main at
+`c043bb4`. The current manifest also keeps main's new
+`imperva-hcaptcha.test.ts` and `desktop-runner.test.ts`: they guard the bot-wall
+boundary and the runner's concurrency bound. Coverage percentages below remain
+historical measurements; the PR body records fresh post-merge check timings.
+
 The original [successful PR check](https://github.com/aaalexliu/bao-browser/actions/runs/41887176365)
 took 898 seconds. Its fixture step took 736 seconds. The parsed TAP log has
 1,180 test/suite duration records. The largest records included the taught
