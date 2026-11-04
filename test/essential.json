@@ -4,6 +4,30 @@
     "reason": "Safety: password slots, no saved credentials, login recovery, and human confirm stops.",
     "tests": [
       "desktop/test/unit/auth-login.test.ts"
+    ],
+    "names": [
+      "a missing session and an expired session are not logged in",
+      "auth precondition uses the pathname, so a next query is still logged out",
+      "the recorder drops a password value and keeps a secret slot",
+      "property: a password never survives interpret or a logged-out replay",
+      "a logged-out replay is an auth miss and does not call a model",
+      "a secret from the parameter form fills the masked field and stops before Apply",
+      "login and auth recovery reject every stripped credential before filling or submitting",
+      "the human handoff signs in and replay stops at confirm",
+      "replay paths do not click Apply without a human confirm event",
+      "the local fixture redirects logged-out and expired sessions and hides the secret",
+      "a headed-off replay of both login paths leaves the secret out of the library",
+      "a person signs in on the fixture after the banner, and replay stops at confirm"
+    ]
+  },
+  "password-slot": {
+    "kind": "desktop",
+    "reason": "Safety: keep the slow real password-recording case isolated from other auth cases to bound cold-cache wall time.",
+    "tests": [
+      "desktop/test/unit/auth-login.test.ts"
+    ],
+    "names": [
+      "recording a password field stores a secret slot and not the value"
     ]
   },
   "experian": {
@@ -55,6 +79,7 @@
     "tests": [
       "desktop/test/unit/import-deeplink.test.ts",
       "desktop/test/unit/input-token.test.ts",
+      "desktop/test/unit/live-read.test.ts",
       "desktop/test/unit/owner-auth.test.ts",
       "desktop/test/unit/relay.test.ts",
       "desktop/test/unit/remote-policy.test.ts",
@@ -103,7 +128,6 @@
     "kind": "desktop",
     "reason": "Safety: real read redaction, trapped/confirm clicks, browser grants, capture privacy, secret replay, and human handoffs.",
     "tests": [
-      "desktop/test/unit/live-read.test.ts",
       "desktop/test/unit/live-oauth-regressions.test.ts",
       "desktop/test/unit/live-target.test.ts",
       "desktop/test/unit/instacart-acceptance.test.ts",

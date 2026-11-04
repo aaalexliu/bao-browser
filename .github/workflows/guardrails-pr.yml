@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [auth, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web, legacy]
+        group: [auth, password-slot, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web, legacy]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
