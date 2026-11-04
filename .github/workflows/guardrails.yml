@@ -43,7 +43,7 @@ jobs:
           key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
       - name: Allow sandboxed Chromium to create user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: npx playwright install chromium
+      - run: npx playwright install --with-deps chromium
       - name: Set up the CDP video tools
         uses: ./.github/actions/setup-ffmpeg
       - run: npm run build:desktop -- --sourceMap

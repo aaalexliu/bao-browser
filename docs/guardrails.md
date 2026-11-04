@@ -47,9 +47,11 @@ selections. The full workflow always runs the full source inventory; tests not
 in the essential set are not deleted or disabled locally.
 
 Both workflows cache npm downloads and the lockfile-pinned Playwright Chromium.
-Ubuntu 24.04 already has Chromium's system libraries, so neither job installs
-browser dependencies with apt. Only groups that declare `ffmpeg` in the manifest
-set up video tools. The core group contains video privacy and live recording,
+Ubuntu 24.04 already has Chromium's system libraries, so the essential groups
+skip apt browser setup. The optional full check keeps main's canonical
+`playwright install --with-deps chromium`, including its extra fonts, so full
+suite layout tests retain their original environment. Only groups that declare
+`ffmpeg` in the manifest set up video tools. The core group contains video privacy and live recording,
 which need them; other groups never install them. Both workflows use the shared
 [CI video-tools action](../.github/actions/setup-ffmpeg/action.yml), with a pinned
 static FFmpeg/ffprobe release, a content-keyed cache, and SHA-256 checks on every

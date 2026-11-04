@@ -23,6 +23,21 @@ const fields = [
   { id: "fieldK", autocomplete: "email", value: "hello@example.com", secret: false },
 ];
 
+function savedStrings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((item: unknown) => savedStrings(item));
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([key, item]: [string, unknown]) => [key, ...savedStrings(item)]);
+  return [];
+}
+
+test("saved secret checks distinguish numeric metadata from bare and embedded string leaks", () => {
+  assert.equal(savedStrings({ createdAt: 1_683 }).some((value) => value.includes("683")), false);
+  for (const leaked of ["683", "code 683 leaked"]) {
+    assert.equal(savedStrings({ nested: [{ value: leaked }] }).some((value) => value.includes("683")), true);
+    assert.equal(savedStrings({ nested: [{ [leaked]: "safe" }] }).some((value) => value.includes("683")), true);
+  }
+});
+
 test("capture retains field structure, saves secret slots and leaves actual page values unchanged", { timeout: 30_000 }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-saved-secrets-capture-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
@@ -52,6 +67,8 @@ test("capture retains field structure, saves secret slots and leaves actual page
 
     const events = capture.stop();
     assert.equal(events.length, fields.length);
+    // Numeric metadata may contain the OTP digits.
+    events[0]!.ts = 1_683;
     for (const [index, field] of fields.entries()) {
       const event = events[index]!;
       assert.equal(event.op, "type");
@@ -76,8 +93,12 @@ test("capture retains field structure, saves secret slots and leaves actual page
     assert.equal(JSON.stringify(events), liveEvents);
     const savedWorkflow = library.read(workflow.id);
     const savedTrail = library.readTrail(workflow.id) as TrailEvent[];
+    assert.equal(savedWorkflow.createdAt, 1_683);
+    assert.equal(savedTrail[0]?.ts, 1_683);
     const workflowBytes = readFileSync(path.join(home, "workflows", "captured.json"), "utf8");
     const trailBytes = readFileSync(path.join(home, "trails", "captured.json"), "utf8");
+    const workflowStrings = savedStrings(JSON.parse(workflowBytes));
+    const trailStrings = savedStrings(JSON.parse(trailBytes));
     assert.equal(savedWorkflow.steps.length, fields.length);
     assert.equal(savedTrail.length, fields.length);
     for (const [index, field] of fields.entries()) {
@@ -89,8 +110,8 @@ test("capture retains field structure, saves secret slots and leaves actual page
       assert.equal(step.value, `{{${input.name}}}`);
       assert.equal(input.type, field.secret ? "secret" : "text");
       assert.equal(input.default, field.secret ? undefined : field.value);
-      assert.equal(workflowBytes.includes(field.value), !field.secret);
-      assert.equal(trailBytes.includes(field.value), !field.secret);
+      assert.equal(workflowStrings.some((value) => value.includes(field.value)), !field.secret, `${field.id} workflow`);
+      assert.equal(trailStrings.some((value) => value.includes(field.value)), !field.secret, `${field.id} trail`);
       assert.equal(savedTrail[index]?.value, "type" in field ? undefined : field.secret ? STRIPPED_SECRET : field.value);
       assert.equal(await page.locator(`#${field.id}`).inputValue(), field.value);
     }

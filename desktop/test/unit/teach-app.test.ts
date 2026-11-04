@@ -82,9 +82,13 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     assert.match(apply.intent, /^Click /);
 
     await page.goto(`http://127.0.0.1:${app.port}/`);
-    await page.waitForSelector("#teach-panel");
-    const box = await page.locator("#teach-panel").boundingBox();
-    assert.ok(box && box.width <= 380 && box.width >= 340, `panel width ${box?.width}`);
+    const width = await page.waitForFunction(() => {
+      const panel = document.querySelector("#teach-panel");
+      if (!panel || getComputedStyle(panel).visibility !== "visible") return null;
+      const box = panel.getBoundingClientRect();
+      return box.width && box.height ? box.width : null;
+    }).then((handle) => handle.jsonValue());
+    assert.ok(width && width <= 380 && width >= 340, `panel width ${width}`);
     await page.locator(`#teach-panel [data-card="${note.id}"] .teach-row`).click();
     const panel = await page.locator("#teach-panel").innerText();
     assert.match(panel, /Type \{\{note\}\}/);
