@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 30
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
