@@ -109,6 +109,8 @@ function toIdentity(node: DomDump): Identity {
     nameAttr: node.nameAttr,
     placeholder: node.placeholder,
     tag: node.tag,
+    inputType: node.inputType,
+    autocomplete: node.autocomplete,
     label: node.label,
     text: node.text,
     cssPath: node.cssPath,

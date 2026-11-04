@@ -15,6 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import path from "node:path";
 import type { Page } from "playwright";
 import type { FileArg, ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { FILE_BINDING } from "./bindings";
 import {
   addDays,
   civilInZone,
@@ -114,7 +115,7 @@ export interface TemplateScope {
 }
 
 export function renderTemplate(template: string, scope: TemplateScope): string {
-  return template.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)\s*\}\}/g, (_all, token: string) => {
+  return template.replace(FILE_BINDING, (_all, token: string) => {
     if (token === "run.date") return scope.run.date;
     if (token === "run.id") return scope.run.id;
     if (token === "suggested") return scope.suggested || "";

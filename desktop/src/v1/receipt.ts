@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { canonical } from "./canonical";
 import type { ReadBack } from "./schema";
+import { scrubSaved, type SavedContext } from "./saved-secrets";
 
 export interface Receipt {
   kind: "read-back";
@@ -69,8 +70,8 @@ export class ReceiptLog {
     }
   }
 
-  append(body: ReceiptBody): Receipt {
-    const withPrev = { ...body, prev: this.prev };
+  append(body: ReceiptBody, context?: SavedContext): Receipt {
+    const withPrev = { ...scrubSaved(body, context), prev: this.prev };
     const receipt: Receipt = { ...withPrev, hash: hashReceipt(withPrev) };
     if (this.file) appendFileSync(this.file, `${canonical(receipt)}\n`);
     this.entries.push(receipt);

@@ -79,6 +79,8 @@
         "nameAttr": { "type": "string" },
         "placeholder": { "type": "string" },
         "tag": { "type": "string" },
+        "inputType": { "type": "string" },
+        "autocomplete": { "type": "string" },
         "label": { "type": "string" },
         "text": { "type": "string" },
         "cssPath": { "type": "string" },

@@ -48,6 +48,54 @@ The live run view, its step list, and its audit log are files in Bao's home dire
 
 In `live-session/session.json`, `start` and `navigate` audit labels that parse as HTTP(S) URLs keep their origins, including host and port digits, plus redacted pathnames, capped at 80 characters. They omit URL credentials, query strings, and fragments. All other audit labels still use `redactLabel` in `desktop/src/cdp-live/live-record.ts`. `desktop/test/unit/cdp-live.test.ts` covers this rule.
 
+### Secret text in saved files
+
+Bao strips detected secrets in owned user-value fields when it saves live trails, run records and workflows. Firstmate 009 limits replacement to the typed `USER_VALUE_FIELDS` allowlist in `desktop/src/v1/saved-secrets.ts`:
+
+| Owner | Saved values checked |
+| --- | --- |
+| Typed workflow step or trail event | Typed values, inserting keys, field values before/after an action, date-range end values and prompt responses |
+| Workflow input | Default values, including captured table cells |
+| Form field or field read-back | The field's value, not its label or identity |
+| Runtime record or tool event | Values inside input and argument bags, including raw tool arguments |
+| Captured list or run output | Table cells and scalar output values, not headers or column definitions |
+| Read-back receipt or MCP result | Unsigned receipt `expected`/`actual` before hashing, and the result's `readBack` value |
+| Teaching case | Replay text/secret values and the case's secret-value list |
+
+Bao replaces an eligible whole value with `[secret stripped]`, never a fragment inside another string. An arbitrary metadata property named `value`, `text` or `default` does not qualify. Once a real argument, default or row container is selected, its contents remain data: model-, schema- and media-shaped keys do not exempt payload values. Field structure comes first: password types and `current-password`, `new-password`, `one-time-code` or `cc-*` autocomplete tokens. Value checks cover whole values that match Luhn-valid card numbers, SSN shapes, JWTs or common API-token prefixes. Secret table columns strip their cells; harmless columns and raw headers stay intact.
+
+These checks do not change or block live typing. Identifiers, labels, vendor/model names, selectors, URLs, templates, option definitions and all other metadata remain unchanged, even when they equal a secret or match a value check. Genuine workflow-owned bindings remain templates; a raw secret argument that looks like a template is still data. Existing markers remain unchanged. Sync, sharing and release preparation keep the shared whole-value copy; they do not run a later secret-substring or personal-data regex rewrite. Import questions can still omit personal input defaults, and outbound checks can still omit secret-type defaults and sensitive literals or refuse a payload. Labels and other unlisted metadata, including personal text, remain unchanged. Unmarked dropdown, radio and checkbox values remain unchanged, even when a value matches a secret pattern. A secret-marked choice field still strips its selected and default values.
+
+Known gaps include secrets embedded in free text, unlisted metadata fields, snapshot text, prompts and responses. The sanitizer does not search those fields, even for a whole secret value. Saved runtime arguments use the associated workflow's field and input bindings. Cleanup uses those workflow links and saved argument bags when they exist. Older or orphaned files may lack that evidence. Screenshots and videos stay unchanged. Existing outbound sync guards can refuse a workflow that contains a stripped secret default or literal; workflows with preserved bindings and no secret defaults can still sync. This change does not relax those guards.
+
+Replay stops at a stripped step with “This step needs a value.” It never types the marker or sends it to healing. Supply a fresh runtime input to replace a stripped saved default, or edit the saved step and its input before replaying it.
+
+To inspect existing saved text in one Bao home, quit active sessions and run:
+
+```sh
+bao scrub-secrets --home /path/to/bao-home
+```
+
+The command defaults to a dry run and lists the files it would change. Add `--write` to scrub them. Before changing any saved file, Bao backs up every affected original under `<home>/secret-scrub-backups/<run>/`, with private directory and file permissions. Those backups still contain the original secrets. Keep them private and remove them once you no longer need recovery. The command skips symlinks, browser profiles, settings, screenshots and videos. It also lists append-only receipt chains as skipped, with a reason, in both dry-run and write output. Those chains stay byte-for-byte unchanged and may still contain historical secrets. New receipts are stripped before hashing so their chains remain valid. Already hashed receipts, including their whole signed bodies in run and trail copies, stay unchanged. Historical secrets in those copies may remain too. Receipt-shaped objects inside user arguments, defaults or captured rows still strip as user data. `bao scrub-secrets --help` describes this limit. Invalid JSON in a file to be scrubbed stops the scrub before it writes anything. Run it again to check that the supported value fields no longer need a change.
+
+### Sealed artifact census
+
+Firstmate 010 makes a sealed payload read-only. Bao strips eligible text values once, before the writer computes its seal. Later saves, cleanup, heal copies, release preparation and sync copies preserve that payload. They do not rehash a changed copy. The shared owner check in `desktop/src/v1/saved-secrets.ts` recognizes hashed read-back records, publication previews with `documentHash`, and `sha256:` content addresses. Objects with an arbitrary `hash` property do not qualify. Receipt and preview lookalikes inside argument/default/row payloads remain user data and still strip.
+
+`desktop/test/unit/saved-secrets-sealed.test.ts` runs this census through shared/context stripping, both outbound strip functions, release preparation, workflow/run/trail/append writers, kept-heal copies, version heal drafts, intent evals, sync pull/heal catch-up and dry-run/write cleanup. It compares canonical payload bytes, verifies seals after each pass, and compares whole file bytes before and after cleanup. Workflow JSON can sort object keys and change outer whitespace; neither is part of a receipt or release seal. Unsafe sealed copies can still fail outbound checks; Bao does not change their bodies to make them pass. Its composition fixture also uses the real local registry with throwaway PGlite storage, HTTP sync, share/install and release producers. It covers already-stripped defaults, `secret`/`strip`/`stripped`/`pass` collisions, whole card/token values, stable `{{password}}` bindings and physical saved copies. Browser replay must stop before typing or healing without fresh input, then type the fresh runtime value.
+
+| Artifact | Single seal point | Payload and verification |
+| --- | --- | --- |
+| Read-back receipt | `ReceiptLog.append`, after whole-value stripping | Whole receipt body and `prev`; `verifyReceiptChain` verifies copies and the original chain bytes stay unchanged |
+| Publication preview / review hash | `prepareImport` clears eligible values before `releaseHash`; desktop review and server preview use that same path | Released `document`; recompute `releaseHash` without changing the copy |
+| Download output | `fileDigest`, after the download writes its bytes | External file bytes; compare size, SHA-256 and original bytes, not the surrounding manifest |
+| Screenshot address | Proxy executors and eval capture hash the captured PNG | External PNG bytes; recompute SHA-256 and preserve the `sha256:` reference or eval `snapshot.sha256` |
+| Crop address | Desktop crop capture hashes the final PNG | External crop bytes; recompute SHA-256 and preserve the content address |
+
+The census uses a real Playwright screenshot and a fixture crop. It does not run native desktop capture or change helper grants. Image, download and video bytes remain outside text stripping; their hashes do not seal neighboring text in an event or manifest. They may contain historical private content. Existing sealed text can also retain historical secrets: cleanup never rewrites it. New eligible receipt and release values strip before sealing. No current supported desktop text writer creates a cryptographic signature distinct from these hash seals.
+
+Sync `workflows[].hash` and outbox hashes are change-tracking baselines for editable workflows, not immutable seals. Sync and MCP materialization compute them from the saved stripped document. Editing a workflow must still make it dirty. Local version numbers, login cookie-name fingerprints, extension signal IDs, profile namespaces, auth-token hashes and panel signatures are not content seals on saved user-value artifacts. Local version books have no seal and still scrub their unsealed document copies. Credential stores, media, original-byte backups and historical receipt-chain files keep their existing exclusions.
+
 ## What each one costs in speed
 
 The debugging toggle is instant if it is already on. The Allow dialog is the slow gate, about 8 to 50 seconds, once per connection, mostly the accessibility walk. A page click is about a second, with a short pause so the tab can be watched. A screenshot is a local file write. An extension host grant is a separate prompt, up to 90 seconds, and it is not on the live-attach path.

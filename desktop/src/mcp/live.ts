@@ -12,6 +12,7 @@ import { launchOwnedChrome, navigateOwned, productHeadless } from "../launch";
 import { osHit, osNodes } from "../proxy/os";
 import type { TrailEvent } from "../v1/interpret";
 import type { Identity } from "../v1/schema";
+import { scrubSaved } from "../v1/saved-secrets";
 
 export const LIVE_SOURCE = { agent: "live-model", vendor: "cursor", adapter: "stdio" } as const;
 
@@ -26,6 +27,7 @@ interface Hit {
   blank: boolean;
   tag?: string;
   type?: string;
+  autocomplete?: string;
   id?: string;
   nameAttr?: string;
   text?: string;
@@ -34,26 +36,18 @@ interface Hit {
 
 let seq = 0;
 
-export function scrubTrailText(value: string, secrets: string[]): string {
-  let out = value;
-  for (const secret of secrets) {
-    if (secret) out = out.split(secret).join("[secret]");
-  }
-  return out;
-}
-
 export function typeTrailEvent(text: string, identity: Identity | undefined, secrets: string[]): TrailEvent {
   const sensitive = identity?.role === "password" || secrets.some((secret) => secret && text === secret);
-  return {
+  return scrubSaved({
     id: `live-${++seq}`,
     ts: Date.now(),
     kind: "act",
     op: "type",
     source: LIVE_SOURCE,
     identity,
-    value: sensitive ? undefined : scrubTrailText(text, secrets),
+    value: text,
     sensitive: sensitive || undefined,
-  };
+  }, { secrets });
 }
 
 export class LiveSession {
@@ -186,7 +180,7 @@ export class LiveSession {
       provenance: { x, y, space: "viewport" },
       beforeUrl: before,
       afterUrl: page.url(),
-      afterText: afterText ? scrubTrailText(afterText, this.secrets) : undefined,
+      afterText: afterText || undefined,
       unresolved: actionable ? undefined : { reason: hit.blank ? "hit nothing actionable" : `hit ${hit.tag || "text"}, not a control` },
     });
     return { content: [{ type: "text", text: `${page.url()} ${afterText || hit.text || hit.tag || "blank"}` }], isError: false };
@@ -291,11 +285,7 @@ export class LiveSession {
   }
 
   private write(event: TrailEvent): void {
-    const json = JSON.stringify(event);
-    if (this.secrets.some((secret) => secret && json.includes(secret))) {
-      throw new Error("refusing to write a secret into the trail");
-    }
-    appendFileSync(this.trailPath, json + "\n");
+    appendFileSync(this.trailPath, JSON.stringify(scrubSaved(event, { secrets: this.secrets })) + "\n");
   }
 }
 
@@ -305,6 +295,8 @@ function identityFromHit(hit: Hit): Identity | undefined {
   return {
     surface: "dom",
     role,
+    inputType: hit.type,
+    autocomplete: hit.autocomplete,
     id: hit.id,
     nameAttr: hit.nameAttr,
     text: hit.text || undefined,
@@ -328,6 +320,7 @@ function describeAt(point: { x: number; y: number }): Hit {
     blank: false,
     tag: node.tagName.toLowerCase(),
     type: input.type || "",
+    autocomplete: node.getAttribute("autocomplete") || undefined,
     id: node.id || undefined,
     nameAttr: node.getAttribute("name") || undefined,
     text,
@@ -343,6 +336,7 @@ function focused(): Hit {
     blank: false,
     tag: node.tagName.toLowerCase(),
     type: input.type || "",
+    autocomplete: node.getAttribute("autocomplete") || undefined,
     id: node.id || undefined,
     nameAttr: node.getAttribute("name") || undefined,
     text: ((node as HTMLElement).innerText || "").replace(/\s+/g, " ").trim().slice(0, 80),

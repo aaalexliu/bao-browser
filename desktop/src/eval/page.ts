@@ -43,6 +43,7 @@ export function pageApi(request: PageRequest): unknown {
       label: el.getAttribute("aria-label") || undefined,
       path: [] as { role: string; name?: string }[],
       inputType: input?.type || "",
+      autocomplete: el.getAttribute("autocomplete") || undefined,
     };
   };
 

@@ -8,6 +8,7 @@ import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
+import { scrubSaved } from "./saved-secrets";
 
 export interface SaveCompleter {
   provider: string;
@@ -164,7 +165,7 @@ export async function inferSavedWorkflow(
   const floor = source.floorTitle && source.floorTitle !== "Captured workflow"
     ? source.floorTitle
     : (workflow.name && workflow.name !== "Captured workflow" ? workflow.name : "Untitled workflow");
-  const base: WorkflowV2 = stripSecrets({ ...workflow, name: floor }, secrets);
+  const base = scrubSaved({ ...workflow, name: floor }, { secrets });
   const skipped = (provider: string, model: string): WorkflowV2 => ({
     ...base,
     inference: { at: now, provider, model, status: "skipped" },
@@ -198,7 +199,7 @@ export async function inferSavedWorkflow(
   else delete next.summary;
   if (parsed.intent) next.intent = parsed.intent;
   else delete next.intent;
-  return stripSecrets(next, secrets);
+  return scrubSaved(next, { secrets });
 }
 
 function promptSteps(
@@ -219,45 +220,6 @@ function promptSteps(
       label: visible || step.action,
     };
   });
-}
-
-const STRUCTURAL = new Set(["id", "action", "input", "key", "surface", "role", "kind", "schema", "op", "tag", "type", "provider", "model", "status"]);
-
-/** Drop a known secret from stored text. Structural fields such as action and id stay. */
-function stripSecrets(workflow: WorkflowV2, secrets: string[]): WorkflowV2 {
-  const list = secrets.filter((secret) => secret.length >= 4).sort((a, b) => b.length - a.length);
-  if (!list.length) return workflow;
-  const steps = workflow.steps.map((step) => replaceSecrets(step, list, "") as WorkflowV2["steps"][number]);
-  return steps.every((step, index) => step === workflow.steps[index]) ? workflow : { ...workflow, steps };
-}
-
-function replaceSecrets(value: unknown, secrets: string[], key: string): unknown {
-  if (typeof value === "string") {
-    if (STRUCTURAL.has(key) || !secrets.some((secret) => value.includes(secret))) return value;
-    let out = value;
-    for (const secret of secrets) out = out.split(secret).join("[redacted]");
-    return out;
-  }
-  if (Array.isArray(value)) {
-    let changed = false;
-    const next = value.map((item) => {
-      const child = replaceSecrets(item, secrets, "");
-      if (child !== item) changed = true;
-      return child;
-    });
-    return changed ? next : value;
-  }
-  if (value && typeof value === "object") {
-    let changed = false;
-    const out: Record<string, unknown> = {};
-    for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
-      const child = replaceSecrets(item, secrets, childKey);
-      if (child !== item) changed = true;
-      out[childKey] = child;
-    }
-    return changed ? out : value;
-  }
-  return value;
 }
 
 function leaks(text: string, secrets: string[]): boolean {

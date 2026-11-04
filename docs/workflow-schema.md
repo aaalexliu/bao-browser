@@ -13,7 +13,7 @@ Collected before replay starts. The CLI and MCP pass the same JSON object the fo
 | type | meaning |
 | --- | --- |
 | `text` | Any string. The form uses a multiline field. |
-| `secret` | Masked. No `default`. The value is never in the file. |
+| `secret` | Masked runtime input. No usable saved default; cleanup may leave a stripped-value marker. See [saved-file secret handling](permissions.md#secret-text-in-saved-files). |
 | `number` | A number. Calculator digits use this. |
 | `choice` | One of `choices`. |
 | `file` | One file, or many when `multiple` is set. The workflow stores the input name, not a path. |
@@ -40,7 +40,7 @@ A workflow can declare `precondition` `{ "kind": "url", "match", "phase": "auth"
 
 `locators` is an ordered list tried after a known overlay is closed and before label, anchor, and wait repairs. Each item is `role` (role plus accessible name), `text`, `testid`, `css`, `xpath`, or `anchor`. A locator is used only when exactly one node matches and that node still has a box. A `role` or `text` locator matches a node's text as shown, or with its prices dropped, so a name with no price still finds a control after its price changes. That holds while the control's text fits the 80-character cut the page dump applies to a node's text and name. On a long name, a price with more or fewer digits moves that cut, and replay falls back to the later locators, such as the `href` and position `css` locators. A match as shown comes first, so `Donate` still picks `Donate` beside `Donate $10`. The hit is logged. `primary` replay tries the first locator only. `identity.xpath` is stored for that locator and is not a score. An unnamed text view may use a role locator whose name is empty, which means the only unnamed control of that role. One-way export to Chrome DevTools Recorder JSON is `toPuppeteerReplay`. Anchor locators are omitted. Click steps set `offsetX` and `offsetY` to 1 because `@puppeteer/replay` 4.0.2 forwards a missing offset as `undefined`, and Puppeteer 25 then waits until timeout.
 
-`unresolved` steps are stored so the miss is visible. Replay stops on them instead of skipping.
+`unresolved` steps are stored so the miss is visible. Replay stops on them instead of skipping. A stripped-value stop can clear with fresh runtime inputs under the [saved-file replay rules](permissions.md#secret-text-in-saved-files).
 
 `when` is optional and has one of three shapes. With `{ "input": "route", "value": "Save the note" }`, the input is a `choice`, and replay runs the step only when that choice equals `value`. Teach uses this when two demonstrations of the same task diverge. With `{ "present": "text" }`, replay runs the step only while the page shows that text, or a control with that name. With `{ "absent": "text" }`, replay runs the step only while the page does not. A live session saves this on a cart add, so an item already in the cart is not added again. `"anyCount": true` goes only beside `absent`. It lets each number in the text match any number, so `{ "absent": "1 in cart", "anyCount": true }` also skips the step while the page shows `3 in cart`. `replay()` honors it, and so does the replay of a `cdp-live` workflow, which runs `replay()` in the live Chrome. Steps in a row with the same `present` or `absent` are decided once, on the first of them.
 

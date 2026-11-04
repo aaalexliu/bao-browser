@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "./saved-secrets";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -16,9 +17,7 @@ import { formatClock } from "./time";
 import { identityView } from "./run-trace";
 import {
   applyPatch,
-  maskSnapshot,
   stepPolicy,
-  maskText,
   type FailureSnapshot,
   type HealProposal,
   type HealProvider,
@@ -333,7 +332,7 @@ export async function replay(
     const trace = driver.trace?.();
     const downloaded = endFilesRun(runId);
     const outputs = materializeOutputs(workflow, tables);
-    return {
+    return scrubSaved({
       heals,
       repairs,
       locatorHits,
@@ -349,7 +348,7 @@ export async function replay(
       ...(outputs ? { outputs } : {}),
       ...(Object.keys(downloaded).length ? { files: downloaded } : {}),
       modelCalls: heals.filter((item) => item.model).length,
-    };
+    }, { workflow, args, secrets });
   };
 
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
@@ -405,7 +404,12 @@ export async function replay(
       continue;
     }
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
-    if (step.unresolved) {
+    if (stepNeedsSecretValue(step, workflow, args)) {
+      const failure = await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets);
+      stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
+      return finish({ runId, status: "failed", steps, failure });
+    }
+    if (step.unresolved && step.unresolved.reason !== NEEDS_SECRET_VALUE) {
       const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
       stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, undefined, false, clock() - started);
@@ -515,7 +519,11 @@ export async function replay(
     }
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
-      const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
+      const needsValue = Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
+      const recovered = !needsValue && await recoverAuth(workflow, step, args, driver, secrets, gate);
+      if (needsValue) {
+        outcome = { ok: false, repairs: [], failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
+      }
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
@@ -545,6 +553,10 @@ export async function replay(
       return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind, ask: outcome.ask });
     }
     let failure = outcome.failure;
+    if (failure.reason.includes(NEEDS_SECRET_VALUE)) {
+      stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
+      return finish({ runId, status: "failed", steps, failure: { ...failure, reason: NEEDS_SECRET_VALUE } });
+    }
     const missed = await classifyLive(driver, workflow, step);
     noteClass(missed, true);
     if (missed.class === "bot_wall" || missed.class === "login_wall") {
@@ -646,7 +658,7 @@ export async function replay(
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
-    const proposal = await heal.propose(failure, step);
+    const proposal = await heal.propose(failure, step, { workflow, args, secrets });
     const prompt = proposal?.prompt || "";
     const record: HealRecord = {
       id: `heal-${heals.length + 1}`,
@@ -656,8 +668,8 @@ export async function replay(
       mode: mode === "approve" ? "approve" : "auto",
       failedStep: step,
       intent: failure.intent,
-      snapshot: maskSnapshot(failure.snapshot, secrets),
-      prompt: maskText(prompt, secrets),
+      snapshot: failure.snapshot,
+      prompt,
       model: proposal?.model
         ? {
           provider: proposal.model.provider,
@@ -665,7 +677,7 @@ export async function replay(
           version: proposal.model.version || proposal.model.name,
         }
         : undefined,
-      rawResponse: proposal ? maskText(proposal.rawResponse, secrets) : undefined,
+      rawResponse: proposal?.rawResponse,
       proposedPatch: proposal?.patch,
       beforeShot: failure.beforeShot || beforeShot,
       identity: failure.identity,
@@ -733,7 +745,7 @@ export async function replay(
   }
   if (!runPassed(steps, finalCheckFailed)) {
     const reason = executed.length === 0 ? "no steps executed" : "final check failed";
-    const snapshot = maskSnapshot(await driver.snapshot().catch(() => ({})), secrets);
+    const snapshot = await driver.snapshot().catch(() => ({}));
     return finish({
       runId,
       status: "failed",
@@ -787,6 +799,9 @@ async function runStep(
   appending = false,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
+  if (stepNeedsSecretValue(step, workflow, args)) {
+    return { ok: false, repairs, failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
+  }
   if (step.action === "note") return { ok: true, repairs };
   if (step.action === "extract" || step.action === "for_each") {
     const bag = tables ?? new Map();
@@ -808,7 +823,7 @@ async function runStep(
     try {
       if (url && driver.goto) await driver.goto(url);
     } catch (err) {
-      const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+      const reason = err instanceof Error ? err.message : String(err);
       return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
     }
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
@@ -912,7 +927,7 @@ async function runStepAction(
   try {
     await act(step, node, args, driver, gate);
   } catch (err) {
-    const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+    const reason = err instanceof Error ? err.message : String(err);
     const failure = await fail(driver, step, "action", reason, found.hit.brokenAttr, secrets);
     return { ok: false, repairs, acted: node, failure: withLocators(failure, found.tried) };
   }
@@ -1294,6 +1309,9 @@ async function runLogin(
   secrets: string[],
   gate: ApplyGate,
 ): Promise<StepOutcome> {
+  if (Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret)) {
+    return { ok: false, repairs: [], failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
+  }
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
   const human = !secretArg(workflow, args, step.input);
@@ -1333,10 +1351,10 @@ async function settleLogin(
   gate: ApplyGate,
   human: boolean,
 ): Promise<boolean> {
-  const password = secretArg(workflow, args, step.input);
-  if (!human && password) {
+  const values = loginValues(workflow, args, step.input);
+  if (!human && values.password) {
     try {
-      await fillSecretLogin(workflow, args, driver, gate, password);
+      await fillSecretLogin(values, driver, gate);
     } catch (err) {
       const message = err instanceof Error ? err.message : "login failed";
       if (message === "could not fill the secret field" || message === "password field missing") return false;
@@ -1436,14 +1454,19 @@ async function waitForLogin(workflow: WorkflowV2, step: WorkflowStep, args: Repl
   return loginSatisfied(workflow, step, seen, args);
 }
 
+function loginValues(workflow: WorkflowV2, args: ReplayArgs, preferred?: string) {
+  return {
+    username: textArg(args, "username") || workflow.inputs.find((input) => input.name === "username")?.default || "",
+    password: secretArg(workflow, args, preferred),
+    verifyCode: textArg(args, "code"),
+  };
+}
+
 async function fillSecretLogin(
-  workflow: WorkflowV2,
-  args: ReplayArgs,
+  { username, password, verifyCode }: ReturnType<typeof loginValues>,
   driver: Driver,
   gate: ApplyGate,
-  password: string,
 ): Promise<void> {
-  const username = textArg(args, "username") || workflow.inputs.find((input) => input.name === "username")?.default || "";
   let tree = await driver.tree();
   const user = tree.nodes.find((node) => node.id === "username" || node.nameAttr === "username");
   if (user && username) await driver.fill(user, username, false);
@@ -1467,7 +1490,6 @@ async function fillSecretLogin(
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
   const code = tree.nodes.find((node) => node.id === "code" || node.testId === "verify-code");
-  const verifyCode = textArg(args, "code");
   if (code && verifyCode) {
     await driver.fill(code, verifyCode, false);
     const button = tree.nodes.find((node) => node.id === "verify" || node.testId === "verify-submit");
@@ -1827,7 +1849,7 @@ async function runFilesDatesStep(
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     return { ok: true, repairs, acted: step.identity };
   } catch (err) {
-    const reason = maskText(err instanceof Error ? err.message : String(err), secrets);
+    const reason = err instanceof Error ? err.message : String(err);
     return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
   }
 }
@@ -1926,7 +1948,7 @@ async function takeReadBack(
   receiptLog: ReceiptLog,
   runId: string,
 ): Promise<StepFailure | undefined> {
-  const expected = maskRead(expectedText(read.match, args), secrets);
+  const expected = expectedText(read.match, args);
   let actual = "";
   let pass = false;
   const start = Date.now();
@@ -1934,10 +1956,10 @@ async function takeReadBack(
   do {
     try {
       const seen = await readActual(read, args, driver);
-      actual = maskRead(clipRead(seen), secrets);
+      actual = clipRead(seen);
       pass = readMatches(expected, actual);
     } catch (err) {
-      actual = maskRead(err instanceof Error ? err.message : String(err), secrets);
+      actual = err instanceof Error ? err.message : String(err);
       pass = false;
     }
     if (pass || Date.now() - start >= timeout) break;
@@ -1953,7 +1975,7 @@ async function takeReadBack(
     expected,
     actual,
     pass,
-  });
+  }, { workflow, args, secrets });
   if (pass) return undefined;
   return fail(driver, step, "expect", `read-back expected "${expected}", read "${actual}"`, undefined, secrets);
 }
@@ -1987,10 +2009,6 @@ function readMatches(expected: string, actual: string): boolean {
   return actual.trimEnd() === expected.trimEnd() || actual.includes(expected);
 }
 
-function maskRead(value: string, secrets: string[]): string {
-  return maskText(value, secrets);
-}
-
 function clipRead(value: string): string {
   const flat = value.replace(/\s+/g, " ").trim();
   return flat.length > 500 ? `${flat.slice(0, 500)}…` : flat;
@@ -2017,7 +2035,7 @@ async function fail(
   brokenAttr: string | undefined,
   secrets: string[],
 ): Promise<StepFailure> {
-  const snapshot = maskSnapshot(await driver.snapshot(), secrets);
+  const snapshot = scrubSaved(await driver.snapshot(), { secrets });
   return {
     stepId: step.id,
     index: step.index,

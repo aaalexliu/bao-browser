@@ -7,6 +7,7 @@
 // marked low-confidence. A browser error page is not an effect.
 
 import type { Expectation, Identity, Postcondition, WorkflowStep } from "./schema";
+import { scrubSaved, STRIPPED_SECRET } from "./saved-secrets";
 
 export const SETTLED_EXPECT = "no error and the page settled";
 
@@ -75,7 +76,7 @@ export function inferExpect(
     };
   }
   if (!errorPage) {
-    const url = urlCheck(event.beforeUrl, event.afterUrl, known, secrets);
+    const url = urlCheck(event.beforeUrl, event.afterUrl, known);
     if (url) return { postcondition: { kind: "url", match: url, timeoutMs: 8000 }, expect: { kind: "url", match: url, timeoutMs: 8000 } };
   }
   return {
@@ -154,14 +155,12 @@ function urlCheck(
   beforeUrl: string | undefined,
   afterUrl: string | undefined,
   known: readonly KnownTyped[],
-  secrets: string[],
 ): string | undefined {
   if (!beforeUrl || !afterUrl || beforeUrl === afterUrl || sameDocument(beforeUrl, afterUrl)) return undefined;
-  const cleaned = scrub(afterUrl, secrets);
-  if (!cleaned || isBrowserError(cleaned)) return undefined;
+  if (isBrowserError(afterUrl)) return undefined;
   let url: URL;
   try {
-    url = new URL(cleaned);
+    url = new URL(afterUrl);
   } catch {
     return undefined;
   }
@@ -195,12 +194,8 @@ export function isBrowserError(url: string | undefined): boolean {
 
 function scrub(value: string | undefined, secrets: readonly string[]): string | undefined {
   if (!value) return undefined;
-  let out = value;
-  for (const secret of secrets) {
-    if (secret) out = out.split(secret).join("");
-  }
-  const flatText = out.trim();
-  return flatText ? out : undefined;
+  const saved = scrubSaved({ op: "type", value }, { secrets }).value;
+  return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
 }
 
 function flat(value: string): string {

@@ -5,6 +5,7 @@
 
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
 import { looksLikePath, validateWorkflow, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { scrubSaved, secretSavedField } from "./saved-secrets";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -130,7 +131,7 @@ export function projectTeach(
   spoken?: ReadonlyMap<string, Spoken>,
 ): { cards: TeachCard[]; workflow: WorkflowV2; baseline: WorkflowV2 } {
   const { workflow: baseline, groups } = explain(events, meta);
-  const secrets = secretValues(events);
+  const secrets = [...secretValues(events), ...(meta.secrets ?? [])];
   const drafts: Draft[] = baseline.steps.map((step, index) => {
     const group = groups[index] || [];
     const event = group[0];
@@ -139,8 +140,8 @@ export function projectTeach(
     const outcome = heuristicOutcome(step, event);
     const voice = spoken?.get(id);
     const noted = attachedNote(group);
-    const guess = scrub(voice?.intent || intent, secrets, events);
-    const note = scrub(noted, secrets, events);
+    const guess = fileText(voice?.intent || intent, events);
+    const note = fileText(noted, events);
     const noteAsIntent = Boolean(note);
     const card: TeachCard = {
       id,
@@ -148,7 +149,7 @@ export function projectTeach(
       narrator: voice?.narrator || "heuristic",
       modelName: voice?.modelName,
       intent: guess,
-      outcome: scrub(voice?.outcome || outcome, secrets, events),
+      outcome: fileText(voice?.outcome || outcome, events),
       human: step.human === true || step.action === "login" || step.action === "confirm",
       verify: step.action === "verify",
       dropped: false,
@@ -168,7 +169,7 @@ export function projectTeach(
     };
   });
   const overrides = new Map<string, WorkflowInput>();
-  for (const decision of decisions) applyDecision(drafts, decision, baseline.inputs, overrides, secrets, events);
+  for (const decision of decisions) applyDecision(drafts, decision, baseline.inputs, overrides, events);
   const kept = drafts.filter((draft) => !draft.dropped && !draft.merged);
   const steps = kept.map((draft, index) => ({
     ...draft.step,
@@ -185,9 +186,10 @@ export function projectTeach(
     inputs,
     steps,
   };
-  const errors = validateWorkflow(workflow);
+  const saved = scrubSaved({ cards: drafts.map((draft) => draft.card), workflow, baseline }, { workflow, secrets });
+  const errors = validateWorkflow(saved.workflow);
   if (errors.length) throw new Error(errors.join(", "));
-  return { cards: drafts.map((draft) => draft.card), workflow, baseline };
+  return saved;
 }
 
 export function decide(decisions: readonly TeachDecision[], correction: TeachCorrection, now: number): TeachDecision[] {
@@ -461,7 +463,7 @@ export function teachIntentCase(
 ): TeachIntentCase {
   const projected = projectTeach(events, decisions, { ...meta, id: meta.id || id }, spoken);
   const raw = publicTrail(events);
-  const hidden = secretValues(events);
+  const hidden = [...secretValues(events), ...(meta.secrets ?? [])];
   const human = projected.cards.flatMap((card) => {
     if (card.dropped || card.merged || !card.human) return [];
     const gate: "login" | "confirm" = card.action === "login" ? "login" : "confirm";
@@ -478,7 +480,7 @@ export function teachIntentCase(
   const texts = projected.workflow.inputs
     .filter((input) => input.type === "text" || input.type === "number")
     .map((input) => input.default || "");
-  return {
+  return scrubSaved<TeachIntentCase>({
     schema: "bao.intent-case/v1",
     id,
     name: meta.name || projected.workflow.name,
@@ -494,27 +496,25 @@ export function teachIntentCase(
     ],
     decisions: decisions.map((decision) => ({
       ...decision,
-      detail: scrub(decision.detail, hidden, events),
-      intent: decision.intent ? scrub(decision.intent, hidden, events) : undefined,
-      note: decision.note ? scrub(decision.note, hidden, events) : undefined,
-      outcome: decision.outcome ? scrub(decision.outcome, hidden, events) : undefined,
+      detail: fileText(decision.detail, events),
+      intent: decision.intent ? fileText(decision.intent, events) : undefined,
+      note: decision.note ? fileText(decision.note, events) : undefined,
+      outcome: decision.outcome ? fileText(decision.outcome, events) : undefined,
     })),
     workflow: projected.workflow,
-  };
+  }, { workflow: projected.workflow, secrets: hidden });
 }
 
 export function publicTrail(events: readonly TrailEvent[]): TrailEvent[] {
   const secrets = secretValues(events);
-  return events.map((event) => {
+  return scrubSaved(events.map((event) => {
     const copy: TrailEvent = { ...event };
-    if (copy.sensitive || copy.identity?.role === "password") delete copy.value;
-    if (copy.value && secrets.includes(copy.value)) delete copy.value;
     delete copy.rawPath;
-    if (copy.note) copy.note = scrub(copy.note, secrets, events);
-    if (copy.intent) copy.intent = scrub(copy.intent, secrets, events);
-    if (copy.detail) copy.detail = scrub(copy.detail, secrets, events);
+    if (copy.note) copy.note = fileText(copy.note, events);
+    if (copy.intent) copy.intent = fileText(copy.intent, events);
+    if (copy.detail) copy.detail = fileText(copy.detail, events);
     return copy;
-  });
+  }), { secrets });
 }
 
 function applyDecision(
@@ -522,13 +522,12 @@ function applyDecision(
   decision: TeachDecision,
   inputs: WorkflowInput[],
   overrides: Map<string, WorkflowInput>,
-  secrets: string[],
   events: readonly TrailEvent[],
 ): void {
   const draft = drafts.find((item) => item.id === decision.cardId);
   if (!draft || draft.dropped || draft.merged) return;
   if (decision.kind === "rename" && decision.intent) {
-    const intent = scrub(decision.intent, secrets, events);
+    const intent = fileText(decision.intent, events);
     draft.card.intent = intent;
     draft.card.noteAsIntent = false;
     draft.step.intent = intent;
@@ -536,7 +535,7 @@ function applyDecision(
     return;
   }
   if (decision.kind === "note" && decision.note) {
-    const intent = scrub(decision.note, secrets, events);
+    const intent = fileText(decision.note, events);
     draft.card.note = intent;
     draft.card.noteAsIntent = true;
     draft.step.intent = intent;
@@ -575,7 +574,7 @@ function applyDecision(
     return;
   }
   if (decision.kind === "verify" || decision.kind === "check") {
-    const match = scrub(decision.outcome || draft.card.outcome || "the check holds", secrets, events);
+    const match = fileText(decision.outcome || draft.card.outcome || "the check holds", events);
     draft.step.action = "verify";
     draft.step.human = undefined;
     delete draft.step.provenance;
@@ -777,15 +776,14 @@ function detailFor(correction: TeachCorrection): string {
 function secretValues(events: readonly TrailEvent[]): string[] {
   const out: string[] = [];
   for (const event of events) {
-    const secret = event.sensitive || event.identity?.role === "password";
-    if (secret && event.value && event.value.length >= 8 && !out.includes(event.value)) out.push(event.value);
+    const secret = event.sensitive || secretSavedField(event.identity);
+    if (secret && event.value && !out.includes(event.value)) out.push(event.value);
   }
   return out;
 }
 
-function scrub(value: string, secrets: string[], events: readonly TrailEvent[]): string {
+function fileText(value: string, events: readonly TrailEvent[]): string {
   let out = value;
-  for (const secret of secrets) if (secret) out = out.split(secret).join("[secret]");
   for (const event of events) {
     if (event.rawPath) out = out.split(event.rawPath).join("{{file}}");
   }

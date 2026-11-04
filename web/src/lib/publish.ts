@@ -1,5 +1,5 @@
-// Sharing and publishing clear personal values. The preview is the diff the
-// author sees before anything becomes public or installable.
+// Release hashes cover the whole-value sanitized copy, never a substring rewrite.
+// Personal input questions belong to import-sheet.ts, not a second redaction pass.
 
 import { createHash } from "node:crypto";
 import { stripUnsafe } from "./guard";
@@ -11,22 +11,13 @@ export interface ReleaseChange {
   reason: string;
 }
 
-const RULES: { reason: string; re: RegExp }[] = [
-  { reason: "email", re: /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi },
-  { reason: "phone", re: /(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}/g },
-  { reason: "ssn", re: /\b\d{3}-\d{2}-\d{4}\b/g },
-  { reason: "address", re: /\b\d{1,5}\s+(?:\S+\s+){0,4}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr)\b/gi },
-  { reason: "url secret", re: /([?&](?:token|key|password|session|code)=)[^&\s]+/gi },
-];
-
 export function redactForRelease(document: unknown): { document: unknown; changes: ReleaseChange[] } {
   const secrets = secretDefaults(document);
-  const cloned = stripUnsafe(JSON.parse(JSON.stringify(document)), secrets) as Record<string, unknown>;
+  const cloned = stripUnsafe(document, secrets) as Record<string, unknown>;
   const changes: ReleaseChange[] = [];
   if (secrets.length) {
     changes.push({ path: "inputs", before: "[secret]", after: "", reason: "secret" });
   }
-  walkFields(cloned, "", changes);
   return { document: cloned, changes };
 }
 
@@ -90,76 +81,4 @@ function secretDefaults(document: unknown): string[] {
     if (input.value) out.push(input.value);
   }
   return out;
-}
-
-function walkFields(node: unknown, path: string, changes: ReleaseChange[]): void {
-  if (Array.isArray(node)) {
-    node.forEach((item, index) => walkFields(item, `${path}[${index}]`, changes));
-    return;
-  }
-  if (!node || typeof node !== "object") return;
-  const obj = node as Record<string, unknown>;
-  for (const key of ["default", "value", "label", "text", "name", "match"]) {
-    if (typeof obj[key] !== "string") continue;
-    if (key === "value" && obj[key].includes("{{") && !personalReason(obj[key])) continue;
-    const current = obj[key];
-    const next = redactString(current, key !== "label");
-    if (!next || next.text === current) continue;
-    changes.push({ path: `${path}.${key}`, before: current, after: next.text, reason: next.reason });
-    if (!next.text) delete obj[key];
-    else obj[key] = next.text;
-  }
-  for (const [key, child] of Object.entries(obj)) {
-    if (child && typeof child === "object") walkFields(child, path ? `${path}.${key}` : key, changes);
-  }
-}
-
-function personalReason(value: string): string {
-  for (const rule of RULES) {
-    rule.re.lastIndex = 0;
-    if (rule.re.test(value)) return rule.reason;
-  }
-  if (luhnSpan(value)) return "card";
-  return "";
-}
-
-function redactString(value: string, blank: boolean): { text: string; reason: string } | null {
-  let reason = "";
-  let text = value;
-  for (const rule of RULES) {
-    rule.re.lastIndex = 0;
-    if (!rule.re.test(text)) continue;
-    reason = reason || rule.reason;
-    rule.re.lastIndex = 0;
-    text = text.replace(rule.re, rule.reason === "url secret" ? "$1[redacted]" : "");
-  }
-  const card = luhnSpan(text);
-  if (card) {
-    reason = reason || "card";
-    text = text.replace(card, "");
-  }
-  text = text.replace(/\s{2,}/g, " ").trim();
-  if (!reason) return null;
-  if (blank) return { text: text && !personalReason(text) ? "" : "", reason };
-  if (!text) return { text: "[redacted]", reason };
-  return { text, reason };
-}
-
-function luhnSpan(value: string): string {
-  const match = value.match(/(?:\d[ -]?){13,19}/);
-  if (!match) return "";
-  const digits = match[0].replace(/[\s-]/g, "");
-  if (digits.length < 13 || digits.length > 19) return "";
-  let sum = 0;
-  let alt = false;
-  for (let i = digits.length - 1; i >= 0; i--) {
-    let n = Number(digits[i]);
-    if (alt) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-    alt = !alt;
-  }
-  return sum % 10 === 0 ? match[0] : "";
 }

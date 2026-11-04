@@ -15,6 +15,7 @@ import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
 import type { WorkflowV2 } from "./schema";
 import { Library } from "./store";
+import { scrubSaved } from "./saved-secrets";
 
 /** This Mac dials out only when its own setting is on, or BAO_REMOTE_MCP=1 is set for the process. */
 export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -655,7 +656,7 @@ function rememberResult(root: string, jobId: string, result: Record<string, unkn
   mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, `${jobId}.json`);
   const tmp = `${dest}.tmp`;
-  writeFileSync(tmp, JSON.stringify(result), { mode: 0o600 });
+  writeFileSync(tmp, JSON.stringify(scrubSaved(result)), { mode: 0o600 });
   renameSync(tmp, dest);
 }
 

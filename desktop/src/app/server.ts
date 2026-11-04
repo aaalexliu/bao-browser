@@ -65,7 +65,8 @@ import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles, ope
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
-import { cursorSessionHeal, effectiveMode, keepPatch, maskText, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { cursorSessionHeal, effectiveMode, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
+import { scrubSaved } from "../v1/saved-secrets";
 import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
@@ -2715,7 +2716,7 @@ function persistedRun(
   },
 ): Parameters<Library["saveRun"]>[0] {
   const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm";
-  return JSON.parse(maskText(JSON.stringify({
+  return scrubSaved({
     id: result.runId,
     pageEngine: result.pageEngine,
     traceUnavailable: result.traceUnavailable,
@@ -2750,7 +2751,7 @@ function persistedRun(
       },
     } : {}),
     ...(extra.recorded.wrote ? { video: `${result.runId}.webm`, videoStartedAt: extra.videoStartedAt } : result.video ? { video: result.video, videoStartedAt: result.videoStartedAt } : {}),
-  }), extra.secretList)) as Parameters<Library["saveRun"]>[0];
+  }, { workflow, args, secrets: extra.secretList });
 }
 
 function hostGrantError(err: unknown): boolean {

@@ -11,6 +11,7 @@ import { explain, type InterpretMeta } from "../v1/interpret";
 import { normText, withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
 import { smallestChange } from "../v1/recorder";
+import { scrubSaved } from "../v1/saved-secrets";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../v1/schema";
 import { liveSessionDir } from "./audit";
 import type { LabelGuard } from "./live-ops";
@@ -47,9 +48,10 @@ export class LiveTrail {
       source: { ...LIVE_TRAIL_SOURCE },
       ...act,
     };
-    this.events.push(event);
-    await appendFile(this.file, `${JSON.stringify(event)}\n`);
-    return event;
+    const saved = scrubSaved(event);
+    this.events.push(saved);
+    await appendFile(this.file, `${JSON.stringify(saved)}\n`);
+    return saved;
   }
 
   list(): readonly TrailEvent[] {
@@ -59,8 +61,8 @@ export class LiveTrail {
 
 export function keyTrailIdentity(identity: Identity | undefined): Identity | undefined {
   if (!identity) return undefined;
-  const { surface, role, tag, id, testId, nameAttr, cssPath, xpath, siblingIndex } = identity;
-  return { surface, role, tag, id, testId, nameAttr, cssPath, xpath, siblingIndex, path: identity.path.map(({ role }) => ({ role })) };
+  const { surface, role, tag, inputType, autocomplete, id, testId, nameAttr, cssPath, xpath, siblingIndex } = identity;
+  return { surface, role, tag, inputType, autocomplete, id, testId, nameAttr, cssPath, xpath, siblingIndex, path: identity.path.map(({ role }) => ({ role })) };
 }
 
 const SHOWN = ["name", "text", "label", "title"] as const;

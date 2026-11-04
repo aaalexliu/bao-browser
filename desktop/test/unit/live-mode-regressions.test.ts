@@ -657,7 +657,7 @@ describe("live session behavioral regressions", { timeout: 120_000 }, () => {
       }
       const replay = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: session, args: {} }) }).then((response) => response.json()) as { status: string; failure?: { reason?: string }; modelCalls: number };
       assert.equal(replay.status, "failed");
-      assert.equal(replay.failure?.reason, "unresolved step");
+      assert.equal(replay.failure?.reason, "This step needs a value. Its saved value was stripped because it may contain a secret.");
       assert.equal(replay.modelCalls, 0);
     } finally { await mcp.close(); await app.close(); }
   });

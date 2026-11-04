@@ -10,6 +10,8 @@ export interface DomDump {
   nameAttr?: string;
   placeholder?: string;
   tag?: string;
+  inputType?: string;
+  autocomplete?: string;
   label?: string;
   text?: string;
   cssPath?: string;
@@ -204,6 +206,8 @@ export function dumpPage(): PageDump {
       nameAttr: el.getAttribute("name") || undefined,
       placeholder: el.getAttribute("placeholder") || undefined,
       tag: el.tagName.toLowerCase(),
+      inputType: el.getAttribute("type") || undefined,
+      autocomplete: el.getAttribute("autocomplete") || undefined,
       label: labelFor(el) || undefined,
       text: text || undefined,
       cssPath: cssPath(el),

@@ -9,6 +9,7 @@ import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../..
 import { isElementCrop } from "../../../web/src/lib/png";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
+import { scrubSaved } from "./saved-secrets";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -284,14 +285,12 @@ export async function resolveConflict(
     copy?: unknown;
   }>(state, "POST", `/api/workflows/${encodeURIComponent(id)}/conflict`, { action });
   const chosen = action === "keep-mine" ? migrate(JSON.parse(readFileSync(note.file, "utf8"))) : migrate(result.document);
-  const errors = validateWorkflow(chosen);
-  if (errors.length) throw new Error(errors.join(", "));
   library.save(chosen);
-  state.workflows[chosen.id] = { version: result.version, hash: docHash(chosen) };
+  state.workflows[chosen.id] = { version: result.version, hash: docHash(library.read(chosen.id)) };
   if (action === "keep-both" && result.copy && result.copyId && result.copyVersion) {
     const copy = migrate(result.copy);
     library.save(copy);
-    state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(copy) };
+    state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(library.read(copy.id)) };
   }
   clearConflict(library, id);
   state.conflicts = state.conflicts.filter((item) => item.id !== id);
@@ -439,7 +438,7 @@ function applyCatchUp(library: Library, state: SyncState, snapshot: SyncSnapshot
     for (const heal of snapshot.heals ?? []) {
       const id = String(heal.id || "");
       if (!safeKey(id) || existsSync(path.join(dir, `${id}.json`))) continue;
-      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, null, 2));
+      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(library.scrub({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, safeKey(String(heal.workflowId || "")) ? heal.workflowId : undefined), null, 2));
     }
   }
   if (categoryOn(state, "settings") && snapshot.settings && snapshot.settingsUpdatedAt && snapshot.settingsUpdatedAt !== state.settingsCloudAt) {
@@ -634,8 +633,8 @@ function stash(
 ): void {
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, toJson(local));
-  const theirs = migrate(remote.document);
+  writeFileSync(file, toJson(scrubSaved(local)));
+  const theirs = scrubSaved(migrate(remote.document));
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {
@@ -672,10 +671,8 @@ function enqueueDirty(library: Library, state: SyncState): void {
 
 function writeRemote(library: Library, state: SyncState, remote: PullBody): void {
   const doc = migrate(remote.document);
-  const errors = validateWorkflow(doc);
-  if (errors.length) throw new Error(errors.join(", "));
   library.save(doc);
-  state.workflows[doc.id] = { version: remote.version, hash: docHash(doc) };
+  state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }
 
 async function saveShots(

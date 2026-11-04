@@ -22,6 +22,7 @@ import {
   type InstacartSnap,
 } from "./instacart";
 import { classifyPage } from "../v1/page-class";
+import { scrubSaved } from "../v1/saved-secrets";
 import { connectAndAllow } from "./connect";
 import type { CdpSocket } from "./socket";
 
@@ -170,9 +171,10 @@ async function run(): Promise<void> {
       clicks: 0,
       note: "did not open Chrome",
     };
-    await writeFile(outFile, `${JSON.stringify(body, null, 2)}\n`);
+    const savedBody = scrubSaved(body);
+    await writeFile(outFile, `${JSON.stringify(savedBody, null, 2)}\n`);
     progress(`instacart state is ${prior.phase}; not opening Chrome`);
-    process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(savedBody, null, 2)}\n`);
     if (!finished) process.exitCode = 2;
     return;
   }
@@ -433,9 +435,10 @@ async function run(): Promise<void> {
   };
   log.setSteps(steps.map((step) => ({ name: step.name, status: step.status, ms: step.ms })));
   await log.flush(status, code, body.host);
-  await writeFile(outFile, `${JSON.stringify(body, null, 2)}\n`);
+  const savedBody = scrubSaved(body);
+  await writeFile(outFile, `${JSON.stringify(savedBody, null, 2)}\n`);
   progress(`wrote ${path.basename(outFile)}`);
-  process.stdout.write(`${JSON.stringify(body, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(savedBody, null, 2)}\n`);
   if (status !== "passed") process.exitCode = 2;
 }
 

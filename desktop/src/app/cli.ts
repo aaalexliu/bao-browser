@@ -39,6 +39,19 @@ async function main(): Promise<void> {
     await importLogin(rest);
     return;
   }
+  if (cmd === "scrub-secrets") {
+    if (rest.includes("--help")) {
+      console.log("usage: bao scrub-secrets --home dir [--write]\nDry-run by default. Write mode backs up originals first.\nReplaces whole secret data values only; secrets embedded in free text remain.\nUnmarked dropdown, radio and checkbox values remain; secret-marked selected values strip, while option definitions stay unchanged.\nAppend-only receipt chains are listed as skipped and never rewritten; historical secrets may remain. New receipts are stripped before hashing.");
+      return;
+    }
+    const home = flag(rest, "--home");
+    if (!home || home.startsWith("--") || rest.some((arg) => arg.startsWith("--") && !["--home", "--write"].includes(arg))) {
+      throw new Error("usage: bao scrub-secrets --home dir [--write]");
+    }
+    const { scrubHome } = await import("../v1/scrub-home");
+    console.log(JSON.stringify(scrubHome(home, rest.includes("--write")), null, 2));
+    return;
+  }
   if (cmd === "status") {
     const notices: string[] = [];
     const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });
@@ -190,7 +203,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao remote-debugging on|off | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books|experian] [--careful [true|false]] [--allow-commit] | bao live_navigate --url https://host/ | bao live_tabs | bao live_switch_tab --tab id | bao live_select --ref ref --option value | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval agent-instacart [--driver claude|codex] [--model id] [--budget-usd n] [--skip-checkout] [--out file] [--artifacts dir] [--check] | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao scrub-secrets --home dir [--write] | bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao remote-debugging on|off | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books|experian] [--careful [true|false]] [--allow-commit] | bao live_navigate --url https://host/ | bao live_tabs | bao live_switch_tab --tab id | bao live_select --ref ref --option value | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval agent-instacart [--driver claude|codex] [--model id] [--budget-usd n] [--skip-checkout] [--out file] [--artifacts dir] [--check] | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 
