@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { liveReplayArgs } from "../../src/cdp-live/live-replay";
 import { startApp } from "../../src/app/server";
-import { scriptedHeal, type HealRecord } from "../../src/v1/heal";
+import type { HealRecord } from "../../src/v1/heal";
 import { cursorAccountHeal } from "../../src/v1/cursor-account";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { appendDriftTrail } from "../../src/v1/real-drift";
