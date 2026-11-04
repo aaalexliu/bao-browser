@@ -5,8 +5,8 @@ The `Guardrails / guardrails` GitHub check runs on pull requests and pushes to
 rules. A workflow alone cannot turn on branch protection.
 
 Run the checks locally with the commands below. The
-[workflow](../.github/workflows/guardrails.yml) owns the CI invocation, including
-the [known existing test exclusion](#known-existing-failure).
+[workflow](../.github/workflows/guardrails.yml) owns the CI invocation. It runs
+all desktop tests without test-name exclusions.
 
 ```sh
 npm ci
@@ -119,30 +119,14 @@ that floating promises, type-only and runtime forbidden imports, runtime
 cycles, increased/new suppressions, and unused entries fail. It also proves
 safe `node:test` registration, type-only cycles, and budget pruning pass.
 
-## Known existing failure
+## Desktop runner
 
-Untouched `origin/main` at `1c2852f9d01fe1f5201409958bb14e8d2592e97c`
-fails **teach the fixture, correct three cards, replay twice, and splice a fix**
-in `desktop/test/unit/teach-app.test.ts`. A quiet, serial Node 24.18.0 run with
-one test, a throwaway `HOME`, no model keys, and pinned Playwright Chromium
-reproduced the same `/mark/` assertion as the task branch. The review UI shows
-`Bao stopped. Open Chrome to check the page before continuing.` for two events.
-The untouched-main run exited 1 with one failure and no skipped tests.
-
-Full local proof and raw output are
-`/Users/alexliu/dev/firstmate/data/bao-lint-guardrails/main-proof.md` and
-`main-proof.log` in that directory. Firstmate authorized this narrow exclusion
-after main reproduced it. CI skips only that exact test name; the other tests
-in `teach-app.test.ts` still run. The default `npm run test:v1` does not skip it.
-Remove the CI skip when the existing failure is fixed.
-
-`desktop/test/run-v1.mjs` forwards Node test-runner options. CI uses
-`--test-concurrency=2` to bound browser load and `--test-skip-pattern` for this
-single exclusion. TAP reports failures at once. `--test-force-exit` ends each
-test process after its tests finish, so a failed browser startup cannot leave
-a fixture server open until the job times out. Failed assertions still fail
-the job. A full local run's `extension-shots` timeout passed in a
-quiet serial rerun and is not excluded.
+`desktop/test/run-v1.mjs` forwards Node test-runner options. Both the runner and
+CI default to `--test-concurrency=2` to bound browser load. An explicit
+`--test-concurrency=N` overrides the runner's default. TAP reports failures at once.
+`--test-force-exit` ends each test process after its tests finish, so a failed
+browser startup cannot leave a fixture server open until the job times out.
+Failed assertions still fail the job.
 
 ## Compiler floor
 
