@@ -15,7 +15,8 @@ concurrency:
 jobs:
   guardrails:
     name: guardrails
-    runs-on: ubuntu-latest
+    # Chromium needs unprivileged user namespaces, restricted by AppArmor on newer Ubuntu images.
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"

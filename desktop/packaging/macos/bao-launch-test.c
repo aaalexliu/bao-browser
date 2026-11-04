@@ -745,7 +745,7 @@ static void test_port(void) {
 static void test_bundle(const char *home) {
   char resources[4096];
   char found[4096];
-  char want[4096];
+  char want[sizeof resources + sizeof "/Chromium.app/Contents/MacOS/Google Chrome for Testing" - 1];
   snprintf(resources, sizeof resources, "%s/bundle/Resources", home);
   mkdir_p(resources);
   check(bao_find_browser(found, sizeof found, resources) == 0, "no browser in an empty Resources");
