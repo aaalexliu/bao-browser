@@ -8,7 +8,7 @@ import { copyChromeProfile, listChromeProfiles, openCopiedChrome } from "../../s
 import { startApp } from "../../src/app/server";
 
 interface TestPreferences {
-  profile: { name: string; using_default_name: boolean; avatar_index: number };
+  profile: { name: string; using_default_name: boolean; avatar_index: number; using_default_avatar: boolean; using_gaia_avatar: boolean };
   session: { restore_on_startup: number };
   signin: { allowed: boolean };
   account_info: { email: string; gaia: string }[];
@@ -24,13 +24,14 @@ async function fixture() {
   await mkdir(path.join(sourceRoot, "Default", "Sessions"), { recursive: true });
   await mkdir(path.join(sourceRoot, "Profile 1"), { recursive: true });
   const local = { os_crypt: { encrypted_key: "synthetic-not-a-real-key" }, profile: { last_used: "Profile 1", info_cache: {
-    Default: { name: "Profile A", user_name: "a@example.test", is_using_default_name: true, profile_color_seed: 0xff1565c0 | 0 },
+    Default: { name: "Profile A", user_name: "a@example.test", is_using_default_name: true, profile_color_seed: 0xff1565c0 | 0,
+      avatar_icon: "chrome://theme/IDR_PROFILE_AVATAR_33", is_using_default_avatar: true, use_gaia_picture: true },
     "Profile 1": { name: "Profile B", user_name: "b@example.test" }, "../outside": { name: "bad" },
   } } };
   await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify(local));
   await writeFile(path.join(sourceRoot, "Default", "Cookies"), "synthetic-cookie-file");
   const preferences: TestPreferences = {
-    profile: { name: "Profile A", using_default_name: true, avatar_index: 33 },
+    profile: { name: "Profile A", using_default_name: true, avatar_index: 33, using_default_avatar: true, using_gaia_avatar: true },
     session: { restore_on_startup: 1 }, signin: { allowed: true },
     account_info: [{ email: "a@example.test", gaia: "synthetic-account-id" }],
     browser: { theme: { user_color2: 0xff1565c0 | 0, color_scheme2: 2, is_grayscale2: true } },
@@ -103,7 +104,11 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     assert.equal(state.profile.info_cache.Default.is_using_default_name, false);
     assert.equal(state.profile.info_cache.Default.user_name, "a@example.test");
     const prefs = JSON.parse(await readFile(path.join(first.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
-    assert.deepEqual(prefs.profile, { name: first.displayName, using_default_name: false, avatar_index: 33 });
+    assert.deepEqual(prefs.profile, { name: first.displayName, using_default_name: false,
+      avatar_index: 31, using_default_avatar: false, using_gaia_avatar: false });
+    assert.equal(state.profile.info_cache.Default.avatar_icon, "chrome://theme/IDR_PROFILE_AVATAR_31");
+    assert.equal(state.profile.info_cache.Default.is_using_default_avatar, false);
+    assert.equal(state.profile.info_cache.Default.use_gaia_picture, false);
     assert.equal(prefs.browser.theme.user_color2, 0xfff97316 | 0);
     assert.equal(prefs.browser.theme.user_color, prefs.browser.theme.user_color2);
     assert.equal(state.profile.info_cache.Default.profile_color_seed, prefs.browser.theme.user_color2);
@@ -140,6 +145,32 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
   } finally { if (privateRoot) await rm(privateRoot, { recursive: true, force: true }); await f.close(); }
 });
 
+test("copy uses the penguin when either source avatar store names the fox", async () => {
+  const f = await fixture();
+  try {
+    for (const [stateIndex, preferenceIndex] of [[31, 31], [31, 33], [33, 31], [34, 34]]) {
+      f.local.profile.info_cache.Default.avatar_icon = `chrome://theme/IDR_PROFILE_AVATAR_${stateIndex}`;
+      f.preferences.profile.avatar_index = preferenceIndex;
+      await writeFile(path.join(f.sourceRoot, "Local State"), JSON.stringify(f.local));
+      await writeFile(path.join(f.sourceRoot, "Default", "Preferences"), JSON.stringify(f.preferences));
+      const before = await sourceBytes(f.sourceRoot);
+      const copy = await copyChromeProfile({ ...f, directory: "Default" });
+      try {
+        const state = JSON.parse(await readFile(path.join(copy.userDataDir, "Local State"), "utf8")) as typeof f.local;
+        const prefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
+        const expected = stateIndex === 31 || preferenceIndex === 31 ? 34 : 31;
+        assert.equal(prefs.profile.avatar_index, expected);
+        assert.equal(prefs.profile.using_default_avatar, false);
+        assert.equal(prefs.profile.using_gaia_avatar, false);
+        assert.equal(state.profile.info_cache.Default.avatar_icon, `chrome://theme/IDR_PROFILE_AVATAR_${expected}`);
+        assert.equal(state.profile.info_cache.Default.is_using_default_avatar, false);
+        assert.equal(state.profile.info_cache.Default.use_gaia_picture, false);
+        assert.deepEqual(await sourceBytes(f.sourceRoot), before);
+      } finally { await copy.close(); }
+    }
+  } finally { await f.close(); }
+});
+
 test("copy picks a contrasting color for an already orange profile", async () => {
   const f = await fixture();
   try {
@@ -166,6 +197,15 @@ test("copy marks an uninitialized non-default profile without creating source pr
       const prefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Profile 1", "Preferences"), "utf8")) as TestPreferences;
       assert.equal(prefs.profile.name, "Bao copy of Profile B");
       assert.equal(prefs.profile.using_default_name, false);
+      assert.equal(prefs.profile.avatar_index, 31);
+      assert.equal(prefs.profile.using_default_avatar, false);
+      assert.equal(prefs.profile.using_gaia_avatar, false);
+      const state = JSON.parse(await readFile(path.join(copy.userDataDir, "Local State"), "utf8")) as {
+        profile: { info_cache: Record<string, { avatar_icon: string; is_using_default_avatar: boolean; use_gaia_picture: boolean }> };
+      };
+      assert.equal(state.profile.info_cache["Profile 1"].avatar_icon, "chrome://theme/IDR_PROFILE_AVATAR_31");
+      assert.equal(state.profile.info_cache["Profile 1"].is_using_default_avatar, false);
+      assert.equal(state.profile.info_cache["Profile 1"].use_gaia_picture, false);
       assert.equal(prefs.browser.theme.user_color2, 0xfff97316 | 0);
       assert.deepEqual(await sourceBytes(f.sourceRoot), before);
       await assert.rejects(stat(path.join(copy.userDataDir, "Default")), /ENOENT/);
