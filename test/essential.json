@@ -118,7 +118,8 @@
       "desktop/test/unit/live-capture.test.ts",
       "desktop/test/unit/capture.test.ts",
       "desktop/test/unit/human-envelope.test.ts"
-    ]
+    ],
+    "ffmpeg": true
   },
   "core": {
     "kind": "desktop",

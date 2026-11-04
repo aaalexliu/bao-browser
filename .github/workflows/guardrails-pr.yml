@@ -13,17 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  plan:
-    runs-on: ubuntu-24.04
-    outputs:
-      matrix: ${{ steps.manifest.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: manifest
-        name: Read the single essential manifest
-        run: |
-          node -e 'const m = require("./test/essential.json"); console.log("matrix=" + JSON.stringify({include: Object.entries(m).map(([group, v]) => ({group, ffmpeg: !!v.ffmpeg}))}));' >> "$GITHUB_OUTPUT"
-
   static:
     name: static (${{ matrix.gate }})
     runs-on: ubuntu-24.04
@@ -66,12 +55,12 @@ jobs:
 
   essential:
     name: essential (${{ matrix.group }})
-    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      matrix:
+        group: [auth, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web, legacy]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
@@ -84,19 +73,47 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             web/package-lock.json
-      - run: npm ci
-      - run: npm --prefix web ci
       - uses: actions/cache@v4
+        id: packages
+        with:
+          path: |
+            node_modules
+            web/node_modules
+          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package-lock.json', 'web/package-lock.json') }}
+      - name: Install packages on a cache miss
+        if: steps.packages.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          npm ci & root=$!
+          npm --prefix web ci & web=$!
+          status=0
+          wait "$root" || status=1
+          wait "$web" || status=1
+          exit "$status"
+      - uses: actions/cache@v4
+        id: browser
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
       - name: Allow sandboxed Chromium to create user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: npx playwright install chromium
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+      - name: Read group requirements from the essential manifest
+        id: requirements
+        env:
+          GROUP: ${{ matrix.group }}
+        run: node -e 'console.log("ffmpeg=" + !!require("./test/essential.json")[process.env.GROUP].ffmpeg)' >> "$GITHUB_OUTPUT"
       - name: Install the privacy-test video encoder only if absent
-        if: matrix.ffmpeg
+        if: steps.requirements.outputs.ffmpeg == 'true'
         run: command -v ffmpeg && command -v ffprobe || sudo apt-get install -y --no-install-recommends ffmpeg
-      - run: npm run build:desktop
+      - uses: actions/cache@v4
+        id: compiled
+        with:
+          path: desktop/dist
+          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig.desktop.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
+      - if: steps.compiled.outputs.cache-hit != 'true'
+        run: npm run build:desktop
       - name: Essential tests
         env:
           GROUP: ${{ matrix.group }}
@@ -117,12 +134,11 @@ jobs:
   guardrails:
     name: guardrails
     if: always()
-    needs: [plan, static, essential]
+    needs: [static, essential]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every static gate and essential group
         env:
-          PLAN: ${{ needs.plan.result }}
           STATIC: ${{ needs.static.result }}
           ESSENTIAL: ${{ needs.essential.result }}
-        run: test "$PLAN" = success && test "$STATIC" = success && test "$ESSENTIAL" = success
+        run: test "$STATIC" = success && test "$ESSENTIAL" = success

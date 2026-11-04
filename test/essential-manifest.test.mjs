@@ -4,6 +4,12 @@ import { existsSync, readFileSync } from "node:fs";
 
 const manifest = JSON.parse(readFileSync(new URL("./essential.json", import.meta.url), "utf8"));
 
+test("the workflow runs every manifest group exactly once", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/guardrails-pr.yml", import.meta.url), "utf8");
+  const groups = workflow.match(/group: \[([^\]]+)\]/)?.[1].split(",").map((name) => name.trim());
+  assert.deepEqual(groups?.sort(), Object.keys(manifest).sort());
+});
+
 test("the essential manifest names real tests, gives reasons, and has no overlapping selections", () => {
   assert.ok(Object.keys(manifest).length > 0);
   const seen = new Map();

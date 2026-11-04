@@ -20,7 +20,8 @@ node --test test/essential-manifest.test.mjs
 npx playwright install chromium
 npm run build:desktop
 # Run one group from test/essential.json, with an isolated HOME:
-HOME="$(mktemp -d)" BAO_HEAL_CURSOR_ACCOUNT=0 node scripts/test-essential.mjs <group>
+( export HOME="$(mktemp -d)"; trap 'rm -rf "$HOME"' EXIT
+  BAO_HEAL_CURSOR_ACCOUNT=0 node scripts/test-essential.mjs <group> )
 # Opt in to the full remote check when the change needs it:
 gh-axi pr edit <number> --add-label full-suite
 ```
@@ -44,8 +45,11 @@ in the essential set are not deleted or disabled locally.
 
 Both workflows cache npm downloads and the lockfile-pinned Playwright Chromium.
 Ubuntu 24.04 already has Chromium's system libraries, so neither job installs
-browser dependencies with apt. Only the video privacy group needs FFmpeg in the
-PR check, and installs it only when the runner lacks it.
+browser dependencies with apt. Only groups that declare `ffmpeg` in the manifest install the encoder: video
+privacy and the live-recording fixture need it. Other groups never install it.
+The test jobs also cache lockfile-pinned dependencies and compiled desktop code,
+with source/configuration hashes in the build key. Static gates still run on
+every commit.
 
 CI gives the test commands a throwaway `HOME` and no vendor API keys. It keeps
 Playwright's browser cache outside that home. The desktop runner also strips
