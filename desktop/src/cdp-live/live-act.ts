@@ -178,7 +178,7 @@ export async function selectLive(target: LiveActTarget, ref: string, option: str
 /** Press a key on the same guards as a click. */
 export async function pressLiveKey(target: LiveActTarget, key: string, ref: string): Promise<LiveActOutcome> {
   key = canonicalKey(key);
-  if (!ref && target.guard.careful === false && target.guard.freezeCommit && target.guard.allowCommit !== true && (key === "Enter" || key === "Space")) {
+  if (!ref && target.guard.careful === false && target.guard.freezeCommit && target.guard.allowCommit !== true && /(?:^|\+)(Enter|Space)$/.test(key)) {
     const facts = await target.driver.evaluateFunction<PageFacts>(readLivePage, { markIndex: -1 });
     if (facts.focused !== undefined && facts.focused >= 0) {
       const fresh = buildView(facts, target.read.view.epoch, target.guard);

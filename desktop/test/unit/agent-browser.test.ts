@@ -188,10 +188,15 @@ test("native navigation uses startup evaluation for both readiness and final loc
     phases.push(phase);
     return (expression === "location.href" ? "https://example.test/" : { href: "https://example.test/", ready: "complete" }) as T;
   });
+  const check = t.mock.fn(async (method: string) => {
+    assert.equal(method, "Page.getFrameTree");
+    return { frameTree: { frame: { id: "ABC123", url: "https://example.test/" } } };
+  });
   try {
-    const driver = new CdpLiveDriver({} as CdpSocket, "session", "ABC123", ["example.test"]);
+    const driver = new CdpLiveDriver({ send: check } as unknown as CdpSocket, "session", "ABC123", ["example.test"]);
     driver.usePageEngine(fake.page);
     await driver.goto("https://example.test/");
+    assert.equal(check.mock.calls.length, 1);
     assert.deepEqual(phases, ["startup", "startup"]);
     assert.equal((await fake.records()).filter((cmd) => cmd.action === "navigate").length, 1);
   } finally { await fake.close(); }

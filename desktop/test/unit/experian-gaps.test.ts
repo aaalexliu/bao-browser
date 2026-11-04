@@ -855,7 +855,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         reply = await live("live_click", { ref: refOf(reply, label) });
       }
       reply = await live("live_type", { ref: refOf(reply, "Note"), text: "Local preview" });
-      for (const key of ["Enter", "Tab", "Space"]) {
+      for (const key of ["Shift+Enter", "Control+Enter", "Enter", "Tab", "Shift+Space", "Space"]) {
         reply = await live("live_key", { key });
         assert.equal(reply.outcome.kind, "reached", `${key}: ${JSON.stringify(reply)}`);
         assert.equal(commits(), before, key);

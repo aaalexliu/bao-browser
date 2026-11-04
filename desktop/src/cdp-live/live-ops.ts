@@ -441,7 +441,7 @@ export function planKey(read: LiveRead, key: string, ref: string): Plan {
   const plan = planClick(read, ref);
   if (!plan.ok) return plan;
   const enter = read.targets.byRef.get(ref)?.enter || "";
-  if (key === "Enter" && enter) return { ok: false, refusal: enter };
+  if (name === "Enter" && enter) return { ok: false, refusal: enter };
   return plan;
 }
 
