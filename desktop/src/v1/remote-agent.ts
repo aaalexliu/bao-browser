@@ -15,7 +15,7 @@ import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
 import type { WorkflowV2 } from "./schema";
 import { Library } from "./store";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 
 /** This Mac dials out only when its own setting is on, or BAO_REMOTE_MCP=1 is set for the process. */
 export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = process.env): boolean {

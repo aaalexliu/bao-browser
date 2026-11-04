@@ -13,7 +13,7 @@ try { payload = JSON.parse(raw); } catch { payload = { raw }; }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const shared = path.join(here, "../../../src/library-home.cjs");
-const { scrubSaved } = createRequire(import.meta.url)(path.join(here, "../../../dist/desktop/src/v1/saved-secrets.js"));
+const { scrubSaved } = createRequire(import.meta.url)(path.join(here, "../../../dist/shared/saved-secrets.js"));
 let resolveLibraryHome;
 try {
   ({ resolveLibraryHome } = createRequire(import.meta.url)(shared));

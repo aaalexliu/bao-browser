@@ -6,7 +6,7 @@ const path = require("node:path");
 const { fileURLToPath } = require("node:url");
 
 const PACKAGES = ["playwright", "classic-level"];
-const SIBLINGS = ["extension", "src", "web"];
+const SIBLINGS = ["extension", "src", "web", "shared"];
 
 function realpath(file) {
   return fs.realpathSync(file);

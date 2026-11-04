@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 
 export type VersionRole = "live" | "draft" | "past";
 export type VersionSource = "saved" | "heal" | "edit" | "restore" | "conflict";

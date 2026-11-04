@@ -9,7 +9,7 @@ import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../..
 import { isElementCrop } from "../../../web/src/lib/png";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";

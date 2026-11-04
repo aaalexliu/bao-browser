@@ -3,7 +3,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 
 export function findDebugDir(): string | undefined {
   const dir = process.env.BAO_FIND_DEBUG;

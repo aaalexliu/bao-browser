@@ -8,7 +8,7 @@ import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 
 export interface SaveCompleter {
   provider: string;

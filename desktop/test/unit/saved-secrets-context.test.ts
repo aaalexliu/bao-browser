@@ -6,7 +6,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { getRun, runWorkflow, type LiveReplayer } from "../../src/mcp/catalog";
 import { hashReceipt, ReceiptLog, verifyReceiptChain, type Receipt, type ReceiptBody } from "../../src/v1/receipt";
-import { scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { ScrubReport } from "../../src/v1/scrub-home";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";

@@ -9,7 +9,7 @@ import { toJson, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { loadState, resolveConflict, saveState, syncAll } from "../../src/v1/sync";
 import { clearConflict, draftVersion, listVersions, noteConflict, promoteVersion, restoreVersion } from "../../src/v1/versions";
-import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { HealRecord } from "../../src/v1/heal";
 import { replay, type Driver } from "../../src/v1/replay";
 

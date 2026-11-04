@@ -4,7 +4,7 @@
 import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
 import { canonical } from "./canonical";
 import { bindingTokens, INPUT_BINDING } from "./bindings";
-import { fixedSavedChoice, hasStrippedSecret } from "./saved-secrets";
+import { fixedSavedChoice, hasStrippedSecret } from "../../../shared/saved-secrets";
 import { documentUsesDataSteps, validateDataSteps, workflowVersionError, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import type { ElementVersion } from "./element-history";
 import { filesDatesErrors, usesFilesDates } from "./files-dates-check";

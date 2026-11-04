@@ -4,7 +4,7 @@
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import type { HumanAsk } from "./human-ask";
 import type { StoredRun } from "./store";
 

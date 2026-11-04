@@ -7,7 +7,7 @@ import { Library } from "../../src/v1/store";
 import { hashReceipt, ReceiptLog, verifyReceiptChain, type Receipt } from "../../src/v1/receipt";
 import { scrubHome } from "../../src/v1/scrub-home";
 import { draftVersion, versionDocument } from "../../src/v1/versions";
-import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const FIELD = { surface: "dom" as const, role: "textbox", path: [] };

@@ -10,7 +10,7 @@ import test from "node:test";
 import type { HealRecord } from "../../src/v1/heal";
 import { healDetail } from "../../src/app/views";
 import { Library } from "../../src/v1/store";
-import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const model = { provider: "openai", name: "gpt-4o", version: "test" };

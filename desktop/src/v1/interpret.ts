@@ -8,7 +8,7 @@ import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
-import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
+import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, secretSavedField, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -142,7 +142,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
     if ([event.value, event.key].some(hasStrippedSecret)) step.unresolved = { reason: NEEDS_SECRET_VALUE };
-    const skip = event.skipWhen?.trim();
+    const skip = step.sensitive ? undefined : event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
     if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
       known.push({ name: step.input, value: event.value });
@@ -386,7 +386,12 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: KnownTyped[]): WorkflowStep {
   event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
-  const identity = stripSecretValue(event.identity, meta.secrets ?? []);
+  const secretEntry = isType(event) && isSecret(event, meta.secrets ?? []);
+  const identity = secretEntry ? secretEntryIdentity(event.identity) : stripSecretValue(event.identity, meta.secrets ?? []);
+  const captured = (value: string | undefined) => value !== undefined && [event.identity?.text, event.identity?.value].includes(value);
+  const locators = secretEntry ? event.locators?.filter((locator) =>
+    !(locator.kind === "text" && captured(locator.value) || locator.kind === "role" && captured(locator.name)),
+  ) : event.locators;
   const step: WorkflowStep = {
     id: `${meta.id}-${index}`,
     index,
@@ -395,7 +400,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     label: event.op,
     surface,
     identity,
-    locators: event.locators?.length ? event.locators : locatorsFromIdentity(identity),
+    locators: locators?.length ? locators : locatorsFromIdentity(identity),
     timeoutMs: 8000,
     provenance: event.provenance,
   };
@@ -518,7 +523,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (isType(event)) {
-    const secret = isSecret(event, meta.secrets ?? []);
+    const secret = secretEntry;
     if (!secret && isConstantType(event)) {
       const field = event.identity?.name || event.identity?.label;
       return {
@@ -530,7 +535,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       };
     }
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
-    const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(event, secret);
+    const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(secret ? { ...event, identity } : event, secret);
     const input = addInput(inputs, kind, named);
     if (!secret && event.value !== undefined && !event.rawPath) input.default = event.value;
     return {
@@ -540,7 +545,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       value: `{{${input.name}}}`,
       sensitive: secret || undefined,
       label: secret ? "Type secret" : `Type {{${input.name}}}`,
-      ...observed(event, secret ? undefined : input.name, secret, known, meta.secrets ?? []),
+      ...(secret ? {} : observed(event, input.name, false, known, meta.secrets ?? [])),
     };
   }
   if (typeof event.checked === "boolean" || event.op === "check") {
@@ -707,6 +712,13 @@ function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: st
   const input: WorkflowInput = { name, type, required: true, label: name };
   inputs.push(input);
   return input;
+}
+
+/** Secret entries use field structure, not captured text or effects, to build a new step. */
+function secretEntryIdentity(identity: Identity | undefined): Identity | undefined {
+  if (!identity) return undefined;
+  const { text, value, ...structure } = identity;
+  return structure;
 }
 
 function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {

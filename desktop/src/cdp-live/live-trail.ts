@@ -11,7 +11,7 @@ import { explain, type InterpretMeta } from "../v1/interpret";
 import { normText, withoutPrice } from "../v1/identity";
 import type { TrailEvent } from "../v1/interpret";
 import { smallestChange } from "../v1/recorder";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../v1/schema";
 import { liveSessionDir } from "./audit";
 import type { LabelGuard } from "./live-ops";
