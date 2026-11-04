@@ -52,18 +52,23 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
         modes.push(opts.noBlur);
         await startVideo.call(this, dest, opts);
       });
-      const finishing = t.mock.method(CdpLiveDriver.prototype, "finishVideo", async function (this: CdpLiveDriver) {
-        assert.equal(closed, finished + 1);
-        assert.equal(existsSync(lockFile), false);
-        const deadline = Date.now() + 5_000;
-        let targets: { id: string }[];
-        do {
-          targets = await (await fetch(`${browser.cdpUrl}/json/list`)).json() as { id: string }[];
-          if (!targets.some((target) => target.id === this.targetId)) break;
-          await delay(25);
-        } while (Date.now() < deadline);
-        assert.ok(!targets.some((target) => target.id === this.targetId), "target must disappear before encoding");
-        try { return await finishVideo.call(this); } finally { finished += 1; }
+      const finishing: ReturnType<typeof finishVideo>[] = [];
+      t.mock.method(CdpLiveDriver.prototype, "finishVideo", function (this: CdpLiveDriver) {
+        const result = (async () => {
+          assert.equal(closed, finished + 1);
+          assert.equal(existsSync(lockFile), false);
+          const deadline = Date.now() + 5_000;
+          let targets: { id: string }[];
+          do {
+            targets = await (await fetch(`${browser.cdpUrl}/json/list`)).json() as { id: string }[];
+            if (!targets.some((target) => target.id === this.targetId)) break;
+            await delay(25);
+          } while (Date.now() < deadline);
+          assert.ok(!targets.some((target) => target.id === this.targetId), "target must disappear before encoding");
+          try { return await finishVideo.call(this); } finally { finished += 1; }
+        })();
+        finishing.push(result);
+        return result;
       });
       const host = createLiveHost({ home, lockFile, target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0, videoDir, evalVideoNoBlur });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
@@ -92,7 +97,7 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
         assert.equal(rejected.outcome?.kind, "rejected");
         assert.equal(rejected.outcome?.reason, "failed start");
         assert.equal(failedGoto.mock.callCount(), 1);
-        await Promise.all(finishing.mock.calls.map((call) => call.result));
+        await Promise.all(finishing);
         assert.equal(finished, 4);
       } finally { await host.close(); }
     });
