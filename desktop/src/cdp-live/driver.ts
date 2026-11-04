@@ -11,6 +11,7 @@ import type { Driver, LiveTree } from "../v1/replay";
 import type { FileArg, Identity, StepLocator } from "../v1/schema";
 import { BOOKS_HOSTS, insertTextRefusal, navigationAllowed, navigationGuard, navigationRefusal, openerAllowed, publicHost, stopPathHit } from "./allowlist";
 import { focusLiveMark, focusStillMarked, markedState, resolveLiveOptions, type MarkedState } from "./live-ops";
+import { BOT_CHECK_HELPERS } from "./bot-check";
 import { canonicalKey, KEY_EVENTS } from "./keys";
 import { CdpSocket } from "./socket";
 
@@ -567,7 +568,7 @@ export class CdpLiveDriver implements Driver {
   async evaluateFunction<T>(
     fn: { toString(): string },
     arg: unknown,
-    helpers: ReadonlyArray<{ name: string; toString(): string }> = [resolveLiveOptions],
+    helpers: ReadonlyArray<{ name: string; toString(): string }> = [resolveLiveOptions, ...BOT_CHECK_HELPERS],
   ): Promise<T> {
     const prelude = helpers.map((helper) => {
       if (!/^[A-Za-z_$][\w$]*$/.test(helper.name)) throw new Error("cdp-live refused a page helper");

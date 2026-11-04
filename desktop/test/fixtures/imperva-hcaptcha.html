@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Please wait</title>
+<!-- Modeled interstitial, not a captured Experian response. All resources stay on loopback. -->
+<script src="/_Incapsula_Resource?SWCGHOEL=v2"></script>
+<main>
+  <h1>One more step</h1>
+  <div class="h-captcha" data-sitekey="fixture-site-key">
+    <iframe title="Security check" src="/widget" width="320" height="120"></iframe>
+  </div>
+</main>
+<script>
+  window.challengeEvents = [];
+  for (const kind of ['click', 'keydown', 'input']) {
+    document.addEventListener(kind, () => window.challengeEvents.push(kind), true);
+  }
+</script>
+</html>

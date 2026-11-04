@@ -24,6 +24,7 @@ import test, { after, before, describe, it } from "node:test";
 import Ajv from "ajv/dist/2020";
 import { chromium } from "playwright";
 import { readLivePage, resolveLiveOptions, type PageFacts } from "../../src/cdp-live/live-ops";
+import { BOT_CHECK_HELPERS } from "../../src/cdp-live/bot-check";
 import { redactLabel, type LiveSessionRecord } from "../../src/cdp-live/live-record";
 import { COMMIT_FLOOR, guardPreset } from "../../src/cdp-live/presets";
 import { McpClient } from "../../src/eval/mcp-client";
@@ -88,6 +89,7 @@ async function withheldRef(reply: LiveReply, label: string, cdpUrl: string): Pro
     assert.equal(pages.length, 1, "only the fixture's live page is open");
     const facts = await pages[0]!.evaluate<PageFacts>(`(() => {
       const resolveLiveOptions = ${resolveLiveOptions.toString()};
+      ${BOT_CHECK_HELPERS.map((helper) => `const ${helper.name} = ${helper.toString()};`).join("\n")}
       return (${readLivePage.toString()})({ markIndex: -1 });
     })()`);
     assert.equal(facts.path, view.path, "the fixture still shows the snapshot's page");

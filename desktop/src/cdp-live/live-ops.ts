@@ -1,9 +1,12 @@
 import { insertTextRefusal, pathHalt } from "./allowlist";
+import { readImpervaHcaptcha } from "./bot-check";
 import { EXPERIAN_COMMIT_MESSAGE } from "../v1/stop-copy";
 export { EXPERIAN_COMMIT_MESSAGE, LIVE_LOGIN_INSTRUCTION } from "../v1/stop-copy";
 import { canonicalKey, KEY_EVENTS } from "./keys";
 import { redactLabel } from "./live-record";
 import { COMMIT_FLOOR, type GuardPreset } from "./presets";
+
+const readBotCheck = readImpervaHcaptcha;
 
 export const LIVE_TOOL_NAMES = [
   "live_session_start",
@@ -731,7 +734,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
     panel: (panel?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 4000),
     ready: document.readyState === "complete" && !document.querySelector('[aria-busy="true"]'),
     headings,
-    blocked: credentialHalt ? "login" : "",
+    blocked: readBotCheck() ? "bot_wall" : credentialHalt ? "login" : "",
     text: (document.body?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 1500),
     controls,
     ...(handle || mark >= 0 ? { marked } : {}),
