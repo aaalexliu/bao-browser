@@ -7,7 +7,29 @@ Definition of done for any capability is the repo standard:
 **`record → replay → assert correct effect`**, driven through the real `content.js`
 (built to `dist/`) via `chrome.tabs.sendMessage` — the same path `sidepanel.ts` uses.
 
-## Automated e2e (default)
+## Choose the PR checks
+
+Every PR runs the static gates and the tests in
+[`test/essential.json`](../test/essential.json). The separate **Full suite** check
+runs only on a PR with the `full-suite` label, or through manual dispatch. It has
+no schedule and is not a required check. A label starts it at once and keeps it
+running on later pushes while the label remains.
+
+Opt in when a change touches shared runtime, engines, live-browser behavior,
+recording/replay, sync/storage, packaging, or test infrastructure that the
+essential set does not cover. Skip it when the essential set fully covers the
+change. Always state the choice and the reason in the PR body.
+
+```sh
+gh-axi pr edit <number> --add-label full-suite
+gh-axi workflow run guardrails.yml --ref <branch>
+```
+
+The full check runs all hermetic desktop, web, and legacy extension tests. It
+never runs public-site tests or billable model evals. Read its result, including
+any existing failures; an essential pass is not proof that the full suite passed.
+
+## Automated e2e (local full suite)
 
 A headless Chromium loads the unpacked extension, records a real session on a fixture
 page, replays it, and dumps artifacts to `out/`.

@@ -1,0 +1,185 @@
+{
+  "auth": {
+    "kind": "desktop",
+    "reason": "Safety: password slots, no saved credentials, login recovery, and human confirm stops.",
+    "tests": [
+      "desktop/test/unit/auth-login.test.ts"
+    ]
+  },
+  "experian": {
+    "kind": "desktop",
+    "reason": "Safety: final freeze/unfreeze clicks require fresh opt-in; login, bot-wall, and confirm handoffs stay intact.",
+    "tests": [
+      "desktop/test/unit/experian-gaps.test.ts"
+    ]
+  },
+  "mode": {
+    "kind": "desktop",
+    "reason": "Safety: real MCP enforces the chosen careful mode, credential rules, and sign-in handoffs.",
+    "tests": [
+      "desktop/test/unit/live-mode.test.ts"
+    ]
+  },
+  "key-privacy": {
+    "kind": "desktop",
+    "reason": "Safety: every text-capable key and named key preserves secret slots without persisting editable values.",
+    "tests": [
+      "desktop/test/unit/live-mode-regressions.test.ts"
+    ],
+    "names": [
+      "named keys replay through stable identities without storing the editable value",
+      "MCP records redacted text-capable keys on every field without copying editable identities"
+    ]
+  },
+  "navigation-privacy": {
+    "kind": "desktop",
+    "reason": "Safety: startup navigation policy, login halts, credential URLs, audit scrubbing, and read redaction.",
+    "tests": [
+      "desktop/test/unit/live-mode-regressions.test.ts"
+    ],
+    "names": [
+      "every owned-window entry applies navigation policy before startup events",
+      "guarded replay supplies page context for both actions and extracts",
+      "YOLO URL checks reject userinfo without restoring host or stop-path limits",
+      "careful navigation returns a typed login halt with the owner instruction",
+      "redirect navigation replays on the observed host while saved host and login guards remain",
+      "explicit navigation records its target, scrubs its audit, and replays before clicking",
+      "userinfo is refused at start, navigate, link clicks, and Enter without reaching the target",
+      "MCP saves typed credentials as secret inputs without defaults and keeps ordinary text",
+      "YOLO reads secret-named regions but redacts only their secret values"
+    ]
+  },
+  "storage": {
+    "kind": "desktop",
+    "reason": "Safety: secret stripping and slots across every saved writer, binding, seal, sync/relay, and public report.",
+    "tests": [
+      "desktop/test/unit/import-deeplink.test.ts",
+      "desktop/test/unit/input-token.test.ts",
+      "desktop/test/unit/owner-auth.test.ts",
+      "desktop/test/unit/relay.test.ts",
+      "desktop/test/unit/remote-policy.test.ts",
+      "desktop/test/unit/run-pass.test.ts",
+      "desktop/test/unit/save-workflow.test.ts",
+      "desktop/test/unit/saved-secret-regressions.test.ts",
+      "desktop/test/unit/saved-secrets-allowlist.test.ts",
+      "desktop/test/unit/saved-secrets-bindings.test.ts",
+      "desktop/test/unit/saved-secrets-capture.test.ts",
+      "desktop/test/unit/saved-secrets-context.test.ts",
+      "desktop/test/unit/saved-secrets-eval.test.ts",
+      "desktop/test/unit/saved-secrets-model.test.ts",
+      "desktop/test/unit/saved-secrets-sealed.test.ts",
+      "desktop/test/unit/saved-secrets-sync.test.ts",
+      "desktop/test/unit/saved-secrets-writers.test.ts",
+      "desktop/test/unit/saved-secrets.test.ts",
+      "desktop/test/unit/sync-guard.test.ts",
+      "desktop/test/unit/sync-panel.test.ts",
+      "desktop/test/unit/sync-refuse.test.ts"
+    ]
+  },
+  "isolation": {
+    "kind": "desktop",
+    "reason": "Safety: native and extension permissions, daily-profile refusal, model-account isolation, signed helper identity, staged secret owner, and camera/microphone denial.",
+    "tests": [
+      "desktop/test/unit/home.test.ts",
+      "desktop/test/unit/launch.test.ts",
+      "desktop/test/unit/installed-bundle.test.ts",
+      "desktop/test/unit/install-scripts.test.ts",
+      "desktop/test/unit/test-media.test.ts",
+      "desktop/test/unit/cursor-account.test.ts",
+      "desktop/test/unit/owned-port.test.ts",
+      "desktop/test/unit/ax-dump-guard.test.ts",
+      "desktop/test/unit/automation.test.ts",
+      "desktop/test/unit/app-permissions.test.ts",
+      "desktop/test/unit/helper-capabilities.test.ts",
+      "desktop/test/unit/remote-debugging.test.ts",
+      "desktop/test/unit/chrome-profile-copy.test.ts",
+      "desktop/test/unit/chrome-login.test.ts",
+      "desktop/test/unit/permissions.test.ts",
+      "desktop/test/unit/extension-driver.test.ts",
+      "desktop/test/unit/login-import.test.ts"
+    ]
+  },
+  "browser": {
+    "kind": "desktop",
+    "reason": "Safety: real read redaction, trapped/confirm clicks, browser grants, capture privacy, secret replay, and human handoffs.",
+    "tests": [
+      "desktop/test/unit/live-read.test.ts",
+      "desktop/test/unit/live-oauth-regressions.test.ts",
+      "desktop/test/unit/live-target.test.ts",
+      "desktop/test/unit/instacart-acceptance.test.ts",
+      "desktop/test/unit/live-replay.test.ts",
+      "desktop/test/unit/live-recording.test.ts",
+      "desktop/test/unit/live-guards.test.ts",
+      "desktop/test/unit/live-tools.test.ts",
+      "desktop/test/unit/driver-fixes.test.ts",
+      "desktop/test/unit/agent-browser.test.ts",
+      "desktop/test/unit/live-session.test.ts",
+      "desktop/test/unit/live-trail.test.ts",
+      "desktop/test/unit/live-capture.test.ts",
+      "desktop/test/unit/capture.test.ts",
+      "desktop/test/unit/human-envelope.test.ts"
+    ]
+  },
+  "core": {
+    "kind": "desktop",
+    "reason": "Coverage: every remaining test file above 100 exclusive covered lines/second, plus bot-wall, human-check, secret, and video-privacy safety cases.",
+    "tests": [
+      "desktop/test/unit/artifact-dir.test.ts",
+      "desktop/test/unit/ax-fixtures.test.ts",
+      "desktop/test/unit/backup-schedule.test.ts",
+      "desktop/test/unit/catalog.test.ts",
+      "desktop/test/unit/cdp-live.test.ts",
+      "desktop/test/unit/cdp-video-privacy.test.ts",
+      "desktop/test/unit/checks.test.ts",
+      "desktop/test/unit/data-steps.test.ts",
+      "desktop/test/unit/dialog-recorder.test.ts",
+      "desktop/test/unit/effect-replay-lint.test.ts",
+      "desktop/test/unit/element-history.test.ts",
+      "desktop/test/unit/eval-agent-instacart.test.ts",
+      "desktop/test/unit/eval-drivers.test.ts",
+      "desktop/test/unit/eval-intent.test.ts",
+      "desktop/test/unit/files-dates.test.ts",
+      "desktop/test/unit/guide-me.test.ts",
+      "desktop/test/unit/guide.test.ts",
+      "desktop/test/unit/heal-cursor.test.ts",
+      "desktop/test/unit/helper-pid-keys.test.ts",
+      "desktop/test/unit/identity.test.ts",
+      "desktop/test/unit/interpret-os.test.ts",
+      "desktop/test/unit/invalid-fixture.test.ts",
+      "desktop/test/unit/locators.test.ts",
+      "desktop/test/unit/nightly-diff.test.ts",
+      "desktop/test/unit/page-class.test.ts",
+      "desktop/test/unit/proof-expect.test.ts",
+      "desktop/test/unit/realworld-basics.test.ts",
+      "desktop/test/unit/revise-decision.test.ts",
+      "desktop/test/unit/schema-replay.test.ts",
+      "desktop/test/unit/site-trust.test.ts",
+      "desktop/test/unit/spike-workdir.test.ts",
+      "desktop/test/unit/state-poll.test.ts",
+      "desktop/test/unit/sync-catchup.test.ts",
+      "desktop/test/unit/teach.test.ts",
+      "desktop/test/unit/try-step.test.ts",
+      "desktop/test/unit/ui-views.test.ts",
+      "desktop/test/unit/url-oracle.test.ts",
+      "desktop/test/unit/versions.test.ts",
+      "desktop/test/unit/viewer-depth.test.ts"
+    ],
+    "ffmpeg": true
+  },
+  "web": {
+    "kind": "web",
+    "reason": "Safety: authenticated relay boundaries and bounded relay-job lifecycle.",
+    "tests": [
+      "web/src/lib/relay.boundary.test.ts",
+      "web/src/lib/relay-job.test.ts"
+    ]
+  },
+  "legacy": {
+    "kind": "legacy",
+    "reason": "Safety: the real legacy extension never records or persists passwords, cards, or SSNs and never replays secret literals.",
+    "tests": [
+      "test/snapshot.mjs",
+      "test/sensitive.mjs"
+    ]
+  }
+}

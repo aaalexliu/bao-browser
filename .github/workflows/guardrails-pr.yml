@@ -1,0 +1,129 @@
+name: Guardrails
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.manifest.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: manifest
+        name: Read the single essential manifest
+        run: |
+          node -e 'const m = require("./test/essential.json"); console.log("matrix=" + JSON.stringify({include: Object.entries(m).map(([group, v]) => ({group, ffmpeg: !!v.ffmpeg, web: v.kind === "web"}))}));' >> "$GITHUB_OUTPUT"
+
+  static:
+    name: static (${{ matrix.gate }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [types, lint, architecture]
+    env:
+      BAO_HEAL_CURSOR_ACCOUNT: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - run: npm --prefix web ci
+      - name: Static gate
+        env:
+          GATE: ${{ matrix.gate }}
+          BASELINE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          case "$GATE" in
+            types) npm run typecheck ;;
+            lint) npm run lint ;;
+            architecture)
+              npm run baselines:check
+              npm run arch:check
+              npm run test:guardrails
+              node --test test/essential-manifest.test.mjs
+              ;;
+          esac
+
+  essential:
+    name: essential (${{ matrix.group }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      BAO_HEAL_CURSOR_ACCOUNT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - if: matrix.web
+        run: npm --prefix web ci
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+      - name: Allow sandboxed Chromium to create user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npx playwright install chromium
+      - name: Install the privacy-test video encoder only if absent
+        if: matrix.ffmpeg
+        run: command -v ffmpeg && command -v ffprobe || sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm run build:desktop
+      - name: Essential tests
+        env:
+          GROUP: ${{ matrix.group }}
+          NODE_V8_COVERAGE: ${{ runner.temp }}/essential-coverage
+        shell: bash
+        run: |
+          unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
+          export HOME="$(mktemp -d)"
+          trap 'rm -rf "$HOME"' EXIT
+          node scripts/test-essential.mjs "$GROUP"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: essential-coverage-${{ matrix.group }}
+          path: ${{ runner.temp }}/essential-coverage
+          retention-days: 14
+
+  guardrails:
+    name: guardrails
+    if: always()
+    needs: [plan, static, essential]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every static gate and essential group
+        env:
+          PLAN: ${{ needs.plan.result }}
+          STATIC: ${{ needs.static.result }}
+          ESSENTIAL: ${{ needs.essential.result }}
+        run: test "$PLAN" = success && test "$STATIC" = success && test "$ESSENTIAL" = success

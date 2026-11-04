@@ -80,9 +80,27 @@ The helper saves:
 
 For other changes, capture the action and its result, verify the durable effect through a second read, and include the failure state when relevant. Do not claim a dry-run is side-effect free by name: compare fixture writes and trap hits, saved workflows/runs, and process state. No model invocation, native video, or real-site mutation belongs in this baseline.
 
-## Full-suite gate
+## Choose the full-suite check
 
-Run focused checks first. A full pass is **both** `npm run check` (four typechecks plus desktop units) and `npm test` (extension/root regressions). Do not stack full passes on this shared Mac. Start only when the one-minute load is below 30, acquire the shared mutex, then recheck load after acquiring it:
+Every PR runs static gates and the single essential set in `test/essential.json`.
+Decide whether that set covers the change before opening the PR. Opt in to the
+separate **Full suite** check for shared runtime, engines, live-browser behavior,
+recording/replay, sync/storage, packaging, or test infrastructure that the
+essential set does not cover. Skip it when the essential set fully covers the
+change. Always state the choice and the reason in the PR body.
+
+Use `gh-axi pr edit <number> --add-label full-suite` to start the full check and
+keep it on later pushes while the label remains. Use
+`gh-axi workflow run guardrails.yml --ref <branch>` for a manual branch run.
+The workflow has no schedule, does not run on an unlabeled PR, and is not a
+required check. It runs hermetic desktop, web, and legacy extension tests, not
+public-site tests or billable model evals. Report its actual result; do not call
+an essential pass a full-suite pass.
+
+Run focused local checks first. A local full pass is `npm run check` (four
+typechecks plus desktop units), `npm --prefix web test`, and `npm test`
+(extension/root regressions). Prefer the opt-in remote check to a full pass on
+this shared Mac. Do not stack full passes here. Start only when the one-minute load is below 30, acquire the shared mutex, then recheck load after acquiring it:
 
 ```bash
 (
@@ -95,7 +113,7 @@ Run focused checks first. A full pass is **both** `npm run check` (four typechec
   until node -e 'process.exit(require("node:os").loadavg()[0] < 30 ? 0 : 1)'; do sleep 30; done
   unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
   export BAO_HEAL_CURSOR_ACCOUNT=0
-  ( cd "$REPO" && npm run check && npm test ) >"$PROOF/full-suite.log" 2>&1
+  ( cd "$REPO" && npm run check && npm --prefix web test && npm test ) >"$PROOF/full-suite.log" 2>&1
 )
 ```
 
