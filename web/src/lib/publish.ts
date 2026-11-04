@@ -1,5 +1,5 @@
-// Sharing and publishing clear personal values. The preview is the diff the
-// author sees before anything becomes public or installable.
+// Release hashes cover the whole-value sanitized copy, never a substring rewrite.
+// Personal input questions belong to import-sheet.ts, not a second redaction pass.
 
 import { createHash } from "node:crypto";
 import { stripUnsafe } from "./guard";
