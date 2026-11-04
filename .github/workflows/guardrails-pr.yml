@@ -69,10 +69,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web/package-lock.json
       - uses: actions/cache@v4
         id: packages
         with:
@@ -111,9 +107,10 @@ jobs:
         id: compiled
         with:
           path: desktop/dist
-          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig*.json', 'web/tsconfig.json', 'extension/tsconfig.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
-      - if: steps.compiled.outputs.cache-hit != 'true'
-        run: npm run build:desktop
+          key: desktop-emit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/guardrails-pr.yml', '.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig*.json', 'web/tsconfig.json', 'extension/tsconfig.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
+      - name: Emit desktop JavaScript
+        if: steps.compiled.outputs.cache-hit != 'true'
+        run: npm run build:desktop -- --noCheck
       - name: Essential tests
         env:
           GROUP: ${{ matrix.group }}

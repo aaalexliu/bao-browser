@@ -59,8 +59,13 @@ use. A cache miss downloads two files with a 20-second limit each instead of
 installing 87 apt packages. No system encoder or apt fallback can bypass the
 pinned hashes.
 The test jobs also cache lockfile-pinned dependencies and compiled desktop code,
-with source/configuration hashes in the build key. Static gates still run on
-every commit.
+with source/configuration hashes in the build key. The key includes the PR
+workflow so build flags cannot reuse a stale artifact. Essential jobs restore
+`node_modules`, not a second global npm-download cache. Their build uses
+`--noCheck` only to emit JavaScript. The required `static (types)` gate still runs
+all four full typechecks on every commit. Local and full-suite builds retain
+normal TypeScript checking. A 433-file comparison found byte-identical JavaScript
+from normal and emit-only builds.
 
 CI gives the test commands a throwaway `HOME` and no vendor API keys. It keeps
 Playwright's browser cache outside that home. The desktop runner also strips
