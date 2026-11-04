@@ -251,11 +251,11 @@ test("only the copied Chrome child gets the passwd HOME; Bao's isolated HOME sta
   } finally { await f.close(); }
 });
 
-test("copied Chrome removes theme extensions but preserves other extensions for opt-in loading", async (t) => {
+test("copied Chrome removes packed image-theme files but preserves other extensions for opt-in loading", async (t) => {
   const f = await fixture();
   const processes = require("node:child_process") as typeof import("node:child_process");
   const addonManifest = JSON.stringify({ manifest_version: 3, name: "Test addon", version: "1.0" });
-  const themeManifest = JSON.stringify({ manifest_version: 3, name: "Test theme", version: "1.0", theme: { colors: { frame: [10, 20, 30] } } });
+  const themeManifest = JSON.stringify({ manifest_version: 3, name: "Test theme", version: "1.0", theme: { images: { theme_frame: "frame.png" } } });
   for (const directory of ["Default", "Profile 1"]) {
     for (const [id, versions, manifest] of [
       ["test-addon", ["1.0_0"], addonManifest],
@@ -266,8 +266,14 @@ test("copied Chrome removes theme extensions but preserves other extensions for 
         const dir = path.join(f.sourceRoot, directory, "Extensions", id, version);
         await mkdir(dir, { recursive: true });
         await writeFile(path.join(dir, "manifest.json"), manifest);
+        if (manifest === themeManifest) {
+          await writeFile(path.join(dir, "frame.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=", "base64"));
+        }
       }
     }
+    const oldVersion = path.join(f.sourceRoot, directory, "Extensions", "synthetic-theme-extension", "0.0_0");
+    await mkdir(oldVersion);
+    await writeFile(path.join(oldVersion, "manifest.json"), "");
   }
   const before = await sourceBytes(f.sourceRoot);
   const calls: string[][] = [];
@@ -295,6 +301,42 @@ test("copied Chrome removes theme extensions but preserves other extensions for 
       assert.ok(args.includes("--disable-sync"));
       assert.equal(args.includes("--enable-automation"), false);
     }
+  } finally { await f.close(); }
+});
+
+test("copied Chrome reaches launch with empty, truncated, missing, or unreadable manifests", async (t) => {
+  const f = await fixture();
+  const processes = require("node:child_process") as typeof import("node:child_process");
+  const truncated = '{"name":"sensitive-synthetic-manifest",';
+  for (const directory of ["Default", "Profile 1"]) {
+    const extensionDir = path.join(f.sourceRoot, directory, "Extensions", "broken-addon");
+    for (const version of ["empty", "truncated", "missing", "unreadable"]) {
+      await mkdir(path.join(extensionDir, version), { recursive: true });
+    }
+    await writeFile(path.join(extensionDir, "empty", "manifest.json"), "");
+    await writeFile(path.join(extensionDir, "truncated", "manifest.json"), truncated);
+    await mkdir(path.join(extensionDir, "unreadable", "manifest.json"));
+  }
+  const before = await sourceBytes(f.sourceRoot);
+  const calls: boolean[] = [];
+  t.mock.method(processes, "spawn", (_file: string, args: readonly string[]) => {
+    const dir = args.find((arg) => arg.startsWith("--user-data-dir="))!.slice("--user-data-dir=".length);
+    const profile = args.find((arg) => arg.startsWith("--profile-directory="))!.slice("--profile-directory=".length);
+    const extensionDir = path.join(dir, profile, "Extensions", "broken-addon");
+    assert.equal(readFileSync(path.join(extensionDir, "empty", "manifest.json"), "utf8"), "");
+    assert.equal(readFileSync(path.join(extensionDir, "truncated", "manifest.json"), "utf8"), truncated);
+    assert.equal(existsSync(path.join(extensionDir, "unreadable", "manifest.json")), true);
+    calls.push(args.includes("--disable-extensions"));
+    throw new Error("reached launch despite invalid manifests");
+  });
+  try {
+    for (const directory of ["Default", "Profile 1"]) {
+      for (const loadExtensions of [false, true]) {
+        await assert.rejects(openCopiedChrome({ ...f, directory, loadExtensions }), { message: "reached launch despite invalid manifests" });
+      }
+    }
+    assert.deepEqual(calls, [true, false, true, false]);
+    assert.deepEqual(await sourceBytes(f.sourceRoot), before);
   } finally { await f.close(); }
 });
 

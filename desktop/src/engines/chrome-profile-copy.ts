@@ -119,11 +119,11 @@ export async function copyChromeProfile(options: {
       const extensionDir = path.join(extensionsDir, extension.name);
       for (const version of await readdir(extensionDir, { withFileTypes: true })) {
         if (!version.isDirectory()) continue;
-        const manifest = await readFile(path.join(extensionDir, version.name, "manifest.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return "{}";
-          throw error;
-        });
-        if (!object(JSON.parse(manifest)).theme) continue;
+        let manifest: unknown;
+        try {
+          manifest = JSON.parse(await readFile(path.join(extensionDir, version.name, "manifest.json"), "utf8"));
+        } catch { continue; }
+        if (!object(manifest).theme) continue;
         await rm(extensionDir, { recursive: true });
         break;
       }
