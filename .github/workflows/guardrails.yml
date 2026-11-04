@@ -44,8 +44,8 @@ jobs:
       - name: Allow sandboxed Chromium to create user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npx playwright install chromium
-      - name: Install the CDP video encoder
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Set up the CDP video tools
+        uses: ./.github/actions/setup-ffmpeg
       - run: npm run build:desktop -- --sourceMap
       - name: Desktop tests
         env:

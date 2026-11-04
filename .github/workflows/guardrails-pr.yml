@@ -104,9 +104,9 @@ jobs:
         env:
           GROUP: ${{ matrix.group }}
         run: node -e 'console.log("ffmpeg=" + !!require("./test/essential.json")[process.env.GROUP].ffmpeg)' >> "$GITHUB_OUTPUT"
-      - name: Install the privacy-test video encoder only if absent
+      - name: Set up the privacy-test video tools
         if: steps.requirements.outputs.ffmpeg == 'true'
-        run: command -v ffmpeg && command -v ffprobe || sudo apt-get install -y --no-install-recommends ffmpeg
+        uses: ./.github/actions/setup-ffmpeg
       - uses: actions/cache@v4
         id: compiled
         with:

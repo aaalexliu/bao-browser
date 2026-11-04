@@ -49,8 +49,13 @@ in the essential set are not deleted or disabled locally.
 Both workflows cache npm downloads and the lockfile-pinned Playwright Chromium.
 Ubuntu 24.04 already has Chromium's system libraries, so neither job installs
 browser dependencies with apt. Only groups that declare `ffmpeg` in the manifest
-install the encoder. The core group contains video privacy and live recording,
-which need it; other groups never install it.
+set up video tools. The core group contains video privacy and live recording,
+which need them; other groups never install them. Both workflows use the shared
+[CI video-tools action](../.github/actions/setup-ffmpeg/action.yml), with a pinned
+static FFmpeg/ffprobe release, a content-keyed cache, and SHA-256 checks on every
+use. A cache miss downloads two files with a 20-second limit each instead of
+installing 87 apt packages. No system encoder or apt fallback can bypass the
+pinned hashes.
 The test jobs also cache lockfile-pinned dependencies and compiled desktop code,
 with source/configuration hashes in the build key. Static gates still run on
 every commit.
