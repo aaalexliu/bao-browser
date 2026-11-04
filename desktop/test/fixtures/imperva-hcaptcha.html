@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Please wait</title>
+<!-- Modeled interstitial, not a captured Experian response. All resources stay on loopback. -->
+<script src="/_Incapsula_Resource?SWJIYLWA=fixture"></script>
+<iframe title="Security check" src="/_Incapsula_Resource?SWUDNSAI=31&amp;incident_id=fixture" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>
+<script>
+  window.challengeEvents = [];
+  for (const kind of ['click', 'keydown', 'input']) {
+    document.addEventListener(kind, () => window.challengeEvents.push(kind), true);
+  }
+</script>
+</html>

@@ -1,4 +1,7 @@
 import { INSTACART_DENY } from "./presets";
+import { BOT_CHECK_HELPERS, readImpervaHcaptcha } from "./bot-check";
+
+const readBotCheck = readImpervaHcaptcha;
 
 /** Guards for the one Instacart add-and-remove. The page function runs in the tab. */
 
@@ -223,6 +226,10 @@ export function readInstacart(wantProduct: string): InstacartSnap {
   });
 
   const snap: InstacartSnap = { ...empty };
+  if (readBotCheck()) {
+    snap.blocked = "captcha";
+    return snap;
+  }
   if (collect("input[type='password']").some(shown)) {
     snap.blocked = "password";
     snap.hints = ["controls:password"];
@@ -439,6 +446,7 @@ export function readInstacart(wantProduct: string): InstacartSnap {
 
 /** Everything readInstacart calls in the tab, in the shape evaluateFunction takes. */
 export const READER_HELPERS: ReadonlyArray<{ name: string; toString(): string }> = [
+  ...BOT_CHECK_HELPERS,
   { name: "INSTACART_DENY_SOURCE", toString: () => JSON.stringify(INSTACART_DENY_SOURCE) },
   classifyDialog,
   clickForbidden,
