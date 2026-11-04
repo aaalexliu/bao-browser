@@ -58,8 +58,7 @@ jobs:
           if [[ "$MEASURE_COVERAGE" == true ]]; then
             node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage"
           else
-            # Existing main failure; removed when the concurrent test repair lands.
-            node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit --test-skip-pattern='^teach the fixture, correct three cards, replay twice, and splice a fix$'
+            node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit
           fi
       - name: Web tests
         if: always() && !cancelled()

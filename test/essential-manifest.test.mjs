@@ -28,9 +28,10 @@ test("the essential manifest names real tests, gives reasons, and has no overlap
       assert.ok(entry.names || selections.length === 0, `filtered and unfiltered file: ${file}`);
       if (entry.names) {
         const source = readFileSync(file, "utf8");
+        const registrations = new Set([...source.matchAll(/^\s*(?:test|it)\(("(?:[^"\\]|\\.)*")/gm)].map((match) => JSON.parse(match[1])));
         for (const name of entry.names) {
           assert.ok(!selections.includes(name), `duplicate test: ${name}`);
-          assert.ok(source.includes(`test(${JSON.stringify(name)}`) || source.includes(`it(${JSON.stringify(name)}`), `test registration missing: ${name}`);
+          assert.ok(registrations.has(name), `test registration missing: ${name}`);
           selections.push(name);
         }
       } else selections.push("*");

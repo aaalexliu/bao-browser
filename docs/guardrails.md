@@ -32,7 +32,9 @@ fast checks before each push with `npm run hooks:enable`. Hooks are bypassable;
 CI is the gate. Both packages must be installed for the static checks.
 
 The PR check keeps typecheck, typed lint, architecture, baseline budgets, and
-all guardrail self-tests. Independent static gates and essential groups run in
+all guardrail self-tests. [Coverage and selection evidence](ci-test-selection.md)
+records each test file's measured yield and the opt-in-only inventory.
+Independent static gates and essential groups run in
 parallel. The `guardrails` job fails unless every gate and group passes, so the
 required check name stays unchanged.
 
@@ -45,8 +47,9 @@ in the essential set are not deleted or disabled locally.
 
 Both workflows cache npm downloads and the lockfile-pinned Playwright Chromium.
 Ubuntu 24.04 already has Chromium's system libraries, so neither job installs
-browser dependencies with apt. Only groups that declare `ffmpeg` in the manifest install the encoder: video
-privacy and the live-recording fixture need it. Other groups never install it.
+browser dependencies with apt. Only groups that declare `ffmpeg` in the manifest
+install the encoder. The core group contains video privacy and live recording,
+which need it; other groups never install it.
 The test jobs also cache lockfile-pinned dependencies and compiled desktop code,
 with source/configuration hashes in the build key. Static gates still run on
 every commit.
@@ -158,14 +161,15 @@ The untouched-main run exited 1 with one failure and no skipped tests.
 
 Full local proof and raw output are
 `/Users/alexliu/dev/firstmate/data/bao-lint-guardrails/main-proof.md` and
-`main-proof.log` in that directory. Firstmate authorized this narrow exclusion
-after main reproduced it. CI skips only that exact test name; the other tests
-in `teach-app.test.ts` still run. The default `npm run test:v1` does not skip it.
-Remove the CI skip when the existing failure is fixed.
+`main-proof.log` in that directory. The original blocking check skipped this
+exact name after main reproduced it. The opt-in full check has no such exclusion.
+`teach-app.test.ts` is outside the essential set because of its measured cost,
+not because a failure may be ignored in a required test. Report any full-check
+failure, including this known one, until the separate repair lands.
 
 `desktop/test/run-v1.mjs` forwards Node test-runner options. CI uses
-`--test-concurrency=2` to bound browser load and `--test-skip-pattern` for this
-single exclusion. TAP reports failures at once. `--test-force-exit` ends each
+`--test-concurrency=2` to bound browser load. The full check has no name filter.
+TAP reports failures at once. `--test-force-exit` ends each
 test process after its tests finish, so a failed browser startup cannot leave
 a fixture server open until the job times out. Failed assertions still fail
 the job. A full local run's `extension-shots` timeout passed in a

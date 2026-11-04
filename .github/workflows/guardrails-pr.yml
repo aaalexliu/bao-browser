@@ -79,7 +79,7 @@ jobs:
           path: |
             node_modules
             web/node_modules
-          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package-lock.json', 'web/package-lock.json') }}
+          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json') }}
       - name: Install packages on a cache miss
         if: steps.packages.outputs.cache-hit != 'true'
         shell: bash
@@ -111,25 +111,18 @@ jobs:
         id: compiled
         with:
           path: desktop/dist
-          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig.desktop.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
+          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig*.json', 'web/tsconfig.json', 'extension/tsconfig.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
       - if: steps.compiled.outputs.cache-hit != 'true'
         run: npm run build:desktop
       - name: Essential tests
         env:
           GROUP: ${{ matrix.group }}
-          NODE_V8_COVERAGE: ${{ runner.temp }}/essential-coverage
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
           export HOME="$(mktemp -d)"
           trap 'rm -rf "$HOME"' EXIT
           node scripts/test-essential.mjs "$GROUP"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: essential-coverage-${{ matrix.group }}
-          path: ${{ runner.temp }}/essential-coverage
-          retention-days: 14
 
   guardrails:
     name: guardrails

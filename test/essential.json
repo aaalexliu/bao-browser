@@ -108,7 +108,6 @@
       "desktop/test/unit/live-target.test.ts",
       "desktop/test/unit/instacart-acceptance.test.ts",
       "desktop/test/unit/live-replay.test.ts",
-      "desktop/test/unit/live-recording.test.ts",
       "desktop/test/unit/live-guards.test.ts",
       "desktop/test/unit/live-tools.test.ts",
       "desktop/test/unit/driver-fixes.test.ts",
@@ -118,8 +117,7 @@
       "desktop/test/unit/live-capture.test.ts",
       "desktop/test/unit/capture.test.ts",
       "desktop/test/unit/human-envelope.test.ts"
-    ],
-    "ffmpeg": true
+    ]
   },
   "core": {
     "kind": "desktop",
@@ -139,6 +137,7 @@
       "desktop/test/unit/eval-agent-instacart.test.ts",
       "desktop/test/unit/eval-drivers.test.ts",
       "desktop/test/unit/eval-intent.test.ts",
+      "desktop/test/unit/extension-shots.test.ts",
       "desktop/test/unit/files-dates.test.ts",
       "desktop/test/unit/guide-me.test.ts",
       "desktop/test/unit/guide.test.ts",
@@ -147,11 +146,14 @@
       "desktop/test/unit/identity.test.ts",
       "desktop/test/unit/interpret-os.test.ts",
       "desktop/test/unit/invalid-fixture.test.ts",
+      "desktop/test/unit/listing-stat.test.ts",
+      "desktop/test/unit/live-recording.test.ts",
       "desktop/test/unit/locators.test.ts",
       "desktop/test/unit/nightly-diff.test.ts",
       "desktop/test/unit/page-class.test.ts",
       "desktop/test/unit/proof-expect.test.ts",
       "desktop/test/unit/realworld-basics.test.ts",
+      "desktop/test/unit/relay-singleton.test.ts",
       "desktop/test/unit/revise-decision.test.ts",
       "desktop/test/unit/schema-replay.test.ts",
       "desktop/test/unit/site-trust.test.ts",

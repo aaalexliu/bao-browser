@@ -16,7 +16,6 @@ async function worker() {
     const start = performance.now();
     const env = { ...laneChildEnv("hermetic", process.env), NODE_V8_COVERAGE: dir };
     const args = ["--test", "--test-concurrency=1", "--test-reporter=tap", "--test-force-exit",
-      "--test-skip-pattern=^teach the fixture, correct three cards, replay twice, and splice a fix$",
       path.join("desktop/dist/desktop/test/unit", file.replace(/\.ts$/, ".js"))];
     const code = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, args, { env, stdio: ["ignore", "pipe", "pipe"] });
