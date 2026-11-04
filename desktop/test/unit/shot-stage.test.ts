@@ -72,6 +72,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click("[data-screen=runs]");
     await page.click(`[data-open-run=${runId}]`);
+    await page.waitForSelector("#step-list [data-select-step=shot]");
     for (const [step, which, width, height] of [
       ["shot", "after", 320, 720], ["shot", "before", 1280, 720], ["shot", "after", 320, 720], ["crop", "after", 1280, 80], ["jpeg", "after", 1280, 720], ["jpeg", "before", 1280, 720],
     ] as const) {
@@ -81,21 +82,19 @@ test("Library step frame fits the captured viewport without letterboxing or crop
         await page.waitForSelector(selected);
       }
       await page.click(`[data-frame=${which}]`);
-      const imageHandle = await page.waitForFunction(([w, h]) => {
+      const fitHandle = await page.waitForFunction(([w, h]) => {
         const image = document.querySelector<HTMLImageElement>("#shot-stage.has-shot img");
-        return image?.complete && image.naturalWidth === w && image.naturalHeight === h ? image : null;
-      }, [width, height]);
-      const fit = await imageHandle.evaluate(async (image) => {
-        if (!image) throw new Error("shot image missing");
-        await image.decode();
+        if (!image?.isConnected || !image.complete || image.naturalWidth !== w || image.naturalHeight !== h) return null;
         const stage = image.parentElement!;
         const rect = stage.getBoundingClientRect();
         const style = getComputedStyle(stage);
-        return { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
+        const fit = { width: rect.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
           height: rect.height - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
           ratio: image.naturalWidth / image.naturalHeight, objectFit: getComputedStyle(image).objectFit };
-      });
-      await imageHandle.dispose();
+        return Number.isFinite(fit.width) && fit.width > 0 && Number.isFinite(fit.height) && fit.height > 0 ? fit : null;
+      }, [width, height]);
+      const fit = await fitHandle.jsonValue();
+      await fitHandle.dispose();
       assert.ok(fit);
       assert.ok(Math.abs(fit.width - fit.height * fit.ratio) < 2, `${which}: frame ${fit.width}x${fit.height} does not match captured ratio ${fit.ratio}`);
       assert.equal(fit.objectFit, "contain", "keep every part of the captured page visible");
