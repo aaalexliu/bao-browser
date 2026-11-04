@@ -1,0 +1,39 @@
+name: Set up CI video tools
+description: Cache pinned, hash-checked Linux x64 FFmpeg and ffprobe for video tests
+runs:
+  using: composite
+  steps:
+    - name: Require the pinned platform
+      shell: bash
+      run: test "$RUNNER_OS/$RUNNER_ARCH" = Linux/X64
+    - uses: actions/cache@v4
+      id: tools
+      with:
+        path: ${{ runner.temp }}/bao-ffmpeg
+        key: ffmpeg-static-b6.1.1-linux-x64-${{ hashFiles('.github/actions/setup-ffmpeg/action.yml') }}
+    - name: Download the pinned release on a cache miss
+      if: steps.tools.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/bao-ffmpeg"
+        cd "$RUNNER_TEMP/bao-ffmpeg"
+        for tool in ffmpeg ffprobe; do
+          curl --fail --location --silent --show-error --connect-timeout 5 --max-time 20 \
+            "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/$tool-linux-x64.gz" \
+            --output "$tool.gz"
+          gzip --decompress "$tool.gz"
+        done
+    - name: Verify both tools on every use
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "$RUNNER_TEMP/bao-ffmpeg"
+        printf '%s\n' \
+          'e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99  ffmpeg' \
+          '4f231a1960d83e403d08f7971e271707bec278a9ae18e21b8b5b03186668450d  ffprobe' \
+          | sha256sum --check --strict
+        chmod +x ffmpeg ffprobe
+        ./ffmpeg -version | grep '^ffmpeg version'
+        ./ffprobe -version | grep '^ffprobe version'
+        echo "$RUNNER_TEMP/bao-ffmpeg" >> "$GITHUB_PATH"

@@ -5,24 +5,67 @@ The `Guardrails / guardrails` GitHub check runs on pull requests and pushes to
 rules. A workflow alone cannot turn on branch protection.
 
 Run the checks locally with the commands below. The
-[workflow](../.github/workflows/guardrails.yml) owns the CI invocation. It runs
-all desktop tests without test-name exclusions.
+[PR workflow](../.github/workflows/guardrails-pr.yml) owns the blocking invocation.
+The [full workflow](../.github/workflows/guardrails.yml) runs all desktop tests
+without test-name exclusions, only with the `full-suite` PR label or manual
+dispatch. It has no nightly schedule and is not a required check.
+[Testing guidance](TESTING.md#choose-the-pr-checks) explains when to opt in.
+Always state that choice and its reason in the PR body.
 
 ```sh
 npm ci
 npm --prefix web ci
 npm run check:static
 npm run test:guardrails
-npx playwright install --with-deps chromium
-npm run test:v1
-npm --prefix web test
-npm test
+node --test test/essential-manifest.test.mjs
+npx playwright install chromium
+npm run build:desktop
+# Run one group from test/essential.json, with an isolated HOME:
+( export HOME="$(mktemp -d)"; trap 'rm -rf "$HOME"' EXIT
+  BAO_HEAL_CURSOR_ACCOUNT=0 node scripts/test-essential.mjs <group> )
+# Opt in to the full remote check when the change needs it:
+gh-axi pr edit <number> --add-label full-suite
 ```
 
 `check:static` runs the baseline budget check, all four TypeScript checks, typed
 ESLint, and the import gate. It never starts Bao or a browser. Enable the same
 fast checks before each push with `npm run hooks:enable`. Hooks are bypassable;
 CI is the gate. Both packages must be installed for the static checks.
+
+The PR check keeps typecheck, typed lint, architecture, baseline budgets, and
+all guardrail self-tests. [Coverage and selection evidence](ci-test-selection.md)
+records each test file's measured yield and the opt-in-only inventory.
+Independent static gates and essential groups run in
+parallel. The `guardrails` job fails unless every gate and group passes, so the
+required check name stays unchanged.
+
+[`test/essential.json`](../test/essential.json) is the only essential-test set.
+It gives each group a reason, lists its test files, and names selected tests when
+a large mixed file contains both safety cases and slower feature cases. A
+manifest self-test rejects missing files, stale test names, and overlapping
+selections. The full workflow always runs the full source inventory; tests not
+in the essential set are not deleted or disabled locally.
+
+Both workflows cache npm downloads and the lockfile-pinned Playwright Chromium.
+Ubuntu 24.04 already has Chromium's system libraries, so the essential groups
+skip apt browser setup. The optional full check keeps main's canonical
+`playwright install --with-deps chromium`, including its extra fonts, so full
+suite layout tests retain their original environment. Only groups that declare
+`ffmpeg` in the manifest set up video tools. The core group contains video privacy and live recording,
+which need them; other groups never install them. Both workflows use the shared
+[CI video-tools action](../.github/actions/setup-ffmpeg/action.yml), with a pinned
+static FFmpeg/ffprobe release, a content-keyed cache, and SHA-256 checks on every
+use. A cache miss downloads two files with a 20-second limit each instead of
+installing 87 apt packages. No system encoder or apt fallback can bypass the
+pinned hashes.
+The test jobs also cache lockfile-pinned dependencies and compiled desktop code,
+with source/configuration hashes in the build key. The key includes the PR
+workflow so build flags cannot reuse a stale artifact. Essential jobs restore
+`node_modules`, not a second global npm-download cache. Their build uses
+`--noCheck` only to emit JavaScript. The required `static (types)` gate still runs
+all four full typechecks on every commit. Local and full-suite builds retain
+normal TypeScript checking. A 433-file comparison found byte-identical JavaScript
+from normal and emit-only builds.
 
 CI gives the test commands a throwaway `HOME` and no vendor API keys. It keeps
 Playwright's browser cache outside that home. The desktop runner also strips

@@ -1,29 +1,32 @@
-name: Guardrails
+name: Full suite
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    types: [opened, reopened, synchronize, labeled]
+  workflow_dispatch:
+    inputs:
+      measure-coverage:
+        description: Collect per-file V8 coverage and timings for suite selection
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: guardrails-${{ github.ref }}
+  group: full-suite-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  guardrails:
-    name: guardrails
-    # The CDP recorder and video tests need FFmpeg 5.1+ for -fps_mode.
+  full-suite:
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'full-suite') && (github.event.action != 'labeled' || github.event.label.name == 'full-suite'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -33,30 +36,49 @@ jobs:
             web/package-lock.json
       - run: npm ci
       - run: npm --prefix web ci
-      - name: Compare baseline budgets to the target branch or previous main commit
-        env:
-          BASELINE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: npm run baselines:check
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run arch:check
-      - run: npm run test:guardrails
+      - uses: actions/cache@v4
+        id: browser
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
       - name: Allow sandboxed Chromium to create user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npx playwright install --with-deps chromium
+      - name: Set up the CDP video tools
+        uses: ./.github/actions/setup-ffmpeg
+      - run: npm run build:desktop -- --sourceMap
+      - name: Desktop tests
         env:
-          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
-      - name: Install the CDP video encoder
-        run: sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Hermetic desktop, web and legacy extension tests
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+          MEASURE_COVERAGE: ${{ inputs.measure-coverage }}
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
           export HOME="$(mktemp -d)"
           trap 'rm -rf "$HOME"' EXIT
-          npm run build:desktop
-          node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit
+          if [[ "$MEASURE_COVERAGE" == true ]]; then
+            node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage"
+          else
+            node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit
+          fi
+      - name: Web tests
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
+          export HOME="$(mktemp -d)"
+          trap 'rm -rf "$HOME"' EXIT
           npm --prefix web test
+      - name: Legacy extension tests
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
+          export HOME="$(mktemp -d)"
+          trap 'rm -rf "$HOME"' EXIT
           npm test
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.measure-coverage
+        with:
+          name: per-test-coverage
+          path: ${{ runner.temp }}/test-coverage
+          retention-days: 14

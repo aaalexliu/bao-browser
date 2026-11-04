@@ -1,0 +1,134 @@
+name: Guardrails
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: static (${{ matrix.gate }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [types, lint, architecture]
+    env:
+      BAO_HEAL_CURSOR_ACCOUNT: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - run: npm --prefix web ci
+      - name: Static gate
+        env:
+          GATE: ${{ matrix.gate }}
+          BASELINE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          case "$GATE" in
+            types) npm run typecheck ;;
+            lint) npm run lint ;;
+            architecture)
+              npm run baselines:check
+              npm run arch:check
+              npm run test:guardrails
+              node --test test/essential-manifest.test.mjs
+              ;;
+          esac
+
+  essential:
+    name: essential (${{ matrix.group }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [auth, password-slot, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web, legacy]
+    env:
+      BAO_HEAL_CURSOR_ACCOUNT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/cache@v4
+        id: packages
+        with:
+          path: |
+            node_modules
+            web/node_modules
+          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json') }}
+      - name: Install packages on a cache miss
+        if: steps.packages.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          npm ci & root=$!
+          npm --prefix web ci & web=$!
+          status=0
+          wait "$root" || status=1
+          wait "$web" || status=1
+          exit "$status"
+      - uses: actions/cache@v4
+        id: browser
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+      - name: Allow sandboxed Chromium to create user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+      - name: Read group requirements from the essential manifest
+        id: requirements
+        env:
+          GROUP: ${{ matrix.group }}
+        run: node -e 'console.log("ffmpeg=" + !!require("./test/essential.json")[process.env.GROUP].ffmpeg)' >> "$GITHUB_OUTPUT"
+      - name: Set up the privacy-test video tools
+        if: steps.requirements.outputs.ffmpeg == 'true'
+        uses: ./.github/actions/setup-ffmpeg
+      - uses: actions/cache@v4
+        id: compiled
+        with:
+          path: desktop/dist
+          key: desktop-emit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/guardrails-pr.yml', '.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig*.json', 'web/tsconfig.json', 'extension/tsconfig.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
+      - name: Emit desktop JavaScript
+        if: steps.compiled.outputs.cache-hit != 'true'
+        run: npm run build:desktop -- --noCheck
+      - name: Essential tests
+        env:
+          GROUP: ${{ matrix.group }}
+        shell: bash
+        run: |
+          unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
+          export HOME="$(mktemp -d)"
+          trap 'rm -rf "$HOME"' EXIT
+          node scripts/test-essential.mjs "$GROUP"
+
+  guardrails:
+    name: guardrails
+    if: always()
+    needs: [static, essential]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every static gate and essential group
+        env:
+          STATIC: ${{ needs.static.result }}
+          ESSENTIAL: ${{ needs.essential.result }}
+        run: test "$STATIC" = success && test "$ESSENTIAL" = success
