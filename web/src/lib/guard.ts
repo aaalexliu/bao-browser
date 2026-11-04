@@ -115,13 +115,6 @@ function elementShots(
 export function stripUnsafe(value: unknown, secrets: string[], context?: SavedContext): unknown {
   const walk = (current: unknown): unknown => {
     if (isSealedArtifact(current)) return structuredClone(current);
-    if (typeof current === "string") {
-      let out = current;
-      for (const secret of secrets) {
-        if (secret) out = out.split(secret).join("");
-      }
-      return out;
-    }
     if (Array.isArray(current)) return current.map(walk);
     if (!current || typeof current !== "object") return current;
     const obj = current as Record<string, unknown>;

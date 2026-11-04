@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -149,6 +150,16 @@ test("sealed lookalikes inside user data strip before outbound copies", () => {
     assert.ok(saved.includes(STRIPPED_SECRET));
   }
   assert.equal(raw.inputs[0]!.default, SECRET);
+});
+
+test("outbound composition persists stable sync, share and sealed copies with real replay", { timeout: 120_000 }, (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-outbound-composition-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, TMPDIR: home, BAO_COMPOSITION_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0", NODE_PATH: path.join(process.cwd(), "web", "node_modules") };
+  for (const key of ["DATABASE_URL", "BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
+  const child = spawnSync(process.execPath, [path.resolve("desktop/dist/desktop/test/fixtures/outbound-composition.js")], { env, encoding: "utf8", timeout: 110_000, maxBuffer: 10 * 1024 * 1024 });
+  assert.equal(child.status, 0, [child.stdout, child.stderr, child.error?.message].join("\n"));
+  assert.deepEqual(JSON.parse(readFileSync(path.join(home, "proof", "result.json"), "utf8")), { scenarios: 14, replayCopies: 56 });
 });
 
 test("MCP materialization hashes the stripped saved workflow", async (t) => {
