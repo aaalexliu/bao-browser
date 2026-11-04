@@ -109,13 +109,14 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     await page.reload();
     await page.click("button[data-screen=teach]");
     await page.waitForSelector("#teach-review");
+    await page.locator("#teach-trail summary").click();
     const reviewText = await page.locator("#teach-review").innerText();
     assert.match(reviewText, /Raw trail/);
     assert.match(reviewText, /type the note/);
     assert.match(reviewText, /edited/);
     assert.match(reviewText, /Dropped \(1\)/);
     assert.match(reviewText, /\d+ events → \d+ steps, \d+ inputs found, \d+ dropped/);
-    assert.match(reviewText, /mark/);
+    assert.match(await page.locator("#teach-raw").innerText(), /\bmark\b/);
 
     const saved = await post(app.port, "/api/teach/save", { name: "Fixture teach" }) as {
       id: string;

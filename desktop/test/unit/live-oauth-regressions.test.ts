@@ -3,6 +3,7 @@ import { readFile, mkdir, copyFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
+import type { Page } from "playwright";
 import { startApp } from "../../src/app/server";
 import { McpClient } from "../../src/eval/mcp-client";
 import { CdpLiveDriver } from "../../src/cdp-live/driver";
@@ -61,19 +62,48 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
     browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome });
   });
   after(async () => { await browser?.close(); await new Promise<void>((resolve) => server.close(() => resolve())); });
+  let observedPage: Page | undefined;
   function hostFor(name: string) {
     const home = path.join(dirs.home, name);
     const target = { kind: "throwaway" as const, portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") };
     const host = createLiveHost({ home, target, lockFile: path.join(dirs.home, `${name}.lock`), selectRun: async () => ({ target, engineName }), idleMs: 0 });
-    return { host, home, call: (body: Record<string, unknown>) => host.call(body) as Promise<Reply> };
+    return { host, home, call: async (body: Record<string, unknown>): Promise<Reply> => {
+      if (body.op !== "live_session_start") return host.call(body) as Promise<Reply>;
+      const opened = browser.waitForEvent("page");
+      const [reply, target] = await Promise.all([host.call(body) as Promise<Reply>, opened]);
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      await target.waitForURL(`${url}/**`);
+      observedPage = target;
+      return reply;
+    } };
   }
-  const page = () => browser.pages().filter((item) => item.url().startsWith(url)).at(-1)!;
+  const page = () => {
+    assert.ok(observedPage, "Playwright has observed the live target");
+    return observedPage;
+  };
   async function proof(reply: Reply, name: string) {
     const root = process.env.BAO_OAUTH_PROOF;
     if (!root || !reply.shot) return;
     await mkdir(root, { recursive: true });
     await copyFile(path.join(dirs.home, name, "live-session", "shots", reply.shot), path.join(root, `${engineName}-${name}.png`));
   }
+
+  test("fixture DOM reads wait for a delayed Playwright page notification", async (t) => {
+    const waitForEvent = browser.waitForEvent.bind(browser);
+    let notified = false;
+    t.mock.method(browser, "waitForEvent", async (event: "page") => {
+      const target = await waitForEvent(event);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      notified = true;
+      return target;
+    });
+    const { host, call } = hostFor("delayed-observer");
+    try {
+      await call({ op: "live_session_start", intent: "Observe local fixture", url: url + "/cover" });
+      assert.equal(notified, true, "the live reply alone does not make the observer ready");
+      assert.equal(await page().title(), "Covered Save");
+    } finally { await host.close(); }
+  });
 
   test("replace and empty clear work for every editable kind, while insert stays insert", async () => {
     const { host, call, home } = hostFor("replace");
