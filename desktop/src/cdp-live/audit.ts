@@ -73,6 +73,14 @@ export class SessionLog {
     return shot;
   }
 
+  setNavigationBlock(block: NonNullable<LiveSessionRecord["navigationBlock"]>): void {
+    this.record.navigationBlock = { ...block };
+  }
+
+  setNavigationFailure(failure: NonNullable<LiveSessionRecord["navigationFailure"]>): void {
+    this.record.navigationFailure = { ...failure };
+  }
+
   setSteps(steps: LiveStep[]): void {
     this.record.steps = steps;
   }

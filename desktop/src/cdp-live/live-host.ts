@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import type { LiveToolTiming } from "./live-record";
+import type { LiveNavigationBlock, LiveToolTiming } from "./live-record";
 import path from "node:path";
 import { workflowShotName } from "../v1/shots";
 import { AgentBrowserPage, type PageEngineName } from "../engines/agent-browser";
@@ -9,7 +9,7 @@ import { navigationGuard } from "./allowlist";
 import { canonicalKey, keyMayInsertText } from "./keys";
 import { liveSessionDir, SessionLog } from "./audit";
 import { chromeHelper, type ChromeAx } from "./ax";
-import { adoptLiveWindow, LiveNavigationHalt, type CdpLiveDriver } from "./driver";
+import { adoptLiveWindow, LiveNavigationFailure, LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import {
   clickLive,
   pressLiveKey,
@@ -103,6 +103,8 @@ interface OpenState {
   viewReadiness?: "ready" | "transitional";
   halted: string;
   refused: boolean;
+  navigationFailure?: LiveNavigationFailure;
+  navigationBlock?: LiveNavigationBlock;
   covered: Map<Identity, string[]>;
   optionalDismissals: Set<string>;
   /** Every act that went through. The saved workflow is built from it. */
@@ -343,6 +345,8 @@ export function createLiveHost(opts: LiveHostOptions): {
         await stopForOwner(open, open.halted);
         return reply({ op, session: open.id, outcome: { kind: "halted", reason: open.halted }, view: shown(open.read), shot: "" });
       }
+      if (open.navigationFailure) throw open.navigationFailure;
+      await open.driver.checkNavigation();
       if (op === "live_snapshot") {
         if (body.page !== undefined && open.read) {
           return reply({ op, session: open.id, outcome: { kind: "applied" }, view: viewPage(open.read.view, Number(body.page)), ...(open.guard.careful === false ? { readiness: { state: open.viewReadiness || "ready" } } : {}), shot: "" });
@@ -368,12 +372,19 @@ export function createLiveHost(opts: LiveHostOptions): {
       }
       return await look("screenshot");
     } catch (err) {
+      if (open && err instanceof LiveNavigationHalt) {
+        await finishAction(op, { kind: "halted", reason: err.reason });
+        return reply({ op, session: open.id, outcome: { kind: "halted", reason: err.reason }, view: shown(open.read), shot: "" });
+      }
       const reason = err instanceof Error ? err.message : "live call failed";
       if (open) {
-        open.refused = true;
-        await note(op, reason, "failed", null);
+        if (err instanceof LiveNavigationFailure) await recordNavigationFailure(err, op);
+        else {
+          open.refused = true;
+          await note(op, reason, "failed", null);
+        }
       }
-      return reply({ op, session: open?.id || session, outcome: { kind: "rejected", reason: reason.slice(0, 180) }, view: shown(open?.read), shot: "" });
+      return reply({ op, session: open?.id || session, outcome: { kind: "rejected", reason: err instanceof LiveNavigationFailure ? reason : reason.slice(0, 180) }, view: shown(open?.read), shot: "" });
     }
   }
 
@@ -510,14 +521,27 @@ export function createLiveHost(opts: LiveHostOptions): {
       await driver.goto(url);
       return await look("start");
     } catch (err) {
+      if (open && err instanceof LiveNavigationFailure) {
+        const id = open.id;
+        try { await recordNavigationFailure(err, "start"); }
+        finally { await stop(); }
+        return reply({ op: "live_session_start", session: id, outcome: { kind: "rejected", reason: err.message }, view: null, shot: "" });
+      }
       const halt = err instanceof LiveNavigationHalt ? err : undefined;
       const instruction = halt ? ownerStopMessage(halt.reason) : "";
       const id = open?.id || "";
       const clip = open?.artifactRoot ? path.join(open.artifactRoot, "videos", `${open.runId}.mp4`) : "";
+      let saveError: unknown;
       if (open?.log) {
+        if (halt) {
+          open.halted = halt.reason;
+          rememberNavigationBlock(open, halt);
+        }
         const reason = halt ? instruction : err instanceof Error ? err.message : "live call failed";
         await open.log.flush(halt ? "needs_human" : "failed", reason.slice(0, 160), host).catch(() => undefined);
         if (halt) await note("start", instruction, "needs_human", null).catch(() => undefined);
+        try { if (open.navigationBlock) saveWorkflow("needs_human", false, false); }
+        catch (error) { saveError = error; }
       }
       await driver?.end().catch(() => undefined);
       cdp?.close();
@@ -529,6 +553,7 @@ export function createLiveHost(opts: LiveHostOptions): {
         await driver?.finishVideo().catch(() => undefined);
         if (clip) await rm(clip, { force: true });
       }
+      if (saveError) throw saveError;
       if (halt) return reply({ op: "live_session_start", session: id, outcome: { kind: "halted", reason: halt.reason, instruction }, view: null, shot: "" });
       throw err;
     }
@@ -571,7 +596,20 @@ export function createLiveHost(opts: LiveHostOptions): {
     return { url, leaves: leafMap, text: mark.text, value: mark.value, missing: mark.missing };
   }
 
+  function rememberNavigationFailure(state: OpenState, error: LiveNavigationFailure): void {
+    state.navigationFailure = error;
+    state.refused = true;
+    state.log.setNavigationFailure({ url: error.url, errorCode: error.errorCode });
+  }
+
+  function rememberNavigationBlock(state: OpenState, halt = state.driver.navigationHalt): void {
+    if (!halt?.url) return;
+    state.navigationBlock = { url: halt.url, reason: halt.reason };
+    state.log.setNavigationBlock(state.navigationBlock);
+  }
+
   async function stopForOwner(state: OpenState, reason: string): Promise<string> {
+    rememberNavigationBlock(state);
     if (reason !== "experian_commit") {
       state.driver.pauseCapture();
       state.halted = reason;
@@ -579,6 +617,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
     const message = ownerStopMessage(reason);
     await state.log.flush("needs_human", message, state.host);
+    if (state === open && state.navigationBlock) saveWorkflow("needs_human", false, false);
     return message;
   }
 
@@ -620,6 +659,7 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function look(action: string, extra: Record<string, unknown> = {}): Promise<unknown> {
     if (!open) throw new Error("no live session");
+    await open.driver.checkNavigation();
     const snapshotBefore = currentTool?.spans.snapshot || 0;
     const { read, facts, readiness } = await readyRead(open);
     const viewMs = (currentTool?.spans.snapshot || 0) - snapshotBefore;
@@ -881,11 +921,22 @@ export function createLiveHost(opts: LiveHostOptions): {
     }, completed && status === "needs_human"));
   }
 
-  /** Builds the workflow from the session's trail and saves it. A session with no step saves nothing. */
+  async function recordNavigationFailure(error: LiveNavigationFailure, action: string): Promise<void> {
+    if (!open) return;
+    rememberNavigationFailure(open, error);
+    await note(action, `Navigation failed: ${error.errorCode}`, "failed", null);
+    await open.log.flush("failed", error.message, open.host);
+    saveWorkflow("failed", false, false);
+  }
+
+  /** Failed and deliberately blocked navigations remain in Library without a successful action. */
   function saveWorkflow(status: string, video: boolean, videoTruncated: boolean, traceUnavailable?: string): boolean {
     if (!open) return false;
     const events = open.trail.list().map((event) => open!.optionalDismissals.has(event.id) ? { ...event, optional: "dismiss" as const } : event);
-    if (!events.length) return false;
+    const failure = open.navigationFailure;
+    const block = open.navigationBlock;
+    const navigation = failure || block;
+    if (!events.length && !navigation) return false;
     const workflow = workflowFromTrail({
       id: open.id,
       name: open.intent.slice(0, 80),
@@ -896,10 +947,13 @@ export function createLiveHost(opts: LiveHostOptions): {
       events,
       guard: open.guard,
     });
+    const navigationStep = navigation ? { id: `${open.id}-navigation-stopped`, index: workflow.steps.length, action: "navigate" as const, surface: "dom" as const, label: `${failure ? "Open" : "Blocked"} ${navigation.url}`, value: navigation.url, timeoutMs: 8000 } : undefined;
+    const navigationNote = failure?.message || (block ? `Navigation blocked: ${block.reason} at ${block.url}` : "");
+    if (navigationStep) workflow.steps.push(navigationStep);
     if (!workflow.steps.length) return false;
     const library = new Library(opts.home);
     library.save(workflow);
-    if (open.artifactRoot || open.guard.freezeCommit) {
+    if (open.artifactRoot || open.guard.freezeCommit || navigation) {
       const { groups } = liveTrailSteps(events, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl }, open.guard);
       const workflowShots = path.join(library.root, "shots", "workflows", workflow.id);
       const runShots = path.join(library.root, "shots", "runs", open.runId);
@@ -907,6 +961,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       mkdirSync(runShots, { recursive: true });
       const starts = groups.map((group) => events.findIndex((event) => event.id === group[0]?.id));
       const steps = workflow.steps.map((step, index) => {
+        if (step === navigationStep) return { id: step.id, status: failure ? "failed" : "paused", reason: navigationNote };
         const start = starts[index] ?? -1;
         const end = starts[index + 1] ?? events.length;
         const event = start < 0 ? undefined : events.slice(start, end).reverse().find((entry) => open!.eventShots.has(entry.id));
@@ -922,8 +977,11 @@ export function createLiveHost(opts: LiveHostOptions): {
       });
       const reason = open.halted || (open.read?.view.reached ? "experian_commit" : "");
       const ask = reason ? ownerStopMessage(reason) : "";
+      const navigationFailure = failure && navigationStep ? { stepId: navigationStep.id, index: navigationStep.index, intent: open.intent, phase: "action", reason: failure.message, url: failure.url, errorCode: failure.errorCode, snapshot: {} } : undefined;
       library.saveRun({ id: open.runId, kind: "capture", ...(open.guard.freezeCommit ? { allowCommit: open.guard.allowCommit === true } : {}), pageEngine: open.engineName, toolTimings: open.log.toolTimings(), workflowId: workflow.id, at: open.startedAt, status, heals: [], steps, videoTruncated, traceUnavailable,
-        ...(ask ? { envelope: { status: "needs_human", run_id: open.runId, reason, ask } } : {}),
+        ...(navigationFailure ? { failure: navigationFailure } : {}),
+        ...(block ? { navigationBlock: block } : {}),
+        ...(ask && !failure ? { envelope: { status: "needs_human", run_id: open.runId, reason, ask } } : {}),
         ...(video ? { video: `${open.runId}.mp4`, videoStartedAt: open.startedAt } : {}) });
     }
     return true;
@@ -935,6 +993,16 @@ export function createLiveHost(opts: LiveHostOptions): {
       return reply({ op: "live_stop", session: "", outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
     }
     const id = open.id;
+    try { await open.driver.checkNavigation(); }
+    catch (error) {
+      if (error instanceof LiveNavigationFailure && !open.navigationFailure) rememberNavigationFailure(open, error);
+      else if (error instanceof LiveNavigationHalt) {
+        rememberNavigationBlock(open, error);
+        open.halted = error.reason;
+        open.refused = true;
+      }
+      else if (!(error instanceof LiveNavigationFailure)) open.refused = true;
+    }
     const view = shown(open.read);
     const ended = reason === "disconnect" ? "Saved when the agent disconnected."
       : reason === "idle" ? "Saved after the agent went quiet."
@@ -942,8 +1010,8 @@ export function createLiveHost(opts: LiveHostOptions): {
     const refused = open.refused || open.covered.size > 0;
     const reached = open.read?.view.reached;
     const stopReason = open.halted || (reached ? "experian_commit" : "");
-    const noteText = stopReason ? ownerStopMessage(stopReason) : refused ? "Refused." : ended;
-    const status = open.halted || reached ? "needs_human" : refused ? "failed" : "passed";
+    const noteText = open.navigationFailure?.message || (stopReason ? ownerStopMessage(stopReason) : refused ? "Refused." : ended);
+    const status = open.navigationFailure ? "failed" : open.halted || reached ? "needs_human" : refused ? "failed" : "passed";
     const ending = open;
     let saveError = "";
     await ending.driver.end().catch(() => undefined);

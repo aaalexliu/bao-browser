@@ -25,7 +25,7 @@ Settings is the only product engine selector. Local fixtures pass an explicit en
 - Ordinary commands have a 12-second deadline; navigation has 30 seconds. Startup trust/readiness/location evaluation has 35 seconds because upstream CDP can wait 30 seconds before responding. Socket readiness has a five-second startup deadline. A refused connection before Bao writes the launch command waits within that deadline; socket errors after a write stop the run without retry. Other native startup errors propagate at once rather than polling a stopped engine. These bounds do not retry an action.
 - Commands have a response-size bound. The process stops after 10 idle minutes, reset by every live operation, or after an absolute two-hour safety cap. A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
 - Bao tracks browser ownership itself. Killing the native child only disconnects it. The adapter never sends `Browser.close`; the owner of a Bao-launched browser handles shutdown. An attached browser survives adapter disposal.
-- Live sessions default to YOLO. Host/origin, credential, submit, commit-label, popup, and stop-path guards apply only with `careful: true`. Stale refs, covered clicks, the session lock, and tab ownership stay on in both modes. [Live session modes](cdp-live-chrome.md#live-session-modes) defines the contract. The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
+- Both engines follow the same [live session modes](cdp-live-chrome.md#live-session-modes) and [Experian final-action and navigation-outcome contract](cdp-live-chrome.md#agent-entry-point). The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
 
 ## Evidence
 
@@ -51,7 +51,7 @@ The callers are `desktop/src/app/server.ts`, `desktop/src/v1/replay.ts`, and `de
 | --- | --- | --- |
 | DOM tree, failure snapshot | Works | Bao identities and guards; reads use native evaluation. |
 | Unique match, stale live refs | Works | Count before action; missing, ambiguous, and expired refs refuse. |
-| Click, fill, key, navigation | Works | Local two-engine Instacart cart and recorded replay passed. YOLO allows credentials, off-host navigation, and commits. Both engines retain the [live guards and Experian final-action contract](cdp-live-chrome.md#agent-entry-point) in careful sessions and saved-workflow replays. |
+| Click, fill, key, navigation | Works | Local two-engine Instacart cart and recorded replay passed. Both engines follow the [live action and navigation guards](cdp-live-chrome.md#agent-entry-point). |
 | Check and select | Live support | Snapshots include native selects, ARIA controls, and contenteditable. Use `live_select` for native selects; click custom options or use keys. Careful sessions and saved-workflow replay keep their guards. Broader checkbox/select parity and fixtures still need proof. |
 | Page screenshots | Works | Native CDP PNG, fixed page, Bao artifact paths. YOLO saves readable shots; careful sessions and replays use a full-page veil. Local fixture PNGs were saved and opened. |
 | Scoped tabs | Works | `live_tabs` lists session-owned tabs and `live_switch_tab` selects one. YOLO leaves opened tabs usable; careful mode closes session-opened popups and halts. Unrelated tabs stay untouched. |

@@ -2726,6 +2726,7 @@ function persistedRun(
     at: Date.now(),
     heals: result.heals,
     failure: result.failure,
+    navigationBlock: result.navigationBlock,
     steps: result.steps,
     repairs: result.repairs,
     receipts: result.receipts,
