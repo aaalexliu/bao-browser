@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
@@ -251,25 +251,47 @@ test("only the copied Chrome child gets the passwd HOME; Bao's isolated HOME sta
   } finally { await f.close(); }
 });
 
-test("copied Chrome disables extensions by default and loads them only on explicit opt-in", async (t) => {
+test("copied Chrome removes theme extensions but preserves other extensions for opt-in loading", async (t) => {
   const f = await fixture();
   const processes = require("node:child_process") as typeof import("node:child_process");
-  await mkdir(path.join(f.sourceRoot, "Default", "Extensions", "test-addon"), { recursive: true });
-  await writeFile(path.join(f.sourceRoot, "Default", "Extensions", "test-addon", "manifest.json"), "synthetic-extension-files");
+  const addonManifest = JSON.stringify({ manifest_version: 3, name: "Test addon", version: "1.0" });
+  const themeManifest = JSON.stringify({ manifest_version: 3, name: "Test theme", version: "1.0", theme: { colors: { frame: [10, 20, 30] } } });
+  for (const directory of ["Default", "Profile 1"]) {
+    for (const [id, versions, manifest] of [
+      ["test-addon", ["1.0_0"], addonManifest],
+      ["synthetic-theme-extension", ["1.0_0", "2.0_0"], themeManifest],
+      ["inactive-theme", ["1.0_0"], themeManifest],
+    ] as const) {
+      for (const version of versions) {
+        const dir = path.join(f.sourceRoot, directory, "Extensions", id, version);
+        await mkdir(dir, { recursive: true });
+        await writeFile(path.join(dir, "manifest.json"), manifest);
+      }
+    }
+  }
+  const before = await sourceBytes(f.sourceRoot);
   const calls: string[][] = [];
   t.mock.method(processes, "spawn", (_file: string, args: readonly string[]) => {
     calls.push([...args]);
     const dir = args.find((arg) => arg.startsWith("--user-data-dir="))!.slice("--user-data-dir=".length);
-    assert.equal(readFileSync(path.join(dir, "Default", "Extensions", "test-addon", "manifest.json"), "utf8"), "synthetic-extension-files");
+    const profile = args.find((arg) => arg.startsWith("--profile-directory="))!.slice("--profile-directory=".length);
+    assert.equal(readFileSync(path.join(dir, profile, "Extensions", "test-addon", "1.0_0", "manifest.json"), "utf8"), addonManifest);
+    for (const id of ["synthetic-theme-extension", "inactive-theme"]) {
+      assert.equal(existsSync(path.join(dir, profile, "Extensions", id)), false);
+    }
+    const prefs = JSON.parse(readFileSync(path.join(dir, profile, "Preferences"), "utf8")) as TestPreferences;
+    assert.equal(prefs.extensions.theme.id, "user_color_theme_id");
     throw new Error("observed extension flags without launching Chrome");
   });
   try {
-    for (const loadExtensions of [undefined, false, true]) {
-      await assert.rejects(openCopiedChrome({ ...f, directory: "Default", loadExtensions }), /observed extension flags/);
+    for (const directory of ["Default", "Profile 1"]) {
+      for (const loadExtensions of [undefined, false, true]) {
+        await assert.rejects(openCopiedChrome({ ...f, directory, loadExtensions }), /observed extension flags/);
+      }
     }
-    assert.deepEqual(calls.map((args) => args.includes("--disable-extensions")), [true, true, false]);
+    assert.deepEqual(await sourceBytes(f.sourceRoot), before);
+    assert.deepEqual(calls.map((args) => args.includes("--disable-extensions")), [true, true, false, true, true, false]);
     for (const args of calls) {
-      assert.ok(args.includes("--window-name=Bao copy of Profile A"));
       assert.ok(args.includes("--disable-sync"));
       assert.equal(args.includes("--enable-automation"), false);
     }

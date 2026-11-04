@@ -109,6 +109,25 @@ export async function copyChromeProfile(options: {
         return true;
       },
     });
+    const extensionsDir = path.join(userDataDir, choice.directory, "Extensions");
+    const copiedExtensions = await readdir(extensionsDir, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    for (const extension of copiedExtensions) {
+      if (!extension.isDirectory()) continue;
+      const extensionDir = path.join(extensionsDir, extension.name);
+      for (const version of await readdir(extensionDir, { withFileTypes: true })) {
+        if (!version.isDirectory()) continue;
+        const manifest = await readFile(path.join(extensionDir, version.name, "manifest.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return "{}";
+          throw error;
+        });
+        if (!object(JSON.parse(manifest)).theme) continue;
+        await rm(extensionDir, { recursive: true });
+        break;
+      }
+    }
     const localState = await readChromeState(options.sourceRoot);
     const profile = object(localState.profile);
     const entry = object(object(profile.info_cache)[choice.directory]);
@@ -164,7 +183,7 @@ export async function openCopiedChrome(options: {
     context = await launchOwnedChrome({
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
       loadExtensions: options.loadExtensions === true,
-      args: [`--profile-directory=${copy.profileDirectory}`, `--window-name=${copy.displayName}`, "--disable-sync"],
+      args: [`--profile-directory=${copy.profileDirectory}`, "--disable-sync"],
     });
     const closed = new Promise<void>((resolve) => context!.once("close", () => resolve()));
     const watch = (page: Page): void => { page.once("close", () => {
