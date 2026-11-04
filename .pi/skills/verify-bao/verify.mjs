@@ -57,6 +57,7 @@ if (command === 'doctor') {
   let axiEnv;
   let instance;
   let failure;
+  let result;
   const transcript = [];
   const axi = async (...args) => {
     try {
@@ -106,7 +107,11 @@ if (command === 'doctor') {
     Object.assign(axiEnv, { CHROME_DEVTOOLS_AXI_SESSION: `bao-verify-${process.pid}`, CHROME_DEVTOOLS_AXI_BROWSER_URL: `http://127.0.0.1:${cdpPort}` });
     await axi('open', url);
     await axi('resize', '1440', '1000');
-    writeFileSync(path.join(destination, 'library-before.txt'), await axi('snapshot'));
+    for (const text of ['Library', instance.home, 'No workflows yet']) await axi('wait', text);
+    const libraryBefore = await axi('snapshot');
+    assert.match(libraryBefore, /heading "Library"/);
+    for (const text of [instance.home, 'No workflows yet']) assert.ok(libraryBefore.includes(text), `missing empty Library proof: ${text}`);
+    writeFileSync(path.join(destination, 'library-before.txt'), libraryBefore);
     await axi('screenshot', path.join(destination, 'library-before.png'));
     await screen('Runs');
     await axi('wait', 'No runs yet');
@@ -165,7 +170,7 @@ if (command === 'doctor') {
     assert.match(runs, /0 model calls/);
     writeFileSync(path.join(destination, 'runs-after.txt'), runs);
     await axi('screenshot', path.join(destination, 'runs-after.png'));
-    save('result.json', { status: 'passed', workflowId: workflow.id, runId: run.id, modelCalls: run.modelCalls, realSite: false });
+    result = { status: 'passed', workflowId: workflow.id, runId: run.id, modelCalls: run.modelCalls, realSite: false };
   } catch (error) {
     failure = error;
     save('failure.json', { message: error.message, stack: error.stack });
@@ -187,7 +192,13 @@ if (command === 'doctor') {
     save('cleanup.json', { status: cleanupErrors.length ? 'failed' : 'passed', errors: cleanupErrors });
     if (cleanupErrors.length && !failure) failure = new Error(cleanupErrors.join('; '));
   }
-  if (failure) throw failure;
-  for (const name of ['library-before.png', 'library-after.png', 'runs-before.png', 'runs-after.png', 'actions.json', 'workflow.json', 'run.json', 'cleanup.json']) assert.ok(existsSync(path.join(destination, name)), `lost evidence ${name}`);
+  try {
+    if (failure) throw failure;
+    for (const name of ['library-before.png', 'library-after.png', 'runs-before.png', 'runs-after.png', 'actions.json', 'workflow.json', 'run.json', 'cleanup.json']) assert.ok(existsSync(path.join(destination, name)), `lost evidence ${name}`);
+    save('result.json', result);
+  } catch (error) {
+    save('failure.json', { message: error.message, stack: error.stack });
+    throw error;
+  }
   console.log(`PASS (local fixture only); evidence survives cleanup: ${destination}`);
 }
