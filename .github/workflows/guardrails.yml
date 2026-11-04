@@ -15,8 +15,8 @@ concurrency:
 jobs:
   guardrails:
     name: guardrails
-    # Chromium needs unprivileged user namespaces, restricted by AppArmor on newer Ubuntu images.
-    runs-on: ubuntu-22.04
+    # The CDP recorder and video tests need FFmpeg 5.1+ for -fps_mode.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
@@ -41,6 +41,8 @@ jobs:
       - run: npm run lint
       - run: npm run arch:check
       - run: npm run test:guardrails
+      - name: Allow sandboxed Chromium to create user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npx playwright install --with-deps chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
