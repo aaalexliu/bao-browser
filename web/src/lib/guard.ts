@@ -2,7 +2,7 @@
 // screenshot fails the check. Private sync may still carry a non-secret literal
 // such as a username. Sharing and publishing clear personal values separately.
 
-import { isSealedArtifact, scrubSaved, type SavedContext } from "../../../desktop/src/v1/saved-secrets";
+import { isSealedArtifact, scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
 import { isElementCrop } from "./png";
 
 export class SyncRejected extends Error {

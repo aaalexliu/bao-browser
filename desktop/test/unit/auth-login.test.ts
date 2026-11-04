@@ -13,7 +13,7 @@ import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { filesContaining } from "../../src/v1/secret-scan";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { startApp } from "../../src/app/server";
-import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 
 const SECRET = "BaoSecretFixture9kQ7m";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";

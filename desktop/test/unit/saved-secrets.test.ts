@@ -15,7 +15,7 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
 import { toPuppeteerReplay } from "../../src/v1/export-replay";
 import { Library } from "../../src/v1/store";
-import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { scrubHome } from "../../src/v1/scrub-home";
 import { draftVersion, versionDocument } from "../../src/v1/versions";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";

@@ -56,7 +56,7 @@ test("CLI leaves the mode to settings unless --careful is explicit", () => {
   assert.equal(liveCliBody("live_session_start", ["--careful", "false"]).careful, false);
 });
 
-test("real MCP clicks Create and Confirm and continues on sign-in copy by default; careful opts in", { timeout: 120_000 }, async () => {
+test("real MCP clicks Create and Confirm and continues on sign-in copy by default; careful opts in", { timeout: 120_000 }, async (t) => {
   const dirs = applyHermeticApp("live-mode");
   console.log(`live-mode proof home=${dirs.home}`);
   const fixture = createServer((req, res) => {
@@ -155,6 +155,19 @@ test("real MCP clicks Create and Confirm and continues on sign-in copy by defaul
     const outsider = await browser.newPage();
     await outsider.goto(url + "/done");
     assert.equal((await call("live_tabs")).tabs!.length, 2);
+    await t.test("healthy navigation checks allow a second trusted popup click", async () => {
+      reply = await call("live_snapshot");
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      reply = await call("live_click", { ref: ref(reply, "New tab") });
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+      const tabs = (await call("live_tabs")).tabs!;
+      assert.equal(tabs.length, 3);
+      const added = tabs.find(tab => !listed.some(previous => previous.tab === tab.tab))!;
+      reply = await call("live_switch_tab", { tab: added.tab });
+      assert.ok(ref(reply, "Finish"));
+      reply = await call("live_switch_tab", { tab: parent });
+      assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
+    });
     reply = await call("live_navigate", { url: url + "/redirect" });
     assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
     assert.ok((await call("live_tabs")).tabs!.find((tab) => tab.active)!.url.startsWith("http://localhost:"));

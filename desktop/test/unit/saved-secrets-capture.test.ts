@@ -6,7 +6,7 @@ import test from "node:test";
 import { Capture } from "../../src/app/capture";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
-import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { Library } from "../../src/v1/store";
 
 const fields = [

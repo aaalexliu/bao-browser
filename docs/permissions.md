@@ -50,7 +50,7 @@ In `live-session/session.json`, `start` and `navigate` audit labels that parse a
 
 ### Secret text in saved files
 
-Bao strips detected secrets in owned user-value fields when it saves live trails, run records and workflows. Firstmate 009 limits replacement to the typed `USER_VALUE_FIELDS` allowlist in `desktop/src/v1/saved-secrets.ts`:
+Bao strips detected secrets in owned user-value fields when it saves live trails, run records and workflows. Firstmate 009 limits replacement to the typed `USER_VALUE_FIELDS` allowlist in `shared/saved-secrets.ts`:
 
 | Owner | Saved values checked |
 | --- | --- |
@@ -68,6 +68,8 @@ These checks do not change or block live typing. Identifiers, labels, vendor/mod
 
 Known gaps include secrets embedded in free text, unlisted metadata fields, snapshot text, prompts and responses. The sanitizer does not search those fields, even for a whole secret value. Saved runtime arguments use the associated workflow's field and input bindings. Cleanup uses those workflow links and saved argument bags when they exist. Older or orphaned files may lack that evidence. Screenshots and videos stay unchanged. Existing outbound sync guards can refuse a workflow that contains a stripped secret default or literal; workflows with preserved bindings and no secret defaults can still sync. This change does not relax those guards.
 
+When interpreting a new recording, secret-entry events become secret input slots. Their steps use stable field structure, not captured text or values, for locators. The interpreter does not infer checks from those events' effects. Other events and existing metadata stay unchanged.
+
 Replay stops at a stripped step with “This step needs a value.” It never types the marker or sends it to healing. Supply a fresh runtime input to replace a stripped saved default, or edit the saved step and its input before replaying it.
 
 To inspect existing saved text in one Bao home, quit active sessions and run:
@@ -80,7 +82,7 @@ The command defaults to a dry run and lists the files it would change. Add `--wr
 
 ### Sealed artifact census
 
-Firstmate 010 makes a sealed payload read-only. Bao strips eligible text values once, before the writer computes its seal. Later saves, cleanup, heal copies, release preparation and sync copies preserve that payload. They do not rehash a changed copy. The shared owner check in `desktop/src/v1/saved-secrets.ts` recognizes hashed read-back records, publication previews with `documentHash`, and `sha256:` content addresses. Objects with an arbitrary `hash` property do not qualify. Receipt and preview lookalikes inside argument/default/row payloads remain user data and still strip.
+Firstmate 010 makes a sealed payload read-only. Bao strips eligible text values once, before the writer computes its seal. Later saves, cleanup, heal copies, release preparation and sync copies preserve that payload. They do not rehash a changed copy. The shared owner check in `shared/saved-secrets.ts` recognizes hashed read-back records, publication previews with `documentHash`, and `sha256:` content addresses. Objects with an arbitrary `hash` property do not qualify. Receipt and preview lookalikes inside argument/default/row payloads remain user data and still strip.
 
 `desktop/test/unit/saved-secrets-sealed.test.ts` runs this census through shared/context stripping, both outbound strip functions, release preparation, workflow/run/trail/append writers, kept-heal copies, version heal drafts, intent evals, sync pull/heal catch-up and dry-run/write cleanup. It compares canonical payload bytes, verifies seals after each pass, and compares whole file bytes before and after cleanup. Workflow JSON can sort object keys and change outer whitespace; neither is part of a receipt or release seal. Unsafe sealed copies can still fail outbound checks; Bao does not change their bodies to make them pass. Its composition fixture also uses the real local registry with throwaway PGlite storage, HTTP sync, share/install and release producers. It covers already-stripped defaults, `secret`/`strip`/`stripped`/`pass` collisions, whole card/token values, stable `{{password}}` bindings and physical saved copies. Browser replay must stop before typing or healing without fresh input, then type the fresh runtime value.
 

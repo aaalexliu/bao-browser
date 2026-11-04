@@ -2,7 +2,7 @@
 // Anchor locators have no selector in that format, so they are left out.
 
 import { subst, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "./saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 
 export interface PuppeteerReplayFile {
   title: string;

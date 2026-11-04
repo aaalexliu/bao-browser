@@ -52,6 +52,7 @@ export function liveSessionView(session: LiveSessionRecord | null | undefined, p
     <p class="quiet">${esc(session.intent)}</p>
     ${session.allowCommit ? `<p class="quiet">Experian commit opt-in: this session may change the freeze. Later sessions and replays still stop for confirmation.</p>` : ""}
     ${session.note ? `<p class="quiet" id="live-note">${esc(ownerStopMessage(session.note))}</p>` : ""}
+    ${session.navigationBlock ? `<p class="quiet" id="live-navigation-block">Navigation blocked: ${esc(session.navigationBlock.reason)} at ${esc(session.navigationBlock.url)}</p>` : ""}
     <p class="quiet">These pictures stay on this Mac. The app does not upload them.</p>
     <h3 class="section">Steps</h3>
     <ol id="live-steps">${steps || `<li class="quiet">No steps yet.</li>`}</ol>

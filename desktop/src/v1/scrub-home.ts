@@ -1,7 +1,7 @@
 import { lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { scrubSaved } from "./saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import type { WorkflowV2 } from "./schema";
 
 export interface ScrubReport {

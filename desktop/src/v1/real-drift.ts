@@ -21,7 +21,7 @@ import { osNodes, osPress, type OsNode } from "../proxy/os";
 import { DEFAULT_PROMOTE_AFTER, noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
 import { replay, type LocatorMode } from "./replay";
 import type { WorkflowV2 } from "./schema";
-import { scrubSaved, type SavedContext } from "./saved-secrets";
+import { scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
 
 export interface CapturedWeb {
   id: string;

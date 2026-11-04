@@ -24,7 +24,7 @@ import { resolveGuardFlags } from "./presets";
 import { classifyPage } from "../v1/page-class";
 import { validateWorkflow } from "../v1/schema";
 import { Library } from "../v1/store";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import type { CdpSocket } from "./socket";
 
 const PACE_MS = 2500;

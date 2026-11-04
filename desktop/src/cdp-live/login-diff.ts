@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { liveChromeBlock } from "../helper-capabilities";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { checkboxReach } from "./consent";
 import { AxUnavailable, checkboxState, chromeHelper } from "./ax";
 import { listenPid, readDevToolsActivePort } from "./endpoint";

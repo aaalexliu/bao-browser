@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { LIVE_SOURCE, typeTrailEvent } from "../../src/mcp/live";
-import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { keyTrailIdentity } from "../../src/cdp-live/live-trail";
 
 const secret = "SuperSecretPassword!";

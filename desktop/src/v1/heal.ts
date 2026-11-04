@@ -2,7 +2,7 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. Keeping a patch stores a draft. The live workflow changes when that draft is promoted.
 
-import { scrubSaved, type SavedContext } from "./saved-secrets";
+import { scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
 import { withHealVersion, withRevertVersion } from "./element-history";

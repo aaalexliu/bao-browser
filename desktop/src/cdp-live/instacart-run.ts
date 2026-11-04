@@ -22,7 +22,7 @@ import {
   type InstacartSnap,
 } from "./instacart";
 import { classifyPage } from "../v1/page-class";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { connectAndAllow } from "./connect";
 import type { CdpSocket } from "./socket";
 

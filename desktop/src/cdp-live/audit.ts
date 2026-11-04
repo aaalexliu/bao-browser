@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveHome } from "../home";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep, type LiveToolTiming } from "./live-record";
 
 export {
@@ -71,6 +71,14 @@ export class SessionLog {
     if (clean) this.record = clean;
     await this.flush(this.record.status);
     return shot;
+  }
+
+  setNavigationBlock(block: NonNullable<LiveSessionRecord["navigationBlock"]>): void {
+    this.record.navigationBlock = { ...block };
+  }
+
+  setNavigationFailure(failure: NonNullable<LiveSessionRecord["navigationFailure"]>): void {
+    this.record.navigationFailure = { ...failure };
   }
 
   setSteps(steps: LiveStep[]): void {

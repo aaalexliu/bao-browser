@@ -51,7 +51,7 @@ export interface LiveIdleWarning {
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. By default Bao performs the action, including Create, Save, Submit, Confirm, checkout, and place order. Sign-in detection adds a note and leaves the session usable. Set careful: true to opt into preset deny labels, confirm checks, stop paths, and sign-in halts. If omitted, careful uses this Mac's setting, which defaults to false. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. Other hosts use the preset given, else generic. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. In careful mode, dashboard Unfreeze and other freeze-flow starters stay ordinary clicks, but the final Unfreeze, Freeze, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new careful session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides careful mode's checkout, deny labels or credential guards. The reply lists controls with refs. In careful mode it also names buttons held for confirmation. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. By default Bao performs the action, including Create, Save, Submit, Confirm, checkout, and place order. Sign-in detection adds a note and leaves the session usable. Set careful: true to opt into preset deny labels, confirm checks, stop paths, and sign-in halts. If omitted, careful uses this Mac's setting, which defaults to false. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. Other hosts use the preset given, else generic. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. In either mode, dashboard Unfreeze and other freeze-flow starters stay ordinary clicks, but the final Unfreeze, Freeze, Remove, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides careful mode's checkout, deny labels or credential guards. The reply lists controls with refs. In careful mode it also names buttons held for confirmation. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -68,7 +68,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_snapshot",
-    description: `Read the open live page. Controls are listed in page order, ${LIVE_PAGE_SIZE} to a page, and the reply gives page and pages. Pass page to read another page of the last read without reading the page again, so every ref from that read still works. By default every control keeps its label and gets a ref, including credential fields. In careful mode confirm and denied buttons have no ref, labels are redacted, and credential fields are counted without refs. Select controls list their options for live_select.`,
+    description: `Read the open live page. Controls are listed in page order, ${LIVE_PAGE_SIZE} to a page, and the reply gives page and pages. Pass page to read another page of the last read without reading the page again, so every ref from that read still works. By default every control keeps its label and gets a ref, including credential fields, except the final Experian freeze-changing control held for allowCommit. In careful mode confirm and denied buttons have no ref, labels are redacted, and credential fields are counted without refs. Select controls list their options for live_select.`,
     inputSchema: { type: "object", properties: { page: { type: "integer", minimum: 1 } } },
   },
   {
@@ -105,7 +105,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_click",
-    description: "Click one ref from the latest snapshot. By default Bao performs the action. In careful mode confirm buttons and preset deny labels are guarded. Stale refs and controls covered by another element are refused. In YOLO, a covered refusal describes the blocker and offers a verified dismissRef when one is available. Bao never clicks through the blocker or dismisses it for you. Applied means dispatch, not a verified save; inspect the returned readiness marker and verify the result.",
+    description: "Click one ref from the latest snapshot. By default Bao performs the action except the final Experian freeze change, which returns reached: experian_commit unless this session has allowCommit: true. In careful mode confirm buttons and preset deny labels are guarded. Stale refs and controls covered by another element are refused. In YOLO, a covered refusal describes the blocker and offers a verified dismissRef when one is available. Bao never clicks through the blocker or dismisses it for you. Applied means dispatch, not a verified save; inspect the returned readiness marker and verify the result.",
     inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"] },
   },
   {
@@ -115,7 +115,7 @@ export const LIVE_TOOLS = [
   },
   {
     name: "live_key",
-    description: "Press a common key: Enter, Tab, Escape, arrows, Backspace, Delete, Space, Home, End, PageUp, PageDown, or Meta/Control/Alt/Shift combinations such as Meta+a. With a ref from the latest snapshot the control is focused first. Careful mode accepts only Enter, Tab, and Escape, and Enter needs a ref. By default Bao performs the action, including form submission. In careful mode Enter in a field is refused when its form would submit through a confirm or denied button, or when it has no submit button and is not a search box. Unsupported key names are refused.",
+    description: "Press a common key: Enter, Tab, Escape, arrows, Backspace, Delete, Space, Home, End, PageUp, PageDown, or Meta/Control/Alt/Shift combinations such as Meta+a. With a ref from the latest snapshot the control is focused first. Careful mode accepts only Enter, Tab, and Escape, and Enter needs a ref. By default Bao performs the action, including form submission, except for the final Experian freeze change without allowCommit: true. Enter in its form and Enter or Space on its focused final control cannot bypass that boundary. In careful mode Enter in a field is refused when its form would submit through a confirm or denied button, or when it has no submit button and is not a search box. Unsupported key names are refused.",
     inputSchema: {
       type: "object",
       properties: { key: { type: "string" }, ref: { type: "string" } },
@@ -196,6 +196,7 @@ export interface PageFacts {
   controls: LiveControlFact[];
   /** The index of the control readLivePage marked by its tree() handle. -1 when that element is not a listed control. */
   marked?: number;
+  focused?: number;
   panel?: string;
   ready?: boolean;
 }
@@ -230,7 +231,7 @@ export interface LiveViewPage extends LiveView {
 /** The active preset and session mode. Absent mode keeps legacy recordings guarded. */
 export type LabelGuard = Pick<GuardPreset, "commit" | "deny" | "submit" | "freezeCommit"> & { careful?: boolean; allowCommit?: boolean };
 
-export const EXPERIAN_COMMIT_INSTRUCTION = `${EXPERIAN_COMMIT_MESSAGE} Confirm with the owner before starting a new careful session with allowCommit: true.`;
+export const EXPERIAN_COMMIT_INSTRUCTION = `${EXPERIAN_COMMIT_MESSAGE} Confirm with the owner before starting a new session with allowCommit: true.`;
 
 type TargetKind = "click" | "field" | "commit" | "credential" | "deny";
 
@@ -293,16 +294,16 @@ function freezeFlow(facts: PageFacts, guard: LabelGuard): boolean {
 
 function commitRefusal(control: LiveControlFact, guard: LabelGuard, facts: PageFacts): string {
   if (control.kind === "field") return "";
-  if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return "stop_before_confirm";
+  if (guard.careful !== false && (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label))) return "stop_before_confirm";
   if (control.form === "search") return "";
   const inFreezeFlow = freezeFlow(facts, guard);
   const finalFreeze = inFreezeFlow
     && /\b(?:review|confirm(?:ation)?)\b/i.test(`${facts.path} ${facts.title} ${facts.headings.join(" ")}`)
-    && /^(?:unfreeze|freeze|lift|thaw|confirm|submit)\b/i.test(control.label);
+    && /^(?:unfreeze|freeze|remove|lift|thaw|confirm|submit)\b/i.test(control.label);
   if (control.kind !== "link" && finalFreeze) {
     return guard.allowCommit === true ? "" : "experian_commit";
   }
-  if (inFreezeFlow && /^(?:continue|next|review)\b/i.test(control.label)) return "";
+  if (guard.careful === false || (inFreezeFlow && /^(?:continue|next|review)\b/i.test(control.label))) return "";
   return control.kind === "submit" && !pattern(guard.submit, control.label) ? "stop_before_confirm" : "";
 }
 
@@ -320,14 +321,16 @@ export function searchField(control: LiveControlFact): boolean {
  * With none, the form can still submit, or a page script can act, so only a search box takes Enter.
  */
 function enterRefusal(control: LiveControlFact, guard: LabelGuard, facts: PageFacts): string {
-  if (pattern(guard.deny, control.label)) return "denied";
-  if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return "stop_before_confirm";
+  if (guard.careful !== false) {
+    if (pattern(guard.deny, control.label)) return "denied";
+    if (pattern(COMMIT_FLOOR, control.label) || pattern(guard.commit, control.label)) return "stop_before_confirm";
+  }
   if (control.formSubmit !== undefined) {
     const button: LiveControlFact = { index: control.index, label: control.formSubmit, kind: "submit", form: control.form };
-    if (denied(button, guard.deny)) return "denied";
+    if (guard.careful !== false && denied(button, guard.deny)) return "denied";
     return commitRefusal(button, guard, facts);
   }
-  return searchField(control) ? "" : "stop_before_confirm";
+  return guard.careful === false || searchField(control) ? "" : "stop_before_confirm";
 }
 
 export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): LiveRead {
@@ -361,7 +364,7 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
       byRef.set(ref, { index: control.index, kind: "deny", selector, href, enter: "denied" });
       continue;
     }
-    const refusal = guard.careful === false ? "" : commitRefusal(control, guard, facts);
+    const refusal = commitRefusal(control, guard, facts);
     if (refusal) {
       view.stopBeforeConfirm.push({ label });
       byRef.set(ref, { index: control.index, kind: "commit", selector, href, enter: refusal });
@@ -369,7 +372,7 @@ export function buildView(facts: PageFacts, epoch: number, guard: LabelGuard): L
       continue;
     }
     const kind: TargetKind = control.kind === "field" ? "field" : "click";
-    const enter = kind === "field" && guard.careful !== false ? enterRefusal(control, guard, facts) : "";
+    const enter = kind === "field" ? enterRefusal(control, guard, facts) : "";
     byRef.set(ref, { index: control.index, identity: control.identity, kind, selector, href, enter });
     const value = guard.careful === false ? safeFieldValue(control) : undefined;
     view.controls.push({ ref, label, kind: control.kind, ...(control.options ? { options: control.options } : {}), ...(value !== undefined ? { value, ...(control.value!.length > value.length ? { valueTruncated: true as const } : {}) } : {}) });
@@ -438,7 +441,7 @@ export function planKey(read: LiveRead, key: string, ref: string): Plan {
   const plan = planClick(read, ref);
   if (!plan.ok) return plan;
   const enter = read.targets.byRef.get(ref)?.enter || "";
-  if (key === "Enter" && enter) return { ok: false, refusal: enter };
+  if (name === "Enter" && enter) return { ok: false, refusal: enter };
   return plan;
 }
 
@@ -634,6 +637,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
   const controls: LiveControlFact[] = [];
   let index = 0;
   let marked = -1;
+  let focused = -1;
   let credentialHalt = false;
   const buttonInput = (el: Element): boolean => el instanceof HTMLInputElement
     && /^(submit|image|button|reset)$/.test((el.getAttribute("type") || "").toLowerCase());
@@ -674,6 +678,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
   const visit = (el: Element, kind: string, field?: { type: string; name: string; autocomplete: string }): void => {
     if (concealed(el)) return;
     const label = textOf(el);
+    if (el === document.activeElement) focused = index;
     if (mark === index || (handle && el.getAttribute("data-bao-i") === handle)) {
       el.setAttribute("data-bao-live", String(index));
       marked = index;
@@ -722,6 +727,7 @@ export function readLivePage(ask: { markIndex: number; markHandle?: string }): P
     path: `${location.pathname || "/"}${location.hash || ""}`,
     url: location.href,
     title: document.title || "",
+    focused,
     panel: (panel?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 4000),
     ready: document.readyState === "complete" && !document.querySelector('[aria-busy="true"]'),
     headings,

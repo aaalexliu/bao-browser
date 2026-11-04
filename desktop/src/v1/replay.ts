@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "./saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -214,6 +214,7 @@ export interface RunResult {
   console?: { stepId?: string; type?: string; text: string; ts?: number }[];
   network?: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
   failure?: StepFailure;
+  navigationBlock?: import("../cdp-live/live-record").LiveNavigationBlock;
   heals: HealRecord[];
   repairs: RepairLog[];
   locatorHits: LocatorHit[];
@@ -332,7 +333,7 @@ export async function replay(
     const trace = driver.trace?.();
     const downloaded = endFilesRun(runId);
     const outputs = materializeOutputs(workflow, tables);
-    return scrubSaved({
+    return {
       heals,
       repairs,
       locatorHits,
@@ -348,9 +349,10 @@ export async function replay(
       ...(outputs ? { outputs } : {}),
       ...(Object.keys(downloaded).length ? { files: downloaded } : {}),
       modelCalls: heals.filter((item) => item.model).length,
-    }, { workflow, args, secrets });
+    };
   };
 
+  const execute = async (): Promise<RunResult> => {
   const fromIndex = opts.fromStepId ? workflow.steps.findIndex((item) => item.id === opts.fromStepId) : 0;
   const startAt = fromIndex < 0 ? 0 : fromIndex;
   const recovery: RecoveryBudget = { used: 0 };
@@ -452,7 +454,7 @@ export async function replay(
       beginHandoff(driver, gate, step.id);
       stamp({ id: step.id, status: "paused", reason: decision.class === "login_wall" ? "sign in" : "bot check" });
       const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: "wall", ask });
-      opts.onPause?.(paused);
+      opts.onPause?.(scrubSaved(paused, { workflow, args, secrets }));
       if (!opts.holdForPerson) return { result: paused };
       const timeout = actWaitMs(undefined, settings.actTimeoutMs);
       const start = Date.now();
@@ -761,6 +763,9 @@ export async function replay(
     });
   }
   return finish({ runId, status: "passed", steps });
+  };
+  // Per-step finally fills snapshots and shot refs before this copy detaches the result.
+  return scrubSaved(await execute(), { workflow, args, secrets });
 }
 
 /** A run with nothing executed, or a failed final check, is not a pass. */

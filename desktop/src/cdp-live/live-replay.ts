@@ -11,7 +11,7 @@ import type { ExtractSpec, ListRead } from "../v1/data-steps";
 import { LIVE_READ_LIMIT, liveReadRows, liveReadSelector, readLiveRegion, type RegionRead } from "./live-read";
 import { navigationGuard, originsFor } from "./allowlist";
 import { chromeHelper, type ChromeAx } from "./ax";
-import { LiveNavigationHalt, type CdpLiveDriver } from "./driver";
+import { LiveNavigationFailure, LiveNavigationHalt, type CdpLiveDriver } from "./driver";
 import { clickLive, pressLiveKey, selectLive, typeLive, watchNewTargets, type LiveActOutcome, type LiveActTarget } from "./live-act";
 import { buildView, EXPERIAN_COMMIT_MESSAGE, pageHalt, readLivePage, type LabelGuard, type LiveRead, type PageFacts } from "./live-ops";
 import { connectTarget, prepareTarget, type LiveTarget, type OpenProfileWindow } from "./live-target";
@@ -348,7 +348,10 @@ export async function replayLiveWorkflow(
     steps: workflow.steps.map((step) => ({ id: step.id, status: "pending" })),
     heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
   };
-  if (blocked === "login_wall") return pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, blocked);
+  if (blocked === "login_wall") {
+    initial.navigationBlock = { url: workflow.startUrl, reason: blocked };
+    return pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, blocked);
+  }
   if (blocked) throw new Error(blocked);
   const lockFile = deps.lockFile || CDP_LOCK_PATH;
   await acquireCdpLock(REPLAY_AGENT, { file: lockFile, timeoutMs: 5_000 });
@@ -392,10 +395,22 @@ export async function replayLiveWorkflow(
     await driver.goto(workflow.startUrl);
     run = await replayGuarded(workflow, inputs, guarded, runId, deps.shotDir ?? (deps.artifactRoot ? path.join(deps.artifactRoot, "shots", "runs", runId) : undefined));
     run.pageEngine = engineName;
+    if (run.status === "passed") await driver.checkNavigation();
+    const halt = driver.navigationHalt;
+    if (halt?.url) run.navigationBlock = { url: halt.url, reason: halt.reason };
     return run;
   } catch (error) {
+    if (error instanceof LiveNavigationFailure) {
+      const stepId = run?.failure?.stepId || (run ? workflow.steps.at(-1)?.id : workflow.steps[0]?.id) || workflow.id;
+      const index = Math.max(0, workflow.steps.findIndex(step => step.id === stepId));
+      const failure = { stepId, index, intent: workflow.intent || workflow.name, phase: "action" as const, reason: error.message, url: error.url, errorCode: error.errorCode, snapshot: {} };
+      run = { ...(run || initial), status: "failed", failure, steps: (run || initial).steps.map(step => step.id === stepId ? { ...step, status: "failed", reason: error.message } : step) };
+      return run;
+    }
     if (!(error instanceof LiveNavigationHalt)) throw error;
-    run = pausedAt(workflow, initial, workflow.steps[0]?.id || workflow.id, error.reason);
+    const stepId = run?.failure?.stepId || (run ? workflow.steps.at(-1)?.id : workflow.steps[0]?.id) || workflow.id;
+    run = pausedAt(workflow, run || initial, stepId, error.reason);
+    if (error.url) run.navigationBlock = { url: error.url, reason: error.reason };
     return run;
   } finally {
     const leaveOpen = deps.leaveOpen === true && !!run && run.status !== "failed";
