@@ -33,8 +33,9 @@ not belong in this job.
 ## Typed lint
 
 `eslint.config.mjs` enables the report's 20 correctness rules on TypeScript in
-`desktop/src`, `desktop/test`, `extension/src`, legacy `src`, and `web/src`.
-It uses the four existing tsconfigs. It excludes dependencies and generated
+`desktop/src`, `desktop/test`, `extension/src`, legacy `src`, `web/src`, and
+`shared`. It uses the four existing tsconfigs. The desktop project includes
+all shared files, even those no product imports yet. It excludes dependencies and generated
 output, including Next's generated declarations. It adds no formatting or
 assertion rules. JavaScript and HTML-embedded scripts are not typed-lint
 coverage in this first step.
@@ -59,9 +60,11 @@ gate, not a claim that every changed line is safe.
 
 `.dependency-cruiser.cjs` separates desktop, the desktop-connected extension,
 the legacy extension, and web. No product may add imports of another product's
-implementation, including type-only imports. A future browser-safe shared
-contracts owner may sit outside these four roots. This change does not move
-code into it.
+implementation, including type-only imports. Main's browser-safe helpers in
+`shared/` sit outside those four products. Products may import them. Shared
+helpers may reuse product contracts through type-only imports, but must not
+import product runtime code. Both graph passes include shared files, including
+those no product imports yet. This guardrail change does not move product code.
 
 The gate also blocks replay/domain imports of app views and view types, and
 shipped desktop imports of eval/proof modules. The current mixed `v1/` directory

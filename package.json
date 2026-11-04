@@ -8,10 +8,10 @@
   },
   "scripts": {
     "test": "node build.mjs && node test/all.mjs",
-    "lint": "eslint desktop/src desktop/test extension/src src web/src --max-warnings 0",
+    "lint": "eslint desktop/src desktop/test extension/src src web/src shared --max-warnings 0",
     "lint:prune": "npm run lint -- --prune-suppressions",
-    "arch:check": "depcruise desktop/src extension/src src web/src --config .dependency-cruiser.cjs --ignore-known && depcruise desktop/src extension/src src web/src --config .dependency-cruiser.runtime.cjs",
-    "arch:prune": "depcruise desktop/src extension/src src web/src --config .dependency-cruiser.cjs --baseline --baseline-mode shrink-only",
+    "arch:check": "depcruise desktop/src extension/src src web/src shared --config .dependency-cruiser.cjs --ignore-known && depcruise desktop/src extension/src src web/src shared --config .dependency-cruiser.runtime.cjs",
+    "arch:prune": "depcruise desktop/src extension/src src web/src shared --config .dependency-cruiser.cjs --baseline --baseline-mode shrink-only",
     "baselines:check": "node scripts/check-baselines.mjs",
     "check:static": "npm run baselines:check && npm run typecheck && npm run lint && npm run arch:check",
     "hooks:enable": "git config core.hooksPath .githooks",

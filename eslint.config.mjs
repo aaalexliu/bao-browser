@@ -7,7 +7,7 @@ export default defineConfig([
     ".git/**", ".toolchain/**", ".cursor/**", "web/next-env.d.ts",
   ]),
   {
-    files: ["{desktop/src,desktop/test,extension/src,src,web/src}/**/*.{ts,tsx}"],
+    files: ["{desktop/src,desktop/test,extension/src,src,web/src,shared}/**/*.{ts,tsx}"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {

@@ -969,19 +969,5 @@
       "severity": "error",
       "name": "no-runtime-to-dev-tools"
     }
-  },
-  {
-    "type": "dependency",
-    "from": "web/src/lib/guard.ts",
-    "to": "desktop/src/v1/saved-secrets.ts",
-    "unresolvedTo": "../../../desktop/src/v1/saved-secrets",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-web-cross-product-imports"
-    }
   }
 ]

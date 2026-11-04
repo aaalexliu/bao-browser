@@ -45,6 +45,7 @@ test("Chrome failed documents cannot pass a live session or its Library capture"
     if (req.url === "/redirect") { res.writeHead(302, { location: "/empty" }); return res.end(); }
     res.setHeader("content-type", "text/html");
     res.end('<title>Local navigation</title><h1>Ready</h1><a href="/blocked">Open destination</a>');
+    return undefined;
   });
   await new Promise<void>(resolve => fixture.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${(fixture.address() as { port: number }).port}`;

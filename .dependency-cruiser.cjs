@@ -15,6 +15,12 @@ module.exports = {
       to: { path: `^(?:${Object.values(products).filter((other) => other !== root).join("|")})` },
     })),
     {
+      name: "no-shared-runtime-to-products",
+      severity: "error",
+      from: { path: "^shared/" },
+      to: { path: `^(?:${Object.values(products).join("|")})`, dependencyTypesNot: ["type-only"] },
+    },
+    {
       name: "no-domain-to-views",
       severity: "error",
       from: { path: "^desktop/src/v1/" },
@@ -28,7 +34,7 @@ module.exports = {
     },
   ],
   options: {
-    includeOnly: "^(desktop/src|extension/src|src|web/src)/",
+    includeOnly: "^(desktop/src|extension/src|src|web/src|shared)/",
     exclude: "\\.test\\.tsx?$",
     doNotFollow: { path: "node_modules" },
     tsConfig: { fileName: "web/tsconfig.json" },

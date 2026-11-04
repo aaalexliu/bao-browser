@@ -100,6 +100,28 @@ test("graph resolves web aliases for runtime cycles and cross-product imports", 
   expect(f.tool("depcruise", ownership), 1, /no-web-cross-product-imports/);
 });
 
+test("shared code stays in typed lint and both graphs without product runtime dependencies", (t) => {
+  const f = fixture(t);
+  const ownership = ["desktop/src", "web/src", "shared", "--config", ".dependency-cruiser.cjs"];
+  const runtime = ["desktop/src", "shared", "--config", ".dependency-cruiser.runtime.cjs"];
+  f.write("shared/check.ts", 'Promise.resolve("lost in shared code");\n');
+  expect(f.tool("eslint", ["shared/check.ts", "--max-warnings", "0"]), 1, /no-floating-promises/);
+  f.write("shared/check.ts", "export const value = 1;\n");
+  f.write("desktop/src/check.ts", 'export { value } from "../../shared/check"; export type Contract = string;\n');
+  f.write("web/src/check.ts", 'export { value } from "../../shared/check";\n');
+  expect(f.tool("depcruise", ownership), 0);
+  f.write("shared/check.ts", 'export const value = 1; export type { Contract } from "../desktop/src/check";\n');
+  expect(f.tool("depcruise", ownership), 0);
+  expect(f.tool("depcruise", runtime), 0);
+  f.write("web/src/check.ts", 'import { value } from "../../shared/check"; export const webValue: number = value;\n');
+  f.write("shared/check.ts", 'import { webValue } from "../web/src/check"; export const value: number = webValue;\n');
+  expect(f.tool("tsc", ["-p", "tsconfig.desktop.json", "--noEmit"]), 0);
+  expect(f.tool("depcruise", ownership), 1, /no-shared-runtime-to-products/);
+  expect(f.tool("depcruise", runtime), 1, /no-runtime-cycles/);
+  f.write("shared/check.ts", 'import type { Contract } from "../desktop/src/check"; export const value = 1; export type Value = Contract;\n');
+  expect(f.tool("depcruise", runtime), 0);
+});
+
 test("baseline gate rejects added/increased lint suppressions and new graph edges, but accepts pruning", (t) => {
   const f = fixture(t);
   const lint = { "src/old.ts": { "@typescript-eslint/no-unsafe-assignment": { count: 2 } } };
