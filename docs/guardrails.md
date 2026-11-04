@@ -4,6 +4,10 @@ The `Guardrails / guardrails` GitHub check runs on pull requests and pushes to
 `main`, on Linux with Node from `.nvmrc`. Make this check required in the branch
 rules. A workflow alone cannot turn on branch protection.
 
+Run the checks locally with the commands below. The
+[workflow](../.github/workflows/guardrails.yml) owns the CI invocation, including
+the [known existing test exclusion](#known-existing-failure).
+
 ```sh
 npm ci
 npm --prefix web ci
@@ -140,9 +144,9 @@ quiet serial rerun and is not excluded.
 ## Compiler floor
 
 All four projects enable `noFallthroughCasesInSwitch`, `noUnusedLocals`,
-`noUnusedParameters`, and `noImplicitReturns`. The extension also enables
-`noUncheckedIndexedAccess`. The prerequisite cleanup removes unused
-declarations and makes return intents explicit. It retains the
+`noUnusedParameters`, and `noImplicitReturns`. The desktop-connected extension
+(`extension/tsconfig.json`) also enables `noUncheckedIndexedAccess`. The
+prerequisite cleanup removes unused declarations and makes return intents explicit. It retains the
 sign-in route's consent check and the side effects of discarded initializers.
 Root/desktop indexed-access work, web's two indexed-access diagnostics, exact
 optional properties, broad assertion cleanup, source-wide formatting, the run
