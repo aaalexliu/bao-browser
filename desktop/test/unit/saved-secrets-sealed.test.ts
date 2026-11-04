@@ -17,7 +17,7 @@ import { fileDigest } from "../../src/v1/files-dates";
 import { ReceiptLog, verifyReceiptChain, type Receipt } from "../../src/v1/receipt";
 import { canonical } from "../../src/v1/canonical";
 import { scrubHome } from "../../src/v1/scrub-home";
-import { scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { toJson, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState, syncAll } from "../../src/v1/sync";

@@ -1,9 +1,9 @@
 import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
-import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "../cdp-live/keys";
-import { mapCsv, parseTable, sanitizeName } from "./data-steps";
-import type { ReplayArgs, WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "./schema";
-import type { TrailEvent } from "./interpret";
-import type { ReceiptBody } from "./receipt";
+import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
+import { mapCsv, parseTable, sanitizeName } from "./table";
+import type { ReplayArgs, WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
+import type { TrailEvent } from "../desktop/src/v1/interpret";
+import type { ReceiptBody } from "../desktop/src/v1/receipt";
 
 export const STRIPPED_SECRET = "[secret stripped]";
 export const NEEDS_SECRET_VALUE = "This step needs a value. Its saved value was stripped because it may contain a secret.";

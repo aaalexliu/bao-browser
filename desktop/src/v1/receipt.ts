@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { canonical } from "./canonical";
 import type { ReadBack } from "./schema";
-import { scrubSaved, type SavedContext } from "./saved-secrets";
+import { scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
 
 export interface Receipt {
   kind: "read-back";

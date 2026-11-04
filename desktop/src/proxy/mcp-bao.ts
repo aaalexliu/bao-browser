@@ -4,7 +4,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isSensitiveValue } from "../../../src/mask";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { AuditTrail, type AuditSource } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { MacOsHelper, type AxNode } from "./os-macos";

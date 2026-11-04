@@ -76,7 +76,7 @@ import { sameRecordedControl } from "../v1/identity";
 import type { RunResult } from "../v1/replay";
 import { popupDismissName, validateWorkflow, type Identity, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { Library } from "../v1/store";
-import { STRIPPED_SECRET } from "../v1/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { ownerStopMessage } from "../v1/stop-copy";
 
 const AGENT = "bao-live";

@@ -7,7 +7,7 @@
 // marked low-confidence. A browser error page is not an effect.
 
 import type { Expectation, Identity, Postcondition, WorkflowStep } from "./schema";
-import { scrubSaved, STRIPPED_SECRET } from "./saved-secrets";
+import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 
 export const SETTLED_EXPECT = "no error and the page settled";
 

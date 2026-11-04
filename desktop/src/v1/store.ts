@@ -2,7 +2,7 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { isSealedArtifact, scrubSaved } from "./saved-secrets";
+import { isSealedArtifact, scrubSaved } from "../../../shared/saved-secrets";
 import type { HealSettings } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";

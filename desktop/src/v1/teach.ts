@@ -5,7 +5,7 @@
 
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
 import { looksLikePath, validateWorkflow, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
-import { scrubSaved, secretSavedField } from "./saved-secrets";
+import { scrubSaved, secretSavedField } from "../../../shared/saved-secrets";
 
 export type NarratorKind = "heuristic" | "model";
 

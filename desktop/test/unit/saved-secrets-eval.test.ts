@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import { pageApi } from "../../src/eval/page";
-import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 
 const fields = [
   { id: "native", type: "password", autocomplete: "off", value: "native-private", secret: true },

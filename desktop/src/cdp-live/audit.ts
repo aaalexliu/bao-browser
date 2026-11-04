@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveHome } from "../home";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { publicLiveSession, shotName, type LiveSessionRecord, type LiveStep, type LiveToolTiming } from "./live-record";
 
 export {

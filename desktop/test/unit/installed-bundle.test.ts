@@ -278,6 +278,32 @@ test("an installed bundle serves extension settings and imports synthetic localS
   assert.equal(wrapped.status, 0, wrapped.stderr);
   assert.match(wrapped.stdout, /Resources\/bao\/src\/extension\/native-host\.js/);
   assert.equal(wrapped.stdout.includes("/checkout/desktop"), false);
+  const shared = spawnSync(process.execPath, ["-e", `
+    const assert = require('node:assert/strict');
+    const { scrubSaved, STRIPPED_SECRET } = require('../shared/saved-secrets.js');
+    const { stripUnsafe } = require('../web/src/lib/guard.js');
+    const { Library } = require('./src/v1/store.js');
+    const library = new Library(process.env.BAO_FAKE_HOME);
+    for (const value of ['short-password', 'sk-stagedFixtureToken', '4111111111111111']) {
+      const metadata = { label: value, source: { agent: value }, locators: [{ kind: 'text', value }], ax: value };
+      const record = { op: 'type', value, metadata, sealed: { kind: 'read-back', expected: value, actual: value, hash: 'signed' } };
+      const original = structuredClone(record);
+      const expected = { ...record, value: STRIPPED_SECRET };
+      assert.deepEqual(scrubSaved(record, { secrets: [value] }), expected);
+      assert.deepEqual(stripUnsafe(record, [value]), expected);
+      assert.deepEqual(library.scrub(record, undefined, undefined, [value]), expected);
+      assert.deepEqual(record, original);
+    }
+    const owners = Object.keys(require.cache).filter(file => file.endsWith('/saved-secrets.js'));
+    assert.deepEqual(owners, [require.resolve('../shared/saved-secrets.js')]);
+    console.log('shared saved-secret owner loaded by desktop and web');
+  `], {
+    cwd: bao,
+    encoding: "utf8",
+    env: { PATH: process.env.PATH, HOME: homeForHost, BAO_FAKE_HOME: path.join(homeForHost, "library"), BAO_HEAL_CURSOR_ACCOUNT: "0" },
+  });
+  assert.equal(shared.status, 0, shared.stderr);
+  assert.match(shared.stdout, /shared saved-secret owner loaded by desktop and web/);
   const loaded = spawnSync(process.execPath, ["-e", "require('./src/app/server.js')"], {
     cwd: bao,
     encoding: "utf8",

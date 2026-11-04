@@ -14,7 +14,7 @@ import { applyCapturedData, bindStep, materializeOutputs, parseTable, type DataE
 import { beginFilesRun, endFilesRun, filesFor, prepareFilesDatesRun, renderTemplate, type TemplateScope } from "../../src/v1/files-dates";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { expectedText, replay, type Driver } from "../../src/v1/replay";
-import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { subst, validateWorkflow, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { projectTeach, type TeachDecision } from "../../src/v1/teach";

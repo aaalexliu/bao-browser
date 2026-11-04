@@ -13,7 +13,7 @@ import { frameRpc, takeRpcChunk, type RpcFraming } from "../mcp/frame";
 import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { pageApi, type PageRequest } from "./page";
 import { resolveHome } from "../home";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 
 export { frameRpc, takeRpcChunk, type RpcFraming };
 

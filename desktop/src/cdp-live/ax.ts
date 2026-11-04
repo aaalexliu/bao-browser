@@ -1,5 +1,5 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { scrubSaved } from "../v1/saved-secrets";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import type { OsTarget } from "../../../src/types";

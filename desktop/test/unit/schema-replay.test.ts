@@ -8,7 +8,7 @@ import { canonical } from "../../src/v1/canonical";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildPrompt, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal } from "../../src/v1/heal";
 import { Library } from "../../src/v1/store";
-import { STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
@@ -223,7 +223,16 @@ test("property: interpret drops secret input data and paths while preserving emb
     const blob = canonical(doc);
     assert.equal(doc.inputs.find((input) => input.type === "secret")!.default, undefined);
     assert.equal(doc.steps[0]!.value, "{{password}}");
-    assert.equal(doc.steps[0]!.postcondition!.match, `leaked ${secret}`);
+    assert.equal(doc.steps[0]!.postcondition, undefined);
+    assert.equal(blob.includes(secret), false);
+    const effects: [TrailEvent, string | undefined][] = [
+      [events[0]!, undefined],
+      [{ ...events[2]!, afterText: `leaked ${secret}` }, `leaked ${secret}`],
+    ];
+    for (const [event, match] of effects) {
+      const effect = interpret([event], { id: "effect", startUrl: "https://example.test/", secrets: [secret] });
+      assert.equal(effect.steps[0]!.postcondition?.match, match);
+    }
     assert.equal(blob.includes(filePath), false);
     assert.equal(canonical(doc), canonical(interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] })));
   }), { numRuns: 40 });

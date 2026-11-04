@@ -10,7 +10,7 @@ import { getRun, runWorkflow, type LiveReplayer } from "../../src/mcp/catalog";
 import { LiveSession } from "../../src/mcp/live";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver } from "../../src/v1/replay";
-import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../src/v1/saved-secrets";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
