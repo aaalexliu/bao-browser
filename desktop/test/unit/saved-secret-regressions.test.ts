@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { BrowserDriver } from "../../src/v1/browser-driver";
-import { interpret, type TrailEvent } from "../../src/v1/interpret";
+import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver, type ReplayOptions } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testChromium } from "../../src/test-browser";
@@ -88,6 +88,42 @@ test("secret slots keep only field structure and replay beside an unchanged ordi
     }
   } finally {
     await browser.close();
+  }
+});
+
+test("secret-entry locator echoes use the typed value without changing structural neighbors", () => {
+  const identity: Identity = { ...field, name: "Credential" };
+  const safe = [
+    { kind: "text" as const, value: "Credential" },
+    { kind: "role" as const, role: "textbox", name: "Credential" },
+    { kind: "css" as const, value: "#credential" },
+    { kind: "xpath" as const, value: '//*[@id="credential"]' },
+  ];
+  const echoes = [
+    { kind: "text" as const, value: secret },
+    { kind: "role" as const, role: "textbox", name: secret },
+  ];
+  for (const preserveActions of [false, true]) {
+    for (const echo of echoes) {
+      for (const neighbors of [safe, []]) {
+        const event: TrailEvent = {
+          id: "entry", ts: 1, kind: "act", op: "type", sensitive: true,
+          value: secret, identity, locators: [echo, ...neighbors],
+        };
+        const original = structuredClone(event);
+        const meta = { id: "locator-echo", startUrl: "http://127.0.0.1/", preserveActions };
+        const fallback = interpret([{ ...event, locators: undefined }], meta).steps[0]!.locators;
+        for (const workflow of [interpret([event], meta), explain([event], meta).workflow]) {
+          assert.equal(JSON.stringify(workflow).includes(secret), false);
+          assert.deepEqual(workflow.steps[0]!.identity, identity);
+          assert.deepEqual(workflow.steps[0]!.locators, neighbors.length ? safe : fallback);
+          assert.deepEqual(validateWorkflow(workflow), []);
+        }
+        const ordinary = interpret([{ ...event, sensitive: false }], meta);
+        assert.deepEqual(ordinary.steps[0]!.locators, event.locators);
+        assert.deepEqual(event, original);
+      }
+    }
   }
 });
 

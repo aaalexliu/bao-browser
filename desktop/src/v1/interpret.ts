@@ -388,7 +388,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const secretEntry = isType(event) && isSecret(event, meta.secrets ?? []);
   const identity = secretEntry ? secretEntryIdentity(event.identity) : stripSecretValue(event.identity, meta.secrets ?? []);
-  const captured = (value: string | undefined) => value !== undefined && [event.identity?.text, event.identity?.value].includes(value);
+  const captured = (value: string | undefined) => value !== undefined && [event.value, event.identity?.text, event.identity?.value].includes(value);
   const locators = secretEntry ? event.locators?.filter((locator) =>
     !(locator.kind === "text" && captured(locator.value) || locator.kind === "role" && captured(locator.name)),
   ) : event.locators;
