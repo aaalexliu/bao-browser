@@ -121,9 +121,8 @@ safe `node:test` registration, type-only cycles, and budget pruning pass.
 
 ## Desktop runner
 
-`desktop/test/run-v1.mjs` forwards Node test-runner options. Both the runner and
-CI default to `--test-concurrency=2` to bound browser load. An explicit
-`--test-concurrency=N` overrides the runner's default. TAP reports failures at once.
+See [Desktop tests](../desktop/test/README.md) for the runner's concurrency
+default and override options. CI uses TAP to report failures at once.
 `--test-force-exit` ends each test process after its tests finish, so a failed
 browser startup cannot leave a fixture server open until the job times out.
 Failed assertions still fail the job.
