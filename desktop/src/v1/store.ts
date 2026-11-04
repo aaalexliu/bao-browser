@@ -68,6 +68,7 @@ export interface StoredRun {
   /** Keep/revert choices, appended after the heal. The heal record stays as it was. */
   decisions?: { ts: number; healId: string; decision: "keep" | "revert" }[];
   failure?: unknown;
+  navigationBlock?: import("../cdp-live/live-record").LiveNavigationBlock;
   steps: unknown[];
   /** Heal proposals that named a model. */
   modelCalls?: number;

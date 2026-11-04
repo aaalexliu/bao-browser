@@ -122,9 +122,16 @@ function toIdentity(node: DomDump): Identity {
 }
 
 export class LiveNavigationHalt extends Error {
-  constructor(readonly reason: "login_wall" | "stop-path") {
+  constructor(readonly reason: "login_wall" | "stop-path", readonly url = "") {
     super(reason);
     this.name = "LiveNavigationHalt";
+  }
+}
+
+export class LiveNavigationFailure extends Error {
+  constructor(readonly url: string, readonly errorCode: string) {
+    super(`Navigation failed: ${errorCode} at ${url}`);
+    this.name = "LiveNavigationFailure";
   }
 }
 
@@ -133,6 +140,8 @@ export class CdpLiveDriver implements Driver {
   private loadEpoch = 0;
   private offHost = "";
   private blockedNav = "";
+  private mainRequest: { id: string; url: string } | undefined;
+  private navigationProblem: LiveNavigationFailure | LiveNavigationHalt | undefined;
   /** The last top-frame URL that committed on an allowed host and off any stop path. */
   private lastAllowed = "";
   private origins: readonly string[] = [];
@@ -225,6 +234,19 @@ export class CdpLiveDriver implements Driver {
   async start(): Promise<void> {
     await this.cdp.send("Page.enable", {}, this.sessionId);
     await this.cdp.send("Runtime.enable", {}, this.sessionId);
+    await this.cdp.send("Network.enable", {}, this.sessionId);
+    this.cdp.on("Network.requestWillBeSent", this.sessionId, (params) => {
+      if (params.type !== "Document" || params.frameId !== this.targetId) return;
+      const request = params.request as { url?: string } | undefined;
+      this.mainRequest = { id: String(params.requestId || ""), url: request?.url || "" };
+      this.navigationProblem = undefined;
+    });
+    this.cdp.on("Network.loadingFailed", this.sessionId, (params) => {
+      if (!this.mainRequest || params.requestId !== this.mainRequest.id || params.type !== "Document") return;
+      const code = String(params.errorText || "");
+      if (params.canceled === true && code === "net::ERR_ABORTED") return;
+      if (!(this.navigationProblem instanceof LiveNavigationHalt)) this.navigationProblem = new LiveNavigationFailure(this.mainRequest.url, code || "unknown");
+    });
     this.cdp.on("Page.loadEventFired", this.sessionId, () => { this.loadEpoch += 1; });
     this.cdp.on("Page.frameNavigated", this.sessionId, (params) => this.onFrame(params));
     this.cdp.on("Fetch.requestPaused", this.sessionId, (params) => this.onPaused(params));
@@ -260,6 +282,7 @@ export class CdpLiveDriver implements Driver {
     this.blockedNav = navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall"
       ? "login_wall"
       : allowed ? "stop-path" : this.refusal(url);
+    if (this.blockedNav === "login_wall" || this.blockedNav === "stop-path") this.navigationProblem = new LiveNavigationHalt(this.blockedNav, url);
     void this.cdp.send("Fetch.failRequest", {
       requestId,
       errorReason: "BlockedByClient",
@@ -279,6 +302,7 @@ export class CdpLiveDriver implements Driver {
   async returnFromBlock(timeoutMs = 10_000): Promise<void> {
     const target = this.lastAllowed;
     if (this.preserveTarget || !target) return;
+    this.navigationProblem = undefined;
     type History = { currentIndex: number; entries: { id: number; url: string }[] };
     const history = () => this.cdp.send<History>("Page.getNavigationHistory", {}, this.sessionId);
     let now = await history();
@@ -324,6 +348,12 @@ export class CdpLiveDriver implements Driver {
       return;
     }
     const url = frame.url || "";
+    if (frame.unreachableUrl || url.startsWith("chrome-error:")) {
+      const attempted = frame.unreachableUrl || this.mainRequest?.url || url;
+      if (this.navigationProblem?.url !== attempted) this.navigationProblem = new LiveNavigationFailure(attempted, "unknown");
+    } else if (/^https?:/.test(url)) {
+      this.navigationProblem = undefined;
+    }
     if (/^https?:/.test(url) && !frame.unreachableUrl && this.allows(url) && !stopPathHit(url, this.stopPath)) {
       this.lastAllowed = url;
     }
@@ -343,7 +373,31 @@ export class CdpLiveDriver implements Driver {
     }
   }
 
+  get navigationHalt(): LiveNavigationHalt | undefined {
+    return this.navigationProblem instanceof LiveNavigationHalt ? this.navigationProblem : undefined;
+  }
+
+  async checkNavigation(): Promise<void> {
+    const tree = await this.cdp.send<{ frameTree?: { frame?: { url?: string; unreachableUrl?: string } } }>("Page.getFrameTree", {}, this.sessionId);
+    const problem = this.navigationProblem;
+    if (problem instanceof LiveNavigationHalt) throw problem;
+    const frame = tree.frameTree?.frame;
+    if (frame?.unreachableUrl || frame?.url?.startsWith("chrome-error:")) {
+      const url = frame.unreachableUrl || this.mainRequest?.url || frame.url || "chrome-error:";
+      let code = problem?.url === url ? problem.errorCode : "unknown";
+      if (code === "unknown") {
+        const result = await this.cdp.send<{ result?: { value?: string } }>("Runtime.evaluate", {
+          expression: "document.getElementById('error-code')?.textContent || ''", returnByValue: true,
+        }, this.sessionId);
+        code = result.result?.value?.match(/(?:net::)?ERR_[A-Z0-9_]+/)?.[0] || "unknown";
+      }
+      this.navigationProblem = new LiveNavigationFailure(url, code);
+    }
+    if (this.navigationProblem) throw this.navigationProblem;
+  }
+
   private assertHost(): void {
+    if (this.navigationProblem instanceof LiveNavigationFailure && !this.blockedNav) throw this.navigationProblem;
     if (this.pageEngineSelected && !this.pageEngine) throw new Error("agent-browser run ended");
     if (this.offHost) throw new Error(`cdp-live allowlist refused ${this.offHost}`);
   }
@@ -381,7 +435,7 @@ export class CdpLiveDriver implements Driver {
       return await this.evaluateOnce<T>(expression, phase);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (this.pageEngine || !/context|destroyed|navigat/i.test(message)) throw err;
+      if (err instanceof LiveNavigationFailure || this.pageEngine || !/context|destroyed|navigat/i.test(message)) throw err;
       await sleep(250);
       return this.evaluateOnce<T>(expression, phase);
     }
@@ -465,8 +519,12 @@ export class CdpLiveDriver implements Driver {
 
   async goto(url: string, timeoutMs = 20_000): Promise<void> {
     if (this.preserveTarget) throw new Error("cdp-live will not navigate an attached tab");
-    if (stopPathHit(url, this.stopPath) && navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall") throw new LiveNavigationHalt("login_wall");
+    if (stopPathHit(url, this.stopPath) && navigationGuard(url, this.hosts, this.origins, this.stopPath) === "login_wall") {
+      this.navigationProblem = new LiveNavigationHalt("login_wall", url);
+      throw this.navigationProblem;
+    }
     if (!this.allows(url)) throw new Error(`cdp-live allowlist refused ${this.refusal(url)}`);
+    this.navigationProblem = undefined;
     this.assertHost();
     const epoch = this.loadEpoch;
     this.takeBlockedNav();
@@ -474,13 +532,20 @@ export class CdpLiveDriver implements Driver {
       if (this.pageEngine) await this.pageEngine.goto(url);
       else {
         const nav = await this.cdp.send<{ errorText?: string }>("Page.navigate", { url }, this.sessionId);
-        if (nav.errorText) throw new Error(nav.errorText);
+        if (nav.errorText) throw new LiveNavigationFailure(url, nav.errorText);
       }
       await this.waitForLoad(epoch, timeoutMs);
+      if (this.blockedNav) throw new Error("navigation blocked");
+      await this.checkNavigation();
     } catch (error) {
       const blocked = this.takeBlockedNav();
-      if (blocked === "login_wall" || blocked === "stop-path") throw new LiveNavigationHalt(blocked);
-      if (blocked) throw new Error(blocked);
+      const halt = this.navigationHalt;
+      if (halt) throw halt;
+      if (blocked === "login_wall" || blocked === "stop-path") throw new LiveNavigationHalt(blocked, this.mainRequest?.url || url);
+      if (blocked) throw this.navigationProblem || new Error(blocked);
+      if (error instanceof LiveNavigationFailure) throw error;
+      const code = error instanceof Error ? error.message.match(/net::ERR_[A-Z0-9_]+/)?.[0] : undefined;
+      if (code) throw new LiveNavigationFailure(this.mainRequest?.url || url, code);
       throw error;
     }
     const href = await this.evaluate<string>("location.href", "startup");

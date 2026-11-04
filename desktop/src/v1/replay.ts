@@ -214,6 +214,7 @@ export interface RunResult {
   console?: { stepId?: string; type?: string; text: string; ts?: number }[];
   network?: { stepId?: string; method?: string; url: string; status?: number; ts?: number }[];
   failure?: StepFailure;
+  navigationBlock?: import("../cdp-live/live-record").LiveNavigationBlock;
   heals: HealRecord[];
   repairs: RepairLog[];
   locatorHits: LocatorHit[];

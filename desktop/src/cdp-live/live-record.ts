@@ -25,6 +25,11 @@ export interface LiveToolTiming {
   spans: Record<string, number>;
 }
 
+export interface LiveNavigationBlock {
+  url: string;
+  reason: "login_wall" | "stop-path";
+}
+
 export interface LiveSessionRecord {
   id: string;
   intent: string;
@@ -36,6 +41,8 @@ export interface LiveSessionRecord {
   audit: AuditRow[];
   tools?: LiveToolTiming[];
   note: string;
+  navigationFailure?: { url: string; errorCode: string };
+  navigationBlock?: LiveNavigationBlock;
 }
 
 export function shotName(index: number): string {
@@ -108,6 +115,13 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
     shot: shotNameOk(String(row?.shot || "")) ? String(row.shot) : "",
     via: row?.via === "ax" ? "ax" as const : "cdp" as const,
   })) : [];
+  const failure = raw.navigationFailure;
+  const navigationFailure = failure && typeof failure.url === "string" && /^(?:https?:|chrome-error:)/.test(failure.url)
+    && typeof failure.errorCode === "string" && /^(?:(?:net::)?ERR_[A-Z0-9_]+|unknown)$/.test(failure.errorCode)
+    ? { url: failure.url, errorCode: failure.errorCode } : undefined;
+  const block = raw.navigationBlock;
+  const navigationBlock = block && typeof block.url === "string" && /^https?:/.test(block.url)
+    && (block.reason === "login_wall" || block.reason === "stop-path") ? { url: block.url, reason: block.reason } : undefined;
   const steps = Array.isArray(raw.steps) ? raw.steps.map((step) => ({
     name: redactLabel(String(step?.name || "")).slice(0, 40),
     status: String(step?.status || "").slice(0, 20),
@@ -117,7 +131,9 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
     id: String(raw.id || "").replace(/[^\w.-]/g, "").slice(0, 40),
     intent: redactLabel(String(raw.intent || "")).slice(0, 160),
     ...(raw.allowCommit === true ? { allowCommit: true } : {}),
-    status,
+    status: navigationFailure ? "failed" : navigationBlock ? "needs_human" : status,
+    ...(navigationFailure ? { navigationFailure } : {}),
+    ...(navigationBlock ? { navigationBlock } : {}),
     host: /^[\w.-]+$/.test(String(raw.host || "")) ? String(raw.host) : "",
     updatedAt: Number.isFinite(raw.updatedAt) ? Math.round(Number(raw.updatedAt)) : 0,
     steps,
@@ -129,6 +145,6 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
       ms: Number.isFinite(tool.ms) ? Math.max(0, tool.ms) : 0,
       spans: Object.fromEntries(Object.entries(tool.spans || {}).filter(([key, ms]) => /^[a-z]+$/.test(key) && Number.isFinite(ms) && ms >= 0)),
     })) } : {}),
-    note: redactLabel(String(raw.note || "")).slice(0, 160),
+    note: navigationFailure ? `Navigation failed: ${navigationFailure.errorCode} at ${navigationFailure.url}` : redactLabel(String(raw.note || "")).slice(0, 160),
   };
 }

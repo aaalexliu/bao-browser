@@ -8,7 +8,7 @@ import { runViewer } from "../../src/app/views";
 import { liveCliBody } from "../../src/mcp/live-proxy";
 import { navigationGuard, stopPathHit } from "../../src/cdp-live/allowlist";
 import { LiveNavigationHalt, openLiveWindow } from "../../src/cdp-live/driver";
-import { buildView, pageHalt, planClick, planKey, readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
+import { buildView, pageHalt, planClick, planKey, planType, readLivePage, type PageFacts } from "../../src/cdp-live/live-ops";
 import { signedOutSurface } from "../../src/cdp-live/session";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { liveScope } from "../../src/cdp-live/live-replay";
@@ -105,6 +105,50 @@ test("Experian final freeze commits stop by default; session opt-in never widens
   assert.equal(body.allowCommit, true);
   assert.equal(liveCliBody("live_session_start", []).allowCommit, undefined);
   assert.match(runViewer({ id: "run-opt-in", kind: "capture", allowCommit: true, workflowId: "wf-freeze", status: "passed", steps: [] }, { name: "Unfreeze credit", steps: [] }), /Experian commit opt-in was on/);
+});
+
+test("final freeze protection is separate from careful mode", () => {
+  const cases = [
+    ...["Unfreeze", "Freeze", "Remove", "Lift freeze", "Thaw", "Confirm", "Submit"].map(label => ({ preset: "experian", label, kind: "submit", refusal: "experian_commit" })),
+    { preset: "experian", label: "Continue", kind: "submit", refusal: "" },
+    { preset: "experian", label: "No, keep my current membership", kind: "button", refusal: "" },
+    { preset: "generic", label: "Confirm", kind: "submit", refusal: "stop_before_confirm" },
+  ];
+  for (const careful of [false, true]) {
+    for (const allowCommit of [false, true]) {
+      for (const row of cases) {
+        const scope = liveScope("https://credit.test/member", row.preset, careful);
+        const facts: PageFacts = { path: "/member/unfreeze/review", title: "Review unfreeze", headings: [], blocked: "", controls: [
+          { index: 0, label: row.label, kind: row.kind },
+          ...(row.kind === "submit" ? [{ index: 1, label: "Note", kind: "field", formSubmit: row.label }] : []),
+        ] };
+        const read = buildView(facts, 1, { ...scope.guard, allowCommit });
+        const refusal = row.refusal === "experian_commit" ? allowCommit ? "" : row.refusal : careful ? row.refusal : "";
+        const expected = refusal ? { ok: false, refusal } : { ok: true, selector: '[data-bao-live="0"]' };
+        const name = JSON.stringify({ careful, allowCommit, ...row });
+        assert.deepEqual(planClick(read, "e1.c0"), expected, name);
+        assert.equal(read.view.reached?.label, refusal === "experian_commit" ? row.label : undefined, name);
+        if (row.kind === "submit") assert.equal(planKey(read, "Enter", "e1.c1").ok, !refusal, name);
+      }
+    }
+  }
+});
+
+test("the final freeze boundary does not enable careful mode's other rules", () => {
+  const scope = liveScope("https://credit.test/login", "experian", false);
+  const read = buildView({ path: "/login", title: "Review unfreeze", headings: [], blocked: "", controls: [
+    { index: 0, label: "Confirm", kind: "submit" },
+    { index: 1, label: "Dispute", kind: "button" },
+    { index: 2, label: "demo@example.com", kind: "button" },
+    { index: 3, label: "Password", kind: "field", field: { type: "password", name: "password", autocomplete: "current-password" } },
+    { index: 4, label: "Place order", kind: "button" },
+  ] }, 1, scope.guard);
+  assert.equal(planClick(read, "e1.c0").ok, false);
+  for (const ref of ["e1.c1", "e1.c2", "e1.c3", "e1.c4"]) assert.equal(planClick(read, ref).ok, true, ref);
+  assert.ok(read.view.controls.some(control => control.label === "demo@example.com"));
+  assert.equal(planType(read, "e1.c3", "local dummy credential").ok, true);
+  assert.equal(navigationGuard("https://outside.test/login", scope.hosts, scope.origins, scope.stopPath, false), null);
+  assert.equal(scope.stopPath, "");
 });
 
 test("Experian flow starters stay ordinary clicks and Enter submissions", () => {
@@ -302,6 +346,57 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
         }
       }
     } finally { cdp.close(); }
+  });
+
+  it("deliberate blocked navigations stay owner handoffs with their URL and reason", async () => {
+    for (const [entry, blockedPath, reason] of [
+      ["/member/expired", "/login/index?refUrl=%2Fmember", "login_wall"],
+      ["/member/account-redirect", "/account", "stop-path"],
+    ] as const) {
+      const startUrl = fixture.url(entry);
+      const block = { url: fixture.url(blockedPath), reason };
+      const requests = () => fixture.requests.filter(request => request.path === new URL(block.url).pathname).length;
+      const before = requests();
+      const intent = `Local guard handoff ${reason}`;
+      const started = await live("live_session_start", { intent, url: startUrl });
+      assert.equal(started.outcome.kind, "halted", JSON.stringify(started));
+      assert.equal(started.outcome.reason, reason);
+      assert.ok(started.session);
+      const recorded = (await state()).liveSession;
+      assert.equal(recorded.status, "needs_human");
+      assert.deepEqual(recorded.navigationBlock, block);
+      assert.equal(recorded.navigationFailure, undefined, "an intentional guard is not a net failure");
+      const capture = app.library.listRuns().find(run => run.workflowId === started.session && run.kind === "capture");
+      assert.equal(capture?.status, "needs_human");
+      assert.deepEqual(capture?.navigationBlock, block);
+      assert.ok(JSON.stringify(capture?.steps).includes(block.url));
+      const saved = app.library.read(started.session);
+      assert.equal(saved.startUrl, startUrl);
+      assert.equal(saved.steps.at(-1)?.value, block.url, "Library retains the blocked attempt");
+      const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: saved.id, args: {} }) });
+      const run = await response.json() as RunResult;
+      assert.equal(run.status, "paused", JSON.stringify(run));
+      assert.deepEqual(run.navigationBlock, block);
+      assert.equal(app.library.readRun(run.runId).status, "needs_human");
+      assert.deepEqual(app.library.readRun(run.runId).navigationBlock, block);
+      assert.equal(requests(), before, "the guarded destination never receives a request");
+      const artifacts = process.env.BAO_ARTIFACTS_DIR;
+      if (artifacts) {
+        await mkdir(artifacts, { recursive: true });
+        await writeFile(path.join(artifacts, `guard-${reason}.json`), JSON.stringify({ started, recorded, capture, run }, null, 2));
+      }
+      const observer = await testChromium.launch({ executablePath: browser.executable, headless: true, args: ["--use-mock-keychain", "--password-store=basic"], env: laneChildEnv("hermetic", process.env, () => browser.executable) });
+      try {
+        const ui = await observer.newPage();
+        await ui.goto(`http://127.0.0.1:${app.port}/?screen=live`);
+        assert.equal(await ui.locator("#live-navigation-block").innerText(), `Navigation blocked: ${reason} at ${block.url}`);
+        if (artifacts) await ui.screenshot({ path: path.join(artifacts, `guard-${reason}.png`), fullPage: true });
+        await ui.locator("button[data-screen=library]").click();
+        await ui.getByText(saved.name, { exact: true }).first().waitFor();
+        assert.equal(await ui.getByText(`Blocked ${block.url}`, { exact: true }).first().isVisible(), true);
+        if (artifacts) await ui.screenshot({ path: path.join(artifacts, `library-guard-${reason}.png`), fullPage: true });
+      } finally { await observer.close(); }
+    }
   });
 
   it("expired session start returns a login halt and replay saves a paused run", async () => {
@@ -750,17 +845,37 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     finally { await live("live_stop"); }
   });
 
-  it("default YOLO completes the Experian flow without a commit opt-in", async () => {
+  it("default YOLO reaches the final Experian action without clicking it", async () => {
     const commits = () => fixture.requests.filter(request => request.path === "/commit-unfreeze").length;
     const before = commits();
     try {
       let reply = JSON.parse((await mcp.call("live_session_start", { intent: "Unfreeze credit with default mode", url: fixture.url("/member") })).text) as LiveReply;
       assert.equal(reply.outcome.kind, "applied", JSON.stringify(reply));
-      for (const label of ["Unfreeze", "Unfreeze my credit", "Continue", "Confirm"]) {
+      for (const label of ["Unfreeze", "Unfreeze my credit", "Continue"]) {
         reply = await live("live_click", { ref: refOf(reply, label) });
-        assert.equal(reply.outcome.kind, "applied", `${label}: ${JSON.stringify(reply)}`);
       }
-      assert.equal(commits(), before + 1);
+      reply = await live("live_type", { ref: refOf(reply, "Note"), text: "Local preview" });
+      for (const key of ["Enter", "Tab", "Space"]) {
+        reply = await live("live_key", { key });
+        assert.equal(reply.outcome.kind, "reached", `${key}: ${JSON.stringify(reply)}`);
+        assert.equal(commits(), before, key);
+      }
+      const finalRef = reply.view?.reached?.ref || refOf(reply, "Confirm");
+      reply = await live("live_click", { ref: finalRef });
+      assert.equal(reply.outcome.kind, "reached", JSON.stringify(reply));
+      assert.equal(reply.outcome.reason, "experian_commit");
+      assert.equal(commits(), before);
+    } finally { await live("live_stop"); }
+  });
+
+  it("YOLO honors a fresh explicit final-freeze opt-in without enabling careful mode", async () => {
+    const before = fixture.requests.filter(request => request.path === "/commit-unfreeze").length;
+    try {
+      const reply = await live("live_session_start", { intent: "Authorized local freeze change", url: fixture.url("/member/unfreeze/review"), careful: false, allowCommit: true });
+      assert.equal(reply.view?.reached, undefined);
+      const clicked = await live("live_click", { ref: refOf(reply, "Confirm") });
+      assert.equal(clicked.outcome.kind, "applied", JSON.stringify(clicked));
+      assert.equal(fixture.requests.filter(request => request.path === "/commit-unfreeze").length, before + 1);
     } finally { await live("live_stop"); }
   });
 
