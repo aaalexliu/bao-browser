@@ -41,7 +41,7 @@ test("old and agent-browser keep the same guarded Instacart cart and recorded re
       const app = await startApp({ home, port: 0, chromeProfilesRoot: profiles, liveTarget: `throwaway:${browser.portFile}`, liveLockFile: path.join(home, "app.lock") });
       const setting = await fetch(`http://127.0.0.1:${app.port}/api/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ pageEngine: engine, chromeProfile: "Default" }) });
       assert.equal(setting.status, 200);
-      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target, idleMs: 0,
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target,
         selectRun: async () => ({ target, engineName: pageEngineName(app.library.settings().pageEngine), artifactRoot: home }),
       });
       const call = async (body: Record<string, unknown>, expected = "applied") => {

@@ -17,11 +17,10 @@ import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
 import { createLiveHost } from "../cdp-live/live-host";
 import { askAutomation, readAutomation, type AutomationReport } from "../cdp-live/automation";
-import type { LiveIdleWarning } from "../cdp-live/live-ops";
 import { liveReplayArgs } from "../cdp-live/live-replay";
 import { parseLiveTarget } from "../cdp-live/live-target";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
-import { actAskLine, actDeadlineLine, actSurfaceText, liveIdleSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
+import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
@@ -209,9 +208,6 @@ export async function startApp(opts: {
   liveTarget?: string;
   /** Live session lock. Default /tmp/bao-cdp-session.lock, shared by every Bao on this machine. */
   liveLockFile?: string;
-  /** Idle save and its warning lead, for a test. Default LIVE_IDLE_MS and LIVE_IDLE_WARN_MS. */
-  liveIdleMs?: number;
-  liveIdleWarnMs?: number;
   evalVideoNoBlur?: true;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
@@ -222,7 +218,6 @@ export async function startApp(opts: {
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
-  let liveIdle: LiveIdleWarning | null = null;
   let automationNotice = "";
   const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
   let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
@@ -248,16 +243,9 @@ export async function startApp(opts: {
         close: async () => { await copied.close(); profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "deleted" }; },
       };
     },
-    idleMs: opts.liveIdleMs,
-    idleWarnMs: opts.liveIdleWarnMs,
     onNotice: (message) => { automationNotice = message; },
     videoDir: process.env.BAO_RUN_VIDEO === "1" || opts.evalVideoNoBlur ? path.join(library.root, "videos") : undefined,
     evalVideoNoBlur: opts.evalVideoNoBlur,
-    onIdleWarn: (warning) => {
-      liveIdle = warning;
-      if (warning) raiseLiveIdle(warning);
-      else if (!activeAsk && !loginWait && !humanConfirm) void clearOsNotify();
-    },
   });
   let signIn: { close(): Promise<void> } | undefined;
   const notices: Notice[] = [];
@@ -354,13 +342,7 @@ export async function startApp(opts: {
   }
   function clearAct(): void {
     if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
-    if (!liveIdle) void clearOsNotify();
-  }
-  /** The idle warning posts through the same notification and Dock badge as an act. Keep open is in the Bao window. */
-  function raiseLiveIdle(warning: LiveIdleWarning): void {
-    const notice = actNotice(liveIdleSurfaceText(warning));
-    notifications.push({ title: notice.title, body: notice.body, tooltip: notice.tooltip });
-    void notifyOs(notice.title, notice.body, notice.tooltip);
+    void clearOsNotify();
   }
   const prompts: PersonPrompts = {
     showConfirm(_label) {
@@ -533,10 +515,6 @@ export async function startApp(opts: {
         const body = await readBody(req);
         return json(res, await live.call(body));
       }
-      if (req.method === "POST" && url.pathname === "/api/live/keep") {
-        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
-        return json(res, { open: await live.keepOpen() });
-      }
       if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
         const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
         if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
@@ -596,7 +574,6 @@ export async function startApp(opts: {
           relay: relayStatus(library.root),
           liveSession: readLiveSessionFile(library.root),
           liveSessionOpen: live.isOpen(),
-          liveIdle,
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {

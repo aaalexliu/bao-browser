@@ -40,8 +40,6 @@ import {
   EXPERIAN_COMMIT_INSTRUCTION,
   isLiveOp,
   LIVE_DISCONNECT,
-  LIVE_IDLE_MS,
-  LIVE_IDLE_WARN_MS,
   LIVE_LOGIN_INSTRUCTION,
   LIVE_REPLAY,
   markedState,
@@ -52,7 +50,6 @@ import {
   viewPage,
   workflowIdsFromIntent,
   type LabelGuard,
-  type LiveIdleWarning,
   type LiveOpName,
   type LiveRead,
   type LiveViewPage,
@@ -173,27 +170,19 @@ export interface LiveHostOptions {
   helper?: () => ChromeAx;
   /** Asks the daily Chrome to open a window in the target's profile. Tests pass a fake. */
   openProfile?: OpenProfileWindow;
-  /** An open session with no call for this long saves and ends. */
-  idleMs?: number;
-  /** The warning comes this long before the idle save. Zero turns it off. */
-  idleWarnMs?: number;
-  /** Gets the warning when it comes, and null when a call, Keep open, or the end clears it. */
-  onIdleWarn?: (warning: LiveIdleWarning | null) => void;
   onNotice?: (message: string) => void;
   /** Records each session window as live-<session>-<time>.mp4 and each replay window as <runId>.mp4 here. */
   videoDir?: string;
   evalVideoNoBlur?: true;
 }
 
-type EndReason = "stop" | "disconnect" | "idle";
+type EndReason = "stop" | "disconnect";
 
 export function createLiveHost(opts: LiveHostOptions): {
   call(raw: unknown): Promise<unknown>;
   isOpen(): boolean;
   /** Replays a cdp-live workflow in a new window of this host's target. */
   replay(workflow: WorkflowV2, inputs?: ReplayArgs, options?: LiveReplayOptions): Promise<RunResult>;
-  /** The person's Keep open. False when no session is open. */
-  keepOpen(): Promise<boolean>;
   close(): Promise<void>;
 } {
   const lockFile = opts.lockFile || CDP_LOCK_PATH;
@@ -204,17 +193,11 @@ export function createLiveHost(opts: LiveHostOptions): {
     const ax = opts.helper ? opts.helper() : chromeHelper();
     await setRemoteDebugging(false, remoteDebuggingDeps(ax, portFile, axLog, opts.onNotice));
   }
-  const idleMs = opts.idleMs ?? LIVE_IDLE_MS;
-  const warnMs = Math.min(opts.idleWarnMs ?? LIVE_IDLE_WARN_MS, idleMs);
   let slot: SlotState = { phase: "idle" };
   let open: OpenState | null = null;
   let chain = Promise.resolve();
-  let pending = 0;
   let runningStep: OpenState["steps"][number] | undefined;
   let currentTool: LiveToolTiming | undefined;
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  let warnTimer: ReturnType<typeof setTimeout> | undefined;
-  let warning: LiveIdleWarning | null = null;
   const heldProfiles = new Set<() => Promise<void>>();
 
   function reply(body: Record<string, unknown>): unknown {
@@ -229,29 +212,10 @@ export function createLiveHost(opts: LiveHostOptions): {
     return publicLiveResult(body);
   }
 
-  function setWarning(next: LiveIdleWarning | null): void {
-    if (!warning && !next) return;
-    warning = next;
-    opts.onIdleWarn?.(next);
-  }
-
-  function disarmIdle(): void {
-    clearTimeout(idleTimer);
-    clearTimeout(warnTimer);
-    idleTimer = undefined;
-    warnTimer = undefined;
-    setWarning(null);
-  }
-
   async function call(raw: unknown): Promise<unknown> {
-    disarmIdle();
-    pending += 1;
     const startedAt = Date.now();
     const run = chain.then(() => timedDispatch(raw, startedAt));
-    chain = run.then(() => undefined, () => undefined).then(() => {
-      pending -= 1;
-      armIdle();
-    });
+    chain = run.then(() => undefined, () => undefined);
     return run;
   }
 
@@ -287,25 +251,6 @@ export function createLiveHost(opts: LiveHostOptions): {
     }
   }
 
-  /** The session saves once no call has come for idleMs, and warns warnMs before that. Each call restarts the wait. */
-  function armIdle(): void {
-    disarmIdle();
-    if (!open || pending > 0 || idleMs <= 0) return;
-    const state = open;
-    const saveAt = Date.now() + idleMs;
-    if (warnMs > 0) {
-      warnTimer = setTimeout(() => {
-        if (open === state) setWarning({ session: state.id, host: state.host, saveAt });
-      }, idleMs - warnMs);
-      warnTimer.unref?.();
-    }
-    idleTimer = setTimeout(() => {
-      const run = chain.then(() => (open ? stop("idle") : undefined));
-      chain = run.then(() => undefined, () => undefined);
-    }, idleMs);
-    idleTimer.unref?.();
-  }
-
   async function disconnect(body: Record<string, unknown>): Promise<unknown> {
     const client = typeof body.client === "string" ? body.client : "";
     if (!open || !client || open.client !== client) {
@@ -321,7 +266,6 @@ export function createLiveHost(opts: LiveHostOptions): {
 
   async function dispatch(raw: unknown): Promise<unknown> {
     runningStep = undefined;
-    open?.driver.touch();
     const body = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const op = typeof body.op === "string" ? body.op : "";
     if (op === LIVE_DISCONNECT) return measure("finalization", () => disconnect(body));
@@ -988,7 +932,6 @@ export function createLiveHost(opts: LiveHostOptions): {
   }
 
   async function stop(reason: EndReason = "stop"): Promise<unknown> {
-    disarmIdle();
     if (!open) {
       return reply({ op: "live_stop", session: "", outcome: { kind: "rejected", reason: "not_open" }, view: null, shot: "" });
     }
@@ -1004,9 +947,7 @@ export function createLiveHost(opts: LiveHostOptions): {
       else if (!(error instanceof LiveNavigationFailure)) open.refused = true;
     }
     const view = shown(open.read);
-    const ended = reason === "disconnect" ? "Saved when the agent disconnected."
-      : reason === "idle" ? "Saved after the agent went quiet."
-        : "Stopped.";
+    const ended = reason === "disconnect" ? "Saved when the agent disconnected." : "Stopped.";
     const refused = open.refused || open.covered.size > 0;
     const reached = open.read?.view.reached;
     const stopReason = open.halted || (reached ? "experian_commit" : "");
@@ -1124,20 +1065,7 @@ export function createLiveHost(opts: LiveHostOptions): {
     return run;
   }
 
-  /** Runs in the call chain, so an idle save that already started wins and the reply says the session is gone. */
-  async function keepOpen(): Promise<boolean> {
-    const run = chain.then(() => {
-      if (!open) return false;
-      open.driver.touch();
-      armIdle();
-      return true;
-    });
-    chain = run.then(() => undefined, () => undefined);
-    return run;
-  }
-
   async function close(): Promise<void> {
-    disarmIdle();
     if (slot.phase === "open") {
       await stop().catch(() => undefined);
       releaseCdpLock(AGENT, lockFile);
@@ -1145,5 +1073,5 @@ export function createLiveHost(opts: LiveHostOptions): {
     await Promise.all([...heldProfiles].map((closeProfile) => closeProfile()));
   }
 
-  return { call, replay, keepOpen, close, isOpen: () => open !== null };
+  return { call, replay, close, isOpen: () => open !== null };
 }

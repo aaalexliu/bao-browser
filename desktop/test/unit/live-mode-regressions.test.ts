@@ -245,7 +245,7 @@ describe("live session behavioral regressions", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await new Promise<void>((resolve) => secureServer.close(() => resolve()));
   });
-  const newHost = (name: string) => createLiveHost({ home: path.join(dirs.home, name), lockFile: path.join(dirs.home, `${name}.lock`), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, idleMs: 0 });
+  const newHost = (name: string) => createLiveHost({ home: path.join(dirs.home, name), lockFile: path.join(dirs.home, `${name}.lock`), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") } });
 
   test("YOLO ignores configured driver stop paths during navigation", { timeout: 120_000 }, async (t) => {
     let live: CdpLiveDriver;

@@ -66,7 +66,7 @@ for (const engineName of ["old", "agent-browser"] as const) describe(`OAuth run 
   function hostFor(name: string) {
     const home = path.join(dirs.home, name);
     const target = { kind: "throwaway" as const, portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") };
-    const host = createLiveHost({ home, target, lockFile: path.join(dirs.home, `${name}.lock`), selectRun: async () => ({ target, engineName }), idleMs: 0 });
+    const host = createLiveHost({ home, target, lockFile: path.join(dirs.home, `${name}.lock`), selectRun: async () => ({ target, engineName }) });
     return { host, home, call: async (body: Record<string, unknown>): Promise<Reply> => {
       if (body.op !== "live_session_start") return host.call(body) as Promise<Reply>;
       const opened = browser.waitForEvent("page");

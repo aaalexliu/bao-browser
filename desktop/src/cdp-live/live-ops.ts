@@ -38,23 +38,10 @@ export function isLiveOp(value: string): value is LiveOpName {
   return (LIVE_TOOL_NAMES as readonly string[]).includes(value);
 }
 
-/** An open session with no call for this long saves its workflow and ends. */
-export const LIVE_IDLE_MS = 10 * 60_000;
-
-/** The person is warned this long before an idle save, so one who is there can keep the session open. */
-export const LIVE_IDLE_WARN_MS = 2 * 60_000;
-
-/** The warning before an idle save. The session saves and ends at `saveAt` unless a call or Keep open comes first. */
-export interface LiveIdleWarning {
-  session: string;
-  host: string;
-  saveAt: number;
-}
-
 export const LIVE_TOOLS = [
   {
     name: "live_session_start",
-    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. By default Bao performs the action, including Create, Save, Submit, Confirm, checkout, and place order. Sign-in detection adds a note and leaves the session usable. Set careful: true to opt into preset deny labels, confirm checks, stop paths, and sign-in halts. If omitted, careful uses this Mac's setting, which defaults to false. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. Other hosts use the preset given, else generic. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. In either mode, dashboard Unfreeze and other freeze-flow starters stay ordinary clicks, but the final Unfreeze, Freeze, Remove, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides careful mode's checkout, deny labels or credential guards. The reply lists controls with refs. In careful mode it also names buttons held for confirmation. It does not return cookies or storage. The session saves its workflow on live_stop, when this MCP server's client disconnects, or after ${LIVE_IDLE_MS / 60_000} minutes with no call. ${LIVE_IDLE_WARN_MS / 60_000} minutes before that idle save, Bao warns the person, and Keep open in the Bao window restarts the wait.`,
+    description: `Open a local live session on one http(s) page. Pass an intent and a url. Use the site's start page, such as its home or store page, not a search results url: type the search with live_type, so the saved workflow has the search step. The Bao app picks the Chrome and live profile from Settings, unless --live-target or BAO_LIVE_TARGET overrides it. By default Bao performs the action, including Create, Save, Submit, Confirm, checkout, and place order. Sign-in detection adds a note and leaves the session usable. Set careful: true to opt into preset deny labels, confirm checks, stop paths, and sign-in halts. If omitted, careful uses this Mac's setting, which defaults to false. A known host uses its own preset: instacart.com uses instacart, books.toscrape.com uses books, and both www.experian.com and usa.experian.com use experian. Other hosts use the preset given, else generic. For Experian, start at https://usa.experian.com/member after the person signs in in Chrome. In either mode, dashboard Unfreeze and other freeze-flow starters stay ordinary clicks, but the final Unfreeze, Freeze, Remove, Lift, Thaw, Confirm or Submit action on the freeze review or confirmation page returns reached: experian_commit without a click. Session start never returns reached. Stop and save with live_stop. Only after the owner explicitly says go, start a new session with allowCommit: true to permit that freeze change. This opt-in applies only to that session, never a later session or replay, and the capture run records it. It never overrides careful mode's checkout, deny labels or credential guards. The reply lists controls with refs. In careful mode it also names buttons held for confirmation. It does not return cookies or storage. The session stays open without an idle or lifetime limit until the agent or person stops it, the MCP client disconnects, or the browser goes away. Stop and save its workflow with live_stop.`,
     inputSchema: {
       type: "object",
       properties: {

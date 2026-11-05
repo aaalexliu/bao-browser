@@ -56,7 +56,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
           }, undefined);
         });
       }
-      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile } });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       const session = () => JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
       try {
@@ -135,7 +135,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
           document.body.append(dialog);
         }, urlChange);
       });
-      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile } });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
         const started = await call({ op: "live_session_start", careful: true, intent: "search Costco after dismissing welcome", url: fixture.url("/store/costco/storefront") });
@@ -218,7 +218,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
           document.body.prepend(spacer, area, dialog);
         }, stable);
       });
-      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile }, idleMs: 0 });
+      const host = createLiveHost({ home, lockFile: path.join(home, "lock"), target: { kind: "throwaway", portFile: browser.portFile } });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
         const started = await call({ op: "live_session_start", careful: true, intent: "open Costco after welcome", url: fixture.url("/store/costco/storefront") });
@@ -239,7 +239,7 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
     });
   }
 
-  for (const ending of ["stop", "disconnect", "idle", "unresolved", "unrelated-refusal"] as const) {
+  for (const ending of ["stop", "disconnect", "unresolved", "unrelated-refusal"] as const) {
     it(`${ending}: only retrying the covered control clears its refusal`, async () => {
       const home = mkdtempSync(path.join(tmpdir(), "bao-covered-"));
       const host = createLiveHost({
@@ -248,8 +248,6 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
         target: { kind: "throwaway", portFile: browser.portFile },
         helper: () => fakeChromeHelper().helper,
         openProfile: async () => { throw new Error("not a daily profile"); },
-        idleMs: ending === "idle" ? 500 : 0,
-        idleWarnMs: 0,
       });
       const call = (body: Record<string, unknown>) => host.call(body) as Promise<Body>;
       try {
@@ -270,20 +268,14 @@ describe("covered clicks in a live session", { timeout: 120_000 }, () => {
           const retry = await call({ op: "live_click", ref: ref(dismissed, CART) });
           assert.equal(retry.outcome.kind, "applied");
         }
-        if (ending === "idle") {
-          const deadline = Date.now() + 10_000;
-          while (host.isOpen() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
-          assert.equal(host.isOpen(), false);
-        } else {
-          const stopped = await call(ending === "disconnect" ? { op: "live_disconnect", client: "test" } : { op: "live_stop" });
-          assert.equal(stopped.outcome.kind, "stopped");
-        }
+        const stopped = await call(ending === "disconnect" ? { op: "live_disconnect", client: "test" } : { op: "live_stop" });
+        assert.equal(stopped.outcome.kind, "stopped");
         const saved = JSON.parse(readFileSync(path.join(home, "live-session", "session.json"), "utf8")) as LiveSessionRecord;
         const failed = ending === "unresolved" || ending === "unrelated-refusal";
         assert.equal(saved.status, failed ? "failed" : "passed");
         const workflow = new Library(home).read(saved.id);
         assert.equal(workflow.steps.filter((step) => step.optional).length, ending === "unresolved" ? 0 : 1);
-        assert.equal(saved.note, failed ? "Refused." : ending === "idle" ? "Saved after the agent went quiet." : ending === "disconnect" ? "Saved when the agent disconnected." : "Stopped.");
+        assert.equal(saved.note, failed ? "Refused." : ending === "disconnect" ? "Saved when the agent disconnected." : "Stopped.");
         assert.deepEqual(fixture.state().traps, []);
         assert.deepEqual(fixture.state().writes, []);
       } finally {

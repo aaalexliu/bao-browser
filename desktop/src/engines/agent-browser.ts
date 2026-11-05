@@ -21,8 +21,6 @@ export interface AgentBrowserOptions {
   ownership: "bao-launched" | "external";
   executable?: string;
   commandMs?: number;
-  idleMs?: number;
-  lifetimeMs?: number;
 }
 
 type Data = Record<string, unknown>;
@@ -46,8 +44,6 @@ export class AgentBrowserPage {
   private stopped = false;
   private stopReason = "closed";
   private busy = false;
-  private timer: NodeJS.Timeout | undefined;
-  private idleTimer: NodeJS.Timeout | undefined;
   private sequence = 0;
   private careful = true;
 
@@ -55,8 +51,8 @@ export class AgentBrowserPage {
   private constructor(readonly options: AgentBrowserOptions, readonly stateDir: string) {}
 
   static async open(options: AgentBrowserOptions): Promise<AgentBrowserPage> {
-    for (const [name, value, max] of [["commandMs", options.commandMs, 30_000], ["idleMs", options.idleMs, 10 * 60_000], ["lifetimeMs", options.lifetimeMs, 2 * 60 * 60_000]] as const) {
-      if (value !== undefined && (!Number.isFinite(value) || value < 1 || value > max)) throw new Error(`invalid agent-browser ${name}`);
+    if (options.commandMs !== undefined && (!Number.isFinite(options.commandMs) || options.commandMs < 1 || options.commandMs > 30_000)) {
+      throw new Error("invalid agent-browser commandMs");
     }
     const endpoint = new URL(options.endpoint);
     if (endpoint.protocol !== "ws:" || !["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)
@@ -83,7 +79,9 @@ export class AgentBrowserPage {
           AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_CDP: options.endpoint,
           AGENT_BROWSER_EXECUTABLE_PATH: "/nonexistent/bao-no-browser-launch",
           AGENT_BROWSER_NO_WEBMCP: "1", AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0",
-          AGENT_BROWSER_DEFAULT_TIMEOUT: "8000", AGENT_BROWSER_IDLE_TIMEOUT_MS: String(2 * 60 * 60_000),
+          AGENT_BROWSER_DEFAULT_TIMEOUT: "8000",
+          // Omitting this applies upstream's idle limit; zero disables it.
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: "0",
           BAO_HEAL_CURSOR_ACCOUNT: "0",
         },
         // Raw engine output can contain typed text. Report only safe process status.
@@ -91,8 +89,6 @@ export class AgentBrowserPage {
       });
       page.child.on("error", (error: NodeJS.ErrnoException) => { page.stopped = true; page.stopReason = `spawn ${error.code || "error"}`; });
       page.child.on("exit", (code, signal) => { if (!page.stopped) page.stopReason = `exit ${code} signal ${signal}`; page.stopped = true; });
-      page.timer = setTimeout(() => { page.stopReason = "lifetime exceeded"; page.stopped = true; page.child?.kill("SIGKILL"); }, options.lifetimeMs ?? 2 * 60 * 60_000);
-      page.timer.unref();
       const deadline = Date.now() + 5_000;
       while (!existsSync(page.socketPath) && !page.stopped && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
       if (!existsSync(page.socketPath)) throw new Error(`agent-browser socket unavailable: ${page.stopped ? page.stopReason : "startup deadline exceeded"}`);
@@ -107,22 +103,10 @@ export class AgentBrowserPage {
 
   private get socketPath(): string { return path.join(this.stateDir, "bao.sock"); }
 
-  touch(): void {
-    clearTimeout(this.idleTimer);
-    if (this.stopped) return;
-    this.idleTimer = setTimeout(() => {
-      this.stopReason = "idle timeout";
-      this.stopped = true;
-      this.child?.kill("SIGKILL");
-    }, this.options.idleMs ?? 10 * 60_000);
-    this.idleTimer.unref();
-  }
-
   private async request(action: string, fields: Data = {}, deadlineMs?: number, startupUntil?: number): Promise<Data> {
     if (this.stopped) throw new Error(`agent-browser run stopped: ${this.stopReason}`);
     if (this.busy) throw new Error(`agent-browser concurrent ${action} command refused`);
     this.busy = true;
-    this.touch();
     const id = String(++this.sequence);
     try {
       return await new Promise<Data>((resolve, reject) => {
@@ -207,7 +191,7 @@ export class AgentBrowserPage {
         };
         connect();
       });
-    } finally { this.busy = false; this.touch(); }
+    } finally { this.busy = false; }
   }
 
   async evaluate<T>(script: string, phase: EvaluationPhase = "page"): Promise<T> {
@@ -275,8 +259,6 @@ export class AgentBrowserPage {
   /** Disconnect by ending only our child. Never send close/Browser.close, even for owned Chrome. */
   async close(): Promise<void> {
     this.stopped = true;
-    clearTimeout(this.timer);
-    clearTimeout(this.idleTimer);
     const child = this.child;
     if (child?.pid && child.exitCode == null && child.signalCode == null) {
       const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));

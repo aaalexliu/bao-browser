@@ -158,7 +158,6 @@ export class CdpLiveDriver implements Driver {
   private pageEngineSelected = false;
   private video: CdpVideo | undefined;
 
-  touch(): void { this.pageEngine?.touch(); }
 
   async startVideo(destination: string, opts: { noBlur?: true } = {}): Promise<void> {
     if (this.video) throw new Error("page video already started");
