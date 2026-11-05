@@ -88,8 +88,8 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
   const rawHome = path.join(root, "raw-home");
   const rawChrome = await openCopiedChrome({ sourceRoot, directory: "Default", home: rawHome });
   const rawEndpoint = await readDevToolsActivePort(rawChrome.target.portFile);
-  const nativeState = path.join(root, "native-state");
-  await mkdir(nativeState);
+  // Keep the native Unix socket below macOS's 103-byte path limit in deep worktrees.
+  const nativeState = await mkdtemp(path.join(tmpdir(), "ab-"));
   const config = path.join(nativeState, "config.json");
   await writeFile(config, "{}");
   const rawEnv = { HOME: nativeState, PATH: "/usr/bin:/bin", TMPDIR: nativeState, LANG: "en_US.UTF-8", AGENT_BROWSER_SOCKET_DIR: nativeState, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", DISPLAY: process.env.DISPLAY };
@@ -177,6 +177,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rmdir(copies(home)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
     await rmdir(copies(rawHome));
+    await rm(nativeState, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
 });
