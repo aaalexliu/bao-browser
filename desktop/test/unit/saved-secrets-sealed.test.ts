@@ -22,6 +22,7 @@ import { toJson, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState, syncAll } from "../../src/v1/sync";
 import { draftVersion } from "../../src/v1/versions";
+import { pinTestBrowser } from "../../src/launch";
 
 const SECRET = "sk-seededWholeToken";
 const typed = { op: "type", sensitive: true, value: SECRET };
@@ -155,7 +156,7 @@ test("sealed lookalikes inside user data strip before outbound copies", () => {
 test("outbound composition persists stable sync, share and sealed copies with real replay", { timeout: 120_000 }, (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-outbound-composition-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, TMPDIR: home, BAO_COMPOSITION_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0", NODE_PATH: path.join(process.cwd(), "web", "node_modules") };
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, TMPDIR: home, BAO_COMPOSITION_HOME: home, BAO_TEST_BROWSER: pinTestBrowser(), BAO_HEAL_CURSOR_ACCOUNT: "0", NODE_PATH: path.join(process.cwd(), "web", "node_modules") };
   for (const key of ["DATABASE_URL", "BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
   const child = spawnSync(process.execPath, [path.resolve("desktop/dist/desktop/test/fixtures/outbound-composition.js")], { env, encoding: "utf8", timeout: 110_000, maxBuffer: 10 * 1024 * 1024 });
   assert.equal(child.status, 0, [child.stdout, child.stderr, child.error?.message].join("\n"));
