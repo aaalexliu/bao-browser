@@ -1399,7 +1399,14 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/promotions/check") {
         const body = await readBody(req) as { id?: string };
-        const checked = await checkPromotion(library, body.id || "", notices);
+        const id = body.id || "";
+        const current = library.readPromotion(id) as (Promotion & { version?: number }) | undefined;
+        const workflow = library.read(id);
+        const candidate = current?.version ? versionDocument(library, id, current.version) : workflow;
+        if (refusesOwnedBrowser(workflow.driver) || refusesOwnedBrowser(candidate.driver)) {
+          return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
+        }
+        const checked = await checkPromotion(library, id, notices);
         return json(res, checked);
       }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
@@ -1432,6 +1439,7 @@ export async function startApp(opts: {
         } catch {
           return json(res, { error: "no workflow" }, 404);
         }
+        if (refusesOwnedBrowser(doc.driver)) return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
         const step = doc.steps.find((item) => item.id === body.stepId);
         if (!step) return json(res, { error: "no step" }, 404);
         try {
@@ -1485,8 +1493,8 @@ export async function startApp(opts: {
         }
         if (body.workflow) {
           const next = { ...body.workflow, id, updatedAt: Date.now() };
-          draftVersion(library, next, "edit");
-          return json(res, next);
+          const drafted = draftVersion(library, next, "edit");
+          return json(res, drafted.document);
         }
         if (body.driver === "playwright" || body.driver === "extension" || body.driver === null) {
           const doc = library.read(id);

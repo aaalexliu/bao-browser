@@ -1,6 +1,6 @@
 // The library is files under one directory. Sync state lives beside it, not in here.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact, scrubSaved } from "../../../shared/saved-secrets";
@@ -148,6 +148,7 @@ export class Library {
 
   save(doc: WorkflowV2): void {
     const saved = scrubSaved(doc);
+    if (existsSync(this.file(saved.id)) && this.read(saved.id).driver === "cdp-live") saved.driver = "cdp-live";
     const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));
     writeFileSync(this.file(saved.id), toJson(saved));
