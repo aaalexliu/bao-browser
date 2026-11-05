@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import { AuditTrail, deriveWorkflow, trimTrail } from "./audit";
 import { createClaudeSession, handleClaudeTool, type ClaudeToolResult, type ClaudeToolUse } from "./claude";
 import { DesktopExecutor } from "./desktop-exec";

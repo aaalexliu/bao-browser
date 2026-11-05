@@ -8,8 +8,8 @@ import { copyFile, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page, Request } from "playwright";
-import type { Workflow } from "../../../src/types";
-import { omitSecret, redactPayload } from "../../../src/mask";
+import type { Workflow } from "../../../shared/types";
+import { omitSecret, redactPayload } from "../../../shared/mask";
 import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { AuditTrail, deriveWorkflow, trimTrail } from "./audit";
 import {

@@ -1,7 +1,7 @@
 // Turn a live OS-plane trail into a workflow with inputs.
 // Reads and unresolved clicks are dropped. A clear wipes the attempt before it.
 
-import type { Step, Workflow } from "../../../src/types";
+import type { Step, Workflow } from "../../../shared/types";
 import { deriveWorkflow, trimTrail, type AuditEvent } from "./audit";
 
 const CLEAR = /^(all clear|clear|delete|ac)$/i;

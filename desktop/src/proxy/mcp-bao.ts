@@ -3,7 +3,7 @@
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isSensitiveValue } from "../../../src/mask";
+import { isSensitiveValue } from "../../../shared/mask";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import { AuditTrail, type AuditSource } from "./audit";
 import { MacOsExecutor } from "./macos-exec";

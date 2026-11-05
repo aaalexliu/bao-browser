@@ -15,7 +15,7 @@ function fixture(t) {
     mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     copyFileSync(path.join(root, file), path.join(dir, file));
   }
-  for (const file of ["tsconfig.json", "tsconfig.desktop.json", "extension/tsconfig.json", "web/tsconfig.json"]) {
+  for (const file of ["tsconfig.desktop.json", "extension/tsconfig.json", "web/tsconfig.json"]) {
     mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     writeFileSync(path.join(dir, file), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "bundler", strict: true, types: ["node"] }, include: ["**/*.ts"] }));
   }

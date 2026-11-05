@@ -7,7 +7,7 @@ import { copyFile, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page, Request } from "playwright";
-import { omitSecret, redactPayload } from "../../../src/mask";
+import { omitSecret, redactPayload } from "../../../shared/mask";
 import { launchOwnedChrome, pinTestBrowser } from "../launch";
 import { AuditTrail, deriveWorkflow, trimTrail } from "./audit";
 import { PageExecutor, preparePage } from "./executor";

@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { isSensitiveValue } from "../../../src/mask";
+import { isSensitiveValue } from "../../../shared/mask";
 import { deriveWorkflow, trimTrail, type AuditOrigin, type AuditTrail } from "./audit";
 import type { ActResult, Executor, NeutralAction, Observation } from "./neutral";
 import { MacOsHelper, targetFrom, type AxNode } from "./os-macos";

@@ -1,5 +1,4 @@
-// T1 masking. content.ts and the proxy audit trail both call this so a typed
-// card, SSN, or password is withheld the same way in both places.
+// Shared sensitive-field and value masking for desktop capture and audit trails.
 
 export const SENSITIVE_AC = new Set([
   "current-password", "new-password", "cc-number", "cc-csc", "cc-exp",
@@ -47,22 +46,8 @@ export function isSensitiveField(hint: FieldHint): boolean {
   return isSensitiveValue(hint.value || "");
 }
 
-export function isSensitiveElement(el: Element): boolean {
-  const input = el instanceof HTMLInputElement ? el : null;
-  return isSensitiveField({
-    type: input?.type || "",
-    autocomplete: el.getAttribute("autocomplete") || "",
-    name: el.getAttribute("name") || "",
-    id: el.id || "",
-    ariaLabel: el.getAttribute("aria-label") || "",
-    placeholder: el.getAttribute("placeholder") || "",
-    value: (el as HTMLInputElement).value || "",
-  });
-}
-
 /**
- * Copy a vendor payload with sensitive strings removed. The key is omitted,
- * matching maskStep, which deletes `value` rather than storing a placeholder.
+ * Copy a vendor payload with sensitive strings removed and their keys omitted.
  */
 export function redactPayload(value: unknown): { value: unknown; sensitive: boolean } {
   let sensitive = false;

@@ -14,11 +14,11 @@ Load an applicable skill by its name through the harness. If that load fails, re
 
 ## Run the checks that match the change
 
-`npm run typecheck` runs four passes: the root `tsc --noEmit`, `typecheck:desktop`, `typecheck:extension`, and the `web` typecheck. `npm run check` runs `npm run typecheck`, then the desktop unit suite.
+`npm run typecheck` runs three passes: `typecheck:desktop` (including shared code), `typecheck:extension`, and the `web` typecheck. `npm run check` runs `npm run typecheck`, then the desktop unit suite.
 
 `npm run test:v1` is the desktop unit suite. It compiles with `tsc -p tsconfig.desktop.json`, then `desktop/test/run-v1.mjs` runs the files in `desktop/test/unit`. A non-zero exit fails this pass. The runner drops `CI`, the vendor model keys, and every inherited name that starts with `BAO`, then sets `BAO_HEAL_CURSOR_ACCOUNT` to `0`. The suite does not request public hosts. The public demos are in `desktop/test/live/files-dates-public.test.ts`. They run only through `desktop/test/run-live.mjs`, which sets `BAO_LIVE_TESTS=1`. `desktop/test/README.md` describes both runners.
 
-`npm test` is the root suite. Its commands are in `docs/TESTING.md`.
+The old root extension and `npm test` entry point are retired. Current test commands are in `docs/TESTING.md`.
 
 Build an installed Mac app from `docs/mac-build.md`. The short human pass is `docs/mac-test.md`. Do not lengthen that card. Live Chrome needs Accessibility and either Automation for Google Chrome or an existing debugging listener. A closed Chrome leaves Automation neutral. Screen Recording on or off does not stop a live Chrome start. The engineering pass is `docs/agent-acceptance.md`. It records both helper bits and stops only when `helper.accessibility` is false. Permission switches are in `docs/permissions.md`. Extension install is in `docs/extension.md`. Live Chrome notes are in `docs/cdp-live-chrome.md`.
 

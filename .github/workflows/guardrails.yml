@@ -68,14 +68,6 @@ jobs:
           export HOME="$(mktemp -d)"
           trap 'rm -rf "$HOME"' EXIT
           npm --prefix web test
-      - name: Legacy extension tests
-        if: always() && !cancelled()
-        shell: bash
-        run: |
-          unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
-          export HOME="$(mktemp -d)"
-          trap 'rm -rf "$HOME"' EXIT
-          npm test
       - uses: actions/upload-artifact@v4
         if: always() && inputs.measure-coverage
         with:

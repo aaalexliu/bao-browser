@@ -1,4 +1,8 @@
-# Bao — Recording-Gap Task Specs & the App-Universe Map
+# Bao - Recording-Gap Task Specs & the App-Universe Map
+
+Historical root-extension capability map. Its root test files and public-site
+tools are retired with that extension. This is not the current test inventory;
+see [Testing](TESTING.md) and [desktop extension](extension.md).
 
 > Siblings: [[product-design-v1]] (architecture, IR, executor seam), [[m1-design]]
 > (cross-nav state machine), [[use-cases-and-snapshot-fallback]] (wedges, tiers,

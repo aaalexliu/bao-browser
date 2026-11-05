@@ -3,7 +3,7 @@
 // focused node is recorded beside it.
 
 import type { Page } from "playwright";
-import type { FieldHint } from "../../../src/mask";
+import type { FieldHint } from "../../../shared/mask";
 import type { Described } from "../page-fns";
 
 export interface AxFocus {

@@ -3,7 +3,7 @@
 
 import path from "node:path";
 import { resolveHome } from "../home";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import { bundledWindowVideoApp, openOsReplayVideo } from "../v1/replay-video";
 import type { MacOsHelper } from "./os-macos";
 

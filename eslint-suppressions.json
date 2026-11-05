@@ -463,56 +463,6 @@
       "count": 2
     }
   },
-  "src/background.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 38
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 2
-    }
-  },
-  "src/content.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "src/dashboard.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 14
-    },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 4
-    }
-  },
-  "src/sidepanel.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 16
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 2
-    }
-  },
   "web/src/app/login/login-form.tsx": {
     "@typescript-eslint/no-misused-promises": {
       "count": 1

@@ -93,13 +93,12 @@ Use `gh-axi pr edit <number> --add-label full-suite` to start the full check and
 keep it on later pushes while the label remains. Use
 `gh-axi workflow run guardrails.yml --ref <branch>` for a manual branch run.
 The workflow has no schedule, does not run on an unlabeled PR, and is not a
-required check. It runs hermetic desktop, web, and legacy extension tests, not
+required check. It runs hermetic desktop and web tests, not
 public-site tests or billable model evals. Report its actual result; do not call
 an essential pass a full-suite pass.
 
-Run focused local checks first. A local full pass is `npm run check` (four
-typechecks plus desktop units), `npm --prefix web test`, and `npm test`
-(extension/root regressions). Prefer the opt-in remote check to a full pass on
+Run focused local checks first. A local full pass is `npm run check` (three
+typechecks plus desktop units) and `npm --prefix web test`. Prefer the opt-in remote check to a full pass on
 this shared Mac. Do not stack full passes here. Start only when the one-minute load is below 30, acquire the shared mutex, then recheck load after acquiring it:
 
 ```bash
@@ -113,7 +112,7 @@ this shared Mac. Do not stack full passes here. Start only when the one-minute l
   until node -e 'process.exit(require("node:os").loadavg()[0] < 30 ? 0 : 1)'; do sleep 30; done
   unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
   export BAO_HEAL_CURSOR_ACCOUNT=0
-  ( cd "$REPO" && npm run check && npm --prefix web test && npm test ) >"$PROOF/full-suite.log" 2>&1
+  ( cd "$REPO" && npm run check && npm --prefix web test ) >"$PROOF/full-suite.log" 2>&1
 )
 ```
 

@@ -35,7 +35,6 @@ esac
 mkdir -p "$SMOKE"
 cp -a "$APP/Contents/Resources/bao" "$SMOKE/bao"
 cp -a "$APP/Contents/Resources/extension" "$SMOKE/extension"
-cp -a "$APP/Contents/Resources/src" "$SMOKE/src"
 cp -a "$APP/Contents/Resources/web" "$SMOKE/web"
 cp -a "$APP/Contents/Resources/shared" "$SMOKE/shared"
 env -u NODE_PATH -u NODE_OPTIONS HOME="$SMOKE_HOME" node "$ROOT/desktop/packaging/require-staged.js" "$SMOKE/bao"

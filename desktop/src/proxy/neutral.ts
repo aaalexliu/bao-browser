@@ -4,7 +4,7 @@
 // (OpenAI wheel, back, forward) stays on the vendor side as unsupported.
 
 import type { Page } from "playwright";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import type { AuditOrigin, AuditTrail } from "./audit";
 
 export interface DomSnap {

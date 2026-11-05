@@ -7,11 +7,11 @@ export default defineConfig([
     ".git/**", ".toolchain/**", ".cursor/**", "web/next-env.d.ts",
   ]),
   {
-    files: ["{desktop/src,desktop/test,extension/src,src,web/src,shared}/**/*.{ts,tsx}"],
+    files: ["{desktop/src,desktop/test,extension/src,web/src,shared}/**/*.{ts,tsx}"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        project: ["tsconfig.json", "tsconfig.desktop.json", "extension/tsconfig.json", "web/tsconfig.json"],
+        project: ["tsconfig.desktop.json", "extension/tsconfig.json", "web/tsconfig.json"],
         tsconfigRootDir: import.meta.dirname,
       },
     },

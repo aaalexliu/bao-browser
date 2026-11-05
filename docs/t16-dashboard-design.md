@@ -1,5 +1,8 @@
 # T16 - Full-page dashboard: manage, edit, and re-watch workflows + run history
 
+Historical root-extension design. That dashboard and its tests are retired.
+See [README](../README.md) for the desktop app.
+
 > Parent docs: [[product-design-v1]] (UI, M3 audit trail), [[t15-sidepanel-design]] (the
 > side panel this complements), [[m1-design]] (RunState machine).
 > Status: T15 shipped the side panel as the live capture/replay surface. This adds a

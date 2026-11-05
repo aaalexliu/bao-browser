@@ -1,4 +1,7 @@
-# T15 — Side Panel: browse, name, and replay workflows
+# T15 - Side Panel: browse, name, and replay workflows
+
+Historical root-extension design. That side panel and its tests are retired.
+See [desktop extension](extension.md) for the kept extension.
 
 > Parent docs: [[product-design-v1]] (§UI, M3 line item), [[m1-design]] (RunState machine,
 > `paused_for_user` → side-panel Continue), [[recording-gaps-and-app-universe]] (T14 workflows).

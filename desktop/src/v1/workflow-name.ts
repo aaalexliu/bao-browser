@@ -1,7 +1,7 @@
 // Deterministic workflow title. The URL is the floor, so a save always has a
 // name even when no model key is set. A model pass may replace it later.
 
-import { isSensitiveValue } from "../../../src/mask";
+import { isSensitiveValue } from "../../../shared/mask";
 import { isLoopbackHost, visibleCopy } from "./visible-copy";
 
 export interface NameEvent {

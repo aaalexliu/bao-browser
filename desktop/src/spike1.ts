@@ -9,7 +9,7 @@ import type { Page } from "playwright";
 import { launchOwnedChrome, pinTestBrowser } from "./launch";
 import { appOwnedProfileDir, assertNotDailyChrome } from "./profile";
 import { recordSession, replaySession, toWorkflow, type ReplayOutcome } from "./session";
-import type { Workflow } from "../../src/types";
+import type { Workflow } from "../../shared/types";
 
 const DOM_ACTIONS = new Set([
   "click", "input", "select", "setChecked", "keypress", "submit",
