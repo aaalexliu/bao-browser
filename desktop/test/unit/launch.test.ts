@@ -70,6 +70,9 @@ test("an account browser uses installed Chrome and skips Playwright automation s
   assert.equal(ownedChromeLaunchArgs([], {}, "linux").includes("--restore-last-session"), false);
   assert.equal(ownedChromeLaunchArgs(["--restore-last-session"], {}, "darwin").includes("--restore-last-session"), false);
   assert.throws(() => accountLaunchArgs(9222), /9222/);
+  assert.throws(() => accountLaunchArgs(0), /nonzero/);
+  assert.equal(ownedChromeLaunchArgs(["--remote-debugging-port=0", "--remote-debugging-port=9222"], {}, "darwin")
+    .some(arg => arg.startsWith("--remote-debugging-port")), false);
   const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
   if (process.platform === "darwin") {
     assert.equal(resolveAccountChrome((file) => file === chrome, {}), chrome);
@@ -232,6 +235,14 @@ test("BAO_BROWSER and the Playwright path must be executable files", () => {
   assert.equal(resolveNormalChrome(system, { BAO_BROWSER: exe }, "linux", () => plain), exe);
   assert.throws(() => resolveNormalChrome(system, {}, "linux", () => dir), /Chrome was not found/);
   assert.equal(resolveNormalChrome(system, {}, "linux", () => exe), exe);
+});
+
+test("remote debugging port zero is refused because it sets webdriver", () => {
+  for (const flag of ["--remote-debugging-port=0", "--remote-debugging-port 0"]) {
+    const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned, product);
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason || "", /navigator.webdriver/);
+  }
 });
 
 test("remote debugging port 9222 is refused", () => {

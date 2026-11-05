@@ -8,6 +8,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createServer } from "node:net";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { parseDevToolsActivePort, readDevToolsActivePort } from "./cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "./cdp-live/socket";
@@ -161,7 +162,7 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     "--restore-last-session",
   ]);
   const cleaned = extra.filter((arg) => {
-    if (drop.has(arg) || isKeychainFlag(arg)) return false;
+    if (drop.has(arg) || isKeychainFlag(arg) || chromeFlagName(arg) === "--remote-debugging-port") return false;
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
@@ -236,7 +237,7 @@ export function resolveAccountChrome(
 
 /** Flags for a normal Chrome window. No automation switch and no Playwright defaults. */
 export function accountLaunchArgs(port: number): string[] {
-  if (port === 9222) throw new Error("Chrome was started with remote-debugging-port 9222.");
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || port === 9222) throw new Error("Chrome needs a nonzero debugging port other than 9222.");
   const args = [
     `--remote-debugging-port=${port}`,
     "--no-first-run",
@@ -250,50 +251,56 @@ export function accountLaunchArgs(port: number): string[] {
   return args;
 }
 
-/**
- * Port 0: Chrome binds a free port itself. A port this process picked would
- * stay free until Chrome bound it, and a parallel launch could pick it too.
- * Both launches would then attach to one Chrome, and closing either one would
- * close both.
- */
-const OWNED_DEBUG_PORT = 0;
-
-function readActivePort(file: string): string | undefined {
-  try {
-    return readFileSync(file, "utf8");
-  } catch {
-    return undefined;
-  }
+/** Port zero makes headed Chrome set navigator.webdriver. Pick a nonzero port instead. */
+async function ownedDebugPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  if (!address || typeof address === "string") throw new Error("Chrome debugging port was not allocated");
+  return address.port === 9222 ? ownedDebugPort() : address.port;
 }
 
 /**
- * Spawn Chrome on its own profile and return the port it bound. Chrome writes
- * that port to DevToolsActivePort in the profile once it is listening. A file
- * left by an earlier Chrome on this profile is skipped: each start writes a new
- * browser id on its second line. A Chrome that bound 9222 is stopped.
+ * Trust only the endpoint printed by our child, never a listener that won the
+ * port between allocation and launch. A bind race fails startup, not ownership.
+ * Chrome writes DevToolsActivePort only for port zero, so publish this child's
+ * reported endpoint for the existing CDP clients.
  */
-async function spawnOwnedChrome(exe: string, args: string[], userDataDir: string, childHome?: string): Promise<{ child: ChildProcess; port: number }> {
-  const file = path.join(userDataDir, "DevToolsActivePort");
-  const stale = readActivePort(file);
-  const child: ChildProcess = spawn(exe, args, {
-    stdio: "ignore", env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string): Promise<{ child: ChildProcess; port: number }> {
+  const port = await ownedDebugPort();
+  const child: ChildProcess = spawn(exe, args(port), {
+    stdio: ["ignore", "ignore", "pipe"], env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+  });
+  let output = "";
+  let browserPath = "";
+  let spawnError: Error | undefined;
+  child.on("error", (error) => { spawnError = error; });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (browserPath) return;
+    output = (output + chunk.toString("utf8")).slice(-8192);
+    const match = output.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)(\/devtools\/browser\/[\w-]+)\r?\n/);
+    if (match && Number(match[1]) === port) browserPath = match[2]!;
   });
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
+    if (spawnError) throw spawnError;
     if (child.exitCode != null || child.signalCode != null) {
       throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})`);
     }
-    const text = readActivePort(file);
-    if (text && text !== stale) {
-      let port: number | undefined;
+    if (browserPath) {
+      const text = `${port}\n${browserPath}\n`;
+      parseDevToolsActivePort(text);
       try {
-        port = parseDevToolsActivePort(text).port;
-      } catch { /* Chrome is still writing the file. */ }
-      if (port === 9222) {
+        writeFileSync(path.join(userDataDir, "DevToolsActivePort"), text, { mode: 0o600 });
+      } catch (error) {
         child.kill("SIGTERM");
-        throw new Error("Chrome bound remote-debugging-port 9222.");
+        throw error;
       }
-      if (port !== undefined) return { child, port };
+      return { child, port };
     }
     await delay(50);
   }
@@ -381,8 +388,9 @@ export async function launchAccountChrome(opts: {
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
   const exe = resolveAccountChrome();
-  const args = [...accountLaunchArgs(OWNED_DEBUG_PORT), ...testLaneKeychainArgs(), ...testLaneMediaArgs()];
-  const { child, port } = await spawnOwnedChrome(exe, [`--user-data-dir=${opts.userDataDir}`, ...args], opts.userDataDir);
+  const { child, port } = await spawnOwnedChrome(exe, (debugPort) => [
+    `--user-data-dir=${opts.userDataDir}`, ...accountLaunchArgs(debugPort), ...testLaneKeychainArgs(), ...testLaneMediaArgs(),
+  ], opts.userDataDir);
   const stop = () => {
     if (child.exitCode == null) child.kill("SIGTERM");
   };
@@ -476,11 +484,10 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions): Promise<{ chi
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args, opts.appendArgs),
     ...(opts.preserveRestoredTabs ? ["--restore-last-session"] : []),
-    `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
   ];
-  return spawnOwnedChrome(exe, args, opts.userDataDir, opts.childHome);
+  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome);
 }
 
 /** Own the process and browser endpoint without attaching to page renderers. */
@@ -729,6 +736,9 @@ export function browserPidFromLauncher(userDataDir: string, selfPid: number, row
  * line always carries the mock keychain.
  */
 export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS.ProcessEnv = process.env): OwnedVerdict {
+  if (/--remote-debugging-port(?:=|\s+)0(?:\s|$)/.test(cmd)) {
+    return { ok: false, reason: "Chrome was started with remote-debugging-port 0, which sets navigator.webdriver." };
+  }
   if (/remote-debugging-port(?:=|\s+)9222/.test(cmd)) {
     return { ok: false, reason: "Chrome was started with remote-debugging-port 9222." };
   }
