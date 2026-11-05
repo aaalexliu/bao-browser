@@ -931,7 +931,7 @@ async function elementBox(loc: ReturnType<Page["locator"]>): Promise<{ box: Shot
   if (await loc.count().catch(() => 0) === 0) return null;
   const first = loc.first();
   if (!await first.isVisible()) return null;
-  await first.scrollIntoViewIfNeeded({ timeout: 250 }).catch(() => undefined);
+  await first.scrollIntoViewIfNeeded().catch(() => undefined);
   const handle = await first.elementHandle({ timeout: 250 }).catch(() => null);
   if (!handle) return null;
   const box = await handle.evaluate((el) => {
