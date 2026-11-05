@@ -58,7 +58,7 @@ const CATALOG_TOOLS = [
 
 const AGENT_BROWSER_TOOL = {
   name: "agent_browser",
-  description: "Run an agent-browser command with its native arguments and return its output unchanged. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, close. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. This route needs no running Bao app. It does not record, redact, or apply live-tool guards.",
+  description: "Run an agent-browser command with its native arguments and return its output unchanged. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, close. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. This route needs no running Bao app. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact, save a workflow, or apply live-tool guards.",
   inputSchema: {
     type: "object", properties: {
       command: { type: "string", enum: AGENT_BROWSER_COMMANDS },
@@ -73,7 +73,7 @@ export const TOOLS = [...CATALOG_TOOLS, ...LIVE_TOOLS, AGENT_BROWSER_TOOL];
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
-  "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. This path does not record or redact and does not use live-tool guards. It needs no running Bao app. The separate live_* workflow tools work as follows.",
+  "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. This path does not redact, save a workflow, or use live-tool guards. It needs no running Bao app. The separate live_* workflow tools work as follows.",
   "Bao drives a Chrome window for you and saves what you did as a workflow.",
   "To do a task in the browser:",
   "1. Start: live_session_start with the user's intent and the site's start page, such as its home or store page, not a search results url. The Bao app picks the Chrome to drive. portFile and preset are optional.",

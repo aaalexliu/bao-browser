@@ -562,6 +562,7 @@ export function runViewer(
   run: RunSummary,
   workflow: {
     name: string;
+    recordedOnly?: boolean;
     inputs?: { name: string; type?: string; choices?: string[] }[];
     steps: { id: string; label?: string; action?: string; index?: number; when?: { input?: string; value?: string; present?: string } }[];
   },
@@ -672,12 +673,12 @@ export function runViewer(
     ${pageClassPane(run)}
     ${envelopePane(run.envelope, failed ? { stepNumber: stopped, label: failed.label || failed.id } : undefined)}
     ${handoffPane(run.trail)}
-    <div class="row" id="run-actions">
+    ${workflow.recordedOnly ? "" : `<div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
-    </div>
+    </div>`}
     ${storedInputsLine(run.inputs)}
-    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed ? `<p class="quiet">${stopped <= 1 ? "No steps ran." : `Nothing after step ${stopped - 1} ran.`}</p><button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button> <button type="button" id="teach-fix" data-workflow="${esc(run.workflowId)}" data-step="${esc(failed.id)}">Teach this step</button>` : ""}</div>
+    <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed && !workflow.recordedOnly ? `<p class="quiet">${stopped <= 1 ? "No steps ran." : `Nothing after step ${stopped - 1} ran.`}</p>` : ""}${failed ? `<button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}${failed && !workflow.recordedOnly ? ` <button type="button" id="teach-fix" data-workflow="${esc(run.workflowId)}" data-step="${esc(failed.id)}">Teach this step</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>

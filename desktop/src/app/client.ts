@@ -1030,11 +1030,14 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
 
 async function showRun(id: string): Promise<void> {
   const run = await (await fetch("/api/runs/" + encodeURIComponent(id))).json() as RunSummary;
-  const workflow = await (await fetch("/api/workflows/" + encodeURIComponent(run.workflowId))).json() as { name: string; id: string; steps: { id: string; label?: string; action?: string }[] };
+  const response = await fetch("/api/workflows/" + encodeURIComponent(run.workflowId));
+  const workflow = response.ok
+    ? await response.json() as { name: string; id: string; steps: { id: string; label?: string; action?: string }[]; recordedOnly?: boolean }
+    : { name: run.workflowId, id: run.workflowId, steps: run.steps || [], recordedOnly: true };
   const host = document.getElementById("run-host");
   if (!host || screen !== "run" || openRun !== id) return;
   const timings = (run.steps || []).map((step) => Math.max(0, (step.endedAt || 0) - (step.startedAt || 0)));
-  const recorded = workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
+  const recorded = !workflow.recordedOnly && workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
   const recent = (state.runs || []).filter((item) => item.workflowId === run.workflowId);
   const merged = new Map(recent.map((item) => [item.id, item]));
   merged.set(run.id, run);
