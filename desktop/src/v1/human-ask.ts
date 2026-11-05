@@ -168,7 +168,6 @@ export function attentionCount(input: {
   importPhase?: string | null;
   pendingHeals: number;
   reviews?: number;
-  /** A live session that saves soon unless the person keeps it open. */
 }): number {
   let count = input.pendingHeals + (input.reviews || 0);
   if (input.ask) count += 1;
