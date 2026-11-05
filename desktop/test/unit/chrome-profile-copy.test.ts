@@ -260,7 +260,7 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
       for (const guide of [false, true]) {
         const response = await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: `wf-${driver}`, guide }) });
         assert.equal(response.status, 409);
-        assert.equal((await response.json() as { error: string }).error, "profile-copy runs use a recorded live workflow; start one with Bao's live tools");
+        assert.equal((await response.json() as { error: string }).error, "pass-through sessions do not support saved workflow replay");
       }
     }
     assert.equal(app.library.settings().chromeProfile, "Default");
