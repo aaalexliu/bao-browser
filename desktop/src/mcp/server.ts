@@ -136,6 +136,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const end = (): void => {
     if (ending) return;
     ending = true;
+    ctx.proxy.disconnect();
     ended();
     void chain
       .then(() => ctx.liveUsed ? limited(postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env), gone) : undefined)
