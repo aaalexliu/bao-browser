@@ -26,6 +26,10 @@ test("window close and proxy cleanup await the owned shutdown before reopening",
     const context = await ownedLaunch({ ...options, headless: true });
     contexts.push(context);
     copies.push(options.userDataDir);
+    const page = context.pages()[0]!;
+    await page.goto("chrome://version");
+    assert.match(await page.locator("#command_line").innerText(), /(?:^|\s)--disable-extensions(?:\s|$)/);
+    await page.goto("about:blank");
     return context;
   });
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });

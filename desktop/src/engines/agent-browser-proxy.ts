@@ -83,7 +83,6 @@ export class AgentBrowserProxy {
     if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
     const chrome = await openCopiedChrome({
       sourceRoot: this.options.sourceRoot ?? chromeProfilesRoot(), directory: this.options.directory || "Default", home: this.options.home,
-      loadExtensions: true,
     });
     let stateDir: string | undefined;
     try {

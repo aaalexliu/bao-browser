@@ -84,7 +84,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
   const env = envFor(root, sourceRoot);
   const home = env.BAO_HOME!;
   const rawHome = path.join(root, "raw-home");
-  const rawChrome = await openCopiedChrome({ sourceRoot, directory: "Default", home: rawHome, loadExtensions: true });
+  const rawChrome = await openCopiedChrome({ sourceRoot, directory: "Default", home: rawHome });
   const rawEndpoint = await readDevToolsActivePort(rawChrome.target.portFile);
   const nativeState = path.join(root, "native-state");
   await mkdir(nativeState);
