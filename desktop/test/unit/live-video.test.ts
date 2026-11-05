@@ -44,9 +44,10 @@ describe("live windows use the shared CDP recorder", { timeout: 180_000, skip: !
       const finishVideo = CdpLiveDriver.prototype.finishVideo;
       const startVideo = CdpLiveDriver.prototype.startVideo;
       t.mock.method(CdpSocket.prototype, "close", function (this: CdpSocket) {
+        const wasOpen = this.isOpen;
         close.call(this);
         assert.equal(this.isOpen, false);
-        closed += 1;
+        if (wasOpen) closed += 1;
       });
       t.mock.method(CdpLiveDriver.prototype, "startVideo", async function (this: CdpLiveDriver, dest: string, opts: { noBlur?: true } = {}) {
         modes.push(opts.noBlur);
