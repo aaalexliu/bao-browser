@@ -44,6 +44,7 @@ if (args.includes(${JSON.stringify(blockCommand)})) {
     BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_TEST_BROWSER: pinTestBrowser(),
     BAO_AGENT_BROWSER: executable, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot,
     ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
+    ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
   };
   const namespace = createHash("sha256").update(path.resolve(home)).digest("hex").slice(0, 20);
   const copies = path.join(tmpdir(), `bao-profile-copies-${namespace}`);
