@@ -442,7 +442,7 @@ export async function launchOwnedChrome(opts: {
   /** Only Chrome gets this HOME. Bao keeps its own isolated state and native-host paths. */
   childHome?: string;
   loadExtensions?: boolean;
-  /** Force saved-tab restore for a prepared profile instead of parking on blank. */
+  /** Restore a prepared profile's saved tabs; park on blank only if all pages are startup pages. */
   preserveRestoredTabs?: boolean;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
