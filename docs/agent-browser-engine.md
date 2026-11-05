@@ -43,11 +43,13 @@ When the active tab's URL or title signals sign-in, a verification code, Imperva
 {"command":"wait_for_owner","args":["60000"]}
 ```
 
-The optional argument is a timeout in milliseconds: 1 to 120000, with a default of 60000. Each call returns within Codex's 180-second tool limit. On `waiting`, call it again without ending the agent turn. On `ready`, take a fresh `snapshot` and continue in the same session. On `closed`, report that the owner closed the tab or browser. Do not start another MCP process to resume this window.
+The optional argument is a timeout in milliseconds: 1 to 120000, with a default of 60000. Each call returns within Codex's 180-second tool limit. On `waiting`, call it again without ending the agent turn. Temporary metadata or CDP errors keep the handoff open and retry until the call's deadline. On `ready`, take a fresh `snapshot` and continue in the same session. On `closed`, report that this session cannot continue: the active tab was missing, the pinned tab disappeared, the browser connection closed, or the session was aborted. Later commands cannot resume that session. Do not start another MCP process to resume this window.
+
+Ending a session during an owner wait finalizes its Library run as `failed` with reason `session_closed`, replacing the waiting notice. A `closed` result does the same even if the wait started without an active tab.
 
 During handoff, Bao polls only the pinned tab's URL and title through browser-level CDP. It does not run native page commands, inspect fields, read text, take snapshots, or save screenshots. Attempts to use other page commands return the handoff without recording their arguments. `close` remains available. `wait_for_owner` never forwards a native command and never saves a page picture.
 
-Readiness means the URL or title changed, no longer matches a sign-in/check marker, and stayed stable for 750 milliseconds. It is not proof of authentication. A check that keeps the same URL and title stays waiting, even if its page content changes. An unrecognized check can use `wait_for_owner` to enter this same private wait state. Metadata detection is not a claim that Bao can identify every sign-in form or embedded challenge.
+Readiness means the tab has an HTTP(S) URL and a nonblank title, its URL or title changed, neither matches a sign-in/check marker, and both stayed stable for 750 milliseconds. It is not proof of authentication. A check that keeps the same URL and title stays waiting, even if its page content changes. An unrecognized check can use `wait_for_owner` to enter this same private wait state. Metadata detection is not a claim that Bao can identify every sign-in form or embedded challenge.
 
 ## Pick an engine and profile
 
