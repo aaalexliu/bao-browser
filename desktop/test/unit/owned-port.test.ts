@@ -67,11 +67,8 @@ test("a browser that binds port 9222 is refused and stopped", { timeout: 30_000 
   const pidFile = path.join(root, "fake.pid");
   await writeFile(exe, [
     "#!/bin/sh",
-    "for arg in \"$@\"; do",
-    "  case \"$arg\" in --user-data-dir=*) dir=\"${arg#--user-data-dir=}\" ;; esac",
-    "done",
     `echo $$ > "${pidFile}"`,
-    "printf '9222\\n/devtools/browser/fake-id\\n' > \"$dir/DevToolsActivePort\"",
+    "printf 'DevTools listening on ws://127.0.0.1:9222/devtools/browser/fake-id\\n' >&2",
     "exec sleep 60",
     "",
   ].join("\n"));

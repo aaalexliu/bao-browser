@@ -8,7 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { chromium, type BrowserContext } from "playwright";
 import { launchOwnedChrome } from "../../src/launch";
-import { copyChromeProfile, listChromeProfiles, openCopiedChrome } from "../../src/engines/chrome-profile-copy";
+import { copyChromeProfile, listChromeProfiles, openCopiedChrome, openCopiedChromeForProxy } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 
 interface TestPreferences {
@@ -299,11 +299,13 @@ test("only the copied Chrome child gets the passwd HOME; Bao's isolated HOME sta
     throw new Error("observed child environment without launching Chrome");
   });
   try {
-    await assert.rejects(openCopiedChrome({ ...f, directory: "Default" }), /observed child environment/);
-    assert.ok(observed);
-    assert.equal(observed.HOME, userInfo().homedir);
-    assert.equal(observed.BAO_HEAL_CURSOR_ACCOUNT, process.env.BAO_HEAL_CURSOR_ACCOUNT);
-    assert.equal(process.env.HOME, parentHome);
+    for (const open of [openCopiedChrome, openCopiedChromeForProxy]) {
+      await assert.rejects(open({ ...f, directory: "Default" }), /observed child environment/);
+      assert.ok(observed);
+      assert.equal(observed.HOME, userInfo().homedir);
+      assert.equal(observed.BAO_HEAL_CURSOR_ACCOUNT, process.env.BAO_HEAL_CURSOR_ACCOUNT);
+      assert.equal(process.env.HOME, parentHome);
+    }
   } finally { await f.close(); }
 });
 
