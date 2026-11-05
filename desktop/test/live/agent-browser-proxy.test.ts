@@ -12,6 +12,7 @@ import { openCopiedChrome } from "../../src/engines/chrome-profile-copy";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { ACCOUNT_CHROME_MAC, pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
+import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 const installed = process.env.AGENT_BROWSER_PROXY_INSTALLED_CHROME === "1";
@@ -46,6 +47,7 @@ function mcp(env: NodeJS.ProcessEnv) {
     request,
     call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } }),
     async close() { child.stdin.end(); await exited; },
+    async stop() { child.kill("SIGTERM"); await exited; },
   };
 }
 
@@ -86,14 +88,14 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
   const rawHome = path.join(root, "raw-home");
   const rawChrome = await openCopiedChrome({ sourceRoot, directory: "Default", home: rawHome });
   const rawEndpoint = await readDevToolsActivePort(rawChrome.target.portFile);
-  const nativeState = path.join(root, "native-state");
-  await mkdir(nativeState);
+  // Keep the native Unix socket below macOS's 103-byte path limit in deep worktrees.
+  const nativeState = await mkdtemp(path.join(tmpdir(), "ab-"));
   const config = path.join(nativeState, "config.json");
   await writeFile(config, "{}");
   const rawEnv = { HOME: nativeState, PATH: "/usr/bin:/bin", TMPDIR: nativeState, LANG: "en_US.UTF-8", AGENT_BROWSER_SOCKET_DIR: nativeState, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", DISPLAY: process.env.DISPLAY };
   const flags = ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${rawEndpoint.port}${rawEndpoint.browserPath}`, "--idle-timeout", "0"];
   const native = (command: string, args: string[]) => run(binary!, [...flags, command, ...args], { cwd: nativeState, env: rawEnv, maxBuffer: 16 * 1024 * 1024 });
-  const server = createServer((_req, res) => res.end(`<!doctype html><title>Proxy fixture</title>
+  const server = createServer((req, res) => res.end(req.url?.includes("?static") ? '<!doctype html><title>Static fixture</title><h1>Stable screenshot</h1>' : `<!doctype html><title>Proxy fixture</title>
 <label>Name <input id="name"></label><label>Password <input id="password" type="password"></label>
 <button id="save" onclick="document.querySelector('#result').textContent='Saved '+document.querySelector('#name').value">Save</button>
 <p id="result">Not saved</p><p id="identity"></p><div style="height:3000px">Scroll fixture</div>
@@ -111,6 +113,10 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       ["open", [url]], ["snapshot", ["-i"]], ["fill", ["#name", "Ada 'quoted' \"name\""]],
       ["fill", ["#password", "synthetic-password"]], ["press", ["Tab"]], ["click", ["#save"]],
       ["snapshot", [], /Saved Ada/], ["scroll", ["down", "100"]], ["screenshot", [path.join(root, "page.png")]],
+      ["open", [url + "?static"]],
+      ["screenshot", ["--if-changed", path.join(root, "page.png")]],
+      ["screenshot", ["--if-changed", path.join(root, "page.png")]],
+      ["open", [url]],
       ["tab", ["new", url + "?signed-in"]], ["open", [url + "?signed-in"]], ["tab", ["list"]],
       ["tab", ["t1"]], ["snapshot", ["-s", "#identity"], /Signed out/],
       ["tab", ["t2"]], ["snapshot", ["-s", "#identity"], /Signed in/], ["close", []],
@@ -119,7 +125,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       const actual = await client.call(command, args);
       assert.equal(actual.isError, false, JSON.stringify(actual));
       if (command === "screenshot") {
-        const image = await readFile(args[0]!);
+        const image = await readFile(args.at(-1)!);
         assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
         if (process.env.AGENT_BROWSER_PROXY_ARTIFACTS) {
           await mkdir(process.env.AGENT_BROWSER_PROXY_ARTIFACTS, { recursive: true });
@@ -141,10 +147,25 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
     await assert.rejects(access(proxyCopy), /ENOENT/);
     const library = new Library(home);
     assert.equal(library.list().length, 0, "the pass-through does not save a workflow");
+    const saved = library.listRuns();
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0]!.status, "passed");
+    const steps = saved[0]!.steps as RecordedAgentBrowserCommand[];
+    assert.deepEqual(steps.map((step) => [step.native.command, step.native.args]), commands.map(([command, args]) => [command, args]));
+    for (const [index, step] of steps.entries()) {
+      const reply = (transcript[index] as { bao: string[] }).bao;
+      assert.deepEqual(step.native.results.flatMap((result) => [result.stdout, result.stderr].filter(Boolean)), reply);
+      assert.equal(step.native.isError, false);
+      assert.ok(step.endedAt! >= step.startedAt);
+      if (step.native.command === "close") assert.match(step.afterShotError!, /Session closed/);
+      else assert.equal((await readFile(path.join(home, "shots", "runs", saved[0]!.id, step.afterShot!))).subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    }
     await client.call("open", [url]);
     proxyCopy = await currentCopy(home);
     await client.close();
     await assert.rejects(access(proxyCopy), /ENOENT/, "disconnect removes the owned copy");
+    assert.equal(library.listRuns().length, 2);
+    assert.ok(library.listRuns().every((run) => run.status === "passed"), "disconnect finalizes its own run");
     if (process.env.AGENT_BROWSER_PROXY_ARTIFACTS) {
       await mkdir(process.env.AGENT_BROWSER_PROXY_ARTIFACTS, { recursive: true });
       await writeFile(path.join(process.env.AGENT_BROWSER_PROXY_ARTIFACTS, "parity.json"), JSON.stringify(transcript, null, 2));
@@ -156,6 +177,68 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rmdir(copies(home)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
     await rmdir(copies(rawHome));
+    await rm(nativeState, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("relative, implicit and JPEG native screenshots survive MCP close, disconnect and agent termination", { skip: !binary || installed, timeout: 180_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-record-"));
+  const env = envFor(root, await source(root));
+  const home = env.BAO_HOME!;
+  const server = createServer((_req, res) => res.end('<!doctype html><title>Recorded fixture</title><h1>Durable screenshot</h1>'));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const url = `http://127.0.0.1:${address.port}/`;
+  const library = new Library(home);
+  try {
+    for (const ending of ["close", "disconnect", "signal"]) {
+      const client = mcp(env);
+      try {
+        await client.request("initialize");
+        assert.equal((await client.call("open", [url])).isError, false);
+        const replies: Result[] = [];
+        for (const args of [["relative.png"], ["--json"], ["--json", "--screenshot-format", "jpeg", "relative.jpg"]]) {
+          const reply = await client.call("screenshot", args);
+          assert.equal(reply.isError, false, JSON.stringify(reply));
+          replies.push(reply);
+        }
+        const partial = library.listRuns().find((run) => run.status === "recording")!;
+        assert.ok(partial, "commands persist before finalization");
+        const steps = partial.steps as RecordedAgentBrowserCommand[];
+        assert.equal(steps.length, 4);
+        for (const [index, step] of steps.slice(1).entries()) {
+          assert.deepEqual(step.native.results.flatMap((result) => [result.stdout, result.stderr].filter(Boolean)), replies[index]!.content.map((item) => item.text));
+          assert.equal(step.native.screenshots.length, 1);
+          const artifact = step.native.screenshots[0]!;
+          const implicit = JSON.parse(steps[2]!.native.results[0]!.stdout) as { data: { path: string } };
+          const stateDir = implicit.data.path;
+          const original = path.isAbsolute(artifact.path) ? artifact.path : path.resolve(stateDir.split(`${path.sep}.agent-browser${path.sep}`)[0]!, artifact.path);
+          assert.deepEqual(await readFile(path.join(home, "shots", "runs", partial.id, artifact.file)), await readFile(original));
+        }
+        const copy = await currentCopy(home);
+        if (ending === "close") await client.call("close");
+        else if (ending === "signal") await client.stop();
+        else await client.close();
+        await assert.rejects(access(copy), /ENOENT/);
+        const finalized = library.readRun(partial.id);
+        assert.equal(finalized.status, "passed");
+        for (const step of finalized.steps as RecordedAgentBrowserCommand[]) {
+          for (const artifact of step.native.screenshots) await access(path.join(home, "shots", "runs", partial.id, artifact.file));
+        }
+        if (process.env.AGENT_BROWSER_PROXY_ARTIFACTS) {
+          const dest = path.join(process.env.AGENT_BROWSER_PROXY_ARTIFACTS, ending);
+          await mkdir(dest, { recursive: true });
+          await writeFile(path.join(dest, "run.json"), JSON.stringify(finalized, null, 2));
+        }
+      } finally { await client.close(); }
+    }
+    assert.equal(library.listRuns().length, 3);
+    assert.equal(library.list().length, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rmdir(copies(home)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
     await rm(root, { recursive: true, force: true });
   }
 });

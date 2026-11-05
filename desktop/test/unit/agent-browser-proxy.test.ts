@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Socket } from "node:net";
 import test, { type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
+import * as sockets from "../../src/cdp-live/socket";
+import { Library } from "../../src/v1/store";
+import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
 
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-test-"));
@@ -26,6 +32,11 @@ async function fixture(t: TestContext) {
     closeWindow = closedWindow;
     const close = async () => { closeCount++; closedWindow(); await copy.close(); };
     return { target: { kind: "bao" as const, portFile }, parkedTargetId: "ABC123", closed, bytes: copy.bytes, copyMs: copy.copyMs, close };
+  });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string) => method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
+    return cdp;
   });
   const executable = path.join(root, "native");
   const log = path.join(root, "calls.jsonl");
@@ -53,6 +64,7 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
+else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, directory: "Profile 2", executable });
@@ -83,7 +95,8 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     const text = "spaces 'quotes' \"double\"\nline two";
     assert.deepEqual(await f.proxy.execute("fill", ["@e2", text]), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
     const records = await f.calls();
-    assert.deepEqual(records[2]!.args.slice(-3), ["fill", "@e2", text]);
+    const filled = records.find((call) => call.args.includes("fill"))!;
+    assert.deepEqual(filled.args.slice(-3), ["fill", "@e2", text]);
     const flags = records[0]!.args;
     assert.equal(flags[flags.indexOf("--session") + 1], "bao");
     assert.equal(flags[flags.indexOf("--cdp") + 1], "ws://127.0.0.1:12345/devtools/browser/proxy-test");
@@ -96,7 +109,7 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     assert.equal(preferences.profile.name, "Bao copy of Synthetic");
     assert.equal(preferences.profile.avatar_index, 31);
     assert.equal(await readFile(path.join(f.sourceRoot, "Profile 2", "Preferences"), "utf8"), source);
-    assert.equal(records[0]!.env.AGENT_BROWSER_SOCKET_DIR, records[2]!.env.AGENT_BROWSER_SOCKET_DIR);
+    assert.equal(records[0]!.env.AGENT_BROWSER_SOCKET_DIR, filled.env.AGENT_BROWSER_SOCKET_DIR);
     assert.equal(records[0]!.env.HOME, records[0]!.env.AGENT_BROWSER_SOCKET_DIR);
     assert.equal(records[0]!.env.OPENAI_API_KEY, undefined);
     assert.deepEqual(await f.proxy.execute("close"), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
@@ -243,6 +256,75 @@ for (const duringCommand of [false, true]) {
     } finally { await f.close(); }
   });
 }
+
+test("proxy saves raw commands, native errors, timing, screenshots, partial runs and one run per session", async (t) => {
+  const f = await fixture(t);
+  try {
+    const library = new Library(path.join(f.root, "home"));
+    const opened = await f.proxy.execute("open", ["http://127.0.0.1/"]);
+    const partial = library.listRuns()[0]!;
+    assert.equal(partial.status, "recording");
+    assert.equal(partial.kind, "capture");
+    assert.equal(partial.pageEngine, "agent-browser");
+    assert.equal(partial.modelCalls, undefined);
+    const text = "ghp_syntheticsecretvalue";
+    const filled = await f.proxy.execute("fill", ["@e2", text]);
+    const failed = await f.proxy.execute("click", ["fail"]);
+    const closed = await f.proxy.execute("close");
+    const saved = library.readRun(partial.id);
+    assert.equal(saved.status, "failed");
+    const steps = saved.steps as RecordedAgentBrowserCommand[];
+    assert.deepEqual(steps.map((step) => step.native.command), ["open", "fill", "click", "close"]);
+    assert.deepEqual(steps.map((step) => step.native.results), [opened, filled, failed, closed]);
+    assert.deepEqual(steps[1]!.native.args, ["@e2", text]);
+    assert.equal(steps[2]!.native.isError, true);
+    for (const step of steps) {
+      assert.ok(step.endedAt! >= step.startedAt);
+      if (step.native.command === "close") assert.match(step.afterShotError!, /Session closed/);
+      else assert.deepEqual(await readFile(path.join(library.root, "shots", "runs", saved.id, step.afterShot!)), png);
+    }
+    assert.equal(library.list().length, 0, "recording does not create a workflow");
+    await f.proxy.execute("open");
+    f.proxy.disconnect();
+    await f.proxy.close();
+    assert.equal(library.listRuns().length, 2);
+    assert.equal(library.listRuns().filter((run) => run.status === "recording").length, 0);
+  } finally { await f.close(); }
+});
+
+test("recording write and screenshot failures do not change native command results", async (t) => {
+  const f = await fixture(t);
+  const warnings: string[] = [];
+  t.mock.method(process.stderr, "write", (text: string) => { warnings.push(text); return true; });
+  t.mock.method(Library.prototype, "saveRun", () => { throw new Error("disk full"); });
+  t.mock.method(sockets, "connectCdp", async () => { throw new Error("screenshot unavailable"); });
+  try {
+    assert.deepEqual(await f.proxy.execute("open"), [
+      { stdout: "open unchanged\n", stderr: "", exitCode: 0 },
+      { stdout: "t1 Synthetic - http://127.0.0.1/\n", stderr: "", exitCode: 0 },
+    ]);
+    assert.deepEqual(await f.proxy.execute("fill", ["#password", "synthetic-password"]), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
+    assert.deepEqual(await f.proxy.execute("close"), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
+    assert.ok(warnings.some((text) => text.includes("run write")));
+    assert.ok(warnings.some((text) => text.includes("page screenshot")));
+    assert.ok(warnings.every((text) => !text.includes("synthetic-password")));
+  } finally { await f.close(); }
+});
+
+test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: 6000 }, async (t) => {
+  const f = await fixture(t);
+  t.mock.method(sockets, "connectCdp", async () => {
+    const socket = new Socket();
+    t.mock.method(socket, "write", () => true);
+    return new sockets.CdpSocket(socket);
+  });
+  try {
+    assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");
+    const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
+    assert.equal((run.steps as RecordedAgentBrowserCommand[])[0]!.afterShotError, "Page screenshot unavailable.");
+    assert.equal((await f.proxy.execute("close"))[0]!.stdout, "close unchanged\n");
+  } finally { await f.close(); }
+});
 
 test("proxy rejects malformed commands and attempts to replace its fixed session", async (t) => {
   const f = await fixture(t);

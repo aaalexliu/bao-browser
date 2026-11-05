@@ -1,6 +1,7 @@
 // The library is files under one directory. Sync state lives beside it, not in here.
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact, scrubSaved } from "../../../shared/saved-secrets";
 import type { HealSettings } from "./heal";
@@ -242,7 +243,14 @@ export class Library {
   }
 
   saveRun(run: StoredRun): void {
-    writeFileSync(path.join(this.root, "runs", `${run.id}.json`), JSON.stringify(this.scrub(run, run.workflowId), null, 2));
+    const file = path.join(this.root, "runs", `${run.id}.json`);
+    const temporary = `${file}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(temporary, JSON.stringify(this.scrub(run, run.workflowId), null, 2));
+      renameSync(temporary, file);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
   }
 
   readRun(id: string): StoredRun {

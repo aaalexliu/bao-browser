@@ -3,6 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
+import { connectCdp, type CdpSocket } from "../cdp-live/socket";
+import { AgentBrowserRun } from "./agent-browser-record";
 import { agentBrowserExecutable } from "./agent-browser";
 import { chromeProfilesRoot, openCopiedChrome } from "./chrome-profile-copy";
 
@@ -22,6 +24,8 @@ interface Session {
   flags: string[];
   env: NodeJS.ProcessEnv;
   abort: AbortController;
+  recording: AgentBrowserRun;
+  commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
 }
@@ -32,7 +36,6 @@ export class AgentBrowserProxy {
 
   constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string }) {}
 
-  // All forwarded commands and their raw results cross this boundary. Recording belongs here next.
   async execute(command: unknown, args: unknown = []): Promise<AgentBrowserCommandResult[]> {
     if (!AGENT_BROWSER_COMMANDS.includes(command as AgentBrowserCommand)) throw new Error("unknown agent-browser command");
     if (!Array.isArray(args) || !args.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
@@ -50,17 +53,30 @@ export class AgentBrowserProxy {
       void session.chrome.closed.then(() => session.closing ? undefined : this.remove(session)).catch(() => undefined);
     }
     const session = this.session;
-    if (command === "close") {
-      session.closing = true;
-      try { return [await this.run(session, "close", args)]; }
-      finally { await this.remove(session); }
+    if (command === "close") session.closing = true;
+    let commandDone!: () => void;
+    session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
+    const step = session.recording.begin(command as string, args);
+    const results: AgentBrowserCommandResult[] = [];
+    let failure: unknown;
+    try {
+      results.push(await this.run(session, command as string, args));
+      if (command === "open" && results[0]!.exitCode === 0) {
+        // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
+        results.push(await this.run(session, "tab", ["list"]));
+      }
+      return results;
+    } catch (error) {
+      failure = error;
+      throw error;
+    } finally {
+      try {
+        await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string), failure);
+      } finally {
+        commandDone();
+        if (command === "close") await this.remove(session);
+      }
     }
-    const result = await this.run(session, command as string, args);
-    if (command === "open" && result.exitCode === 0) {
-      // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
-      return [result, await this.run(session, "tab", ["list"])];
-    }
-    return [result];
   }
 
   disconnect(): void {
@@ -91,7 +107,7 @@ export class AgentBrowserProxy {
       await writeFile(config, "{}", { mode: 0o600 });
       const endpoint = await readDevToolsActivePort(chrome.target.portFile);
       return {
-        chrome, stateDir, executable, abort: new AbortController(),
+        chrome, stateDir, executable, abort: new AbortController(), recording: new AgentBrowserRun(this.options.home),
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
           "--idle-timeout", "0"],
         env: {
@@ -107,11 +123,34 @@ export class AgentBrowserProxy {
     }
   }
 
-  private run(session: Session, command: string, args: string[]): Promise<AgentBrowserCommandResult> {
+  private async screenshot(session: Session, command: string): Promise<Buffer> {
+    if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
+    const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(3000)]);
+    let cdp: CdpSocket | undefined;
+    const close = () => cdp?.close();
+    signal.addEventListener("abort", close, { once: true });
+    try {
+      const tabs = await this.run(session, "tab", ["list", "--json"], signal);
+      const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
+      const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+      if (!targetId) throw new Error("no active page");
+      const endpoint = await readDevToolsActivePort(session.chrome.target.portFile);
+      cdp = await connectCdp(endpoint.port, endpoint.browserPath, { signal, timeoutMs: 3000 });
+      if (signal.aborted) throw new Error("screenshot timed out");
+      const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 3000);
+      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, sessionId, 3000);
+      return Buffer.from(data, "base64");
+    } finally {
+      signal.removeEventListener("abort", close);
+      cdp?.close();
+    }
+  }
+
+  private run(session: Session, command: string, args: string[], signal = session.abort.signal): Promise<AgentBrowserCommandResult> {
     if (this.disconnected) return Promise.reject(new Error("agent-browser client disconnected"));
     return new Promise((resolve, reject) => {
       execFile(session.executable, [...session.flags, command, ...args], {
-        cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: session.abort.signal,
+        cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal,
       }, (error, stdout, stderr) => {
         if (error && typeof error.code !== "number") { reject(error); return; }
         resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
@@ -122,6 +161,8 @@ export class AgentBrowserProxy {
   private remove(session: Session): Promise<void> {
     return session.removing ??= (async () => {
       session.abort.abort();
+      await session.commandDone;
+      session.recording.finish();
       try {
         const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
         if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) process.kill(pid, "SIGTERM");

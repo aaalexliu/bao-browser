@@ -50,7 +50,7 @@ In `live-session/session.json`, `start` and `navigate` audit labels that parse a
 
 ### Secret text in saved files
 
-Bao strips detected secrets in owned user-value fields when it saves live trails, run records and workflows. Firstmate 009 limits replacement to the typed `USER_VALUE_FIELDS` allowlist in `shared/saved-secrets.ts`:
+Bao strips detected secrets in owned user-value fields when it saves live trails, run records and workflows. The separate [direct MCP recording contract](agent-browser-engine.md#direct-mcp-commands) covers raw pass-through evidence outside those fields. Firstmate 009 limits replacement to the typed `USER_VALUE_FIELDS` allowlist in `shared/saved-secrets.ts`:
 
 | Owner | Saved values checked |
 | --- | --- |
