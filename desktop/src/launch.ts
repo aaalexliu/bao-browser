@@ -489,7 +489,15 @@ async function launchNormalChrome(opts: {
     if (opts.deviceScaleFactor && opts.deviceScaleFactor !== 1) await applyDeviceScale(context, opts.deviceScaleFactor);
     const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
-    if (!opts.preserveRestoredTabs) await parkOnBlank(context);
+    if (opts.preserveRestoredTabs) {
+      while (context.pages().every((page) => page.isClosed())) {
+        if (!browser.isConnected()) throw new Error("Chrome closed before opening a page");
+        await delay(50);
+      }
+      if (context.pages().filter((page) => !page.isClosed()).every((page) => startupUrl(page.url()))) await parkOnBlank(context);
+    } else {
+      await parkOnBlank(context);
+    }
     let closed = false;
     browser.on("disconnected", () => {
       if (!closed) stop();

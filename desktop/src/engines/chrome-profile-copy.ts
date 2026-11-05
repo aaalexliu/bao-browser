@@ -194,13 +194,7 @@ export async function openCopiedChrome(options: {
       args: copy.launchArgs,
     });
     const closed = new Promise<void>((resolve) => context!.once("close", () => resolve()));
-    const deadline = Date.now() + 5000;
-    let parkedPage = context.pages().find((page) => !page.isClosed());
-    while (!parkedPage && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      parkedPage = context.pages().find((page) => !page.isClosed());
-    }
-    if (!parkedPage) throw new Error("copied Chrome did not open a page");
+    const parkedPage = context.pages().find((page) => !page.isClosed())!;
     const session = await context.newCDPSession(parkedPage);
     const { targetInfo } = await session.send("Target.getTargetInfo");
     await session.detach();

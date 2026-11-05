@@ -297,6 +297,7 @@ test("closing a left-open copied Chrome releases its lease before the next repla
     copies.push(copy);
     const context = contexts.at(-1)!;
     parked = context.pages()[0]!;
+    assert.equal(parked.url(), "about:blank");
     if (otherWindows) {
       if (otherWindows === "navigated") await context.pages()[0]!.goto(url + "/manual");
       await context.newPage();

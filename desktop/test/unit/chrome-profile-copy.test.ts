@@ -456,7 +456,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
       const browser = await connect(...args);
       restored = browser.contexts()[0]!;
       const pages = restored.pages.bind(restored);
-      const visibleAt = Date.now() + 300;
+      const visibleAt = Date.now() + 6000;
       t.mock.method(restored, "pages", () => {
         if (Date.now() >= visibleAt) return pages();
         emptyReads++;
