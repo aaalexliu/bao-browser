@@ -584,7 +584,6 @@ async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
   childHome?: string;
   loadExtensions?: boolean;
-  preserveRestoredTabs?: boolean;
   videoDir?: string;
   headless?: boolean;
   args?: string[];
@@ -593,10 +592,8 @@ async function launchOwnedChromeForVideo(opts: {
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
-  if (!opts.preserveRestoredTabs) {
-    keepSessionCookies(opts.userDataDir);
-    discardRestoredTabs(opts.userDataDir);
-  }
+  keepSessionCookies(opts.userDataDir);
+  discardRestoredTabs(opts.userDataDir);
   const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
@@ -607,13 +604,11 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: [...ownedLaunchArgs(opts.args, opts.appendArgs),
-      ...(opts.preserveRestoredTabs ? ["--restore-last-session"] : []),
-      ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
+    args: [...ownedLaunchArgs(opts.args, opts.appendArgs), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);
-    if (!opts.preserveRestoredTabs) await parkOnBlank(ctx);
+    await parkOnBlank(ctx);
   } catch (err) {
     await ctx.close();
     throw err;

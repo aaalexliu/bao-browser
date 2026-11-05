@@ -446,6 +446,10 @@ test("copied Chrome restores two tabs through delayed product startup while sour
     } while (Date.now() < sourceDeadline);
     assert.equal(sourcePrefs.profile.exit_type, "Crashed");
     assert.deepEqual((await values(source)).sort(), ["alpha", "beta"]);
+    const launches = require("../../src/launch") as typeof import("../../src/launch");
+    const launch = launches.launchOwnedChrome;
+    t.mock.method(launches, "launchOwnedChrome", (options: Parameters<typeof launch>[0]) =>
+      launch({ ...options, headless: process.env.BAO_HEADED === "0" ? true : options.headless }));
     const connect = chromium.connectOverCDP.bind(chromium);
     let emptyReads = 0;
     t.mock.method(chromium, "connectOverCDP", async (...args: Parameters<typeof connect>) => {
