@@ -261,8 +261,8 @@ test("startup persists a pending open before copying and keeps its failure in on
   const f = await fixture(t);
   const library = new Library(path.join(f.root, "home"));
   const failure = new Error("Chrome launch failed before attachment");
-  const openChrome = profiles.openCopiedChrome;
-  t.mock.method(profiles, "openCopiedChrome", async () => {
+  const openChrome = profiles.openCopiedChromeForProxy;
+  t.mock.method(profiles, "openCopiedChromeForProxy", async () => {
     const runs = library.listRuns();
     assert.equal(runs.length, 1);
     assert.equal(runs[0]!.status, "recording");
@@ -294,7 +294,7 @@ test("startup persists a pending open before copying and keeps its failure in on
     await assert.rejects(access(path.join(f.root, "calls.jsonl")), /ENOENT/);
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
     assert.equal(library.listRuns().length, 1, "rejected commands do not create runs");
-    t.mock.method(profiles, "openCopiedChrome", openChrome);
+    t.mock.method(profiles, "openCopiedChromeForProxy", openChrome);
     assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");
     await f.proxy.close();
     assert.equal(library.listRuns().length, 2, "a fresh attempt has its own run");
@@ -319,7 +319,7 @@ test("a missing native executable is recorded before Chrome startup", async (t) 
 test("recording write failures preserve the original startup error", async (t) => {
   const f = await fixture(t);
   const failure = new Error("Chrome launch failed");
-  t.mock.method(profiles, "openCopiedChrome", async () => { throw failure; });
+  t.mock.method(profiles, "openCopiedChromeForProxy", async () => { throw failure; });
   t.mock.method(Library.prototype, "saveRun", () => { throw new Error("disk full"); });
   const warnings: string[] = [];
   t.mock.method(process.stderr, "write", (text: string) => { warnings.push(text); return true; });
