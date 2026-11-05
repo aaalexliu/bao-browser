@@ -40,7 +40,6 @@ export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProf
 const SKIPPED_ENTRIES = new Set([
   "Cache", "Code Cache", "GPUCache", "Media Cache", "CacheStorage", "ShaderCache", "GrShaderCache",
   "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad", "Crash Reports", "BrowserMetrics",
-  "Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs",
 ]);
 const MAGIC = "bao-profile-copy-v1";
 
@@ -48,6 +47,7 @@ export interface CopiedProfile {
   userDataDir: string;
   profileDirectory: string;
   displayName: string;
+  launchArgs: string[];
   bytes: number;
   copyMs: number;
   close(): Promise<void>;
@@ -151,7 +151,7 @@ export async function copyChromeProfile(options: {
     // Prefer the origami fox; use the penguin if either source store names the fox.
     const avatarIndex = entry.avatar_icon === "chrome://theme/IDR_PROFILE_AVATAR_31" || profilePreferences.avatar_index === 31 ? 34 : 31;
     // Chrome can fall back to a GAIA photo for a default avatar even with GAIA use off.
-    preferences.profile = { ...profilePreferences, name: displayName, using_default_name: false,
+    preferences.profile = { ...profilePreferences, exit_type: "Normal", name: displayName, using_default_name: false,
       avatar_index: avatarIndex, using_default_avatar: false, using_gaia_avatar: false };
     // Chrome's Customize Chrome user-color theme, not an extension. Set both generations
     // of the prefs so startup migration cannot restore the source's theme.
@@ -171,7 +171,9 @@ export async function copyChromeProfile(options: {
     const encodedState = JSON.stringify(localState);
     bytes += Buffer.byteLength(encodedState);
     await writeFile(path.join(userDataDir, "Local State"), encodedState, { mode: 0o600 });
-    return { userDataDir, profileDirectory: choice.directory, displayName, bytes, copyMs: Date.now() - started, close };
+    return { userDataDir, profileDirectory: choice.directory, displayName,
+      launchArgs: [`--profile-directory=${choice.directory}`, "--disable-sync", "--restore-last-session"],
+      bytes, copyMs: Date.now() - started, close };
   } catch (error) {
     await close();
     throw error;
@@ -188,18 +190,19 @@ export async function openCopiedChrome(options: {
   try {
     context = await launchOwnedChrome({
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
-      loadExtensions: options.loadExtensions === true,
-      args: [`--profile-directory=${copy.profileDirectory}`, "--disable-sync"],
+      loadExtensions: options.loadExtensions === true, preserveRestoredTabs: true,
+      args: copy.launchArgs,
     });
     const closed = new Promise<void>((resolve) => context!.once("close", () => resolve()));
-    const watch = (page: Page): void => { page.once("close", () => {
-      if (context?.pages().length === 0) void context.close().catch(() => undefined);
-    }); };
-    context.pages().forEach(watch);
-    context.on("page", watch);
-    const session = await context.newCDPSession(context.pages()[0]!);
+    const parkedPage = context.pages().find((page) => !page.isClosed())!;
+    const session = await context.newCDPSession(parkedPage);
     const { targetInfo } = await session.send("Target.getTargetInfo");
     await session.detach();
+    const watch = (page: Page): void => { page.once("close", () => {
+      if (context?.pages().every((page) => page.isClosed())) void context.close().catch(() => undefined);
+    }); };
+    context.pages().filter((page) => !page.isClosed()).forEach(watch);
+    context.on("page", watch);
     return {
       target: { kind: "bao", portFile: path.join(copy.userDataDir, "DevToolsActivePort") },
       parkedTargetId: targetInfo.targetId,
