@@ -19,7 +19,7 @@ async function until(read: () => boolean | Promise<boolean>): Promise<void> {
   throw new Error("session cleanup timed out");
 }
 
-async function fixture() {
+async function fixture(blockCommand?: "snapshot" | "close") {
   const root = await mkdtemp(path.join(tmpdir(), "bao-session-end-"));
   const home = path.join(root, "home");
   const sourceRoot = path.join(root, "source");
@@ -29,7 +29,10 @@ async function fixture() {
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
 const args = process.argv.slice(2);
-if (args.includes('--json')) {
+if (args.includes(${JSON.stringify(blockCommand)})) {
+  require('node:fs').writeFileSync(${JSON.stringify(path.join(root, "native-pending"))}, 'ready');
+  setInterval(() => {}, 1000);
+} else if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
   fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
@@ -48,6 +51,7 @@ if (args.includes('--json')) {
   const clients: ReturnType<typeof client>[] = [];
   return {
     home, library, env, copies,
+    pending: () => until(() => access(path.join(root, "native-pending")).then(() => true, () => false)),
     start(agent = false) { const c = client(env, agent); clients.push(c); return c; },
     async copy() {
       const entries = await readdir(copies);
@@ -103,6 +107,30 @@ function client(env: NodeJS.ProcessEnv, agent: boolean) {
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
   };
+}
+
+for (const ending of ["queued-eof", "active-signal"] as const) {
+  test(`explicit close overrides keep-open during ${ending}`, { timeout: 60_000 }, async () => {
+    const f = await fixture(ending === "queued-eof" ? "snapshot" : "close");
+    try {
+      f.library.updateSettings({ keepAgentBrowserOpen: true });
+      const c = f.start();
+      await c.request("initialize");
+      assert.equal((await c.call("open")).isError, false);
+      const copy = await f.copy();
+      c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close" } });
+      await f.pending();
+      if (ending === "queued-eof") {
+        c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
+        await c.close();
+      } else {
+        await c.stop();
+      }
+      assert.equal(pidsForDataDir(copy).length, 0, "explicit close must not leave Chrome running");
+      await assert.rejects(access(copy), /ENOENT/, "explicit close must delete the private copy");
+      assert.notEqual(f.library.listRuns()[0]!.status, "recording");
+    } finally { await f.close(); }
+  });
 }
 
 for (const ending of ["agent-exit", "disconnect", "signal"] as const) {

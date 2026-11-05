@@ -2,7 +2,7 @@ import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
-import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
+import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, validateAgentBrowserCommand } from "../engines/agent-browser-proxy";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -95,21 +95,37 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const ctx: Context = { library, libraries, proxy };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
+  let pendingCloses = 0;
   process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
       const next = takeRpcChunk(buf, null);
       if (!next) return;
       buf = Buffer.from(next.rest);
-      chain = chain.then(() => handle(next.body, ctx)).catch((err: unknown) => {
+      let msg: Rpc;
+      try { msg = JSON.parse(next.body) as Rpc; }
+      catch (err) {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      });
+        continue;
+      }
+      let closes = false;
+      if (msg?.method === "tools/call" && msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close") {
+        try {
+          const { args = [] } = msg.params.arguments;
+          validateAgentBrowserCommand("close", args);
+          closes = true;
+          pendingCloses++;
+        } catch {}
+      }
+      chain = chain.then(() => handle(msg, ctx)).catch((err: unknown) => {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      }).finally(() => { if (closes) pendingCloses--; });
     }
   });
   const end = (): void => {
     if (ending) return;
     ending = true;
-    const proxyEnd = ctx.proxy.end();
+    const proxyEnd = ctx.proxy.end(pendingCloses > 0);
     void Promise.all([proxyEnd, chain])
       .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
       .finally(() => process.exit(0));
@@ -124,8 +140,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   await new Promise(() => {});
 }
 
-async function handle(body: string, ctx: Context): Promise<void> {
-  const msg = JSON.parse(body) as Rpc;
+async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.method === "initialize") {
     send({
       jsonrpc: "2.0",

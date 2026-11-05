@@ -387,7 +387,7 @@ function settings(): string {
       </select></label>
       <label class="extensions-choice"><input id="chrome-profile-extensions" type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
-      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when its window closes. No remote-debugging switch, Accessibility, or Automation is needed.</p>
+      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. No remote-debugging switch, Accessibility, or Automation is needed.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
       <button id="save-engine" type="button">Save engine choice</button>
       <p id="engine-feedback" role="status"></p>

@@ -18,6 +18,16 @@ const FIXED_OPTIONS = new Set([
   "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all",
 ]);
 
+export function validateAgentBrowserCommand(command: unknown, args: unknown): asserts args is string[] {
+  if (!AGENT_BROWSER_COMMANDS.includes(command as AgentBrowserCommand)) throw new Error("unknown agent-browser command");
+  if (!Array.isArray(args) || !args.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
+    throw new Error("agent-browser args must be an array of strings");
+  }
+  if (args.some((arg) => FIXED_OPTIONS.has(arg.split("=", 1)[0]!))) {
+    throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, and lifetime");
+  }
+}
+
 interface Session {
   chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>>;
   stateDir: string;
@@ -40,12 +50,13 @@ export class AgentBrowserProxy {
   constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean }) {}
 
   async execute(command: unknown, args: unknown = []): Promise<AgentBrowserCommandResult[]> {
-    if (!AGENT_BROWSER_COMMANDS.includes(command as AgentBrowserCommand)) throw new Error("unknown agent-browser command");
-    if (!Array.isArray(args) || !args.every((arg): arg is string => typeof arg === "string" && !arg.includes("\0"))) {
-      throw new Error("agent-browser args must be an array of strings");
-    }
-    if (args.some((arg) => FIXED_OPTIONS.has(arg.split("=", 1)[0]!))) {
-      throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, and lifetime");
+    validateAgentBrowserCommand(command, args);
+    if (command === "close") {
+      if (this.session) this.session.closing = true;
+      if (this.disconnected) {
+        await this.end(true);
+        return [{ stdout: "", stderr: "", exitCode: 0 }];
+      }
     }
     if (this.session?.removing) await this.session.removing;
     if (this.disconnected) throw new Error("agent-browser client disconnected");
@@ -79,7 +90,6 @@ export class AgentBrowserProxy {
       }
     }
     const session = this.session;
-    if (command === "close") session.closing = true;
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
     const results: AgentBrowserCommandResult[] = [];
@@ -123,14 +133,18 @@ export class AgentBrowserProxy {
     this.session?.abort.abort();
   }
 
-  async end(): Promise<void> {
+  async end(closeRequested = false): Promise<void> {
     this.disconnect();
     await this.starting?.catch(() => undefined);
-    if (this.session) await this.remove(this.session, this.options.keepOpen?.() === true && !this.session.chrome.isClosed());
+    if (this.session) {
+      if (closeRequested) this.session.closing = true;
+      await this.remove(this.session, this.options.keepOpen?.() === true);
+    }
   }
 
   async close(): Promise<void> {
     if (!this.session) return;
+    this.session.closing = true;
     if (this.disconnected || this.session.removing || this.session.abort.signal.aborted) {
       await this.remove(this.session);
       return;
@@ -323,7 +337,7 @@ export class AgentBrowserProxy {
       } catch (error) {
         if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       } finally {
-        if (keepOpen) await session.chrome.keepOpen();
+        if (keepOpen && !session.closing && !session.chrome.isClosed()) await session.chrome.keepOpen();
         else await session.chrome.close();
         await rm(session.stateDir, { recursive: true, force: true });
         if (this.session === session) this.session = undefined;
