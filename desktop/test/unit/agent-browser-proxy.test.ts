@@ -35,7 +35,7 @@ async function fixture(t: TestContext) {
   });
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
-    t.mock.method(cdp, "send", async (method: string) => method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
+    t.mock.method(cdp, "send", async (method: string) => method === "Target.getTargetInfo" ? { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } } : method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
     return cdp;
   });
   const executable = path.join(root, "native");
@@ -370,7 +370,14 @@ test("recording write and screenshot failures do not change native command resul
   const warnings: string[] = [];
   t.mock.method(process.stderr, "write", (text: string) => { warnings.push(text); return true; });
   t.mock.method(Library.prototype, "saveRun", () => { throw new Error("disk full"); });
-  t.mock.method(sockets, "connectCdp", async () => { throw new Error("screenshot unavailable"); });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string) => {
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+      throw new Error("screenshot unavailable");
+    });
+    return cdp;
+  });
   try {
     assert.deepEqual(await f.proxy.execute("open"), [
       { stdout: "open unchanged\n", stderr: "", exitCode: 0 },
@@ -384,12 +391,28 @@ test("recording write and screenshot failures do not change native command resul
   } finally { await f.close(); }
 });
 
+test("missing privacy metadata refuses page input before recording its arguments", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open");
+    t.mock.method(sockets, "connectCdp", async () => { throw new Error("privacy metadata unavailable"); });
+    await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"]), /privacy metadata unavailable/);
+    const calls = await f.calls();
+    assert.equal(calls.some((call) => call.args.includes("fill")), false);
+    assert.doesNotMatch(JSON.stringify(new Library(path.join(f.root, "home")).listRuns()), /private-owner-value/);
+  } finally { await f.close(); }
+});
+
 test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: 6000 }, async (t) => {
   const f = await fixture(t);
   t.mock.method(sockets, "connectCdp", async () => {
     const socket = new Socket();
     t.mock.method(socket, "write", () => true);
-    return new sockets.CdpSocket(socket);
+    const cdp = new sockets.CdpSocket(socket);
+    const send = cdp.send.bind(cdp);
+    t.mock.method(cdp, "send", (method: string, params: Record<string, unknown> = {}, sessionId?: string, timeoutMs?: number) => method === "Target.getTargetInfo"
+      ? Promise.resolve({ targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } }) : send(method, params, sessionId, timeoutMs));
+    return cdp;
   });
   try {
     assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");

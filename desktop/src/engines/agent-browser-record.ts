@@ -50,7 +50,7 @@ export class AgentBrowserRun {
   }
 
   async complete(step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], stateDir: string,
-    screenshot: () => Promise<Buffer>, error?: unknown): Promise<void> {
+    screenshot: () => Promise<Buffer>, error?: unknown, privatePage = false): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
     step.native.isError = results.some((result) => result.exitCode !== 0) || error !== undefined;
@@ -67,6 +67,11 @@ export class AgentBrowserRun {
       }
     }
     this.persist();
+    if (privatePage) {
+      step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";
+      this.persist();
+      return;
+    }
     if (step.native.command === "screenshot") {
       for (const result of results.filter((item) => item.exitCode === 0)) {
         const original = screenshotPath(result.stdout);
@@ -84,6 +89,13 @@ export class AgentBrowserRun {
       step.afterShotError = step.native.command === "close" ? "Session closed; no page remains." : "Page screenshot unavailable.";
       if (step.native.command !== "close") this.warn("page screenshot");
     }
+    this.persist();
+  }
+
+  ownerWaiting(waiting: boolean): void {
+    this.run.status = waiting ? "needs_human" : "recording";
+    if (waiting) this.run.envelope = { status: "needs_human", run_id: this.run.id, reason: "owner_signin", ask: "Bao is waiting for you to sign in or clear the check in its browser window. The agent will continue here." };
+    else delete this.run.envelope;
     this.persist();
   }
 
