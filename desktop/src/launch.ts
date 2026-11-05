@@ -283,7 +283,10 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     if (browserPath) return;
     output = (output + chunk.toString("utf8")).slice(-8192);
     const match = output.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)(\/devtools\/browser\/[\w-]+)\r?\n/);
-    if (match && Number(match[1]) === port) browserPath = match[2]!;
+    if (match && Number(match[1]) === 9222) {
+      spawnError = new Error("Chrome bound remote-debugging-port 9222.");
+      child.kill("SIGTERM");
+    } else if (match && Number(match[1]) === port) browserPath = match[2]!;
   });
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
