@@ -188,6 +188,44 @@ test("a stopped MCP cleans up its proxy even while a live request is stuck", { t
   }
 });
 
+test("close received after stop closes a retained window before a queued live call finishes", { timeout: 45_000 }, async () => {
+  const f = await fixture();
+  let received!: () => void;
+  let reply: (() => void) | undefined;
+  const requested = new Promise<void>(resolve => { received = resolve; });
+  const server = createServer((req, res) => {
+    req.resume();
+    if (reply) { res.end("{}"); return; }
+    reply = () => res.end("{}");
+    received();
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  await writeFile(path.join(f.home, "server.json"), JSON.stringify({ port: address.port }));
+  try {
+    f.library.updateSettings({ keepAgentBrowserOpen: true });
+    const c = f.start();
+    await c.request("initialize");
+    assert.equal((await c.call("open")).isError, false);
+    const copy = await f.copy();
+    c.send("tools/call", { name: "live_snapshot", arguments: {} });
+    await requested;
+    const stopped = c.stop();
+    await until(async () => JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")).retained === true);
+    c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
+    await until(() => access(copy).then(() => false, () => true));
+    assert.equal(pidsForDataDir(copy).length, 0);
+    reply?.();
+    await stopped;
+  } finally {
+    reply?.();
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await f.close();
+  }
+});
+
 test("keep-open finishes the run and the next session reclaims only that home's retained window", { timeout: 60_000 }, async () => {
   const f = await fixture();
   const other = await fixture();

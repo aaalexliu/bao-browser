@@ -2,7 +2,7 @@ import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
-import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, validateAgentBrowserCommand } from "../engines/agent-browser-proxy";
+import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -95,7 +95,6 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const ctx: Context = { library, libraries, proxy };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
-  let pendingCloses = 0;
   process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
@@ -108,27 +107,32 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
         continue;
       }
-      let closes = false;
+      let releaseClose: (() => void) | undefined;
       if (msg?.method === "tools/call" && msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close") {
         try {
           const { args = [] } = msg.params.arguments;
-          validateAgentBrowserCommand("close", args);
-          closes = true;
-          pendingCloses++;
+          releaseClose = ctx.proxy.queueClose(args);
+          if (ending) void ctx.proxy.end(true).catch((error: unknown) => {
+            process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+          });
         } catch {}
       }
       chain = chain.then(() => handle(msg, ctx)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      }).finally(() => { if (closes) pendingCloses--; });
+      }).finally(releaseClose);
     }
   });
   const end = (): void => {
     if (ending) return;
     ending = true;
-    const proxyEnd = ctx.proxy.end(pendingCloses > 0);
+    const proxyEnd = ctx.proxy.end();
     void Promise.all([proxyEnd, chain])
       .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
-      .finally(() => process.exit(0));
+      .finally(async () => {
+        try { await ctx.proxy.end(); }
+        catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); }
+        finally { process.exit(0); }
+      });
   };
   const stop = (): void => {
     setTimeout(() => process.exit(0), 15_000).unref();

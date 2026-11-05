@@ -13,7 +13,7 @@ import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browse
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, keepOpen = false) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-test-"));
   const sourceRoot = path.join(root, "source");
   await mkdir(path.join(sourceRoot, "Profile 2"), { recursive: true });
@@ -69,7 +69,7 @@ else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout
 else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:fs.existsSync(${JSON.stringify(path.join(root, "no-active"))})?[]:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
-  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, directory: "Profile 2", executable });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, directory: "Profile 2", executable, keepOpen: () => keepOpen });
   const calls = async () => (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { args: string[]; env: Record<string, string> });
   return {
     root, sourceRoot, proxy, calls, copy: () => copiedDir, closeWindow: () => closeWindow(), closeCount: () => closeCount,
@@ -281,6 +281,70 @@ test("session end during startup waits for ownership and removes the new window 
     assert.equal(new Library(path.join(f.root, "home")).listRuns()[0]!.status, "failed");
   } finally { resume(); await f.close(); }
 });
+
+test("queued close during startup overrides an end already keeping the window", async (t) => {
+  const f = await fixture(t, true);
+  const openChrome = profiles.openCopiedChromeForProxy;
+  let started!: () => void;
+  let resume!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { resume = resolve; });
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof openChrome>[0]) => {
+    started();
+    await gate;
+    return openChrome(options);
+  });
+  let releaseClose = () => {};
+  try {
+    const rejected = assert.rejects(f.proxy.execute("open"), /client disconnected/);
+    await entered;
+    const ending = f.proxy.end();
+    releaseClose = f.proxy.queueClose();
+    resume();
+    await rejected;
+    await ending;
+    assert.equal(f.closeCount(), 1, "close intent must reach the session created during shutdown");
+    await assert.rejects(access(f.copy()), /ENOENT/);
+    assert.equal((await f.proxy.execute("close"))[0]!.exitCode, 0);
+  } finally { releaseClose(); resume(); await f.close(); }
+});
+
+for (const timing of ["stop", "release", "retained"] as const) {
+  test(`explicit close overrides keep-open at ${timing}`, async (t) => {
+    const f = await fixture(t, true);
+    const openChrome = profiles.openCopiedChromeForProxy;
+    let entered!: () => void;
+    let resume!: () => void;
+    const releasing = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { resume = resolve; });
+    t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof openChrome>[0]) => {
+      const chrome = await openChrome(options);
+      return { ...chrome, async keepOpen() {
+        await chrome.keepOpen();
+        entered();
+        if (timing === "release") await gate;
+      } };
+    });
+    let releaseClose = () => {};
+    try {
+      await f.proxy.execute("open");
+      const copy = f.copy();
+      const ending = f.proxy.end();
+      if (timing === "stop") {
+        await new Promise<void>(resolve => setImmediate(() => { releaseClose = f.proxy.queueClose(); resolve(); }));
+      } else {
+        await releasing;
+        if (timing === "retained") await ending;
+        releaseClose = f.proxy.queueClose();
+      }
+      resume();
+      await ending;
+      assert.equal((await f.proxy.execute("close"))[0]!.exitCode, 0);
+      assert.equal(f.closeCount(), 1, "a late close must still own and close the kept window");
+      await assert.rejects(access(copy), /ENOENT/);
+    } finally { releaseClose(); resume(); await f.close(); }
+  });
+}
 
 test("proxy reports native errors unchanged and leaves the session usable", async (t) => {
   const f = await fixture(t);

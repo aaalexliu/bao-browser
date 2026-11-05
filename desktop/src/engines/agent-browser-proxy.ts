@@ -46,8 +46,15 @@ export class AgentBrowserProxy {
   private session: Session | undefined;
   private disconnected = false;
   private starting: Promise<Session> | undefined;
+  private pendingCloses = 0;
 
   constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean }) {}
+
+  queueClose(args: unknown = []): () => void {
+    validateAgentBrowserCommand("close", args);
+    this.pendingCloses++;
+    return () => { this.pendingCloses--; };
+  }
 
   async execute(command: unknown, args: unknown = []): Promise<AgentBrowserCommandResult[]> {
     validateAgentBrowserCommand(command, args);
@@ -135,6 +142,7 @@ export class AgentBrowserProxy {
 
   async end(closeRequested = false): Promise<void> {
     this.disconnect();
+    await new Promise<void>((resolve) => setImmediate(resolve));
     await this.starting?.catch(() => undefined);
     if (this.session) {
       if (closeRequested) this.session.closing = true;
@@ -326,8 +334,8 @@ export class AgentBrowserProxy {
     });
   }
 
-  private remove(session: Session, keepOpen = false): Promise<void> {
-    return session.removing ??= (async () => {
+  private async remove(session: Session, keepOpen = false): Promise<void> {
+    await (session.removing ??= (async () => {
       session.abort.abort();
       await session.commandDone;
       session.recording.finish();
@@ -337,11 +345,15 @@ export class AgentBrowserProxy {
       } catch (error) {
         if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       } finally {
-        if (keepOpen && !session.closing && !session.chrome.isClosed()) await session.chrome.keepOpen();
+        if (keepOpen && !session.closing && this.pendingCloses === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
         else await session.chrome.close();
         await rm(session.stateDir, { recursive: true, force: true });
-        if (this.session === session) this.session = undefined;
       }
-    })();
+    })());
+    if ((session.closing || this.pendingCloses > 0) && !session.chrome.isClosed()) {
+      session.closing = true;
+      await session.chrome.close();
+    }
+    if (this.session === session && session.chrome.isClosed()) this.session = undefined;
   }
 }
