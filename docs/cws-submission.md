@@ -1,4 +1,8 @@
-# Chrome Web Store submission
+# Historical root-extension Chrome Web Store submission
+
+The standalone root extension is retired. The checklist and package commands
+below are historical, not release instructions. See [desktop extension](extension.md)
+for the extension Bao.app still bundles.
 
 A step-by-step checklist for publishing Bao to the Chrome Web Store (CWS). This is
 mostly a manual, one-time process. The strategic notes behind it (review risk, the

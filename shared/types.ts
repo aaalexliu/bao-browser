@@ -1,6 +1,4 @@
-// Bao — shared step schema. The one source of truth for what content.ts records,
-// background.ts stores/routes, and sidepanel.ts renders. Everything that crosses a
-// chrome.runtime message boundary or lands in chrome.storage is typed here.
+// Shared step schema used by desktop capture, proxy replay, and OS adapters.
 
 // ---------- selectors & targets (capture output, resolution input) ----------
 export type SelectorType = "testid" | "aria" | "text" | "id" | "css" | "shadowpath" | "ax";
@@ -68,9 +66,7 @@ export interface FrameRef {
   tab?: TabHint;
 }
 
-// uploadFile / switchTab / handleDialog / os* are the desktop plane (docs/desktop-design.md).
-// Optional additions. The extension replayer does not implement them: a version-2
-// workflow must not be handed to it until unknown actions fail closed (see that doc).
+// Browser and OS actions used by the desktop adapters.
 export type StepSurface = "dom" | "browser" | "os";
 
 export type StepAction =
@@ -182,113 +178,3 @@ export interface Workflow {
   pinned?: boolean;    // T15: pin favorites to the top of the panel
   updatedAt?: number;  // T15: bumped on rename/pin; createdAt stays immutable
 }
-
-// The lightweight shape the panel/harness lists (no step payloads). The panel
-// derives `domain` from startUrl itself — don't store what's derivable.
-export interface WorkflowSummary {
-  id: string;
-  name: string;
-  startUrl: string;
-  count: number;
-  createdAt: number;
-  pinned?: boolean;
-  updatedAt?: number;
-}
-
-// ---------- replay results ----------
-export interface StepResult {
-  i: number;
-  ok: boolean;
-  via?: string;
-  reason?: string;
-  frameId?: number;
-  url?: string;
-  filename?: string; // completed download's basename (T10)
-}
-
-export interface ReplayResponse {
-  ok: boolean;
-  failedAt?: number;
-  results: StepResult[];
-}
-
-// ---------- M1 storage state (SW-owned, rehydrated on every wake) ----------
-export interface RecState {
-  tabId: number;
-  steps: Step[];
-}
-
-export type RunPhase =
-  | "executing" | "awaiting_nav" | "awaiting_download" | "paused_for_user" | "done" | "failed";
-
-export interface RunState {
-  runId: string;
-  tabId: number;
-  steps: Step[];
-  stepIndex: number;
-  phase: RunPhase;
-  dispatched: boolean;
-  dispatchedAt?: number;
-  results: StepResult[];
-  lastError: { stepIndex: number; reason: string } | null;
-  expectedNav?: { pattern: string; deadline: number };
-  expectedDownload?: { deadline: number; filename?: string };
-  // T16: workflow identity, threaded through when a run is started from a saved
-  // Workflow (absent for ad-hoc raw-steps runs). Denormalized into the RunRecord so
-  // history survives the workflow being renamed or deleted.
-  startedAt?: number;
-  workflowId?: string;
-  workflowName?: string;
-  startUrl?: string;
-}
-
-// ---------- T16 run history (durable audit trail) ----------
-// A finished run, persisted for the dashboard filmstrip. Self-contained: it snapshots
-// the name + steps it ran so it stays readable after the workflow changes or is deleted.
-export type RunOutcome = "passed" | "failed";
-export interface RunRecord {
-  id: string;                 // "run-xxxx"
-  workflowId: string;         // "" for an ad-hoc run; may dangle after a delete
-  workflowName: string;
-  startUrl: string;
-  startedAt: number;
-  finishedAt: number;
-  outcome: RunOutcome;        // failed iff the run ended in the failed phase
-  results: StepResult[];
-  steps: Step[];              // snapshot of the exact steps run (labels for the filmstrip)
-  frames: (string | null)[];  // frames[i] = IndexedDB key of the replay-time shot, or null
-}
-
-// ---------- runtime messages ----------
-export type Msg =
-  // content → SW
-  | { cmd: "bao-reset" }
-  | { cmd: "bao-frame-steps"; steps: Step[] }
-  | { cmd: "bao-step"; step: Step }
-  | { cmd: "bao-boot"; url: string; top: boolean }
-  // panel/harness → SW
-  | { cmd: "bao-rec-start"; tabId: number }
-  | { cmd: "bao-rec-stop" }
-  | { cmd: "bao-run-start"; tabId: number; steps: Step[] }
-  | { cmd: "bao-run-status" }
-  | { cmd: "bao-run-continue" }
-  // named workflows (T14)
-  | { cmd: "bao-wf-save"; name: string; startUrl: string; steps: Step[] }
-  | { cmd: "bao-wf-list" }
-  | { cmd: "bao-wf-delete"; id: string }
-  | { cmd: "bao-wf-run"; tabId: number; id: string }
-  // side panel (T15)
-  | { cmd: "bao-wf-get"; id: string }                                                 // → Workflow | null
-  | { cmd: "bao-wf-update"; id: string; patch: { name?: string; pinned?: boolean } }  // → { ok }
-  | { cmd: "bao-wf-import"; workflow: Workflow }                                      // → { ok, id } (fresh id)
-  // full-page dashboard (T16)
-  | { cmd: "bao-wf-update-steps"; id: string; steps: Step[] }  // → { ok } | { ok:false, error } (light edit: subset+reorder)
-  | { cmd: "bao-runs-list"; workflowId?: string }             // → RunRecord[] (metadata, newest first)
-  | { cmd: "bao-run-get"; id: string }                        // → RunRecord | null
-  | { cmd: "bao-run-delete"; id: string }                     // → { ok } (+ its frames)
-  | { cmd: "bao-runs-clear"; workflowId?: string }            // → { ok }
-  // panel/SW → content
-  | { cmd: "start-record" }
-  | { cmd: "stop-record" }
-  | { cmd: "status" }
-  | { cmd: "replay"; steps: Step[] };

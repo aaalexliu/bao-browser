@@ -1,4 +1,9 @@
-# Chrome Web Store submission - do this
+# Historical root-extension store submission
+
+The standalone root extension is retired. This document records the old listing;
+its build, zip, and screenshot commands no longer run. Do not publish that package.
+Use `extension/`, `install-extension.sh`, and [desktop extension guidance](../docs/extension.md)
+for the extension Bao.app still bundles.
 
 Everything needed to publish Bao to the Chrome Web Store is in this folder. The code
 work is done; what's left is account setup + copy/paste into the dashboard. Budget ~30

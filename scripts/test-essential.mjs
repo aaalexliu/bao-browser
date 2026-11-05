@@ -23,9 +23,6 @@ if (group.kind === "desktop") {
   await run(["--test", "--test-concurrency=2", "--test-reporter=tap", "--test-force-exit", ...filter, ...files]);
 } else if (group.kind === "web") {
   await run(["--experimental-transform-types", "--import", "./web/test/register.mjs", "--test", ...group.tests]);
-} else if (group.kind === "legacy") {
-  await run(["build.mjs"]);
-  for (const file of group.tests) await run([file]);
 } else {
   throw new Error(`Unknown essential kind: ${group.kind}`);
 }

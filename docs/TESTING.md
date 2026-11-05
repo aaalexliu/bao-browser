@@ -1,170 +1,97 @@
 # Testing Bao
 
-> Entry point: [README.md](README.md). This file is the full test-suite reference —
-> deterministic regressions, the headless CI runner, and the opt-in live-site smoke suites.
-
-Definition of done for any capability is the repo standard:
-**`record → replay → assert correct effect`**, driven through the real `content.js`
-(built to `dist/`) via `chrome.tabs.sendMessage` — the same path `sidepanel.ts` uses.
+[README](../README.md) is the product entry point. The old standalone root
+extension and its test tools are retired. `npm test`, `test/all.mjs`,
+`test/run.mjs`, and the old live-site scripts are no longer entry points.
+The native-messaging extension in `extension/` is still bundled in Bao.app.
 
 ## Choose the PR checks
 
-Every PR runs the static gates and the tests in
-[`test/essential.json`](../test/essential.json). The separate **Full suite** check
-runs only on a PR with the `full-suite` label, or through manual dispatch. It has
-no schedule and is not a required check. A label starts it at once and keeps it
-running on later pushes while the label remains.
+Every PR runs static gates and the tests in
+[`test/essential.json`](../test/essential.json). The separate **Full suite**
+check runs only on a PR with the `full-suite` label or through manual dispatch.
+It has no schedule and is not a required check. A label starts it at once and
+keeps it running on later pushes while the label remains.
 
 Opt in when a change touches shared runtime, engines, live-browser behavior,
 recording/replay, sync/storage, packaging, or test infrastructure that the
 essential set does not cover. Skip it when the essential set fully covers the
-change. Always state the choice and the reason in the PR body.
+change. Always state the choice and reason in the PR body.
 
 ```sh
 gh-axi pr edit <number> --add-label full-suite
 gh-axi workflow run guardrails.yml --ref <branch>
 ```
 
-The full check runs all hermetic desktop, web, and legacy extension tests. It
-never runs public-site tests or billable model evals. Read its result, including
-any existing failures; an essential pass is not proof that the full suite passed.
+The full check runs hermetic desktop and web tests. It no longer builds or
+tests the legacy extension. It never runs public-site tests or billable model
+evals. Read its actual result; an essential pass is not a full-suite pass.
+[Selection evidence](ci-test-selection.md) records the retired suites and their
+last measured times.
 
-## Automated e2e (local full suite)
-
-A headless Chromium loads the unpacked extension, records a real session on a fixture
-page, replays it, and dumps artifacts to `out/`.
-
-[Camera and microphone isolation](../desktop/test/README.md#camera-and-microphone-isolation)
-also covers the root test tools, including the logged-in `.chrome-profile` scripts below.
+## Run focused local checks
 
 ```sh
-npm install
-npx playwright install chromium   # one-time: downloads the browser
-npm test                          # npm test -- --headed to watch it run
+npm ci
+npm --prefix web ci
+npx playwright install chromium
+npm run check:static
+npm run build:desktop
+npm run build:extension
+node --test test/essential-manifest.test.mjs
+npm run test:guardrails
 ```
 
-Outputs:
-- `out/recorded-steps.json` — captured steps with the ranked selector candidates
-- `out/replay-results.json` — per-step resolution (`via` selector) + the events the page fired during replay
-
-`npm test` also runs `test/list.mjs` (`npm run test:list`), the repeated-list
-regression: it records a click on one of six identical cards, then reorders /
-prepends / deletes / swaps buttons and asserts replay still hits the right one via
-its **ancestor anchor** (a stable id, href, or text fingerprint) — the case that
-breaks naive aria/text/nth-of-type selectors.
-
-## Assertions + the headless CI runner
-
-Recording supports *expectations*, not just actions: press **Alt+Shift+A** while
-recording, then click an element to capture an `assert` (defaults to "expect this
-text present"; the panel shows it as `Expect: …`). Assertions are checked at replay,
-are **non-fatal** (all are reported; the run fails iff any assert fails), and support
-`textPresent | elementVisible | elementAbsent | urlMatches`. The thin CI runner
-replays a saved trace and reports a ✓/✗ table:
+Use `scripts/test-essential.mjs <group>` for one essential group after building.
+For an exact desktop file, run its compiled path with Node's test runner in an
+isolated environment. Do not pass a filename to `desktop/test/run-v1.mjs` to
+select it: that runner still appends the full suite. The shared environment
+helper pins Playwright Chromium and strips model keys and inherited Bao settings:
 
 ```sh
-node test/run.mjs <steps.json> <url>   # exit 0 = all passed, 1 = a step/assert failed
+node --input-type=module <<'JS'
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { laneChildEnv } from './desktop/dist/desktop/test/runtime.js';
+const home = mkdtempSync(path.join(tmpdir(), 'bao-focused-'));
+try {
+  const env = laneChildEnv('hermetic', { ...process.env, HOME: home });
+  const result = spawnSync(process.execPath, [
+    '--test', '--test-force-exit',
+    'desktop/dist/desktop/test/unit/install-scripts.test.js',
+  ], { env, stdio: 'inherit' });
+  process.exitCode = result.status ?? 1;
+} finally {
+  rmSync(home, { recursive: true, force: true });
+}
+JS
 ```
 
-Any exported workflow JSON (from the panel or dashboard) is directly consumable here.
+## Run broader checks remotely
 
-## Test against a real, logged-in site (Substack, LinkedIn, …)
+`npm run check` checks types and runs desktop units. `npm --prefix web test`
+runs the registry tests. Prefer the opt-in remote Full suite to a full local
+pass on the shared Mac. Local browser integration uses
+`npm run test:desktop:integration`.
 
-The fixture suite runs in a throwaway profile. To drive a real authenticated page you
-need a **persistent profile** (so your login survives) and a **headed** browser (so
-you can log in and interact by hand). `test/live.mjs` does this:
+[Desktop test guidance](../desktop/test/README.md) owns the hermetic/live lane
+rules, media isolation, concurrency, and stale-output checks. Tests use temp
+homes, Libraries, native-host config, and profiles. Never use the owner's Chrome
+profile or Library. `BAO_HOME` alone does not isolate native-messaging writes;
+set a temp `HOME` too. Keep model keys unset and `BAO_HEAL_CURSOR_ACCOUNT=0`.
 
-```sh
-# 1) One-time: log in. A real Chrome window opens — log in fully, then press Enter.
-node test/live.mjs login  https://substack.com
+## Verify the desktop extension and package
 
-# 2) Record: interact with the page yourself, then press Enter to stop.
-node test/live.mjs record https://YOURPUB.substack.com/publish/post --out out/post.json
+Build with `npm run build:extension`. `install-extension.sh` stages
+`extension/dist` by default; set `BAO_EXTENSION_DIR` to a temp directory for
+checks. Load that directory unpacked in a fresh Playwright Chromium profile,
+not a daily Chrome profile. Confirm its service worker and popup load without
+JavaScript errors. Native-host connectivity needs its own temp config and is
+not proven just by an unpacked load.
 
-# 3) Replay: re-drives the page from the saved steps.
-node test/live.mjs replay https://YOURPUB.substack.com/publish/post --in out/post.json
-```
-
-The session is stored in `.chrome-profile/` (git-ignored) and reused on every run, so
-you only log in once. `--seconds N` auto-stops recording instead of waiting for Enter.
-
-**Live smoke test of anchoring** — `test/live-notes.mjs` is the real-Substack
-counterpart to the deterministic list regression. It records a Share-click on a chosen
-note in the Notes feed (many identical Share buttons), replays through the real content
-script, and asserts it acted on the *same* note by its stable id:
-
-```sh
-node test/live.mjs login https://substack.com   # one-time, if not already
-node test/live-notes.mjs                         # default: target note #2 (not the first)
-node test/live-notes.mjs 3 --headed              # watch it; target a different note
-```
-
-## Live gap-analysis suite
-
-One runnable file per category (sharing `test/live-helpers.mjs`) drives real
-record→replay→assert against the no-login targets in
-`recording-gaps-and-app-universe.md` §Part 3, scoped to the categories whose
-capability actually shipped (so a live FAIL means a regression):
-
-```sh
-npm run test:live-gaps               # all four categories, headless
-npm run test:live-gaps:forms         # cat 1 only
-npm run test:live-gaps:spa           # cat 2 only
-npm run test:live-gaps:editors       # cat 3 only
-npm run test:live-gaps:feed          # cat 4 only
-
-# Watch one in a real window (headed is per-category — the aggregate is headless):
-npm run test:live-gaps:editors -- --headed
-npm run test:live-gaps:editors -- lexical   # filter within a multi-case file
-```
-
-- **cat 1 forms** (`live-gaps-forms.mjs`) — selenium web-form: records a text `input` +
-  native `<select>`, resets both, replays, asserts the values are driven back.
-- **cat 2 SPA** (`live-gaps-spa.mjs`) — TodoMVC: clicks across hash routes, asserts a
-  `softNav` marker is captured and that replay *waits* on the route (`via=softNav`).
-- **cat 3 editors** (`live-gaps-editors.mjs`) — Lexical / ProseMirror / Quill: types a
-  unique token, resets via reload, replays through the contenteditable actuator.
-  ProseMirror/Quill must accept a synthetic path; **Lexical is the documented "strict
-  editor" case** — it cleanly rejects all synthetic paths, treated as the expected
-  honest outcome, not a fail.
-- **cat 4 feed** (`live-gaps-feed.mjs`) — Hacker News: records a click on story #4 of 30
-  identical rows and asserts replay hits the *same* story by its stable `item?id=`.
-
-Same contract as the smoke suite: opt-in (not part of `npm test`); a load failure /
-bot-block / missing structure is a **SKIP**, a wrong replay effect is a **FAIL**.
-
-## Live blind-spot suite
-
-`test/live-blindspots-*.mjs` (one file per site, `npm run test:live`) drives the real
-extension against the real sites that exercise each structural boundary:
-
-| Site | Asserts |
-|---|---|
-| shoelace.style | captures `reach=open-shadow` + a `shadowpath` on a real `<sl-button>` |
-| excalidraw.com | classifies a canvas click `reach=canvas` + degraded |
-| stripe.dev | the `all_frames` content script answers **inside** the cross-origin frame |
-| ag-grid.com | windowed grid: only ~18 of thousands of rows in the DOM |
-| salesforce.com | real `<cs-native-frame-holder>` has a **closed** root |
-
-Run individually: `npm run test:live:open-shadow` / `:canvas` / `:frames` / `:virtual`
-/ `:closed-shadow`. Live sites flake, so these are opt-in — a load failure or fresh
-bot-block is a **SKIP**, not a FAIL. Note: ag-grid (CloudFront) and salesforce (Akamai)
-bot-block automated sessions unless a realistic `User-Agent` is set.
-
-## Reality check on dynamic pages
-
-Replay is only as deterministic as the page. A *stable* surface (compose box, settings
-form) replays reliably. Repeated **feeds** used to be a poor target — but anchored
-capture now re-resolves a specific card by its stable id / href / text even after the
-feed reorders (see the list regression). The remaining limit is content that has
-*scrolled out of the DOM* entirely (virtualization is handled by scroll-find; content
-that never renders is not).
-
-## Probe (keeping the live-target registry honest)
-
-```sh
-npm run probe   # test/probe-sites.mjs — re-verifies each live target still loads + shows its signal
-```
-
-Live sites rot; re-run the probe before trusting the target tables in
-`recording-gaps-and-app-universe.md` §Part 3 if they're more than a month old.
+`npm run package:mac` must also pass for packaging changes. Follow
+[Mac build](mac-build.md), reuse the signed helper, and inspect the bundled
+`Bao.app/Contents/Resources/extension/dist/manifest.json`. Do not install the
+test build over `/Applications/Bao.app` or change system permissions.

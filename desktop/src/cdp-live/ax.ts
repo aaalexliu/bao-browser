@@ -2,7 +2,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import type { OsTarget } from "../../../src/types";
+import type { OsTarget } from "../../../shared/types";
 import { forbidScreenRecording } from "../helper-capabilities";
 import { MacOsHelper, type AxNode } from "../proxy/os-macos";
 import {

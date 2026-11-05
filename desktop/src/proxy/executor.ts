@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Page } from "playwright";
-import { isSensitiveField, isSensitiveValue, omitSecret, redactPayload } from "../../../src/mask";
+import { isSensitiveField, isSensitiveValue, omitSecret, redactPayload } from "../../../shared/mask";
 import { installPageHelpers, type Described } from "../page-fns";
 import { AuditTrail, deriveWorkflow, trimTrail, type AuditEvent, type AuditOrigin, type AuditSnapshot } from "./audit";
 import { PAGE_KEYS, normalizeKey, readFocus, type TrackedFocus } from "./focus";

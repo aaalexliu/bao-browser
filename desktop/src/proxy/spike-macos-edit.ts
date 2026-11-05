@@ -2,7 +2,7 @@
 // A restored document aborts this case without reading its value.
 
 import path from "node:path";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import { AuditTrail } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { replayOsWorkflow, replayUsedCoordinates } from "./macos-replay";

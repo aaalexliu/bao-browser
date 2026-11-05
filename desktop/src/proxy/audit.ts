@@ -2,7 +2,7 @@
 // reads the trail. A later interpret pass can, because each event is one read
 // or one act with the vendor payload and the element it resolved to.
 
-import type { Step, Workflow } from "../../../src/types";
+import type { Step, Workflow } from "../../../shared/types";
 import type { RankedSelector } from "../page-fns";
 import type { AxSnap, DomSnap } from "./neutral";
 

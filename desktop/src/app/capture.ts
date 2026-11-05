@@ -1,7 +1,7 @@
 // In-progress capture. Pause drops UI events. Notes and checks are annotations.
 // A sensitive note is refused and not stored.
 
-import { isSensitiveValue } from "../../../src/mask";
+import { isSensitiveValue } from "../../../shared/mask";
 import type { TrailEvent } from "../v1/interpret";
 
 export interface CaptureStep {

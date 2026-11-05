@@ -1,4 +1,7 @@
-# Bao — Wedge Use Cases, Necessary Functionality, and the Snapshot-Fallback Question
+# Bao - Wedge Use Cases, Necessary Functionality, and the Snapshot-Fallback Question
+
+Historical root-extension analysis. Its fixture and live-site tools are retired
+with that extension. See [Testing](TESTING.md) for current test entry points.
 
 > Siblings: [[product-design-v1]] (architecture, IR, executor seam), [[m1-design]]
 > (cross-nav state machine, waitForUser, downloads).

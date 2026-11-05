@@ -1,4 +1,7 @@
-# Bao Browser — Product Design v1
+# Bao Browser - Product Design v1
+
+Historical root-extension design. That extension, its build, and its tests are
+retired. See [README](../README.md) for current entry points.
 
 > Record a browser workflow once, get human-readable steps, replay it on demand.
 > Sibling doc: [[browser-use-vs-skyvern]] (landscape we're differentiating from).

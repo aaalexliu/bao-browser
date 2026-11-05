@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import type { AuditEvent } from "./audit";
 import { bindWorkflow, interpretOs } from "./interpret-os";
 import { readout, isTwelve } from "./spike-macos-calc";

@@ -1,4 +1,8 @@
-# Bao Desktop — Architecture Pass
+# Bao Desktop - Architecture Pass
+
+Historical architecture pass. The root extension and its tests described below
+are now retired. The shared step schema and masking moved to `shared/types.ts`
+and `shared/mask.ts`; current commands are in [README](../README.md).
 
 > Parent: [[product-design-v1]] (IR, Executor seam, non-debugger vs debugger).
 > Blind spots this modality exists to cross: [[use-cases-and-snapshot-fallback]] §5–6,

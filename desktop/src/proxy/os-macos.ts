@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { OsTarget } from "../../../src/types";
+import type { OsTarget } from "../../../shared/types";
 
 /** The helper Bao.app launches. A dev checkout has no nested bundle until package-app.sh copies one. */
 export function bundledHelperApp(): string | undefined {

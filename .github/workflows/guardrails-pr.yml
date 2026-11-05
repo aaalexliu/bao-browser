@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [auth, password-slot, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web, legacy]
+        group: [auth, password-slot, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
@@ -107,7 +107,7 @@ jobs:
         id: compiled
         with:
           path: desktop/dist
-          key: desktop-emit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/guardrails-pr.yml', '.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig*.json', 'web/tsconfig.json', 'extension/tsconfig.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'src/types.ts', 'src/mask.ts', 'extension/src/host-grant.ts') }}
+          key: desktop-emit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/guardrails-pr.yml', '.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json', 'tsconfig*.json', 'web/tsconfig.json', 'extension/tsconfig.json', 'desktop/src/**/*.ts', 'desktop/test/**/*.ts', 'shared/**/*.ts', 'extension/src/host-grant.ts') }}
       - name: Emit desktop JavaScript
         if: steps.compiled.outputs.cache-hit != 'true'
         run: npm run build:desktop -- --noCheck

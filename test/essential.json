@@ -202,13 +202,5 @@
       "web/src/lib/relay.boundary.test.ts",
       "web/src/lib/relay-job.test.ts"
     ]
-  },
-  "legacy": {
-    "kind": "legacy",
-    "reason": "Safety: the real legacy extension never records or persists passwords, cards, or SSNs and never replays secret literals.",
-    "tests": [
-      "test/snapshot.mjs",
-      "test/sensitive.mjs"
-    ]
   }
 }

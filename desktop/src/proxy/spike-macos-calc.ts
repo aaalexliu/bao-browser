@@ -3,7 +3,7 @@
 
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import { AuditTrail } from "./audit";
 import { handleClaudeTool } from "./claude-mac";
 import type { ClaudeToolUse } from "./claude";

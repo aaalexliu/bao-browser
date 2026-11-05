@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -26,69 +26,7 @@ function writeFixture(dir: string, files: Record<string, string>): void {
   }
 }
 
-const legacyManifest = `{
-  "manifest_version": 3,
-  "name": "Bao",
-  "icons": { "16": "icons/icon-16.png" },
-  "side_panel": { "default_path": "sidepanel.html" },
-  "options_page": "dashboard.html",
-  "background": { "service_worker": "dist/background.js" }
-}
-`;
-
-function legacyFiles(icon = "png"): Record<string, string> {
-  const files: Record<string, string> = {
-    "manifest.json": legacyManifest,
-    "sidepanel.html": "<script src=\"dist/sidepanel.js\"></script>\n",
-    "dashboard.html": "<script src=\"dist/dashboard.js\"></script>\n",
-    "dist/background.js": "background",
-    "dist/sidepanel.js": "sidepanel",
-    "dist/dashboard.js": "dashboard",
-  };
-  if (icon) files["icons/icon-16.png"] = icon;
-  return files;
-}
-
-test("legacy installer copies every manifest file into the stage", () => {
-  const source = mkdtempSync(path.join(tmpdir(), "bao-legacy-src-"));
-  const stage = mkdtempSync(path.join(tmpdir(), "bao-legacy-stage-"));
-  writeFixture(source, legacyFiles());
-  const result = spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
-    cwd: root,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      BAO_SKIP_BUILD: "1",
-      BAO_LEGACY_SOURCE: source,
-      BAO_EXT_DIR: stage,
-      BAO_CHROME_PROFILE: "missing-profile-for-test",
-    },
-  });
-  assert.equal(result.status, 0, result.stderr);
-  for (const rel of ["manifest.json", "icons/icon-16.png", "dashboard.html", "sidepanel.html", "dist/background.js", "dist/dashboard.js", "dist/sidepanel.js"]) {
-    assert.equal(readFileSync(path.join(stage, rel), "utf8").length > 0, true, rel);
-  }
-});
-
-test("legacy installer exits non-zero when a manifest file is absent", () => {
-  const source = mkdtempSync(path.join(tmpdir(), "bao-legacy-bad-"));
-  const stage = path.join(tmpdir(), `bao-legacy-bad-stage-${process.pid}`);
-  writeFixture(source, legacyFiles(""));
-  const result = spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
-    cwd: root,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      BAO_SKIP_BUILD: "1",
-      BAO_LEGACY_SOURCE: source,
-      BAO_EXT_DIR: stage,
-    },
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(`${result.stderr}`, /icons\/icon-16\.png/);
-});
-
-test("install-dev.sh names the legacy and current installers and does not stage", () => {
+test("install-dev.sh names the current installer and does not stage", () => {
   const stage = path.join(tmpdir(), `bao-shim-stage-${process.pid}`);
   const result = spawnSync("bash", [path.join(root, "install-dev.sh")], {
     cwd: root,
@@ -98,7 +36,6 @@ test("install-dev.sh names the legacy and current installers and does not stage"
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.equal(result.status, 2, output);
-  assert.match(output, /install-dev-legacy\.sh/);
   assert.match(output, /install-extension\.sh/);
   assert.equal(existsSync(stage), false);
 });
@@ -150,30 +87,6 @@ test("extension installer stages the unpacked directory and rejects a missing ma
   });
   assert.notEqual(bad.status, 0);
   assert.match(`${bad.stderr}`, /icons\/icon-16\.png/);
-});
-
-test("legacy installer builds and stages dist/forceopen.js", () => {
-  const built = path.join(root, "dist/forceopen.js");
-  const stage = mkdtempSync(path.join(tmpdir(), "bao-forceopen-"));
-  const env: NodeJS.ProcessEnv = { ...process.env, BAO_LEGACY_SOURCE: root, BAO_EXT_DIR: stage };
-  delete env.BAO_SKIP_BUILD;
-  const result = spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
-    cwd: root,
-    encoding: "utf8",
-    env,
-    timeout: 60000,
-  });
-  const output = `${result.stdout}${result.stderr}`;
-  assert.equal(result.status, 0, output);
-  assert.equal(readFileSync(path.join(stage, "dist/forceopen.js"), "utf8"), readFileSync(built, "utf8"));
-  assert.match(output, /Stage succeeded/);
-  if (spawnSync("uname", ["-s"], { encoding: "utf8" }).stdout.trim() === "Darwin") {
-    assert.match(output, /Reload it at chrome:\/\/extensions/);
-    assert.doesNotMatch(output, /macOS-only/);
-  } else {
-    assert.match(output, /macOS-only/);
-  }
-  assert.doesNotMatch(output, /Could not find a Chrome profile/);
 });
 
 function stageCopy(source: string, stage: string, extra: NodeJS.ProcessEnv = {}) {
@@ -375,52 +288,6 @@ test("stager refuses an empty directory inside the checkout", () => {
   }
 });
 
-function unameStub(system: string): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "bao-uname-"));
-  const file = path.join(dir, "uname");
-  writeFileSync(file, `#!/bin/sh\necho ${system}\n`);
-  chmodSync(file, 0o755);
-  return dir;
-}
-
-test("legacy installer splits the profile hint by uname and does not launch", () => {
-  const source = tinySource();
-  function run(system: string) {
-    const home = mkdtempSync(path.join(tmpdir(), "bao-uname-home-"));
-    const local = path.join(home, "Library/Application Support/Google/Chrome");
-    mkdirSync(local, { recursive: true });
-    writeFileSync(path.join(local, "Local State"), JSON.stringify({
-      profile: { info_cache: { "Profile 1": { name: "dev" } } },
-    }));
-    const stage = mkdtempSync(path.join(tmpdir(), "bao-uname-stage-"));
-    return spawnSync("bash", [path.join(root, "install-dev-legacy.sh")], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        HOME: home,
-        PATH: `${unameStub(system)}:${process.env.PATH}`,
-        BAO_SKIP_BUILD: "1",
-        BAO_LEGACY_SOURCE: source,
-        BAO_EXT_DIR: stage,
-      },
-    });
-  }
-  const linux = run("Linux");
-  const linuxOut = `${linux.stdout}${linux.stderr}`;
-  assert.equal(linux.status, 0, linuxOut);
-  assert.match(linuxOut, /macOS-only/);
-  assert.match(linuxOut, /Stage succeeded/);
-  assert.doesNotMatch(linuxOut, /Profile 1/);
-  const mac = run("Darwin");
-  const macOut = `${mac.stdout}${mac.stderr}`;
-  assert.equal(mac.status, 0, macOut);
-  assert.match(macOut, /Reload it at chrome:\/\/extensions/);
-  assert.doesNotMatch(macOut, /macOS-only/);
-  assert.doesNotMatch(macOut, /Profile 1/);
-  assert.doesNotMatch(macOut, /Could not find a Chrome profile/);
-});
-
 test("bao-mcp.sh asks for the serve home when BAO_HOME is unset and picks no library", () => {
   const user = mkdtempSync(path.join(tmpdir(), "bao-mcp-user-"));
   const cwd = mkdtempSync(path.join(tmpdir(), "bao-mcp-cwd-"));
@@ -440,18 +307,7 @@ test("bao-mcp.sh asks for the serve home when BAO_HOME is unset and picks no lib
   assert.deepEqual(readdirSync(cwd), []);
 });
 
-test("both installers run under /bin/bash without --force", { skip: !existsSync("/bin/bash") }, () => {
-  const legacySource = mkdtempSync(path.join(tmpdir(), "bao-bin-bash-legacy-"));
-  writeFixture(legacySource, legacyFiles());
-  const legacyStage = mkdtempSync(path.join(tmpdir(), "bao-bin-bash-legacy-stage-"));
-  const legacy = spawnSync("/bin/bash", [path.join(root, "install-dev-legacy.sh")], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, BAO_SKIP_BUILD: "1", BAO_LEGACY_SOURCE: legacySource, BAO_EXT_DIR: legacyStage },
-  });
-  assert.equal(legacy.status, 0, `${legacy.stdout}${legacy.stderr}`);
-  assert.equal(readFileSync(path.join(legacyStage, "dist/background.js"), "utf8"), "background");
-
+test("extension installer runs under /bin/bash without --force", { skip: !existsSync("/bin/bash") }, () => {
   const extSource = tinySource();
   const extStage = mkdtempSync(path.join(tmpdir(), "bao-bin-bash-ext-stage-"));
   const ext = spawnSync("/bin/bash", [path.join(root, "install-extension.sh")], {

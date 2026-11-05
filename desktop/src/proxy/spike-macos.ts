@@ -4,7 +4,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
-import type { Workflow } from "../../../src/types";
+import type { Workflow } from "../../../shared/types";
 import { MacOsHelper } from "./os-macos";
 import {
   clearDisplay, isTwelve, measureKeys, outsidePoint, readout, recordCalc, relaunchCalc, replayCalc,

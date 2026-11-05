@@ -1,7 +1,6 @@
 const products = {
   desktop: "desktop/src/",
   extension: "extension/src/",
-  legacy: "src/",
   web: "web/src/",
 };
 
@@ -34,7 +33,7 @@ module.exports = {
     },
   ],
   options: {
-    includeOnly: "^(desktop/src|extension/src|src|web/src|shared)/",
+    includeOnly: "^(desktop/src|extension/src|web/src|shared)/",
     exclude: "\\.test\\.tsx?$",
     doNotFollow: { path: "node_modules" },
     tsConfig: { fileName: "web/tsconfig.json" },

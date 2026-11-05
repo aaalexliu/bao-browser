@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import type { Step, Workflow } from "../../../src/types";
+import type { Step, Workflow } from "../../../shared/types";
 import { clickViewport } from "./input";
 
 export interface ReplayClick {

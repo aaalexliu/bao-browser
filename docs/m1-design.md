@@ -1,4 +1,7 @@
-# Bao Browser — M1 Design (cross-navigation, waitForUser, downloads)
+# Bao Browser - M1 Design (cross-navigation, waitForUser, downloads)
+
+Historical root-extension design. That extension, its build, and its tests are
+retired. See [README](../README.md) for current entry points.
 
 > Parent doc: [[product-design-v1]] (architecture, IR, M0 detail).
 > Status: M0 (capture + deterministic replay, 1 page, no LLM) works. This is M1.

@@ -10,7 +10,11 @@ The [full workflow](../.github/workflows/guardrails.yml) runs all desktop tests
 without test-name exclusions, only with the `full-suite` PR label or manual
 dispatch. It has no nightly schedule and is not a required check.
 [Testing guidance](TESTING.md#choose-the-pr-checks) explains when to opt in.
-Always state that choice and its reason in the PR body.
+Always state that choice and its reason in the PR body. The full workflow runs
+desktop and web tests only. The old root-extension build, 21 serial suites, and
+legacy essential group are retired. The desktop native-messaging extension and
+its tests remain. [Retirement evidence](ci-test-selection.md#legacy-extension-retirement)
+lists the deleted suites, timings, and behavior.
 
 ```sh
 npm ci
@@ -27,7 +31,7 @@ npm run build:desktop
 gh-axi pr edit <number> --add-label full-suite
 ```
 
-`check:static` runs the baseline budget check, all four TypeScript checks, typed
+`check:static` runs the baseline budget check, all three TypeScript checks, typed
 ESLint, and the import gate. It never starts Bao or a browser. Enable the same
 fast checks before each push with `npm run hooks:enable`. Hooks are bypassable;
 CI is the gate. Both packages must be installed for the static checks.
@@ -63,7 +67,7 @@ with source/configuration hashes in the build key. The key includes the PR
 workflow so build flags cannot reuse a stale artifact. Essential jobs restore
 `node_modules`, not a second global npm-download cache. Their build uses
 `--noCheck` only to emit JavaScript. The required `static (types)` gate still runs
-all four full typechecks on every commit. Local and full-suite builds retain
+all three full typechecks on every commit. Local and full-suite builds retain
 normal TypeScript checking. A 433-file comparison found byte-identical JavaScript
 from normal and emit-only builds.
 
@@ -76,8 +80,8 @@ not belong in this job.
 ## Typed lint
 
 `eslint.config.mjs` enables the report's 20 correctness rules on TypeScript in
-`desktop/src`, `desktop/test`, `extension/src`, legacy `src`, `web/src`, and
-`shared`. It uses the four existing tsconfigs. The desktop project includes
+`desktop/src`, `desktop/test`, `extension/src`, `web/src`, and `shared`.
+It uses the three product tsconfigs. The desktop project includes
 all shared files, even those no product imports yet. It excludes dependencies and generated
 output, including Next's generated declarations. It adds no formatting or
 assertion rules. JavaScript and HTML-embedded scripts are not typed-lint
@@ -102,12 +106,13 @@ gate, not a claim that every changed line is safe.
 ## Import ownership
 
 `.dependency-cruiser.cjs` separates desktop, the desktop-connected extension,
-the legacy extension, and web. No product may add imports of another product's
+and web. No product may add imports of another product's
 implementation, including type-only imports. Main's browser-safe helpers in
-`shared/` sit outside those four products. Products may import them. Shared
+`shared/` sit outside those three products. Products may import them. Shared
 helpers may reuse product contracts through type-only imports, but must not
 import product runtime code. Both graph passes include shared files, including
-those no product imports yet. This guardrail change does not move product code.
+those no product imports yet. The retired root extension's masking and workflow contracts now live in
+`shared/mask.ts` and `shared/types.ts`, because desktop code still imports them.
 
 The gate also blocks replay/domain imports of app views and view types, and
 shipped desktop imports of eval/proof modules. The current mixed `v1/` directory
@@ -116,8 +121,8 @@ future work.
 
 `.dependency-cruiser-known-violations.json` owns the explicit existing
 rule/source/target exceptions. The product rules cover all directions,
-including desktop's imports of legacy types/masking helpers and the extension's
-host grant helper. Both `views.ts` and `view-types.ts` are protected.
+including the extension's host grant helper. Shared masking and types no longer
+need cross-product exceptions. Both `views.ts` and `view-types.ts` are protected.
 
 Both graph passes use `web/tsconfig.json` to resolve the existing `@/*`
 imports from the web product. Other products use relative imports. Reusing the
@@ -172,11 +177,11 @@ Failed assertions still fail the job.
 
 ## Compiler floor
 
-All four projects enable `noFallthroughCasesInSwitch`, `noUnusedLocals`,
+All three projects enable `noFallthroughCasesInSwitch`, `noUnusedLocals`,
 `noUnusedParameters`, and `noImplicitReturns`. The desktop-connected extension
 (`extension/tsconfig.json`) also enables `noUncheckedIndexedAccess`. The
 prerequisite cleanup removes unused declarations and makes return intents explicit. It retains the
 sign-in route's consent check and the side effects of discarded initializers.
-Root/desktop indexed-access work, web's two indexed-access diagnostics, exact
+Desktop indexed-access work, web's two indexed-access diagnostics, exact
 optional properties, broad assertion cleanup, source-wide formatting, the run
 store rewrite, and Rust lint remain out of this step.

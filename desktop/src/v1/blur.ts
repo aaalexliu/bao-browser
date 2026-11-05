@@ -6,7 +6,7 @@ export interface BlurPage {
   screenshot(opts?: object): Promise<Buffer>;
 }
 
-/** Keep the pattern in sync with src/mask.ts. It runs inside the page. */
+/** Keep the pattern in sync with shared/mask.ts. It runs inside the page. */
 export function blurSensitiveFields(): number {
   const ac = new Set([
     "current-password", "new-password", "cc-number", "cc-csc", "cc-exp",

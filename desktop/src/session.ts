@@ -4,7 +4,7 @@
 // with setInputFiles on replay — the workflow stores the basename only.
 
 import type { BrowserContext, Page } from "playwright";
-import type { FrameRef, Step, Target, Workflow } from "../../src/types";
+import type { FrameRef, Step, Target, Workflow } from "../../shared/types";
 import { installPageHelpers, type Described } from "./page-fns";
 
 const ORIGIN = "https://the-internet.herokuapp.com";

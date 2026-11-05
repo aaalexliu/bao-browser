@@ -1,7 +1,7 @@
 // Workflow contract v2. Replay reads this document and nothing else.
 // Extension workflows stay version 1. migrate() is the only door in.
 
-import { isSensitiveField, isSensitiveValue } from "../../../src/mask";
+import { isSensitiveField, isSensitiveValue } from "../../../shared/mask";
 import { canonical } from "./canonical";
 import { bindingTokens, INPUT_BINDING } from "./bindings";
 import { fixedSavedChoice, hasStrippedSecret } from "../../../shared/saved-secrets";

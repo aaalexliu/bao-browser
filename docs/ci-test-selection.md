@@ -1,4 +1,81 @@
-# PR test selection: 2026-11-04
+# PR test selection
+
+## Legacy extension retirement
+
+The old standalone root extension is retired. Its source, root manifest,
+side-panel/dashboard pages, build/watch/package commands, installer, and all
+legacy fixture/live tools are removed. CI no longer runs the **Legacy extension
+tests** step or the `legacy` essential group. No remaining desktop or web test
+was dropped for speed. The desktop extension in `extension/`, its installer,
+and its tests remain. Desktop imports of root masking and workflow types moved
+to `shared/mask.ts` and `shared/types.ts`; packaging now stages those shared
+files without a root `src` runtime tree.
+
+The last measured full run is
+[41996082031](https://github.com/aaalexliu/bao-browser/actions/runs/41996082031).
+Its legacy step took about 104 s; suite boundaries total 102.40 s. Times below
+include each suite's process startup and browser work, ending at the next
+suite boundary (or the final success line). These are historical Linux times,
+not fresh measurements or predicted wall savings for a different CI layout.
+
+| Deleted test file | Last measured time | Retired behavior |
+| --- | ---: | --- |
+| `test/e2e.mjs` | 2.66 s | Root content-script record/replay on a local fixture |
+| `test/list.mjs` | 5.77 s | Anchored replay after repeated cards reorder |
+| `test/blindspots.mjs` | 2.63 s | Shadow, canvas, and select reachability |
+| `test/virtual.mjs` | 3.42 s | Scroll-find replay across recycled DOM nodes |
+| `test/frames.mjs` | 2.86 s | Cross-origin frame recording and replay |
+| `test/forceopen.mjs` | 1.64 s | Opt-in closed-shadow force-open injection |
+| `test/editable.mjs` | 3.32 s | Contenteditable recording and replay |
+| `test/spa.mjs` | 3.18 s | Soft-navigation capture and replay |
+| `test/nav.mjs` | 5.76 s | Full-navigation resume and user handoff |
+| `test/check.mjs` | 3.98 s | Checkbox/radio end-state replay |
+| `test/keyboard.mjs` | 3.11 s | Keypress and Enter-submit replay |
+| `test/pointerdown.mjs` | 1.16 s | Capture before pointerdown removes a target |
+| `test/assert.mjs` | 15.04 s | Recorded assertions and runner exit codes |
+| `test/download.mjs` | 3.25 s | Download correlation and completion |
+| `test/grounding.mjs` | 1.09 s | Captured element bounds, text, and role |
+| `test/golden.mjs` | 4.00 s | Golden screenshot capture and storage |
+| `test/snapshot.mjs` | 1.17 s | Bounded DOM snapshots without input values |
+| `test/sensitive.mjs` | 2.09 s | Root extension secret masking and empty secret replay |
+| `test/workflows.mjs` | 8.24 s | Named workflows, editing, and run history |
+| `test/sidepanel.mjs` | 23.80 s | Root side-panel recording, library, import/export, and undo |
+| `test/dashboard.mjs` | 4.20 s | Root dashboard editing and audit filmstrip |
+
+The removed public-site tests below never ran in that full check. Their last
+measured times are unavailable; no time saving is claimed for them.
+
+| Deleted test file | Last measured time | Retired behavior |
+| --- | --- | --- |
+| `test/live-blindspots-open-shadow.mjs` | Not measured | Root extension open-shadow capture on Shoelace |
+| `test/live-blindspots-canvas.mjs` | Not measured | Root extension canvas classification on Excalidraw |
+| `test/live-blindspots-frames.mjs` | Not measured | Root extension cross-origin frames on Stripe |
+| `test/live-blindspots-virtual.mjs` | Not measured | Root extension windowed-grid detection on AG Grid |
+| `test/live-blindspots-closed-shadow.mjs` | Not measured | Root extension closed-shadow boundary on Salesforce |
+| `test/live-gaps-forms.mjs` | Not measured | Root extension text/select record and replay |
+| `test/live-gaps-spa.mjs` | Not measured | Root extension TodoMVC route replay |
+| `test/live-gaps-editors.mjs` | Not measured | Root extension rich-text replay and strict-editor refusal |
+| `test/live-gaps-feed.mjs` | Not measured | Root extension repeated-feed anchoring |
+| `test/live-notes.mjs` | Not measured | Root extension Substack note identity replay |
+
+Removed support tools are `test/all.mjs`, `test/run.mjs`, `test/live.mjs`,
+`test/live-helpers.mjs`, and `test/probe-sites.mjs`, plus legacy HTML fixtures.
+They have no independent measured suite times. Installer-specific assertions
+were removed from the mixed `install-scripts.test.ts`; current installer and
+stager safety assertions remain. That file's last full body time was 2.181 s
+for the whole mixed file, not a measured cost of the deleted cases.
+
+**PR check choice: use `full-suite`.** Moving shared runtime imports and changing
+package staging and CI/test entry points reaches beyond a pure source deletion.
+Focused local checks plus the remote full inventory protect retained desktop,
+extension, and web paths. Do not run the full suite locally for this removal.
+
+## Historical selection: 2026-11-04
+
+The remaining sections are the original pre-retirement coverage snapshot.
+They describe the old inventory, not today's test counts or coverage. Do not
+reuse that denominator after deleting the root extension. Current membership
+comes only from `test/essential.json`.
 
 ## Evidence and scope
 
@@ -63,7 +140,7 @@ without a planning-job delay; a self-test requires those IDs to match the
 manifest exactly. The runner never changes the full-suite inventory.
 
 The full check is opt-in through `full-suite` or manual dispatch, not scheduled
-and not required. No test was deleted. See [testing guidance](TESTING.md#choose-the-pr-checks)
+and not required. No test was deleted in that original selection change. See [testing guidance](TESTING.md#choose-the-pr-checks)
 for the decision an agent must state in its PR body.
 
 ## Per-file measurements
@@ -271,28 +348,6 @@ These cases remain in `desktop/test/unit/live-mode-regressions.test.ts`:
 - Shift inserts shifted characters while shortcuts insert no text
 - MCP select-all deletes and replaces input, textarea, and editable text
 - switching an owned popup allows a cross-host navigation during adoption
-
-## Legacy suites moved to opt-in only
-
-- `test/e2e.mjs`
-- `test/list.mjs`
-- `test/blindspots.mjs`
-- `test/virtual.mjs`
-- `test/frames.mjs`
-- `test/forceopen.mjs`
-- `test/editable.mjs`
-- `test/spa.mjs`
-- `test/nav.mjs`
-- `test/check.mjs`
-- `test/keyboard.mjs`
-- `test/pointerdown.mjs`
-- `test/assert.mjs`
-- `test/download.mjs`
-- `test/grounding.mjs`
-- `test/golden.mjs`
-- `test/workflows.mjs`
-- `test/sidepanel.mjs`
-- `test/dashboard.mjs`
 
 ## Repeat the measurements
 

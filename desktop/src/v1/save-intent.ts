@@ -3,7 +3,7 @@
 // No provider, a bad reply, or a timeout leaves that title and does not fail the save.
 // The result is stored on the workflow so the pass does not run again.
 
-import { isSensitiveValue } from "../../../src/mask";
+import { isSensitiveValue } from "../../../shared/mask";
 import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
 import type { WorkflowV2 } from "./schema";

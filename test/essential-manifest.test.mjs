@@ -15,13 +15,13 @@ test("the essential manifest names real tests, gives reasons, and has no overlap
   const seen = new Map();
   for (const [group, entry] of Object.entries(manifest)) {
     assert.match(group, /^[a-z][a-z0-9-]*$/);
-    assert.ok(["desktop", "web", "legacy"].includes(entry.kind), group);
+    assert.ok(["desktop", "web"].includes(entry.kind), group);
     assert.ok(entry.reason?.length > 0, group);
     assert.ok(entry.tests?.length > 0, group);
     assert.ok(!entry.names || entry.tests.length === 1, "name filters belong to one file");
     assert.ok(!entry.names || entry.names.length > 0, group);
     for (const file of entry.tests) {
-      assert.match(file, entry.kind === "desktop" ? /^desktop\/test\/unit\/[a-z0-9-]+\.test\.ts$/ : entry.kind === "web" ? /^web\/src\/.+\.test\.ts$/ : /^test\/[a-z0-9-]+\.mjs$/);
+      assert.match(file, entry.kind === "desktop" ? /^desktop\/test\/unit\/[a-z0-9-]+\.test\.ts$/ : /^web\/src\/.+\.test\.ts$/);
       assert.ok(existsSync(file), file);
       const selections = seen.get(file) ?? [];
       assert.ok(!selections.includes("*"), `duplicate unfiltered file: ${file}`);
