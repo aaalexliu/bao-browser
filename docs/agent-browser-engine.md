@@ -1,6 +1,6 @@
 # agent-browser trial
 
-Bao keeps its workflow, Capture, Library, replay, MCP, and site-policy layers. The native agent-browser process replaces page actions only. The old engine stays the default. This trial does not remove the capture-only extension or change the daily-Chrome debugging helper.
+The workflow engine trial keeps Bao's workflow, Capture, Library, replay, MCP, and site-policy layers. In that trial, the native agent-browser process replaces page actions only. The old engine stays the default. The separate direct MCP route is described below. Neither route removes the capture-only extension or changes the daily-Chrome debugging helper.
 
 ## Direct MCP commands
 

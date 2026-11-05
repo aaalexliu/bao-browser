@@ -482,7 +482,7 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 
 The operational steps for the default `bao mcp` server are in [Agent quickstart](agent-quickstart.md).
 
-`bao mcp` lists the same tools no matter how many workflows you add: the four catalog tools below, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point). The catalog tools run inside `bao mcp`. The live tools go to the running Bao app, and without it they return an error that names the command to start it. `bao mcp-live` is an alias.
+`bao mcp` lists the same tools no matter how many workflows you add: the four catalog tools below, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point), then `agent_browser` in [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands). The catalog and native proxy run inside `bao mcp`. The live tools go to the running Bao app, and without it they return an error that names the command to start it. `bao mcp-live` is an alias.
 
 | Tool | What it returns |
 | --- | --- |
@@ -523,7 +523,7 @@ The app uses the Neon serverless driver when `DATABASE_URL` is a hosted Postgres
 
 # Bao MCP drivers
 
-This section is the eval server. The default `bao mcp` server is the catalog and live tools above. Steps for that server are in [Agent quickstart](agent-quickstart.md).
+This section is the eval server. The default agent server is described in [MCP](#mcp). Steps for that server are in [Agent quickstart](agent-quickstart.md).
 
 `BAO_MCP_LIVE=1` runs `desktop/src/eval/live-mcp.ts`. The process creates a temporary profile, launches the test browser with a mock keychain, and opens `BAO_FIXTURE_URL`. The test browser is `BAO_TEST_BROWSER`, else Playwright's Chromium. The process refuses a `BAO_TEST_BROWSER` that is one of the standard installed Google Chrome paths, `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` or `/opt/google/chrome/chrome`, including through a link. That browser ends with the process. It is the stdio server a driver talks to in `bao eval drivers`. The live tool table below belongs to this evaluator.
 
@@ -549,7 +549,7 @@ Every read and every act stores `snapshot.sha256` and `snapshot.path`. The file 
 
 ## Without live mode
 
-With `BAO_MCP_LIVE` unset, `bao mcp` is the agent server in [MCP](#mcp): the catalog tools and the `live_*` tools. The pixel tools above are not listed.
+With `BAO_MCP_LIVE` unset, `bao mcp` is the agent server in [MCP](#mcp). The pixel tools above are not listed.
 
 ## What each driver can send
 

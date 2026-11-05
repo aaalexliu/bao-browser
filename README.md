@@ -23,6 +23,7 @@ node scripts/check-node.mjs
 | Prerequisites | `node scripts/check-node.mjs`, then `npm install` and `npm --prefix web install`, then `npx playwright install chromium` before `npm test`. |
 | Desktop dev | `npm run build:desktop`, then `npm run bao`. |
 | Page engine | Settings → Page engine. Profile selection, trial limits, and evidence are in [agent-browser trial](docs/agent-browser-engine.md). |
+| Direct browser control | Use the `agent_browser` MCP tool. Commands and limits are in [Direct MCP commands](docs/agent-browser-engine.md#direct-mcp-commands). |
 | Legacy extension dev | `npm run watch` |
 | Registry dev | `npm --prefix web run dev` |
 | Typecheck | `npm run typecheck` checks `src`, `desktop`, `extension`, and `web`. |
