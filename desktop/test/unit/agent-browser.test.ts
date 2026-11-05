@@ -8,7 +8,7 @@ import { AgentBrowserPage, EngineUncertain, pageEngineName, type EvaluationPhase
 import { CdpLiveDriver } from "../../src/cdp-live/driver";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 
-async function fakeEngine(mode = "ok", commandMs: number | null = 150, timeouts: { idleMs?: number; lifetimeMs?: number } = {}) {
+async function fakeEngine(mode = "ok", commandMs: number | null = 150) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-engine-unit-"));
   const executable = path.join(root, "native");
   const output = path.join(root, "transport.jsonl");
@@ -44,7 +44,7 @@ if (${JSON.stringify(mode)}.endsWith('delayed-ready')) {
 } else server.listen(socketPath);
 `, { mode: 0o700 });
   let page: AgentBrowserPage;
-  try { page = await AgentBrowserPage.open({ endpoint: "ws://127.0.0.1:12345/devtools/browser/test", targetId: "ABC123", ownership: "external", executable, ...timeouts, ...(commandMs === null ? {} : { commandMs }) }); }
+  try { page = await AgentBrowserPage.open({ endpoint: "ws://127.0.0.1:12345/devtools/browser/test", targetId: "ABC123", ownership: "external", executable, ...(commandMs === null ? {} : { commandMs }) }); }
   catch (error) { await rm(root, { recursive: true, force: true }); throw error; }
   const records = async () => (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
   return { page, records, async close() { await page.close(); await rm(root, { recursive: true, force: true }); } };
@@ -214,37 +214,24 @@ test("an uncertain native startup read propagates immediately without another pr
   } finally { await fake.close(); }
 });
 
-test("live activity resets the idle timeout without extending the absolute cap", async (t) => {
-  const original = globalThis.setTimeout;
-  const timers: { handle: NodeJS.Timeout; callback: () => void; ms: number }[] = [];
-  t.mock.method(globalThis, "setTimeout", (callback: () => void, ms?: number) => {
-    const tracked = ms === 500 || ms === 900;
-    const handle = original(callback, tracked ? 60_000 : ms);
-    if (tracked) timers.push({ handle, callback, ms: ms! });
-    return handle;
-  });
-  const cleared = t.mock.method(globalThis, "clearTimeout");
-  const idle = await fakeEngine("ok", null, { idleMs: 500 });
+test("the native session stays open beyond the old idle and lifetime limits until explicitly closed", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  // Let startup poll its socket while the child uses real time.
+  const startup = setInterval(() => t.mock.timers.tick(20), 20);
+  const fake = await fakeEngine("ok", null).finally(() => clearInterval(startup));
   try {
-    for (let i = 0; i < 4; i++) {
-      const previous = timers.at(-1)!;
-      idle.page.touch();
-      assert.ok(cleared.mock.calls.some((call) => call.arguments[0] === previous.handle));
-      assert.notEqual(timers.at(-1)!.handle, previous.handle);
-      assert.equal(timers.at(-1)!.ms, 500);
-    }
-    timers.at(-1)!.callback();
-    await assert.rejects(idle.page.evaluate("document.title"), /idle timeout/);
-  } finally { await idle.close(); }
-  const capped = await fakeEngine("ok", null, { idleMs: 500, lifetimeMs: 900 });
-  try {
-    const cap = timers.find((timer) => timer.ms === 900)!;
-    for (let i = 0; i < 6; i++) capped.page.touch();
-    assert.equal(timers.filter((timer) => timer.ms === 900).length, 1);
-    assert.equal(cleared.mock.calls.some((call) => call.arguments[0] === cap.handle), false);
-    cap.callback();
-    await assert.rejects(capped.page.evaluate("document.title"), /lifetime exceeded/);
-  } finally { await capped.close(); }
+    const [spawn] = await fake.records() as { pid: number; env: Record<string, string> }[];
+    t.mock.timers.tick(30 * 60_000);
+    await fake.page.evaluate("document.title");
+    t.mock.timers.tick(6 * 60 * 60_000);
+    await fake.page.evaluate("document.title");
+    assert.doesNotThrow(() => process.kill(spawn.pid, 0));
+    assert.equal(spawn.env.AGENT_BROWSER_IDLE_TIMEOUT_MS, "0", "the native daemon must not apply its own idle limit");
+    await fake.page.close();
+    assert.throws(() => process.kill(spawn.pid, 0));
+    await assert.rejects(fake.page.evaluate("document.title"), /stopped/);
+    assert.equal((await fake.records()).some((cmd: { action?: string }) => cmd.action === "close"), false, "explicit stop disconnects without closing an external browser");
+  } finally { t.mock.timers.reset(); await fake.close(); }
 });
 
 test("a mismatched native tab response stops startup before any page action", async () => {

@@ -69,6 +69,13 @@ test("Library step frame fits the captured viewport without letterboxing or crop
       gaps.push(JSON.parse(message.text().slice("shot-ready-gap ".length)));
     });
     await page.setViewportSize({ width: 1280, height: 900 });
+    // Load the saved state once. Background polling can rebuild the viewer and reset the selected frame.
+    let stateLoaded = false;
+    await page.route("**/api/state", (route) => {
+      if (stateLoaded) return route.abort();
+      stateLoaded = true;
+      return route.continue();
+    });
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click("[data-screen=runs]");
     await page.click(`[data-open-run=${runId}]`);

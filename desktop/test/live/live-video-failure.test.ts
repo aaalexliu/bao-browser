@@ -33,10 +33,10 @@ test("video encoding failure keeps saved captures and action status across all s
   }) as typeof processes.spawn);
   const results: unknown[] = [];
   try {
-    for (const mode of ["passed", "refused", "halted", "disconnect", "idle", "save-error"] as const) {
+    for (const mode of ["passed", "refused", "halted", "disconnect", "save-error"] as const) {
       const home = await mkdtemp(path.join(tmpdir(), "bao-video-stop-"));
       const target = { kind: "throwaway" as const, portFile: browser.portFile };
-      const host = createLiveHost({ home, target, lockFile: path.join(home, "live.lock"), idleMs: mode === "idle" ? 150 : 0,
+      const host = createLiveHost({ home, target, lockFile: path.join(home, "live.lock"),
         selectRun: async () => ({ target, engineName: "old", artifactRoot: home }) });
       let restoreSave: (() => void) | undefined;
       try {
@@ -58,15 +58,7 @@ test("video encoding failure keeps saved captures and action status across all s
           restoreSave = () => save.mock.restore();
         }
         const beforeEncodes = encodes;
-        let stopped: Reply;
-        if (mode === "idle") {
-          const deadline = Date.now() + 20_000;
-          while (host.isOpen() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
-          assert.equal(host.isOpen(), false);
-          stopped = await host.call({ op: "live_stop" }) as Reply;
-        } else {
-          stopped = await host.call(mode === "disconnect" ? { op: LIVE_DISCONNECT, client: "fixture-agent" } : { op: "live_stop" }) as Reply;
-        }
+        const stopped = await host.call(mode === "disconnect" ? { op: LIVE_DISCONNECT, client: "fixture-agent" } : { op: "live_stop" }) as Reply;
         assert.ok(encodes > beforeEncodes, "the actual final encoding boundary failed");
         const library = new Library(home);
         if (mode === "save-error") {
@@ -76,7 +68,7 @@ test("video encoding failure keeps saved captures and action status across all s
           continue;
         }
         assert.equal(stopped.outcome.kind, "stopped");
-        if (mode !== "idle") assert.match(stopped.outcome.reason || "", /Workflow saved; video unavailable: CDP video encoding failed/);
+        assert.match(stopped.outcome.reason || "", /Workflow saved; video unavailable: CDP video encoding failed/);
         const workflow = library.read(started.session!);
         assert.equal(workflow.steps.length, 1);
         const run = library.listRuns()[0]!;

@@ -598,7 +598,7 @@ test("live typing reaches the page unchanged but saved text strips secrets", { t
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome });
   t.after(() => browser.close());
-  const host = createLiveHost({ home: dirs.home, lockFile: path.join(dirs.home, "live.lock"), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, idleMs: 0 });
+  const host = createLiveHost({ home: dirs.home, lockFile: path.join(dirs.home, "live.lock"), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") } });
   t.after(() => host.close());
   type Reply = { session: string; outcome: { kind: string }; view: { controls: { label: string; ref: string }[] } };
   const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;

@@ -564,7 +564,6 @@ describe("an agent's live session on the Instacart fixture", { timeout: 180_000 
       openProfile: async () => {
         throw new Error("a throwaway Chrome has no profile window");
       },
-      idleMs: 0,
     });
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<LiveBody>;
     let workflow: WorkflowV2;

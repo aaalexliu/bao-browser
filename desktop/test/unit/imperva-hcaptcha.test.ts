@@ -68,7 +68,7 @@ test("HTTP 200 Imperva hCaptcha stops live mode for the owner without input", { 
     await page.goto(startUrl);
     assert.equal((await readStore()).blocked, "captcha");
     const home = path.join(dirs.home, parameter, String(careful));
-    const host = createLiveHost({ home, target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, lockFile: path.join(dirs.home, "live.lock"), idleMs: 0 });
+    const host = createLiveHost({ home, target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, lockFile: path.join(dirs.home, "live.lock") });
     const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
     try {
       const started = await call({ op: "live_session_start", careful, intent: "Read local report", url: startUrl });
@@ -90,7 +90,7 @@ test("HTTP 200 Imperva hCaptcha stops live mode for the owner without input", { 
   await page.goto(url + "/signup");
   assert.equal((await readStore()).blocked, null);
   const home = path.join(dirs.home, "signup");
-  const host = createLiveHost({ home, target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, lockFile: path.join(dirs.home, "live.lock"), idleMs: 0 });
+  const host = createLiveHost({ home, target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") }, lockFile: path.join(dirs.home, "live.lock") });
   try {
     const signup = await host.call({ op: "live_session_start", careful: true, intent: "Read local form", url: url + "/signup" }) as Reply;
     assert.equal(signup.outcome.kind, "applied");

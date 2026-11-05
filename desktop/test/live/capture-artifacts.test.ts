@@ -30,7 +30,7 @@ test("transient screenshot veil blocks hit testing and exposes its caption in AX
     for (const engine of ["old", "agent-browser"] as const) await t.test(engine, async (t) => {
       const home = await mkdtemp(path.join(tmpdir(), "bao-transient-veil-"));
       const target = { kind: "throwaway" as const, portFile: browser.portFile };
-      const host = createLiveHost({ home, target, lockFile: path.join(home, "live.lock"), idleMs: 0,
+      const host = createLiveHost({ home, target, lockFile: path.join(home, "live.lock"),
         selectRun: async () => ({ target, engineName: engine }) });
       const observed: { hitBlocked: boolean; captionAccessible: boolean; ariaHidden: string | null; caption: string }[] = [];
       const screenshot = CdpLiveDriver.prototype.screenshotPng;
@@ -102,7 +102,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
   const browser = await launchFixtureBrowser(fixture);
   const observer = await chromium.connectOverCDP(browser.cdpUrl);
   try {
-    for (const mode of ["read-only", "workflow-save-error", "run-save-error", "startup-error", "passed", "refused", "halted", "disconnect-empty", "idle-empty", "close-empty"] as const) await t.test(mode, async (t) => {
+    for (const mode of ["read-only", "workflow-save-error", "run-save-error", "startup-error", "passed", "refused", "halted", "disconnect-empty", "close-empty"] as const) await t.test(mode, async (t) => {
       const home = await mkdtemp(path.join(tmpdir(), "bao-capture-owner-"));
       const library = new Library(home);
       const videos = path.join(home, "videos");
@@ -112,7 +112,7 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
       await writeFile(path.join(home, "caller-owned.txt"), sentinel);
       library.saveRun({ id: "run-sentinel", workflowId: "wf-sentinel", kind: "capture", status: "passed", at: 0, steps: [], heals: [], modelCalls: 0, video: "run-sentinel.webm" });
       const target = { kind: "throwaway" as const, portFile: browser.portFile };
-      const host = createLiveHost({ home, target, lockFile: path.join(home, "live.lock"), idleMs: mode === "idle-empty" ? 100 : 0,
+      const host = createLiveHost({ home, target, lockFile: path.join(home, "live.lock"),
         selectRun: async () => ({ target, engineName: "old", artifactRoot: home }) });
       let destination = "";
       let created = false;
@@ -169,11 +169,6 @@ test("capture clips have an adopter or are removed after encoding ends", { skip:
           if (mode === "workflow-save-error") t.mock.method(Library.prototype, "save", () => { throw new Error("fixture workflow save failed"); });
           if (mode === "run-save-error") t.mock.method(Library.prototype, "saveRun", () => { throw new Error("fixture run save failed"); });
           await firstFrame;
-          if (mode === "idle-empty") {
-            const deadline = Date.now() + 20_000;
-            while (host.isOpen() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
-            assert.equal(host.isOpen(), false);
-          }
           if (mode === "close-empty") await host.close();
           else {
             const stopped = await host.call(mode === "disconnect-empty" ? { op: LIVE_DISCONNECT, client: "owner-test" } : { op: "live_stop" }) as Reply;
