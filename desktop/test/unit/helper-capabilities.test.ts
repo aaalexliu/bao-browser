@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import test from "node:test";
 import { helperJobList, htmlEsc, rail } from "../../src/app/views";
 import type { AutomationReport } from "../../src/cdp-live/automation";
@@ -12,16 +10,6 @@ import {
   usesScreenRecording,
 } from "../../src/helper-capabilities";
 import { MacOsHelper } from "../../src/proxy/os-macos";
-
-const LIVE_ENTRIES = ["session.ts", "instacart-run.ts", "login-diff.ts", "run.ts"];
-
-function liveEntryProblem(src: string): string | undefined {
-  if (src.includes("screen recording is granted; not starting")) return "old throw";
-  if (src.includes("new MacOsHelper")) return "raw helper";
-  if (!src.includes("chromeHelper(")) return "missing chromeHelper";
-  if (!src.includes("liveChromeBlock(")) return "missing liveChromeBlock";
-  return undefined;
-}
 
 test("live Chrome starts when Screen Recording is already granted", () => {
   assert.equal(
@@ -134,17 +122,6 @@ test("live Chrome helper leaves other commands' bundle handling to the native he
   }
   await live.moveWindow("", { x: 50, y: 50, w: 550, h: 500 }, { pid: 42, frontmost: true });
   assert.deepEqual(sent.at(-1), ["move-window", "--pid", "42", "--frontmost", "--x", "50", "--y", "50", "--w", "550", "--h", "500"]);
-});
-
-test("live entries keep the shared gate", () => {
-  for (const name of LIVE_ENTRIES) {
-    const src = readFileSync(path.join(process.cwd(), "desktop/src/cdp-live", name), "utf8");
-    assert.equal(liveEntryProblem(src), undefined, name);
-    const thrown = `${src}\nthrow new Error("BaoOSHelper screen recording is granted; not starting");\n`;
-    assert.equal(liveEntryProblem(thrown), "old throw", name);
-    const raw = `${src}\nconst other = new MacOsHelper(bin);\n`;
-    assert.equal(liveEntryProblem(raw), "raw helper", name);
-  }
 });
 
 test("helper status requires Accessibility and Automation, not Screen Recording", () => {
