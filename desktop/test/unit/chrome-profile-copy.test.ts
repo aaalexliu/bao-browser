@@ -12,7 +12,7 @@ import { copyChromeProfile, listChromeProfiles, openCopiedChrome } from "../../s
 import { startApp } from "../../src/app/server";
 
 interface TestPreferences {
-  profile: { name: string; using_default_name: boolean; avatar_index: number; using_default_avatar: boolean; using_gaia_avatar: boolean };
+  profile: { exit_type: string; name: string; using_default_name: boolean; avatar_index: number; using_default_avatar: boolean; using_gaia_avatar: boolean };
   session: { restore_on_startup: number; startup_urls?: string[] };
   signin: { allowed: boolean };
   account_info: { email: string; gaia: string }[];
@@ -36,7 +36,7 @@ async function fixture() {
   await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify(local));
   await writeFile(path.join(sourceRoot, "Default", "Cookies"), "synthetic-cookie-file");
   const preferences: TestPreferences = {
-    profile: { name: "Profile A", using_default_name: true, avatar_index: 33, using_default_avatar: true, using_gaia_avatar: true },
+    profile: { exit_type: "Crashed", name: "Profile A", using_default_name: true, avatar_index: 33, using_default_avatar: true, using_gaia_avatar: true },
     session: { restore_on_startup: 4, startup_urls: ["https://example.test/start"] }, signin: { allowed: true },
     account_info: [{ email: "a@example.test", gaia: "synthetic-account-id" }],
     browser: { theme: { user_color2: 0xff1565c0 | 0, color_scheme2: 2, is_grayscale2: true } },
@@ -116,7 +116,7 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     assert.equal(state.profile.info_cache.Default.is_using_default_name, false);
     assert.equal(state.profile.info_cache.Default.user_name, "a@example.test");
     const prefs = JSON.parse(await readFile(path.join(first.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
-    assert.deepEqual(prefs.profile, { name: first.displayName, using_default_name: false,
+    assert.deepEqual(prefs.profile, { exit_type: "Normal", name: first.displayName, using_default_name: false,
       avatar_index: 31, using_default_avatar: false, using_gaia_avatar: false });
     assert.equal(state.profile.info_cache.Default.avatar_icon, "chrome://theme/IDR_PROFILE_AVATAR_31");
     assert.equal(state.profile.info_cache.Default.is_using_default_avatar, false);
@@ -210,6 +210,7 @@ test("copy marks an uninitialized non-default profile without creating source pr
       const prefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Profile 1", "Preferences"), "utf8")) as TestPreferences;
       assert.deepEqual(copy.launchArgs, ["--profile-directory=Profile 1", "--disable-sync", "--restore-last-session"]);
       assert.equal(prefs.session, undefined);
+      assert.equal(prefs.profile.exit_type, "Normal");
       assert.equal(prefs.profile.name, "Bao copy of Profile B");
       assert.equal(prefs.profile.using_default_name, false);
       assert.equal(prefs.profile.avatar_index, 31);
@@ -406,7 +407,7 @@ test("copied Chrome reaches launch with empty, truncated, missing, or unreadable
   } finally { await f.close(); }
 });
 
-test("copied Chrome restores two tabs with distinct sessionStorage instead of parking on blank", { skip: !process.env.BAO_TEST_BROWSER }, async () => {
+test("copied Chrome restores two tabs with distinct sessionStorage while source Chrome stays open", { skip: !process.env.BAO_TEST_BROWSER }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-copy-restore-test-"));
   const sourceRoot = path.join(root, "source");
   const server = createServer((_request, response) => {
@@ -432,19 +433,33 @@ test("copied Chrome restores two tabs with distinct sessionStorage instead of pa
     const prefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
     prefs.session.restore_on_startup = 5;
     await writeFile(file, JSON.stringify(prefs));
-    const before = await sourceBytes(sourceRoot);
+    source = await launchOwnedChrome({ userDataDir: sourceRoot, headless: true,
+      preserveRestoredTabs: true, loadExtensions: false });
+    const values = async (context: BrowserContext) => Promise.all(context.pages().filter((page) => page.url() === url)
+      .map((page) => page.evaluate(() => sessionStorage.getItem("tabToken"))));
+    const sourceDeadline = Date.now() + 15000;
+    let sourcePrefs: TestPreferences;
+    do {
+      sourcePrefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
+      if (sourcePrefs.profile.exit_type === "Crashed" && (await values(source)).length === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } while (Date.now() < sourceDeadline);
+    assert.equal(sourcePrefs.profile.exit_type, "Crashed");
+    assert.deepEqual((await values(source)).sort(), ["alpha", "beta"]);
     copy = await copyChromeProfile({ sourceRoot, directory: "Default", home: path.join(root, "home") });
+    const preparedPrefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
+    assert.equal(preparedPrefs.profile.exit_type, "Normal");
+    assert.equal(preparedPrefs.session.restore_on_startup, 5);
     restored = await launchOwnedChrome({ userDataDir: copy.userDataDir, headless: true,
       args: copy.launchArgs, preserveRestoredTabs: true, loadExtensions: false });
-    const values = async () => Promise.all(restored!.pages().filter((page) => page.url() === url)
-      .map((page) => page.evaluate(() => sessionStorage.getItem("tabToken"))));
     const deadline = Date.now() + 5000;
-    while ((await values()).length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.deepEqual((await values()).sort(), ["alpha", "beta"]);
+    while ((await values(restored)).length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual((await values(restored)).sort(), ["alpha", "beta"]);
     assert.equal(restored.pages().length, 2);
-    assert.deepEqual(await sourceBytes(sourceRoot), before);
-    const copiedPrefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
-    assert.equal(copiedPrefs.session.restore_on_startup, 5);
+    assert.deepEqual((await values(source)).sort(), ["alpha", "beta"]);
+    sourcePrefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
+    assert.equal(sourcePrefs.profile.exit_type, "Crashed");
+    assert.equal(sourcePrefs.session.restore_on_startup, 5);
   } finally {
     await restored?.close();
     await source?.close();

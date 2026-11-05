@@ -151,7 +151,7 @@ export async function copyChromeProfile(options: {
     // Prefer the origami fox; use the penguin if either source store names the fox.
     const avatarIndex = entry.avatar_icon === "chrome://theme/IDR_PROFILE_AVATAR_31" || profilePreferences.avatar_index === 31 ? 34 : 31;
     // Chrome can fall back to a GAIA photo for a default avatar even with GAIA use off.
-    preferences.profile = { ...profilePreferences, name: displayName, using_default_name: false,
+    preferences.profile = { ...profilePreferences, exit_type: "Normal", name: displayName, using_default_name: false,
       avatar_index: avatarIndex, using_default_avatar: false, using_gaia_avatar: false };
     // Chrome's Customize Chrome user-color theme, not an extension. Set both generations
     // of the prefs so startup migration cannot restore the source's theme.
