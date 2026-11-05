@@ -2,7 +2,7 @@
 
 Bao's desktop app as the computer that a computer-use agent drives. The agent never gets a pipe to the machine. Bao executes each action, records what the agent saw and did, and turns that trace into a workflow the replayer can run without the model.
 
-This pass is the design. The first spike lives in `desktop/src/proxy/` (scripted OpenAI adapter, audit trail, capture HAR). It sits on the desktop spikes: an owned Chrome profile (`desktop/`, spike 1) and an AT-SPI helper for native dialogs (`desktop/os-helper/`, spike 2). The shared IR stays `Workflow` / `Step` in `src/types.ts`. Extension behavior does not change.
+This pass is the design. The first spike lives in `desktop/src/proxy/` (scripted OpenAI adapter, audit trail, capture HAR). It sits on the desktop spikes: an owned Chrome profile (`desktop/`, spike 1) and an AT-SPI helper for native dialogs (`desktop/os-helper/`, spike 2). The shared IR is `Workflow` / `Step`; see [source layout](../README.md#agent-quickstart) for its current location.
 
 The constraints the shape has to honor:
 
@@ -178,7 +178,7 @@ The trail is an append-only list, `desktop/src/proxy/audit.ts`, version 1. Each 
 - `kind`: `read` or `act`
 - `op`: `navigate`, `screenshot`, `dom`, `ax`, `click`, `type`, `keypress`, or the vendor action name when this spike does not perform it
 - `source.agent`, `source.vendor`, `source.adapter`
-- `raw`: the vendor payload after T1 redaction. A secret is omitted, not replaced with a mask string. The rule is `src/mask.ts`, the same one `content.ts` uses (password / autocomplete / name, plus an SSN-shaped or Luhn-valid value)
+- `raw`: the vendor payload after redaction by [`shared/mask.ts`](../shared/mask.ts). A secret is omitted, not replaced with a mask string.
 - `before` and `after`: snapshot refs. `screenshot` is `sha256:` of the PNG. `dom` and `ax` are the small snapshots. The PNG bytes stay in the computer-call transcript
 - `resolved`: tag, ranked selectors, unique, text. Null when the hit missed
 - `unresolved.reason` when the act was stored and not performed
