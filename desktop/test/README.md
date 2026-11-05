@@ -8,7 +8,7 @@ Artifacts go to `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifa
 
 Public date, download, and upload demos are `desktop/test/live/files-dates-public.test.ts`. They run only when `BAO_LIVE_TESTS=1`. `npm run test:v1` does not load that file. The probe skips status 403, 429, 404, 410, 5xx, or 0. A find miss and an expect miss stay product failures. A `5xx` reason on a page that probed 200 stays a product failure unless the recorded requests include that status from the page's own `/api/` URL. A network error on a reachable page stays a product failure unless the failed request is a different origin. There is no retry.
 
-`npm run test:live` already runs the extension blindspot scripts. It is not this desktop suite. Desktop live files:
+Build and run the desktop live files with:
 
 ```
 npx tsc -p tsconfig.desktop.json && node desktop/test/run-live.mjs
@@ -48,11 +48,10 @@ for access. Do not use `--use-fake-ui-for-media-stream`: it accepts media
 requests instead of denying them.
 
 `desktop/src/test-browser.js` shares these flags across desktop tests,
-extension fixtures, public probes, and asset scripts. The old root extension's
-`.chrome-profile` tools are retired. Import its
-`testChromium` launch methods for test Playwright contexts, or spread `TEST_MEDIA_ARGS` into
-the arguments of a manually spawned test browser. The shared module uses
-CommonJS so both root `.mjs` tools and compiled desktop code load it.
+extension fixtures, public probes, and asset scripts. Import `testChromium`
+from that module for test Playwright contexts, or spread `TEST_MEDIA_ARGS` into
+the arguments of a manually spawned test browser. The module uses CommonJS,
+matching the compiled desktop code.
 `allowJs` in `tsconfig.desktop.json` copies the imported module into the build;
 its `// @ts-check` enables type-checking.
 

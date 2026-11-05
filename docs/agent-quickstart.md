@@ -96,14 +96,12 @@ Leave `BAO_MCP_LIVE` unset for the [agent server](bao.md#mcp). The evaluator is 
 
 `./install-extension.sh` builds `extension/dist` and copies it to `~/.bao-browser/extension`. The extension id is `jcjcpblcjaakcmbgljdjkfgmmdfdbnfj`. Reload, the native-host manifest, and the popup check are in [extension.md](extension.md).
 
-`./install-dev-legacy.sh` stages the root extension. The stage includes every file under `dist/`, including `dist/forceopen.js`, and every file the manifest and its HTML name. `./install-dev.sh` only prints those two names and exits 2.
-
 ## CDP live
 
 `cdp-live` is a workflow driver. The contract and the 10-line start are in [cdp-live.md](cdp-live.md). The measured Chrome session is in [cdp-live-chrome.md](cdp-live-chrome.md). For the Settings engine choice and copied-profile route, see [agent-browser trial](agent-browser-engine.md).
 
 ## Checks
 
-`npm run typecheck` checks `src`, `desktop`, `extension`, and `web`. `npm run check` runs that typecheck and `npm run test:desktop:unit`. Run `npm install` and `npm --prefix web install` before `npx playwright install chromium`. Run that browser install before `npm test` or the desktop unit suite. `npm test` remains the root extension suites. `npm --prefix web test` runs the registry tests in `web/src/lib`.
+`npm run typecheck` runs three passes: desktop (including `shared/`), extension, and web. `npm run check` runs that typecheck and the desktop unit suite. `npm run test:v1` runs the desktop unit suite alone. Run `npm install` and `npm --prefix web install` before `npx playwright install chromium`. Install that browser before running desktop tests. For desktop live files, run `npm run build:desktop && node desktop/test/run-live.mjs`. `npm --prefix web test` runs the registry tests in `web/src/lib`. See [Testing](TESTING.md) for focused checks and isolation rules.
 
 `npm --prefix web run dev` rewrites the two import lines in `web/next-env.d.ts` so they point at `web/.next/dev/types/`. The committed file points at `web/.next/types/`. Leave that rewrite uncommitted.
