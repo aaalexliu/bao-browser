@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { BrowserContext } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 import { launchOwnedChrome } from "../../src/launch";
 import { copyChromeProfile, listChromeProfiles, openCopiedChrome } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
@@ -407,7 +407,7 @@ test("copied Chrome reaches launch with empty, truncated, missing, or unreadable
   } finally { await f.close(); }
 });
 
-test("copied Chrome restores two tabs with distinct sessionStorage while source Chrome stays open", { skip: !process.env.BAO_TEST_BROWSER }, async () => {
+test("copied Chrome restores two tabs through delayed product startup while source Chrome stays open", { skip: !process.env.BAO_TEST_BROWSER }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-copy-restore-test-"));
   const sourceRoot = path.join(root, "source");
   const server = createServer((_request, response) => {
@@ -418,7 +418,7 @@ test("copied Chrome restores two tabs with distinct sessionStorage while source 
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
   let source: BrowserContext | undefined;
   let restored: BrowserContext | undefined;
-  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  let opened: Awaited<ReturnType<typeof openCopiedChrome>> | undefined;
   try {
     source = await launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
     const first = source.pages()[0]!;
@@ -446,12 +446,27 @@ test("copied Chrome restores two tabs with distinct sessionStorage while source 
     } while (Date.now() < sourceDeadline);
     assert.equal(sourcePrefs.profile.exit_type, "Crashed");
     assert.deepEqual((await values(source)).sort(), ["alpha", "beta"]);
-    copy = await copyChromeProfile({ sourceRoot, directory: "Default", home: path.join(root, "home") });
-    const preparedPrefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
-    assert.equal(preparedPrefs.profile.exit_type, "Normal");
-    assert.equal(preparedPrefs.session.restore_on_startup, 5);
-    restored = await launchOwnedChrome({ userDataDir: copy.userDataDir, headless: true,
-      args: copy.launchArgs, preserveRestoredTabs: true, loadExtensions: false });
+    const connect = chromium.connectOverCDP.bind(chromium);
+    let emptyReads = 0;
+    t.mock.method(chromium, "connectOverCDP", async (...args: Parameters<typeof connect>) => {
+      const browser = await connect(...args);
+      restored = browser.contexts()[0]!;
+      const pages = restored.pages.bind(restored);
+      const visibleAt = Date.now() + 300;
+      t.mock.method(restored, "pages", () => {
+        if (Date.now() >= visibleAt) return pages();
+        emptyReads++;
+        return [];
+      });
+      return browser;
+    });
+    opened = await openCopiedChrome({ sourceRoot, directory: "Default", home: path.join(root, "home") });
+    assert.ok(emptyReads > 0);
+    assert.ok(restored);
+    const selected = await restored.newCDPSession(restored.pages()[0]!);
+    const { targetInfos } = await selected.send("Target.getTargets");
+    assert.ok(targetInfos.some((target) => target.targetId === opened!.parkedTargetId && target.url === url));
+    await selected.detach();
     const deadline = Date.now() + 5000;
     while ((await values(restored)).length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     assert.deepEqual((await values(restored)).sort(), ["alpha", "beta"]);
@@ -460,10 +475,14 @@ test("copied Chrome restores two tabs with distinct sessionStorage while source 
     sourcePrefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
     assert.equal(sourcePrefs.profile.exit_type, "Crashed");
     assert.equal(sourcePrefs.session.restore_on_startup, 5);
+    const browserClosed = restored.waitForEvent("close", { timeout: 5000 });
+    await Promise.all(restored.pages().map((page) => page.close()));
+    await browserClosed;
+    await opened.closed;
   } finally {
     await restored?.close();
     await source?.close();
-    await copy?.close();
+    await opened?.close();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await rm(root, { recursive: true, force: true });
   }

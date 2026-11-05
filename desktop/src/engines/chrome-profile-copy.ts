@@ -194,14 +194,21 @@ export async function openCopiedChrome(options: {
       args: copy.launchArgs,
     });
     const closed = new Promise<void>((resolve) => context!.once("close", () => resolve()));
-    const watch = (page: Page): void => { page.once("close", () => {
-      if (context?.pages().length === 0) void context.close().catch(() => undefined);
-    }); };
-    context.pages().forEach(watch);
-    context.on("page", watch);
-    const session = await context.newCDPSession(context.pages()[0]!);
+    const deadline = Date.now() + 5000;
+    let parkedPage = context.pages().find((page) => !page.isClosed());
+    while (!parkedPage && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      parkedPage = context.pages().find((page) => !page.isClosed());
+    }
+    if (!parkedPage) throw new Error("copied Chrome did not open a page");
+    const session = await context.newCDPSession(parkedPage);
     const { targetInfo } = await session.send("Target.getTargetInfo");
     await session.detach();
+    const watch = (page: Page): void => { page.once("close", () => {
+      if (context?.pages().every((page) => page.isClosed())) void context.close().catch(() => undefined);
+    }); };
+    context.pages().filter((page) => !page.isClosed()).forEach(watch);
+    context.on("page", watch);
     return {
       target: { kind: "bao", portFile: path.join(copy.userDataDir, "DevToolsActivePort") },
       parkedTargetId: targetInfo.targetId,
