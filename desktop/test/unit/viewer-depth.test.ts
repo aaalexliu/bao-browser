@@ -5,7 +5,7 @@ import path from "node:path";
 import Ajv from "ajv/dist/2020";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { BrowserDriver, clipBox } from "../../src/v1/browser-driver";
-import { consolePane, identityTable, networkPane, runViewer, snapshotPane, workflowDetail } from "../../src/app/views";
+import { consolePane, identityTable, networkPane, runViewer, snapshotPane, workflowDetail, type RunSummary } from "../../src/app/views";
 import { filmstripSpans, idleSkippedMs } from "../../src/v1/filmstrip";
 import { stepPolicy } from "../../src/v1/heal";
 import { actWaitMs, DEFAULT_ACT_TIMEOUT_MS } from "../../src/v1/human-ask";
@@ -322,6 +322,49 @@ test("an accessibility snapshot drops a password line and keeps the other contro
     assert.equal((shot.dom || []).some((node) => node.id === "password"), false);
   } finally {
     await browser.close();
+  }
+});
+
+test("the agent-browser viewer omits old-engine inspectors in every run state", () => {
+  for (const status of ["passed", "failed", "recording"] as const) {
+    const run: RunSummary = {
+      id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status,
+      steps: [{ id: "command-1", label: "snapshot", status: status === "recording" ? "pending" : status, afterShot: "command-1-after.png" }],
+    };
+    for (const recordedOnly of [true, false]) {
+      const html = runViewer(run, { name: "agent-browser", recordedOnly, steps: run.steps! });
+      assert.doesNotMatch(html, />Identity<|id="identity-table"|id="snapshot-inspector"|id="dom-snapshot"|id="ax-snapshot"/);
+      assert.match(html, /id="step-list"/);
+      assert.match(html, /command-1-after\.png/);
+      if (status === "passed") assert.match(html, /<p>agent-browser recorded<\/p>/);
+      if (status === "failed" && recordedOnly) assert.match(html, /<p>Step 1 snapshot failed\.<\/p>/);
+    }
+  }
+});
+
+test("the agent-browser viewer describes recording before any terminal step result", () => {
+  for (const steps of [[], [{ id: "command-1", status: "pending" as const }], [{ id: "command-1", status: "failed" as const, reason: "Native command failed." }]]) {
+    const html = runViewer({
+      id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status: "recording", steps,
+    }, { name: "agent-browser", recordedOnly: true, steps });
+    assert.match(html, /id="run-status"><strong>recording<\/strong>/);
+    assert.match(html, /id="why-stopped"><p>agent-browser recording<\/p>/);
+    assert.doesNotMatch(html, /agent-browser recorded/);
+  }
+});
+
+test("other engines keep their viewer inspectors and capture summary", () => {
+  for (const pageEngine of [undefined, "old"] as const) {
+    const html = runViewer({
+      id: "legacy", workflowId: "wf", pageEngine, kind: "capture", status: "recording",
+      steps: [{ id: "step-1", status: "passed" }],
+    }, { name: "Legacy", recordedOnly: true, steps: [] });
+    assert.match(html, /<h3 class="section">Identity<\/h3>/);
+    assert.match(html, /id="identity-table">No identity scores for this step\./);
+    assert.match(html, /id="snapshot-inspector"/);
+    assert.match(html, /id="dom-snapshot">No DOM snapshot for this step\./);
+    assert.match(html, /id="ax-snapshot">No accessibility snapshot for this step\./);
+    assert.match(html, /id="why-stopped"><p>Legacy recorded<\/p>/);
   }
 });
 

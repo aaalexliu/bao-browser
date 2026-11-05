@@ -589,7 +589,8 @@ export function runViewer(
   const wallLine = failed && wall
     ? wallStopLine((failure?.index ?? steps.indexOf(failed)) + 1, failed.label || failure?.intent || failed.id, wall)
     : "";
-  const nativeRecording = run.pageEngine === "agent-browser" && workflow.recordedOnly;
+  const agentBrowser = run.pageEngine === "agent-browser";
+  const nativeRecording = agentBrowser && workflow.recordedOnly;
   const headline = failed && nativeRecording
     ? `Step ${stopped} ${failed.label || failed.id} failed${failed.reason ? `: ${failed.reason}` : "."}`
     : wallLine
@@ -632,7 +633,9 @@ export function runViewer(
   const shot = shotPane(before, after, selected?.action, selected?.label || "", selected?.beforeShotError, selected?.afterShotError);
   const table = identityTable(identity);
   const video = videoBar(run, steps);
-  const safeHeadline = failed ? esc(headline) : headline;
+  const safeHeadline = agentBrowser && run.status === "recording"
+    ? `${esc(workflow.name)} recording`
+    : failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
   const recoveredRow = selected?.reason?.startsWith("recovered:")
     ? `<p id="recovered-row">${esc(ownerStopText(selected.reason))}</p>`
@@ -695,9 +698,9 @@ export function runViewer(
         ${shot}
         ${stepRepairs.length ? repairLines(stepRepairs) : ""}
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
-        <h3 class="section">Identity</h3>
+        ${agentBrowser ? "" : `<h3 class="section">Identity</h3>
         ${table}
-        ${snapshotPane(snapDom, snapAx)}
+        ${snapshotPane(snapDom, snapAx)}`}
       </div>
       ${failurePanel(selected, failure, identity)}
     </div>
