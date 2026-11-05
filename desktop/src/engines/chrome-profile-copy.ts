@@ -3,7 +3,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome, pidsForDataDir } from "../launch";
+import { launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../launch";
 import type { LiveTarget } from "../cdp-live/live-target";
 
 export interface ChromeProfileChoice {
@@ -178,6 +178,28 @@ export async function copyChromeProfile(options: {
     await close();
     throw error;
   }
+}
+
+/** Pass-through startup owns Chrome without attaching Playwright to restored tabs. */
+export async function openCopiedChromeForProxy(options: {
+  sourceRoot: string; directory: string; home: string;
+}): Promise<{ target: LiveTarget; close(): Promise<void>; closed: Promise<void>; bytes: number; copyMs: number }> {
+  const copy = await copyChromeProfile(options);
+  let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => closing ??= (async () => {
+    try { await chrome?.close(); } finally { await copy.close(); }
+  })();
+  try {
+    chrome = await launchOwnedChromeEndpoint({
+      userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
+      loadExtensions: false, preserveRestoredTabs: true, args: copy.launchArgs,
+    });
+    return {
+      target: { kind: "bao", portFile: chrome.portFile }, closed: chrome.closed, close,
+      bytes: copy.bytes, copyMs: copy.copyMs,
+    };
+  } catch (error) { await close(); throw error; }
 }
 
 /** The installed Chrome keeps its keychain identity; no helper, toggle, or native input is used. */

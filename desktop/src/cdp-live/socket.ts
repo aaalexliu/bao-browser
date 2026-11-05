@@ -127,8 +127,13 @@ export class CdpSocket {
   private readonly pending = new Map<number, Pending>();
   private readonly listeners: { method: string; sessionId?: string; handler: Handler }[] = [];
   private closed = false;
+  private resolveDisconnected!: () => void;
+  readonly disconnected = new Promise<void>((resolve) => { this.resolveDisconnected = resolve; });
 
-  constructor(private readonly socket: Socket) {}
+  constructor(private readonly socket: Socket) {
+    socket.once("close", () => this.close());
+    socket.once("error", () => this.close());
+  }
 
   get isOpen(): boolean {
     return !this.closed;
@@ -197,6 +202,7 @@ export class CdpSocket {
     for (const waiter of this.pending.values()) waiter.reject(new Error("cdp closed"));
     this.pending.clear();
     this.socket.destroy();
+    this.resolveDisconnected();
   }
 }
 
