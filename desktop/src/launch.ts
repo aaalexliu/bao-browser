@@ -34,9 +34,9 @@ export const OWNED_CHROME_ARGS = [
 
 /**
  * Chrome's "Continue where you left off". Session cookies survive a clean exit.
- * The launch does not pass --restore-last-session: that flag reopens a tab, and
- * the restored navigation races the first replay. Saved tab files are removed
- * instead, and the window is parked on about:blank.
+ * By default, launches omit --restore-last-session: the restored navigation
+ * races the first replay. They remove saved tab files and park on about:blank.
+ * Copied profiles opt in to restoring their saved tabs instead.
  */
 export const RESTORE_LAST_SESSION = 1;
 
@@ -442,6 +442,8 @@ export async function launchOwnedChrome(opts: {
   /** Only Chrome gets this HOME. Bao keeps its own isolated state and native-host paths. */
   childHome?: string;
   loadExtensions?: boolean;
+  /** Force saved-tab restore for a prepared profile instead of parking on blank. */
+  preserveRestoredTabs?: boolean;
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
 }): Promise<BrowserContext> {
@@ -453,6 +455,7 @@ async function launchNormalChrome(opts: {
   userDataDir: string;
   childHome?: string;
   loadExtensions?: boolean;
+  preserveRestoredTabs?: boolean;
   headless?: boolean;
   args?: string[];
   appendArgs?: string[];
@@ -461,13 +464,16 @@ async function launchNormalChrome(opts: {
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
   mkdirSync(opts.userDataDir, { recursive: true });
-  keepSessionCookies(opts.userDataDir);
-  discardRestoredTabs(opts.userDataDir);
+  if (!opts.preserveRestoredTabs) {
+    keepSessionCookies(opts.userDataDir);
+    discardRestoredTabs(opts.userDataDir);
+  }
   const exe = opts.executablePath || resolveNormalChrome();
   const headless = opts.headless ?? true;
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args, opts.appendArgs),
+    ...(opts.preserveRestoredTabs ? ["--restore-last-session"] : []),
     `--remote-debugging-port=${OWNED_DEBUG_PORT}`,
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
@@ -483,7 +489,7 @@ async function launchNormalChrome(opts: {
     if (opts.deviceScaleFactor && opts.deviceScaleFactor !== 1) await applyDeviceScale(context, opts.deviceScaleFactor);
     const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
-    await parkOnBlank(context);
+    if (!opts.preserveRestoredTabs) await parkOnBlank(context);
     let closed = false;
     browser.on("disconnected", () => {
       if (!closed) stop();
@@ -578,6 +584,7 @@ async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
   childHome?: string;
   loadExtensions?: boolean;
+  preserveRestoredTabs?: boolean;
   videoDir?: string;
   headless?: boolean;
   args?: string[];
@@ -586,8 +593,10 @@ async function launchOwnedChromeForVideo(opts: {
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
   assertNotDailyChrome(opts.userDataDir);
-  keepSessionCookies(opts.userDataDir);
-  discardRestoredTabs(opts.userDataDir);
+  if (!opts.preserveRestoredTabs) {
+    keepSessionCookies(opts.userDataDir);
+    discardRestoredTabs(opts.userDataDir);
+  }
   const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
@@ -598,11 +607,13 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: [...ownedLaunchArgs(opts.args, opts.appendArgs), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
+    args: [...ownedLaunchArgs(opts.args, opts.appendArgs),
+      ...(opts.preserveRestoredTabs ? ["--restore-last-session"] : []),
+      ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
   });
   try {
     assertOwnedProcess(ctx, opts.userDataDir);
-    await parkOnBlank(ctx);
+    if (!opts.preserveRestoredTabs) await parkOnBlank(ctx);
   } catch (err) {
     await ctx.close();
     throw err;

@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import type { BrowserContext } from "playwright";
+import { launchOwnedChrome } from "../../src/launch";
 import { copyChromeProfile, listChromeProfiles, openCopiedChrome } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 
 interface TestPreferences {
   profile: { name: string; using_default_name: boolean; avatar_index: number; using_default_avatar: boolean; using_gaia_avatar: boolean };
-  session: { restore_on_startup: number };
+  session: { restore_on_startup: number; startup_urls?: string[] };
   signin: { allowed: boolean };
   account_info: { email: string; gaia: string }[];
   browser: { theme: Record<string, number | boolean> };
@@ -22,6 +26,7 @@ async function fixture() {
   const sourceRoot = path.join(root, "source");
   await mkdir(path.join(sourceRoot, "Default", "Cache"), { recursive: true });
   await mkdir(path.join(sourceRoot, "Default", "Sessions"), { recursive: true });
+  await mkdir(path.join(sourceRoot, "Default", "Session Storage"), { recursive: true });
   await mkdir(path.join(sourceRoot, "Profile 1"), { recursive: true });
   const local = { os_crypt: { encrypted_key: "synthetic-not-a-real-key" }, profile: { last_used: "Profile 1", info_cache: {
     Default: { name: "Profile A", user_name: "a@example.test", is_using_default_name: true, profile_color_seed: 0xff1565c0 | 0,
@@ -32,7 +37,7 @@ async function fixture() {
   await writeFile(path.join(sourceRoot, "Default", "Cookies"), "synthetic-cookie-file");
   const preferences: TestPreferences = {
     profile: { name: "Profile A", using_default_name: true, avatar_index: 33, using_default_avatar: true, using_gaia_avatar: true },
-    session: { restore_on_startup: 1 }, signin: { allowed: true },
+    session: { restore_on_startup: 4, startup_urls: ["https://example.test/start"] }, signin: { allowed: true },
     account_info: [{ email: "a@example.test", gaia: "synthetic-account-id" }],
     browser: { theme: { user_color2: 0xff1565c0 | 0, color_scheme2: 2, is_grayscale2: true } },
     extensions: { theme: { id: "synthetic-theme-extension", pack: "old/theme.pack" }, settings: { addon: { state: 1 } } },
@@ -41,9 +46,10 @@ async function fixture() {
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), JSON.stringify(preferences));
   await writeFile(path.join(sourceRoot, "Default", "Secure Preferences"), "synthetic-secure-preferences");
   await writeFile(path.join(sourceRoot, "Default", "Cache", "entry"), "disposable");
-  await writeFile(path.join(sourceRoot, "Default", "Sessions", "tab"), "do-not-restore");
+  await writeFile(path.join(sourceRoot, "Default", "Sessions", "tab"), "synthetic-saved-tabs");
+  await writeFile(path.join(sourceRoot, "Default", "Session Storage", "entry"), "synthetic-per-tab-token");
   for (const name of ["Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
-    await writeFile(path.join(sourceRoot, "Default", name), "do-not-copy-session-data");
+    await writeFile(path.join(sourceRoot, "Default", name), "synthetic-legacy-session");
   }
   return { root, sourceRoot, local, preferences, home: path.join(root, "home"), close: () => rm(root, { recursive: true, force: true }) };
 }
@@ -93,13 +99,19 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     privateRoot = path.dirname(first.userDataDir);
     assert.equal((await stat(first.userDataDir)).mode & 0o777, 0o700);
     assert.equal(await readFile(path.join(first.userDataDir, "Default", "Cookies"), "utf8"), "synthetic-cookie-file");
-    assert.deepEqual((await readdir(path.join(first.userDataDir, "Default"))).sort(), ["Cookies", "Preferences", "Secure Preferences"]);
+    assert.deepEqual((await readdir(path.join(first.userDataDir, "Default"))).sort(),
+      ["Cookies", "Current Session", "Current Tabs", "Last Session", "Last Tabs", "Preferences", "Secure Preferences", "Session Storage", "Sessions"]);
+    const savedFiles = ["Sessions/tab", "Session Storage/entry", "Current Session", "Current Tabs", "Last Session", "Last Tabs"];
+    for (const file of savedFiles) {
+      assert.deepEqual(await readFile(path.join(first.userDataDir, "Default", file)), before[`Default/${file}`]);
+    }
     await assert.rejects(stat(path.join(first.userDataDir, "Profile 1")), /ENOENT/);
     const state = JSON.parse(await readFile(path.join(first.userDataDir, "Local State"), "utf8")) as typeof f.local;
     assert.equal(state.profile.last_used, "Default");
     assert.deepEqual(Object.keys(state.profile.info_cache), ["Default"]);
     assert.equal(state.os_crypt.encrypted_key, "synthetic-not-a-real-key");
     assert.equal(first.displayName, "Bao copy of Profile A");
+    assert.deepEqual(first.launchArgs, ["--profile-directory=Default", "--disable-sync", "--restore-last-session"]);
     assert.equal(state.profile.info_cache.Default.name, first.displayName);
     assert.equal(state.profile.info_cache.Default.is_using_default_name, false);
     assert.equal(state.profile.info_cache.Default.user_name, "a@example.test");
@@ -125,6 +137,7 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     assert.deepEqual(await readFile(path.join(first.userDataDir, "Default", "Secure Preferences")), before["Default/Secure Preferences"]);
     assert.deepEqual(await sourceBytes(f.sourceRoot), before);
     assert.equal(first.bytes, Buffer.byteLength("synthetic-cookie-file") + Buffer.byteLength("synthetic-secure-preferences")
+      + savedFiles.reduce((sum, file) => sum + before[`Default/${file}`].length, 0)
       + Buffer.byteLength(JSON.stringify(prefs))
       + Buffer.byteLength(JSON.stringify(state)));
     assert.ok(first.copyMs >= 0);
@@ -138,9 +151,9 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     await second.close();
     assert.deepEqual(await sourceBytes(f.sourceRoot), { ...before, "Default/Cookies": Buffer.from("refreshed-synthetic-cookie-file") });
     assert.equal(await readFile(path.join(f.sourceRoot, "Default", "Cache", "entry"), "utf8"), "disposable");
-    assert.equal(await readFile(path.join(f.sourceRoot, "Default", "Sessions", "tab"), "utf8"), "do-not-restore");
+    assert.equal(await readFile(path.join(f.sourceRoot, "Default", "Sessions", "tab"), "utf8"), "synthetic-saved-tabs");
     for (const name of ["Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
-      assert.equal(await readFile(path.join(f.sourceRoot, "Default", name), "utf8"), "do-not-copy-session-data");
+      assert.equal(await readFile(path.join(f.sourceRoot, "Default", name), "utf8"), "synthetic-legacy-session");
     }
   } finally { if (privateRoot) await rm(privateRoot, { recursive: true, force: true }); await f.close(); }
 });
@@ -195,6 +208,8 @@ test("copy marks an uninitialized non-default profile without creating source pr
     const copy = await copyChromeProfile({ ...f, directory: "Profile 1" });
     try {
       const prefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Profile 1", "Preferences"), "utf8")) as TestPreferences;
+      assert.deepEqual(copy.launchArgs, ["--profile-directory=Profile 1", "--disable-sync", "--restore-last-session"]);
+      assert.equal(prefs.session, undefined);
       assert.equal(prefs.profile.name, "Bao copy of Profile B");
       assert.equal(prefs.profile.using_default_name, false);
       assert.equal(prefs.profile.avatar_index, 31);
@@ -326,6 +341,16 @@ test("copied Chrome removes packed image-theme files but preserves other extensi
       assert.equal(existsSync(path.join(dir, profile, "Extensions", id)), false);
     }
     const prefs = JSON.parse(readFileSync(path.join(dir, profile, "Preferences"), "utf8")) as TestPreferences;
+    if (profile === "Default") {
+      assert.deepEqual(prefs.session, f.preferences.session);
+      assert.equal(readFileSync(path.join(dir, profile, "Sessions", "tab"), "utf8"), "synthetic-saved-tabs");
+      assert.equal(readFileSync(path.join(dir, profile, "Session Storage", "entry"), "utf8"), "synthetic-per-tab-token");
+      for (const name of ["Current Session", "Current Tabs", "Last Session", "Last Tabs"]) {
+        assert.equal(readFileSync(path.join(dir, profile, name), "utf8"), "synthetic-legacy-session");
+      }
+    } else {
+      assert.equal(existsSync(path.join(dir, "Default")), false);
+    }
     assert.equal(prefs.extensions.theme.id, "user_color_theme_id");
     throw new Error("observed extension flags without launching Chrome");
   });
@@ -339,6 +364,7 @@ test("copied Chrome removes packed image-theme files but preserves other extensi
     assert.deepEqual(calls.map((args) => args.includes("--disable-extensions")), [true, true, false, true, true, false]);
     for (const args of calls) {
       assert.ok(args.includes("--disable-sync"));
+      assert.equal(args.filter((arg) => arg === "--restore-last-session").length, 1);
       assert.equal(args.includes("--enable-automation"), false);
     }
   } finally { await f.close(); }
@@ -378,6 +404,54 @@ test("copied Chrome reaches launch with empty, truncated, missing, or unreadable
     assert.deepEqual(calls, [true, false, true, false]);
     assert.deepEqual(await sourceBytes(f.sourceRoot), before);
   } finally { await f.close(); }
+});
+
+test("copied Chrome restores two tabs with distinct sessionStorage instead of parking on blank", { skip: !process.env.BAO_TEST_BROWSER }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-copy-restore-test-"));
+  const sourceRoot = path.join(root, "source");
+  const server = createServer((_request, response) => {
+    response.setHeader("Content-Type", "text/html");
+    response.end("<!doctype html><title>Saved tab fixture</title><h1>Saved tab fixture</h1>");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  let source: BrowserContext | undefined;
+  let restored: BrowserContext | undefined;
+  let copy: Awaited<ReturnType<typeof copyChromeProfile>> | undefined;
+  try {
+    source = await launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
+    const first = source.pages()[0]!;
+    await first.goto(url);
+    await first.evaluate(() => sessionStorage.setItem("tabToken", "alpha"));
+    const second = await source.newPage();
+    await second.goto(url);
+    await second.evaluate(() => sessionStorage.setItem("tabToken", "beta"));
+    await source.close();
+    source = undefined;
+    const file = path.join(sourceRoot, "Default", "Preferences");
+    const prefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
+    prefs.session.restore_on_startup = 5;
+    await writeFile(file, JSON.stringify(prefs));
+    const before = await sourceBytes(sourceRoot);
+    copy = await copyChromeProfile({ sourceRoot, directory: "Default", home: path.join(root, "home") });
+    restored = await launchOwnedChrome({ userDataDir: copy.userDataDir, headless: true,
+      args: copy.launchArgs, preserveRestoredTabs: true, loadExtensions: false });
+    const values = async () => Promise.all(restored!.pages().filter((page) => page.url() === url)
+      .map((page) => page.evaluate(() => sessionStorage.getItem("tabToken"))));
+    const deadline = Date.now() + 5000;
+    while ((await values()).length < 2 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual((await values()).sort(), ["alpha", "beta"]);
+    assert.equal(restored.pages().length, 2);
+    assert.deepEqual(await sourceBytes(sourceRoot), before);
+    const copiedPrefs = JSON.parse(await readFile(path.join(copy.userDataDir, "Default", "Preferences"), "utf8")) as TestPreferences;
+    assert.equal(copiedPrefs.session.restore_on_startup, 5);
+  } finally {
+    await restored?.close();
+    await source?.close();
+    await copy?.close();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("copy refuses links rather than following them into another profile", async () => {

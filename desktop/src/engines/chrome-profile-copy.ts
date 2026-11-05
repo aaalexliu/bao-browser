@@ -40,7 +40,6 @@ export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProf
 const SKIPPED_ENTRIES = new Set([
   "Cache", "Code Cache", "GPUCache", "Media Cache", "CacheStorage", "ShaderCache", "GrShaderCache",
   "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad", "Crash Reports", "BrowserMetrics",
-  "Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs",
 ]);
 const MAGIC = "bao-profile-copy-v1";
 
@@ -48,6 +47,7 @@ export interface CopiedProfile {
   userDataDir: string;
   profileDirectory: string;
   displayName: string;
+  launchArgs: string[];
   bytes: number;
   copyMs: number;
   close(): Promise<void>;
@@ -171,7 +171,9 @@ export async function copyChromeProfile(options: {
     const encodedState = JSON.stringify(localState);
     bytes += Buffer.byteLength(encodedState);
     await writeFile(path.join(userDataDir, "Local State"), encodedState, { mode: 0o600 });
-    return { userDataDir, profileDirectory: choice.directory, displayName, bytes, copyMs: Date.now() - started, close };
+    return { userDataDir, profileDirectory: choice.directory, displayName,
+      launchArgs: [`--profile-directory=${choice.directory}`, "--disable-sync", "--restore-last-session"],
+      bytes, copyMs: Date.now() - started, close };
   } catch (error) {
     await close();
     throw error;
@@ -188,8 +190,8 @@ export async function openCopiedChrome(options: {
   try {
     context = await launchOwnedChrome({
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
-      loadExtensions: options.loadExtensions === true,
-      args: [`--profile-directory=${copy.profileDirectory}`, "--disable-sync"],
+      loadExtensions: options.loadExtensions === true, preserveRestoredTabs: true,
+      args: copy.launchArgs,
     });
     const closed = new Promise<void>((resolve) => context!.once("close", () => resolve()));
     const watch = (page: Page): void => { page.once("close", () => {
