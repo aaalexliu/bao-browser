@@ -326,7 +326,7 @@ required safety boundary. The `PR` column is a snapshot, not another selector.
 - `shot-stage.test.ts`
 - `startup-nav.test.ts`
 - `suite-hygiene.test.ts`
-- `teach-app.test.ts`
+- `teach-workflows.test.ts` (the non-repair cases retained from `teach-app.test.ts`)
 - `teach-guide.test.ts`
 - `time.test.ts`
 - `trace-viewer.test.ts`

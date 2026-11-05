@@ -81,7 +81,6 @@ import {
   narratorFromEnv,
   projectTeach,
   publicTrail,
-  spliceFix,
   teachIntentCase,
   teachSummaryFrom,
   type Spoken,
@@ -296,7 +295,6 @@ export async function startApp(opts: {
   let teachPhase: "idle" | "live" | "review" = "idle";
   let teachDecisions: TeachDecision[] = [];
   let teachCaseId = "";
-  let teachFix: { workflowId: string; stepId: string } | null = null;
   let teachStartUrl = "";
   let teachName = "";
   let blurredShots = 0;
@@ -937,17 +935,12 @@ export async function startApp(opts: {
         return json(res, library.importJson(String(await readBody(req, true))));
       }
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        const body = await readBody(req) as { url?: string; teach?: boolean; fix?: { workflowId?: string; stepId?: string } };
+        const body = await readBody(req) as { url?: string; teach?: boolean; fix?: unknown };
+        if (Object.hasOwn(body, "fix")) {
+          return json(res, { error: "Teach repair has been retired. Start a new demonstration instead." }, 410);
+        }
         if (body.teach) {
-          let nextFix: { workflowId: string; stepId: string } | null = null;
-          let nextUrl = body.url || "";
-          if (body.fix?.workflowId && body.fix.stepId) {
-            const saved = library.read(body.fix.workflowId);
-            if (!saved.steps.some((step) => step.id === body.fix?.stepId)) return json(res, { error: "missing step" }, 404);
-            nextFix = { workflowId: body.fix.workflowId, stepId: body.fix.stepId };
-            if (!nextUrl) nextUrl = saved.startUrl;
-          }
-          await enqueue(() => beginTeach(nextUrl, nextFix));
+          await enqueue(() => beginTeach(body.url || ""));
           return json(res, { recording: capture.recording, teach: true });
         }
         await enqueue(() => beginSession(body.url || ""));
@@ -1389,7 +1382,6 @@ export async function startApp(opts: {
         cardSeen.clear();
         narrationCache.clear();
         teachBaseline = [];
-        teachFix = null;
         teachPhase = "idle";
         sessionMode = "capture";
         recordingSince = 0;
@@ -1879,7 +1871,7 @@ export async function startApp(opts: {
     } catch { /* headed Chromium can refuse captureScreenshot */ }
   }
 
-  async function beginTeach(startUrl: string, fix: { workflowId: string; stepId: string } | null): Promise<void> {
+  async function beginTeach(startUrl: string): Promise<void> {
     startUrl = resolveCaptureUrl(startUrl, boundPort);
     teachDecisions = [];
     cardSeen.clear();
@@ -1889,7 +1881,6 @@ export async function startApp(opts: {
     teachBaseline = [];
     teachName = "";
     teachStartUrl = startUrl;
-    teachFix = fix;
     teachCaseId = `teach-${Date.now().toString(36)}`;
     sessionMode = "teach";
     try {
@@ -1901,7 +1892,6 @@ export async function startApp(opts: {
     } catch (err) {
       sessionMode = "capture";
       teachPhase = "idle";
-      teachFix = null;
       throw err;
     }
   }
@@ -2160,7 +2150,7 @@ export async function startApp(opts: {
   function teachMeta(): { id: string; name: string; startUrl: string } {
     return {
       id: "teach-draft",
-      name: teachName || (teachFix ? "Taught fix" : "Taught workflow"),
+      name: teachName || "Taught workflow",
       startUrl: teachStartUrl,
     };
   }
@@ -2213,7 +2203,6 @@ export async function startApp(opts: {
       blur: true,
       blurredShots,
       narrator,
-      fix: teachFix,
       error,
       cards,
       decisions: teachDecisions.map((decision) => ({ kind: decision.kind, detail: decision.detail, cardId: decision.cardId })),
@@ -2287,25 +2276,18 @@ export async function startApp(opts: {
   }
 
   function saveTeach(): WorkflowV2 {
-    const id = teachFix ? teachFix.workflowId : `wf-${Date.now()}`;
-    const meta = { id: teachFix ? `${id}-fix` : id, name: teachName || teachMeta().name, startUrl: teachStartUrl };
-    const projected = projectTeach(capture.events, teachDecisions, { ...meta, id: teachFix ? `${id}-taught` : id }, spokenMap());
-    let workflow = projected.workflow;
+    const id = `wf-${Date.now()}`;
+    const meta = { id, name: teachName || teachMeta().name, startUrl: teachStartUrl };
+    const projected = projectTeach(capture.events, teachDecisions, meta, spokenMap());
+    const workflow = projected.workflow;
     const decisions = [...teachDecisions];
-    if (teachFix) {
-      workflow = spliceFix(library.read(teachFix.workflowId), teachFix.stepId, { ...projected.workflow, id });
-      decisions.push({ ts: Date.now(), cardId: teachFix.stepId, kind: "splice", detail: `spliced into ${teachFix.stepId}` });
-      workflow = { ...workflow, name: teachName || library.read(teachFix.workflowId).name };
-    } else {
-      workflow = { ...projected.workflow, id, name: meta.name, startUrl: teachStartUrl };
-    }
     if (!workflow.steps.length) throw new Error("nothing to save");
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
     mkdirSync(shotDest, { recursive: true });
     let stepIndex = 0;
     for (const card of projected.cards) {
       if (card.dropped || card.merged) continue;
-      const step = workflow.steps[teachFix ? workflow.steps.findIndex((item) => item.id.startsWith(`${workflow.id}-fix-`)) + stepIndex : stepIndex];
+      const step = workflow.steps[stepIndex];
       stepIndex += 1;
       const src = captureShots.get(card.id);
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
@@ -2316,23 +2298,17 @@ export async function startApp(opts: {
     const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];
     library.saveTrail(workflow.id, ensureTrailTimes(trail).events);
     const pair = intentEvalPair(workflow.id, capture.events, teachDecisions, { id: workflow.id, name: workflow.name, startUrl: workflow.startUrl }, spokenMap());
-    if (teachFix) {
-      pair.workflow = workflow;
-      pair.decisions = decisions;
-    }
     library.saveIntentEval(workflow.id, pair);
     const caseDoc = teachIntentCase(workflow.id, capture.events, decisions, {
       id: workflow.id,
       name: workflow.name,
       startUrl: workflow.startUrl,
     }, spokenMap());
-    if (teachFix) caseDoc.workflow = workflow;
     library.saveTeachIntentCase(workflow.id, caseDoc);
     capture.discard();
     teachDecisions = [];
     cardSeen.clear();
     narrationCache.clear();
-    teachFix = null;
     teachPhase = "idle";
     sessionMode = "capture";
     return workflow;

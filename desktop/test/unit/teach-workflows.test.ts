@@ -1,9 +1,9 @@
-// Teach the fixture once, correct it, replay twice, and blur secrets.
-// A later test teaches the interstitial fix and merges a login route.
+// Teach a new workflow, correct it, replay twice, and blur secrets.
+// A second test merges demonstrations into a login route.
 // The capture browser is the local fixture page. No vendor network.
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -30,6 +30,7 @@ async function post(port: number, pathname: string, body?: unknown): Promise<unk
 }
 
 async function state(port: number): Promise<{
+  recording: boolean;
   teach: {
     phase: string;
     blurredShots: number;
@@ -40,10 +41,33 @@ async function state(port: number): Promise<{
   };
   activeAsk?: { kind?: string };
 }> {
-  return await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();
+  return await (await fetch(`http://127.0.0.1:${port}/api/state`)).json() as Awaited<ReturnType<typeof state>>;
 }
 
-test("teach the fixture, correct three cards, replay twice, and splice a fix", { timeout: 180000 }, async () => {
+test("retired repair requests fail clearly without starting capture or changing the Library", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-teach-retired-"));
+  const app = await startApp({ home, port: 0 });
+  try {
+    for (const fix of [{ workflowId: "old-workflow", stepId: "old-step" }, {}, null]) {
+      const response = await fetch(`http://127.0.0.1:${app.port}/api/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ teach: true, url: "/fixture", fix }),
+      });
+      assert.equal(response.status, 410);
+      assert.match(await response.text(), /Teach repair has been retired/);
+    }
+    const current = await state(app.port);
+    assert.equal(current.teach.phase, "idle");
+    assert.equal(current.recording, false);
+    assert.deepEqual(app.library.list(), []);
+  } finally {
+    await app.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("teach a new workflow, correct three cards, replay twice, and blur secrets", { timeout: 180000 }, async () => {
   delete process.env.BAO_HEAL_FIXTURE;
   delete process.env.OPENAI_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
@@ -194,90 +218,6 @@ test("teach the fixture, correct three cards, replay twice, and splice a fix", {
     await post(app.port, "/api/teach/discard");
     assert.equal((await state(app.port)).teach.phase, "idle");
     assert.equal(app.library.list().some((workflow) => workflow.name === "Taught workflow" && workflow.steps.length === 1), false);
-  } finally {
-    await browser.close();
-    await app.close();
-  }
-});
-
-test("teach the interstitial fix as a guarded branch", { timeout: 180000 }, async () => {
-  delete process.env.BAO_HEAL_FIXTURE;
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
-  delete process.env.BAO_TEACH_FIXTURE;
-  const home = mkdtempSync(path.join(tmpdir(), "bao-fix-"));
-  const app = await startApp({ home, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  try {
-    await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });
-    await post(app.port, "/api/sessions/drive", { click: "#apply-btn" });
-    await post(app.port, "/api/teach/stop");
-    const taught = await post(app.port, "/api/teach/save", { name: "Apply the note" }) as WorkflowV2;
-    const recorded = app.library.read(taught.id);
-    recorded.startUrl = `http://127.0.0.1:${app.port}/fixture?interstitial=1`;
-    app.library.save(recorded);
-    const failed = await post(app.port, "/api/replay", { id: recorded.id, args: {} }) as {
-      runId: string;
-      status: string;
-      modelCalls: number;
-      failure?: { stepId?: string; reason?: string };
-    };
-    assert.equal(failed.status, "failed", JSON.stringify(failed.failure));
-    assert.equal(failed.modelCalls, 0);
-    await page.goto(`http://127.0.0.1:${app.port}/`);
-    await page.click('button[data-screen="runs"]');
-    await page.click(`[data-open-run="${failed.runId}"]`);
-    await page.waitForSelector("#teach-fix");
-    assert.equal(await page.locator("#teach-fix").innerText(), "Teach this step");
-    assert.match(await page.locator("#why-stopped").innerText(), /No steps ran/);
-    await page.click("#teach-fix");
-    const clicked = Date.now();
-    let taughtLive = false;
-    while (Date.now() - clicked < 20000) {
-      const current = await state(app.port);
-      if (current.teach.phase === "live") {
-        taughtLive = true;
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-    assert.equal(taughtLive, true);
-    await post(app.port, "/api/sessions/drive", { click: "#interstitial-go" });
-    const stopped = await post(app.port, "/api/teach/stop") as { review?: { summary?: { line: string } } };
-    assert.match(stopped.review?.summary?.line || "", /^\d+ events → \d+ steps, \d+ inputs found, \d+ dropped$/);
-    const fixed = await post(app.port, "/api/teach/save") as WorkflowV2;
-    assert.equal(fixed.steps[0]?.when?.present, "Review notice");
-    assert.equal(fixed.steps[0]?.identity?.id, "interstitial-go");
-    assert.equal(fixed.steps[1]?.identity?.id, "apply-btn");
-    assert.equal(fixed.steps[1]?.when, undefined);
-    const withNotice = await post(app.port, "/api/replay", { id: fixed.id, args: {} }) as {
-      status: string;
-      modelCalls: number;
-      steps: { reason?: string }[];
-      failure?: unknown;
-    };
-    assert.equal(withNotice.status, "passed", JSON.stringify(withNotice.failure));
-    assert.equal(withNotice.modelCalls, 0);
-    assert.notEqual(withNotice.steps[0]?.reason, "other branch");
-    assert.notEqual(withNotice.steps[1]?.reason, "other branch");
-
-    const plain: WorkflowV2 = {
-      ...app.library.read(fixed.id),
-      id: `${fixed.id}-plain`,
-      startUrl: `http://127.0.0.1:${app.port}/fixture`,
-    };
-    app.library.save(plain);
-    const without = await post(app.port, "/api/replay", { id: plain.id, args: {} }) as {
-      status: string;
-      modelCalls: number;
-      steps: { reason?: string }[];
-      failure?: unknown;
-    };
-    assert.equal(without.status, "passed", JSON.stringify(without.failure));
-    assert.equal(without.modelCalls, 0);
-    assert.equal(without.steps[0]?.reason, "other branch");
-    assert.notEqual(without.steps[1]?.reason, "other branch");
   } finally {
     await browser.close();
     await app.close();
