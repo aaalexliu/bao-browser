@@ -199,22 +199,30 @@ export class AgentBrowserProxy {
     } finally { cdp.close(); }
   }
 
+  private ownerClosed(session: Session): AgentBrowserCommandResult[] {
+    session.recording.finish();
+    return this.ownerResult("closed");
+  }
+
   private async waitForOwner(session: Session, args: string[]): Promise<AgentBrowserCommandResult[]> {
     try { return await this.pollForOwner(session, args); }
     catch (error) {
-      // Browser shutdown can close CDP just before the launcher's closed promise settles.
-      const closed = await Promise.race([session.chrome.closed.then(() => true), new Promise<false>((resolve) => setTimeout(() => resolve(false), 250))]);
-      if (closed) return this.ownerResult("closed");
+      if (session.abort.signal.aborted) return this.ownerClosed(session);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const closed = await Promise.race([session.chrome.closed.then(() => true), new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 8000); })]);
+        if (closed) return this.ownerClosed(session);
+      } finally { clearTimeout(timer); }
       throw error;
     }
   }
 
   private async pollForOwner(session: Session, args: string[]): Promise<AgentBrowserCommandResult[]> {
     const timeoutMs = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
-    await this.detectOwnerWall(session);
+    if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (!session.ownerWait) {
       const active = await this.activePage(session);
-      if (!active) return this.ownerResult("closed");
+      if (!active) return this.ownerClosed(session);
       session.ownerWait = active;
       session.recording.ownerWaiting(true);
       await this.ownerBanner(session, active.targetId, true);
@@ -229,19 +237,20 @@ export class AgentBrowserProxy {
       while (Date.now() < deadline && !session.abort.signal.aborted) {
         const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
         const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
-        if (!page) return this.ownerResult("closed");
+        if (!page || session.abort.signal.aborted) return this.ownerClosed(session);
         const ready = ownerCanResume(waiting.page, page);
         const signature = ready ? JSON.stringify([page.url, page.title]) : "";
         if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }
         if (ready && Date.now() - stableAt >= 750) {
           await this.ownerBanner(session, waiting.targetId, false);
+          if (session.abort.signal.aborted) return this.ownerClosed(session);
           session.ownerWait = undefined;
           session.recording.ownerWaiting(false);
           return this.ownerResult("ready");
         }
         await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
       }
-      return this.ownerResult("waiting");
+      return session.abort.signal.aborted ? this.ownerClosed(session) : this.ownerResult("waiting");
     } finally { cdp.close(); }
   }
 

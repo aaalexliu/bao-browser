@@ -21,6 +21,14 @@ test("owner wait classifies only URL/title and bounds every call below the MCP t
     ["https://usa.experian.com/member", "Verify your identity", "login_wall"],
     ["https://usa.experian.com/member", "hCaptcha check", "bot_wall"],
     ["https://usa.experian.com/member", "Request unsuccessful", "bot_wall"],
+    ["https://example.com/wiki/CAPTCHA", "Article", null],
+    ["https://example.com/challenge-results", "Challenge results", null],
+    ["https://example.com/imperva-guide", "Guide", null],
+    ["https://example.com/article", "Captchability", null],
+    ["https://example.com/_Incapsula_Resource?token=fixture", "Check", "bot_wall"],
+    ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha.html", "Check", "bot_wall"],
+    ["https://www.google.com/recaptcha/api2/bframe", "Check", "bot_wall"],
+    ["https://www.recaptcha.net/recaptcha/enterprise/anchor", "Check", "bot_wall"],
   ]) assert.equal(ownerWall({ url: url!, title: title! }), reason);
   const before = { url: "https://example.test/member", title: "hCaptcha check" };
   assert.equal(ownerCanResume(before, before), false);
@@ -126,6 +134,10 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     if (check === "captcha") await closeBrowser!();
     else await page.close();
     assert.equal(outcome(await closed), "closed");
+    const ended = library.readRun(initial.id);
+    assert.equal(ended.status, "failed");
+    assert.equal(ended.envelope?.reason, "session_closed");
+    assert.equal(ended.envelope?.status, "failed");
   } finally {
     t.signal.removeEventListener("abort", abort);
     try { await proxy.close(); }

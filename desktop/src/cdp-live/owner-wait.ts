@@ -7,9 +7,13 @@ export type OwnerWall = "login_wall" | "bot_wall";
 
 /** Metadata only. An unclear page must stay private until its URL or title changes. */
 export function ownerWall(page: OwnerPage): OwnerWall | null {
-  let path = "";
-  try { path = new URL(page.url).pathname; } catch { return null; }
-  if (/captcha|challenge|imperva|incapsula/i.test(path) || /captcha|verify (?:that )?you are (?:a )?human|not a robot|request unsuccessful|just a moment|checking your browser|pardon our interruption|imperva|incapsula/i.test(page.title)) return "bot_wall";
+  let url: URL;
+  try { url = new URL(page.url); } catch { return null; }
+  const path = url.pathname;
+  if (/^\/(?:_Incapsula_Resource|_ips_check)(?:\/|$)/i.test(path)
+    || /^(?:newassets\.)?hcaptcha\.com$/i.test(url.hostname)
+    || /^(?:www\.)?(?:google\.com|recaptcha\.net)$/i.test(url.hostname) && /^\/recaptcha\/(?:api2|enterprise)\/(?:anchor|bframe)(?:\/|$)/i.test(path)
+    || /\b(?:captcha|hcaptcha|recaptcha|verify (?:that )?you are (?:a )?human|not a robot|request unsuccessful|just a moment|checking your browser|pardon our interruption|imperva|incapsula)\b/i.test(page.title)) return "bot_wall";
   if (/(?:^|\/)(?:login|signin|sign-in|log-in|verify|verification|2fa|mfa|otp)(?:\/|$)/i.test(path) || /\b(?:sign[ -]?in|log[ -]?in|verification code|one.time code|verify your (?:identity|account)|two.factor|security check)\b/i.test(page.title)) return "login_wall";
   return null;
 }

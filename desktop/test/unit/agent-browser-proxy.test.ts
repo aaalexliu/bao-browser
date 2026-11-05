@@ -64,7 +64,7 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
-else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:[{active:true,targetId:'ABC123'}]}}));
+else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:fs.existsSync(${JSON.stringify(path.join(root, "no-active"))})?[]:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, directory: "Profile 2", executable });
@@ -83,6 +83,45 @@ else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\
     },
   };
 }
+
+for (const ending of ["no-active", "disconnect", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"]);
+    if (ending === "no-active") await writeFile(path.join(f.root, "no-active"), "");
+    else {
+      t.mock.method(sockets, "connectCdp", async () => {
+        const cdp = new sockets.CdpSocket(new Socket());
+        t.mock.method(cdp, "send", async (method: string) => {
+          const page = { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" };
+          if (method === "Target.getTargetInfo") return { targetInfo: page };
+          if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+          if (method === "Target.getTargets") {
+            if (ending === "delayed-shutdown") {
+              setTimeout(f.closeWindow, 500);
+              throw new Error("CDP disconnected during shutdown");
+            }
+            if (ending === "disconnect") setTimeout(() => f.proxy.disconnect(), 10);
+            return { targetInfos: [page] };
+          }
+          return {};
+        });
+        return cdp;
+      });
+      await f.proxy.execute("snapshot");
+    }
+    const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"]);
+    assert.equal(JSON.parse(result[0]!.stdout).outcome, ending === "explicit-close" ? "waiting" : "closed");
+    if (ending === "explicit-close") await f.proxy.close();
+    const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
+    assert.notEqual(saved.status, "needs_human");
+    if (ending !== "no-active") {
+      assert.equal(saved.status, "failed");
+      assert.equal(saved.envelope?.status, "failed");
+      assert.equal(saved.envelope?.reason, "session_closed");
+    }
+  } finally { await f.close(); }
+});
 
 test("proxy forwards argv and native output, attaches to its marked copy, and removes it on close", async (t) => {
   const f = await fixture(t);
