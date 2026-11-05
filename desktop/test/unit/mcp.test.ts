@@ -118,8 +118,8 @@ function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
 }
 
-test("bao mcp lists the catalog tools, then the live tools", () => {
-  assert.deepEqual(TOOL_NAMES, [...CATALOG, ...LIVE_TOOL_NAMES]);
+test("bao mcp lists the catalog, live tools, and native proxy", () => {
+  assert.deepEqual(TOOL_NAMES, [...CATALOG, ...LIVE_TOOL_NAMES, "agent_browser"]);
   for (const name of ["live_session_start", "live_snapshot", "live_click", "live_type", "live_stop"]) {
     assert.ok(TOOL_NAMES.includes(name as (typeof TOOL_NAMES)[number]), name);
   }
@@ -134,7 +134,7 @@ test("tools/list stays the same after workflows are added", async () => {
     writeFileSync(path.join(mcp.home, "workflows", "extra-two.json"), "{}\n");
     const second = await mcp.request("tools/list");
     const names = (reply: Reply) => reply.result?.tools?.map((tool) => tool.name);
-    assert.deepEqual(names(first), [...CATALOG, ...LIVE_TOOL_NAMES]);
+    assert.deepEqual(names(first), [...CATALOG, ...LIVE_TOOL_NAMES, "agent_browser"]);
     assert.deepEqual(names(second), names(first));
   } finally {
     mcp.child.kill();
@@ -216,7 +216,7 @@ test("bao mcp-live is the same server as bao mcp", async () => {
     assert.equal(init.result?.serverInfo?.name, "bao");
     assert.equal(init.result?.instructions, INSTRUCTIONS);
     const list = await mcp.request("tools/list");
-    assert.deepEqual(list.result?.tools?.map((tool) => tool.name), [...CATALOG, ...LIVE_TOOL_NAMES]);
+    assert.deepEqual(list.result?.tools?.map((tool) => tool.name), [...CATALOG, ...LIVE_TOOL_NAMES, "agent_browser"]);
     assert.equal((await mcp.tool("live_snapshot")).isError, false);
     assert.deepEqual(app.bodies.map(({ client: _client, ...body }) => body), [{ op: "live_snapshot" }]);
     assert.equal((await mcp.tool("search_workflows", { query: "x" })).isError, false);

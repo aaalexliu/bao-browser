@@ -2,6 +2,31 @@
 
 Bao keeps its workflow, Capture, Library, replay, MCP, and site-policy layers. The native agent-browser process replaces page actions only. The old engine stays the default. This trial does not remove the capture-only extension or change the daily-Chrome debugging helper.
 
+## Direct MCP commands
+
+The `bao-mcp` server also exposes `agent_browser`, a separate pass-through that needs no running Bao app. It accepts an agent-browser `command` and an `args` array. Each array item is one native CLI argument, without shell quoting. It supports `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `tab`, `screenshot`, and `close`.
+
+```json
+{"command":"open","args":["http://127.0.0.1:8080/"]}
+{"command":"snapshot","args":["-i"]}
+{"command":"tab","args":["t2"]}
+{"command":"fill","args":["@e1","hello"]}
+{"command":"click","args":["@e2"]}
+{"command":"close","args":[]}
+```
+
+Bao fixes one named session in a private socket directory, installed Google Chrome, headed mode, and a fresh marked copy of the Chrome profile selected in Settings. An unset profile selects `Default`. The page-engine choice does not affect this tool. Bao launches the copy itself, then attaches the pinned native agent-browser through `--cdp`. Only the Chrome child gets the real HOME from the passwd entry so it can use the login keychain. The native command process keeps a private HOME. The source profile stays untouched.
+
+This launch boundary avoids an upstream limitation. Native agent-browser 0.41.0 adds `--password-store=basic` and `--use-mock-keychain` for a prepared `--profile <folder>`. Its [Chrome launcher](https://github.com/vercel-labs/agent-browser/blob/v0.41.0/cli/src/native/cdp/chrome.rs) selects the real keychain only when agent-browser copies a named profile itself. Bao owns the copy and Chrome instead; the native pin stays unchanged.
+
+Each call returns native stdout and stderr as separate MCP text blocks, unchanged. A native failure sets `isError` and leaves the session available. Successful `open` adds native `tab list` output. That list includes every tab on the opened site's host, plus other restored tabs, so the agent can choose the signed-in tab with `tab <id>`. Bao does not pick one by guessing its login state. `tab list --json` also exposes CDP target ids. `screenshot` keeps agent-browser's file output and does not add a Library artifact or an MCP image block. Use an absolute screenshot path because native commands run in the private state directory.
+
+Known gap: headed saved-tab restore through this pass-through awaits the separate saved-tabs change. The current copy and launcher discard saved tabs. After that change lands, verify two restored tabs on the same host, their separate `sessionStorage`, the returned tab list, and selection of the signed-in tab through this tool. The current fixture proves per-tab state and selection on tabs opened during the session, not saved-tab restore.
+
+`close` ends only this session and removes its copy. MCP disconnect also closes it. The route has no idle close, presets, intents, careful mode, unique-element check, circuit breaker, self-repair, or bot-check detection. It does not record commands, save workflows, or strip passwords yet. The existing `live_*` tools and their rules remain separate and unchanged.
+
+For isolated fixture tests, `BAO_AGENT_BROWSER_PROFILE_ROOT` supplies a synthetic source root. With `BAO_TEST_BROWSER`, the proxy requires that explicit source; Bao's launcher uses the pinned test browser and adds mock-keychain and media-denial flags. Product launches use installed Google Chrome. Stage the native binary as described below. After `npm run build:desktop`, run the opt-in fixture with `AGENT_BROWSER_PROXY_BINARY=<staged executable> node --test desktop/dist/desktop/test/live/agent-browser-proxy.test.js`. `AGENT_BROWSER_PROXY_ARTIFACTS` retains the output comparison. `AGENT_BROWSER_PROXY_INSTALLED_CHROME=1` selects the separate Mac launch proof, which uses a throwaway source profile and opens only `chrome://` pages.
+
 ## Pick an engine and profile
 
 On macOS, in Settings, choose **agent-browser (trial)** and a Chrome profile, then save the engine choice. Both Settings profile choosers list existing `Default` and `Profile N` directories. Chrome's `Local State` supplies display names and account emails; a missing name falls back to the directory name. Metadata for a directory that no longer exists is not listed. The list contains no cookie or storage values. The choice applies to the next live session or recorded live-workflow replay and stays fixed for that whole run.
@@ -35,7 +60,7 @@ Settings is the only product engine selector. Local fixtures pass an explicit en
 - Ordinary commands have a 12-second deadline; navigation has 30 seconds. Startup trust/readiness/location evaluation has 35 seconds because upstream CDP can wait 30 seconds before responding. Socket readiness has a five-second startup deadline. A refused connection before Bao writes the launch command waits within that deadline; socket errors after a write stop the run without retry. Other native startup errors propagate at once rather than polling a stopped engine. These bounds do not retry an action.
 - Commands have a response-size bound and keep their command deadlines. Bao disables the native daemon's upstream idle timeout with `AGENT_BROWSER_IDLE_TIMEOUT_MS=0`; session lifetime follows the [live session lifecycle](cdp-live-chrome.md#agent-entry-point). A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
 - Bao tracks browser ownership itself. Killing the native child only disconnects it. The adapter never sends `Browser.close`; the owner of a Bao-launched browser handles shutdown. An attached browser survives adapter disposal.
-- Both engines follow the same [live session modes](cdp-live-chrome.md#live-session-modes) and [Experian final-action and navigation-outcome contract](cdp-live-chrome.md#agent-entry-point). The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
+- Both engines follow the same [live session modes](cdp-live-chrome.md#live-session-modes) and [Experian final-action and navigation-outcome contract](cdp-live-chrome.md#agent-entry-point). The guarded live trial does not expose arbitrary evaluation or upstream browser commands through its `live_*` tools. The separate `agent_browser` pass-through has the command contract above.
 
 ## Evidence
 

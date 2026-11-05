@@ -5,6 +5,7 @@ import { describeWorkflow, getRun, runWorkflow, searchWorkflows, type LiveReplay
 import { frameRpc, takeRpcChunk } from "./frame";
 import { appLiveReplay, liveToolResult, postLive } from "./live-proxy";
 import { Library } from "../v1/store";
+import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -55,12 +56,24 @@ const CATALOG_TOOLS = [
   },
 ] as const;
 
-/** The catalog runs in this process. The live tools go to the running Bao app. */
-export const TOOLS = [...CATALOG_TOOLS, ...LIVE_TOOLS];
+const AGENT_BROWSER_TOOL = {
+  name: "agent_browser",
+  description: "Run an agent-browser command with its native arguments and return its output unchanged. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, close. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. This route needs no running Bao app. It does not record, redact, or apply live-tool guards.",
+  inputSchema: {
+    type: "object", properties: {
+      command: { type: "string", enum: AGENT_BROWSER_COMMANDS },
+      args: { type: "array", items: { type: "string" }, default: [] },
+    }, required: ["command"], additionalProperties: false,
+  },
+} as const;
+
+/** The catalog and native proxy run here. The existing live tools go to the running Bao app. */
+export const TOOLS = [...CATALOG_TOOLS, ...LIVE_TOOLS, AGENT_BROWSER_TOOL];
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
+  "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. This path does not record or redact and does not use live-tool guards. It needs no running Bao app. The separate live_* workflow tools work as follows.",
   "Bao drives a Chrome window for you and saves what you did as a workflow.",
   "To do a task in the browser:",
   "1. Start: live_session_start with the user's intent and the site's start page, such as its home or store page, not a search results url. The Bao app picks the Chrome to drive. portFile and preset are optional.",
@@ -83,6 +96,7 @@ interface Context {
   live: LiveReplayer;
   /** Set once this process sends a live call, so a disconnect is sent only then. */
   liveUsed: boolean;
+  proxy: AgentBrowserProxy;
   /** Resolves when the client goes away. From then on each live_* call and the disconnect post get 15 s. */
   gone: Promise<void>;
 }
@@ -100,7 +114,9 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   let ending = false;
   let ended: () => void = () => undefined;
   const gone = new Promise<void>((resolve) => { ended = resolve; });
-  const ctx: Context = { library: new Library(home), libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env), liveUsed: false, gone };
+  const library = new Library(home);
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile });
+  const ctx: Context = { library, libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env), liveUsed: false, proxy, gone };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -124,6 +140,8 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     void chain
       .then(() => ctx.liveUsed ? limited(postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env), gone) : undefined)
       .catch(() => undefined)
+      .then(() => ctx.proxy.close())
+      .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
       .finally(() => process.exit(0));
   };
   const stop = (): void => {
@@ -160,7 +178,9 @@ async function handle(body: string, ctx: Context): Promise<void> {
     const name = msg.params?.name || "";
     const args = msg.params?.arguments || {};
     try {
-      const result = isLiveOp(name)
+      const result = name === "agent_browser"
+        ? await proxyTool(args, ctx.proxy)
+        : isLiveOp(name)
         ? liveToolResult(await liveCall({ ...args, op: name, client: ctx.client }, ctx))
         : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.libraries, ctx.live, name, args)) }], isError: false };
       send({ jsonrpc: "2.0", id: msg.id, result });
@@ -175,6 +195,14 @@ async function handle(body: string, ctx: Context): Promise<void> {
     return;
   }
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
+}
+
+async function proxyTool(args: Record<string, unknown>, proxy: AgentBrowserProxy) {
+  const results = await proxy.execute(args.command, args.args);
+  return {
+    content: results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))),
+    isError: results.some((result) => result.exitCode !== 0),
+  };
 }
 
 function liveCall(body: Record<string, unknown>, ctx: Context): Promise<unknown> {

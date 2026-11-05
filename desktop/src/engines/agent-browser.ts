@@ -27,6 +27,15 @@ type Data = Record<string, unknown>;
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
 
+export function agentBrowserExecutable(override?: string): string {
+  const executable = override || process.env.BAO_AGENT_BROWSER
+    || path.resolve(__dirname, "../../../agent-browser/agent-browser");
+  if (!path.isAbsolute(executable) || !existsSync(executable)) throw new Error("pinned native agent-browser is missing; stage it before selecting this engine");
+  try { accessSync(executable, constants.X_OK); }
+  catch { throw new Error("pinned native agent-browser is not executable; stage it before selecting this engine"); }
+  return executable;
+}
+
 export type EvaluationPhase = "page" | "startup";
 
 type StopCause = "deadline" | "socket-error" | "socket-ended" | "output-limit" | "invalid-json" | "response-shape"
@@ -61,11 +70,7 @@ export class AgentBrowserPage {
       throw new Error("agent-browser requires an exact loopback browser endpoint and target");
     }
     if (process.platform === "win32") throw new Error("agent-browser trial requires Unix sockets");
-    const executable = options.executable || process.env.BAO_AGENT_BROWSER
-      || path.resolve(__dirname, "../../../agent-browser/agent-browser");
-    if (!path.isAbsolute(executable) || !existsSync(executable)) throw new Error("pinned native agent-browser is missing; stage it before selecting this engine");
-    try { accessSync(executable, constants.X_OK); }
-    catch { throw new Error("pinned native agent-browser is not executable; stage it before selecting this engine"); }
+    const executable = agentBrowserExecutable(options.executable);
     const stateDir = await mkdtemp("/tmp/bao-ab-");
     await chmod(stateDir, 0o700);
     const page = new AgentBrowserPage(options, stateDir);
