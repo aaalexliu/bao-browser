@@ -690,7 +690,7 @@ export function runViewer(
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
     <input id="scrubber" type="range" min="0" max="${Math.max(0, steps.length - 1)}" value="${selectedIndex}" aria-label="Step timeline">
-    <div class="split${selected?.status === "failed" ? " with-failure" : ""}">
+    <div class="split${!agentBrowser && selected?.status === "failed" ? " with-failure" : ""}">
       <div class="step-list" id="step-list">${list}</div>
       <div class="step-detail" id="step-detail">
         <div class="row"><strong>${esc(selected?.label || "")}</strong></div>

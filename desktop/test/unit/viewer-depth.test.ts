@@ -335,6 +335,7 @@ test("the agent-browser viewer omits old-engine inspectors in every run state", 
       const html = runViewer(run, { name: "agent-browser", recordedOnly, steps: run.steps! });
       assert.doesNotMatch(html, />Identity<|id="identity-table"|id="snapshot-inspector"|id="dom-snapshot"|id="ax-snapshot"/);
       assert.match(html, /id="step-list"/);
+      assert.doesNotMatch(html, /class="split with-failure"/);
       assert.match(html, /command-1-after\.png/);
       if (status === "passed") assert.match(html, /<p>agent-browser recorded<\/p>/);
       if (status === "failed" && recordedOnly) assert.match(html, /<p>Step 1 snapshot failed\.<\/p>/);
@@ -392,6 +393,7 @@ test("the run viewer links a failure to its step and shows the snapshot", () => 
     failure: { stepId: "c", index: 1, phase: "find", reason: "tie" },
   }, { name: "upload note", steps: [{ id: "c", label: "click Upload" }] }, "c");
   assert.match(html, /id="open-failed-step"[^>]*data-select-step="c"/);
+  assert.match(html, /class="split with-failure"/);
   assert.match(html, /id="idle-note"/);
   assert.match(html, /data-skipped="4800"/);
   assert.match(html, /id="triage"/);
