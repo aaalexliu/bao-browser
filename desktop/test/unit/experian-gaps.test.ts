@@ -292,7 +292,7 @@ describe("Experian stand-in through the Bao API and product MCP", { timeout: 120
     browser = await launchFixtureBrowser(fixture);
     const seed = await testChromium.connectOverCDP(browser.cdpUrl);
     try {
-      const tab = seed.contexts()[0].pages()[0];
+      const tab = await seed.contexts()[0].newPage();
       for (const host of fixture.hosts) await tab.goto(fixture.url("/seed", host));
     } finally { await seed.close(); }
     root = await mkdtemp(path.join(tmpdir(), "bao-experian-app-"));
