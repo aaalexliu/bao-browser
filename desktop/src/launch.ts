@@ -483,7 +483,7 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions): Promise<{ chi
   return spawnOwnedChrome(exe, args, opts.userDataDir, opts.childHome);
 }
 
-/** Own the process and browser endpoint without initializing any page renderer. */
+/** Own the process and browser endpoint without attaching to page renderers. */
 export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions): Promise<{
   portFile: string;
   closed: Promise<void>;
