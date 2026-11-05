@@ -1,5 +1,6 @@
 # Vision
 
+Bao's goal is to make browser workflows easy to start, follow, and review from Codex or Claude desktop.
 Bao exists so that a person's agent can use their signed-in Chrome without making them start over in a remote browser.
 It serves the person who already has accounts, tabs, and work on their computer, and turns agent-driven browser work into a local record they can inspect and understand.
 It owns exactly one thing: the local connection between an agent and the person's browser session, including the record that connection leaves.
@@ -13,8 +14,17 @@ Bao makes the active profile and the distinction between original and copy clear
 Adopting an existing original tab needs a concrete task that depends on its unsaved state, not a general promise to share every open tab with the agent.
 Grounding: merged commits `d4e2969`, `b79ce15`, `3ca8f08`, and `c2ccde1`.
 
+## Ship one trusted installation
+
+The packaging goal is one cohesive app: one trusted installation with as few permission prompts as possible.
+Bao bundles the browser agent and its libraries rather than requiring separate installs or permission prompts for unfamiliar helper programs.
+The packaging review includes Keychain access, browser storage, and profile copying.
+Running everything in one process is a proposed means, not a decided architecture; whether it gives the intended macOS permission behavior remains an open question.
+
 ## Ask only for permissions the task needs
 
+Onboarding asks only for the permissions needed to begin.
+Screen Recording, Accessibility, and other permissions are introduced and explained only when the person enables a feature that needs them.
 Chrome screenshots and video come from Chrome, not macOS screen capture.
 Screen Recording is neither a prerequisite nor an onboarding request for driving Chrome.
 Accessibility and Chrome Automation serve the connection when needed; a route that works without them does not ask for them.
@@ -24,6 +34,8 @@ Grounding: merged commits `152d261`, `85ee0be`, and `3ca8f08`.
 ## Let the agent drive
 
 Bao connects the person's chosen agent to browser actions; it does not take over the agent's judgment about the task.
+An MCP-first client is a direction to explore: Bao as an MCP server with a polished UI embedded in Codex or Claude desktop.
+The goal is to let the person start workflows, interact with them, and inspect results without switching apps, with seamless installation.
 The direct command route preserves native commands and results instead of inserting site-specific approvals or interpreting button labels as authority.
 A final account-changing click is not, by itself, a reason for Bao to block an agent's command.
 An explicit native request to read authentication cookies is within that direct contract, not a reason to add a hidden command filter.
@@ -42,7 +54,9 @@ Grounding: merged commits `672e2fc`, `dd835ae`, and `d5734bc`.
 ## Keep an honest, useful local record
 
 The person can open Bao's Library to see what the agent did, including a session that failed before its first page action.
-Commands, results, step pictures, and failure reasons belong to the run they describe.
+Bao shows what it is doing during a run and keeps a history of runs.
+Commands, results, screenshots, recordings, and failure reasons belong to the run they describe.
+The person can quickly understand what happened, what changed, and whether Bao did anything unexpected.
 Recording, completed capture, and successful replay are different claims, and missing evidence carries an explicit reason rather than an invented score, empty inspector, or false success.
 A recording warning does not change the native action result; an unrecoverable failure such as a full disk aborts plainly instead of creating a special read-only command mode.
 An uncertain action does not become a silent second attempt, and a completed click does not by itself prove a durable site-side result.
@@ -59,11 +73,12 @@ Grounding: merged commits `c2ccde1`, `159b5fa`, `ac659c8`, and `5c44166`.
 
 ## Scope
 
-Bao's focus is the direct agent-browser connection, meaningful run steps, clear workflow intent, and inspectable saved data.
+Bao's focus is the direct agent-browser connection, meaningful run steps, clear workflow intent, and inspectable saved data, with an MCP-first embedded client as a direction to explore.
+Easy starts, clear runs, light onboarding, and one trusted installation belong to that focus.
 Replay, Heals, and the separate Live interface are outside the current product scope; their presence in the repository does not make them product obligations.
 Bao is not a replacement coding agent, a cloud-browser farm, a general-purpose desktop-control requirement, or a mandatory approval system for the person's own agent.
 Bao does not own recurring-purchase budgets, substitution rules, or standing purchase authority, and off-device Library backup needs a concrete shared-workflow use rather than a hypothetical local-only need.
-The Mac is the primary product surface, not an identity boundary; Windows and Linux support must serve the same signed-in-browser and local-record contract.
+The Mac is the primary installation target, not an identity boundary or a requirement to leave Codex or Claude desktop; Windows and Linux support must serve the same signed-in-browser and local-record contract.
 A command recording does not promise a replayable workflow, a profile copy does not promise every site's login, and local use does not require a shared-workflow threat model.
 
 A change aligns when it lets the agent complete real browser work with the chosen profile and few unrelated permission gates, while letting the person understand the steps, inspect saved workflow JSON, and trust the record's claims.
