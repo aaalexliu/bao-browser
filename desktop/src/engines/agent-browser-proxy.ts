@@ -129,11 +129,9 @@ export class AgentBrowserProxy {
       } catch (error) {
         if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       } finally {
-        try { await session.chrome.close(); }
-        finally {
-          try { await rm(session.stateDir, { recursive: true, force: true }); }
-          finally { if (this.session === session) this.session = undefined; }
-        }
+        await session.chrome.close();
+        await rm(session.stateDir, { recursive: true, force: true });
+        if (this.session === session) this.session = undefined;
       }
     })();
   }

@@ -498,13 +498,11 @@ async function launchNormalChrome(opts: {
     } else {
       await parkOnBlank(context);
     }
-    let closed = false;
+    let closing: Promise<void> | undefined;
     browser.on("disconnected", () => {
-      if (!closed) stop();
+      if (!closing) stop();
     });
-    context.close = async () => {
-      if (closed) return;
-      closed = true;
+    context.close = () => closing ??= (async () => {
       const open = context.pages().filter((page) => !page.isClosed());
       let browserClose: ShutdownTrace["browserClose"] = open.length === 0 ? "skipped" : "failed";
       const page = open[0];
@@ -527,7 +525,7 @@ async function launchNormalChrome(opts: {
         killedPids: released.killedPids,
         profile: opts.userDataDir,
       }));
-    };
+    })();
     return context;
   } catch (err) {
     stop();

@@ -139,6 +139,31 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
   });
 }
 
+test("failed copy cleanup retains the session and blocks reopen", async (t) => {
+  const f = await fixture(t);
+  const openChrome = profiles.openCopiedChrome;
+  const failure = new Error("copy deletion failed");
+  let cleanup: (() => Promise<void>) | undefined;
+  t.mock.method(profiles, "openCopiedChrome", async (options: Parameters<typeof openChrome>[0]) => {
+    const chrome = await openChrome(options);
+    cleanup = chrome.close;
+    return { ...chrome, close: async () => { throw failure; } };
+  });
+  try {
+    await f.proxy.execute("open");
+    const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
+    await assert.rejects(f.proxy.close(), failure);
+    await access(f.copy());
+    await access(stateDir);
+    const calls = await f.calls();
+    await assert.rejects(f.proxy.execute("open"), failure);
+    assert.deepEqual(await f.calls(), calls);
+  } finally {
+    await cleanup?.();
+    await f.close().catch(() => undefined);
+  }
+});
+
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; }
   catch (error) {
