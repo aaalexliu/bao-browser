@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { Browser } from "playwright";
 import { query } from "../../../web/src/lib/db";
 import { createShare, getShare, installShare, previewPublication, pull, pushVersion } from "../../../web/src/lib/registry";
 import { buildPushBody as webBody, stripUnsafe as webStrip, assertSyncSafe } from "../../../web/src/lib/guard";
@@ -18,6 +19,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { saveState, syncAll } from "../../src/v1/sync";
 import { testChromium } from "../../src/test-browser.js";
+import { pinTestBrowser } from "../../src/launch";
 
 async function main(): Promise<void> {
   const home = process.env.BAO_COMPOSITION_HOME!;
@@ -56,8 +58,9 @@ async function main(): Promise<void> {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const browser = await testChromium.launch({ headless: true });
+  let browser: Browser | undefined;
   try {
+    browser = await testChromium.launch({ headless: true, executablePath: pinTestBrowser() });
     const page = await browser.newPage();
     let count = 0;
     for (const secret of [STRIPPED_SECRET, "secret", "strip", "stripped", "pass", "4111111111111111", "sk-seededWholeToken"]) {
@@ -144,7 +147,7 @@ async function main(): Promise<void> {
     mkdirSync(path.join(home, "proof"), { recursive: true });
     writeFileSync(path.join(home, "proof", "result.json"), JSON.stringify({ scenarios: count, replayCopies: count * 4 }));
   } finally {
-    await browser.close();
+    await browser?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }

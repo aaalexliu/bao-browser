@@ -1,6 +1,31 @@
 # agent-browser trial
 
-Bao keeps its workflow, Capture, Library, replay, MCP, and site-policy layers. The native agent-browser process replaces page actions only. The old engine stays the default. This trial does not remove the capture-only extension or change the daily-Chrome debugging helper.
+The workflow engine trial keeps Bao's workflow, Capture, Library, replay, MCP, and site-policy layers. In that trial, the native agent-browser process replaces page actions only. The old engine stays the default. The separate direct MCP route is described below. Neither route removes the capture-only extension or changes the daily-Chrome debugging helper.
+
+## Direct MCP commands
+
+The `bao-mcp` server also exposes `agent_browser`, a separate pass-through that needs no running Bao app. It accepts an agent-browser `command` and an `args` array. Each array item is one native CLI argument, without shell quoting. It supports `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `tab`, `screenshot`, and `close`.
+
+```json
+{"command":"open","args":["http://127.0.0.1:8080/"]}
+{"command":"snapshot","args":["-i"]}
+{"command":"tab","args":["t2"]}
+{"command":"fill","args":["@e1","hello"]}
+{"command":"click","args":["@e2"]}
+{"command":"close","args":[]}
+```
+
+Bao fixes one named session in a private socket directory, installed Google Chrome, headed mode, and a fresh marked copy of the Chrome profile selected in Settings. An unset profile selects `Default`. The page-engine choice does not affect this tool. This tool keeps extensions disabled regardless of the per-profile extension setting for the workflow engine trial. Bao launches the copy itself, then attaches the pinned native agent-browser through `--cdp`. Only the Chrome child gets the real HOME from the passwd entry so it can use the login keychain. The native command process keeps a private HOME. The source profile stays untouched.
+
+This launch boundary avoids an upstream limitation. Native agent-browser 0.41.0 adds `--password-store=basic` and `--use-mock-keychain` for a prepared `--profile <folder>`. Its [Chrome launcher](https://github.com/vercel-labs/agent-browser/blob/v0.41.0/cli/src/native/cdp/chrome.rs) selects the real keychain only when agent-browser copies a named profile itself. Bao owns the copy and Chrome instead; the native pin stays unchanged.
+
+Each call returns native stdout and stderr as separate MCP text blocks, unchanged. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts session cleanup even after a native failure. Successful `open` adds native `tab list` output. That list includes every tab on the opened site's host, plus other restored tabs, so the agent can choose the signed-in tab with `tab <id>`. Bao does not pick one by guessing its login state. `tab list --json` also exposes CDP target ids. `screenshot` keeps agent-browser's file output and does not add a Library artifact or an MCP image block. Use an absolute screenshot path because native commands run in the private state directory.
+
+Known gap: headed saved-tab restore through this pass-through awaits the separate saved-tabs change. The current copy and launcher discard saved tabs. After that change lands, verify two restored tabs on the same host, their separate `sessionStorage`, the returned tab list, and selection of the signed-in tab through this tool. The current fixture proves per-tab state and selection on tabs opened during the session, not saved-tab restore.
+
+`close` ends only this session and removes its copy. MCP disconnect also closes it. The route has no idle close, presets, intents, careful mode, unique-element check, circuit breaker, self-repair, or bot-check detection. It does not record commands, save workflows, or strip passwords yet. The existing `live_*` tools and their rules remain separate and unchanged.
+
+For isolated fixture tests, `BAO_AGENT_BROWSER_PROFILE_ROOT` supplies a synthetic source root. With `BAO_TEST_BROWSER`, the proxy requires that explicit source; Bao's launcher uses the pinned test browser and adds mock-keychain and media-denial flags. Product launches use installed Google Chrome. Stage the native binary as described below. After `npm run build:desktop`, run the opt-in fixture with `AGENT_BROWSER_PROXY_BINARY=<staged executable> node --test desktop/dist/desktop/test/live/agent-browser-proxy.test.js`. `AGENT_BROWSER_PROXY_ARTIFACTS` retains the output comparison. `AGENT_BROWSER_PROXY_INSTALLED_CHROME=1` selects the separate Mac launch proof, which uses a throwaway source profile and opens only `chrome://` pages.
 
 ## Pick an engine and profile
 
@@ -28,6 +53,8 @@ Settings is the only product engine selector. Local fixtures pass an explicit en
 
 ## Native process contract
 
+This contract applies to the guarded workflow engine trial. The [direct MCP route](#direct-mcp-commands) uses native CLI arguments and output instead.
+
 - Version and platform checksums live in [`desktop/packaging/agent-browser-pin.json`](../desktop/packaging/agent-browser-pin.json). [Mac packaging](mac-build.md#fresh-setup) stages and signs the native executable; the npm launcher is not a runtime dependency.
 - For a checkout, run `node desktop/packaging/stage-agent-browser.mjs "$PWD/.toolchain/agent-browser"`, then set `BAO_AGENT_BROWSER` to `$PWD/.toolchain/agent-browser/agent-browser` in the Bao server's environment. Installed builds use the bundled executable without this variable. This selects the executable, not the engine.
 - Bao starts one native daemon with a private state directory, a fixed loopback CDP endpoint, and one exact pinned tab. It strips model keys, remote-provider settings, proxy settings, config homes, and inherited executable paths from the child environment. WebMCP is off.
@@ -35,9 +62,11 @@ Settings is the only product engine selector. Local fixtures pass an explicit en
 - Ordinary commands have a 12-second deadline; navigation has 30 seconds. Startup trust/readiness/location evaluation has 35 seconds because upstream CDP can wait 30 seconds before responding. Socket readiness has a five-second startup deadline. A refused connection before Bao writes the launch command waits within that deadline; socket errors after a write stop the run without retry. Other native startup errors propagate at once rather than polling a stopped engine. These bounds do not retry an action.
 - Commands have a response-size bound and keep their command deadlines. Bao disables the native daemon's upstream idle timeout with `AGENT_BROWSER_IDLE_TIMEOUT_MS=0`; session lifetime follows the [live session lifecycle](cdp-live-chrome.md#agent-entry-point). A malformed response, uncertain transport outcome, dialog, lost tab, or relaunch warning stops the run. Bao never respawns the engine, retries an uncertain mutation, or switches engines mid-run.
 - Bao tracks browser ownership itself. Killing the native child only disconnects it. The adapter never sends `Browser.close`; the owner of a Bao-launched browser handles shutdown. An attached browser survives adapter disposal.
-- Both engines follow the same [live session modes](cdp-live-chrome.md#live-session-modes) and [Experian final-action and navigation-outcome contract](cdp-live-chrome.md#agent-entry-point). The trial does not expose arbitrary evaluation or upstream browser commands through MCP.
+- Both engines follow the same [live session modes](cdp-live-chrome.md#live-session-modes) and [Experian final-action and navigation-outcome contract](cdp-live-chrome.md#agent-entry-point). The guarded live trial does not expose arbitrary evaluation or upstream browser commands through its `live_*` tools. The separate `agent_browser` pass-through has the command contract above.
 
 ## Evidence
+
+This section covers guarded live capture and replay, not the [direct MCP route](#direct-mcp-commands).
 
 Copied-profile sessions save the live workflow, a Library run record with `kind: "capture"`, page screenshots for its kept steps, and page video. Library, workflow last-run, sparklines, Runs, and the run viewer show each capture's end status rather than `recording`: passed, failed, needs you for `needs_human` or paused, or `stopped, timed out` for a timeout. A provisional workflow or run promotion does not override a capture's end status. Capture runs do not count toward local last-green, sync run uploads, or replay failure/heal history. Only passed replays establish green status. Condensed steps use the last shot in their original trail interval, including merged typing and digit clicks.
 

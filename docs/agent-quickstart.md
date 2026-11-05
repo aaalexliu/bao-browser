@@ -22,7 +22,7 @@ The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Bu
 
 ## MCP
 
-`bao mcp` is a stdio server. The tools are `search_workflows`, `describe_workflow`, `run_workflow`, and `get_run`, then the `live_*` tools in [Agent entry point](cdp-live-chrome.md#agent-entry-point).
+`bao mcp` is a stdio server. [MCP](bao.md#mcp) lists its tool routes. For direct native browser control, see [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands).
 
 Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications/Bao.app/Contents/MacOS/bao-mcp`. It finds Node 24 or newer the way the app does ([Build Bao on a Mac](mac-build.md#launch)), then runs the app's own `bao mcp` from `Contents/Resources/bao`. So the agent config names no checkout, `node` need not be on PATH, and the agent's working directory does not pick the library. `bao-mcp` passes any arguments you add after it on to `bao mcp`. The source is `desktop/packaging/macos/bao-mcp.c`.
 
@@ -90,7 +90,7 @@ export BAO_HOME="/the/home/bao/serve/printed"
 
 `BAO_MCP_LIVE=1` selects `liveMcpMain` in `desktop/src/eval/live-mcp.ts`. The process requires `BAO_FIXTURE_URL`, creates a temporary profile, and launches the test browser (`BAO_TEST_BROWSER`, else Playwright's Chromium) with a mock keychain. That browser ends with the process. The evaluator's tools are `screenshot`, `snapshot`, `click`, `type`, `key`, `scroll`, and `upload`.
 
-Leave `BAO_MCP_LIVE` unset for the catalog and `live_*` tools. The evaluator is described in [bao.md](bao.md#bao-mcp-drivers).
+Leave `BAO_MCP_LIVE` unset for the [agent server](bao.md#mcp). The evaluator is described in [bao.md](bao.md#bao-mcp-drivers).
 
 ## Extension
 

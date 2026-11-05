@@ -181,7 +181,7 @@ The session contract is [cdp-live.md](cdp-live.md).
 
 ## Agent entry point
 
-`bao mcp [--home dir]` is the one stdio MCP server for agents. It lists the four catalog tools (`search_workflows`, `describe_workflow`, `run_workflow`, `get_run`), then the live tools: `live_session_start`, `live_snapshot`, `live_navigate`, `live_tabs`, `live_switch_tab`, `live_select`, `live_read`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop`. The catalog tools run inside `bao mcp`. Each live call goes to the running Bao app's `POST /api/live`. `bao mcp` finds the app the same way as `bao open`: `server.json` in `--home`, then `BAO_HOME`, then the default libraries. `bao mcp-live` is an alias for `bao mcp`.
+`bao mcp [--home dir]` exposes the live tools alongside the other routes listed in [MCP](bao.md#mcp). The live tools are `live_session_start`, `live_snapshot`, `live_navigate`, `live_tabs`, `live_switch_tab`, `live_select`, `live_read`, `live_click`, `live_type`, `live_key`, `live_scroll`, `live_screenshot`, and `live_stop`. Each live call goes to the running Bao app's `POST /api/live`. `bao mcp` finds the app the same way as `bao open`: `server.json` in `--home`, then `BAO_HOME`, then the default libraries.
 
 ### Live session modes
 
