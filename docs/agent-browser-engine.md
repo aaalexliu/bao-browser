@@ -15,11 +15,11 @@ The `bao-mcp` server also exposes `agent_browser`, a separate pass-through that 
 {"command":"close","args":[]}
 ```
 
-Bao fixes one named session in a private socket directory, installed Google Chrome, headed mode, and a fresh marked copy of the Chrome profile selected in Settings. An unset profile selects `Default`. The page-engine choice does not affect this tool. Bao launches the copy itself, then attaches the pinned native agent-browser through `--cdp`. Only the Chrome child gets the real HOME from the passwd entry so it can use the login keychain. The native command process keeps a private HOME. The source profile stays untouched.
+Bao fixes one named session in a private socket directory, installed Google Chrome, headed mode, and a fresh marked copy of the Chrome profile selected in Settings. An unset profile selects `Default`. The page-engine choice does not affect this tool. This tool keeps extensions disabled regardless of the per-profile extension setting for the workflow engine trial. Bao launches the copy itself, then attaches the pinned native agent-browser through `--cdp`. Only the Chrome child gets the real HOME from the passwd entry so it can use the login keychain. The native command process keeps a private HOME. The source profile stays untouched.
 
 This launch boundary avoids an upstream limitation. Native agent-browser 0.41.0 adds `--password-store=basic` and `--use-mock-keychain` for a prepared `--profile <folder>`. Its [Chrome launcher](https://github.com/vercel-labs/agent-browser/blob/v0.41.0/cli/src/native/cdp/chrome.rs) selects the real keychain only when agent-browser copies a named profile itself. Bao owns the copy and Chrome instead; the native pin stays unchanged.
 
-Each call returns native stdout and stderr as separate MCP text blocks, unchanged. A native failure sets `isError` and leaves the session available. Successful `open` adds native `tab list` output. That list includes every tab on the opened site's host, plus other restored tabs, so the agent can choose the signed-in tab with `tab <id>`. Bao does not pick one by guessing its login state. `tab list --json` also exposes CDP target ids. `screenshot` keeps agent-browser's file output and does not add a Library artifact or an MCP image block. Use an absolute screenshot path because native commands run in the private state directory.
+Each call returns native stdout and stderr as separate MCP text blocks, unchanged. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts session cleanup even after a native failure. Successful `open` adds native `tab list` output. That list includes every tab on the opened site's host, plus other restored tabs, so the agent can choose the signed-in tab with `tab <id>`. Bao does not pick one by guessing its login state. `tab list --json` also exposes CDP target ids. `screenshot` keeps agent-browser's file output and does not add a Library artifact or an MCP image block. Use an absolute screenshot path because native commands run in the private state directory.
 
 Known gap: headed saved-tab restore through this pass-through awaits the separate saved-tabs change. The current copy and launcher discard saved tabs. After that change lands, verify two restored tabs on the same host, their separate `sessionStorage`, the returned tab list, and selection of the signed-in tab through this tool. The current fixture proves per-tab state and selection on tabs opened during the session, not saved-tab restore.
 
@@ -53,6 +53,8 @@ Settings is the only product engine selector. Local fixtures pass an explicit en
 
 ## Native process contract
 
+This contract applies to the guarded workflow engine trial. The [direct MCP route](#direct-mcp-commands) uses native CLI arguments and output instead.
+
 - Version and platform checksums live in [`desktop/packaging/agent-browser-pin.json`](../desktop/packaging/agent-browser-pin.json). [Mac packaging](mac-build.md#fresh-setup) stages and signs the native executable; the npm launcher is not a runtime dependency.
 - For a checkout, run `node desktop/packaging/stage-agent-browser.mjs "$PWD/.toolchain/agent-browser"`, then set `BAO_AGENT_BROWSER` to `$PWD/.toolchain/agent-browser/agent-browser` in the Bao server's environment. Installed builds use the bundled executable without this variable. This selects the executable, not the engine.
 - Bao starts one native daemon with a private state directory, a fixed loopback CDP endpoint, and one exact pinned tab. It strips model keys, remote-provider settings, proxy settings, config homes, and inherited executable paths from the child environment. WebMCP is off.
@@ -63,6 +65,8 @@ Settings is the only product engine selector. Local fixtures pass an explicit en
 - Both engines follow the same [live session modes](cdp-live-chrome.md#live-session-modes) and [Experian final-action and navigation-outcome contract](cdp-live-chrome.md#agent-entry-point). The guarded live trial does not expose arbitrary evaluation or upstream browser commands through its `live_*` tools. The separate `agent_browser` pass-through has the command contract above.
 
 ## Evidence
+
+This section covers guarded live capture and replay, not the [direct MCP route](#direct-mcp-commands).
 
 Copied-profile sessions save the live workflow, a Library run record with `kind: "capture"`, page screenshots for its kept steps, and page video. Library, workflow last-run, sparklines, Runs, and the run viewer show each capture's end status rather than `recording`: passed, failed, needs you for `needs_human` or paused, or `stopped, timed out` for a timeout. A provisional workflow or run promotion does not override a capture's end status. Capture runs do not count toward local last-green, sync run uploads, or replay failure/heal history. Only passed replays establish green status. Condensed steps use the last shot in their original trail interval, including merged typing and digit clicks.
 
