@@ -120,7 +120,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
       await f.proxy.execute("snapshot");
     }
     const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"]);
-    assert.equal(JSON.parse(result[0]!.stdout).outcome, ending === "explicit-close" ? "waiting" : "closed");
+    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, ending === "explicit-close" ? "waiting" : "closed");
     if (ending === "explicit-close") await f.proxy.close();
     const library = new Library(path.join(f.root, "home"));
     const saved = library.listRuns()[0]!;
@@ -131,7 +131,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
       const calls = await f.calls();
       for (const command of ["snapshot", "screenshot", "fill", "press", "scroll", "click", "tab", "open", "wait_for_owner"]) {
         const next = await f.proxy.execute(command);
-        assert.equal(JSON.parse(next[0]!.stdout).outcome, "closed");
+        assert.equal((JSON.parse(next[0]!.stdout) as { outcome: string }).outcome, "closed");
       }
       assert.deepEqual(await f.calls(), calls);
       assert.deepEqual(library.readRun(saved.id), saved);
@@ -159,8 +159,8 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
       return cdp;
     });
     const result = await f.proxy.execute("wait_for_owner", ["350"]);
-    assert.equal(JSON.parse(result[0]!.stdout).outcome, "waiting");
-    assert.match(JSON.parse(result[0]!.stdout).instruction, /wait_for_owner/);
+    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "waiting");
+    assert.match((JSON.parse(result[0]!.stdout) as { instruction: string }).instruction, /wait_for_owner/);
     const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.equal(saved.status, "needs_human");
     assert.equal(saved.envelope?.reason, "owner_signin");
@@ -171,7 +171,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
     const calls = await f.calls();
     for (const command of ["snapshot", "screenshot", "fill", "click", "tab", "open"]) {
       const blocked = await f.proxy.execute(command);
-      assert.equal(JSON.parse(blocked[0]!.stdout).outcome, "halted");
+      assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
     }
     assert.deepEqual(await f.calls(), calls);
     await f.proxy.close();
@@ -207,7 +207,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes 
     const library = new Library(path.join(f.root, "home"));
     const id = library.listRuns()[0]!.id;
     const result = await f.proxy.execute("wait_for_owner", ["2500"]);
-    assert.equal(JSON.parse(result[0]!.stdout).outcome, "ready");
+    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "ready");
     assert.equal(failed, true);
     assert.ok(polls > 1);
     assert.equal(library.readRun(id).status, "recording");
