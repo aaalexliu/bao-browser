@@ -19,8 +19,7 @@ export type CorrectionKind =
   | "drop"
   | "merge"
   | "note"
-  | "check"
-  | "splice";
+  | "check";
 
 export interface TeachValue {
   role: "input" | "constant" | "secret";
@@ -273,42 +272,6 @@ export function measureIntentPair(pair: IntentEvalPair): {
     checks: pair.workflow.steps.filter((step) => step.action === "verify").length,
     branches: pair.workflow.steps.filter((step) => step.when).length,
   };
-}
-
-/**
- * Insert the steps just taught immediately before the failed step, and keep that step.
- * The taught steps share one guard: they run only when the interstitial text is on the page.
- */
-export function spliceFix(workflow: WorkflowV2, failedStepId: string, taught: WorkflowV2, now = Date.now()): WorkflowV2 {
-  const at = workflow.steps.findIndex((step) => step.id === failedStepId);
-  if (at < 0) throw new Error("missing step");
-  if (!taught.steps.length) throw new Error("nothing taught");
-  const present = guardText(taught.steps[0]!);
-  if (!present) throw new Error("guard");
-  const incoming = taught.steps.map((step, index) => {
-    const copy = clone(step);
-    // The click often removes the interstitial, so the button is not still there.
-    // The step that failed originally keeps its own check.
-    delete copy.postcondition;
-    delete copy.expect;
-    delete copy.readBack;
-    return {
-      ...copy,
-      id: `${workflow.id}-fix-${at}-${index}`,
-      when: { present },
-    };
-  });
-  const steps = [...workflow.steps.slice(0, at), ...incoming, ...workflow.steps.slice(at)]
-    .map((step, index) => ({ ...step, index }));
-  const doc: WorkflowV2 = {
-    ...workflow,
-    inputs: unionInputs(workflow.inputs, taught.inputs),
-    steps,
-    updatedAt: now,
-  };
-  const errors = validateWorkflow(doc);
-  if (errors.length) throw new Error(errors.join(", "));
-  return doc;
 }
 
 /** Where a merged step's element crop was recorded, before ids are rewritten. */
@@ -769,8 +732,7 @@ function detailFor(correction: TeachCorrection): string {
   if (correction.kind === "verify") return "this is a check";
   if (correction.kind === "drop") return "dropped";
   if (correction.kind === "merge") return "merged into the previous step";
-  if (correction.kind === "check") return "added a check";
-  return "spliced the fix";
+  return "added a check";
 }
 
 function secretValues(events: readonly TrailEvent[]): string[] {
@@ -788,13 +750,6 @@ function fileText(value: string, events: readonly TrailEvent[]): string {
     if (event.rawPath) out = out.split(event.rawPath).join("{{file}}");
   }
   return out;
-}
-
-function guardText(step: WorkflowStep): string {
-  const identity = step.identity;
-  const raw = (identity?.text || identity?.name || identity?.label || "").replace(/\s+/g, " ").trim();
-  if (raw) return raw.slice(0, 80);
-  return (step.label || "").replace(/^Click\s+/, "").replace(/^"|"$/g, "").trim().slice(0, 80);
 }
 
 function sameTarget(a: WorkflowStep, b: WorkflowStep): boolean {

@@ -1,8 +1,8 @@
-// Teach narration, corrections, eval pairs, splicing a fix, and merging takes.
-// No browser. The fixture replay lives in teach-app.test.ts.
+// Teach narration, corrections, eval pairs, saved branch compatibility, and merging takes.
+// No browser. The fixture replay lives in teach-workflows.test.ts.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import { canonical } from "../../src/v1/canonical";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
+import { Library } from "../../src/v1/store";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import {
   decide,
@@ -21,7 +22,6 @@ import {
   type MergeShot,
   narratorFromEnv,
   projectTeach,
-  spliceFix,
   teachIntentCase,
   teachSummary,
 } from "../../src/v1/teach";
@@ -214,6 +214,19 @@ test("a model narration is labeled, and a failed model call stays on the heurist
   assert.ok(nav.indexOf('data-screen="capture"') < nav.indexOf('data-screen="teach"'));
 });
 
+test("failed runs keep step details but no longer offer Teach repair", () => {
+  const html = runViewer(
+    { id: "failed", workflowId: "old-workflow", status: "failed", at: 1, modelCalls: 0, steps: [{ id: "missing", status: "failed", reason: "Button missing" }], failure: { stepId: "missing", reason: "Button missing" } },
+    { name: "Old workflow", inputs: [], steps: [{ id: "missing", action: "click", label: "Apply the note" }] },
+  );
+  assert.match(html, /id="open-failed-step"/);
+  assert.doesNotMatch(html, /Teach this step|id="teach-fix"/);
+  const nav = rail({});
+  assert.match(nav, /data-screen="teach"/);
+  assert.match(nav, /data-screen="capture"/);
+  assert.match(nav, /data-screen="heals"/);
+});
+
 test("marking a secret constant is refused, and a check is a verify step", () => {
   const constant = projectTeach(fixtureEvents(), decide([], { kind: "constant", cardId: "type-secret" }, 1), meta);
   assert.equal(constant.workflow.inputs.some((input) => input.type === "secret"), true);
@@ -273,8 +286,10 @@ test("merge keeps the shared step and branches where the takes differ", async ()
   assert.match(appliedView, /id="route-ran" data-route="Apply the change"/);
 });
 
-test("teach the fix inserts a guarded branch and keeps the failed step", async () => {
-  const original: WorkflowV2 = {
+test("previously saved taught branches still load and replay with or without the notice", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-taught-compat-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const saved: WorkflowV2 = {
     schema: "bao.workflow/v2",
     version: 2,
     id: "wf-broken",
@@ -288,31 +303,29 @@ test("teach the fix inserts a guarded branch and keeps the failed step", async (
         identity: ident({ id: "save-note", role: "button", text: "Save note" }),
       },
       {
-        id: "bad", index: 1, action: "click", label: "Click Apply", surface: "dom", timeoutMs: 1000,
+        id: "wf-broken-fix-1-0", index: 1, action: "click", label: "Review notice", surface: "dom", timeoutMs: 1000,
+        identity: ident({ id: "interstitial-go", role: "button", testId: "interstitial-go", text: "Review notice" }),
+        when: { present: "Review notice" },
+      },
+      {
+        id: "wf-broken-fix-1-1", index: 2, action: "click", label: "Next", surface: "dom", timeoutMs: 1000,
+        identity: ident({ id: "continue-btn", role: "button", testId: "continue", text: "Next" }),
+        when: { present: "Review notice" },
+      },
+      {
+        id: "bad", index: 3, action: "click", label: "Click Apply", surface: "dom", timeoutMs: 1000,
         identity: ident({ id: "apply-btn", role: "button", testId: "apply", text: "Apply" }),
       },
     ],
   };
-  const taught = interpret([
-    { id: "a", ts: 1, kind: "act", op: "click", identity: ident({ id: "interstitial-go", role: "button", testId: "interstitial-go", text: "Review notice" }) },
-    { id: "b", ts: 2, kind: "act", op: "click", identity: ident({ id: "continue-btn", role: "button", testId: "continue", text: "Next" }) },
-  ], { id: "wf-fix", name: "Fix", startUrl: original.startUrl });
-  const spliced = spliceFix(original, "bad", taught, 9);
+  mkdirSync(path.join(home, "workflows"));
+  writeFileSync(path.join(home, "workflows", `${saved.id}.json`), JSON.stringify(saved));
+  const library = new Library(home);
+  const spliced = library.read(saved.id);
+  assert.equal(library.list().some((item) => item.id === saved.id), true);
+  assert.deepEqual(spliced, saved);
   assert.equal(validate(spliced), true, JSON.stringify(validate.errors));
   assert.deepEqual(validateWorkflow(spliced), []);
-  assert.equal(spliced.steps.length, 4);
-  assert.equal(spliced.steps[0]?.id, "keep");
-  assert.equal(spliced.steps[1]?.identity?.id, "interstitial-go");
-  assert.equal(spliced.steps[1]?.when?.present, "Review notice");
-  assert.equal(spliced.steps[2]?.when?.present, "Review notice");
-  assert.equal(spliced.steps[3]?.id, "bad");
-  assert.equal(spliced.steps[3]?.when, undefined);
-  assert.throws(() => spliceFix(original, "nope", taught), /missing step/);
-
-  for (const step of spliced.steps) {
-    delete step.postcondition;
-    delete step.expect;
-  }
   const clicks: string[] = [];
   const withNotice = ["Review notice", "Apply"];
   const present = await replay(spliced, {}, guardedDriver(withNotice, clicks));
