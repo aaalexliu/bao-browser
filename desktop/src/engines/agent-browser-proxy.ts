@@ -35,8 +35,9 @@ interface Session {
 export class AgentBrowserProxy {
   private session: Session | undefined;
   private disconnected = false;
+  private starting: Promise<Session> | undefined;
 
-  constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string }) {}
+  constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean }) {}
 
   async execute(command: unknown, args: unknown = []): Promise<AgentBrowserCommandResult[]> {
     if (!AGENT_BROWSER_COMMANDS.includes(command as AgentBrowserCommand)) throw new Error("unknown agent-browser command");
@@ -48,6 +49,7 @@ export class AgentBrowserProxy {
     }
     if (this.session?.removing) await this.session.removing;
     if (this.disconnected) throw new Error("agent-browser client disconnected");
+    if (!this.session && command === "close") return [{ stdout: "", stderr: "", exitCode: 0 }];
     if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");
     if (this.session?.abort.signal.aborted) {
       if (command === "close") await this.remove(this.session);
@@ -65,13 +67,15 @@ export class AgentBrowserProxy {
     const step = recording.begin(command as string, args);
     if (!this.session) {
       try {
-        const session = await this.start(recording);
+        const session = await (this.starting = this.start(recording));
         this.session = session;
         void session.chrome.closed.then(() => session.closing ? undefined : this.remove(session)).catch(() => undefined);
       } catch (error) {
         await recording.complete(step, [], this.options.home, async () => { throw error; }, error);
         recording.finish();
         throw error;
+      } finally {
+        this.starting = undefined;
       }
     }
     const session = this.session;
@@ -81,11 +85,14 @@ export class AgentBrowserProxy {
     const results: AgentBrowserCommandResult[] = [];
     let failure: unknown;
     try {
+      if (this.disconnected) throw new Error("agent-browser client disconnected");
       if (command === "wait_for_owner") {
         results.push(...await this.waitForOwner(session, args));
         return results;
       }
-      results.push(await this.run(session, command as string, args));
+      results.push(command === "close" && session.chrome.isClosed()
+        ? { stdout: "", stderr: "", exitCode: 0 }
+        : await this.run(session, command as string, args));
       if (command !== "close" && results[0]!.exitCode === 0) {
         await this.detectOwnerWall(session);
         if (session.ownerWait) {
@@ -114,6 +121,12 @@ export class AgentBrowserProxy {
   disconnect(): void {
     this.disconnected = true;
     this.session?.abort.abort();
+  }
+
+  async end(): Promise<void> {
+    this.disconnect();
+    await this.starting?.catch(() => undefined);
+    if (this.session) await this.remove(this.session, this.options.keepOpen?.() === true && !this.session.chrome.isClosed());
   }
 
   async close(): Promise<void> {
@@ -299,7 +312,7 @@ export class AgentBrowserProxy {
     });
   }
 
-  private remove(session: Session): Promise<void> {
+  private remove(session: Session, keepOpen = false): Promise<void> {
     return session.removing ??= (async () => {
       session.abort.abort();
       await session.commandDone;
@@ -310,7 +323,8 @@ export class AgentBrowserProxy {
       } catch (error) {
         if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       } finally {
-        await session.chrome.close();
+        if (keepOpen) await session.chrome.keepOpen();
+        else await session.chrome.close();
         await rm(session.stateDir, { recursive: true, force: true });
         if (this.session === session) this.session = undefined;
       }

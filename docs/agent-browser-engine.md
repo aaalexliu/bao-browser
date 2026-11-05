@@ -23,6 +23,10 @@ Pass-through startup connects only to Chrome's browser-level CDP endpoint and di
 
 Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign-in and human-check handoffs return Bao's wait status instead. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. It does not save a replayable workflow. Workflows from the retired live driver fail with `this workflow used the retired live driver`; replay on the pass-through is a later layer.
 
+`close` ends only this session and removes its copy. It succeeds if the owner already closed the marked window or the session already ended. Agent exit, MCP disconnect, and SIGINT/SIGTERM close the marked window, delete its copy, and finish the run by default. Proxy cleanup starts at once, even when another tool call is still waiting.
+
+In Settings, **Agent window > Keep window open after agent finishes** leaves the marked window available for a manual final step. This local choice is off by default and does not enable extensions. Bao still finishes the run and removes the native agent's private state. The next agent session closes the kept window and deletes its copy before opening a fresh one, even if the setting has since been turned off. An explicit `close` always closes the window. Bao never closes the source profile or another Bao home's window.
+
 ### Wait for owner input in the same session
 
 When the active tab's URL or title signals sign-in, a verification code, Imperva, or hCaptcha, Bao returns `outcome: "halted"`. It keeps that tab, profile copy, MCP process, and Library run. The page shows a **Bao is waiting for you** banner, and the Library run says **needs you**. The owner signs in or clears the check in that tab.
@@ -47,7 +51,7 @@ Bao reads the selected source and creates a private copy outside the checkout. I
 
 The copy keeps cookies, saved tabs, session-restore files, Session Storage, and encryption metadata. Cache directories are omitted. Chrome starts with sync off and `--restore-last-session`. Bao changes only the copy's exit marker, profile name, theme, avatar, and new-tab background. The profile name is **Bao copy of <original name>**. Its light orange or blue theme differs from the source; its avatar is the origami fox, or penguin when the source already uses the fox. Extensions stay off, including copied themes. These markers do not prove every site's login survives copying.
 
-The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuses links and active copies. `close`, MCP disconnect, or closing the owned Chrome window finalizes the run and removes its copy after Chrome stops. The next start removes marked stale copies, never the source profile. No idle timeout closes an active session.
+The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuses links and active copies. `close`, MCP disconnect, or closing the owned Chrome window finalizes the run and removes its copy after Chrome stops unless keep-open is on. The next start removes marked stale copies, never the source profile. A released keep-open copy or a copy whose Bao process has exited can be reclaimed: Bao stops only Chrome processes using that exact marked directory before deleting it. No idle timeout closes an active session.
 
 ## Evidence
 

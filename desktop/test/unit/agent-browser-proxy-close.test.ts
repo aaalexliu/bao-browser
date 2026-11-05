@@ -7,6 +7,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launch from "../../src/launch";
+import { Library } from "../../src/v1/store";
 
 launch.pinTestBrowser();
 
@@ -50,6 +51,9 @@ if (command === 'tab' && args.includes('--json')) {
       await cdp.send("Target.closeTarget", { targetId: pages[0]!.targetId });
       await chrome.closed;
     } finally { cdp.close(); }
+    assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "close after manual window close succeeds");
+    assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "repeated close succeeds");
+    assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
     const reopened = await proxy.execute("open");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);

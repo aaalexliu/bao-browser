@@ -29,9 +29,11 @@ async function fixture(t: TestContext) {
     await writeFile(portFile, "12345\n/devtools/browser/proxy-test\n");
     let closedWindow!: () => void;
     const closed = new Promise<void>((resolve) => { closedWindow = resolve; });
-    closeWindow = closedWindow;
-    const close = async () => { closeCount++; closedWindow(); await copy.close(); };
-    return { target: { kind: "bao" as const, portFile }, closed, bytes: copy.bytes, copyMs: copy.copyMs, close };
+    let gone = false;
+    closeWindow = () => { gone = true; closedWindow(); };
+    const close = async () => { closeCount++; closeWindow(); await copy.close(); };
+    return { target: { kind: "bao" as const, portFile }, closed, bytes: copy.bytes, copyMs: copy.copyMs, close,
+      isClosed: () => gone, keepOpen: () => copy.keepOpen() };
   });
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
@@ -252,6 +254,32 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     await f.proxy.execute("open");
     assert.notEqual(f.copy(), copy);
   } finally { await f.close(); }
+});
+
+test("session end during startup waits for ownership and removes the new window and run", async (t) => {
+  const f = await fixture(t);
+  const openChrome = profiles.openCopiedChromeForProxy;
+  let started!: () => void;
+  let resume!: () => void;
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { resume = resolve; });
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof openChrome>[0]) => {
+    started();
+    await gate;
+    return openChrome(options);
+  });
+  try {
+    const opening = f.proxy.execute("open");
+    const rejected = assert.rejects(opening, /client disconnected/);
+    await entered;
+    const ending = f.proxy.end();
+    resume();
+    await rejected;
+    await ending;
+    assert.equal(f.closeCount(), 1);
+    await assert.rejects(access(f.copy()), /ENOENT/);
+    assert.equal(new Library(path.join(f.root, "home")).listRuns()[0]!.status, "failed");
+  } finally { resume(); await f.close(); }
 });
 
 test("proxy reports native errors unchanged and leaves the session usable", async (t) => {

@@ -497,6 +497,8 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions): Promise<{ chi
 export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions): Promise<{
   portFile: string;
   closed: Promise<void>;
+  isClosed(): boolean;
+  keepOpen(): void;
   close(): Promise<void>;
 }> {
   const { child } = await spawnNormalChrome(opts);
@@ -506,6 +508,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions)
   let resolveClosed!: () => void;
   const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
   const pages = new Set<string>();
+  let released = false;
   const close = (): Promise<void> => closing ??= (async () => {
     const openPages = pages.size;
     let browserClose: ShutdownTrace["browserClose"] = "skipped";
@@ -523,7 +526,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions)
       resolveClosed();
     }
   })();
-  const onClosed = () => { void close().catch(() => undefined); };
+  const onClosed = () => { if (!released) void close().catch(() => undefined); };
   child.once("exit", onClosed);
   try {
     const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
@@ -541,7 +544,11 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions)
     // Discovery reports existing and future targets without attaching to them.
     await cdp.send("Target.setDiscoverTargets", { discover: true });
     if (closing || child.exitCode != null || child.signalCode != null) throw new Error("Chrome closed during startup");
-    return { portFile, closed, close };
+    return { portFile, closed, close, isClosed: () => !!closing, keepOpen() {
+      released = true;
+      cdp?.close();
+      child.unref();
+    } };
   } catch (error) {
     await close();
     throw error;

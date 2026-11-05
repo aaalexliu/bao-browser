@@ -792,8 +792,12 @@ export async function startApp(opts: {
         return json(res, { profiles });
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown };
         const patch: Partial<Settings> = {};
+        if (body.keepAgentBrowserOpen !== undefined) {
+          if (typeof body.keepAgentBrowserOpen !== "boolean") return json(res, { error: "keepAgentBrowserOpen must be a boolean" }, 400);
+          patch.keepAgentBrowserOpen = body.keepAgentBrowserOpen;
+        }
         if (body.pageEngine !== undefined) {
           if (body.pageEngine !== "old" && body.pageEngine !== "agent-browser") return json(res, { error: "unknown page engine" }, 400);
           patch.pageEngine = body.pageEngine;

@@ -78,7 +78,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean>; keepAgentBrowserOpen?: boolean };
   profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
@@ -387,10 +387,17 @@ function settings(): string {
       </select></label>
       <label class="extensions-choice"><input id="chrome-profile-extensions" type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
-      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the run ends. No remote-debugging switch, Accessibility, or Automation is needed.</p>
+      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when its window closes. No remote-debugging switch, Accessibility, or Automation is needed.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
       <button id="save-engine" type="button">Save engine choice</button>
       <p id="engine-feedback" role="status"></p>
+    </div>
+    <div class="card" id="agent-window-settings">
+      <h3>Agent window</h3>
+      <label><input id="keep-agent-browser-open" type="checkbox" aria-describedby="agent-browser-lifetime-help" ${state.settings?.keepAgentBrowserOpen === true ? "checked" : ""}> Keep window open after agent finishes</label>
+      <p class="quiet" id="agent-browser-lifetime-help">Off by default. Bao closes the marked Chrome window and deletes its private profile copy when the agent disconnects or Bao MCP stops. Turn this on to finish a task by hand. The next agent session closes the kept window and deletes its copy before opening a fresh one. The agent's close command always closes it. Your original Chrome stays untouched.</p>
+      <button id="save-agent-browser-lifetime" type="button">Save window choice</button>
+      <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
     <label>When a step misses <select id="heal">
@@ -674,6 +681,16 @@ function bind(): void {
     await fetch("/api/extension/host-access/revoke", { method: "POST" });
     renderKey = "";
     await refresh();
+  };
+  const saveLifetime = document.getElementById("save-agent-browser-lifetime");
+  if (saveLifetime) saveLifetime.onclick = async () => {
+    const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({
+      keepAgentBrowserOpen: (document.getElementById("keep-agent-browser-open") as HTMLInputElement).checked,
+    }) });
+    const body = await response.json() as { error?: string };
+    if (response.ok) { renderKey = ""; await refresh(); }
+    const feedback = document.getElementById("agent-browser-lifetime-feedback");
+    if (feedback) feedback.textContent = response.ok ? "Window choice saved." : body.error || "Could not save window choice.";
   };
   const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
   const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;

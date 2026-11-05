@@ -263,6 +263,12 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
         assert.equal((await response.json() as { error: string }).error, "pass-through sessions do not support saved workflow replay");
       }
     }
+    assert.equal(app.library.settings().keepAgentBrowserOpen ?? false, false);
+    assert.equal((await put({ keepAgentBrowserOpen: true })).status, 200);
+    assert.equal(app.library.settings().keepAgentBrowserOpen, true);
+    assert.equal((await put({ keepAgentBrowserOpen: "true" })).status, 400);
+    assert.equal((await put({ keepAgentBrowserOpen: false })).status, 200);
+    assert.equal(app.library.settings().keepAgentBrowserOpen, false);
     assert.equal(app.library.settings().chromeProfile, "Default");
     assert.equal(app.library.settings().chromeProfileExtensions?.Default ?? false, false);
     assert.equal((await put({ chromeProfileExtensions: { Default: true } })).status, 200);
