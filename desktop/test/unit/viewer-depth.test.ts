@@ -5,7 +5,7 @@ import path from "node:path";
 import Ajv from "ajv/dist/2020";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { BrowserDriver, clipBox } from "../../src/v1/browser-driver";
-import { consolePane, identityTable, networkPane, runViewer, snapshotPane, workflowDetail } from "../../src/app/views";
+import { consolePane, identityTable, networkPane, runViewer, snapshotPane, workflowDetail, type RunSummary } from "../../src/app/views";
 import { filmstripSpans, idleSkippedMs } from "../../src/v1/filmstrip";
 import { stepPolicy } from "../../src/v1/heal";
 import { actWaitMs, DEFAULT_ACT_TIMEOUT_MS } from "../../src/v1/human-ask";
@@ -325,6 +325,128 @@ test("an accessibility snapshot drops a password line and keeps the other contro
   }
 });
 
+test("the agent-browser viewer omits inspectors only for recorded-only runs in every run state", () => {
+  for (const status of ["passed", "failed", "recording"] as const) {
+    const run: RunSummary = {
+      id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status,
+      steps: [{ id: "command-1", label: "snapshot", status: status === "recording" ? "pending" : status, afterShot: "command-1-after.png" }],
+    };
+    for (const recordedOnly of [true, false]) {
+      const html = runViewer(run, { name: "agent-browser", recordedOnly, steps: run.steps! });
+      if (recordedOnly) {
+        assert.doesNotMatch(html, />Identity<|id="identity-table"|id="snapshot-inspector"|id="dom-snapshot"|id="ax-snapshot"/);
+      } else {
+        assert.match(html, /<h3 class="section">Identity<\/h3>/);
+        assert.match(html, /id="identity-table">No identity scores for this step\./);
+        assert.match(html, /id="dom-snapshot">No DOM snapshot for this step\./);
+        assert.match(html, /id="ax-snapshot">No accessibility snapshot for this step\./);
+      }
+      assert.match(html, /id="step-list"/);
+      assert.doesNotMatch(html, /class="split with-failure"/);
+      assert.match(html, /command-1-after\.png/);
+      if (status === "passed") assert.match(html, /<p>agent-browser recorded<\/p>/);
+      if (status === "failed" && recordedOnly) assert.match(html, /<p>Step 1 snapshot failed\.<\/p>/);
+    }
+  }
+});
+
+test("a live agent-browser replay keeps identity scores and DOM and accessibility diagnostics", () => {
+  const diagnostics = {
+    identity: {
+      accepted: false, lead: 10,
+      candidates: [{ label: "Upload file", score: 80, attrs: [{ attr: "name", recorded: "Upload", live: "Upload file", matched: false, points: 12 }] }],
+    },
+    snapshot: { dom: [{ role: "button", name: "Upload file", testId: "file-submit" }], ax: '- button "Upload file"' },
+  };
+  for (const source of ["step", "failure"] as const) {
+    const steps: NonNullable<RunSummary["steps"]> = [
+      { id: "open", status: "passed" },
+      { id: "upload", status: "failed", phase: "find", reason: "tie", ...(source === "step" ? diagnostics : {}) },
+    ];
+    const run: RunSummary = {
+      id: "live", workflowId: "upload", pageEngine: "agent-browser", status: "failed", steps,
+      failure: { stepId: "upload", index: 1, phase: "find", reason: "tie", ...(source === "failure" ? diagnostics : {}) },
+    };
+    for (const selectedId of [undefined, "upload"]) {
+      const html = runViewer(run, { name: "Upload", recordedOnly: false, steps }, selectedId);
+      assert.match(html, /<h3 class="section">Identity<\/h3>/);
+      assert.match(html, /id="identity-table"/);
+      assert.match(html, />80</);
+      assert.match(html, /<th>name<\/th><td>Upload file 12 ≠<\/td>/);
+      assert.match(html, /id="snapshot-inspector"/);
+      assert.match(html, /id="dom-snapshot"[^]*testId=file-submit/);
+      assert.match(html, /id="ax-snapshot"[^]*Upload file/);
+    }
+  }
+});
+
+test("the agent-browser viewer describes recording before any terminal step result", () => {
+  for (const steps of [[], [{ id: "command-1", status: "pending" as const }], [{ id: "command-1", status: "passed" as const }]]) {
+    const html = runViewer({
+      id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status: "recording", steps,
+    }, { name: "agent-browser", recordedOnly: true, steps });
+    assert.match(html, /id="run-status"><strong>recording<\/strong>/);
+    assert.match(html, /id="why-stopped"><p>agent-browser recording<\/p>/);
+    assert.doesNotMatch(html, /agent-browser recorded/);
+  }
+});
+
+test("an active agent-browser recording keeps failed and paused command headlines", () => {
+  for (const status of ["failed", "paused"] as const) {
+    for (const recordedOnly of [true, false]) {
+      const steps = [{ id: "command-1", label: "snapshot", status, reason: "Native command failed." }];
+      const html = runViewer({
+        id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status: "recording", steps,
+      }, { name: "agent-browser", recordedOnly, steps });
+      assert.match(html, /id="run-status"><strong>recording<\/strong>/);
+      assert.match(html, /id="why-stopped"><p>[^<]*Native command failed\./);
+      assert.doesNotMatch(html, /<p>agent-browser recording<\/p>/);
+      assert.doesNotMatch(html, /id="failure-panel"|class="split with-failure"/);
+    }
+  }
+});
+
+test("agent-browser failure columns follow the selected step's rendered panel", () => {
+  for (const phaseSource of ["step", "failure"] as const) {
+    for (const recordedOnly of [true, false]) {
+      const steps: NonNullable<RunSummary["steps"]> = [
+        { id: "command-1", label: "open", status: "failed", ...(phaseSource === "step" ? { phase: "action" as const } : {}) },
+        { id: "command-2", label: "snapshot", status: "passed" },
+        { id: "command-3", label: "click", status: "failed", reason: "Native command failed." },
+        { id: "command-4", label: "wait", status: "paused", phase: "action" },
+      ];
+      const run: RunSummary = {
+        id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status: "failed", steps,
+        ...(phaseSource === "failure" ? { failure: { stepId: "command-1", index: 0, phase: "action" as const, reason: "Navigation failed." } } : {}),
+      };
+      for (const selectedId of [undefined, "command-1", "command-2", "command-3", "command-4"]) {
+        const html = runViewer(run, { name: "agent-browser", recordedOnly, steps }, selectedId);
+        if (!selectedId || selectedId === "command-1") {
+          assert.match(html, /class="split with-failure"/);
+          assert.match(html, /id="failure-panel" data-phase="action"/);
+        } else {
+          assert.doesNotMatch(html, /class="split with-failure"|id="failure-panel"/);
+        }
+      }
+    }
+  }
+});
+
+test("other engines keep their viewer inspectors and capture summary", () => {
+  for (const pageEngine of [undefined, "old"] as const) {
+    const html = runViewer({
+      id: "legacy", workflowId: "wf", pageEngine, kind: "capture", status: "recording",
+      steps: [{ id: "step-1", status: "passed" }],
+    }, { name: "Legacy", recordedOnly: true, steps: [] });
+    assert.match(html, /<h3 class="section">Identity<\/h3>/);
+    assert.match(html, /id="identity-table">No identity scores for this step\./);
+    assert.match(html, /id="snapshot-inspector"/);
+    assert.match(html, /id="dom-snapshot">No DOM snapshot for this step\./);
+    assert.match(html, /id="ax-snapshot">No accessibility snapshot for this step\./);
+    assert.match(html, /id="why-stopped"><p>Legacy recorded<\/p>/);
+  }
+});
+
 test("the run viewer links a failure to its step and shows the snapshot", () => {
   const html = runViewer({
     id: "run-14",
@@ -349,6 +471,7 @@ test("the run viewer links a failure to its step and shows the snapshot", () => 
     failure: { stepId: "c", index: 1, phase: "find", reason: "tie" },
   }, { name: "upload note", steps: [{ id: "c", label: "click Upload" }] }, "c");
   assert.match(html, /id="open-failed-step"[^>]*data-select-step="c"/);
+  assert.match(html, /class="split with-failure"/);
   assert.match(html, /id="idle-note"/);
   assert.match(html, /data-skipped="4800"/);
   assert.match(html, /id="triage"/);
