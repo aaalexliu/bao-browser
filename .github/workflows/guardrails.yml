@@ -72,13 +72,14 @@ jobs:
         uses: actions/cache@v4
         id: system-packages
         with:
-          path: ${{ runner.temp }}/bao-apt-archives
+          # Exclude apt's root-only lock and partial-download directory.
+          path: /tmp/bao-apt-archives/*.deb
           # Only the packages missing from this exact runner image need installing.
           key: playwright-debs-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-v1
       - name: Install Chromium system dependencies (3 minute limit)
         timeout-minutes: 3
         env:
-          APT_ARCHIVES: ${{ runner.temp }}/bao-apt-archives
+          APT_ARCHIVES: /tmp/bao-apt-archives
           CACHE_HIT: ${{ steps.system-packages.outputs.cache-hit }}
         shell: bash
         run: |
