@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { BrowserContext } from "playwright";
+import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launch from "../../src/launch";
 
@@ -19,47 +19,43 @@ test("window close and proxy cleanup await the owned shutdown before reopening",
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), "{}");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}\nprocess.stdout.write('native success\\n');\n`, { mode: 0o700 });
-  const ownedLaunch = launch.launchOwnedChrome;
-  const contexts: BrowserContext[] = [];
+  const ownedLaunch = launch.launchOwnedChromeEndpoint;
+  const chromes: Awaited<ReturnType<typeof ownedLaunch>>[] = [];
   const copies: string[] = [];
-  t.mock.method(launch, "launchOwnedChrome", async (options: Parameters<typeof ownedLaunch>[0]) => {
-    const context = await ownedLaunch({ ...options, headless: true });
-    contexts.push(context);
+  t.mock.method(launch, "launchOwnedChromeEndpoint", async (options: Parameters<typeof ownedLaunch>[0]) => {
+    const chrome = await ownedLaunch({ ...options, headless: true });
+    chromes.push(chrome);
     copies.push(options.userDataDir);
-    const page = context.pages()[0]!;
-    await page.goto("chrome://version");
-    assert.match(await page.locator("#command_line").innerText(), /(?:^|\s)--disable-extensions(?:\s|$)/);
-    await page.goto("about:blank");
-    return context;
+    return chrome;
   });
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
-  let shutdown: Promise<void> | undefined;
   try {
     await proxy.execute("open");
-    const context = contexts[0]!;
-    const page = context.pages()[0]!;
-    t.mock.method(context, "pages", () => []);
-    const ownedClose = context.close.bind(context);
-    t.mock.method(context, "close", () => {
-      const closing = ownedClose();
-      shutdown ??= closing;
-      return closing;
-    });
-    (page as unknown as EventEmitter).emit("close", page);
-    assert.ok(shutdown);
-    (context as unknown as EventEmitter).emit("close", context);
-    await Promise.resolve();
+    const chrome = chromes[0]!;
+    const endpoint = await readDevToolsActivePort(chrome.portFile);
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    try {
+      const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
+      const pages = targetInfos.filter(target => target.type === "page");
+      assert.equal(pages.length, 1);
+      await cdp.send("Target.closeTarget", { targetId: pages[0]!.targetId });
+      await chrome.closed;
+    } finally { cdp.close(); }
     const reopened = await proxy.execute("open");
     assert.equal(reopened[0]!.stdout, "native success\n");
-    assert.equal(contexts.length, 2);
+    assert.equal(chromes.length, 2);
     assert.notEqual(copies[0], copies[1]);
     await assert.rejects(access(copies[0]!), /ENOENT/);
     assert.equal(launch.pidsForDataDir(copies[0]!).length, 0);
-    assert.equal(await contexts[1]!.pages()[0]!.evaluate(() => 2 + 2), 4);
+    const endpoint2 = await readDevToolsActivePort(chromes[1]!.portFile);
+    const cdp2 = await connectCdp(endpoint2.port, endpoint2.browserPath);
+    try {
+      const { targetInfos } = await cdp2.send<{ targetInfos: { type: string }[] }>("Target.getTargets");
+      assert.equal(targetInfos.filter(target => target.type === "page").length, 1);
+    } finally { cdp2.close(); }
   } finally {
-    await shutdown;
     await proxy.close().catch(() => undefined);
-    for (const context of contexts) await context.close().catch(() => undefined);
+    for (const chrome of chromes) await chrome.close().catch(() => undefined);
     for (const copy of copies) {
       assert.equal(launch.pidsForDataDir(copy).length, 0);
       await rm(path.dirname(copy), { recursive: true, force: true });

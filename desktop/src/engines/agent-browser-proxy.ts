@@ -6,7 +6,7 @@ import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { AgentBrowserRun } from "./agent-browser-record";
 import { agentBrowserExecutable } from "./agent-browser";
-import { chromeProfilesRoot, openCopiedChrome } from "./chrome-profile-copy";
+import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -18,7 +18,7 @@ const FIXED_OPTIONS = new Set([
 ]);
 
 interface Session {
-  chrome: Awaited<ReturnType<typeof openCopiedChrome>>;
+  chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>>;
   stateDir: string;
   executable: string;
   flags: string[];
@@ -104,7 +104,7 @@ export class AgentBrowserProxy {
   private async start(recording: AgentBrowserRun): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
-    const chrome = await openCopiedChrome({
+    const chrome = await openCopiedChromeForProxy({
       sourceRoot: this.options.sourceRoot ?? chromeProfilesRoot(), directory: this.options.directory || "Default", home: this.options.home,
     });
     let stateDir: string | undefined;

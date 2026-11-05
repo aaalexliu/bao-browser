@@ -22,7 +22,7 @@ async function fixture(t: TestContext) {
   let copiedDir = "";
   let closeWindow = () => {};
   let closeCount = 0;
-  t.mock.method(profiles, "openCopiedChrome", async (options: Parameters<typeof profiles.openCopiedChrome>[0]) => {
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof profiles.openCopiedChromeForProxy>[0]) => {
     const copy = await profiles.copyChromeProfile(options);
     copiedDir = copy.userDataDir;
     const portFile = path.join(copiedDir, "DevToolsActivePort");
@@ -31,7 +31,7 @@ async function fixture(t: TestContext) {
     const closed = new Promise<void>((resolve) => { closedWindow = resolve; });
     closeWindow = closedWindow;
     const close = async () => { closeCount++; closedWindow(); await copy.close(); };
-    return { target: { kind: "bao" as const, portFile }, parkedTargetId: "ABC123", closed, bytes: copy.bytes, copyMs: copy.copyMs, close };
+    return { target: { kind: "bao" as const, portFile }, closed, bytes: copy.bytes, copyMs: copy.copyMs, close };
   });
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
@@ -154,10 +154,10 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
 
 test("failed copy cleanup retains the session and blocks reopen", async (t) => {
   const f = await fixture(t);
-  const openChrome = profiles.openCopiedChrome;
+  const openChrome = profiles.openCopiedChromeForProxy;
   const failure = new Error("copy deletion failed");
   let cleanup: (() => Promise<void>) | undefined;
-  t.mock.method(profiles, "openCopiedChrome", async (options: Parameters<typeof openChrome>[0]) => {
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof openChrome>[0]) => {
     const chrome = await openChrome(options);
     cleanup = chrome.close;
     return { ...chrome, close: async () => { throw failure; } };

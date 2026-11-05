@@ -9,7 +9,8 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
-import { parseDevToolsActivePort } from "./cdp-live/endpoint";
+import { parseDevToolsActivePort, readDevToolsActivePort } from "./cdp-live/endpoint";
+import { connectCdp, type CdpSocket } from "./cdp-live/socket";
 import { assertNotDailyChrome } from "./profile";
 import { TEST_MEDIA_ARGS } from "./test-browser.js";
 
@@ -451,7 +452,7 @@ export async function launchOwnedChrome(opts: {
   return launchNormalChrome(opts);
 }
 
-async function launchNormalChrome(opts: {
+interface OwnedChromeProcessOptions {
   userDataDir: string;
   childHome?: string;
   loadExtensions?: boolean;
@@ -460,8 +461,9 @@ async function launchNormalChrome(opts: {
   args?: string[];
   appendArgs?: string[];
   executablePath?: string;
-  deviceScaleFactor?: number;
-}): Promise<BrowserContext> {
+}
+
+async function spawnNormalChrome(opts: OwnedChromeProcessOptions): Promise<{ child: ChildProcess; port: number }> {
   assertNotDailyChrome(opts.userDataDir);
   mkdirSync(opts.userDataDir, { recursive: true });
   if (!opts.preserveRestoredTabs) {
@@ -478,7 +480,66 @@ async function launchNormalChrome(opts: {
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
   ];
-  const { child, port } = await spawnOwnedChrome(exe, args, opts.userDataDir, opts.childHome);
+  return spawnOwnedChrome(exe, args, opts.userDataDir, opts.childHome);
+}
+
+/** Own the process and browser endpoint without initializing any page renderer. */
+export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions): Promise<{
+  portFile: string;
+  closed: Promise<void>;
+  close(): Promise<void>;
+}> {
+  const { child } = await spawnNormalChrome(opts);
+  const portFile = path.join(opts.userDataDir, "DevToolsActivePort");
+  let cdp: CdpSocket | undefined;
+  let closing: Promise<void> | undefined;
+  let resolveClosed!: () => void;
+  const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
+  const pages = new Set<string>();
+  const close = (): Promise<void> => closing ??= (async () => {
+    const openPages = pages.size;
+    let browserClose: ShutdownTrace["browserClose"] = "skipped";
+    try {
+      if (cdp?.isOpen) {
+        try {
+          await cdp.send("Browser.close", {}, undefined, 3000);
+          browserClose = "sent";
+        } catch { browserClose = "failed"; }
+      }
+      const released = await releaseProfileProcesses(opts.userDataDir, child);
+      console.error(formatShutdown({ browserClose, openPages, ...released, profile: opts.userDataDir }));
+    } finally {
+      cdp?.close();
+      resolveClosed();
+    }
+  })();
+  const onClosed = () => { void close().catch(() => undefined); };
+  child.once("exit", onClosed);
+  try {
+    const verdict = assessOwnedCommand(readOwnedCommand(child.pid, opts.userDataDir, process.platform), opts.userDataDir);
+    if (!verdict.ok) throw new Error(verdict.reason);
+    const endpoint = await readDevToolsActivePort(portFile);
+    cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 15_000 });
+    void cdp.disconnected.then(onClosed);
+    cdp.on("Target.targetCreated", undefined, ({ targetInfo }) => {
+      const info = targetInfo as { type: string; targetId: string };
+      if (info.type === "page") pages.add(info.targetId);
+    });
+    cdp.on("Target.targetDestroyed", undefined, ({ targetId }) => {
+      if (pages.delete(String(targetId)) && pages.size === 0) onClosed();
+    });
+    // Discovery reports existing and future targets without attaching to them.
+    await cdp.send("Target.setDiscoverTargets", { discover: true });
+    if (closing || child.exitCode != null || child.signalCode != null) throw new Error("Chrome closed during startup");
+    return { portFile, closed, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+
+async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScaleFactor?: number }): Promise<BrowserContext> {
+  const { child, port } = await spawnNormalChrome(opts);
   const stop = () => {
     if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
   };
