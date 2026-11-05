@@ -246,6 +246,29 @@ test("a step shot frames the control, not the result text, and outlines it", asy
   }
 });
 
+test("step crops skip hidden controls and still scroll visible controls into view", { timeout: 10000 }, async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await page.setContent(`<!doctype html>
+      <button id="continue" data-testid="continue" hidden>Continue</button>
+      <button id="next" style="margin-top:2000px">Next</button>`);
+    const hidden = await clipBox(page, {
+      action: "click", identity: ident({ id: "continue", testId: "continue", name: "Continue" }),
+    });
+    assert.equal(hidden, undefined);
+    const visible = await clipBox(page, {
+      action: "click", identity: ident({ id: "continue", testId: "continue", name: "Next" }),
+    });
+    assert.ok(visible, "a hidden id must not prevent a visible name fallback");
+    const box = await page.locator("#next").boundingBox();
+    assert.ok(box && box.y >= 0 && box.y + box.height <= 720, "offscreen controls still scroll into view");
+    assert.ok(visible.y <= box.y && visible.y + visible.height >= box.y + box.height);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("a fixture crop frames that step's control and leaves the neighbor out", async () => {
   const html = readFileSync(path.join(process.cwd(), "desktop/src/app/public/fixture.html"), "utf8");
   const browser = await chromium.launch({ headless: true });
