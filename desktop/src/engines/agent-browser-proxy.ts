@@ -26,7 +26,7 @@ interface Session {
   env: NodeJS.ProcessEnv;
   abort: AbortController;
   recording: AgentBrowserRun;
-  ownerWait?: { targetId: string; page: OwnerPage };
+  ownerWait?: { targetId: string; page: OwnerPage } | "pending";
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -49,6 +49,10 @@ export class AgentBrowserProxy {
     if (this.session?.removing) await this.session.removing;
     if (this.disconnected) throw new Error("agent-browser client disconnected");
     if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");
+    if (this.session?.abort.signal.aborted) {
+      if (command === "close") await this.remove(this.session);
+      return this.ownerResult("closed");
+    }
     if (command === "wait_for_owner") {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
@@ -114,7 +118,7 @@ export class AgentBrowserProxy {
 
   async close(): Promise<void> {
     if (!this.session) return;
-    if (this.disconnected || this.session.removing) {
+    if (this.disconnected || this.session.removing || this.session.abort.signal.aborted) {
       await this.remove(this.session);
       return;
     }
@@ -200,58 +204,62 @@ export class AgentBrowserProxy {
   }
 
   private ownerClosed(session: Session): AgentBrowserCommandResult[] {
-    session.recording.finish();
+    session.abort.abort();
+    session.ownerWait = undefined;
+    session.recording.finish("session_closed");
     return this.ownerResult("closed");
   }
 
   private async waitForOwner(session: Session, args: string[]): Promise<AgentBrowserCommandResult[]> {
-    try { return await this.pollForOwner(session, args); }
-    catch (error) {
-      if (session.abort.signal.aborted) return this.ownerClosed(session);
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const closed = await Promise.race([session.chrome.closed.then(() => true), new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 8000); })]);
-        if (closed) return this.ownerClosed(session);
-      } finally { clearTimeout(timer); }
-      throw error;
-    }
-  }
-
-  private async pollForOwner(session: Session, args: string[]): Promise<AgentBrowserCommandResult[]> {
-    const timeoutMs = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
+    const deadline = Date.now() + ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
     if (session.abort.signal.aborted) return this.ownerClosed(session);
-    if (!session.ownerWait) {
-      const active = await this.activePage(session);
-      if (!active) return this.ownerClosed(session);
-      session.ownerWait = active;
-      session.recording.ownerWaiting(true);
-      await this.ownerBanner(session, active.targetId, true);
-    }
-    const waiting = session.ownerWait;
-    const endpoint = await readDevToolsActivePort(session.chrome.target.portFile);
-    const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000, signal: session.abort.signal });
-    const deadline = Date.now() + timeoutMs;
+    session.ownerWait ??= "pending";
+    session.recording.ownerWaiting(true);
+    let cdp: CdpSocket | undefined;
+    const onAbort = () => cdp?.close();
+    session.abort.signal.addEventListener("abort", onAbort, { once: true });
     let candidate = "";
     let stableAt = 0;
     try {
-      while (Date.now() < deadline && !session.abort.signal.aborted) {
-        const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
-        const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
-        if (!page || session.abort.signal.aborted) return this.ownerClosed(session);
-        const ready = ownerCanResume(waiting.page, page);
-        const signature = ready ? JSON.stringify([page.url, page.title]) : "";
-        if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }
-        if (ready && Date.now() - stableAt >= 750) {
-          await this.ownerBanner(session, waiting.targetId, false);
-          if (session.abort.signal.aborted) return this.ownerClosed(session);
-          session.ownerWait = undefined;
-          session.recording.ownerWaiting(false);
-          return this.ownerResult("ready");
+      while (Date.now() < deadline) {
+        if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
+        try {
+          if (!session.ownerWait || session.ownerWait === "pending") {
+            const active = await this.activePage(session);
+            if (!active) return this.ownerClosed(session);
+            session.ownerWait = active;
+            await this.ownerBanner(session, active.targetId, true);
+          }
+          const waiting = session.ownerWait;
+          if (!cdp) {
+            const endpoint = await readDevToolsActivePort(session.chrome.target.portFile);
+            cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000, signal: session.abort.signal });
+          }
+          if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+          const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
+          const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
+          if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+          const ready = ownerCanResume(waiting.page, page);
+          const signature = ready ? JSON.stringify([page.url, page.title]) : "";
+          if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }
+          if (ready && Date.now() - stableAt >= 750) {
+            await this.ownerBanner(session, waiting.targetId, false);
+            if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+            session.ownerWait = undefined;
+            session.recording.ownerWaiting(false);
+            return this.ownerResult("ready");
+          }
+        } catch {
+          candidate = "";
+          if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
         }
         await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
       }
-      return session.abort.signal.aborted ? this.ownerClosed(session) : this.ownerResult("waiting");
-    } finally { cdp.close(); }
+      return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.ownerResult("waiting");
+    } finally {
+      session.abort.signal.removeEventListener("abort", onAbort);
+      cdp?.close();
+    }
   }
 
   private async screenshot(session: Session, command: string): Promise<Buffer> {

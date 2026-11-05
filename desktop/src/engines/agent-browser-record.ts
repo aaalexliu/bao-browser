@@ -99,9 +99,9 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  finish(): void {
+  finish(reason?: "session_closed"): void {
     if (this.run.status !== "recording" && this.run.status !== "needs_human") return;
-    if (this.run.status === "needs_human") {
+    if (reason === "session_closed" || this.run.status === "needs_human") {
       this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The Bao session ended before the owner wait completed. This session cannot continue." };
       this.run.status = "failed";
     } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"

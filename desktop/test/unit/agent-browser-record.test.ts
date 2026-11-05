@@ -44,15 +44,15 @@ test("recorder keeps exact native values and requested image bytes without workf
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("ending an owner wait replaces its active prompt with a final failure", async () => {
+for (const waiting of [true, false]) test(`closed owner wait finalizes a ${waiting ? "needs-human" : "recording"} run`, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-owner-record-"));
   try {
     const library = new Library(root);
     const recorder = new AgentBrowserRun(root);
     const id = library.listRuns()[0]!.id;
-    recorder.ownerWaiting(true);
-    assert.equal(library.readRun(id).status, "needs_human");
-    recorder.finish();
+    if (waiting) recorder.ownerWaiting(true);
+    assert.equal(library.readRun(id).status, waiting ? "needs_human" : "recording");
+    recorder.finish(waiting ? undefined : "session_closed");
     const ended = library.readRun(id);
     assert.equal(ended.status, "failed");
     assert.equal(ended.envelope?.status, "failed");

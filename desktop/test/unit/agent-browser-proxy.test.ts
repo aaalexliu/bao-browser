@@ -84,7 +84,7 @@ else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\
   };
 }
 
-for (const ending of ["no-active", "disconnect", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, async (t) => {
+for (const ending of ["no-active", "missing-target", "disconnect", "abort-send", "dead-socket", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, { timeout: 4000 }, async (t) => {
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"]);
@@ -101,6 +101,15 @@ for (const ending of ["no-active", "disconnect", "delayed-shutdown", "explicit-c
               setTimeout(f.closeWindow, 500);
               throw new Error("CDP disconnected during shutdown");
             }
+            if (ending === "missing-target") return { targetInfos: [] };
+            if (ending === "dead-socket") {
+              cdp.close();
+              throw new Error("browser socket closed before launcher cleanup");
+            }
+            if (ending === "abort-send") {
+              setTimeout(() => f.proxy.disconnect(), 10);
+              return cdp.disconnected.then(() => { throw new Error("CDP aborted"); });
+            }
             if (ending === "disconnect") setTimeout(() => f.proxy.disconnect(), 10);
             return { targetInfos: [page] };
           }
@@ -113,13 +122,98 @@ for (const ending of ["no-active", "disconnect", "delayed-shutdown", "explicit-c
     const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"]);
     assert.equal(JSON.parse(result[0]!.stdout).outcome, ending === "explicit-close" ? "waiting" : "closed");
     if (ending === "explicit-close") await f.proxy.close();
-    const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
-    assert.notEqual(saved.status, "needs_human");
-    if (ending !== "no-active") {
-      assert.equal(saved.status, "failed");
-      assert.equal(saved.envelope?.status, "failed");
-      assert.equal(saved.envelope?.reason, "session_closed");
+    const library = new Library(path.join(f.root, "home"));
+    const saved = library.listRuns()[0]!;
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
+    if (["no-active", "missing-target", "dead-socket"].includes(ending)) {
+      const calls = await f.calls();
+      for (const command of ["snapshot", "screenshot", "fill", "press", "scroll", "click", "tab", "open", "wait_for_owner"]) {
+        const next = await f.proxy.execute(command);
+        assert.equal(JSON.parse(next[0]!.stdout).outcome, "closed");
+      }
+      assert.deepEqual(await f.calls(), calls);
+      assert.deepEqual(library.readRun(saved.id), saved);
+      await f.proxy.execute("close");
+      assert.deepEqual(library.readRun(saved.id), saved);
     }
+  } finally { await f.close(); }
+});
+
+for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps its handoff through a live ${failure} error until the deadline`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open");
+    t.mock.method(sockets, "connectCdp", async () => {
+      if (failure === "connect") throw new Error("temporary connection failure");
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") {
+          if (failure === "metadata") throw new Error("temporary metadata failure");
+          return { targetInfo: { url: "http://127.0.0.1/login", title: "Sign in" } };
+        }
+        if (method === "Target.getTargets") throw new Error("temporary target read failure");
+        return { sessionId: "fixture" };
+      });
+      return cdp;
+    });
+    const result = await f.proxy.execute("wait_for_owner", ["350"]);
+    assert.equal(JSON.parse(result[0]!.stdout).outcome, "waiting");
+    assert.match(JSON.parse(result[0]!.stdout).instruction, /wait_for_owner/);
+    const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
+    assert.equal(saved.status, "needs_human");
+    assert.equal(saved.envelope?.reason, "owner_signin");
+    const step = (saved.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+    assert.equal(step.status, "passed");
+    assert.equal(step.afterShot, undefined);
+    assert.deepEqual(step.native.screenshots, []);
+    const calls = await f.calls();
+    for (const command of ["snapshot", "screenshot", "fill", "click", "tab", "open"]) {
+      const blocked = await f.proxy.execute(command);
+      assert.equal(JSON.parse(blocked[0]!.stdout).outcome, "halted");
+    }
+    assert.deepEqual(await f.calls(), calls);
+    await f.proxy.close();
+    assert.equal(new Library(path.join(f.root, "home")).readRun(saved.id).status, "failed");
+  } finally { await f.close(); }
+});
+
+for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes in the same run after a temporary ${failure} error`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open");
+    let polls = 0;
+    let failed = false;
+    t.mock.method(sockets, "connectCdp", async () => {
+      if (failure === "connect" && !failed) { failed = true; throw new Error("temporary connection failure"); }
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") {
+          if (failure === "metadata" && !failed) { failed = true; throw new Error("temporary metadata failure"); }
+          return { targetInfo: polls > 1
+            ? { url: "http://127.0.0.1/member", title: "Dashboard" }
+            : { url: "http://127.0.0.1/login", title: "Sign in" } };
+        }
+        if (method === "Target.getTargets") {
+          polls++;
+          if (failure === "poll" && !failed) { failed = true; throw new Error("one temporary poll error"); }
+          return { targetInfos: [{ targetId: "ABC123", url: "http://127.0.0.1/member", title: "Dashboard" }] };
+        }
+        return { sessionId: "fixture", data: png.toString("base64") };
+      });
+      return cdp;
+    });
+    const library = new Library(path.join(f.root, "home"));
+    const id = library.listRuns()[0]!.id;
+    const result = await f.proxy.execute("wait_for_owner", ["2500"]);
+    assert.equal(JSON.parse(result[0]!.stdout).outcome, "ready");
+    assert.equal(failed, true);
+    assert.ok(polls > 1);
+    assert.equal(library.readRun(id).status, "recording");
+    assert.equal(library.readRun(id).envelope, undefined);
+    assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, "snapshot unchanged\n");
+    assert.equal(library.listRuns()[0]!.id, id);
   } finally { await f.close(); }
 });
 
