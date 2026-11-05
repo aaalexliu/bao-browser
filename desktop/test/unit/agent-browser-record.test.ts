@@ -62,6 +62,27 @@ test("a failed atomic run replacement keeps the last readable partial run", asyn
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("agent-browser recording failure summary shows the command and error once without repair wording", () => {
+  const run: RunSummary = {
+    id: "run-startup", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "failed",
+    steps: [{ id: "command-1", label: 'open "Fixture"', status: "failed", reason: "Chrome <launch> failed" }],
+  };
+  const workflow = { name: "agent-browser", recordedOnly: true, steps: run.steps! };
+  const html = runViewer(run, workflow);
+  const summary = /<div class="why" id="why-stopped">(.*?)<\/div>/.exec(html)![1]!;
+  assert.match(summary, /<p>Step 1 open &quot;Fixture&quot; failed: Chrome &lt;launch&gt; failed<\/p>/);
+  assert.equal(summary.split("Chrome &lt;launch&gt; failed").length - 1, 1);
+  assert.doesNotMatch(summary, /plain-failure|repair|Phase the step|heal/);
+  assert.match(summary, /Open this step/);
+  for (const legacy of [
+    runViewer({ ...run, pageEngine: "old" }, workflow),
+    runViewer(run, { ...workflow, recordedOnly: false }),
+  ]) {
+    assert.match(legacy, /id="plain-failure"/);
+    assert.match(legacy, /Bao did not try a cheap repair/);
+  }
+});
+
 test("recording-only run viewer uses saved steps and pictures without workflow-only actions", () => {
   const run: RunSummary = {
     id: "run-native", workflowId: "agent-browser", kind: "capture", status: "failed", heals: [],

@@ -88,6 +88,7 @@ export interface PromotionView {
 export interface RunSummary {
   id: string;
   kind?: "replay" | "capture";
+  pageEngine?: "old" | "agent-browser";
   allowCommit?: boolean;
   workflowId: string;
   status: string;
@@ -588,7 +589,10 @@ export function runViewer(
   const wallLine = failed && wall
     ? wallStopLine((failure?.index ?? steps.indexOf(failed)) + 1, failed.label || failure?.intent || failed.id, wall)
     : "";
-  const headline = wallLine
+  const nativeRecording = run.pageEngine === "agent-browser" && workflow.recordedOnly;
+  const headline = failed && nativeRecording
+    ? `Step ${stopped} ${failed.label || failed.id} failed${failed.reason ? `: ${failed.reason}` : "."}`
+    : wallLine
     ? wallLine
     : failed
       ? stopHeadline({
@@ -640,7 +644,7 @@ export function runViewer(
   const triageNote = selected?.triage && selected.triage !== "change"
     ? `<p id="triage">Sorted as ${esc(triageWord(selected.triage))}. Bao did not call a model.</p>`
     : "";
-  const showPlain = !wallLine && (!!failed || phase === "auth");
+  const showPlain = !nativeRecording && !wallLine && (!!failed || phase === "auth");
   const words = showPlain ? plainFailure({
     phase,
     changed: identity?.changed || (failure && failure.stepId === selected?.id ? failure.identity?.changed : undefined),

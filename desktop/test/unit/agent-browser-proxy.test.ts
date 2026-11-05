@@ -257,6 +257,79 @@ for (const duringCommand of [false, true]) {
   });
 }
 
+test("startup persists a pending open before copying and keeps its failure in one finished run", async (t) => {
+  const f = await fixture(t);
+  const library = new Library(path.join(f.root, "home"));
+  const failure = new Error("Chrome launch failed before attachment");
+  const openChrome = profiles.openCopiedChrome;
+  t.mock.method(profiles, "openCopiedChrome", async () => {
+    const runs = library.listRuns();
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]!.status, "recording");
+    const [pending] = runs[0]!.steps as RecordedAgentBrowserCommand[];
+    assert.equal(pending!.status, "pending");
+    assert.equal(pending!.native.command, "open");
+    assert.deepEqual(pending!.native.args, ["http://127.0.0.1/"]);
+    assert.equal(pending!.endedAt, undefined);
+    throw failure;
+  });
+  try {
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"]), (error) => error === failure);
+    const runs = library.listRuns();
+    assert.equal(runs.length, 1);
+    const saved = library.readRun(runs[0]!.id);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.pageEngine, "agent-browser");
+    assert.equal(saved.steps.length, 1);
+    const [step] = saved.steps as RecordedAgentBrowserCommand[];
+    assert.equal(step!.status, "failed");
+    assert.equal(step!.native.isError, true);
+    assert.equal(step!.native.error, failure.message);
+    assert.equal(step!.reason, failure.message);
+    assert.deepEqual(step!.native.results, []);
+    assert.ok(step!.endedAt! >= step!.startedAt);
+    assert.equal(step!.afterShot, undefined);
+    assert.equal(step!.afterShotError, "Page screenshot unavailable.");
+    await assert.rejects(access(path.join(library.root, "shots", "runs", saved.id)), /ENOENT/);
+    await assert.rejects(access(path.join(f.root, "calls.jsonl")), /ENOENT/);
+    await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+    assert.equal(library.listRuns().length, 1, "rejected commands do not create runs");
+    t.mock.method(profiles, "openCopiedChrome", openChrome);
+    assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");
+    await f.proxy.close();
+    assert.equal(library.listRuns().length, 2, "a fresh attempt has its own run");
+    assert.deepEqual(library.readRun(saved.id), saved, "retry does not overwrite startup failure");
+  } finally { await f.close(); }
+});
+
+test("a missing native executable is recorded before Chrome startup", async (t) => {
+  const f = await fixture(t);
+  try {
+    await rm(path.join(f.root, "native"));
+    await assert.rejects(f.proxy.execute("open"), /pinned native agent-browser is missing/);
+    const [run] = new Library(path.join(f.root, "home")).listRuns();
+    assert.equal(run!.status, "failed");
+    const [step] = run!.steps as RecordedAgentBrowserCommand[];
+    assert.match(step!.reason!, /pinned native agent-browser is missing/);
+    assert.equal(step!.status, "failed");
+    assert.equal(f.copy(), "", "no Chrome copy starts");
+  } finally { await f.close(); }
+});
+
+test("recording write failures preserve the original startup error", async (t) => {
+  const f = await fixture(t);
+  const failure = new Error("Chrome launch failed");
+  t.mock.method(profiles, "openCopiedChrome", async () => { throw failure; });
+  t.mock.method(Library.prototype, "saveRun", () => { throw new Error("disk full"); });
+  const warnings: string[] = [];
+  t.mock.method(process.stderr, "write", (text: string) => { warnings.push(text); return true; });
+  try {
+    await assert.rejects(f.proxy.execute("open"), (error) => error === failure);
+    assert.ok(warnings.some((text) => text.includes("run write")));
+    assert.equal(f.copy(), "");
+  } finally { await f.close(); }
+});
+
 test("proxy saves raw commands, native errors, timing, screenshots, partial runs and one run per session", async (t) => {
   const f = await fixture(t);
   try {
