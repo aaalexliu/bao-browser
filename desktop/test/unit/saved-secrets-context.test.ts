@@ -4,7 +4,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { getRun, runWorkflow, type LiveReplayer } from "../../src/mcp/catalog";
 import { hashReceipt, ReceiptLog, verifyReceiptChain, type Receipt, type ReceiptBody } from "../../src/v1/receipt";
 import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { ScrubReport } from "../../src/v1/scrub-home";
@@ -354,78 +353,4 @@ test("ReceiptLog strips before hashing, preserves live bodies, and extends legac
   assert.equal(after.slice(0, legacyBytes.length), legacyBytes);
   assert.deepEqual(after.trim().split("\n").map((line) => JSON.parse(line)), [legacy, appended]);
   assert.equal(verifyReceiptChain([legacy, appended]), true);
-});
-
-test("MCP keeps numeric OTP args live while stripping paused and resumed artifacts", async (t) => {
-  const home = fixtureHome(t, "bao-secret-numeric-mcp-");
-  const library = new Library(home);
-  for (const [index, secret] of [0, 483921, "483921"].entries()) {
-    const doc = { ...workflow(`numeric-mcp-${index}`, [entry({ input: "value", value: "{{value}}", identity: { ...FIELD, autocomplete: "one-time-code" } })]), driver: "cdp-live" as const };
-    library.save(doc);
-    const seen: Record<string, unknown>[] = [];
-    const live: LiveReplayer = async (_workflow, inputs) => {
-      seen.push(structuredClone(inputs));
-      const paused = seen.length === 1;
-      return {
-        runId: `${doc.id}-${paused ? "paused" : "resumed"}`, status: paused ? "paused" : "passed",
-        steps: [{ id: "entry", status: paused ? "paused" : "passed" }],
-        heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
-      };
-    };
-    const inputs = { value: secret, ordinary: -17 };
-    const original = structuredClone(inputs);
-    const paused = await runWorkflow(library, { id: doc.id, inputs }, undefined, { live });
-    assert.equal(paused.outcome, "needs_human");
-    assert.equal(typeof paused.resume, "string");
-    assert.deepEqual(json(home, `resumes/${paused.resume}.json`).publicInputs, { value: STRIPPED_SECRET, ordinary: -17 });
-    assert.deepEqual(library.readRun(`${doc.id}-paused`).inputs, { value: STRIPPED_SECRET, ordinary: "-17" });
-    const fresh = { value: 912345 };
-    const resumed = await runWorkflow(library, { resume: paused.resume, inputs: fresh }, undefined, { live });
-    assert.equal(resumed.outcome, "ok", resumed.reason);
-    assert.deepEqual(getRun(library, `${doc.id}-resumed`).receipts, [{ id: "entry", status: "passed", readBack: STRIPPED_SECRET }]);
-    assert.deepEqual(library.readRun(`${doc.id}-resumed`).inputs, { value: STRIPPED_SECRET, ordinary: "-17" });
-    assert.deepEqual(library.readPublicInputs(doc.id), { value: STRIPPED_SECRET, ordinary: -17 });
-    assert.deepEqual(seen, [inputs, { value: 912345, ordinary: -17 }]);
-    assert.deepEqual(inputs, original);
-    assert.deepEqual(fresh, { value: 912345 });
-  }
-});
-
-test("MCP pause writes a stripped resume and report, then fresh args reach the injected live replayer", async (t) => {
-  const home = fixtureHome(t, "bao-secret-context-mcp-");
-  const library = new Library(home);
-  const doc = { ...workflow("mcp-context", [entry({ value: "{{value}}", identity: { ...FIELD, autocomplete: "cc-name" } })]), driver: "cdp-live" as const };
-  library.save(doc);
-  const seen: Record<string, unknown>[] = [];
-  const live: LiveReplayer = async (_workflow, inputs) => {
-    seen.push(structuredClone(inputs));
-    const paused = seen.length === 1;
-    return {
-      runId: paused ? "context-paused" : "context-resumed", status: paused ? "paused" : "passed",
-      steps: [{ id: "entry", status: paused ? "paused" : "passed" }],
-      heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0,
-    };
-  };
-  const inputs = { value: PRIVATE, ordinary: "keep this" };
-  const paused = await runWorkflow(library, { id: doc.id, inputs }, undefined, { live });
-  assert.equal(paused.outcome, "needs_human");
-  assert.equal(paused.runId, "context-paused");
-  assert.equal(typeof paused.resume, "string");
-  assert.deepEqual(paused.receipts, [{ id: "entry", status: "paused", readBack: STRIPPED_SECRET }]);
-  assert.deepEqual(getRun(library, "context-paused").receipts, paused.receipts);
-  const resume = json(home, `resumes/${paused.resume}.json`);
-  assert.equal(resume.workflowId, doc.id);
-  assert.deepEqual(resume.publicInputs, { value: STRIPPED_SECRET, ordinary: "keep this" });
-  assert.deepEqual(library.readRun("context-paused").inputs, { value: STRIPPED_SECRET, ordinary: "keep this" });
-  assert.deepEqual(library.readPublicInputs(doc.id), { value: STRIPPED_SECRET, ordinary: "keep this" });
-  const fresh = { value: "Grace Hopper" };
-  const resumed = await runWorkflow(library, { resume: paused.resume, inputs: fresh }, undefined, { live });
-  assert.equal(resumed.outcome, "ok", resumed.reason);
-  assert.equal(resumed.runId, "context-resumed");
-  assert.deepEqual(resumed.receipts, [{ id: "entry", status: "passed", readBack: STRIPPED_SECRET }]);
-  assert.deepEqual(getRun(library, "context-resumed").receipts, resumed.receipts);
-  assert.deepEqual(library.readRun("context-resumed").inputs, { value: STRIPPED_SECRET, ordinary: "keep this" });
-  assert.deepEqual(seen, [inputs, { value: "Grace Hopper", ordinary: "keep this" }]);
-  assert.deepEqual(inputs, { value: PRIVATE, ordinary: "keep this" });
-  assert.deepEqual(fresh, { value: "Grace Hopper" });
 });

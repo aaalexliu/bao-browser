@@ -118,7 +118,7 @@ export class McpClient {
       pending.reject(new Error(msg.error.message || "mcp error"));
       return;
     }
-    const text = msg.result?.content?.find((item) => item.type === "text")?.text || "";
+    const text = msg.result?.content?.filter((item) => item.type === "text").map((item) => item.text || "").join("\n") || "";
     pending.resolve({
       text,
       isError: !!msg.result?.isError,

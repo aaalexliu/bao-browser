@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { isLiveOp } from "../cdp-live/live-ops";
 import { resolveHome, serverPort } from "../home";
 import { pinTestBrowser } from "../launch";
 import { reviewWorkflow } from "../mcp/catalog";
@@ -28,11 +27,6 @@ async function main(): Promise<void> {
   }
   if (cmd === "remote-debugging") {
     console.log(JSON.stringify(await remoteDebugging(rest)));
-    return;
-  }
-  if (cmd && isLiveOp(cmd)) {
-    const { runLiveCli } = await import("../mcp/live-proxy");
-    await runLiveCli(cmd, rest);
     return;
   }
   if (cmd === "import-login") {
@@ -64,11 +58,7 @@ async function main(): Promise<void> {
     const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });
     for (const line of notices) console.error(line);
     const port = Number(flag(rest, "--port") || process.env.BAO_PORT || 4787);
-    const liveTarget = flag(rest, "--live-target") || process.env.BAO_LIVE_TARGET;
-    // Every Bao shares one live lock, so two apps never drive the same Chrome. Only a throwaway Chrome, which no other Bao drives, may take its own.
-    const liveLockFile = flag(rest, "--live-lock");
-    if (liveLockFile && !liveTarget?.startsWith("throwaway:")) throw new Error("--live-lock needs --live-target throwaway:<DevToolsActivePort>");
-    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true, liveTarget, liveLockFile });
+    const app = await startApp({ home, port, libraryNotices: notices, extensionHost: true });
     console.log(`bao ${app.port} home ${home}`);
     await new Promise(() => {});
     return;
@@ -131,20 +121,6 @@ async function main(): Promise<void> {
     process.stdout.write(result.markdown);
     return;
   }
-  if (cmd === "eval" && rest[0] === "agent-instacart") {
-    const { agentDrivers, agentRunOptions, checkAgentLockdown, evalAgentInstacart } = await import("../eval/agent-instacart");
-    if (rest.includes("--check")) {
-      const args = rest.slice(1);
-      const checked = await checkAgentLockdown(agentDrivers(args), agentRunOptions(args));
-      console.log(JSON.stringify(checked, null, 2));
-      if (checked.some((item) => item.problems.length)) process.exitCode = 1;
-      return;
-    }
-    const result = await evalAgentInstacart(rest.slice(1));
-    process.stdout.write(result.markdown);
-    if (result.rows.some((row) => row.status === "fail" || row.status === "driver-error")) process.exitCode = 1;
-    return;
-  }
   if (cmd === "eval" && rest[0] === "intent") {
     const { evalIntent } = await import("../eval/intent/run");
     const result = await evalIntent(rest.slice(1));
@@ -203,7 +179,7 @@ async function main(): Promise<void> {
     process.exitCode = result.code;
     return;
   }
-  console.error("usage: bao scrub-secrets --home dir [--write] | bao serve [--home dir] [--port n] [--live-target daily|daily:<profile>|bao|throwaway:<DevToolsActivePort> [--live-lock file]] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao remote-debugging on|off | bao live_session_start --intent text --url https://host/ [--port-file DevToolsActivePort] [--preset generic|instacart|books|experian] [--careful [true|false]] [--allow-commit] | bao live_navigate --url https://host/ | bao live_tabs | bao live_switch_tab --tab id | bao live_select --ref ref --option value | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval agent-instacart [--driver claude|codex] [--model id] [--budget-usd n] [--skip-checkout] [--out file] [--artifacts dir] [--check] | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
+  console.error("usage: bao scrub-secrets --home dir [--write] | bao serve [--home dir] [--port n] | bao status [--home dir] | bao mcp [--home dir] | bao agent config claude|codex [--write] [--app /Applications/Bao.app] | bao mcp-ax | bao remote-debugging on|off | bao import-login --from chrome --domain <host> [--profile <name>] | bao sync [pair CODE --server URL | push | pull | review ID --inputs file] | bao open bao://workflow/<id> | bao open bao://import/<id> | bao open bao://run/<id>?inputs=<json> | bao eval drivers | bao eval intent | bao eval heldout capture --dir dir | bao eval heldout --dir dir --out file | bao eval heldout --judge | bao eval nightly [--save-baseline] | bao eval judge-agree");
   process.exit(1);
 }
 

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { liveReplayArgs } from "../../src/cdp-live/live-replay";
+import { recordedInputs } from "../fixtures/replay-inputs";
 import { startApp } from "../../src/app/server";
 import type { HealRecord } from "../../src/v1/heal";
 import { cursorAccountHeal } from "../../src/v1/cursor-account";
@@ -86,7 +86,7 @@ async function assertStopped(doc: WorkflowV2): Promise<void> {
     fill: async () => { calls.push("fill"); }, click: async () => { calls.push("click"); },
     key: async () => { calls.push("key"); }, sleep: async () => {},
   } as unknown as Driver;
-  const run = await replay(doc, liveReplayArgs(doc, {}), driver, {
+  const run = await replay(doc, recordedInputs(doc, {}), driver, {
     heal: { available: () => true, propose: async () => { calls.push("heal"); return null; } },
   });
   assert.equal(run.status, "failed");
@@ -236,7 +236,7 @@ test("copied heal steps retain bindings through HTTP keep, revert, restore and p
   const payload = { password: "{{password}}", document: doc };
   assert.equal(scrubSaved(payload, { workflow: doc, args: payload }).document.steps[0]!.value, STRIPPED_SECRET);
   const priorHome = process.env.BAO_HOME;
-  const app = await startApp({ home, port: 0, extensionHost: false, chromeUserData: path.join(home, "source-profile"), liveTarget: "bao", liveLockFile: path.join(home, "live.lock") });
+  const app = await startApp({ home, port: 0, extensionHost: false, chromeUserData: path.join(home, "source-profile") });
   try {
     const post = async (url: string, body: unknown) => {
       const response = await fetch(`http://127.0.0.1:${app.port}${url}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -754,7 +754,7 @@ test("cell markers retain CSV shape and let a harmless column run before plain s
       tree: async () => ({ nodes: [FIELD], texts: [], url: doc.startUrl }), snapshot: async () => ({}),
       fill: async (_node: unknown, value: string) => { calls.push(value); },
     } as unknown as Driver;
-    const run = await replay(saved, liveReplayArgs(saved, {}), driver, {
+    const run = await replay(saved, recordedInputs(saved, {}), driver, {
       heal: { available: () => true, propose: async () => { calls.push("heal"); return null; } },
     });
     assert.equal(run.status, "failed");
@@ -813,7 +813,7 @@ test("ordinary, unrelated, computed and extract-backed row sources retain their 
   assert.deepEqual(saved.inputs.slice(1), inputs.slice(1));
   const calls: string[] = [];
   const driver = { tree: async () => ({ nodes: [FIELD], texts: [], url: ordinary.startUrl }), snapshot: async () => ({}), fill: async (_node: unknown, value: string) => { calls.push(value); } } as unknown as Driver;
-  const run = await replay(ordinary, liveReplayArgs(ordinary, {}), driver, { heal: { available: () => false, propose: async () => null } });
+  const run = await replay(ordinary, recordedInputs(ordinary, {}), driver, { heal: { available: () => false, propose: async () => null } });
   assert.equal(run.status, "passed");
   assert.deepEqual(calls, [PRIVATE, "second-private-value"]);
   const stripped = structuredClone(ordinary);
@@ -823,7 +823,7 @@ test("ordinary, unrelated, computed and extract-backed row sources retain their 
   ordinal.inputs.find((input) => input.name === "row_index")!.default = STRIPPED_SECRET;
   ordinal.steps[0]!.forEach!.steps[0]!.value = "{{row_index}}";
   calls.length = 0;
-  const counted = await replay(ordinal, liveReplayArgs(ordinal, {}), driver, { heal: { available: () => false, propose: async () => null } });
+  const counted = await replay(ordinal, recordedInputs(ordinal, {}), driver, { heal: { available: () => false, propose: async () => null } });
   assert.equal(counted.status, "passed");
   assert.deepEqual(calls, ["1", "2"]);
 });

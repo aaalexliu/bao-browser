@@ -78,7 +78,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; liveChromeProfile?: string; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean> };
+  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean> };
   profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
@@ -306,7 +306,7 @@ function capture(): string {
     </div>
     <div class="card">
       <h3>Agent and MCP</h3>
-      <p>Connect an agent with <code>bao mcp</code>. Its <code>live_*</code> tools start a session in Chrome, read the page, click, type, press keys, and scroll. <code>live_stop</code> saves the session's actions as a workflow. Watch steps, the audit, and blurred page shots on Live.</p>
+      <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Pass-through sessions do not save replayable workflows.</p>
     </div>
     <div class="card">
       <h3>Steps</h3>
@@ -373,21 +373,8 @@ function settings(): string {
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
   const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
-  const liveProfile = state.settings?.liveChromeProfile || "Default";
-  const liveProfileMissing = chromeProfiles.length > 0 && !chromeProfiles.some((profile) => profile.directory === liveProfile);
   return `<section><h2>Settings</h2>
     ${libraryHome}
-    <div class="card" id="live-chrome-settings">
-      <h3>Live Chrome</h3>
-      <label>Profile for live sessions <select id="live-chrome-profile" aria-describedby="live-chrome-help" ${!chromeProfiles.length ? "disabled" : ""}>
-        ${liveProfileMissing ? `<option value="" selected>Profile missing: ${esc(liveProfile)}. Choose another profile.</option>` : ""}
-        ${!chromeProfiles.length ? `<option value="">No Chrome profiles found</option>` : chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${liveProfile === profile.directory ? "selected" : ""}>${esc(profile.name)} (${esc(profile.directory)})</option>`).join("")}
-      </select></label>
-      <p class="quiet" id="live-chrome-help">Live sessions use the sign-in in this profile of your open Chrome. This choice applies to the next live session or replay, not the profile-copy engine below. Bao never signs in for you.</p>
-      <p class="quiet"><code>--live-target</code> wins over <code>BAO_LIVE_TARGET</code>. Either launch override wins over this choice.${state.liveTargetOverride ? ` Current override: <code>${esc(state.liveTargetOverride)}</code>.` : ""}</p>
-      <button id="save-live-chrome" type="button" ${!chromeProfiles.length ? "disabled" : ""}>Save live profile</button>
-      <p id="live-chrome-feedback" role="status"></p>
-    </div>
     <div class="card" id="page-engine-settings">
       <h3>Page engine</h3>
       <label>Run engine <select id="page-engine">
@@ -687,19 +674,6 @@ function bind(): void {
     await fetch("/api/extension/host-access/revoke", { method: "POST" });
     renderKey = "";
     await refresh();
-  };
-  const saveLiveChrome = document.getElementById("save-live-chrome");
-  if (saveLiveChrome) saveLiveChrome.onclick = async () => {
-    const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      liveChromeProfile: (document.getElementById("live-chrome-profile") as HTMLSelectElement).value,
-    }) });
-    const body = await response.json();
-    if (response.ok) {
-      renderKey = "";
-      await refresh();
-    }
-    const feedback = document.getElementById("live-chrome-feedback");
-    if (feedback) feedback.textContent = response.ok ? "Live profile saved. It applies to the next live session or replay." : body.error || "Could not save live profile.";
   };
   const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
   const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;

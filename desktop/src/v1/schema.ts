@@ -281,7 +281,7 @@ export interface WorkflowV2 {
   inference?: WorkflowInference;
   /**
    * Playwright is Bao's own Chrome. Extension is the person's installed Chrome.
-   * cdp-live attaches to the already-running Chrome. The desktop does not launch a browser for it.
+   * cdp-live is a retired driver tag kept for reading historical workflows.
    * Absent means Playwright, so older workflows stay on the driver they were recorded with.
    */
   driver?: "playwright" | "extension" | "cdp-live";

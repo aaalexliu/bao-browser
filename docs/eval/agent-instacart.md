@@ -1,4 +1,6 @@
-# Agent lane: put costco blueberries into the cart at instacart
+# Historical agent lane: put costco blueberries into the cart at instacart
+
+This report records the retired live driver's results. The evaluator, fixtures, workflow replay, and final-click guards described below no longer ship. Do not run its old commands. Current agents use the [native pass-through](../agent-browser-engine.md).
 
 Lane L2 of the agent plan. `npm run bao -- eval agent-instacart --driver claude|codex` writes this file. It spends model tokens, so `npm run test:v1` does not run it.
 

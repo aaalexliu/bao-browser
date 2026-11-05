@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
-import { createLiveHost } from "../../src/cdp-live/live-host";
-import { launchOwnedChrome } from "../../src/launch";
-import { applyHermeticApp } from "../runtime";
-import { LiveTrail } from "../../src/cdp-live/live-trail";
-import { SessionLog, publicLiveSession, readLiveSession, type LiveSessionRecord } from "../../src/cdp-live/audit";
+import { publicLiveSession, type LiveSessionRecord } from "../../src/cdp-live/live-record";
 import { logAx } from "../../src/cdp-live/ax";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
@@ -64,7 +59,6 @@ test("whole-value rules and metadata stability cross every saved surface", async
         literal.inputs = [{ name: "entry", type: "text", default: value }];
       }
       const surfaces: [string, () => Promise<string> | string][] = [
-        ["live trail", async () => { const trail = await LiveTrail.open(home); await trail.add(event); return readFileSync(trail.file, "utf8"); }],
         ["library trail", () => { library.saveTrail("saved", [event]); return JSON.stringify(library.readTrail("saved")); }],
         ["appended trail", () => { library.saveTrail("saved", []); library.appendTrail("saved", event); return JSON.stringify(library.readTrail("saved")); }],
         ["run", () => { library.saveRun({ id: "saved", workflowId: "saved", at: 1, status: "passed", heals: [], steps: [event], trail: [event], failure: { message: `Copied: ${value}` } }); return JSON.stringify(library.readRun("saved")); }],
@@ -84,7 +78,7 @@ test("whole-value rules and metadata stability cross every saved surface", async
         ...(!sample.field && !sample.sensitive && op === "type" ? [
           ["AX audit", async () => { const file = path.join(home, "ax.jsonl"); await logAx(file, { at: "now", what: value, via: "BaoOSHelper" }); return readFileSync(file, "utf8").trim().split("\n").at(-1)!; }],
           ["AX proxy trail", () => { const file = path.join(home, "proxy.json"); const child = spawnSync(process.execPath, [path.resolve(__dirname, "../../src/proxy/mcp-bao.js")], { input: JSON.stringify({ id: 1, method: "tools/call", params: { name: "unknown", arguments: {} } }) + "\n", encoding: "utf8", env: { ...process.env, HOME: home, BAO_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_WORK: path.join(home, "proxy-work"), BAO_TRAIL: file, BAO_VENDOR: value } }); assert.equal(child.status, 0, child.stderr); return readFileSync(file, "utf8"); }],
-          ["session summary", async () => { const log = new SessionLog(path.join(home, "summary"), value); await log.flush("passed"); return readFileSync(path.join(home, "summary", "session.json"), "utf8"); }],
+          ["session summary", async () => JSON.stringify(publicLiveSession({ status: "passed", intent: value }))],
           ["pending prompt", () => { writePendingPrompt(home, { runId: "saved", ask: makeAsk({ kind: "login", workflowId: "saved", workflowName: "Saved", stepId: "entry", stepIndex: 1, stepCount: 1, label: value, site: "example.test", timeoutMs: 50 }) }); return JSON.stringify(readPendingPrompt(home)); }],
         ] as [string, () => Promise<string> | string][] : []),
         ...[0, 1].flatMap((depth) => [true, false].map((explicit) => [
@@ -241,7 +235,6 @@ test("known secret collisions preserve metadata across public saved writers", as
       outcome: `Copied ${value}`, gate: "login", dialogType: "prompt", dialogDecision: "accept", valueMode: "full",
       note: value, detail: `Copied ${value}`,
     };
-    const before = structuredClone(event);
     const copied = `Copied ${value}`;
     const expectedEvent = { ...event, value: STRIPPED_SECRET, outcome: copied, note: value, detail: copied };
     const session: LiveSessionRecord = {
@@ -265,12 +258,6 @@ test("known secret collisions preserve metadata across public saved writers", as
     assert.equal(savedSession?.audit[0]!.via, "cdp", value);
     assert.equal(savedSession?.note, copied, value);
     assert.deepEqual(artifact, activeArtifact);
-
-    const trail = await LiveTrail.open(home);
-    await trail.add(event);
-    const savedEvent = JSON.parse(readFileSync(trail.file, "utf8"));
-    assert.deepEqual(savedEvent, { ...expectedEvent, source: { agent: "live-model", vendor: "bao", adapter: "cdp-live" } }, value);
-    assert.deepEqual(event, before);
 
     const doc = workflow({ identity, input: "entry", value: "{{entry}}", heal: "auto", gate: "login" });
     doc.heal = "auto";
@@ -332,9 +319,7 @@ test("marked select fields strip whole selected values and defaults but unmarked
       const expected = marked ? STRIPPED_SECRET : value;
       const original = structuredClone(event);
       library.saveTrail("choice", [event]);
-      const live = await LiveTrail.open(home);
-      await live.add(event);
-      for (const saved of [(library.readTrail("choice") as TrailEvent[])[0]!, JSON.parse(readFileSync(live.file, "utf8").trim().split("\n").at(-1)!)]) {
+      for (const saved of [(library.readTrail("choice") as TrailEvent[])[0]!]) {
         assert.deepEqual([saved.value, saved.valueBefore, saved.valueAfter], [expected, expected, expected]);
       }
       for (const choice of [false, true]) {
@@ -442,14 +427,12 @@ test("option tokens survive password collisions while whole copied data values s
   }
 });
 
-test("SessionLog keeps metadata and embedded free text stable through its public API", async (t) => {
-  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-session-metadata-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
-  const log = new SessionLog(home, "Use ghp_fixture123");
-  log.setSteps([{ name: "Fill form", status: "passed", ms: 1 }]);
-  await log.add({ action: "type", label: "ghp_fixture123", path: "/", isTrusted: true, ms: 1, via: "cdp" });
-  await log.flush("failed", "Copied ghp_fixture123", "example.test");
-  const saved = await readLiveSession(home);
+test("historical session reads keep metadata and embedded free text stable", () => {
+  const saved = publicLiveSession({
+    intent: "Use ghp_fixture123", status: "failed", note: "Copied ghp_fixture123", host: "example.test",
+    steps: [{ name: "Fill form", status: "passed", ms: 1 }],
+    audit: [{ action: "type", label: "ghp_fixture123", path: "/", isTrusted: true, ms: 1, via: "cdp" }],
+  });
   assert.equal(saved?.status, "failed");
   assert.equal(saved?.steps[0]!.status, "passed");
   assert.equal(saved?.audit[0]!.via, "cdp");
@@ -458,12 +441,8 @@ test("SessionLog keeps metadata and embedded free text stable through its public
   assert.equal(saved?.note, "Copied ghp_fixture123");
 });
 
-test("session summaries use the value nets without treating a Password label as a secret", async (t) => {
-  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-session-"));
-  t.after(() => rmSync(home, { recursive: true, force: true }));
-  const log = new SessionLog(home, "Use ghp_fixture123");
-  await log.flush("passed");
-  assert.equal(JSON.parse(readFileSync(path.join(home, "session.json"), "utf8")).intent, "Use ghp_fixture123");
+test("session summaries use the value nets without treating a Password label as a secret", () => {
+  assert.equal(publicLiveSession({ status: "passed", intent: "Use ghp_fixture123" })!.intent, "Use ghp_fixture123");
   assert.deepEqual(scrubSaved({ action: "click", label: "Password" }), { action: "click", label: "Password" });
   const media = { screenshot: "ghp_fixture123", png: "ghp_fixture123", base64: "ghp_fixture123", video: "ghp_fixture123" };
   assert.deepEqual(scrubSaved(media), media);
@@ -585,40 +564,4 @@ test("invalid saved JSON fails before backups or writes and symlink homes are re
   assert.equal(existsSync(path.join(home, "secret-scrub-backups")), false);
   symlinkSync(home, path.join(root, "linked"));
   assert.throws(() => scrubHome(path.join(root, "linked"), true), /not a symlink/);
-});
-
-test("live typing reaches the page unchanged but saved text strips secrets", { timeout: 60_000 }, async (t) => {
-  const dirs = applyHermeticApp("saved-secrets-live");
-  const server = createServer((_req, res) => {
-    res.setHeader("content-type", "text/html");
-    res.end('<title>Local form</title><label>Holder<input autocomplete="cc-name"></label><label>Secret<input type="password"></label><label>New<input autocomplete="new-password"></label><label>Verify<input autocomplete="one-time-code"></label><label>Note<textarea></textarea></label>');
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const browser = await launchOwnedChrome({ userDataDir: dirs.chromeUserData, headless: true, childHome: dirs.nativeHostHome });
-  t.after(() => browser.close());
-  const host = createLiveHost({ home: dirs.home, lockFile: path.join(dirs.home, "live.lock"), target: { kind: "throwaway", portFile: path.join(dirs.chromeUserData, "DevToolsActivePort") } });
-  t.after(() => host.close());
-  type Reply = { session: string; outcome: { kind: string }; view: { controls: { label: string; ref: string }[] } };
-  const call = (body: Record<string, unknown>) => host.call(body) as Promise<Reply>;
-  let reply = await call({ op: "live_session_start", intent: "Fill local form", url });
-  const entries = [["Holder", "Private card holder"], ["Secret", "Private password"], ["New", "Private new value"], ["Verify", "945621"], ["Note", "ghp_fixtureToken123"]];
-  for (const [label, value] of entries) {
-    reply = await call({ op: "live_type", ref: reply.view.controls.find((item) => item.label === label)!.ref, text: value });
-    assert.equal(reply.outcome.kind, "applied");
-    const page = browser.pages().find((page) => page.url() === url + "/")!;
-    assert.equal(await page.getByLabel(label).inputValue(), value);
-  }
-  await call({ op: "live_stop" });
-  const trail = readFileSync(path.join(dirs.home, "live-session", "trail.jsonl"), "utf8");
-  const workflow = readFileSync(path.join(dirs.home, "workflows", `${reply.session}.json`), "utf8");
-  for (const [, value] of entries) {
-    assert.equal(trail.includes(value), false, `trail leaked ${value}`);
-    assert.equal(workflow.includes(value), false, `workflow leaked ${value}`);
-  }
-  assert.ok(trail.includes(STRIPPED_SECRET));
-  const run = await host.replay(new Library(dirs.home).read(reply.session));
-  assert.equal(run.status, "failed");
-  assert.equal(run.failure?.reason, NEEDS_SECRET_VALUE);
 });

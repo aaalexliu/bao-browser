@@ -42,16 +42,16 @@ export interface WorkflowSummary {
   firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
   startUrl?: string;
-  /** Playwright is Bao's Chrome. Extension is this machine's Chrome. cdp-live is the Chrome a live session drove. Absent is Playwright. */
+  /** cdp-live is historical and cannot replay. Absent is Playwright. */
   driver?: "playwright" | "extension" | "cdp-live" | string;
 }
 
-/** The run form's driver line. Absent stays on Playwright. A live workflow replays only in the live Chrome, so its line cannot change. */
+/** Keep retired workflows readable without offering a different replay driver. */
 export function runDriverField(driver: string | undefined): string {
   if (driver === "cdp-live") {
     return `<label>Driver <select id="wf-driver" data-testid="run-driver" disabled>
-      <option value="cdp-live" selected>Live - the Chrome the live session drove</option>
-    </select></label>`;
+      <option value="cdp-live" selected>Retired live driver</option>
+    </select></label><p role="status">This workflow used the retired live driver. Replay on the pass-through is not yet available.</p>`;
   }
   const extension = driver === "extension";
   return `<label>Driver <select id="wf-driver" data-testid="run-driver">
@@ -64,7 +64,7 @@ export function runDriverField(driver: string | undefined): string {
 export function runHealField(driver: string | undefined, mode: string, globalHeal: string): string {
   if (driver === "cdp-live") {
     return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal" disabled>
-      <option value="" selected>None - live replays run without healing or approval</option>
+      <option value="" selected>Unavailable - retired live driver</option>
     </select></label>`;
   }
   return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal">
@@ -323,7 +323,6 @@ export function rail(state: ShellState): string {
       <button data-screen="capture">${icon("capture")} Capture</button>
       <button data-screen="teach">${icon("teach")} Teach</button>
       <button data-screen="runs">${icon("runs")} Runs</button>
-      <button data-screen="live">${icon("runs")} Live</button>
       <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
       <button data-screen="replay">${icon("replay")} Replay</button>
       <button data-screen="logins">${icon("logins")} Logins</button>
@@ -1167,7 +1166,9 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     const expects = workflow.expects ? `<span class="badge expect">expect</span>` : "";
     const poster = `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
     const thumbLabel = workflow.firstStep?.label || workflow.name;
-    const line = workflow.summary ? `<p class="wf-summary">${esc(workflow.summary)}</p>` : "";
+    const line = workflow.driver === "cdp-live"
+      ? `<p class="wf-summary" role="status">This workflow used the retired live driver.</p>`
+      : workflow.summary ? `<p class="wf-summary">${esc(workflow.summary)}</p>` : "";
     return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
       <h3 class="wf-title"><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
       <div class="thumb" data-shot="${esc(poster)}">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
@@ -1723,7 +1724,6 @@ export function commandItems(workflows: { id: string; name: string }[]): Command
     { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
     { id: "teach", label: "Teach", kind: "screen", screen: "teach", hint: "Go" },
     { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
-    { id: "live", label: "Live", kind: "screen", screen: "live", hint: "Go" },
     { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
     { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },
     { id: "theme", label: "Toggle appearance", kind: "theme", hint: "Light or dark" },

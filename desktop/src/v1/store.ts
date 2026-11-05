@@ -42,12 +42,8 @@ export interface Settings extends HealSettings {
    * This is not synced. Another machine has its own Chrome grant.
    */
   hostAccess?: "all" | "site" | "none";
-  /** Opt into live-session confirm checks, sign-in halts, and site deny rules. Local, default false. */
-  careful?: boolean;
   /** Local run choice. Old remains the default. */
   pageEngine?: "old" | "agent-browser";
-  /** Profile for live sessions in the running Chrome. Local to this Mac. */
-  liveChromeProfile?: string;
   /** Chrome profile directory explicitly picked on this Mac. Never synced. */
   chromeProfile?: string;
   /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */
@@ -296,7 +292,10 @@ export class Library {
   settings(): Settings {
     const file = path.join(this.root, "settings.json");
     try {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(file, "utf8")) as Settings };
+      const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<Settings> & Record<string, unknown>;
+      delete saved.careful;
+      delete saved.liveChromeProfile;
+      return { ...DEFAULT_SETTINGS, ...saved };
     } catch {
       return { ...DEFAULT_SETTINGS };
     }

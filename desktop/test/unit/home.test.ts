@@ -7,10 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { frameRpc } from "../../src/mcp/frame";
-import { liveSessionDir, SessionLog } from "../../src/cdp-live/audit";
 import { startApp } from "../../src/app/server";
 import { resolveHome } from "../../src/home";
-import { serveCommand } from "../../src/mcp/live-proxy";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const darwinPreload = path.join(process.cwd(), "desktop/test/unit/force-darwin.cjs");
@@ -235,73 +233,6 @@ test("an explicit --home or BAO_HOME wins over legacy libraries that hold data",
   }
 });
 
-test("live verbs find the app the same way as bao open", async () => {
-  const dirs = layout();
-  const legacy = path.join(dirs.user, ".local", "share", "bao");
-  mkdirSync(legacy, { recursive: true });
-  const hits: string[] = [];
-  const server = createServer((req, res) => {
-    hits.push(req.url || "");
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ outcome: { kind: "ok" } }));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
-  const port = (server.address() as AddressInfo).port;
-  writeFileSync(path.join(legacy, "server.json"), `${JSON.stringify({ port })}\n`);
-  try {
-    const kept = await runCli(["live_snapshot"], childEnv(dirs.user), dirs.cwdA, "darwin");
-    assert.equal(kept.code, 0, kept.stderr);
-    assert.deepEqual(JSON.parse(kept.stdout), { outcome: { kind: "ok" } });
-    assert.deepEqual(hits, ["/api/live"]);
-
-    const flagged = await runCli(["live_snapshot", "--home", dirs.flagged], childEnv(dirs.user), dirs.cwdA, "darwin");
-    assert.equal(flagged.code, 1);
-    assert.ok(flagged.stderr.includes(`Bao is not running. Open the Bao app, or run: ${serveCommand(dirs.flagged, ["node", cli])}`), flagged.stderr);
-    const fromEnv = await runCli(["live_snapshot"], childEnv(dirs.user, { BAO_HOME: dirs.fromEnv }), dirs.cwdA, "darwin");
-    assert.equal(fromEnv.code, 1);
-    assert.ok(fromEnv.stderr.includes(serveCommand(dirs.fromEnv, ["node", cli])), fromEnv.stderr);
-    assert.deepEqual(hits, ["/api/live"]);
-  } finally {
-    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
-  }
-});
-
-test("bao mcp live tools find the app the same way as the live verbs", async () => {
-  const dirs = layout();
-  // The catalog reads the default library, and the app was started on the legacy one.
-  plantWorkflow(platformDefault(dirs.user, "darwin"), "mine");
-  const legacy = path.join(dirs.user, ".local", "share", "bao");
-  mkdirSync(legacy, { recursive: true });
-  const bodies: unknown[] = [];
-  const server = createServer((req, res) => {
-    let raw = "";
-    req.on("data", (chunk: Buffer) => { raw += chunk.toString("utf8"); });
-    req.on("end", () => {
-      const { client: _client, ...body } = JSON.parse(raw) as Record<string, unknown>;
-      if (body.op !== "live_disconnect") bodies.push(body);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ outcome: { kind: "applied" } }));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
-  const port = (server.address() as AddressInfo).port;
-  writeFileSync(path.join(legacy, "server.json"), `${JSON.stringify({ port })}\n`);
-  try {
-    const kept = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "live_snapshot", {}, "darwin");
-    assert.deepEqual(kept.payload, { outcome: { kind: "applied" } });
-    assert.deepEqual(bodies, [{ op: "live_snapshot" }]);
-    const search = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "search_workflows", { query: "mine" }, "darwin");
-    assert.deepEqual((search.payload.hits as { id: string }[]).map((hit) => hit.id), ["mine"]);
-    await assert.rejects(
-      mcpCall(dirs.cwdA, ["--home", dirs.flagged], childEnv(dirs.user), "live_snapshot", {}, "darwin"),
-      (err: Error) => err.message === `Bao is not running. Open the Bao app, or run: ${serveCommand(dirs.flagged, ["node", cli])}`,
-    );
-    assert.equal(bodies.length, 1);
-  } finally {
-    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
-  }
-});
-
 test("bao open with an explicit home does not reach a server named by a legacy library", async () => {
   const dirs = layout();
   const legacy = path.join(dirs.user, ".local", "share", "bao");
@@ -391,63 +322,6 @@ test("mcp keeps a legacy workflow directory and does not create the new library"
   assert.equal(readFileSync(path.join(legacy, "workflows", "keep.json"), "utf8"), "{\"id\":\"keep\"}\n");
   assert.equal(existsSync(fresh), false);
   assert.equal(existsSync(path.join(legacy, "workflows", "keep.json")), true);
-});
-
-test("live audit writes the session under the resolved home", async () => {
-  const dirs = layout();
-  const previousHome = process.env.BAO_HOME;
-  const previousUser = process.env.HOME;
-  const previousCwd = process.cwd();
-  process.env.BAO_HOME = dirs.flagged;
-  process.env.HOME = dirs.user;
-  process.chdir(dirs.cwdA);
-  try {
-    const dir = liveSessionDir();
-    assert.equal(dir, path.join(dirs.flagged, "live-session"));
-    const log = new SessionLog(dir, "Check the library");
-    await log.flush("running");
-    assert.equal(existsSync(path.join(dirs.flagged, "live-session", "session.json")), true);
-    assert.equal(existsSync(path.join(dirs.cwdA, "live-session")), false);
-    assert.equal(existsSync(path.join(dirs.cwdA, ".bao-mcp")), false);
-    process.chdir(dirs.cwdB);
-    assert.equal(liveSessionDir(), dir);
-  } finally {
-    process.chdir(previousCwd);
-    process.env.HOME = previousUser;
-    if (previousHome === undefined) delete process.env.BAO_HOME;
-    else process.env.BAO_HOME = previousHome;
-  }
-});
-
-function runLiveHome(platform: "linux" | "darwin", env: NodeJS.ProcessEnv, cwd: string): Promise<string> {
-  const audit = path.join(process.cwd(), "desktop/dist/desktop/src/cdp-live/audit.js");
-  const code = `process.stdout.write(require(${JSON.stringify(audit)}).liveSessionDir())`;
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [...nodeArgsFor(platform), "-e", code], { cwd, env });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code !== 0) reject(new Error(stderr || `live home exited ${code}`));
-      else resolve(stdout);
-    });
-  });
-}
-
-test("live audit uses one default home from different working directories", async () => {
-  for (const platform of ["linux", "darwin"] as const) {
-    const dirs = layout();
-    const env = childEnv(dirs.user);
-    const left = await runLiveHome(platform, env, dirs.cwdA);
-    const right = await runLiveHome(platform, env, dirs.cwdB);
-    const expected = path.join(platformDefault(dirs.user, platform), "live-session");
-    assert.equal(left, expected);
-    assert.equal(right, expected);
-    assert.equal(left.startsWith(dirs.cwdA), false);
-    assert.equal(right.startsWith(dirs.cwdB), false);
-  }
 });
 
 test("resolver precedence matches the installed macOS home", () => {
@@ -772,7 +646,7 @@ test("an empty HOME is refused by the resolver", () => {
   );
 });
 
-test("liveSessionDir follows the home bao serve binds", async () => {
+test("historical live records follow the home bao serve binds", async () => {
   const dirs = layout();
   const custom = path.join(dirs.root, "custom");
   const previousHome = process.env.HOME;
@@ -787,11 +661,14 @@ test("liveSessionDir follows the home bao serve binds", async () => {
     cwd: dirs.root,
     warn: () => {},
   });
+  mkdirSync(path.join(custom, "live-session"), { recursive: true });
+  writeFileSync(path.join(custom, "live-session", "session.json"), JSON.stringify({ status: "passed", intent: "Historical session" }));
   const app = await startApp({ home: resolved, port: 0 });
   try {
     assert.equal(resolved, custom);
     assert.equal(process.env.BAO_HOME, custom);
-    assert.equal(liveSessionDir(), path.join(custom, "live-session"));
+    const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { liveSession: { intent: string } };
+    assert.equal(state.liveSession.intent, "Historical session");
   } finally {
     await app.close();
     process.env.HOME = previousHome;

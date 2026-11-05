@@ -6,7 +6,6 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import type { Page } from "playwright";
 import { startApp } from "../../src/app/server";
-import { getRun, runWorkflow, type LiveReplayer } from "../../src/mcp/catalog";
 import { LiveSession } from "../../src/mcp/live";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver } from "../../src/v1/replay";
@@ -140,30 +139,6 @@ test("saved zero-valued secrets do not rewrite pointer coordinates or identity i
   assert.deepEqual(event, original);
 });
 
-test("public MCP reports keep names, statuses, bindings and markers with nonempty secret evidence", async (t) => {
-  const home = fixture(t);
-  const library = new Library(home);
-  const doc = { ...workflow(), driver: "cdp-live" as const };
-  library.save(doc);
-  const seen: unknown[] = [];
-  const live: LiveReplayer = async (active, args) => {
-    seen.push(structuredClone({ active, args }));
-    return { runId: "writer-run", status: "passed", steps: [{ id: "password-entry", status: "passed" }], heals: [], repairs: [], locatorHits: [], receipts: [], trajectory: [], trail: [], pageClasses: [], modelCalls: 0, outputs: [{ name: "password", label: "Type {{password}}", type: "text", value: STRIPPED_SECRET }] };
-  };
-  const outcome = await runWorkflow(library, { id: doc.id, inputs: ARGS }, undefined, { live });
-  assert.equal(outcome.outcome, "ok");
-  assert.deepEqual(outcome.receipts, [{ id: "password-entry", status: "passed", readBack: STRIPPED_SECRET }]);
-  assert.deepEqual(outcome.outputs, [{ name: "password", label: "Type {{password}}", type: "text", value: STRIPPED_SECRET }]);
-  const stored = JSON.parse(readFileSync(path.join(home, "reports", "writer-run.json"), "utf8"));
-  for (const saved of [stored, getRun(library, "writer-run")]) {
-    assert.equal(saved.workflowId, doc.id);
-    assert.deepEqual(saved.receipts, outcome.receipts);
-    assert.deepEqual(saved.outputs, outcome.outputs);
-  }
-  assert.deepEqual(library.readRun("writer-run").steps, [{ id: "password-entry", status: "passed" }]);
-  assert.deepEqual(seen, [{ active: doc, args: ARGS }]);
-});
-
 test("read-back compares original values and hashes only whole-value-scrubbed receipt bodies", async (t) => {
   const home = fixture(t);
   const doc = workflow();
@@ -202,7 +177,7 @@ test("owned app HTTP replay persists stable IDs, statuses, shot references and r
   const doc = { ...workflow(startUrl), driver: "playwright" as const };
   library.save(doc);
   const priorHome = process.env.BAO_HOME;
-  const app = await startApp({ home, port: 0, extensionHost: false, chromeUserData: path.join(home, "unused-source"), liveTarget: "bao", liveLockFile: path.join(home, "live.lock") });
+  const app = await startApp({ home, port: 0, extensionHost: false, chromeUserData: path.join(home, "unused-source") });
   try {
     const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: doc.id, args: ARGS }) });
     assert.equal(response.status, 200, await response.clone().text());

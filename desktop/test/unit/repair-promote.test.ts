@@ -9,11 +9,6 @@ import { noteDrift, noteReplay, openProvisional, promotionEvent } from "../../sr
 import { textScore } from "../../src/v1/repair";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
-import { openLiveWindow, type CdpLiveDriver } from "../../src/cdp-live/driver";
-import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
-import { recorderSource } from "../../src/v1/recorder";
-import { launchFixtureBrowser, type FixtureBrowser } from "../instacart/browser";
-import { startInstacartFixture } from "../instacart/fixture";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -330,59 +325,6 @@ for (const drift of ["none", "role", "testId", "role and testId"]) {
     assert.deepEqual(fills, [{ node: field, text: "Alan" }]);
   });
 }
-
-test("a captured telephone field replays in its registration dialog in Chromium", { timeout: 120_000 }, async () => {
-  const fixture = await startInstacartFixture();
-  let browser: FixtureBrowser | undefined;
-  let cdp: CdpSocket | undefined;
-  let driver: CdpLiveDriver | undefined;
-  try {
-    browser = await launchFixtureBrowser(fixture);
-    cdp = await connectCdp(browser.cdpPort, new URL(browser.wsEndpoint).pathname);
-    driver = await openLiveWindow(cdp, ["www.instacart.com"]);
-    const url = fixture.url("/store/costco/storefront");
-    await driver.goto(url);
-    const mount = () => {
-      document.body.innerHTML = '<div role="dialog" aria-label="Registration"><button type="button" id="close">Close</button><label for="phone">Phone</label><input type="tel" id="phone"></div>';
-      document.getElementById("close")!.onclick = () => {
-        document.querySelector('[role="dialog"]')!.remove();
-        document.body.dataset.closed = "yes";
-      };
-      delete document.body.dataset.closed;
-    };
-    await driver.evaluateFunction(mount, undefined);
-    await driver.evaluateFunction(() => {
-      const host = window as unknown as { __recorded: unknown[]; __baoRecord: (event: unknown) => void };
-      host.__recorded = [];
-      host.__baoRecord = (event) => { host.__recorded.push(event); };
-    }, undefined);
-    await driver.evaluateFunction({ toString: () => `() => { ${recorderSource()} }` }, undefined);
-    const field = (await driver.tree()).nodes.find((node) => node.id === "phone");
-    assert.ok(field);
-    assert.equal(field.role, "input");
-    await driver.fill(field, "415", false);
-    const captured = await driver.evaluateFunction<{ identity: Identity; value: string } | undefined>(() => {
-      const host = window as unknown as { __recorded: { op: string; identity: Identity; value: string }[] };
-      return host.__recorded.find((event) => event.op === "type");
-    }, undefined);
-    assert.ok(captured);
-    assert.equal(captured.identity.role, "textbox");
-    await driver.evaluateFunction(mount, undefined);
-    const workflow = { ...doc([step({ id: "phone", action: "type", label: "Phone", value: captured.value, identity: captured.identity })]), startUrl: url };
-    const result = await replay(workflow, {}, driver, { heal: unavailableHeal() });
-    assert.equal(result.status, "passed", JSON.stringify(result.failure));
-    const page = await driver.evaluateFunction<{ closed: boolean; value?: string }>(() => ({
-      closed: document.body.dataset.closed === "yes",
-      value: (document.getElementById("phone") as HTMLInputElement | null)?.value,
-    }), undefined);
-    assert.deepEqual(page, { closed: false, value: "415" });
-  } finally {
-    await driver?.end().catch(() => undefined);
-    cdp?.close();
-    await browser?.close();
-    await fixture.close();
-  }
-});
 
 test("an overlay repair dismisses the notice before the click and skips the model", async () => {
   let proposed = 0;

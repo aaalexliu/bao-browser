@@ -1,4 +1,6 @@
-# Real Instacart cart, daily Chrome (plan step W10)
+# Historical real Instacart cart, daily Chrome (plan step W10)
+
+This records an earlier, separately authorized live-driver run. That driver and its replay/evaluation commands are retired. The old authorization does not authorize another real-site run. Current agents use the [native pass-through](../agent-browser-engine.md).
 
 Lane L3 of the agent plan, run once by hand on 2026-10-31 and 2026-11-01 with the owner's approval. The fixture lane is [agent-instacart.md](agent-instacart.md); this page is the same task on the real site. Nothing here runs in `npm run test:v1`.
 

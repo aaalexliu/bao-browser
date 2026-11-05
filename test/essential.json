@@ -32,45 +32,9 @@
   },
   "experian": {
     "kind": "desktop",
-    "reason": "Safety: final freeze/unfreeze clicks require fresh opt-in; login, bot-wall, and confirm handoffs stay intact.",
+    "reason": "Safety: pass-through sign-in and bot-wall handoffs, and Experian redirects.",
     "tests": [
-      "desktop/test/unit/experian-gaps.test.ts"
-    ]
-  },
-  "mode": {
-    "kind": "desktop",
-    "reason": "Safety: real MCP enforces the chosen careful mode, credential rules, and sign-in handoffs.",
-    "tests": [
-      "desktop/test/unit/live-mode.test.ts"
-    ]
-  },
-  "key-privacy": {
-    "kind": "desktop",
-    "reason": "Safety: every text-capable key and named key preserves secret slots without persisting editable values.",
-    "tests": [
-      "desktop/test/unit/live-mode-regressions.test.ts"
-    ],
-    "names": [
-      "named keys replay through stable identities without storing the editable value",
-      "MCP records redacted text-capable keys on every field without copying editable identities"
-    ]
-  },
-  "navigation-privacy": {
-    "kind": "desktop",
-    "reason": "Safety: startup navigation policy, login halts, credential URLs, audit scrubbing, and read redaction.",
-    "tests": [
-      "desktop/test/unit/live-mode-regressions.test.ts"
-    ],
-    "names": [
-      "every owned-window entry applies navigation policy before startup events",
-      "guarded replay supplies page context for both actions and extracts",
-      "YOLO URL checks reject userinfo without restoring host or stop-path limits",
-      "careful navigation returns a typed login halt with the owner instruction",
-      "redirect navigation replays on the observed host while saved host and login guards remain",
-      "explicit navigation records its target, scrubs its audit, and replays before clicking",
-      "userinfo is refused at start, navigate, link clicks, and Enter without reaching the target",
-      "MCP saves typed credentials as secret inputs without defaults and keeps ordinary text",
-      "YOLO reads secret-named regions but redacts only their secret values"
+      "desktop/test/unit/experian-proxy.test.ts"
     ]
   },
   "storage": {
@@ -79,7 +43,6 @@
     "tests": [
       "desktop/test/unit/import-deeplink.test.ts",
       "desktop/test/unit/input-token.test.ts",
-      "desktop/test/unit/live-read.test.ts",
       "desktop/test/unit/owner-auth.test.ts",
       "desktop/test/unit/relay.test.ts",
       "desktop/test/unit/remote-policy.test.ts",
@@ -126,19 +89,12 @@
   },
   "browser": {
     "kind": "desktop",
-    "reason": "Safety: real read redaction, trapped/confirm clicks, browser grants, capture privacy, secret replay, and human handoffs.",
+    "reason": "Safety: pass-through sessions, browser grants, capture privacy, secret replay, and human handoffs.",
     "tests": [
-      "desktop/test/unit/live-oauth-regressions.test.ts",
-      "desktop/test/unit/live-target.test.ts",
-      "desktop/test/unit/instacart-acceptance.test.ts",
-      "desktop/test/unit/live-replay.test.ts",
-      "desktop/test/unit/live-guards.test.ts",
-      "desktop/test/unit/live-tools.test.ts",
+      "desktop/test/unit/mcp.test.ts",
+      "desktop/test/unit/retired-live-driver.test.ts",
+      "desktop/test/unit/agent-browser-proxy.test.ts",
       "desktop/test/unit/driver-fixes.test.ts",
-      "desktop/test/unit/agent-browser.test.ts",
-      "desktop/test/unit/live-session.test.ts",
-      "desktop/test/unit/live-trail.test.ts",
-      "desktop/test/unit/live-capture.test.ts",
       "desktop/test/unit/capture.test.ts",
       "desktop/test/unit/human-envelope.test.ts"
     ]
@@ -152,6 +108,7 @@
       "desktop/test/unit/backup-schedule.test.ts",
       "desktop/test/unit/catalog.test.ts",
       "desktop/test/unit/cdp-live.test.ts",
+      "desktop/test/unit/live-library.test.ts",
       "desktop/test/unit/cdp-video-privacy.test.ts",
       "desktop/test/unit/checks.test.ts",
       "desktop/test/unit/data-steps.test.ts",
@@ -159,7 +116,6 @@
       "desktop/test/unit/dialog-recorder.test.ts",
       "desktop/test/unit/effect-replay-lint.test.ts",
       "desktop/test/unit/element-history.test.ts",
-      "desktop/test/unit/eval-agent-instacart.test.ts",
       "desktop/test/unit/eval-drivers.test.ts",
       "desktop/test/unit/eval-intent.test.ts",
       "desktop/test/unit/extension-shots.test.ts",
@@ -169,11 +125,9 @@
       "desktop/test/unit/heal-cursor.test.ts",
       "desktop/test/unit/helper-pid-keys.test.ts",
       "desktop/test/unit/identity.test.ts",
-      "desktop/test/unit/imperva-hcaptcha.test.ts",
       "desktop/test/unit/interpret-os.test.ts",
       "desktop/test/unit/invalid-fixture.test.ts",
       "desktop/test/unit/listing-stat.test.ts",
-      "desktop/test/unit/live-recording.test.ts",
       "desktop/test/unit/locators.test.ts",
       "desktop/test/unit/nightly-diff.test.ts",
       "desktop/test/unit/page-class.test.ts",

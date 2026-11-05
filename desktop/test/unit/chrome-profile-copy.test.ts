@@ -243,7 +243,7 @@ test("malformed copied preferences stop before Chrome starts without exposing co
 
 test("settings chooser persists a whole-run choice and rejects paths and unknown profiles", async () => {
   const f = await fixture();
-  const app = await startApp({ home: f.home, port: 0, chromeProfilesRoot: f.sourceRoot, liveTarget: `throwaway:${path.join(f.root, "DevToolsActivePort")}` });
+  const app = await startApp({ home: f.home, port: 0, chromeProfilesRoot: f.sourceRoot });
   const base = `http://127.0.0.1:${app.port}`;
   const put = (body: object) => fetch(`${base}/api/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   try {

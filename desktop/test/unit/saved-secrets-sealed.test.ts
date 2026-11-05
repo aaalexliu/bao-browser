@@ -167,14 +167,13 @@ test("MCP materialization hashes the stripped saved workflow", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-sealed-materialize-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const doc = document();
-  doc.driver = "cdp-live";
   doc.steps[0]!.value = SECRET;
   const server = createServer((_req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ document: doc, version: 1, owned: true })); });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   saveState(home, { server: `http://127.0.0.1:${(server.address() as { port: number }).port}`, deviceToken: "fixture", deviceId: "fixture", backedUp: true, workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [] });
   const library = new Library(home);
-  await runWorkflow(library, { id: doc.id }, undefined, { live: async () => { throw new Error("fixture halt"); } });
+  await runWorkflow(library, { id: doc.id });
   const saved = library.read(doc.id);
   assert.equal(saved.steps[0]!.value, STRIPPED_SECRET);
   assert.equal(loadState(home).workflows[doc.id]!.hash, createHash("sha256").update(toJson(saved)).digest("hex"));

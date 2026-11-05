@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { LIVE_SOURCE, typeTrailEvent } from "../../src/mcp/live";
-import { LIVE_TRAIL_SOURCE } from "../../src/cdp-live/live-trail";
+const LIVE_TRAIL_SOURCE = { agent: "live-model", vendor: "bao", adapter: "cdp-live" } as const;
 import { inferSavedWorkflow } from "../../src/v1/save-intent";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

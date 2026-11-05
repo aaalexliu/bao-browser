@@ -30,9 +30,9 @@ One command sets up each agent. `bao agent config claude` and `bao agent config 
 
 Pre-approval skips only the agent's own prompt. Without pre-approval, Codex asks before each Bao call, and `codex exec` with `approval_policy = "never"` refuses every Bao call with `MCP tool call requires approval, but approval policy is never`.
 
-Live sessions default to YOLO. See [Live session modes](cdp-live-chrome.md#live-session-modes) for the mode settings, permitted actions, and evidence privacy, and [Agent entry point](cdp-live-chrome.md#agent-entry-point) for the Experian final-action boundary in both modes and the distinction between intentional navigation handoffs and failed page loads. Agent pre-approval bypasses none of Bao's guards.
+Agents drive Chrome through `agent_browser`. It accepts native commands and an argv array, launches a marked copy of the selected Chrome profile, and records commands and screenshots in Library Runs. It needs no running Bao app and no Screen Recording, Accessibility, or Automation grant. Bao does not block final clicks. Raw command arguments, native results, and screenshots can contain credentials; this route does not redact them.
 
-Stale refs, covered clicks, session ownership, the CDP lock, local API-origin checks, and read-back secret redaction stay on in both modes. Only Experian workflows retain repeated clicks, clicks with no effect, and typed corrections in both modes. Other presets still condense them. Saved workflow replay keeps its existing guards, including login and final-action pauses. [Live session modes](cdp-live-chrome.md#live-session-modes) lists the tools and both modes.
+The older live tool surface and its workflow replay driver are retired. Saved workflows with `driver: "cdp-live"` remain readable in Library, but Replay and `run_workflow` fail with `this workflow used the retired live driver` before opening Chrome. Pass-through workflow replay is a later layer.
 
 ```sh
 npm run build:desktop
@@ -69,11 +69,11 @@ tool_timeout_sec = 180
 default_tools_approval_mode = "approve"
 ```
 
-Codex stops a tool call after 60 s by default. On the daily Chrome, a live call waits 8 to 50 s for the Allow press ([permissions.md](permissions.md)), and a live replay presses Allow again on its own connection. `default_tools_approval_mode = "approve"` pre-approves this server's tools and no other server's. `codex mcp add` cannot set either key, so bao writes the table itself. bao owns `command`, `args`, `env`, `tool_timeout_sec`, and `default_tools_approval_mode` in `[mcp_servers.bao]`, and an `[mcp_servers.bao.env]` sub-table. It replaces those in place and removes an old `args` or `env` that the new entry does not set. Every other line stays as it was, including your own keys in `[mcp_servers.bao]`, such as `enabled_tools` or `startup_timeout_sec`, and the tool approvals Codex saves in `[mcp_servers.bao.tools.<tool>]`. A per-tool `approval_mode` there still wins over the default. Running `--write` again on a current entry leaves the file unchanged. A bao entry in another form, such as an inline table, is refused, and nothing is written.
+Codex stops a tool call after 60 s by default. The 180-second server timeout gives a profile copy and Chrome startup more time. `default_tools_approval_mode = "approve"` pre-approves this server's tools and no other server's. `codex mcp add` cannot set either key, so bao writes the table itself. bao owns `command`, `args`, `env`, `tool_timeout_sec`, and `default_tools_approval_mode` in `[mcp_servers.bao]`, and an `[mcp_servers.bao.env]` sub-table. It replaces those in place and removes an old `args` or `env` that the new entry does not set. Every other line stays as it was, including your own keys in `[mcp_servers.bao]`, such as `enabled_tools` or `startup_timeout_sec`, and the tool approvals Codex saves in `[mcp_servers.bao.tools.<tool>]`. A per-tool `approval_mode` there still wins over the default. Running `--write` again on a current entry leaves the file unchanged. A bao entry in another form, such as an inline table, is refused, and nothing is written.
 
 `--app` names another Bao.app. Without `--app`, the launcher is the one in `/Applications/Bao.app`. A missing launcher is named on stderr, and `--write` then writes nothing. A Bao.app built before the launcher has no `bao-mcp`; rebuild it from [Build Bao on a Mac](mac-build.md).
 
-The live tools need the Bao app running. Without it, a live tool returns `Bao is not running. Open the Bao app, or run: open /Applications/Bao.app`. The catalog tools still work.
+The catalog tools and `agent_browser` run in the MCP process. Open Bao.app to inspect their saved Library and Runs records.
 
 ### MCP from a checkout
 
@@ -96,9 +96,9 @@ Leave `BAO_MCP_LIVE` unset for the [agent server](bao.md#mcp). The evaluator is 
 
 `./install-extension.sh` builds `extension/dist` and copies it to `~/.bao-browser/extension`. The extension id is `jcjcpblcjaakcmbgljdjkfgmmdfdbnfj`. Reload, the native-host manifest, and the popup check are in [extension.md](extension.md).
 
-## CDP live
+## Retired workflows
 
-`cdp-live` is a workflow driver. The contract and the 10-line start are in [cdp-live.md](cdp-live.md). The measured Chrome session is in [cdp-live-chrome.md](cdp-live-chrome.md). For the Settings engine choice and copied-profile route, see [agent-browser trial](agent-browser-engine.md).
+The `cdp-live` workflow driver no longer runs. See [retirement behavior](cdp-live.md). For current Chrome commands, profile copies, recording, and cleanup, see [agent-browser pass-through](agent-browser-engine.md).
 
 ## Checks
 
