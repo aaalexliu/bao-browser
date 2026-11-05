@@ -46,17 +46,24 @@ export class AgentBrowserProxy {
     }
     if (this.session?.removing) await this.session.removing;
     if (this.disconnected) throw new Error("agent-browser client disconnected");
+    if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");
+    const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
+    const step = recording.begin(command as string, args);
     if (!this.session) {
-      if (command !== "open") throw new Error("start agent-browser with open before sending commands");
-      const session = await this.start();
-      this.session = session;
-      void session.chrome.closed.then(() => session.closing ? undefined : this.remove(session)).catch(() => undefined);
+      try {
+        const session = await this.start(recording);
+        this.session = session;
+        void session.chrome.closed.then(() => session.closing ? undefined : this.remove(session)).catch(() => undefined);
+      } catch (error) {
+        await recording.complete(step, [], this.options.home, async () => { throw error; }, error);
+        recording.finish();
+        throw error;
+      }
     }
     const session = this.session;
     if (command === "close") session.closing = true;
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
-    const step = session.recording.begin(command as string, args);
     const results: AgentBrowserCommandResult[] = [];
     let failure: unknown;
     try {
@@ -94,7 +101,7 @@ export class AgentBrowserProxy {
     if (result!.exitCode !== 0) throw new Error("agent-browser close failed");
   }
 
-  private async start(): Promise<Session> {
+  private async start(recording: AgentBrowserRun): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
     const chrome = await openCopiedChrome({
@@ -107,7 +114,7 @@ export class AgentBrowserProxy {
       await writeFile(config, "{}", { mode: 0o600 });
       const endpoint = await readDevToolsActivePort(chrome.target.portFile);
       return {
-        chrome, stateDir, executable, abort: new AbortController(), recording: new AgentBrowserRun(this.options.home),
+        chrome, stateDir, executable, abort: new AbortController(), recording,
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
           "--idle-timeout", "0"],
         env: {
