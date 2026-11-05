@@ -699,7 +699,7 @@ export function runViewer(
         ${shot}
         ${stepRepairs.length ? repairLines(stepRepairs) : ""}
         ${stepReceipts.length ? receiptLines(stepReceipts) : ""}
-        ${agentBrowser ? "" : `<h3 class="section">Identity</h3>
+        ${nativeRecording ? "" : `<h3 class="section">Identity</h3>
         ${table}
         ${snapshotPane(snapDom, snapAx)}`}
       </div>
