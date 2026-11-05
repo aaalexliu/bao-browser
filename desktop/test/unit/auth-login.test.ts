@@ -14,6 +14,8 @@ import { filesContaining } from "../../src/v1/secret-scan";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { startApp } from "../../src/app/server";
 import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { Library } from "../../src/v1/store";
+import { guideShotName, workflowShotName } from "../../src/v1/shots";
 
 const SECRET = "BaoSecretFixture9kQ7m";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -436,37 +438,43 @@ test("a person signs in on the fixture after the banner, and replay stops at con
   }
 });
 
-test("recording a password field stores a secret slot and not the value", async () => {
+test("recording a password field stores a secret slot and not the value", async (t) => {
   const previous = process.env.BAO_DRIVE;
   process.env.BAO_DRIVE = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-auth-record-"));
   const app = await startApp({ home, port: 0 });
   try {
     const base = `http://127.0.0.1:${app.port}`;
-    await fetch(`${base}/api/sessions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: `${base}/login` }),
-    });
-    await fetch(`${base}/api/sessions/drive`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ fill: { selector: "#username", value: "ada" } }),
-    });
-    await fetch(`${base}/api/sessions/drive`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ click: "#continue" }),
-    });
-    await fetch(`${base}/api/sessions/drive`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ fill: { selector: "#password", value: SECRET } }),
-    });
-    const stopped = await fetch(`${base}/api/sessions/stop`, { method: "POST" });
+    const post = async (route: string, body?: object, label = route) => {
+      const started = performance.now();
+      const response = await fetch(`${base}${route}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      t.diagnostic(`${label}: ${(performance.now() - started).toFixed(1)} ms`);
+      assert.equal(response.status, 200, label);
+      return response;
+    };
+    await post("/api/sessions", { url: `${base}/login` });
+    await post("/api/sessions/drive", { fill: { selector: "#username", value: "ada" } }, "fill username");
+    await post("/api/sessions/drive", { click: "#continue" }, "click Continue");
+    await post("/api/sessions/drive", { fill: { selector: "#password", value: SECRET } }, "fill password");
+    const stopped = await post("/api/sessions/stop");
     const saved = await stopped.json() as WorkflowV2;
     assert.equal(JSON.stringify(saved).includes(SECRET), false);
     assert.equal(saved.inputs.some((input) => input.type === "secret" && !input.default), true);
+    const passwordStep = saved.steps.find((step) => step.action === "type" && step.value === "{{password}}");
+    assert.ok(passwordStep);
+    assert.equal(filesContaining(home, SECRET).length, 0);
+    const committed = await (await post("/api/sessions/commit", { name: "Fixture login" })).json() as WorkflowV2;
+    assert.equal(committed.id, saved.id);
+    assert.deepEqual(committed.steps, saved.steps);
+    assert.deepEqual(new Library(home).read(saved.id), committed);
+    for (const file of [workflowShotName(passwordStep.id), guideShotName(passwordStep.id)]) {
+      const png = readFileSync(path.join(home, "shots", "workflows", saved.id, file));
+      assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    }
     assert.equal(filesContaining(home, SECRET).length, 0);
   } finally {
     await app.close();
