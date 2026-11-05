@@ -35,7 +35,7 @@ async function fixture(t: TestContext) {
   });
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
-    t.mock.method(cdp, "send", async (method: string) => method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
+    t.mock.method(cdp, "send", async (method: string) => method === "Target.getTargetInfo" ? { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } } : method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
     return cdp;
   });
   const executable = path.join(root, "native");
@@ -64,7 +64,7 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
-else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:[{active:true,targetId:'ABC123'}]}}));
+else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:fs.existsSync(${JSON.stringify(path.join(root, "no-active"))})?[]:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, directory: "Profile 2", executable });
@@ -83,6 +83,139 @@ else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\
     },
   };
 }
+
+for (const ending of ["no-active", "missing-target", "disconnect", "abort-send", "dead-socket", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"]);
+    if (ending === "no-active") await writeFile(path.join(f.root, "no-active"), "");
+    else {
+      t.mock.method(sockets, "connectCdp", async () => {
+        const cdp = new sockets.CdpSocket(new Socket());
+        t.mock.method(cdp, "send", async (method: string) => {
+          const page = { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" };
+          if (method === "Target.getTargetInfo") return { targetInfo: page };
+          if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+          if (method === "Target.getTargets") {
+            if (ending === "delayed-shutdown") {
+              setTimeout(f.closeWindow, 500);
+              throw new Error("CDP disconnected during shutdown");
+            }
+            if (ending === "missing-target") return { targetInfos: [] };
+            if (ending === "dead-socket") {
+              cdp.close();
+              throw new Error("browser socket closed before launcher cleanup");
+            }
+            if (ending === "abort-send") {
+              setTimeout(() => f.proxy.disconnect(), 10);
+              return cdp.disconnected.then(() => { throw new Error("CDP aborted"); });
+            }
+            if (ending === "disconnect") setTimeout(() => f.proxy.disconnect(), 10);
+            return { targetInfos: [page] };
+          }
+          return {};
+        });
+        return cdp;
+      });
+      await f.proxy.execute("snapshot");
+    }
+    const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"]);
+    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, ending === "explicit-close" ? "waiting" : "closed");
+    if (ending === "explicit-close") await f.proxy.close();
+    const library = new Library(path.join(f.root, "home"));
+    const saved = library.listRuns()[0]!;
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
+    if (["no-active", "missing-target", "dead-socket"].includes(ending)) {
+      const calls = await f.calls();
+      for (const command of ["snapshot", "screenshot", "fill", "press", "scroll", "click", "tab", "open", "wait_for_owner"]) {
+        const next = await f.proxy.execute(command);
+        assert.equal((JSON.parse(next[0]!.stdout) as { outcome: string }).outcome, "closed");
+      }
+      assert.deepEqual(await f.calls(), calls);
+      assert.deepEqual(library.readRun(saved.id), saved);
+      await f.proxy.execute("close");
+      assert.deepEqual(library.readRun(saved.id), saved);
+    }
+  } finally { await f.close(); }
+});
+
+for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps its handoff through a live ${failure} error until the deadline`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open");
+    t.mock.method(sockets, "connectCdp", async () => {
+      if (failure === "connect") throw new Error("temporary connection failure");
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") {
+          if (failure === "metadata") throw new Error("temporary metadata failure");
+          return { targetInfo: { url: "http://127.0.0.1/login", title: "Sign in" } };
+        }
+        if (method === "Target.getTargets") throw new Error("temporary target read failure");
+        return { sessionId: "fixture" };
+      });
+      return cdp;
+    });
+    const result = await f.proxy.execute("wait_for_owner", ["350"]);
+    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "waiting");
+    assert.match((JSON.parse(result[0]!.stdout) as { instruction: string }).instruction, /wait_for_owner/);
+    const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
+    assert.equal(saved.status, "needs_human");
+    assert.equal(saved.envelope?.reason, "owner_signin");
+    const step = (saved.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+    assert.equal(step.status, "passed");
+    assert.equal(step.afterShot, undefined);
+    assert.deepEqual(step.native.screenshots, []);
+    const calls = await f.calls();
+    for (const command of ["snapshot", "screenshot", "fill", "click", "tab", "open"]) {
+      const blocked = await f.proxy.execute(command);
+      assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
+    }
+    assert.deepEqual(await f.calls(), calls);
+    await f.proxy.close();
+    assert.equal(new Library(path.join(f.root, "home")).readRun(saved.id).status, "failed");
+  } finally { await f.close(); }
+});
+
+for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes in the same run after a temporary ${failure} error`, { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open");
+    let polls = 0;
+    let failed = false;
+    t.mock.method(sockets, "connectCdp", async () => {
+      if (failure === "connect" && !failed) { failed = true; throw new Error("temporary connection failure"); }
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") {
+          if (failure === "metadata" && !failed) { failed = true; throw new Error("temporary metadata failure"); }
+          return { targetInfo: polls > 1
+            ? { url: "http://127.0.0.1/member", title: "Dashboard" }
+            : { url: "http://127.0.0.1/login", title: "Sign in" } };
+        }
+        if (method === "Target.getTargets") {
+          polls++;
+          if (failure === "poll" && !failed) { failed = true; throw new Error("one temporary poll error"); }
+          return { targetInfos: [{ targetId: "ABC123", url: "http://127.0.0.1/member", title: "Dashboard" }] };
+        }
+        return { sessionId: "fixture", data: png.toString("base64") };
+      });
+      return cdp;
+    });
+    const library = new Library(path.join(f.root, "home"));
+    const id = library.listRuns()[0]!.id;
+    const result = await f.proxy.execute("wait_for_owner", ["2500"]);
+    assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "ready");
+    assert.equal(failed, true);
+    assert.ok(polls > 1);
+    assert.equal(library.readRun(id).status, "recording");
+    assert.equal(library.readRun(id).envelope, undefined);
+    assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, "snapshot unchanged\n");
+    assert.equal(library.listRuns()[0]!.id, id);
+  } finally { await f.close(); }
+});
 
 test("proxy forwards argv and native output, attaches to its marked copy, and removes it on close", async (t) => {
   const f = await fixture(t);
@@ -370,7 +503,14 @@ test("recording write and screenshot failures do not change native command resul
   const warnings: string[] = [];
   t.mock.method(process.stderr, "write", (text: string) => { warnings.push(text); return true; });
   t.mock.method(Library.prototype, "saveRun", () => { throw new Error("disk full"); });
-  t.mock.method(sockets, "connectCdp", async () => { throw new Error("screenshot unavailable"); });
+  t.mock.method(sockets, "connectCdp", async () => {
+    const cdp = new sockets.CdpSocket(new Socket());
+    t.mock.method(cdp, "send", async (method: string) => {
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+      throw new Error("screenshot unavailable");
+    });
+    return cdp;
+  });
   try {
     assert.deepEqual(await f.proxy.execute("open"), [
       { stdout: "open unchanged\n", stderr: "", exitCode: 0 },
@@ -384,12 +524,28 @@ test("recording write and screenshot failures do not change native command resul
   } finally { await f.close(); }
 });
 
+test("missing privacy metadata refuses page input before recording its arguments", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open");
+    t.mock.method(sockets, "connectCdp", async () => { throw new Error("privacy metadata unavailable"); });
+    await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"]), /privacy metadata unavailable/);
+    const calls = await f.calls();
+    assert.equal(calls.some((call) => call.args.includes("fill")), false);
+    assert.doesNotMatch(JSON.stringify(new Library(path.join(f.root, "home")).listRuns()), /private-owner-value/);
+  } finally { await f.close(); }
+});
+
 test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: 6000 }, async (t) => {
   const f = await fixture(t);
   t.mock.method(sockets, "connectCdp", async () => {
     const socket = new Socket();
     t.mock.method(socket, "write", () => true);
-    return new sockets.CdpSocket(socket);
+    const cdp = new sockets.CdpSocket(socket);
+    const send = cdp.send.bind(cdp);
+    t.mock.method(cdp, "send", (method: string, params: Record<string, unknown> = {}, sessionId?: string, timeoutMs?: number) => method === "Target.getTargetInfo"
+      ? Promise.resolve({ targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } }) : send(method, params, sessionId, timeoutMs));
+    return cdp;
   });
   try {
     assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");

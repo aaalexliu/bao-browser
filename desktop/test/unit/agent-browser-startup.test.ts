@@ -51,7 +51,7 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
 const command = args[args.indexOf('--idle-timeout') + 2];
 if (command === 'tab') {
   fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(targets => {
-    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, url: t.url })) } }));
+    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, url: t.url, active: t.url.endsWith('/ready') })) } }));
   }).catch(error => { console.error(error); process.exitCode = 1; });
 } else { console.log('native ' + command); }
 `, { mode: 0o700 });

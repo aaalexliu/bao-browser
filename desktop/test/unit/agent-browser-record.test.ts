@@ -44,6 +44,25 @@ test("recorder keeps exact native values and requested image bytes without workf
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+for (const waiting of [true, false]) test(`closed owner wait finalizes a ${waiting ? "needs-human" : "recording"} run`, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-owner-record-"));
+  try {
+    const library = new Library(root);
+    const recorder = new AgentBrowserRun(root);
+    const id = library.listRuns()[0]!.id;
+    if (waiting) recorder.ownerWaiting(true);
+    assert.equal(library.readRun(id).status, waiting ? "needs_human" : "recording");
+    recorder.finish(waiting ? undefined : "session_closed");
+    const ended = library.readRun(id);
+    assert.equal(ended.status, "failed");
+    assert.equal(ended.envelope?.status, "failed");
+    assert.equal(ended.envelope?.reason, "session_closed");
+    assert.doesNotMatch(ended.envelope?.ask ?? "", /will continue here|is waiting/);
+    recorder.finish();
+    assert.deepEqual(library.readRun(id), ended);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("a failed atomic run replacement keeps the last readable partial run", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-run-atomic-"));
   try {

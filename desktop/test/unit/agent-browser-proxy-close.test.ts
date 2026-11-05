@@ -18,7 +18,16 @@ test("window close and proxy cleanup await the owned shutdown before reopening",
   await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Synthetic" } } } }));
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), "{}");
   const executable = path.join(root, "native");
-  await writeFile(executable, `#!${process.execPath}\nprocess.stdout.write('native success\\n');\n`, { mode: 0o700 });
+  await writeFile(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+const command = args[args.indexOf('--idle-timeout') + 2];
+if (command === 'tab' && args.includes('--json')) {
+  const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
+  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(targets => {
+    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map((t, index) => ({ targetId: t.id, active: index === 0 })) } }));
+  }).catch(error => { console.error(error); process.exitCode = 1; });
+} else { process.stdout.write('native success\\n'); }
+`, { mode: 0o700 });
   const ownedLaunch = launch.launchOwnedChromeEndpoint;
   const chromes: Awaited<ReturnType<typeof ownedLaunch>>[] = [];
   const copies: string[] = [];

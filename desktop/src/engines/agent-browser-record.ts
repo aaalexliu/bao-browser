@@ -50,7 +50,7 @@ export class AgentBrowserRun {
   }
 
   async complete(step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], stateDir: string,
-    screenshot: () => Promise<Buffer>, error?: unknown): Promise<void> {
+    screenshot: () => Promise<Buffer>, error?: unknown, privatePage = false): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
     step.native.isError = results.some((result) => result.exitCode !== 0) || error !== undefined;
@@ -67,6 +67,11 @@ export class AgentBrowserRun {
       }
     }
     this.persist();
+    if (privatePage) {
+      step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";
+      this.persist();
+      return;
+    }
     if (step.native.command === "screenshot") {
       for (const result of results.filter((item) => item.exitCode === 0)) {
         const original = screenshotPath(result.stdout);
@@ -87,9 +92,19 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  finish(): void {
-    if (this.run.status !== "recording") return;
-    this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
+  ownerWaiting(waiting: boolean): void {
+    this.run.status = waiting ? "needs_human" : "recording";
+    if (waiting) this.run.envelope = { status: "needs_human", run_id: this.run.id, reason: "owner_signin", ask: "Bao is waiting for you to sign in or clear the check in its browser window. The agent will continue here." };
+    else delete this.run.envelope;
+    this.persist();
+  }
+
+  finish(reason?: "session_closed"): void {
+    if (this.run.status !== "recording" && this.run.status !== "needs_human") return;
+    if (reason === "session_closed" || this.run.status === "needs_human") {
+      this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The Bao session ended before the owner wait completed. This session cannot continue." };
+      this.run.status = "failed";
+    } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
       : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();
   }

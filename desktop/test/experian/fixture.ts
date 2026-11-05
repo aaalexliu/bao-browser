@@ -1,5 +1,6 @@
 // Adapted from the Experian scout's local stand-in. Never contacts Experian.
-import { createServer } from "node:https";
+import { createServer as createSecureServer } from "node:https";
+import { createServer, type RequestListener } from "node:http";
 import { selfSignedCert } from "../instacart/cert";
 
 export const EXPERIAN_FIXTURE_HOSTS = ["www.experian.com", "usa.experian.com", "credit.test", "www.instacart.com"];
@@ -11,10 +12,10 @@ const buttons = traps.map((label) => label === "Unfreeze"
   ? `<form action="/member/freeze"><button type="submit">${label}</button></form>`
   : `<button type="button" onclick="fetch('/write', {method:'POST'})">${label}</button>`).join("");
 
-export async function startExperianFixture() {
+export async function startExperianFixture(options: { loopbackHttp?: boolean } = {}) {
   const certificate = selfSignedCert(EXPERIAN_FIXTURE_HOSTS);
   const requests: { host: string; path: string }[] = [];
-  const server = createServer({ key: certificate.key, cert: certificate.cert }, (req, res) => {
+  const handler: RequestListener = (req, res) => {
     const host = (req.headers.host || "").split(":")[0];
     const url = new URL(req.url || "/", "https://fixture");
     requests.push({ host, path: url.pathname });
@@ -22,7 +23,20 @@ export async function startExperianFixture() {
       res.writeHead(status, { "content-type": "text/html" });
       res.end(page(title, body));
     };
-    if (url.pathname === "/seed") {
+    if (url.pathname === "/owner/start") {
+      res.writeHead(302, { location: url.searchParams.get("check") === "captcha" ? "/owner/check" : "/owner/sign-in" });
+      res.end();
+    } else if (url.pathname === "/owner/sign-in") {
+      send("Sign in", '<form method="post" action="/owner/complete"><label>Email <input name="email" autocomplete="username"></label><label>Password <input name="password" type="password" autocomplete="current-password"></label><button>Sign in</button></form>');
+    } else if (url.pathname === "/owner/check") {
+      send("hCaptcha: verify you are human", '<p>Stand-in human check. No external requests.</p><form method="post" action="/owner/complete"><label><input type="checkbox" required> I am human</label><button>Continue</button></form>');
+    } else if (url.pathname === "/owner/complete" && req.method === "POST") {
+      // Discard the synthetic owner's form body. Never retain credentials in fixture evidence.
+      req.resume();
+      res.setHeader("set-cookie", ["incap_ses_standin=ok; Path=/; HttpOnly; SameSite=Lax", "sid=standin-session; Path=/; HttpOnly; SameSite=Lax"]);
+      res.writeHead(303, { location: "/member" });
+      res.end();
+    } else if (url.pathname === "/seed") {
       res.setHeader("set-cookie", ["incap_ses_standin=ok; Path=/; HttpOnly; SameSite=Lax", "sid=standin-session; Path=/; HttpOnly; SameSite=Lax"]);
       send("Signed in (stand-in)", "");
     } else if (url.pathname === "/member/expired") {
@@ -81,13 +95,14 @@ export async function startExperianFixture() {
     } else {
       send("Trap", "<p>This path should not load.</p>");
     }
-  });
+  };
+  const server = options.loopbackHttp ? createServer(handler) : createSecureServer({ key: certificate.key, cert: certificate.cert }, handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("missing fixture port");
   return {
     port: address.port, spki: certificate.spki, hosts: EXPERIAN_FIXTURE_HOSTS,
-    url: (pathname = "/member", host = "usa.experian.com") => `https://${host}${pathname}`,
+    url: (pathname = "/member", host = "usa.experian.com") => options.loopbackHttp ? `http://127.0.0.1:${address.port}${pathname}` : `https://${host}${pathname}`,
     requests,
     close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
   };
