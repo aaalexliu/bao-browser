@@ -632,8 +632,9 @@ export function runViewer(
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
   const shot = shotPane(before, after, selected?.action, selected?.label || "", selected?.beforeShotError, selected?.afterShotError);
   const table = identityTable(identity);
+  const panel = failurePanel(selected, failure, identity);
   const video = videoBar(run, steps);
-  const safeHeadline = agentBrowser && run.status === "recording"
+  const safeHeadline = agentBrowser && run.status === "recording" && !failed
     ? `${esc(workflow.name)} recording`
     : failed ? esc(headline) : headline;
   const phase = selected?.phase || (failure && failure.stepId === selected?.id ? failure.phase : undefined) || run.precondition?.phase;
@@ -690,7 +691,7 @@ export function runViewer(
     ${idleNote}
     <div class="filmstrip" id="filmstrip" data-idle-skipped="${skipped}">${film}</div>
     <input id="scrubber" type="range" min="0" max="${Math.max(0, steps.length - 1)}" value="${selectedIndex}" aria-label="Step timeline">
-    <div class="split${!agentBrowser && selected?.status === "failed" ? " with-failure" : ""}">
+    <div class="split${(agentBrowser ? !!panel : selected?.status === "failed") ? " with-failure" : ""}">
       <div class="step-list" id="step-list">${list}</div>
       <div class="step-detail" id="step-detail">
         <div class="row"><strong>${esc(selected?.label || "")}</strong></div>
@@ -702,7 +703,7 @@ export function runViewer(
         ${table}
         ${snapshotPane(snapDom, snapAx)}`}
       </div>
-      ${failurePanel(selected, failure, identity)}
+      ${panel}
     </div>
     ${passGrid(recent, workflow.steps)}
     ${trajectoryPane(context.recorded, run.trajectory)}
