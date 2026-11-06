@@ -34,4 +34,4 @@ The viewer offers no run, resume, edit, approve, or browser-control action. In U
 
 ## Follow-ups
 
-Workflow library browsing, editing, inline video, run and approve buttons, a remote relay or hosted plugin, owner-approved Claude Desktop and Codex Desktop installs, and any change to the desktop app's role remain separate work.
+Workflow library browsing, editing, inline video, run and approve buttons, a remote relay or hosted plugin, and any change to the desktop app's role remain separate work. Desktop client setup is covered in [Add Bao to a desktop app](desktop-mcp-install.md).
