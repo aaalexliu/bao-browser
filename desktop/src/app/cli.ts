@@ -256,7 +256,6 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const helper = chromeHelper();
   const block = liveChromeBlock(await helper.permissions(false));
   if (block) throw new Error(explainRemoteDebuggingError(new Error(block)).message);
-  // The CDP lock means no live session or replay is driving Chrome, so turning it off cuts nothing.
   const agent = "bao-remote-debugging";
   const axLog = path.join(resolveHome(args), "live-session", "ax.jsonl");
   await acquireCdpLock(agent, { timeoutMs: 5_000 });

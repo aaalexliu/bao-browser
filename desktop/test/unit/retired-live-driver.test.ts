@@ -58,12 +58,12 @@ test("HTTP edits and replacement paths retain retirement and refuse browser laun
   const ordinary: WorkflowV2 = {
     schema: "bao.workflow/v2", version: 2, id: "historical", name: "Before retirement", createdAt: 1,
     startUrl: `${fixtureOrigin}/`, inputs: [],
-    steps: [{ id: "target", index: 0, action: "click", label: "Target", surface: "dom", timeoutMs: 1000, identity: { testId: "target" } }],
+    steps: [{ id: "target", index: 0, action: "click", label: "Target", surface: "dom", timeoutMs: 1000, identity: { surface: "dom", role: "button", path: [], testId: "target" } }],
   };
   library.save(ordinary);
   const oldDraft = draftVersion(library, ordinary, "edit");
   library.save({ ...ordinary, driver: "cdp-live" });
-  const provisional = { ...openProvisional({ workflowId: ordinary.id, healId: "heal", stepId: "target", before: ordinary.steps[0]!, patch: { identity: { testId: "target" } } }), version: oldDraft.n };
+  const provisional = { ...openProvisional({ workflowId: ordinary.id, healId: "heal", stepId: "target", before: ordinary.steps[0]!, patch: { identity: { surface: "dom", role: "button", path: [], testId: "target" } } }), version: oldDraft.n };
   library.savePromotion(provisional);
   const app = await startApp({ home: dirs.home, port: 0 });
   try {

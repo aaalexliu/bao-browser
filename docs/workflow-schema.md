@@ -6,7 +6,7 @@ The contract is `schema/workflow-v2.schema.json`, id `bao.workflow/v2`. A docume
 
 `schema`, `version` (2), `id`, `name`, `startUrl`, `inputs`, `steps`, `createdAt`. Optional `heal`: `auto` or `approve`. Absent means the global setting, whose default is `auto`.
 
-The schema still accepts `driver: "cdp-live"` so historical workflows remain readable. That driver is retired. App and MCP replay refuse it before opening Chrome with `this workflow used the retired live driver`. The `agent_browser` pass-through records runs, not replayable workflows.
+The schema still accepts `driver: "cdp-live"` so historical workflows remain readable. That driver is retired. App and MCP replay, step Try, and promotion checks refuse it before opening Chrome with `this workflow used the retired live driver`. Replacing an existing retired workflow through edits, imports, conflict resolution, or version promotion preserves its `cdp-live` tag; removing or changing the tag cannot enable replay. `desktop/test/unit/retired-live-driver.test.ts` covers these boundaries. The `agent_browser` pass-through records runs, not replayable workflows.
 
 ## Inputs
 

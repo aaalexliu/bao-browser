@@ -25,7 +25,7 @@ export interface AxClick {
   via: "BaoOSHelper";
 }
 
-/** The BaoOSHelper calls a live session makes on the daily Chrome. Tests pass a fake. */
+/** Helper interface for Chrome consent and remote-debugging controls. Tests pass a fake. */
 export type ChromeAx = Pick<MacOsHelper, "permissions" | "nodes" | "press" | "exec" | "screenLocked">;
 
 export class AxUnavailable extends Error {

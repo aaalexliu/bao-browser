@@ -39,6 +39,8 @@ Readiness means the tab has an HTTP(S) URL and a nonblank title, its URL or titl
 
 ## Pick an engine and profile
 
+The Settings page-engine choice remains separate from `agent_browser`. Selecting **agent-browser (trial)** does not enable saved-workflow replay: app Replay and MCP `run_workflow` refuse ordinary workflows with `pass-through sessions do not support saved workflow replay`. Select **Current engine (default)** for ordinary saved-workflow replay. Historical live workflows remain retired under either choice; see [retirement behavior](cdp-live.md).
+
 Settings lists existing `Default` and `Profile N` directories. Chrome's `Local State` supplies display names and account emails. Missing names fall back to the directory name; missing directories are omitted. The saved `chromeProfile` choice applies to the next pass-through session.
 
 Bao reads the selected source and creates a private copy outside the checkout. It does not launch, write to, or lock the source profile. Only the Chrome child gets the real HOME from the passwd entry so it can use the login keychain. The native command process keeps a private HOME. No remote-debugging toggle, Accessibility, Automation, or Screen Recording grant is needed. If a permission prompt appears, stop rather than approving it to keep a test running.
