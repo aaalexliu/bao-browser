@@ -83,6 +83,8 @@ Open the running app's Library and Runs, not a component preview. Read the page 
 
 Check the run's saved command arguments, native results, start/end times, and page screenshots under `shots/runs/<runId>/`. Missing pictures must have a reason, not an older picture relabeled as current. For both browser choices, check explicit close, closing the owned Chrome window during a live session, disconnect, and MCP stop against the [profile lifecycle and cleanup contract](agent-browser-engine.md#session-end). Check keep-open with each choice too. Confirm the source profile and unrelated tabs remain unchanged.
 
+For `browser: "current"`, start a separate GUI Chrome with a throwaway profile, no debugging launch flag, and mock-keychain flags. Seed only a synthetic local sign-in before connecting. Use the signed helper with its existing Accessibility grant; record `permissions-ax` without prompting. On the first MCP `open`, select `current`. Confirm the helper enables debugging and presses Allow, the first navigation opens a new tab, native form actions work, and the synthetic sign-in remains. Check Runs for command output and screenshots. Test both explicit `close` and MCP disconnect: the browser, its profile, and existing tabs must remain. Stop only the test-owned Chrome afterward. Never point this fixture pass at daily Chrome.
+
 Historical live-driver workflows, runs, pictures, and videos stay local and readable. Their existence is not evidence that replay still works. Do not alter or delete historical records to make a new test pass.
 
 ## Run focused checks

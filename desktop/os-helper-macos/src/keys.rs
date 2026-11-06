@@ -17,7 +17,7 @@ use crate::element::{ax_ok, copy_attr, element_list, set_bool, string_attr, El};
 extern "C" {
     fn CGEventSourceSetLocalEventsSuppressionInterval(source: *mut std::ffi::c_void, seconds: f64);
 }
-use crate::walk::app_element;
+use crate::walk::{app_element, app_from_pid};
 
 const CMD: u16 = 0x37;
 const SHIFT: u16 = 0x38;
@@ -98,6 +98,7 @@ pub fn text_key(ch: char) -> Result<(u16, bool), String> {
         '-' => Ok((key_code("hyphen")?, false)),
         '_' => Ok((key_code("hyphen")?, true)),
         ':' => Ok((key_code("semicolon")?, true)),
+        '#' => Ok((key_code("3")?, true)),
         ';' => Ok((key_code("semicolon")?, false)),
         ',' => Ok((key_code("comma")?, false)),
         '\n' => Ok((key_code("return")?, false)),
@@ -160,10 +161,10 @@ fn cg_key(src: &CGEventSource, code: u16, down: bool, flags: CGEventFlags) -> Re
 
 /// Posts a combo through CGEvent only after the target app is frontmost.
 /// A key is not posted when AXFrontmost stays false.
-pub fn post_cg_combo(bundle: &str, combo: &str) -> Result<(), String> {
+pub fn post_cg_combo(bundle: &str, pid: Option<i32>, combo: &str) -> Result<(), String> {
     let (key, mods) = parse_combo(combo)?;
-    let (_pid, app) = app_element(bundle)?;
-    raise(&app);
+    let (_pid, app) = match pid { Some(pid) => app_from_pid(pid, true)?, None => app_element(bundle)? };
+    if !frontmost(&app) { raise(&app); }
     thread::sleep(Duration::from_millis(150));
     if !frontmost(&app) {
         return Err("app did not become frontmost; key was not posted".into());
@@ -181,9 +182,9 @@ pub fn post_cg_combo(bundle: &str, combo: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn post_cg_text(bundle: &str, text: &str) -> Result<(), String> {
-    let (_pid, app) = app_element(bundle)?;
-    raise(&app);
+pub fn post_cg_text(bundle: &str, pid: Option<i32>, text: &str) -> Result<(), String> {
+    let (_pid, app) = match pid { Some(pid) => app_from_pid(pid, true)?, None => app_element(bundle)? };
+    if !frontmost(&app) { raise(&app); }
     thread::sleep(Duration::from_millis(150));
     if !frontmost(&app) {
         return Err("app did not become frontmost; text was not posted".into());
@@ -236,6 +237,7 @@ mod tests {
         assert!(parse_combo("").is_err());
         assert_eq!(super::text_key('/').unwrap(), (0x2C, false));
         assert_eq!(super::text_key(':').unwrap(), (0x29, true));
+        assert_eq!(super::text_key('#').unwrap(), (0x14, true));
         assert_eq!(super::text_key('-').unwrap(), (0x1B, false));
         assert_eq!(super::parse_combo("cmd+shift+g").unwrap().0, 0x05);
     }
