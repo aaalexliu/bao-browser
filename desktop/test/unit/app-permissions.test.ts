@@ -49,7 +49,7 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
         await page.locator('#rail [data-place="settings"]').click();
         const mac = page.locator(".card").filter({ has: page.locator("#settings-helper") });
         assert.match(await mac.innerText(), /Chrome agents need no Accessibility, Automation, or Screen Recording permission/);
-        assert.match(await mac.innerText(), /optional native-app MCP driver/);
+        assert.doesNotMatch(await mac.innerText(), /bao mcp-ax|bao remote-debugging/);
         assert.equal(await mac.locator("button").count(), 0);
         assert.equal(await page.locator("#automation-ask, #perm-dot, #onboarding").count(), 0);
       }

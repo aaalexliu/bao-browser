@@ -14,7 +14,7 @@ The optional native-app MCP driver uses the helper's Accessibility access to rea
 
 Only the separate `bao remote-debugging on|off` command uses this grant. Its helper opens `chrome://inspect/#remote-debugging`, checks the URL, and restores the selected tab through Apple Events to one Chrome pid. It never runs JavaScript through Apple Events. A toggle that already matches the requested state does not ask. Running the CLI can ask for Automation when the toggle must change; Chrome agents and app status never ask or open Chrome for it.
 
-The outer app's [`NSAppleEventsUsageDescription`](../desktop/packaging/macos/Info.plist) and the [helper's purpose string](../desktop/os-helper-macos/Info.plist) name that CLI feature. They permit a future prompt, not a grant or a reset of a prior denial. macOS can attribute an installed nested-helper request to Bao (`dev.bao.desktop`) or a standalone request to BaoOSHelper. If you choose to use this CLI after denying Automation, its error names the matching System Settings grant. No Automation grant is needed for normal Chrome agents.
+The outer app's [`NSAppleEventsUsageDescription`](../desktop/packaging/macos/Info.plist) and the [helper's purpose string](../desktop/os-helper-macos/Info.plist) name that CLI feature. They permit a future prompt, not a grant or a reset of a prior denial. macOS can attribute an installed nested-helper request to Bao (`dev.bao.desktop`) or a standalone request to BaoOSHelper. If you choose to use this CLI after denying Automation, open System Settings > Privacy & Security > Automation and enable Google Chrome under Bao for the installed app, or under BaoOSHelper for a standalone request. No Automation grant is needed for normal Chrome agents.
 
 ## Which grant each job needs
 
@@ -23,7 +23,7 @@ The helper reports only two optional capabilities. The retired `ax-press` and `l
 - **Window capture** (`window-capture`) supplies `bao mcp-ax` with window pictures through `shot`. It needs Screen Recording, not a Chrome page screenshot grant.
 - **Native-app MCP driver** (`mcp-ax`) drives Calculator and TextEdit through `bao mcp-ax`. It uses Accessibility and Screen Recording to observe and act on those apps, not Chrome.
 
-Both API rows have `optional: true`; neither creates a footer warning, onboarding card, or permission button. Without the helper or outside macOS, `helper.label` reads `helper off`. With the helper present on macOS, it reads `helper available`, regardless of grants. That label reports presence, not native-app readiness. Settings explains which optional features use the helper. Normal Chrome agents need no Mac privacy grant.
+Both API rows have `optional: true`; neither creates a footer warning, onboarding card, or permission button. These rows do not read the Screen Recording grant and cannot report whether it is on. Without the helper or outside macOS, `helper.label` reads `helper off`. With the helper present on macOS, it reads `helper available`, regardless of grants. That label reports presence, not native-app readiness. Settings shows helper presence and states that Chrome agents need no Mac privacy grant. Normal Chrome agents need no Mac privacy grant.
 
 The separate remote-debugging CLI still checks Accessibility before changing Chrome's checkbox and retains its Automation gate. Extension replay has its own site grant. Neither is a required helper capability.
 

@@ -434,11 +434,10 @@ function settings(): string {
       <h3>Model</h3>
       <p id="settings-model">${esc(state.model?.label || "no model")}</p>
     </div>
-    <div class="card" id="mac-permissions">
+    <div class="card">
       <h3>Mac</h3>
       <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
       <p>Chrome agents need no Accessibility, Automation, or Screen Recording permission.</p>
-      <p class="quiet">The optional native-app MCP driver (bao mcp-ax) uses Accessibility and Screen Recording for Calculator and TextEdit. The separate bao remote-debugging command uses Accessibility and Automation to change Chrome's debugging switch.</p>
     </div>
   </section>`;
 }
