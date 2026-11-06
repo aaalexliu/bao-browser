@@ -124,7 +124,11 @@ jobs:
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
           export HOME="$(mktemp -d)"
           trap 'rm -rf "$HOME"' EXIT
-          node scripts/test-essential.mjs "$GROUP"
+          if [ "$GROUP" = experian ]; then
+            xvfb-run --auto-servernum node scripts/test-essential.mjs "$GROUP"
+          else
+            node scripts/test-essential.mjs "$GROUP"
+          fi
 
   guardrails:
     name: guardrails
