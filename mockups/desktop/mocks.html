@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en" data-lavish-annotate="on">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bao Desktop Directions</title>
+<style>
+  :root {
+    --bg: #f4f4f5; --panel: #ffffff; --ink: #18181b; --quiet: #52525b; --line: #e4e4e7;
+    --sel: #18181b; --sel-ink: #ffffff; --high: #b42318; --med: #b54708; --low: #3f3f46;
+    --focus: #2563eb;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111113; --panel: #1c1c1f; --ink: #f4f4f5; --quiet: #a1a1aa; --line: #2e2e33;
+      --sel: #f4f4f5; --sel-ink: #111113; --high: #f97066; --med: #fdb022; --low: #d4d4d8; --focus: #60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  header.top { padding: 20px 24px 8px; }
+  header.top h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
+  header.top p { margin: 4px 0 0; color: var(--quiet); max-width: 80ch; }
+  .wrap { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; padding: 12px 24px 24px; align-items: start; }
+  .picker { position: sticky; top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .picker h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--quiet); margin: 8px 6px 4px; font-weight: 600; }
+  .picker button { display: flex; width: 100%; justify-content: space-between; align-items: baseline; gap: 8px; text-align: left;
+    border: 0; background: transparent; color: var(--ink); font: inherit; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  .picker button:hover { background: var(--line); }
+  .picker button[aria-pressed="true"] { background: var(--sel); color: var(--sel-ink); }
+  .picker kbd { font: 11px var(--mono); opacity: 0.7; }
+  .picker .hint { font-size: 12px; color: var(--quiet); margin: 10px 6px 2px; }
+  .stage { min-width: 0; }
+  .stage-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; margin-bottom: 8px; }
+  .stage-head strong { font-size: 16px; }
+  .stage-head span { color: var(--quiet); }
+  .stage-head a { color: inherit; }
+  .frame { position: relative; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .frame iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #fff; }
+  .frame img { display: block; width: 100%; height: auto; }
+  .pending { padding: 48px 24px; text-align: center; color: var(--quiet); }
+  section.block { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
+  section.block h2 { margin: 0 0 4px; font-size: 16px; }
+  section.block > p { margin: 0 0 12px; color: var(--quiet); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-top: 1px solid var(--line); }
+  th { font-size: 12px; color: var(--quiet); font-weight: 600; border-top: 0; }
+  td code { font: 12px var(--mono); overflow-wrap: break-word; }
+  #review td:last-child { min-width: 240px; }
+  .sev { font: 600 11px var(--mono); letter-spacing: 0.04em; }
+  .sev.high { color: var(--high); } .sev.med { color: var(--med); } .sev.low { color: var(--low); }
+  .choice { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 8px; }
+  .choice textarea { width: 100%; min-height: 64px; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  .choice button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--sel); background: var(--sel); color: var(--sel-ink); cursor: pointer; }
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); }
+    .picker { position: static; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 2px; }
+    .picker h2, .picker .hint { grid-column: 1 / -1; }
+    .scroll-x { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Bao desktop: three directions</h1>
+  <p>The owner picked Inbox and confirmed the name Runs, with Activity folded in. These are design artifacts, not shipped UI. "Current" shows the app at the original review, not today's main branch.</p>
+</header>
+
+<div class="wrap">
+  <nav class="picker" aria-label="Mock picker">
+    <h2 id="g-dir">Direction</h2>
+    <div role="group" aria-labelledby="g-dir" id="dirs"></div>
+    <h2 id="g-screen">Screen</h2>
+    <div role="group" aria-labelledby="g-screen" id="screens"></div>
+    <p class="hint">Keys: 1-4 pick a direction. Left and right arrows change the screen.</p>
+  </nav>
+
+  <main class="stage">
+    <div class="stage-head">
+      <strong id="stage-title"></strong>
+      <span id="stage-sub"></span>
+      <a id="stage-open" href="#" target="_blank" rel="noopener">Open full size</a>
+    </div>
+    <div class="frame" id="frame"></div>
+
+    <section class="block" id="tradeoffs">
+      <h2>Tradeoffs</h2>
+      <p>Same brief, same data, same accessibility floor. They differ on structure, density, type, color and voice.</p>
+      <div class="scroll-x">
+      <table>
+        <thead><tr><th>Direction</th><th>Big idea</th><th>Right when</th><th>Costs</th></tr></thead>
+        <tbody id="tradeoff-rows"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="block" id="review">
+      <h2>Review of today's app</h2>
+      <p>Ranked by user impact, per <code>better-interface</code>. Seen on the running app (branch <code>v1/desktop</code>, commit <code>798e40e</code>, the owner's library copied to a scratch home) at 1280 px. Focus rings, keyboard paths and 200% zoom: not verified. <a href="README.md#status-on-main-at-the-handoff">Main-branch notes</a>: stuck runs were fixed; the invalid-library path changed; title truncation and run accessible names remained.</p>
+      <div class="scroll-x">
+      <table>
+        <thead><tr><th>Severity</th><th>Finding</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr><td><span class="sev high">HIGH</span></td><td>One invalid workflow file blanks the whole Library. It shows "No workflows yet" for a library of 7, with no error and no way to recover. Seen live: the Costco workflow fails schema check on this branch.</td><td><code>desktop/src/app/client.ts:150</code>, <code>desktop/src/app/views.ts:1124</code></td></tr>
+          <tr><td><span class="sev high">HIGH</span></td><td>Runs without a saved workflow never open. All 5 of today's <code>agent-browser</code> runs sit on "Loading run..." forever. <code>/api/workflows/agent-browser</code> returns 500 (ENOENT) and <code>showRun</code> has no error path.</td><td><code>desktop/src/app/client.ts:925-937</code></td></tr>
+          <tr><td><span class="sev high">HIGH</span></td><td>Workflow titles truncate with an ellipsis and no way to read the full name (no title, no tooltip). Every real title is long.</td><td><code>desktop/src/app/public/index.html:343</code>, <code>views.ts:1111</code></td></tr>
+          <tr><td><span class="sev med">MEDIUM</span></td><td>Runs list is not sorted by time ("5 hours ago" above "16 hours ago" above "11 hours ago"). Raw run ids take a column. "0 model calls" sits on every row. Wrapped names center-align.</td><td><code>views.ts:1638-1645</code></td></tr>
+          <tr><td><span class="sev med">MEDIUM</span></td><td>Run row button's accessible name is the run id, so a screen reader hears "run-660d3893..." instead of the workflow name.</td><td><code>views.ts:1643</code></td></tr>
+          <tr><td><span class="sev med">MEDIUM</span></td><td>Nine flat nav items. Capture and Teach overlap. "Replay" opens a page titled "Run". Runs and Live share one icon. Logins and Live are plumbing beside tasks.</td><td><code>views.ts:278-288</code></td></tr>
+          <tr><td><span class="sev med">MEDIUM</span></td><td>Developer copy shown to a non-technical user: bundle ids, <code>bao mcp</code>, AT-SPI, <code>BAO_REMOTE_MCP=1</code>, raw selectors, input names <code>{{text}}</code> to <code>{{text11}}</code>, the badge "expect". Start URL defaults to <code>/fixture</code>.</td><td><code>client.ts:283</code>, <code>client.ts:295</code>, <code>views.ts:311</code></td></tr>
+          <tr><td><span class="sev med">MEDIUM</span></td><td>Settings is one long ungrouped form. The remote-agent checkbox floats mid-page, far from its label. Full-width selects for three short choices.</td><td>Settings screen</td></tr>
+          <tr><td><span class="sev med">MEDIUM</span></td><td>Library thumbnails are all gray placeholders, and cards list up to 13 input chips each, so cards do not tell workflows apart.</td><td>Library screen</td></tr>
+          <tr><td><span class="sev low">LOW</span></td><td>Workflow page repeats "If this step misses / Try / Run from step N" on every step. "Guide me" wraps to two lines.</td><td>Workflow screen</td></tr>
+          <tr><td><span class="sev low">LOW</span></td><td>Heals empty state draws an empty bordered box. Pending / Kept / Reverted show no selected state.</td><td>Heals screen</td></tr>
+          <tr><td><span class="sev low">LOW</span></td><td>Footer status reads "helper off", "no model", "cursor account" with no meaning or next step.</td><td><code>views.ts:289-293</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="block" id="pick">
+      <h2>Your pick</h2>
+      <form data-lavish-question="direction" onsubmit="event.preventDefault(); const f = new FormData(event.currentTarget); const d = f.get('direction'); const n = (f.get('notes') || '').toString().trim(); if (d && window.lavish) window.lavish.queuePrompt('Build the ' + d + ' direction' + (n ? '. Notes: ' + n : ''), { tag: 'choice', text: 'Direction: ' + d, element: event.currentTarget, data: { question: 'direction', answer: d, notes: n } });">
+        <div class="choice">
+          <label><input type="radio" name="direction" value="Runs (was Inbox)"> Runs (was Inbox)</label>
+          <label><input type="radio" name="direction" value="Recipe"> Recipe</label>
+          <label><input type="radio" name="direction" value="Console"> Console</label>
+          <label><input type="radio" name="direction" value="Another round"> Another round</label>
+        </div>
+        <div class="choice">
+          <label for="notes" style="width:100%">What to keep or mix from the others</label>
+          <textarea id="notes" name="notes" placeholder="Example: Recipe's home, Console's run-failed screen"></textarea>
+          <button type="submit">Queue this answer</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</div>
+
+<script>
+  const DIRS = [
+    { id: "current", name: "Current", sub: "App at the original review, same screens" },
+    { id: "inbox", name: "Runs (was Inbox)", sub: "Native Mac, attention first, 3-pane. Runs name confirmed." },
+    { id: "recipe", name: "Recipe", sub: "Warm editorial, one column, recipe cards" },
+    { id: "console", name: "Console", sub: "Dark, dense, keyboard-first instrument" },
+  ];
+  const SCREENS = [
+    { id: "home", name: "Home", current: "library.png" },
+    { id: "workflow", name: "Workflow", current: "workflow.png" },
+    { id: "run-live", name: "Run: needs you", current: "live.png" },
+    { id: "run-failed", name: "Run: failed", current: "run.png" },
+    { id: "heal", name: "Heal review", current: "heals.png" },
+    { id: "capture", name: "Capture", current: "capture.png" },
+    { id: "settings", name: "Settings", current: "settings.png" },
+  ];
+  const TRADEOFFS = {
+    inbox: [
+      "Native Mac 3-pane like Mail. Three places: Runs, Workflows, Settings. Runs pins what needs you on top, then history by day. One Record button replaces Capture and Teach.",
+      "Bao should feel like part of macOS and stay out of the way. People open it when something needs them.",
+      "Little brand personality; the bun hides in the footer. The 340 px list column squeezes reports and heal comparisons. Logins and steps sit one level deeper.",
+    ],
+    recipe: [
+      "No sidebar. One reading column on cream paper with serif headings. Home reads like a letter: Waiting on you, then tasks shelved by life area. A workflow reads like a recipe. Run reports are notes from Bao in the first person.",
+      "The buyer is a non-technical person doing DMV, bills and taxes, and trust and warmth matter more than speed.",
+      "Lowest density: about 3 cards above the fold, and the DMV recipe is about 2,000 px tall. No always-visible navigation, so run history, logins and fixes sit behind search or the avatar menu. Weak for the QA user. No dark mode yet.",
+    ],
+    console: [
+      "Dark four-column instrument with a status bar. Home merges the library and a 14-run health grid, so all 11 workflows show at once. An evidence panel proves each run: steps matched to golden, target hit on which try, 0 model calls. J/K/R/E keys everywhere.",
+      "The buyer runs many workflows (QA, monitoring, power users) and wants proof and speed over warmth.",
+      "Least welcoming for a first-time, non-technical user: dense and dark-only. The everything-at-once layout holds only on wide windows; below about 1140 px panels become overlays. Step screenshots shrink to about 64 px.",
+    ],
+  };
+  const params = new URLSearchParams(location.search);
+  let dir = DIRS.some((d) => d.id === params.get("__variant")) ? params.get("__variant") : "inbox";
+  let screen = SCREENS.some((s) => s.id === params.get("screen")) ? params.get("screen") : "home";
+
+  const dirsEl = document.getElementById("dirs");
+  const screensEl = document.getElementById("screens");
+  DIRS.forEach((d, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.dir = d.id;
+    b.innerHTML = `<span>${d.name}</span><kbd>${i + 1}</kbd>`;
+    b.addEventListener("click", () => { dir = d.id; render(); });
+    dirsEl.append(b);
+  });
+  SCREENS.forEach((s) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.screen = s.id;
+    b.innerHTML = `<span>${s.name}</span>`;
+    b.addEventListener("click", () => { screen = s.id; render(); });
+    screensEl.append(b);
+  });
+
+  const frame = document.getElementById("frame");
+  let iframe;
+  const W = 1440, H = 960;
+  function fit() {
+    if (!iframe) return;
+    const scale = frame.clientWidth / W;
+    iframe.style.width = W + "px"; iframe.style.height = H + "px";
+    iframe.style.transform = `scale(${scale})`;
+    frame.style.height = Math.round(H * scale) + "px";
+  }
+  new ResizeObserver(fit).observe(frame);
+
+  function render() {
+    const d = DIRS.find((x) => x.id === dir);
+    const s = SCREENS.find((x) => x.id === screen);
+    dirsEl.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.dir === dir)));
+    screensEl.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.screen === screen)));
+    document.getElementById("stage-title").textContent = `${d.name} - ${s.name}`;
+    document.getElementById("stage-sub").textContent = d.sub;
+    const open = document.getElementById("stage-open");
+    frame.innerHTML = ""; iframe = null; frame.style.height = "";
+    if (dir === "current") {
+      const img = document.createElement("img");
+      img.src = `current/${s.current}`;
+      img.alt = `Today's Bao app, ${s.name} screen`;
+      frame.append(img);
+      open.href = img.src;
+    } else {
+      iframe = document.createElement("iframe");
+      iframe.title = `${d.name} direction, ${s.name} screen`;
+      iframe.src = `variant-${dir}.html?screen=${screen}`;
+      frame.append(iframe);
+      open.href = iframe.src;
+      fit();
+    }
+    const url = new URL(location.href);
+    url.searchParams.set("__variant", dir); url.searchParams.set("screen", screen);
+    history.replaceState(null, "", url);
+  }
+
+  const rows = document.getElementById("tradeoff-rows");
+  rows.innerHTML = DIRS.filter((d) => d.id !== "current").map((d) => {
+    const [idea, when, cost] = TRADEOFFS[d.id];
+    return `<tr><td><strong>${d.name}</strong></td><td>${idea || d.sub}</td><td>${when}</td><td>${cost}</td></tr>`;
+  }).join("");
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, select")) return;
+    const n = Number(e.key);
+    if (n >= 1 && n <= DIRS.length) { dir = DIRS[n - 1].id; render(); }
+    const i = SCREENS.findIndex((x) => x.id === screen);
+    if (e.key === "ArrowRight") { screen = SCREENS[(i + 1) % SCREENS.length].id; render(); }
+    if (e.key === "ArrowLeft") { screen = SCREENS[(i - 1 + SCREENS.length) % SCREENS.length].id; render(); }
+  });
+  render();
+</script>
+</body>
+</html>

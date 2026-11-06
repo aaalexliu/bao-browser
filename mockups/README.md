@@ -6,6 +6,8 @@ browser.
 
 Audience lead: **prosumer / government-forms wedge**. Primary CTA: **Add to Chrome**.
 
+Desktop app concepts: [`desktop/`](desktop/) holds the three redesign directions, decision, and review.
+
 ## Landing directions
 
 | File | Direction | Feel |

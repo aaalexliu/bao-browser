@@ -1,0 +1,1396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bao</title>
+<style>
+/* ============ Tokens ============ */
+:root{
+  color-scheme: light dark;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* primitives */
+  --gray-0:#FFFFFF; --gray-50:#F5F5F7; --gray-75:#F4F5F5; --gray-100:#EDEDF0; --gray-400:#8A8A8E;
+  --gray-600:#6E6E73; --gray-650:#5E5E63; --gray-900:#1D1D1F;
+  --orange-400:#E8813A; --orange-700:#B9520A; --orange-300:#F2913F;
+  --green-700:#1E7B34; --teal-700:#0A7EA4; --amber-800:#8A5A00; --blue-700:#0066D6; --red-700:#D70015;
+
+  /* semantic */
+  --bg-stage: linear-gradient(160deg,#D9DCE2 0%,#E6E4E0 55%,#DCD9D4 100%);
+  --bg-pane: var(--gray-0);
+  --bg-sidebar: rgba(234,234,238,.74);
+  --bg-group: var(--gray-50);
+  --bg-zebra: var(--gray-75);
+  --bg-hover: rgba(0,0,0,.05);
+  --bg-side-selected: rgba(0,0,0,.085);
+  --bg-control: rgba(0,0,0,.055);
+  --bg-token: rgba(0,0,0,.06);
+  --border-token: rgba(0,0,0,.1);
+  --border-button: rgba(0,0,0,.16);
+  --border-input: var(--gray-400);
+  --border-group: rgba(0,0,0,.07);
+  --separator: rgba(0,0,0,.1);
+  --text: var(--gray-900);
+  --text-secondary: var(--gray-600);
+  --text-sidebar-secondary: var(--gray-650);
+  --accent: var(--orange-700);           /* fills, selection, focus, record glyph */
+  --accent-brand: var(--orange-400);     /* the bun only */
+  --on-accent: #FFFFFF;
+  --focus: var(--orange-700);
+  --status-ok: var(--green-700);
+  --status-heal: var(--teal-700);
+  --status-prov: var(--amber-800);
+  --status-need: var(--blue-700);
+  --status-bad: var(--red-700);
+  --status-quiet: var(--gray-600);
+  --need-tint: #EEF5FD;
+  --bad-tint: #FDF0F1;
+  --heal-tint: #EAF5F9;
+  --shadow-window: 0 0 0 .5px rgba(0,0,0,.28), 0 24px 70px rgba(0,0,0,.26), 0 6px 16px rgba(0,0,0,.10);
+  --shadow-button: 0 .5px 1px rgba(0,0,0,.08);
+  --image-outline: rgba(0,0,0,.1);
+
+  /* type scale (macOS) */
+  --t-caption: .75rem;     /* 12 */
+  --t-body: .8125rem;      /* 13 */
+  --t-callout: .9375rem;   /* 15 */
+  --t-title3: .9375rem;    /* 15 semibold */
+  --t-title2: 1.0625rem;   /* 17 */
+  --t-title1: 1.625rem;    /* 26 */
+
+  --sb-w: 212px;
+  --list-w: 340px;
+  --insp-w: 340px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg-stage: linear-gradient(160deg,#16171A 0%,#1E1D1C 60%,#191817 100%);
+    --bg-pane:#1E1E1E;
+    --bg-sidebar: rgba(44,44,48,.72);
+    --bg-group:#262628;
+    --bg-zebra:#232325;
+    --bg-hover: rgba(255,255,255,.06);
+    --bg-side-selected: rgba(255,255,255,.1);
+    --bg-control: rgba(255,255,255,.08);
+    --bg-token: rgba(255,255,255,.09);
+    --border-token: rgba(255,255,255,.1);
+    --border-button: rgba(255,255,255,.14);
+    --border-input:#8E8E93;
+    --border-group: rgba(255,255,255,.07);
+    --separator: rgba(255,255,255,.1);
+    --text:#F2F2F7;
+    --text-secondary:#A1A1A6;
+    --text-sidebar-secondary:#A1A1A6;
+    --focus: var(--orange-300);
+    --status-ok:#30D158; --status-heal:#5AC8FA; --status-prov:#FFCC00; --status-need:#4DA3FF; --status-bad:#FF6961; --status-quiet:#A1A1A6;
+    --need-tint:#14253A; --bad-tint:#3A1A1A; --heal-tint:#10303A;
+    --shadow-window: 0 0 0 .5px rgba(255,255,255,.16), 0 24px 70px rgba(0,0,0,.6);
+    --shadow-button: none;
+    --image-outline: rgba(255,255,255,.1);
+  }
+}
+
+/* ============ Base ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:var(--font);font-size:var(--t-body);line-height:1.4;color:var(--text);background:var(--bg-stage);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:14px 16px 32px}
+button,input,select{font:inherit;color:inherit}
+a{color:inherit}
+ul,ol{list-style:none}
+svg{display:block;flex:none}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:12px;top:-60px;background:#fff;color:#000;padding:8px 12px;border-radius:6px;z-index:100}
+.skip:focus{top:12px}
+.num{font-variant-numeric:tabular-nums}
+
+/* ============ Mock switcher (outside the design) ============ */
+.switcher{font:500 11.5px/1 ui-monospace,Menlo,monospace;color:#3a3a3a;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-bottom:14px;padding:5px;border-radius:999px;background:rgba(255,255,255,.55);border:1px dashed rgba(0,0,0,.25)}
+.switcher .lbl{padding:0 8px 0 10px;opacity:.75}
+.switcher a,.switcher button{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;text-decoration:none;border:0;background:transparent;font:inherit;color:inherit;cursor:pointer}
+.switcher a[aria-current="page"]{background:#3a3a3a;color:#fff}
+.switcher button[aria-pressed="true"]{background:#3a3a3a;color:#fff}
+.switcher .sep{width:1px;height:16px;background:rgba(0,0,0,.2);margin:0 4px}
+@media (prefers-color-scheme: dark){.switcher{background:rgba(255,255,255,.08);color:#ddd;border-color:rgba(255,255,255,.25)}.switcher a[aria-current="page"],.switcher button[aria-pressed="true"]{background:#ddd;color:#111}.switcher .sep{background:rgba(255,255,255,.25)}}
+
+/* ============ Window ============ */
+.window{position:relative;width:min(var(--win-w,1280px),100%);min-width:360px;height:820px;border-radius:12px;overflow:hidden;display:flex;box-shadow:var(--shadow-window);container:win/inline-size;resize:horizontal;isolation:isolate}
+.lights{position:absolute;top:18px;left:18px;display:flex;gap:8px;z-index:20}
+.lights i{width:12px;height:12px;border-radius:50%;background:#FF5F57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.18)}
+.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+
+/* sidebar: translucent source list */
+.sidebar{width:var(--sb-w);flex:none;display:flex;flex-direction:column;padding:52px 10px 10px;background:var(--bg-sidebar);-webkit-backdrop-filter:blur(40px) saturate(1.8);backdrop-filter:blur(40px) saturate(1.8);border-right:1px solid var(--separator);z-index:10}
+.side-h{font-size:var(--t-caption);font-weight:600;color:var(--text-sidebar-secondary);padding:0 8px 6px}
+.side li+li{margin-top:2px}
+.side a{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;text-decoration:none;color:var(--text)}
+.side a > svg{color:var(--text-sidebar-secondary);width:16px;height:16px}
+.side .count svg{width:14px;height:14px}
+.side a[aria-current="page"]{background:var(--bg-side-selected);font-weight:500}
+.side a[aria-current="page"] > svg{color:var(--accent)}
+@media (prefers-color-scheme: dark){.side a[aria-current="page"] > svg{color:var(--orange-300)}}
+.side .count{margin-inline-start:auto;font-size:var(--t-caption);color:var(--text-sidebar-secondary);font-variant-numeric:tabular-nums}
+.side a[aria-current] .count{color:var(--text)}
+.side .count.alert{display:inline-flex;align-items:center;gap:4px;color:var(--text-sidebar-secondary)}
+.side-foot{margin-top:auto;display:flex;gap:10px;align-items:center;padding:10px 8px 4px;border-top:1px solid var(--separator);text-decoration:none;color:inherit;border-radius:6px}
+.side-foot .bun{width:28px;height:28px}
+.side-foot b{display:block;font-weight:600}
+.side-foot span{display:block;font-size:var(--t-caption);color:var(--text-sidebar-secondary)}
+
+/* panes */
+.panes{flex:1;min-width:0;display:flex;background:var(--bg-pane)}
+.pane{display:flex;flex-direction:column;min-width:0;min-height:0}
+.pane-list{width:var(--list-w);flex:none;border-right:1px solid var(--separator)}
+.pane-detail{flex:1}
+.pane-insp{width:var(--insp-w);flex:none;border-left:1px solid var(--separator)}
+.bar{height:52px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px 0 16px}
+.bar .grow{flex:1}
+.ttl{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.ttl h2{font-size:var(--t-callout);font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl p{font-size:var(--t-caption);color:var(--text-secondary);line-height:1.25;white-space:nowrap}
+.scroll{flex:1;overflow:auto;min-height:0;overscroll-behavior:contain}
+.tb.sidebar-toggle,.tb.side-close{display:none}
+.side-close{position:absolute;top:10px;right:10px}
+
+/* toolbar buttons */
+.tb{height:28px;min-width:28px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 8px;border-radius:7px;border:0;background:transparent;color:var(--text-secondary);cursor:default;text-decoration:none;white-space:nowrap}
+.tb svg{width:16px;height:16px}
+.tb.label{color:var(--text);padding:0 10px}
+.tb.record{background:var(--bg-control);color:var(--text);font-weight:500;padding:0 12px 0 10px}
+.tb.record .rec{color:var(--accent)}
+@media (prefers-color-scheme: dark){.tb.record .rec{color:var(--orange-300)}}
+@media (hover:hover){.tb:hover{background:var(--bg-hover);color:var(--text)}.tb.record:hover{background:var(--bg-side-selected)}}
+
+/* push buttons */
+.btn{height:28px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-radius:7px;border:1px solid var(--border-button);background:var(--bg-pane);color:var(--text);font-weight:500;box-shadow:var(--shadow-button);white-space:nowrap;text-decoration:none;cursor:default}
+.btn svg{width:14px;height:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.destructive{color:var(--status-bad)}
+.btn.small{height:24px;padding:0 9px;font-size:var(--t-caption)}
+.btn:disabled{opacity:.45}
+@media (hover:hover){.btn:not(:disabled):hover{background:var(--bg-hover)}.btn.primary:not(:disabled):hover{background:#A84A08}}
+@media (prefers-reduced-motion:no-preference){
+  .btn,.tb{transition-property:scale,background-color;transition-duration:150ms;transition-timing-function:ease-out}
+  .btn:not(:disabled):active,.tb:not(:disabled):active{scale:.96}
+}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.linkish{color:var(--accent);text-decoration:none;font-weight:500}
+@media (prefers-color-scheme: dark){.linkish{color:var(--orange-300)}}
+.linkish:hover{text-decoration:underline;text-underline-offset:2px}
+
+/* status glyph + word */
+.st{display:inline-flex;align-items:center;gap:5px;font-weight:500;white-space:nowrap}
+.st svg{width:14px;height:14px}
+.st.ok{color:var(--status-ok)}.st.heal{color:var(--status-heal)}.st.prov{color:var(--status-prov)}.st.need{color:var(--status-need)}.st.bad{color:var(--status-bad)}.st.quiet,.st.run{color:var(--status-quiet)}.st.warn{color:var(--status-bad)}
+.g-mark{stroke:var(--glyph-mark,#fff);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.g-markfill{fill:var(--glyph-mark,#fff)}
+@media (prefers-color-scheme: dark){:root{--glyph-mark:#1E1E1E}}
+
+/* list rows (middle pane) */
+.list{padding:2px 10px 24px}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:var(--t-caption);font-weight:600;color:var(--text-secondary);padding:14px 10px 6px}
+.sec-h .n{font-weight:500;font-variant-numeric:tabular-nums}
+.row{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;row-gap:1px;padding:8px 10px 9px;border-radius:8px;text-decoration:none;color:inherit;cursor:default}
+.row + .row,.list li + li{margin-top:2px}
+.row .gl{grid-row:1;align-self:center}
+.row .gl svg{width:14px;height:14px}
+.row .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .time{font-size:var(--t-caption);color:var(--text-secondary);font-variant-numeric:tabular-nums;align-self:center;white-space:nowrap}
+.row .sub{grid-column:2 / -1;color:var(--text-secondary);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.row .sub2{grid-column:2 / -1;color:var(--text-secondary);font-size:var(--t-caption);font-variant-numeric:tabular-nums}
+.row .sub .st{font-weight:500}
+.row.compact{padding:6px 10px 7px}
+@media (hover:hover){.row:hover{background:var(--bg-hover)}}
+.row[aria-current]{background:var(--accent);color:var(--on-accent);--glyph-mark:var(--accent)}
+.row[aria-current] .time,.row[aria-current] .sub,.row[aria-current] .sub2,.row[aria-current] .st{color:var(--on-accent)}
+.row[aria-current] .gl{color:var(--on-accent)}
+.row:focus-visible{outline-offset:-2px}
+.row[aria-current]:focus-visible{outline-color:#fff}
+.row.more{grid-template-columns:16px minmax(0,1fr);color:var(--text-secondary)}
+
+.banner{display:grid;grid-template-columns:16px minmax(0,1fr);gap:4px 8px;margin:4px 0 8px;padding:10px 12px;border-radius:8px;background:var(--bad-tint);border:1px solid color-mix(in oklab, var(--status-bad) 22%, transparent)}
+.banner svg{width:16px;height:16px;color:var(--status-bad);margin-top:1px}
+.banner b{font-weight:600}
+.banner p{color:var(--text);grid-column:2}
+.banner .actions{grid-column:2;margin-top:6px}
+
+/* detail pane content */
+.detail{padding:20px 28px 40px;max-width:760px}
+.kicker{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;color:var(--text-secondary);margin-bottom:6px}
+.kicker .dot{width:3px;height:3px;border-radius:50%;background:currentColor;opacity:.6}
+h1.big{font-size:var(--t-title1);line-height:1.15;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.lead{font-size:var(--t-callout);line-height:1.45;margin-top:8px;text-wrap:balance;max-width:60ch}
+.note{color:var(--text-secondary);margin-top:4px;max-width:62ch;text-wrap:pretty}
+.h3{font-size:var(--t-body);font-weight:600;margin:0 0 8px}
+.h3 .n{color:var(--text-secondary);font-weight:500}
+.block{margin-top:24px}
+.deadline{display:flex;align-items:center;gap:12px;margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--need-tint)}
+.deadline svg{width:16px;height:16px;color:var(--status-need)}
+.deadline .meter{flex:1;max-width:160px;height:4px;border-radius:2px;background:color-mix(in oklab,var(--status-need) 18%, transparent);overflow:hidden}
+.deadline .meter i{display:block;height:100%;width:93%;background:var(--status-need);border-radius:2px}
+.deadline b{font-weight:600}
+
+/* screenshot frame */
+.shot{position:relative;container-type:inline-size;border-radius:8px;overflow:hidden;background:#fff;aspect-ratio:16/10;color:#111}
+.shot.wide{aspect-ratio:16/9}
+.shot::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px var(--image-outline);pointer-events:none}
+figure figcaption{display:flex;justify-content:space-between;gap:8px;font-size:var(--t-caption);color:var(--text-secondary);margin-top:6px}
+.live-badge{display:inline-flex;align-items:center;gap:5px}
+.live-badge i{width:7px;height:7px;border-radius:50%;background:var(--status-need)}
+@media (prefers-reduced-motion:no-preference){.live-badge i{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* compare (golden vs actual) */
+.compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.compare figcaption{justify-content:flex-start}
+.compare figcaption b{color:var(--text);font-weight:600}
+
+/* facts list */
+.facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px}
+.facts dt{color:var(--text-secondary)}
+.facts dd{min-width:0;overflow-wrap:anywhere}
+
+/* tokens */
+.tok{display:inline-block;vertical-align:middle;line-height:20px;height:20px;padding:0 7px;border-radius:5px;background:var(--bg-token);box-shadow:inset 0 0 0 .5px var(--border-token);font-size:var(--t-caption);font-weight:500;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.tok svg{display:inline-block;vertical-align:-1px;width:11px;height:11px;opacity:.8;margin-inline-end:4px}
+
+/* step progress list */
+.progress{display:flex;flex-direction:column}
+.progress li{display:grid;grid-template-columns:16px 18px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:28px;padding:3px 8px;border-radius:6px}
+.progress li .no{color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:end;font-size:var(--t-caption)}
+.progress li svg{width:14px;height:14px}
+.progress li .lab{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.progress li.done .lab{color:var(--text-secondary)}
+.progress li.cur{background:var(--need-tint)}
+.progress li.cur .lab{font-weight:600}
+.progress li.fail{background:var(--bad-tint)}
+.progress li.fail .lab{font-weight:600}
+.progress li.skip .lab{color:var(--text-secondary)}
+.progress .meta{font-size:var(--t-caption);color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.seg{display:flex;gap:3px;margin-top:8px}
+.seg i{flex:1;height:4px;border-radius:2px;background:var(--separator)}
+.seg i.on{background:var(--status-ok)}.seg i.cur{background:var(--status-need)}.seg i.heal{background:var(--status-heal)}
+
+/* filmstrip */
+.film{display:grid;grid-template-columns:repeat(var(--n,7),minmax(0,1fr));gap:6px}
+.film li{min-width:0}
+.film .shot{border-radius:4px}
+.film .cap{display:flex;align-items:center;gap:3px;font-size:var(--t-caption);color:var(--text-secondary);margin-top:3px;font-variant-numeric:tabular-nums}
+.film .cap svg{width:11px;height:11px}
+.film .cur .shot{box-shadow:0 0 0 2px var(--status-need)}
+.film .bad .shot{box-shadow:0 0 0 2px var(--status-bad)}
+.film .skip .shot{opacity:.45}
+
+/* disclosure */
+details.tech{margin-top:20px;border-top:1px solid var(--separator);padding-top:10px}
+details.tech summary{display:inline-flex;align-items:center;gap:6px;color:var(--text-secondary);font-weight:500;cursor:default;list-style:none;border-radius:4px}
+details.tech summary::-webkit-details-marker{display:none}
+details.tech summary svg{width:12px;height:12px}
+@media (prefers-reduced-motion:no-preference){details.tech summary svg{transition:rotate 150ms ease-out}}
+details.tech[open] summary svg{rotate:90deg}
+details.tech .code{margin-top:8px;font-family:var(--mono);font-size:var(--t-caption);color:var(--text-secondary);background:var(--bg-group);border-radius:6px;padding:8px 10px;line-height:1.6;overflow-wrap:anywhere}
+
+/* steps table */
+.steps{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.steps th{position:sticky;top:0;z-index:1;background:var(--bg-pane);height:26px;font-size:var(--t-caption);font-weight:600;color:var(--text-secondary);text-align:start;padding:0 8px;border-bottom:1px solid var(--separator)}
+.steps td{height:28px;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps tbody tr:nth-child(even) td{background:var(--bg-zebra)}
+.steps tr{position:relative}
+.steps td:first-child{border-start-start-radius:6px;border-end-start-radius:6px}
+.steps td:last-child{border-start-end-radius:6px;border-end-end-radius:6px}
+.steps .c-no{width:36px;text-align:end;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.steps .c-kind{width:32px}
+.steps .c-kind svg{width:16px;height:16px;color:var(--text-secondary)}
+.steps .c-in{width:168px}
+.steps .c-chk{width:30px}
+.steps .c-chk svg{width:14px;height:14px;color:var(--text-secondary)}
+.steps.lib td{height:30px}
+.steps.lib .c-st{width:150px}
+.steps.lib .c-last{width:150px;color:var(--text-secondary)}
+.steps.lib .c-sched{width:180px;color:var(--text-secondary)}
+.steps.lib td:first-child{font-weight:500}
+.steps .pick{all:unset;display:block;width:100%;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.steps .pick::after{content:"";position:absolute;inset:0}
+.steps tr:has(.pick:focus-visible) td{box-shadow:inset 0 2px 0 var(--focus),inset 0 -2px 0 var(--focus)}
+.steps tr:has(.pick:focus-visible) td:first-child{box-shadow:inset 2px 0 0 var(--focus),inset 0 2px 0 var(--focus),inset 0 -2px 0 var(--focus)}
+.steps tr:has(.pick:focus-visible) td:last-child{box-shadow:inset -2px 0 0 var(--focus),inset 0 2px 0 var(--focus),inset 0 -2px 0 var(--focus)}
+@media (hover:hover){.steps tbody tr:hover td{background:var(--bg-hover)}}
+.steps tbody tr.sel:nth-child(n) td{background:var(--accent);color:var(--on-accent)}
+.steps tr.sel td svg{color:var(--on-accent)}
+.steps tr.sel .tok{background:rgba(255,255,255,.2);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.35);color:#fff}
+.steps tr.sel:has(.pick:focus-visible) td{box-shadow:inset 0 2px 0 #fff,inset 0 -2px 0 #fff}
+.steps tr.sel:has(.pick:focus-visible) td:first-child{box-shadow:inset 2px 0 0 #fff,inset 0 2px 0 #fff,inset 0 -2px 0 #fff}
+.steps tr.sel:has(.pick:focus-visible) td:last-child{box-shadow:inset -2px 0 0 #fff,inset 0 2px 0 #fff,inset 0 -2px 0 #fff}
+
+/* runs table (compact) */
+.runs li{display:grid;grid-template-columns:96px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:28px;padding:2px 8px;border-radius:6px}
+.runs li:nth-child(even){background:var(--bg-zebra)}
+.runs .when{color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:end;font-size:var(--t-caption)}
+.runs .what{color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* inspector */
+.insp{padding:16px 16px 32px}
+.insp .eyebrow{font-size:var(--t-caption);color:var(--text-secondary);display:flex;align-items:center;gap:6px}
+.insp h2{font-size:var(--t-title2);font-weight:700;line-height:1.25;margin:2px 0 12px}
+.insp .facts{margin-top:14px}
+.insp hr{border:0;border-top:1px solid var(--separator);margin:20px 0 14px}
+.inputs li{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:10px;align-items:center;min-height:24px;padding:0 6px;border-radius:5px}
+.inputs li.on{background:var(--bg-control)}
+.inputs .k{color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inputs .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* popup button (native select) */
+.popup{appearance:none;-webkit-appearance:none;height:24px;padding:0 26px 0 9px;border-radius:6px;border:1px solid var(--border-button);background:var(--bg-pane) no-repeat right 7px center/9px 12px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 12'%3E%3Cpath d='M1.5 4.5 4.5 1.5l3 3M1.5 7.5l3 3 3-3' fill='none' stroke='%236E6E73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");box-shadow:var(--shadow-button);font-weight:500;cursor:default}
+.popup:disabled{opacity:.45}
+.field-inline{display:inline-flex;align-items:center;gap:8px;color:var(--text-secondary)}
+
+/* grouped settings */
+.group-h{font-size:var(--t-body);font-weight:600;margin:28px 0 8px;padding:0 2px}
+.group-h:first-child{margin-top:4px}
+.group{background:var(--bg-group);border:1px solid var(--border-group);border-radius:10px;padding:0 14px}
+.gr{display:flex;align-items:center;gap:16px;min-height:44px;padding:10px 0}
+.gr + .gr{border-top:1px solid var(--separator)}
+.gr .txt{flex:1;min-width:0}
+.gr .txt > label,.gr .txt > b,.gr .txt > span.lbl{display:block;font-weight:500}
+.gr .txt p{color:var(--text-secondary);margin-top:2px;max-width:60ch;text-wrap:pretty}
+.gr .ctl{flex:none;display:flex;align-items:center;gap:8px}
+.gr .ic{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:var(--bg-control);color:var(--text-secondary);flex:none}
+.gr .ic svg{width:16px;height:16px}
+.segmented{display:inline-flex;padding:2px;border-radius:7px;background:var(--bg-control);gap:2px;border:0}
+.segmented legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.segmented input{position:absolute;opacity:0;width:1px;height:1px}
+.segmented label{display:inline-flex;align-items:center;height:22px;padding:0 12px;border-radius:5px;font-weight:500;color:var(--text);cursor:default}
+.segmented input:checked + label{background:var(--bg-pane);box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14)}
+@media (prefers-color-scheme: dark){.segmented input:checked + label{background:#5A5A5E}}
+.segmented input:focus-visible + label{outline:2px solid var(--focus);outline-offset:1px}
+.stepper{width:52px;height:24px;border-radius:6px;border:1px solid var(--border-input);background:var(--bg-pane);padding:0 6px;text-align:end;font-variant-numeric:tabular-nums}
+.switch{position:relative;width:38px;height:22px;border-radius:11px;border:1px solid var(--border-input);background:var(--bg-control);flex:none;cursor:default;padding:0}
+.switch::after{content:"";position:absolute;top:1px;left:1px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.switch[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.switch[aria-checked="true"]::after{left:17px}
+@media (prefers-reduced-motion:no-preference){.switch::after{transition:left 150ms ease-out}.switch{transition:background-color 150ms ease-out}}
+.pill{display:inline-flex;align-items:center;gap:5px;font-weight:500}
+.pill svg{width:14px;height:14px}
+
+/* settings index (middle pane) */
+.idx a{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;text-decoration:none;color:inherit}
+.idx .ic{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:var(--bg-control);color:var(--text-secondary)}
+.idx .ic svg{width:16px;height:16px}
+.idx b{font-weight:600;display:block}
+.idx span.s{display:block;font-size:var(--t-caption);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.idx a[aria-current]{background:var(--accent);color:var(--on-accent);--glyph-mark:var(--accent)}
+.idx a[aria-current] span.s,.idx a[aria-current] .st{color:var(--on-accent)}
+.idx a[aria-current] .ic{background:rgba(255,255,255,.2);color:#fff}
+.idx a:focus-visible{outline-offset:-2px}
+.idx a[aria-current]:focus-visible{outline-color:#fff}
+@media (hover:hover){.idx a:not([aria-current]):hover{background:var(--bg-hover)}}
+.idx li+li{margin-top:2px}
+
+/* empty state */
+.empty{height:100%;display:grid;place-items:center;text-align:center;padding:32px}
+.empty .in{max-width:400px}
+.empty .bun{width:72px;height:72px;margin:0 auto 18px;filter:drop-shadow(0 8px 18px rgba(180,100,40,.25))}
+.empty h1{font-size:1.375rem;font-weight:700;line-height:1.2;letter-spacing:-.01em;text-wrap:balance}
+.empty p{color:var(--text-secondary);margin-top:8px;text-wrap:pretty}
+.empty ol{text-align:start;margin:20px auto 22px;display:grid;gap:10px;max-width:320px;counter-reset:s}
+.empty ol li{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;counter-increment:s}
+.empty ol li::before{content:counter(s);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--bg-control);font-size:var(--t-caption);font-weight:600;color:var(--text-secondary)}
+.list-empty{padding:40px 20px;text-align:center;color:var(--text-secondary)}
+.list-empty b{display:block;color:var(--text);font-weight:600;margin-bottom:4px}
+
+/* ============ Capture desktop ============ */
+.window.desktop{display:block;background:linear-gradient(150deg,#C9CED6 0%,#D8D3CB 60%,#CFC9C0 100%);resize:none}
+@media (prefers-color-scheme: dark){.window.desktop{background:linear-gradient(150deg,#22252B 0%,#2A2723 70%,#24211E 100%)}}
+.menubar{height:26px;display:flex;align-items:center;gap:18px;padding:0 14px;font-size:var(--t-body);background:rgba(246,246,246,.6);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);color:#111}
+@media (prefers-color-scheme: dark){.menubar{background:rgba(30,30,30,.6);color:#eee}}
+.menubar b{font-weight:700}
+.menubar .r{margin-inline-start:auto;display:flex;gap:14px;align-items:center;font-variant-numeric:tabular-nums}
+.menubar .r .recdot{display:inline-flex;align-items:center;gap:5px}
+.menubar .r .recdot i{width:8px;height:8px;border-radius:50%;background:var(--accent-brand)}
+.chrome{position:absolute;left:18px;top:96px;right:430px;bottom:18px;min-width:420px;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.3),0 20px 50px rgba(0,0,0,.25);display:flex;flex-direction:column;color:#1f1f1f}
+.chrome .tabs{height:40px;background:#DEE1E6;display:flex;align-items:flex-end;padding:0 10px 0 82px;position:relative;flex:none}
+.chrome .tabs .lights{top:14px;left:14px}
+.chrome .tab{height:32px;width:240px;background:#fff;border-radius:9px 9px 0 0;display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12px;white-space:nowrap;overflow:hidden}
+.chrome .tab i{width:14px;height:14px;border-radius:3px;background:#016FD0;flex:none}
+.chrome .omni{height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid #e3e3e3;flex:none}
+.chrome .omni .nav{display:flex;gap:12px;color:#5f6368}
+.chrome .omni .nav svg{width:16px;height:16px}
+.chrome .url{flex:1;height:28px;border-radius:14px;background:#F1F3F4;display:flex;align-items:center;padding:0 12px;font-size:13px;color:#202124;gap:8px;min-width:0;white-space:nowrap;overflow:hidden}
+.chrome .url svg{width:12px;height:12px;color:#5f6368}
+.chrome .prof{display:flex;align-items:center;gap:6px;height:26px;padding:0 8px 0 4px;border-radius:13px;background:#FCE8D7;font-size:12px;font-weight:600;color:#7A3A06;white-space:nowrap}
+.chrome .prof svg{width:18px;height:18px}
+.chrome .page{flex:1;min-height:0;overflow:hidden;container-type:inline-size;position:relative}
+.hud{position:absolute;top:40px;left:calc((100% - 430px) / 2 + 9px);translate:-50% 0;z-index:30;display:flex;align-items:center;gap:4px;padding:6px;border-radius:14px;background:rgba(28,28,30,.86);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 12px 32px rgba(0,0,0,.35);color:#fff;white-space:nowrap}
+.hud .rec{display:flex;align-items:center;gap:8px;padding:0 10px 0 8px;font-weight:600;font-variant-numeric:tabular-nums}
+.hud .rec i{width:10px;height:10px;border-radius:50%;background:var(--accent-brand)}
+@media (prefers-reduced-motion:no-preference){.hud .rec i{animation:pulse 1.6s ease-in-out infinite}}
+.hud .rec span{color:rgba(255,255,255,.72);font-weight:500}
+.hud .div{width:1px;height:20px;background:rgba(255,255,255,.18);margin:0 4px}
+.hud button{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 11px;border-radius:8px;border:0;background:transparent;color:#fff;font-weight:500;cursor:default}
+.hud button svg{width:15px;height:15px}
+@media (hover:hover){.hud button:hover{background:rgba(255,255,255,.12)}}
+.hud button[aria-pressed="true"]{background:rgba(255,255,255,.2)}
+.hud button.stop{background:#fff;color:#1D1D1F}
+.hud :focus-visible{outline:2px solid #F2913F;outline-offset:1px}
+.baowin{position:absolute;right:18px;top:52px;max-height:calc(100% - 70px);width:400px;border-radius:12px;overflow:hidden;background:var(--bg-pane);box-shadow:var(--shadow-window);display:flex;flex-direction:column;container:baowin/inline-size}
+.baowin .bar{padding-left:84px}
+.baowin .lights{top:20px}
+.cap-body{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 16px 16px;overscroll-behavior:contain}
+.namefield{display:grid;gap:4px;margin-bottom:12px}
+.namefield label{font-size:var(--t-caption);color:var(--text-secondary);font-weight:500}
+.namefield input{height:30px;border-radius:7px;border:1px solid var(--border-input);background:var(--bg-pane);padding:0 9px;font-size:var(--t-body);font-weight:600}
+.cap-where{display:flex;align-items:center;gap:6px;color:var(--text-secondary);margin-bottom:12px;font-size:var(--t-caption)}
+.cap-where svg{width:13px;height:13px}
+.stream li{display:grid;grid-template-columns:20px 18px minmax(0,1fr) auto;gap:8px;align-items:start;padding:6px 8px;border-radius:7px}
+.stream li:nth-child(even){background:var(--bg-zebra)}
+.stream .no{color:var(--text-secondary);text-align:end;font-variant-numeric:tabular-nums;font-size:var(--t-caption);padding-top:1px}
+.stream svg.k{width:16px;height:16px;color:var(--text-secondary)}
+.stream .lab{font-weight:500}
+.stream .sub{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:3px;color:var(--text-secondary);font-size:var(--t-caption)}
+.stream .mask{font-family:var(--mono);letter-spacing:.08em;color:var(--text)}
+.stream li.new{background:var(--bg-control)}
+.stream .just{font-size:var(--t-caption);color:var(--text-secondary);white-space:nowrap}
+@media (prefers-reduced-motion:no-preference){.stream li.new{animation:enter 300ms ease-out both}}
+@media (prefers-reduced-motion:reduce){.stream li.new{animation:fade 300ms ease-out both}}
+@keyframes enter{from{opacity:0;translate:0 12px;filter:blur(4px)}to{opacity:1;translate:0 0;filter:blur(0)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.stream li.wait{background:transparent;border:1px dashed var(--border-button);color:var(--text-secondary)}
+.dots{display:inline-flex;gap:3px;align-items:center;height:16px}
+.dots i{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.5}
+@media (prefers-reduced-motion:no-preference){.dots i{animation:pulse 1.2s ease-in-out infinite}.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}}
+.cap-foot{flex:none;border-top:1px solid var(--separator);padding:10px 16px;display:flex;align-items:center;gap:8px}
+.cap-foot p{flex:1;font-size:var(--t-caption);color:var(--text-secondary);display:flex;gap:6px;align-items:center;min-width:0}
+.cap-foot p svg{width:13px;height:13px}
+
+/* ============ Faked web pages (screenshots) ============ */
+.web{position:absolute;inset:0;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:calc(100cqw / 52);line-height:1.3;color:#1a1a1a;background:#fff;overflow:hidden}
+.web *{box-sizing:border-box}
+.w-top{height:3.4em;display:flex;align-items:center;gap:2.2em;padding:0 2em;font-size:1em}
+.w-logo{font-weight:800;letter-spacing:.18em;font-size:1.15em}
+.w-av{margin-inline-start:auto;width:1.8em;height:1.8em;border-radius:50%;background:#ccc}
+.w-btn{display:inline-flex;align-items:center;justify-content:center;height:2.6em;padding:0 1.6em;border-radius:.3em;font-weight:700;font-size:1em;white-space:nowrap}
+.w-in{height:2.8em;border:1px solid #9aa0a6;border-radius:.3em;display:flex;align-items:center;padding:0 .8em;background:#fff}
+.w-lbl{font-size:.85em;color:#5f6368;margin:1em 0 .35em}
+.w-bar{height:.7em;border-radius:.35em;background:#e6e6e6}
+.hl{position:relative;outline:.28em solid var(--hl,#0066D6);outline-offset:.35em;border-radius:.3em}
+.hl.dash{outline-style:dashed}
+.callout{position:absolute;white-space:nowrap;font:600 1em/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#fff;background:var(--hl,#0066D6);padding:.45em .7em;border-radius:.4em;z-index:2}
+.web-scale{font-size:calc(100cqw / 52)}
+/* equinox */
+.eqx .w-top{background:#000;color:#fff}
+.eqx{display:flex;flex-direction:column}
+.eqx > .w-top{flex:none}
+.eqx-body{flex:1;display:grid;grid-template-columns:30% 1fr;gap:2.4em;padding:2.4em;align-content:center;align-items:center}
+.eqx-side .w-in{border-color:#bbb}
+.eqx-card{border:1px solid #e2e2e2;border-radius:.4em;padding:1.8em 2em;position:relative}
+.eqx-kicker{font-size:.8em;letter-spacing:.16em;color:#777;font-weight:700}
+.eqx-title{font-size:2.3em;font-weight:800;letter-spacing:-.01em;margin:.2em 0 .35em}
+.eqx-card p{color:#444;margin-top:.3em}
+.eqx-spots{display:inline-block;margin:1.2em 0 1.6em;font-weight:700;color:#1a7f37;font-size:.95em}
+.eqx-list li{display:flex;justify-content:space-between;align-items:center;padding:1em 0;border-bottom:1px solid #eee}
+/* gcp */
+.gcp .w-top{border-bottom:1px solid #dadce0;gap:1.2em;height:3.6em}
+.gcp .proj{border:1px solid #dadce0;border-radius:.3em;padding:.35em .8em;font-size:.9em}
+.gcp .srch{flex:1;max-width:22em;height:2.3em;border-radius:.4em;background:#f1f3f4}
+.gcp-body{display:grid;grid-template-columns:24% 1fr;height:calc(100% - 3.6em)}
+.gcp-nav{border-right:1px solid #dadce0;padding:1.4em 1.2em;font-size:.95em;color:#3c4043}
+.gcp-nav b{display:block;font-size:1em;margin-bottom:1em;color:#202124}
+.gcp-nav div{padding:.55em .8em;border-radius:0 1.4em 1.4em 0;margin-left:-1.2em;padding-left:1.2em}
+.gcp-nav .on{background:#e8f0fe;color:#1967d2;font-weight:700}
+.gcp-main{padding:1.6em 2.4em}
+.gcp-main h4{font-size:1.6em;font-weight:400;color:#202124}
+.gcp-step{display:flex;align-items:center;gap:.7em;margin:1.2em 0 .6em;font-weight:700}
+.gcp-step i{width:1.7em;height:1.7em;border-radius:50%;background:#1a73e8;color:#fff;display:grid;place-items:center;font-style:normal;font-size:.85em}
+.gcp .w-in{max-width:26em}
+.gcp .blue{background:#1a73e8;color:#fff;margin-top:1.6em}
+/* coned */
+.coned .w-top{background:#0B4EA2;color:#fff}
+.coned-tabs{display:flex;gap:2.4em;padding:0 2em;border-bottom:1px solid #ddd;font-size:.95em}
+.coned-tabs span{padding:1em 0}
+.coned-tabs .on{border-bottom:.25em solid #0B4EA2;font-weight:700}
+.coned-card{margin:2em;border:1px solid #ddd;border-radius:.4em;padding:1.6em 2em;max-width:30em}
+.coned-card .amt{font-size:2.6em;font-weight:800;margin:.15em 0}
+.coned-card .w-btn{background:#0B4EA2;color:#fff;margin-top:1.2em}
+.coned-new .w-top{background:#fff;color:#0B4EA2;border-bottom:1px solid #ddd}
+.coned-banner{background:#FFF4CE;padding:.9em 2em;font-size:.95em;border-bottom:1px solid #f0e2a8}
+.coned-new-body{display:grid;grid-template-columns:28% 1fr;gap:2em;padding:2em}
+.coned-new-body .side div{padding:.6em 0;color:#333}
+.coned-new-body .side .on{font-weight:700;color:#0B4EA2}
+.coned-tile{border-radius:.6em;background:#F3F7FC;padding:1.6em}
+.coned-tile .amt{font-size:2.4em;font-weight:800;margin:.2em 0}
+.coned-tile a{color:#0B4EA2;font-weight:700;text-decoration:underline}
+.missing{position:absolute;border:.25em dashed #D70015;border-radius:.5em;display:grid;place-items:center}
+/* chase */
+.chase .w-top{background:#117ACA;color:#fff}
+.chase-body{display:grid;grid-template-columns:26% 1fr;height:calc(100% - 3.4em)}
+.chase-nav{background:#F4F6F8;padding:1.6em 1.2em;display:flex;flex-direction:column;gap:.2em}
+.chase-nav div{padding:.65em .8em;border-radius:.3em;font-size:.95em;color:#333}
+.chase-main{padding:1.8em 2em}
+.chase-main h4{font-size:1.4em;font-weight:700;margin-bottom:1em}
+.chase-acct{border:1px solid #e1e5ea;border-radius:.4em;padding:1.2em 1.4em;margin-bottom:1em;display:flex;justify-content:space-between}
+.chase-acct b{font-size:1.2em}
+.chase-new .chase-body{grid-template-columns:1fr}
+.chase-topnav{display:flex;gap:2em;padding:0 2em;background:#fff;border-bottom:1px solid #e1e5ea;font-size:.95em;position:relative}
+.chase-topnav span{padding:1em 0}
+.chase-topnav .on{font-weight:700;color:#117ACA}
+.chase-menu{position:absolute;left:1.4em;top:3.2em;width:18em;background:#fff;border-radius:.4em;box-shadow:0 .4em 1.6em rgba(0,0,0,.18);padding:.6em;z-index:2}
+.chase-menu div{padding:.65em .8em;border-radius:.3em}
+/* amex */
+.amex .w-top{background:#016FD0;color:#fff;height:3.6em}
+.amex-nav{display:flex;gap:2.2em;padding:0 2em;border-bottom:1px solid #e0e0e0;font-size:.95em}
+.amex-nav span{padding:1em 0}
+.amex-nav .on{font-weight:700;border-bottom:.22em solid #016FD0}
+.amex-main{padding:1.8em 2em}
+.amex-main h4{font-size:1.7em;font-weight:700}
+.amex-filters{display:flex;gap:.8em;margin:1.1em 0 1.2em}
+.amex-filters span{border:1px solid #bbb;border-radius:1.4em;padding:.45em 1.1em;font-size:.9em}
+.amex-table{width:100%;border-collapse:collapse;font-size:1em}
+.amex-table th{text-align:left;font-size:.85em;color:#666;font-weight:700;padding:.6em .8em;border-bottom:2px solid #ddd}
+.amex-table td{padding:.75em .8em;border-bottom:1px solid #eee}
+.amex-table td:last-child,.amex-table th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.pickwrap{position:relative;outline:.22em dashed var(--accent-brand);outline-offset:.5em;border-radius:.2em;background:rgba(232,129,58,.06)}
+.pickwrap .callout{--hl:#B9520A;top:-2.6em;right:0;font-size:.95em}
+/* generic mini page */
+.mini .w-top{height:4em}
+.mini-body{padding:1.8em 2em;display:grid;gap:1em}
+.mini-body .w-bar{height:1.2em}
+.mini-body .box{height:6em;border-radius:.5em;background:#f0f0f0}
+
+/* ============ Responsive (container = window) ============ */
+@container win (max-width: 1060px){
+  .sidebar{position:absolute;left:0;top:0;bottom:0;translate:-100% 0;visibility:hidden;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+  .window.side-open .sidebar{translate:0 0;visibility:visible;background:var(--bg-pane)}
+  .tb.sidebar-toggle,.tb.side-close{display:inline-flex}
+  .pane:first-child .bar{padding-left:78px}
+  .window.side-open .lights{z-index:30}
+  :root{--list-w:280px}
+  .pane-list{width:280px}
+  .pane-insp{width:300px}
+}
+@container win (max-width: 820px){
+  .pane-list{width:296px}
+  .detail{padding:18px 20px 36px}
+  .compare{grid-template-columns:minmax(0,1fr)}
+  .split{grid-template-columns:minmax(0,1fr) !important}
+  .hide-narrow{display:none !important}
+  .panes.has-insp{flex-direction:column;overflow:auto}
+  .panes.has-insp .pane{min-height:auto}
+  .panes.has-insp .pane-insp{width:auto;border-left:0;border-top:1px solid var(--separator)}
+  .panes.has-insp .scroll{overflow:visible}
+  .steps .c-in{width:120px}
+}
+@container win (max-width: 600px){
+  .pane-list{display:none}
+  .pane-list + .pane-detail .bar{padding-left:78px}
+}
+@container baowin (max-width: 340px){.cap-foot p{display:none}}
+@container win (max-width: 1000px){
+  .chrome{right:18px}
+  .baowin{width:360px}
+  .hud{left:50%}
+}
+
+/* dialog */
+dialog.confirm{margin:auto;border:0;border-radius:12px;padding:20px;width:320px;background:var(--bg-pane);color:var(--text);box-shadow:0 0 0 .5px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.3);text-align:center}
+dialog.confirm::backdrop{background:rgba(0,0,0,.2)}
+dialog.confirm .bun{width:48px;height:48px;margin:0 auto 10px}
+dialog.confirm h2{font-size:var(--t-body);font-weight:700}
+dialog.confirm p{margin-top:6px;color:var(--text-secondary);font-size:var(--t-caption);text-wrap:pretty}
+dialog.confirm .actions{display:grid;gap:8px;margin-top:16px}
+dialog.confirm .btn{width:100%}
+dialog.confirm .btn.danger{background:var(--status-bad);border-color:var(--status-bad);color:#fff}
+.toast{position:absolute;left:50%;bottom:20px;translate:-50% 0;background:rgba(30,30,32,.9);color:#fff;border-radius:10px;padding:8px 14px;font-weight:500;z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.toast:empty{display:none}
+</style>
+</head>
+<body>
+<a class="skip" href="#win">Skip to the Bao window</a>
+
+<nav class="switcher" aria-label="Mock screens, not part of the design">
+  <span class="lbl" aria-hidden="true">mock</span>
+  <a href="?screen=home" data-nav="home">home</a>
+  <a href="?screen=workflow&amp;view=library" data-nav="workflows">workflows list</a>
+  <a href="?screen=workflow" data-nav="workflow">workflow</a>
+  <a href="?screen=run-live" data-nav="run-live">run-live</a>
+  <a href="?screen=run-failed" data-nav="run-failed">run-failed</a>
+  <a href="?screen=heal" data-nav="heal">heal</a>
+  <a href="?screen=capture" data-nav="capture">capture</a>
+  <a href="?screen=settings" data-nav="settings">settings</a>
+  <span class="sep" aria-hidden="true"></span>
+  <button type="button" id="t-empty" aria-pressed="false">new user</button>
+  <button type="button" id="t-narrow" aria-pressed="false">720 px</button>
+</nav>
+
+<main id="stage" style="display:contents">
+  <div class="window" id="win" role="region" aria-label="Bao" tabindex="-1"></div>
+</main>
+
+<dialog class="confirm" id="confirm" aria-labelledby="c-title" aria-describedby="c-body">
+  <form method="dialog">
+    <div class="bun" aria-hidden="true" data-bun></div>
+    <h2 id="c-title"></h2>
+    <p id="c-body"></p>
+    <div class="actions">
+      <button class="btn danger" value="ok" id="c-ok"></button>
+      <button class="btn" value="cancel" autofocus>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/* ============ Brand mark (from mockups/icons/icon-final.html) ============ */
+let bunN = 0;
+function bun(cls='bun'){
+  const id = 'b' + (bunN++);
+  return `<svg class="${cls}" viewBox="0 0 100 100" aria-hidden="true">
+<defs><linearGradient id="${id}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient>
+<radialGradient id="${id}d" cx="42%" cy="32%" r="78%"><stop offset="0" stop-color="#FFFDF8"/><stop offset="66%" stop-color="#FFF1DE"/><stop offset="100%" stop-color="#F8DEBE"/></radialGradient></defs>
+<rect x="4" y="4" width="92" height="92" rx="24" fill="url(#${id}g)"/>
+<g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27 C39.2 24.3 42.8 23 41 20.3"/><path d="M50 26 C48.2 23.3 51.8 22 50 19.3"/><path d="M59 27 C57.2 24.3 60.8 23 59 20.3"/></g>
+<path d="M50 34 C70 34 79 48 79 62 C79 78 65 84 50 84 C35 84 21 78 21 62 C21 48 30 34 50 34Z" fill="url(#${id}d)" stroke="#EBD3B2" stroke-width="1.4"/>
+<ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2" stroke-width="1"/>
+<path d="M36 60 Q41 52.5 46 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+<path d="M54 60 Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+<path d="M44 72 Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>`;
+}
+
+/* ============ Icons (16px grid, 1.5 stroke, currentColor) ============ */
+function gearD(){
+  const n=8, ro=7, ri=5.3, cx=8, cy=8, step=Math.PI*2/n, w=step*0.2;
+  let p=[];
+  for(let i=0;i<n;i++){
+    const a=i*step-Math.PI/2;
+    [[ri,a-w*1.7],[ro,a-w],[ro,a+w],[ri,a+w*1.7]].forEach(([r,t])=>p.push([cx+r*Math.cos(t),cy+r*Math.sin(t)]));
+  }
+  return 'M'+p.map(q=>q.map(v=>v.toFixed(2)).join(' ')).join('L')+'Z';
+}
+const SV = (d, extra='') => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+const I = {
+  workflows: SV('<rect x="2.25" y="2.25" width="11.5" height="4.5" rx="1.25"/><rect x="2.25" y="9.25" width="11.5" height="4.5" rx="1.25"/><path d="M5 4.5h3.5M5 11.5h5"/>'),
+  history: SV('<circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/>'),
+  settings: SV(`<path d="${gearD()}"/><circle cx="8" cy="8" r="2"/>`),
+  record: `<svg class="rec" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3.6" fill="currentColor"/></svg>`,
+  search: SV('<circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/>'),
+  sidebar: SV('<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 2.75v10.5"/>'),
+  back: SV('<path d="M10 3 5 8l5 5"/>'),
+  chev: SV('<path d="m6 3.5 4.5 4.5L6 12.5"/>'),
+  more: SV('<circle cx="3.5" cy="8" r=".6" fill="currentColor"/><circle cx="8" cy="8" r=".6" fill="currentColor"/><circle cx="12.5" cy="8" r=".6" fill="currentColor"/>'),
+  play: SV('<path d="M4.75 3.2v9.6a.5.5 0 0 0 .76.43l7.7-4.8a.5.5 0 0 0 0-.86l-7.7-4.8a.5.5 0 0 0-.76.43Z" fill="currentColor" stroke="none"/>'),
+  pause: SV('<path d="M5.5 3.5v9M10.5 3.5v9"/>'),
+  stop: SV('<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>'),
+  clock: SV('<circle cx="8" cy="8" r="5.75"/><path d="M8 5v3h2.5"/>'),
+  globe: SV('<circle cx="8" cy="8" r="5.75"/><path d="M2.25 8h11.5M8 2.25c1.6 1.6 2.4 3.5 2.4 5.75S9.6 12.15 8 13.75C6.4 12.15 5.6 10.25 5.6 8S6.4 3.85 8 2.25Z"/>'),
+  click: SV('<path d="M4.5 2.5v9.25l2.4-2.3 1.75 4 1.7-.75-1.75-3.95 3.4-.3Z"/>'),
+  type: SV('<rect x="1.75" y="4" width="12.5" height="8" rx="1.75"/><path d="M4.5 6.75h.01M7 6.75h.01M9.5 6.75h.01M12 6.75h.01M5.5 9.5h5"/>'),
+  select: SV('<path d="m2.25 4.25 1.25 1.25 2.25-2.5M8 4.25h5.75M8 8.25h5.75M8 12.25h5.75"/><circle cx="3.75" cy="8.25" r=".9" fill="currentColor" stroke="none"/><circle cx="3.75" cy="12.25" r=".9" fill="currentColor" stroke="none"/>'),
+  check: SV('<path d="M1.75 8s2.25-4.25 6.25-4.25S14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8Z"/><circle cx="8" cy="8" r="1.75"/>'),
+  person: SV('<circle cx="8" cy="5.25" r="2.5"/><path d="M3 13.5c.55-2.5 2.5-3.9 5-3.9s4.45 1.4 5 3.9"/>'),
+  download: SV('<path d="M8 2.5v7.25M5 7l3 3 3-3M2.75 11v1.25a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V11"/>'),
+  table: SV('<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75"/><path d="M1.75 6.25h12.5M1.75 9.75h12.5M6.25 6.25v7"/>'),
+  lock: SV('<rect x="3.25" y="7" width="9.5" height="6.75" rx="1.5"/><path d="M5.25 7V5.25a2.75 2.75 0 0 1 5.5 0V7"/>'),
+  open: SV('<path d="M9 2.75h4.25V7M13.25 2.75 7.5 8.5M11.5 9.5v2.75a1 1 0 0 1-1 1h-6.75a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1H6.5"/>'),
+  redo: SV('<path d="M12.5 5.5A5.25 5.25 0 1 0 13 9"/><path d="M13 2.5v3.25H9.75"/>'),
+  rerecord: SV('<circle cx="8" cy="8" r="5.75"/><circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none"/>'),
+  folder: SV('<path d="M1.75 4.5a1.25 1.25 0 0 1 1.25-1.25h3l1.5 1.5H13a1.25 1.25 0 0 1 1.25 1.25v6.25A1.25 1.25 0 0 1 13 13.5H3a1.25 1.25 0 0 1-1.25-1.25Z"/>'),
+  key: SV('<circle cx="5.25" cy="10.75" r="2.5"/><path d="m7 9 6-6M11 5l1.5 1.5M9.5 6.5 11 8"/>'),
+  hand: SV('<path d="M5.25 8.5V3.75a1 1 0 0 1 2 0V7.5M7.25 7V2.75a1 1 0 0 1 2 0V7M9.25 7V3.75a1 1 0 0 1 2 0v4.5M11.25 6.5a1 1 0 0 1 2 0v2.75a4.75 4.75 0 0 1-4.75 4.75h-.4a4.1 4.1 0 0 1-3.3-1.66L2.9 9.85a1 1 0 0 1 1.5-1.3l.85.95"/>'),
+  remote: SV('<rect x="2.25" y="2.75" width="11.5" height="7.5" rx="1.5"/><path d="M5.5 13.25h5M8 10.25v3"/>'),
+  sparkle: SV('<path d="M8 2.25 9.3 6.7l4.45 1.3-4.45 1.3L8 13.75 6.7 9.3 2.25 8l4.45-1.3Z"/>'),
+  runs: SV('<path d="M3 4.5h10M3 8h10M3 11.5h6"/>'),
+  plus: SV('<path d="M8 3.5v9M3.5 8h9"/>'),
+  eye: SV('<path d="M1.75 8s2.25-4.25 6.25-4.25S14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8Z"/><circle cx="8" cy="8" r="1.75"/>'),
+  reload: SV('<path d="M13 8a5 5 0 1 1-1.46-3.54M13 2.75v2.5h-2.5"/>'),
+  arrowR: SV('<path d="M3 8h10M9 4l4 4-4 4"/>'),
+  trash: SV('<path d="M3 4.5h10M6.25 4.5V3h3.5v1.5M4.5 4.5l.6 8.25a1 1 0 0 0 1 .93h3.8a1 1 0 0 0 1-.93l.6-8.25"/>'),
+};
+/* status glyphs: filled shape + mark; color comes from the .st class */
+const G = {
+  ok: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path class="g-mark" d="m4 7.2 2 2 4-4.4"/></svg>`,
+  heal: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path class="g-mark" d="M7 3.9v6.2M3.9 7h6.2" stroke-width="1.8"/></svg>`,
+  prov: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 .8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/></svg>`,
+  need: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path class="g-mark" d="M5.4 4.4v5.2M8.6 4.4v5.2" stroke-width="1.8"/></svg>`,
+  bad: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path class="g-mark" d="m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" stroke-width="1.7"/></svg>`,
+  warn: `<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path class="g-mark" d="M7 5v3.2" stroke-width="1.6"/><circle class="g-markfill" cx="7" cy="10.4" r=".9"/></svg>`,
+  quiet: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path class="g-mark" d="M7 3.8V7l2.2 1.4"/></svg>`,
+  run: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".35"/><path d="M7 .8A6.2 6.2 0 0 1 13.2 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  pending: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".55"/></svg>`,
+  skip: `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2.2" opacity=".7"/></svg>`,
+};
+const WORD = {ok:'Passed', heal:'Healed', prov:'Provisional', need:'Needs you', bad:'Failed', warn:"Can't open", quiet:'No answer', run:'Running'};
+const st = (k, word=WORD[k]) => `<span class="st ${k}">${G[k]}${word}</span>`;
+const wd = (k, word=WORD[k]) => `<span class="st ${k}">${word}</span>`;
+const gl = (k) => `<span class="gl st ${k}">${G[k]}</span>`;
+
+/* ============ Data ============ */
+const LIB = [
+  {k:'equinox', name:'Book Equinox class', s:'need', last:'Today, 7:10 PM', sched:'Thursdays at 7 PM', to:'run-live'},
+  {k:'coned', name:'Con Edison - download last bill', s:'bad', last:'Today, 6:02 PM', sched:'Monthly on the 5th', to:'run-failed'},
+  {k:'agent', name:'agent-browser', s:'ok', last:'Today, 6:00 PM', sched:'When an agent asks', to:'workflow'},
+  {k:'stripe', name:'Export Stripe payouts to CSV', s:'ok', last:'Today, 5:30 PM', sched:'Weekdays at 5:30 PM', to:'workflow'},
+  {k:'chase', name:'Download Chase statement', s:'heal', last:'Today, 4:05 PM', sched:'Monthly on the 5th', to:'heal'},
+  {k:'instacart', name:'Instacart: Costco Kirkland organic blueberries', s:'ok', last:'Nov 3, 10:14 AM', sched:'Tuesdays at 10 AM', to:'workflow'},
+  {k:'uscis', name:'File USCIS case status check', s:'ok', last:'Nov 2, 9:00 AM', sched:'Mondays at 9 AM', to:'workflow'},
+  {k:'oauth', name:'Set up Google OAuth for 五秒', s:'ok', last:'Nov 1, 9:35 PM', sched:'No schedule', to:'workflow'},
+  {k:'oauthprod', name:'Create production Google OAuth client for 五秒', s:'quiet', last:'Nov 1, 7:08 PM', sched:'No schedule', to:'workflow'},
+  {k:'dmv', name:'Renew CA vehicle registration', s:'ok', last:'Oct 12, 10:02 AM', sched:'Yearly in October', to:'workflow'},
+];
+
+const OAUTH_INPUTS = [
+  ['App name','五秒'],['Support email','owner@example.com'],['Audience','External'],['Contact email','owner@example.com'],
+  ['Home page','https://example.com'],['Privacy policy link','https://example.com/privacy'],['Terms link','https://example.com/terms'],
+  ['Authorized domain','example.com'],['Client type','Web application'],['Client name','五秒 web'],['Redirect link','https://example.com/auth/callback'],
+];
+const OAUTH_STEPS = [
+  {kind:'click', label:'Click “Get started”', finds:'The “Get started” button', sel:'role=button name="Get started"'},
+  {kind:'type', label:'Type the app name', input:'App name', finds:'The “App name” box', sel:'role=textbox name="App name" id=_0rif_mat-input-0'},
+  {kind:'click', label:'Open “User support email”', finds:'The “User support email” menu', sel:'role=combobox name="User support email" id=_0rif_cfc-select-0'},
+  {kind:'select', label:'Pick the support email', input:'Support email', finds:'The email in that menu', sel:'role=option name="owner@example.com" id=_0rif_mat-option-0'},
+  {kind:'select', label:'Pick the audience', input:'Audience', finds:'The “Audience” choices', sel:'role=radio name="External"'},
+  {kind:'type', label:'Type the contact email', input:'Contact email', finds:'The “Email addresses” box', sel:'role=textbox name="Email addresses"'},
+  {kind:'type', label:'Type the home page', input:'Home page', finds:'The “Application home page” box', sel:'role=textbox name="Application home page"'},
+  {kind:'type', label:'Type the privacy policy link', input:'Privacy policy link', finds:'The “Privacy policy link” box', sel:'role=textbox name="Application privacy policy link"'},
+  {kind:'type', label:'Type the terms link', input:'Terms link', finds:'The “Terms of service link” box', sel:'role=textbox name="Application terms of service link"'},
+  {kind:'type', label:'Type the authorized domain', input:'Authorized domain', finds:'The “Authorized domain 1” box', sel:'role=textbox name="Authorized domain 1"'},
+  {kind:'select', label:'Pick the client type', input:'Client type', finds:'The “Application type” menu', sel:'role=combobox name="Application type"'},
+  {kind:'type', label:'Type the client name', input:'Client name', finds:'The “Name” box', sel:'role=textbox name="Name"'},
+  {kind:'type', label:'Type the redirect link', input:'Redirect link', finds:'The “URIs 1” box under redirect links', sel:'role=textbox name="URIs 1"'},
+  {kind:'click', label:'Click “Create”', finds:'The “Create” button', sel:'role=button name="Create"', check:'The page shows “OAuth client created”'},
+];
+const KIND = {click:['click','Click'], type:['type','Type'], select:['select','Pick'], check:['check','Check'], wait:['person','Wait for you'], download:['download','Download'], table:['table','Extract table'], open:['globe','Open page']};
+
+/* ============ Faked web pages ============ */
+function wEquinox(o={}){
+  return `<div class="web eqx">
+  <div class="w-top"><span class="w-logo">EQUINOX</span><span>Classes</span><span>Clubs</span><span>Training</span><span class="w-av"></span></div>
+  <div class="eqx-body">
+    <div class="eqx-side">
+      <div class="w-lbl" style="margin-top:0">Club</div><div class="w-in">Hudson Yards</div>
+      <div class="w-lbl">Date</div><div class="w-in">Thu, Nov 12</div>
+      <div class="w-lbl">Class</div><div class="w-in">Precision Run</div>
+    </div>
+    <div class="eqx-card">
+      <div class="eqx-kicker">CARDIO · 45 MIN</div>
+      <div class="eqx-title">Precision Run</div>
+      <p>Thursday, Nov 12 · 7:00 to 7:45 AM</p>
+      <p>Hudson Yards · Studio 2 · with Dee M.</p>
+      <div class="eqx-spots">3 spots left</div><br>
+      <span class="w-btn ${o.hl?'hl':''}" style="background:#000;color:#fff;--hl:#0066D6">Reserve${o.hl?`<span class="callout" style="left:calc(100% + 1.6em);top:50%;translate:0 -50%">Press this yourself</span>`:''}</span>
+    </div>
+  </div></div>`;
+}
+function wEquinoxList(n=0){
+  const rows = ['Precision Run · 7:00 AM','Pilates Reformer · 7:30 AM','Cycle · 8:00 AM','Barre · 8:30 AM','Yoga Flow · 9:00 AM'];
+  return `<div class="web eqx"><div class="w-top"><span class="w-logo">EQUINOX</span><span>Classes</span><span>Clubs</span><span class="w-av"></span></div>
+  <div style="padding:2em 2.4em"><div style="font-size:1.6em;font-weight:800;margin-bottom:.6em">Thursday, Nov 12</div>
+  <ul class="eqx-list">${rows.map((r,i)=>`<li style="${i===0&&n>3?'background:#f3f3f3':''}"><span>${r}</span><span class="w-btn" style="height:2em;padding:0 1em;border:1px solid #000">View</span></li>`).join('')}</ul></div></div>`;
+}
+function wGcp(o={}){
+  return `<div class="web gcp">
+  <div class="w-top"><span style="font-size:1.3em">≡</span><b style="font-size:1.15em;color:#5f6368">Google Cloud</b><span class="proj">Chinglish AI ▾</span><span class="srch"></span><span class="w-av" style="background:#E8813A"></span></div>
+  <div class="gcp-body">
+    <div class="gcp-nav"><b>Google Auth Platform</b><div>Overview</div><div class="on">Branding</div><div>Audience</div><div>Clients</div><div>Data access</div></div>
+    <div class="gcp-main">
+      <h4>Project configuration</h4>
+      <div class="gcp-step"><i>1</i>App information</div>
+      <div class="w-lbl">App name *</div>
+      <div class="w-in ${o.hl==='name'?'hl':''}" style="--hl:${o.color||'#B9520A'}">五秒</div>
+      <div class="w-lbl">User support email *</div>
+      <div class="w-in ${o.hl==='email'?'hl':''}" style="justify-content:space-between;--hl:${o.color||'#B9520A'}">owner@example.com <span>▾</span></div>
+      <span class="w-btn blue">Next</span>
+    </div>
+  </div></div>`;
+}
+function wConEd(o={}){
+  return `<div class="web coned">
+  <div class="w-top"><span class="w-logo" style="letter-spacing:0;font-size:1.3em">conEdison</span><span>My Account</span><span class="w-av" style="background:#ffffff55"></span></div>
+  <div class="coned-tabs"><span>Overview</span><span class="on">Billing &amp; Payments</span><span>Usage</span><span>Outages</span></div>
+  <div class="coned-card">
+    <div style="color:#555">October bill · account ••• XXXX</div>
+    <div class="amt">$84.12</div>
+    <div style="color:#555">Due November 20</div>
+    <span class="w-btn ${o.hl?'hl dash':''}" style="--hl:#3A3A3C">Download bill (PDF)</span>
+  </div></div>`;
+}
+function wConEdNew(o={}){
+  return `<div class="web coned coned-new">
+  <div class="w-top"><span class="w-logo" style="letter-spacing:0;font-size:1.3em">conEdison</span><span>Bills</span><span>Usage</span><span>Help</span><span class="w-av"></span></div>
+  <div class="coned-banner">We’ve updated My Account. Some things have moved.</div>
+  <div class="coned-new-body">
+    <div class="side"><div class="on">Bills</div><div>Payments</div><div>AutoPay</div><div>Paperless</div></div>
+    <div style="position:relative">
+      <div class="coned-tile"><div style="color:#555">Your bill</div><div class="amt">$84.12</div><div style="color:#555">Due Nov 20</div>
+      <div style="margin-top:1.2em;display:flex;gap:1.6em;align-items:center"><span class="w-btn" style="background:#0B4EA2;color:#fff">Pay bill</span><a>View bill</a></div></div>
+      ${o.miss?`<div class="missing" style="left:0;right:24%;bottom:-6.2em;height:4.2em"><span class="callout" style="position:static;--hl:#D70015">No “Download bill (PDF)” here</span></div>`:''}
+    </div>
+  </div></div>`;
+}
+function wChase(o={}){
+  return `<div class="web chase">
+  <div class="w-top"><span class="w-logo">CHASE</span><span class="w-av" style="background:#ffffff55"></span></div>
+  <div class="chase-body">
+    <div class="chase-nav"><div style="font-weight:700">Accounts</div><div>Pay &amp; transfer</div><div>Plan &amp; track</div>
+      <div class="${o.hl?'hl dash':''}" style="--hl:#3A3A3C">Statements &amp; documents</div><div>Profile</div></div>
+    <div class="chase-main"><h4>Accounts</h4>
+      <div class="chase-acct"><span>Total Checking (…XXXX)</span><b>$4,212.08</b></div>
+      <div class="chase-acct"><span>Sapphire Preferred (…XXXX)</span><b>$1,036.55</b></div>
+    </div>
+  </div></div>`;
+}
+function wChaseNew(o={}){
+  return `<div class="web chase chase-new">
+  <div class="w-top"><span class="w-logo">CHASE</span><span class="w-av" style="background:#ffffff55"></span></div>
+  <div class="chase-topnav"><span class="on">Accounts ▾</span><span>Pay &amp; transfer</span><span>Plan &amp; track</span><span>Explore</span>
+    <div class="chase-menu"><div>Account summary</div><div class="${o.hl?'hl':''}" style="--hl:#0A7EA4;font-weight:700">Statements &amp; documents</div><div>Activity</div><div>Account services</div></div>
+  </div>
+  <div class="chase-main" style="padding-top:1.2em;padding-left:22em"><h4>Accounts</h4>
+    <div class="chase-acct"><span>Total Checking (…XXXX)</span><b>$4,212.08</b></div>
+    <div class="chase-acct"><span>Sapphire (…XXXX)</span><b>$1,036.55</b></div>
+  </div></div>`;
+}
+function wMini(color, title){
+  return `<div class="web mini"><div class="w-top" style="background:${color}"></div><div class="mini-body"><div class="w-bar" style="width:55%;background:#ccc"></div><div class="box"></div><div class="w-bar" style="width:80%"></div><div class="w-bar" style="width:40%"></div></div></div>`;
+}
+function wAmex(){
+  const rows = [['Nov 4','Blue Bottle Coffee','$6.50'],['Nov 4','Whole Foods Market','$82.17'],['Nov 3','MTA*NYCT Paygo','$2.90'],['Nov 3','Con Edison','$84.12'],['Nov 2','Uber Trip','$23.41'],['Nov 1','Spotify USA','$11.99'],['Oct 31','Trader Joe’s #540','$47.62'],['Oct 30','Equinox Hudson Yards','$260.00'],['Oct 30','Delta Air Lines','$318.20']];
+  return `<div class="web amex" style="font-size:calc(100cqw / 62)">
+  <div class="w-top"><span class="w-logo" style="font-size:1em;letter-spacing:.12em;line-height:1.05">AMERICAN<br>EXPRESS</span><span class="w-av" style="background:#ffffff55"></span></div>
+  <div class="amex-nav"><span>Home</span><span class="on">Statements &amp; Activity</span><span>Payments</span><span>Rewards</span><span>Account Services</span></div>
+  <div class="amex-main"><h4>Recent activity</h4>
+    <div class="amex-filters"><span>Platinum Card ••• XXXX</span><span>Since last statement</span><span>All transactions</span></div>
+    <div class="pickwrap"><span class="callout">Pick this table · 42 rows, 3 columns</span>
+    <table class="amex-table"><thead><tr><th>Date</th><th>Description</th><th>Amount</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</tbody></table></div>
+  </div></div>`;
+}
+const shot = (inner, label, style='', cls='') => `<div class="shot ${cls}" role="img" aria-label="${label}" style="${style}">${inner}</div>`;
+
+/* ============ Shared chrome ============ */
+function sidebar(active){
+  const items = [
+    ['home','history','Runs', S.empty ? '' : `<span class="count" aria-label="3 need you">3</span>`],
+    ['workflows','workflows','Workflows', S.empty ? '' : `<span class="count alert" aria-label="1 workflow can’t open"><span class="st warn" style="color:var(--status-bad)">${G.warn}</span></span>`],
+    ['settings','settings','Settings', S.empty ? '' : `<span class="count alert" aria-label="1 permission needed"><span class="st warn" style="color:var(--status-bad)">${G.warn}</span></span>`],
+  ];
+  return `<aside class="sidebar" id="sidebar" aria-label="Sidebar">
+    <button class="tb side-close" type="button" aria-label="Hide sidebar" data-act="toggle-side">${I.sidebar}</button>
+    <nav class="side" aria-label="Places"><ul>
+    ${items.map(([to,ic,label,extra])=>`<li><a href="${to==='workflows'?'?screen=workflow&amp;view=library':'?screen='+to}" data-nav="${to}" ${active===to?'aria-current="page"':''}>${I[ic]}<span>${label}</span>${extra}</a></li>`).join('')}
+    </ul></nav>
+    <a class="side-foot" href="?screen=run-live" data-nav="run-live">${bun('bun')}<span style="min-width:0"><b>Bao</b><span>${S.empty?'Nothing running':'1 run is waiting for you'}</span></span></a>
+  </aside>`;
+}
+const lights = `<div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>`;
+const sideToggle = `<button class="tb sidebar-toggle" type="button" aria-label="Show sidebar" aria-expanded="false" aria-controls="sidebar" data-act="toggle-side">${I.sidebar}</button>`;
+const recordBtn = `<a class="tb record" href="?screen=capture" data-nav="capture">${I.record}Record</a>`;
+const searchBtn = `<button class="tb" type="button" aria-label="Search workflows and runs" data-act="toast" data-msg="Search opens here">${I.search}</button>`;
+function listBar(title, sub, extra=recordBtn){
+  return `<div class="bar">${sideToggle}<div class="ttl"><h2>${title}</h2><p>${sub}</p></div><span class="grow"></span>${extra}</div>`;
+}
+function frame(active, panes, cls=''){
+  return `${lights}${sidebar(active)}<div class="panes ${cls}">${panes}</div>`;
+}
+
+/* ============ Runs list (middle pane): pinned "Needs you", then history by day ============ */
+function runsList(sel){
+  const pin = (k,to,g,title,time,sub,sub2='') => `<li><a class="row" href="?screen=${to}" data-nav="${to}" data-k="${k}" ${sel===k?'aria-current="true"':''}>
+    ${gl(g)}<span class="t" title="${title}">${title}</span><span class="time">${time}</span>
+    <span class="sub">${sub}</span>${sub2?`<span class="sub2">${sub2}</span>`:''}</a></li>`;
+  const r = (k,to,g,title,time,sub) => `<li><a class="row" href="?screen=${to}" data-nav="${to}" data-k="${k}" ${sel===k?'aria-current="true"':''}>
+    ${gl(g)}<span class="t" title="${title}">${title}</span><span class="time">${time}</span><span class="sub2">${sub}</span></a></li>`;
+  if (S.empty){
+    return `<div class="list">
+      <h3 class="sec-h">Needs you <span class="n">0</span></h3>
+      <p class="list-empty" style="padding:6px 10px 14px;text-align:start">Nothing needs you.</p>
+      <h3 class="sec-h">History</h3>
+      <div class="list-empty" style="padding:6px 10px;text-align:start"><b>No runs yet</b>When Bao runs a workflow, it shows up here, newest first.</div>
+    </div>`;
+  }
+  return `<div class="list">
+    <h3 class="sec-h">Needs you <span class="n">3</span></h3>
+    <ul aria-label="Needs you">
+      ${pin('equinox','home','need','Book Equinox class','7:11 PM',`${wd('need')} · Press Reserve yourself.`,'1 h 52 min left')}
+      ${pin('chase','heal','heal','Download Chase statement','4:05 PM',`${wd('heal','Heal to keep')} · Step 3 moved.`,'Kept after 2 more clean runs')}
+      ${pin('coned','run-failed','bad','Con Edison - download last bill','6:02 PM',`${wd('bad')} · Stopped at step 5.`,'The Download PDF button is gone.')}
+    </ul>
+    <h3 class="sec-h" style="margin-top:8px">Now</h3>
+    <ul>${r('a-eqx','run-live','need','Book Equinox class','7:10 PM',`${wd('need')} · Waiting at step 7 of 8`)}</ul>
+    <h3 class="sec-h">Today</h3>
+    <ul>
+      ${r('a-coned','run-failed','bad','Con Edison - download last bill','6:02 PM',`${wd('bad')} · Stopped at step 5 of 7`)}
+      ${r('a-agent','workflow','ok','agent-browser','6:00 PM',`${wd('ok')} · 41 s`)}
+      ${r('a-stripe','workflow','ok','Export Stripe payouts to CSV','5:30 PM',`${wd('ok')} · 1 min 12 s · 38 rows saved`)}
+      ${r('a-chase','heal','heal','Download Chase statement','4:05 PM',`${wd('heal')} · Step 3 moved · PDF saved`)}
+      <li><a class="row more" href="?screen=workflow" data-nav="workflow" data-k="a-more">${gl('ok')}<span class="sub2" style="grid-column:2">agent-browser · 4 more today, all passed</span></a></li>
+    </ul>
+    <h3 class="sec-h">Yesterday</h3>
+    <ul>${r('a-stripe2','workflow','ok','Export Stripe payouts to CSV','5:30 PM',`${wd('ok')} · 1 min 9 s · 41 rows saved`)}</ul>
+    <h3 class="sec-h">Tuesday, Nov 3</h3>
+    <ul>${r('a-insta','workflow','ok','Instacart: Costco Kirkland organic blueberries','10:14 AM',`${wd('ok')} · Stopped before checkout, as set`)}</ul>
+    <h3 class="sec-h">Monday, Nov 2</h3>
+    <ul>${r('a-uscis','workflow','ok','File USCIS case status check','9:00 AM',`${wd('ok')} · Status unchanged`)}</ul>
+    <h3 class="sec-h">Sunday, Nov 1</h3>
+    <ul>
+      ${r('a-oauth','workflow','ok','Set up Google OAuth for 五秒','9:35 PM',`${wd('ok')} · 2 min 4 s`)}
+      ${r('a-oauthp','workflow','quiet','Create production Google OAuth client for 五秒','7:08 PM',`${wd('quiet')} · Waited 2 h, then stopped`)}
+    </ul>
+  </div>`;
+}
+const runsPane = (sel) => `<section class="pane pane-list" aria-label="Runs">${listBar('Runs', S.empty ? 'No runs yet' : '3 need you')}
+        <div class="scroll">${runsList(sel)}</div></section>`;
+
+/* ============ Workflows library (full-width list) ============ */
+function libraryView(){
+  const rows = [...LIB, {k:'fidelity', name:'Fidelity 1099 download', s:'warn', last:'Feb 18, 9:00 AM', sched:'Yearly in February'}];
+  return frame('workflows', `
+    <section class="pane pane-detail" aria-label="Workflows">
+      <div class="bar">${sideToggle}<div class="ttl"><h2>Workflows</h2><p>11 workflows</p></div><span class="grow"></span>${recordBtn}${searchBtn}</div>
+      <div class="scroll"><div class="detail" style="max-width:none;padding-top:6px">
+        <div class="banner" role="note">${G.warn.replace('<svg','<svg style="color:var(--status-bad)"')}<b>Bao can’t open “Fidelity 1099 download”.</b>
+          <p>Its file is damaged. Your other workflows are fine. Record it again, or put back a copy from Time Machine.</p>
+          <div class="actions"><a class="btn small" href="?screen=capture" data-nav="capture">Record again</a><button class="btn small" type="button" data-act="toast" data-msg="Finder opens the workflow folder">Show in Finder</button></div>
+        </div>
+        <table class="steps lib" aria-label="All workflows, newest run first. Open one to see its steps." style="margin-top:12px">
+          <thead><tr><th scope="col">Name</th><th class="c-st" scope="col">Last run</th><th class="c-last" scope="col">When</th><th class="c-sched hide-narrow" scope="col">Schedule</th></tr></thead>
+          <tbody>${rows.map(w=>`<tr>
+            <td><a class="pick" href="?screen=workflow" data-nav="workflow" data-k="lib-${w.k}" title="${w.name}">${w.name}</a></td>
+            <td class="c-st">${st(w.s)}</td>
+            <td class="c-last num">${w.last}</td>
+            <td class="c-sched hide-narrow">${w.sched}</td></tr>`).join('')}</tbody>
+        </table>
+      </div></div>
+    </section>`);
+}
+
+/* ============ Detail: needs you (home) ============ */
+function equinoxActions(){
+  return `<div class="actions" style="margin-top:14px">
+    <button class="btn primary" type="button" data-act="toast" data-msg="Bao’s Chrome is in front. Press Reserve there.">${I.open}Show Bao’s Chrome</button>
+    <button class="btn" type="button" data-act="toast" data-msg="Bao is checking the booking…">I pressed Reserve</button>
+    <button class="btn destructive" type="button" data-act="confirm" data-title="Stop this run?" data-body="Bao closes the class page. You won’t have a spot unless you book it yourself." data-ok="Stop run">Stop run…</button>
+  </div>`;
+}
+function deadline(){
+  return `<div class="deadline" role="timer" aria-live="off">${I.clock}<span>Bao waits until 9:11 PM · <b class="num">1 h 52 min left</b></span><span class="meter" aria-hidden="true"><i></i></span></div>`;
+}
+function homeDetail(){
+  return `<div class="detail">
+    <p class="kicker">${st('need')}<span class="dot"></span><span>Run started 7:10 PM</span></p>
+    <h1 class="big">Book Equinox class</h1>
+    <p class="lead">Waiting for you to press Reserve.</p>
+    <p class="note">Bao never presses Reserve for you. Press it in Bao’s Chrome, and Bao checks the booking and finishes.</p>
+    ${deadline()}
+    ${equinoxActions()}
+    <figure class="block">${shot(wEquinox({hl:true}),'Bao’s Chrome showing the Equinox class page. Precision Run, Thursday Nov 12, 7:00 AM, Hudson Yards. The Reserve button is marked: press this yourself.','','wide')}
+      <figcaption><span class="live-badge"><i aria-hidden="true"></i>Live in Bao’s Chrome</span><span>equinox.com</span></figcaption></figure>
+    <div class="block">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px"><h3 class="h3" style="margin:0">Step 7 of 8 <span class="n">· 6 done</span></h3><a class="linkish" href="?screen=run-live" data-nav="run-live">Open run</a></div>
+      <div class="seg" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="cur"></i><i></i></div>
+    </div>
+  </div>`;
+}
+function homeEmpty(){
+  return `<div class="empty"><div class="in">
+    ${bun('bun')}
+    <h1>Record a task once. Bao does it from then on.</h1>
+    <p>Bao runs your steps in its own Chrome, the same way each time. It stops and asks before anything you can’t undo, like Pay or Reserve.</p>
+    <ol>
+      <li><span>Press <b>Record</b> and do the task in Bao’s Chrome.</span></li>
+      <li><span>Press <b>Stop and save</b>. Bao writes each step in plain words.</span></li>
+      <li><span>Press <b>Run</b> any time, or set a schedule.</span></li>
+    </ol>
+    <a class="btn primary" href="?screen=capture" data-nav="capture">${I.record.replace('class="rec"','')}Record a task</a>
+  </div></div>`;
+}
+
+/* ============ Screens ============ */
+const SCREENS = {
+  home(){
+    if (S.empty){
+      return frame('home', `
+      ${runsPane('')}
+      <section class="pane pane-detail" aria-label="Welcome"><div class="bar"><span class="grow"></span>${searchBtn}</div><div class="scroll">${homeEmpty()}</div></section>`);
+    }
+    return frame('home', `
+      ${runsPane('equinox')}
+      <section class="pane pane-detail" aria-label="Book Equinox class"><div class="bar"><span class="grow"></span>${searchBtn}</div>
+        <div class="scroll">${homeDetail()}</div></section>`);
+  },
+
+  workflow(){
+    if (S.view === 'library') return libraryView();
+    const rows = OAUTH_STEPS.map((s,i)=>`<tr class="${i===1?'sel':''}" data-i="${i}">
+      <td class="c-no">${i+1}</td>
+      <td class="c-kind" title="${KIND[s.kind][1]}">${I[KIND[s.kind][0]]}<span class="vh">${KIND[s.kind][1]}</span></td>
+      <td><button class="pick" type="button" aria-pressed="${i===1}" data-step="${i}">${s.label}</button></td>
+      <td class="c-in">${s.input?`<span class="tok" title="Uses the input “${s.input}”">${s.input}</span>`:''}</td>
+      <td class="c-chk">${s.check?`<span title="Then checks the page">${I.eye}<span class="vh">Then checks the page</span></span>`:''}</td>
+    </tr>`).join('');
+    return frame('workflows', `
+      <section class="pane pane-detail" aria-label="Set up Google OAuth for 五秒">
+        <div class="bar">${sideToggle}<a class="tb" href="?screen=workflow&amp;view=library" data-nav="workflows" aria-label="Back to all workflows">${I.back}</a><span class="ttl" style="flex-direction:row;gap:6px;align-items:center;color:var(--text-secondary)"><span>Workflows</span></span><span class="grow"></span>
+          <button class="tb" type="button" aria-label="More actions for this workflow" data-act="toast" data-msg="Duplicate, Share, Delete…">${I.more}</button>${recordBtn}</div>
+        <div class="scroll"><div class="detail" style="max-width:none;padding-top:8px">
+          <h1 class="big">Set up Google OAuth for 五秒</h1>
+          <p class="note" style="margin-top:6px">Sets up the Google sign-in screen and a web client for 五秒 in the Chinglish AI project. No billing or payment.</p>
+          <p class="kicker" style="margin:10px 0 0">${I.globe.replace('<svg','<svg style="width:14px;height:14px"')}<span>console.cloud.google.com</span><span class="dot"></span><span>14 steps</span><span class="dot"></span><span>Last run ${st('ok')}</span><span class="num">Nov 1, 9:35 PM</span></p>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn primary" type="button" data-act="toast" data-msg="Bao asks for the 11 inputs, then runs">${I.play}Run…</button>
+            <button class="btn" type="button" data-act="toast" data-msg="Edit the 11 inputs">Edit inputs…</button>
+            <span class="field-inline" style="margin-inline-start:8px"><label for="heal-pol">When a step misses</label>
+              <select class="popup" id="heal-pol"><option>Ask me</option><option>Heal it</option><option>Stop the run</option></select></span>
+          </div>
+          <div class="block" style="margin-top:18px">
+          <table class="steps" aria-label="Steps. Select a step to see it in the inspector.">
+            <thead><tr><th class="c-no" scope="col">#</th><th class="c-kind" scope="col"><span class="vh">Kind</span></th><th scope="col">Step</th><th class="c-in" scope="col">Uses input</th><th class="c-chk" scope="col"><span class="vh">Checks</span></th></tr></thead>
+            <tbody>${rows}</tbody></table></div>
+          <div class="block">
+            <h3 class="h3">Recent runs</h3>
+            <ul class="runs">
+              <li>${st('ok')}<span class="what">2 min 4 s · all 14 steps</span><span class="when">Nov 1, 9:35 PM</span></li>
+              <li>${st('bad')}<span class="what">Stopped at step 1. You weren’t signed in to Google.</span><span class="when">Nov 1, 8:52 PM</span></li>
+              <li>${st('ok')}<span class="what">2 min 11 s · all 14 steps</span><span class="when">Oct 31, 4:20 PM</span></li>
+            </ul>
+          </div>
+        </div></div>
+      </section>
+      <aside class="pane pane-insp" aria-label="Inspector"><div class="bar"><div class="ttl"><h2 style="font-size:var(--t-body)">Inspector</h2></div><span class="grow"></span>${searchBtn}</div>
+        <div class="scroll"><div class="insp" id="insp">${inspector(1)}</div></div></aside>`, 'has-insp');
+  },
+
+  'run-live'(){
+    const steps = [
+      ['open','Open the class schedule','0.8 s'],['select','Pick the club','Hudson Yards'],['select','Pick the date','Thu, Nov 12'],
+      ['type','Type the class name','Precision Run'],['click','Click “Precision Run, 7:00 AM”','0.6 s'],['check','Check the class has open spots','3 left'],
+      ['wait','Wait for you: press Reserve',''],['check','Check “You’re booked” shows',''],
+    ];
+    const prog = steps.map((s,i)=>{
+      const state = i<6?'done':i===6?'cur':'todo';
+      const g = state==='done'?`<span class="st ok">${G.ok}</span>`:state==='cur'?`<span class="st need">${G.need}</span>`:`<span class="st quiet">${G.pending}</span>`;
+      const word = state==='done'?'Done':state==='cur'?'Needs you':'Not yet';
+      return `<li class="${state}">${g}<span class="no">${i+1}</span><span class="lab" title="${s[1]}">${s[1]}<span class="vh">, ${word}</span></span><span class="meta">${s[2]}</span></li>`;
+    }).join('');
+    const film = [0,1,2,3,4,5].map(i=>`<li><div class="shot" aria-hidden="true">${i<4?wEquinoxList(i):wEquinox()}</div><span class="cap"><span class="st ok">${G.ok}</span>${i+1}</span></li>`).join('')
+      + `<li class="cur"><div class="shot" aria-hidden="true">${wEquinox()}</div><span class="cap"><span class="st need">${G.need}</span>7</span></li>`;
+    return frame('home', `
+      ${runsPane('equinox')}
+      <section class="pane pane-detail" aria-label="Run: Book Equinox class"><div class="bar"><span class="grow"></span><a class="tb label" href="?screen=workflow" data-nav="workflow">Open workflow</a>${searchBtn}</div>
+        <div class="scroll"><div class="detail">
+          <p class="kicker">${st('need')}<span class="dot"></span><span>Started 7:10 PM</span><span class="dot"></span><span>Paused at 7:11 PM</span></p>
+          <h1 class="big">Book Equinox class</h1>
+          <p class="lead">Waiting for you to press Reserve.</p>
+          ${deadline()}
+          ${equinoxActions()}
+          <div class="block split" style="display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:24px;align-items:start">
+            <div><h3 class="h3">Steps</h3><ol class="progress" aria-label="Step progress">${prog}</ol></div>
+            <figure>${shot(wEquinox({hl:true}),'Live view of Bao’s Chrome. The Reserve button is marked: press this yourself.')}
+              <figcaption><span class="live-badge"><i aria-hidden="true"></i>Live</span><span>equinox.com/classes</span></figcaption></figure>
+          </div>
+          <div class="block"><h3 class="h3">Screens so far</h3><ol class="film" style="--n:7" aria-label="One screenshot per step, steps 1 to 7">${film}</ol></div>
+          <details class="tech"><summary>${I.chev}Run details</summary>
+            <div class="code">Inputs: Club = Hudson Yards · Class date = +7d (Thu, Nov 12) · Class name = Precision Run<br>Driver: Bao’s Chrome (own profile) · 0 model calls · Run ID run-mw0k3c-eqx7</div></details>
+        </div></div></section>`);
+  },
+
+  'run-failed'(){
+    const labels = ['Open My Account','Click “Billing & Payments”','Pick the account','Click “Bill history”','Click “Download bill (PDF)”','Save the PDF to Bills','Check the file is a PDF'];
+    const prog = labels.map((l,i)=>{
+      const s = i<4?'done':i===4?'fail':'skip';
+      const g = s==='done'?`<span class="st ok">${G.ok}</span>`:s==='fail'?`<span class="st bad">${G.bad}</span>`:`<span class="st quiet">${G.skip}</span>`;
+      const meta = s==='done'?['1.1 s','0.7 s','0.5 s','0.9 s'][i]:s==='fail'?'Not found':'Skipped';
+      return `<li class="${s}">${g}<span class="no">${i+1}</span><span class="lab" title="${l}">${l}</span><span class="meta">${meta}</span></li>`;
+    }).join('');
+    return frame('home', `
+      ${runsPane('coned')}
+      <section class="pane pane-detail" aria-label="Run report: Con Edison - download last bill"><div class="bar"><span class="grow"></span><a class="tb label" href="?screen=workflow" data-nav="workflow">Open workflow</a>${searchBtn}</div>
+        <div class="scroll"><div class="detail">
+          <p class="kicker">${st('bad')}<span class="dot"></span><span>Today, 6:02 PM</span><span class="dot"></span><span>48 s</span></p>
+          <h1 class="big">Con Edison - download last bill</h1>
+          <p class="lead">Stopped at step 5 of 7: Click “Download bill (PDF)”.</p>
+          <p class="note">The page changed. The button Bao clicks is gone, and nothing on the page is close enough to try. Con Edison seems to have moved bills to a new page.</p>
+          <div class="block">
+            <h3 class="h3">What to do next</h3>
+            <div class="actions">
+              <button class="btn primary" type="button" data-act="toast" data-msg="Bao’s Chrome opens at step 5. Show Bao the new way.">${I.rerecord}Record step 5 again</button>
+              <button class="btn" type="button" data-act="toast" data-msg="Running again…">${I.reload}Try again</button>
+              <button class="btn" type="button" data-act="toast" data-msg="Opening coned.com in Bao’s Chrome">${I.open}Open the page</button>
+            </div>
+            <p class="note" style="margin-top:8px">Record step 5 again if the site changed for good. Steps 1 to 4 stay as they are. Try again if the site was slow or down.</p>
+          </div>
+          <div class="block compare">
+            <figure>${shot(wConEd({hl:true}),'Expected page from Oct 5: the Billing and Payments tab with a Download bill (PDF) button, marked.','','wide')}<figcaption><span><b>Expected</b> · recorded Oct 5</span></figcaption></figure>
+            <figure>${shot(wConEdNew({miss:true}),'Page today: a new layout with a banner saying My Account was updated. There is a View bill link and no Download bill button.','','wide')}<figcaption><span><b>Today</b> · 6:02 PM</span></figcaption></figure>
+          </div>
+          <div class="block"><h3 class="h3">Steps</h3><ol class="progress" style="max-width:520px">${prog}</ol></div>
+          <details class="tech"><summary>${I.chev}Technical details</summary>
+            <div class="code">Looked for: role=button name="Download bill (PDF)" css=#billPdfDownload<br>Closest match: role=link name="View bill" (score 0.41, below 0.80)<br>Heal policy: Ask me · 0 model calls · Run ID run-mw0j9q-cned</div></details>
+        </div></div></section>`);
+  },
+
+  heal(){
+    return frame('home', `
+      ${runsPane('chase')}
+      <section class="pane pane-detail" aria-label="Heal to review: Download Chase statement"><div class="bar"><span class="grow"></span><a class="tb label" href="?screen=workflow" data-nav="workflow">Open workflow</a>${searchBtn}</div>
+        <div class="scroll"><div class="detail">
+          <p class="kicker">${st('heal','Heal to keep')}<span class="dot"></span><span>Download Chase statement</span><span class="dot"></span><span>Today, 4:05 PM</span></p>
+          <h1 class="big">Step 3 moved</h1>
+          <p class="lead">Chase moved “Statements & documents” into the Accounts menu. Bao found it there and finished.</p>
+          <div class="block compare">
+            <figure>${shot(wChase({hl:true}),'Before, recorded Oct 5: Statements and documents is a link in the left menu, marked.','','wide')}<figcaption><span><b>Before</b> · recorded Oct 5</span></figcaption></figure>
+            <figure>${shot(wChaseNew({hl:true}),'Now, Nov 5: the left menu is gone. Statements and documents is inside the Accounts menu at the top, marked.','','wide')}<figcaption><span><b>Now</b> · Nov 5</span></figcaption></figure>
+          </div>
+          <dl class="facts block">
+            <dt>Old target</dt><dd>“Statements &amp; documents” link in the left menu</dd>
+            <dt>New target</dt><dd>“Statements &amp; documents” in the Accounts menu at the top</dd>
+            <dt>Clean runs</dt><dd><span class="num">1 of 3</span><div class="seg" style="max-width:180px;margin-top:6px" aria-hidden="true"><i class="heal"></i><i></i><i></i></div></dd>
+          </dl>
+          <p class="note" style="margin-top:14px">Bao keeps a heal after 3 clean runs. This workflow runs once a month, so that’s in January. Keep it now if the new target looks right.</p>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn primary" type="button" data-act="toast" data-msg="Kept. Step 3 now uses the Accounts menu.">Keep new target</button>
+            <button class="btn" type="button" data-act="confirm" data-title="Revert step 3?" data-body="Bao goes back to the link in the left menu. That link is gone, so the next run will likely stop at step 3." data-ok="Revert step 3">Revert…</button>
+          </div>
+          <details class="tech"><summary>${I.chev}Technical details</summary>
+            <div class="code">Old: role=link name="Statements &amp; documents" within nav[aria-label="Main menu"]<br>New: role=menuitem name="Statements &amp; documents" within menu "Accounts"<br>Found by: same name, new place · 0 model calls</div></details>
+        </div></div></section>`);
+  },
+
+  capture(){
+    const steps = [
+      ['globe','Open americanexpress.com/login','',''],
+      ['type','Type the user ID',`<span class="tok">User ID</span>`,''],
+      ['type','Type the password',`<span class="tok">${I.lock}Password</span><span class="mask" aria-label="hidden">••••••••</span><span>Not saved. Bao uses your Chrome login.</span>`,''],
+      ['person','Wait for you: enter the code',`<span>Bao pauses here each run. Codes are never saved.</span>`,''],
+      ['click','Click “Statements & Activity”','',''],
+      ['click','Click “Recent activity”','','new'],
+    ];
+    return `<div class="menubar" aria-hidden="true"><b>Bao</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span><span class="r"><span class="recdot"><i></i>Recording</span><span>Thu Nov 5 7:24 PM</span></span></div>
+    <div class="chrome" role="img" aria-label="Bao’s Chrome, recording. American Express Recent activity page. Pick list is on and the transactions table is marked: Pick this table, 42 rows, 3 columns.">
+      <div class="tabs">${lights}<div class="tab"><i></i>Recent activity | American Express</div></div>
+      <div class="omni"><span class="nav">${I.back}${I.reload}</span><span class="url">${I.lock}global.americanexpress.com/activity/recent</span><span class="prof">${bun('')}Bao</span></div>
+      <div class="page">${wAmex()}</div>
+    </div>
+    <div class="hud" role="toolbar" aria-label="Recording controls">
+      <span class="rec"><i aria-hidden="true"></i><span class="num" style="color:#fff">2:14</span><span>6 steps</span></span>
+      <span class="div" aria-hidden="true"></span>
+      <button type="button" data-act="toast" data-msg="Paused. Nothing you do now is recorded.">${I.pause}Pause</button>
+      <button type="button" aria-pressed="true" data-act="press">${I.table}Pick list</button>
+      <span class="div" aria-hidden="true"></span>
+      <button type="button" class="stop" data-act="toast" data-msg="Saved “Export Amex activity” with 6 steps">${I.stop}Stop and save</button>
+    </div>
+    <section class="baowin" aria-label="Bao, recording">
+      ${lights}
+      <div class="bar"><div class="ttl"><h2>Recording</h2><p>Steps appear as you go</p></div></div>
+      <div class="cap-body">
+        <div class="namefield"><label for="cap-name">Name</label><input id="cap-name" value="Export Amex activity"></div>
+        <p class="cap-where">${I.globe}Recording in Bao’s Chrome · americanexpress.com</p>
+        <ol class="stream" aria-label="Recorded steps" aria-live="polite">
+          ${steps.map((s,i)=>`<li class="${s[3]}"><span class="no">${i+1}</span>${I[s[0]].replace('<svg','<svg class="k"')}<div><span class="lab">${s[1]}</span>${s[2]?`<div class="sub">${s[2]}</div>`:''}</div>${s[3]?'<span class="just">Just now</span>':''}</li>`).join('')}
+          <li class="wait"><span class="no">7</span>${I.table.replace('<svg','<svg class="k"')}<div><span class="lab">Pick list is on</span><div class="sub">Click the table you want in Chrome <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></div></div></li>
+        </ol>
+      </div>
+      <div class="cap-foot"><p>${I.lock}Passwords and codes are never saved.</p>
+        <button class="btn" type="button" data-act="confirm" data-title="Discard this recording?" data-body="The 6 steps you recorded are deleted. You can’t undo this." data-ok="Discard recording">Discard…</button>
+        <button class="btn primary" type="button" data-act="toast" data-msg="Saved “Export Amex activity” with 6 steps">Stop and save</button></div>
+    </section>`;
+  },
+
+  settings(){
+    const idx = [
+      ['runs','sparkle','Runs and heals','Heal policy, waits'],
+      ['perm','hand','Mac permissions',`${st('warn','1 needed')}`],
+      ['remote','remote','Remote access','Off'],
+      ['logins','key','Logins','3 sites from your Chrome'],
+      ['ai','sparkle','AI help','None'],
+    ];
+    return frame('settings', `
+      <section class="pane pane-list" aria-label="Settings sections">${listBar('Settings','Saved as you change them')}
+        <div class="scroll"><ul class="list idx" style="padding-top:8px">${idx.map(([k,ic,t,s],i)=>`<li><a href="#set-${k}" data-jump="set-${k}" ${i===0?'aria-current="true"':''}><span class="ic">${I[ic==='sparkle'&&k==='runs'?'redo':ic]}</span><span style="min-width:0"><b>${t}</b><span class="s">${s}</span></span></a></li>`).join('')}</ul></div></section>
+      <section class="pane pane-detail" aria-label="Settings"><div class="bar"><span class="grow"></span>${searchBtn}</div>
+        <div class="scroll" id="set-scroll"><div class="detail" style="max-width:680px;padding-top:4px">
+          <h3 class="group-h" id="set-runs">Runs and heals</h3>
+          <div class="group">
+            <div class="gr"><div class="txt"><span class="lbl" id="hp-l">When a page changes</span><p>Heal it finds the moved button and keeps going. Ask me stops and shows you first.</p></div>
+              <div class="ctl"><fieldset class="segmented" aria-labelledby="hp-l"><legend>When a page changes</legend>
+                <input type="radio" name="hp" id="hp1" checked><label for="hp1">Heal it</label>
+                <input type="radio" name="hp" id="hp2"><label for="hp2">Ask me</label>
+                <input type="radio" name="hp" id="hp3"><label for="hp3">Stop</label></fieldset></div></div>
+            <div class="gr"><div class="txt"><label for="keep-n">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p></div>
+              <div class="ctl"><input class="stepper" id="keep-n" type="number" min="1" max="10" value="3" aria-describedby="keep-u"><span id="keep-u" style="color:var(--text-secondary)">runs</span></div></div>
+            <div class="gr"><div class="txt"><label for="wait-t">Wait for you up to</label><p>How long a run waits for a code, a login, or a button only you press.</p></div>
+              <div class="ctl"><select class="popup" id="wait-t"><option>30 minutes</option><option>1 hour</option><option selected>2 hours</option><option>8 hours</option></select></div></div>
+          </div>
+
+          <h3 class="group-h" id="set-perm">Mac permissions</h3>
+          <div class="group">
+            <div class="gr"><span class="ic">${I.hand}</span><div class="txt"><b>Accessibility</b><p>Lets Bao click and type in Chrome when a page blocks normal input.</p></div>
+              <div class="ctl">${st('ok','Allowed')}</div></div>
+            <div class="gr"><span class="ic">${I.eye}</span><div class="txt"><b>Screen Recording</b><p>Lets Bao save a picture of each step, even when Chrome is behind other windows.</p></div>
+              <div class="ctl">${st('warn','Not allowed')}<button class="btn small" type="button" data-act="toast" data-msg="System Settings opens at Screen Recording">Open System Settings</button></div></div>
+          </div>
+
+          <h3 class="group-h" id="set-remote">Remote access</h3>
+          <div class="group">
+            <div class="gr"><div class="txt"><span class="lbl" id="ra-l">Let AI agents run my workflows</span><p id="ra-d">An agent on another device can ask to run a workflow on this Mac. Off until you turn it on.</p></div>
+              <div class="ctl"><button class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="ra-l" aria-describedby="ra-d" data-act="switch"></button></div></div>
+            <div class="gr"><div class="txt"><label for="ra-ask">Before each run</label><p>You approve every run here, on this Mac. The agent can’t change this.</p></div>
+              <div class="ctl"><select class="popup" id="ra-ask" disabled><option>Ask me</option><option>Allow listed workflows</option></select></div></div>
+          </div>
+
+          <h3 class="group-h" id="set-logins">Logins</h3>
+          <div class="group">
+            ${[['chase.com','Imported Oct 5'],['equinox.com','Imported Sep 2'],['coned.com','Imported Oct 5']].map(([s,d])=>`<div class="gr"><span class="ic">${I.globe}</span><div class="txt"><b>${s}</b><p>${d}. Bao reads this site’s login only.</p></div><div class="ctl"><button class="btn small" type="button" data-act="confirm" data-title="Remove the ${s} login?" data-body="Runs on ${s} will ask you to log in again. Your own Chrome is not changed." data-ok="Remove login" aria-label="Remove the ${s} login">Remove…</button></div></div>`).join('')}
+            <div class="gr"><div class="txt"><p style="margin:0">Bring in one site’s login from your Chrome, so runs start signed in.</p></div><div class="ctl"><button class="btn small" type="button" data-act="toast" data-msg="Pick a site to import">Import a login…</button></div></div>
+          </div>
+
+          <h3 class="group-h" id="set-ai">AI help</h3>
+          <div class="group">
+            <div class="gr"><div class="txt"><label for="ai-m">Use AI to suggest heals</label><p>Only when a page changes. Replays never use AI.</p></div>
+              <div class="ctl"><select class="popup" id="ai-m"><option selected>None</option><option>Cursor account</option><option>API key…</option></select></div></div>
+          </div>
+          <details class="tech"><summary>${I.chev}Technical details</summary>
+            <div class="code">Helper: Bao.app/Contents/Resources/BaoOSHelper.app (dev.bao.oshelper)<br>Remote access: bao mcp over the paired relay · BAO_REMOTE_MCP=1 also turns it on</div></details>
+        </div></div></section>`);
+  },
+};
+
+/* ============ Inspector ============ */
+function inspector(i){
+  const s = OAUTH_STEPS[i];
+  const val = s.input ? OAUTH_INPUTS.find(x=>x[0]===s.input)[1] : null;
+  return `<p class="eyebrow">${I[KIND[s.kind][0]].replace('<svg','<svg style="width:14px;height:14px"')}Step ${i+1} of 14 · ${KIND[s.kind][1]}</p>
+    <h2>${s.label}</h2>
+    ${shot(wGcp({hl:i===3||i===2?'email':'name'}),`Golden screenshot for step ${i+1}: Google Cloud console, App information form. The target is marked.`)}
+    <dl class="facts">
+      <dt>Finds</dt><dd>${s.finds}</dd>
+      ${s.input?`<dt>${s.kind==='select'?'Picks':'Types'}</dt><dd><span class="tok">${s.input}</span> <span style="color:var(--text-secondary)">${val}</span></dd>`:''}
+      <dt>Then checks</dt><dd>${s.check||'Nothing extra'}</dd>
+      <dt><label for="miss-${i}">If it misses</label></dt><dd><select class="popup" id="miss-${i}"><option>Use workflow setting</option><option>Heal it</option><option>Ask me</option><option>Stop the run</option></select></dd>
+    </dl>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn small" type="button" data-act="toast" data-msg="Trying step ${i+1} in Bao’s Chrome">${I.play}Try this step</button>
+      <button class="btn small" type="button" data-act="toast" data-msg="Running from step ${i+1}">Run from here</button>
+      <button class="btn small" type="button" data-act="toast" data-msg="Show Bao step ${i+1} again in Bao’s Chrome">${I.rerecord}Record again</button>
+    </div>
+    <details class="tech" style="margin-top:14px"><summary>${I.chev}Technical details</summary><div class="code">${s.sel}</div></details>
+    <hr>
+    <h3 class="h3">Inputs <span class="n">· 11, asked before each run</span></h3>
+    <ul class="inputs">${OAUTH_INPUTS.map(([k,v])=>`<li class="${k===s.input?'on':''}"><span class="k" title="${k}">${k}</span><span class="v" title="${v}">${v}</span></li>`).join('')}</ul>`;
+}
+
+/* ============ State, URL sync, events ============ */
+const S = {screen:'home', view:null, empty:false, narrow:false};
+const win = document.getElementById('win');
+const valid = Object.keys(SCREENS);
+function readURL(){
+  const p = new URLSearchParams(location.search);
+  S.screen = valid.includes(p.get('screen')) ? p.get('screen') : 'home';
+  S.empty = p.get('state') === 'empty';
+  S.narrow = p.get('w') === '720';
+  S.view = (S.screen==='workflow' && p.get('view')==='library') ? 'library' : null;
+}
+function writeURL(push){
+  const p = new URLSearchParams();
+  p.set('screen', S.screen);
+  if (S.view) p.set('view', S.view);
+  if (S.empty) p.set('state','empty');
+  if (S.narrow) p.set('w','720');
+  const url = '?' + p.toString();
+  if (url !== location.search) history[push?'pushState':'replaceState'](null,'',url);
+}
+let toastTimer;
+function render(focusKey){
+  bunN = 0;
+  win.className = 'window' + (S.screen==='capture' ? ' desktop' : '');
+  win.style.setProperty('--win-w', S.narrow ? '720px' : '1280px');
+  win.style.width = '';
+  win.innerHTML = SCREENS[S.screen]() + `<div class="toast" role="status" aria-live="polite"></div>`;
+  win.setAttribute('aria-label', 'Bao');
+  const navKey = S.view==='library' ? 'workflows' : S.screen;
+  document.querySelectorAll('.switcher [data-nav]').forEach(a=>{ if(a.dataset.nav===navKey) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+  document.getElementById('t-empty').setAttribute('aria-pressed', S.empty);
+  document.getElementById('t-narrow').setAttribute('aria-pressed', S.narrow);
+  document.title = 'Bao - ' + (S.view==='library' ? 'workflows' : S.screen);
+  if (focusKey){
+    const el = win.querySelector(`[data-k="${focusKey}"]`) || win.querySelector(`[data-nav="${S.screen}"][aria-current]`);
+    if (el) el.focus();
+  }
+  if (S.screen==='settings') bindSettings();
+}
+function go(target, push=true, focusKey){
+  S.view = target==='workflows' ? 'library' : null;
+  S.screen = target==='workflows' ? 'workflow' : target;
+  writeURL(push); render(focusKey);
+}
+function toast(msg){
+  const t = win.querySelector('.toast'); if(!t) return;
+  t.textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(()=>{t.textContent='';}, 2600);
+}
+document.addEventListener('click', e=>{
+  const nav = e.target.closest('[data-nav]');
+  if (nav && !(e.metaKey||e.ctrlKey||e.shiftKey||e.button===1)){
+    e.preventDefault();
+    go(nav.dataset.nav, true, nav.dataset.k || (nav.closest('.side') ? null : null));
+    if (nav.closest('.side')) { const a = win.querySelector(`.side [data-nav="${nav.dataset.nav}"]`); a && a.focus(); }
+    return;
+  }
+  const act = e.target.closest('[data-act]');
+  if (!act) return;
+  const a = act.dataset.act;
+  if (a==='toast') toast(act.dataset.msg);
+  if (a==='press') { const on = act.getAttribute('aria-pressed')==='true'; act.setAttribute('aria-pressed', !on); toast(on?'Pick list is off':'Pick list is on. Click a table in Chrome.'); }
+  if (a==='switch') { const on = act.getAttribute('aria-checked')==='true'; act.setAttribute('aria-checked', !on); const sel = win.querySelector('#ra-ask'); if (sel) sel.disabled = on; }
+  if (a==='toggle-side') { const open = win.classList.toggle('side-open'); win.querySelectorAll('.sidebar-toggle').forEach(b=>{b.setAttribute('aria-expanded', open); b.setAttribute('aria-label', open?'Hide sidebar':'Show sidebar');}); if(open){ const f = win.querySelector('.side a'); f && f.focus(); } else { const t = win.querySelector('.sidebar-toggle'); t && t.focus(); } }
+  if (a==='confirm') {
+    const d = document.getElementById('confirm');
+    d.querySelector('#c-title').textContent = act.dataset.title;
+    d.querySelector('#c-body').textContent = act.dataset.body;
+    d.querySelector('#c-ok').textContent = act.dataset.ok;
+    d.returnFocusTo = act;
+    d.showModal();
+  }
+});
+document.getElementById('confirm').querySelector('[data-bun]').innerHTML = bun('bun');
+document.getElementById('confirm').addEventListener('close', function(){
+  if (this.returnValue==='ok') toast('Done');
+  this.returnFocusTo && this.returnFocusTo.focus();
+});
+/* steps table selection */
+win.addEventListener('click', e=>{
+  const b = e.target.closest('.pick'); if(!b) return;
+  selectStep(+b.dataset.step);
+});
+win.addEventListener('keydown', e=>{
+  const b = e.target.closest('.pick');
+  if (b && (e.key==='ArrowDown'||e.key==='ArrowUp')){
+    e.preventDefault();
+    const n = Math.max(0, Math.min(13, +b.dataset.step + (e.key==='ArrowDown'?1:-1)));
+    selectStep(n); win.querySelector(`.pick[data-step="${n}"]`).focus();
+  }
+  if (e.key==='Escape' && win.classList.contains('side-open')){
+    win.classList.remove('side-open');
+    const t = win.querySelector('.sidebar-toggle'); if (t){ t.setAttribute('aria-expanded','false'); t.focus(); }
+  }
+});
+function selectStep(i){
+  win.querySelectorAll('.steps tbody tr').forEach(tr=>{ const on = +tr.dataset.i===i; tr.classList.toggle('sel', on); tr.querySelector('.pick').setAttribute('aria-pressed', on); });
+  const insp = win.querySelector('#insp'); if (insp) insp.innerHTML = inspector(i);
+}
+/* settings index follows scroll */
+function bindSettings(){
+  const sc = win.querySelector('#set-scroll'); if(!sc) return;
+  const links = [...win.querySelectorAll('[data-jump]')];
+  links.forEach(l=>l.addEventListener('click', e=>{
+    e.preventDefault();
+    const t = win.querySelector('#'+l.dataset.jump);
+    sc.scrollTo({top: t.offsetTop - 8, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+    links.forEach(x=>x.removeAttribute('aria-current')); l.setAttribute('aria-current','true');
+  }));
+}
+document.getElementById('t-empty').addEventListener('click', ()=>{ S.empty = !S.empty; if (S.empty) { S.screen='home'; S.view=null; } writeURL(true); render(); });
+document.getElementById('t-narrow').addEventListener('click', ()=>{ S.narrow = !S.narrow; writeURL(true); render(); });
+window.addEventListener('popstate', ()=>{ readURL(); render(); });
+readURL(); writeURL(false); render();
+</script>
+</body>
+</html>
