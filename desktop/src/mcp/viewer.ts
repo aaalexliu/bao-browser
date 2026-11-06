@@ -1,4 +1,5 @@
 import type { inspectRunView, listRunViews, openStepPictures } from "./run-view";
+import type { BrowserToolCard } from "./tool-card";
 
 export const VIEWER_URI = "ui://bao/runs/v1.html";
 export const VIEWER_MIME = "text/html;profile=mcp-app";
@@ -28,13 +29,14 @@ interface HostContext {
 interface ToolReply {
   isError?: boolean;
   content?: { text?: string }[];
-  _meta?: { baoViewer?: View; baoPictures?: Pictures };
+  _meta?: { baoViewer?: View; baoPictures?: Pictures; baoToolCard?: BrowserToolCard };
 }
 
 /** Self-contained: the compiled function is bundled into the versioned HTML. */
 function viewerMain(): void {
   const root = document.querySelector<HTMLElement>("#root")!;
   let current: View | undefined;
+  let browserCall: BrowserToolCard | undefined;
   let context: HostContext = {};
   let canRead = false;
   let nextId = 0;
@@ -63,8 +65,8 @@ function viewerMain(): void {
   class HostDataError extends Error {}
   function error(cause: unknown): void {
     alert.textContent = cause instanceof Error ? cause.message : String(cause);
-    recovery.textContent = cause instanceof HostDataError ? "" : current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
-    if (!current) root.textContent = "Could not load the run viewer.";
+    recovery.textContent = cause instanceof HostDataError ? "" : browserCall ? "Try View run again. If this keeps happening, open Bao desktop for local details." : current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
+    if (!current && !browserCall) root.textContent = "Could not load the run viewer.";
   }
   function clearError(): void { alert.textContent = ""; recovery.textContent = ""; }
   function button(label: string, act: () => Promise<void>, className?: string): HTMLButtonElement {
@@ -98,6 +100,7 @@ function viewerMain(): void {
       const reply = await tool(name, args);
       if (version !== viewRequest) return;
       if (!reply._meta?.baoViewer) throw new HostDataError("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
+      browserCall = undefined;
       current = reply._meta.baoViewer;
       clearError(); render();
     } catch (err) {
@@ -123,7 +126,58 @@ function viewerMain(): void {
     catch { return new Date(value).toISOString(); }
   }
   function calls(value: number | null): string { return value === null ? "Model calls unknown (not tracked)" : `${value} Bao model calls`; }
+  function renderBrowserCall(card: BrowserToolCard): void {
+    applyContext(); root.replaceChildren();
+    const header = el("header");
+    header.append(el("strong", "BAO", "brand"), el("span", "Browser action", "muted"), el("span", card.status === "failed" ? "Failed" : card.status === "waiting" ? "Waiting for you" : "Completed", `status browser-status ${card.status}`));
+    root.append(header);
+    const picture = card.picture;
+    if (picture.kind === "captured") {
+      const figure = el("figure", undefined, `browser-picture${expanded ? " expanded" : ""}`);
+      const image = el("img");
+      const phase = picture.phase === "previous" ? "Last page, before this call" : picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
+      image.src = `data:${picture.mimeType};base64,${picture.data}`; image.alt = `${phase}: ${card.caption}`;
+      const frame = el("div", undefined, "browser-frame"); frame.append(image);
+      if (picture.target) {
+        const { rect, viewport } = picture.target;
+        const mark = el("div", undefined, `browser-mark${rect.y / viewport.height < .15 ? " below" : ""}${rect.x / viewport.width > .7 ? " trailing" : ""}`);
+        mark.setAttribute("aria-hidden", "true");
+        Object.assign(mark.style, { left: `${rect.x / viewport.width * 100}%`, top: `${rect.y / viewport.height * 100}%`, width: `${rect.width / viewport.width * 100}%`, height: `${rect.height / viewport.height * 100}%` });
+        mark.append(el("span", card.command === "fill" ? "Typed here" : "Clicked here")); frame.append(mark);
+      } else {
+        const label = card.status === "failed" ? "Command failed" : picture.phase === "previous" ? "Previous picture" : card.command === "snapshot" ? "Read this page" : card.command === "open" ? "Opened page" : card.command === "tab" ? "Browser tab" : "Page captured";
+        frame.append(el("span", label, "browser-page-label"));
+      }
+      figure.append(frame, el("figcaption", phase)); root.append(figure);
+      const toggle = button(expanded ? "Close picture" : "Open picture", async () => {
+        expanded = !expanded;
+        try {
+          const mode = expanded ? "fullscreen" : "inline";
+          if (context.availableDisplayModes?.includes(mode)) {
+            const reply = await request("ui/request-display-mode", { mode }) as { mode?: string };
+            context.displayMode = reply.mode || context.displayMode;
+          }
+        } finally { render(); root.querySelector<HTMLButtonElement>(".picture-toggle")?.focus(); }
+      }, "picture-toggle");
+      root.append(toggle);
+    } else {
+      const empty = el("div", undefined, "browser-empty");
+      const outline = el("div", undefined, "browser-outline"); outline.setAttribute("aria-hidden", "true");
+      empty.append(outline, el("strong", "Page picture unavailable"), el("p", picture.reason, "muted")); root.append(empty);
+    }
+    root.append(el("p", card.caption, "browser-caption"));
+    if ((card.command === "click" || card.command === "fill") && picture.kind === "captured" && !picture.target && card.status === "complete") {
+      root.append(el("p", "The target picture was unavailable. This page picture does not mark the target.", "muted"));
+    }
+    if (card.runId && canRead) {
+      const runId = card.runId;
+      root.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
+    }
+    root.append(el("footer", "Recorded browser session · View only. Browser captures do not create a replayable workflow."));
+    document.title = `${card.command} · Bao`;
+  }
   function render(): void {
+    if (browserCall) { renderBrowserCall(browserCall); return; }
     if (!current) return;
     applyContext();
     root.replaceChildren();
@@ -236,8 +290,12 @@ function viewerMain(): void {
       const callback = pending.get(message.id)!; pending.delete(message.id); clearTimeout(callback.timer);
       if (message.error) callback.reject(new Error(message.error.message || "Host request failed")); else callback.resolve(message.result);
     } else if (message.method === "ui/notifications/tool-result") {
-      const data = (message.params as ToolReply)?._meta?.baoViewer;
-      if (data && userRequest === undefined) { ++viewRequest; current = data; clearError(); render(); }
+      const reply = message.params as ToolReply;
+      const data = reply?._meta?.baoViewer;
+      const card = reply?._meta?.baoToolCard;
+      if ((data || card) && userRequest === undefined) {
+        ++viewRequest; browserCall = card; current = data; expanded = false; clearError(); render();
+      }
     } else if (message.method === "ui/notifications/host-context-changed") {
       const changes = message.params as HostContext;
       const contentChanged = (["locale", "timeZone", "displayMode"] as const).some((key) => key in changes && changes[key] !== context[key]);
@@ -296,6 +354,23 @@ footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-si
 [role=alert]{color:var(--color-text-danger,var(--danger))}
 #error p:empty{margin:0}
 .empty{padding:20px 0}
+.browser-status{margin-inline-start:auto}
+.browser-status.failed{color:var(--danger)}
+.browser-picture{position:relative;max-width:480px;margin:16px auto 8px}
+.browser-picture.expanded{max-width:none}
+.browser-frame{position:relative}
+.browser-frame img{width:100%;height:auto;outline:1px solid #0000001a;outline-offset:-1px}
+html[data-theme=dark] .browser-frame img{outline-color:#ffffff1a}
+.browser-mark{position:absolute;border:2px solid #21604c;box-shadow:0 0 0 1px #fff,0 0 0 3px #21604c;border-radius:4px;pointer-events:none}
+.browser-mark span{position:absolute;bottom:calc(100% + 6px);inset-inline-start:-2px;white-space:nowrap;background:#21604c;color:#fff;border:1px solid #fff;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:600}
+.browser-mark.below span{bottom:auto;top:calc(100% + 6px)}
+.browser-mark.trailing span{inset-inline-start:auto;inset-inline-end:-2px}
+.browser-page-label{position:absolute;top:10px;inset-inline-start:10px;max-width:calc(100% - 20px);background:#fff;color:#1c3029;border:1px solid #819b8c;border-radius:4px;padding:3px 7px;font-size:11px}
+.browser-caption{font-weight:600;margin:14px 0 12px}
+.picture-toggle{display:block;margin:8px auto}
+.browser-empty{display:grid;justify-items:center;align-content:center;gap:12px;min-height:200px;padding:24px;text-align:center;background:var(--soft);margin-top:16px;border-radius:6px}
+.browser-outline{width:88px;height:60px;border:1px solid var(--muted);border-radius:5px;position:relative}
+.browser-outline:before{content:"";position:absolute;top:12px;inset-inline:0;border-top:1px solid var(--muted)}
 @media(max-width:440px){main{padding:12px}.run-row>div{flex-basis:65%}.run-row>button{margin-inline-start:auto}header{gap:8px}header .muted{display:none}}
 </style></head><body><main><div id="root" aria-live="polite">Connecting to Bao…</div><section id="error"><p role="alert"></p><p class="muted"></p></section></main><script>(${viewerMain.toString()})();</script></body></html>`;
 }

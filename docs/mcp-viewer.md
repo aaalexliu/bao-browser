@@ -6,6 +6,7 @@ Bao's local stdio MCP server can show run history and receipts in an MCP Apps ho
 
 The host must advertise `io.modelcontextprotocol/ui` with `text/html;profile=mcp-app` in its initialize capabilities. Bao then lists and serves `ui://bao/runs/v1.html` through `resources/list` and `resources/read`.
 
+- `agent_browser` shows an annotated page picture and a short caption in capable hosts. Its exact native output, snapshot refs, exit codes, and run identity reach the model in `structuredContent`.
 - `get_run` keeps its existing text receipt and adds a compact viewer in capable hosts.
 - `list_runs` adds the viewer to the [catalog history result](bao.md#mcp) and lets the app page through history.
 - `inspect_run` reads one run's receipt and workflow steps, twenty steps per page. The host exposes this reader to the app, not the model.
@@ -16,6 +17,18 @@ Clients that do not negotiate the UI MIME type get the [standard MCP tools and L
 The viewer checks host capabilities for further reads, theme, locale, and full-screen mode. **Inspect receipt** requests full-screen mode only when the host offers it. Otherwise the receipt expands inline. The HTML bundles its code and styles and requests no external connections or resources.
 
 Read errors keep the loaded receipt or history visible. For a failed read, try **Refresh**; if it keeps failing, open Bao desktop for local details. If the viewer cannot load, reopen it from the conversation. When the host cannot read more data or does not forward viewer data, use the text receipt or Bao desktop instead. Theme and size updates preserve keyboard focus and the open or closed state of **Workflow steps**.
+
+## Browser tool cards
+
+The same resource renders direct-browser results without changing native commands. Open, snapshot, tab, key, scroll, and screenshot calls show the recorded page with a page label. Click and fill try to capture the requested target and its rectangle before sending the command. Their card marks that target on the **Before click** or **Before fill** picture. This identifies the action; it does not claim that the site finished its work. Take a later snapshot to check the result.
+
+Visual connections record JPEG page pictures. Image bytes and target geometry go to the iframe in `_meta.baoToolCard`, not the model. The original command output stays intact in `structuredContent.results`. It is not copied into the visible caption. Tool inspectors belong to the host and may still expose raw structured data.
+
+**View run** calls Bao's existing read-only `inspect_run` tool with the exact run id. It does not ask the host for filesystem access. The existing receipt body and its picture-opening behavior do not change in this slice. Workflow search and description still use their previous presentation.
+
+An unavailable target picture does not prevent the native command. The card names missing evidence instead of guessing a target. If a page picture fails, a picture from the same run may appear with **Last page, before this call**. Close and owner waits use that same explicit previous-picture state; waits do not take a new screenshot. If no picture exists, the card shows an unavailable-picture canvas. Command failures retain their exact diagnostic for the model and give the person a short recovery instruction.
+
+Clients that do not negotiate MCP Apps keep their existing native-text browser results. Test the owner's actual host connection before claiming that host renders the rich card. A local stdio proof does not establish ChatGPT connectivity.
 
 ## Run evidence
 

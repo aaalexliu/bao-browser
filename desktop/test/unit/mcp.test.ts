@@ -10,6 +10,7 @@ import { frameRpc } from "../../src/mcp/frame";
 import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
 import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
+import type { BrowserToolCard } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
@@ -100,7 +101,8 @@ interface Reply {
     capabilities?: Record<string, unknown>;
     resources?: { uri: string; mimeType: string }[];
     contents?: { uri: string; mimeType: string; text: string; _meta?: unknown }[];
-    _meta?: { baoViewer?: { run?: { id: string; modelCalls: number | null }; runs?: { id: string }[] }; baoPictures?: { pictures: unknown[] } };
+    structuredContent?: { command: string; results: unknown[]; error?: string; run_id: string | null };
+    _meta?: { baoToolCard?: BrowserToolCard; baoViewer?: { run?: { id: string; modelCalls: number | null }; runs?: { id: string }[] }; baoPictures?: { pictures: unknown[] } };
     tools?: { name: string; description?: string; _meta?: { ui?: { resourceUri?: string; visibility?: string[] } } }[];
     instructions?: string;
     serverInfo?: { name?: string };
@@ -204,6 +206,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       assert.equal(receiptPayload(client.home, receipt).run_id, run.id);
       for (const name of ["inspect_run", "open_step_pictures"]) assert.equal((await client.tool(name)).text, "unknown tool");
     }
+    assert.deepEqual(await legacy.tool("agent_browser", { command: "snapshot" }), { text: "start agent-browser with open before sending commands", isError: true });
     assert.equal((await legacy.request("resources/list")).error?.code, -32601);
     assert.equal((await legacy.request("resources/read", { uri: VIEWER_URI })).error?.code, -32601);
   } finally { legacy.child.kill(); unsupported.child.kill(); }
@@ -255,6 +258,13 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     for (const name of TOOL_NAMES) assert.deepEqual(tools.find((tool) => tool.name === name)?._meta?.ui?.visibility, name === "list_runs" ? ["model", "app"] : ["model"]);
     assert.equal(tools.find((tool) => tool.name === "list_runs")?._meta?.ui?.resourceUri, VIEWER_URI);
     assert.deepEqual(tools.find((tool) => tool.name === "open_step_pictures")?._meta?.ui?.visibility, ["app"]);
+    assert.equal(tools.find((tool) => tool.name === "agent_browser")?._meta?.ui?.resourceUri, VIEWER_URI);
+    const browserError = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot" } });
+    assert.equal(browserError.result?.isError, true);
+    assert.equal(browserError.result?.structuredContent?.error, "start agent-browser with open before sending commands");
+    assert.equal(browserError.result?._meta?.baoToolCard?.picture.kind, "unavailable");
+    assert.equal(browserError.result?.structuredContent?.run_id, null);
+    assert.notEqual(browserError.result?.content?.[0]?.text, browserError.result?.structuredContent?.error);
     const resources = await mcp.request("resources/list");
     assert.equal(resources.result?.resources?.length, 1);
     assert.equal(resources.result?.resources?.[0]?.uri, VIEWER_URI);

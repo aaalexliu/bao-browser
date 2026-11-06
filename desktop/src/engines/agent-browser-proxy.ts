@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
-import { AgentBrowserRun } from "./agent-browser-record";
+import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "./agent-browser-record";
 import { agentBrowserExecutable } from "./agent-browser";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
@@ -47,6 +47,9 @@ export class AgentBrowserProxy {
   private disconnected = false;
   private starting: Promise<Session> | undefined;
   private pendingCloses = 0;
+  private latest: { runId: string; step: RecordedAgentBrowserCommand } | undefined;
+
+  get lastCommand(): typeof this.latest { return this.latest; }
 
   constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean }) {}
 
@@ -56,7 +59,8 @@ export class AgentBrowserProxy {
     return () => { this.pendingCloses--; };
   }
 
-  async execute(command: unknown, args: unknown = []): Promise<AgentBrowserCommandResult[]> {
+  async execute(command: unknown, args: unknown = [], visual = false): Promise<AgentBrowserCommandResult[]> {
+    this.latest = undefined;
     validateAgentBrowserCommand(command, args);
     if (command === "close") {
       if (this.session) this.session.closing = true;
@@ -83,6 +87,7 @@ export class AgentBrowserProxy {
     }
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     const step = recording.begin(command as string, args);
+    this.latest = { runId: recording.id, step };
     if (!this.session) {
       try {
         const session = await (this.starting = this.start(recording));
@@ -107,6 +112,10 @@ export class AgentBrowserProxy {
         results.push(...await this.waitForOwner(session, args));
         return results;
       }
+      if (visual && (command === "click" || command === "fill") && args[0]) {
+        await this.captureTarget(session, step, args[0]);
+        if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
+      }
       results.push(command === "close" && session.chrome.isClosed()
         ? { stdout: "", stderr: "", exitCode: 0 }
         : await this.run(session, command as string, args));
@@ -127,7 +136,7 @@ export class AgentBrowserProxy {
       throw error;
     } finally {
       try {
-        await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string), failure, !!session.ownerWait || command === "wait_for_owner");
+        await session.recording.complete(step, results, session.stateDir, async () => (await this.screenshot(session, command as string, visual)).bytes, failure, !!session.ownerWait || command === "wait_for_owner");
       } finally {
         commandDone();
         if (command === "close") await this.remove(session);
@@ -298,7 +307,27 @@ export class AgentBrowserProxy {
     }
   }
 
-  private async screenshot(session: Session, command: string): Promise<Buffer> {
+  private async captureTarget(session: Session, step: RecordedAgentBrowserCommand, target: string): Promise<void> {
+    try {
+      const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(3000)]);
+      const result = await this.run(session, "get", ["box", target, "--json"], signal);
+      if (result.exitCode !== 0) return;
+      const { data } = JSON.parse(result.stdout) as { data?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } };
+      if (!data) return;
+      const { x, y, width, height } = data;
+      if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
+          || ![x, y, width, height].every(Number.isFinite)) return;
+      const rect = { x, y, width, height };
+      const frame = await this.screenshot(session, step.native.command, true);
+      if (!frame.viewport || rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0
+          || rect.x + rect.width > frame.viewport.width || rect.y + rect.height > frame.viewport.height) return;
+      await session.recording.actionPicture(step, frame.bytes, { rect, viewport: frame.viewport });
+    } catch {
+      // Missing action evidence must not change the native command.
+    }
+  }
+
+  private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
     if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
     await this.detectOwnerWall(session);
     if (session.ownerWait) throw new Error("owner input is private");
@@ -315,8 +344,9 @@ export class AgentBrowserProxy {
       cdp = await connectCdp(endpoint.port, endpoint.browserPath, { signal, timeoutMs: 3000 });
       if (signal.aborted) throw new Error("screenshot timed out");
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 3000);
-      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, sessionId, 3000);
-      return Buffer.from(data, "base64");
+      const metrics = visual ? await cdp.send<{ cssLayoutViewport: { clientWidth: number; clientHeight: number } }>("Page.getLayoutMetrics", {}, sessionId, 3000) : undefined;
+      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", visual ? { format: "jpeg", quality: 75 } : { format: "png" }, sessionId, 3000);
+      return { bytes: Buffer.from(data, "base64"), viewport: metrics ? { width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight } : undefined };
     } finally {
       signal.removeEventListener("abort", close);
       cdp?.close();

@@ -2,10 +2,11 @@ import { baoUserHome, resolveLibraryIdentity, tildePath, type LibraryIdentity } 
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
-import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
+import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
 import { inspectRunView, listRunViews } from "./run-view";
+import { BROWSER_RESULT_SCHEMA, browserToolResult, type BrowserToolCard } from "./tool-card";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -73,6 +74,7 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
   "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report that the owner closed the window. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact or save a workflow. It needs no running Bao app. Bao does not block final clicks.",
+  "In MCP Apps hosts, agent_browser shows a page picture and caption. Exact native stdout/stderr and snapshot refs are in structuredContent.results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. Captured commands do not create a replayable workflow.",
   "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
 ].join("\n");
 
@@ -81,6 +83,7 @@ interface Context {
   identity: LibraryIdentity;
   proxy: AgentBrowserProxy;
   ui: boolean;
+  lastBrowserCard?: BrowserToolCard;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
@@ -171,7 +174,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.method === "notifications/initialized") return;
   if (msg.method === "tools/list") {
     const tools = ctx.ui ? [
-      ...TOOLS.map((tool) => ({ ...tool, _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
+      ...TOOLS.map((tool) => ({ ...tool, ...(tool.name === "agent_browser" ? { outputSchema: BROWSER_RESULT_SCHEMA } : {}), _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs", "agent_browser"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
       ...VIEWER_TOOLS,
     ] : TOOLS;
     send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
@@ -192,7 +195,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
     try {
       let result;
       if (ctx.ui && isViewerTool(name)) result = callViewerTool(ctx.library, name, args);
-      else if (name === "agent_browser") result = await proxyTool(args, ctx.proxy);
+      else if (name === "agent_browser") result = await proxyTool(args, ctx);
       else {
         const data = await callTool(ctx.library, ctx.identity, name, args);
         result = { content: [{ type: "text", text: JSON.stringify(data) }], isError: false,
@@ -222,12 +225,22 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "method not found" } });
 }
 
-async function proxyTool(args: Record<string, unknown>, proxy: AgentBrowserProxy) {
-  const results = await proxy.execute(args.command, args.args);
-  return {
+async function proxyTool(args: Record<string, unknown>, ctx: Context) {
+  let results: AgentBrowserCommandResult[] = [];
+  let error: string | undefined;
+  try { results = await ctx.proxy.execute(args.command, args.args, ctx.ui); }
+  catch (cause) {
+    if (!ctx.ui) throw cause;
+    results = ctx.proxy.lastCommand?.step.native.results ?? [];
+    error = cause instanceof Error ? cause.message : String(cause);
+  }
+  if (!ctx.ui) return {
     content: results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))),
     isError: results.some((result) => result.exitCode !== 0),
   };
+  const result = await browserToolResult(ctx.library.root, String(args.command || ""), results, ctx.proxy.lastCommand, ctx.lastBrowserCard, error);
+  ctx.lastBrowserCard = result._meta.baoToolCard;
+  return result;
 }
 
 async function callTool(library: Library, identity: LibraryIdentity, name: string, args: Record<string, unknown>): Promise<unknown> {
