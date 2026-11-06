@@ -110,6 +110,34 @@ test("active asks share attention counts, open Live and use numeric deadlines on
   }
 });
 
+test("footer follows replay start and end when no other state changes", { timeout: 30_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-runs-replay-footer-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(8_000);
+    const url = `http://127.0.0.1:${app.port}`;
+    const state = await (await fetch(`${url}/api/state`)).json() as Record<string, unknown>;
+    let replaying = false;
+    await page.route("**/api/state", (route) => route.fulfill({ json: { ...state, replaying } }));
+    await page.goto(url);
+    await page.waitForFunction(() => document.querySelector("#attention-label")?.textContent === "Nothing running");
+    replaying = true;
+    await page.waitForFunction(() => document.querySelector("#attention-label")?.textContent === "Running");
+    assert.equal(await page.locator("#attention").getAttribute("data-count"), "0");
+    replaying = false;
+    await page.waitForFunction(() => document.querySelector("#attention-label")?.textContent === "Nothing running");
+    assert.equal(await page.locator("#attention").getAttribute("data-count"), "0");
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("Runs first load opens the top Needs-you run, else newest, without replacing a chosen run", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-first-load-"));
   const previousHome = process.env.HOME;

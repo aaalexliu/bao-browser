@@ -228,6 +228,7 @@ async function loadState(): Promise<void> {
   }
   const key = JSON.stringify({
     recording: state.recording,
+    replaying: state.replaying,
     pending: state.pendingImport,
     ask: state.activeAsk,
     notices: state.notices,
