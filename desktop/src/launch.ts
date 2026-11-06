@@ -150,9 +150,9 @@ export function testLaneMediaArgs(env: NodeJS.ProcessEnv = process.env): string[
 
 /**
  * Owned Chrome only. Account Chrome never receives the sandbox opt-in.
- * Caller arguments never carry a keychain flag. Only the test lane adds one.
+ * Caller arguments never carry a keychain flag. Tests and the lasting Bao profile opt in.
  */
-export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, keychain?: "mock"): string[] {
   const mac = platform === "darwin" ? ["--force-renderer-accessibility"] : [];
   const sandbox = needsLinuxNoSandbox(env, platform) ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
   const drop = new Set([
@@ -167,12 +167,12 @@ export function ownedChromeLaunchArgs(extra: string[] = [], env: NodeJS.ProcessE
     if (platform === "darwin" && (arg === "--no-sandbox" || arg === "--disable-dev-shm-usage")) return false;
     return true;
   });
-  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...testLaneKeychainArgs(env), ...testLaneMediaArgs(env)];
+  return [...OWNED_CHROME_ARGS, ...mac, ...sandbox, ...cleaned, ...(keychain === "mock" ? MOCK_KEYCHAIN_ARGS : testLaneKeychainArgs(env)), ...testLaneMediaArgs(env)];
 }
 
 /** macOS Accessibility only sees the page when the renderer publishes it. */
-function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined): string[] {
-  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])]);
+function ownedLaunchArgs(extra: string[] | undefined, append: string[] | undefined, keychain?: "mock"): string[] {
+  return ownedChromeLaunchArgs([...(extra ?? []), ...(append ?? [])], process.env, process.platform, keychain);
 }
 
 const KEYCHAIN_FLAG_NAMES = new Set(["--use-mock-keychain", "--password-store"]);
@@ -513,6 +513,7 @@ export async function launchOwnedChrome(opts: {
 
 interface OwnedChromeProcessOptions {
   userDataDir: string;
+  keychain?: "mock";
   childHome?: string;
   loadExtensions?: boolean;
   preserveRestoredTabs?: boolean;
@@ -533,7 +534,7 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = fal
   const headless = opts.headless ?? true;
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
-    ...ownedLaunchArgs(opts.args, opts.appendArgs),
+    ...ownedLaunchArgs(opts.args, opts.appendArgs, opts.keychain),
     ...(opts.preserveRestoredTabs ? ["--restore-last-session"] : []),
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
@@ -577,7 +578,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
   const onClosed = () => { if (!released) void close().catch(() => undefined); };
   if (child.spawnfile !== "/usr/bin/open") child.once("exit", onClosed);
   try {
-    const verdict = assessOwnedCommand(readOwnedCommand(pid, opts.userDataDir, process.platform), opts.userDataDir);
+    const verdict = assessOwnedCommand(readOwnedCommand(pid, opts.userDataDir, process.platform), opts.userDataDir, process.env, opts.keychain);
     if (!verdict.ok) throw new Error(verdict.reason);
     const endpoint = await readDevToolsActivePort(portFile);
     cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 15_000 });
@@ -820,10 +821,9 @@ export function browserPidFromLauncher(userDataDir: string, selfPid: number, row
 }
 
 /**
- * A product command line never carries a keychain flag. A test lane command
- * line always carries the mock keychain.
+ * Only tests and launches that request a mock keychain may carry its flags.
  */
-export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS.ProcessEnv = process.env): OwnedVerdict {
+export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS.ProcessEnv = process.env, keychain?: "mock"): OwnedVerdict {
   if (/--remote-debugging-port(?:=|\s+)0(?:\s|$)/.test(cmd)) {
     return { ok: false, reason: "Chrome was started with remote-debugging-port 0, which sets navigator.webdriver." };
   }
@@ -838,9 +838,9 @@ export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS
     return { ok: false, reason: "Browser cmdline points at the daily profile." };
   }
   const tokens = cmd.split(/\s+/);
-  if (testLaneBrowser(env)) {
+  if (testLaneBrowser(env) || keychain === "mock") {
     if (!tokens.includes("--use-mock-keychain")) {
-      return { ok: false, reason: "The test lane started Chrome without a mock keychain." };
+      return { ok: false, reason: "Chrome started without the requested mock keychain." };
     }
   } else if (tokens.some((token) => isKeychainFlag(token))) {
     return { ok: false, reason: "Chrome was started with a mock keychain flag." };
