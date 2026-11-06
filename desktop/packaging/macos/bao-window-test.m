@@ -47,6 +47,20 @@ static id test_session(id self, SEL cmd) {
     return [TestSession new];
 }
 
+static NSEvent *drag_event;
+static void record_drag(id self, SEL cmd, NSEvent *event) {
+    (void)self;
+    (void)cmd;
+    drag_event = event;
+}
+
+static NSEvent *titlebar_click(NSWindow *window, NSInteger count) {
+    return [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+        location:NSMakePoint(150, window.contentView.bounds.size.height - 24)
+        modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
+        windowNumber:window.windowNumber context:nil eventNumber:1 clickCount:count pressure:1];
+}
+
 static NSURL *opened;
 static BOOL open_external(id self, SEL cmd, NSURL *url) {
     (void)self;
@@ -78,9 +92,9 @@ int main(int argc, const char *argv[]) {
         NSApplication *app = NSApplication.sharedApplication;
         BaoWindow *owner = [[BaoWindow alloc] initWithURL:[NSURL URLWithString:@"http://127.0.0.1:47879/"] serverPid:-1];
         assert([owner.window.title isEqualToString:@"Bao"]);
-        assert(owner.window.titleVisibility == NSWindowTitleVisible);
-        assert(!owner.window.titlebarAppearsTransparent);
-        assert(!(owner.window.styleMask & NSWindowStyleMaskFullSizeContentView));
+        assert(owner.window.titleVisibility == NSWindowTitleHidden);
+        assert(owner.window.titlebarAppearsTransparent);
+        assert(owner.window.styleMask & NSWindowStyleMaskFullSizeContentView);
         assert(owner.window.minSize.width == 720);
         assert(!owner.window.releasedWhenClosed);
         assert(!owner.webView.configuration.websiteDataStore.persistent);
@@ -104,6 +118,35 @@ int main(int argc, const char *argv[]) {
         assert([app.mainMenu.itemArray[1].submenu.title isEqualToString:@"Edit"]);
         [owner showWindow:nil];
         assert(owner.window.visible);
+        [owner.window displayIfNeeded];
+        NSView *content = owner.window.contentView;
+        NSPoint strip = NSMakePoint(150, content.bounds.size.height - 24);
+        assert([[content hitTest:strip] isKindOfClass:BaoTitlebar.class]);
+        assert(![[content hitTest:NSMakePoint(220, strip.y)] isKindOfClass:BaoTitlebar.class]);
+        assert(![[content hitTest:NSMakePoint(150, strip.y - 52)] isKindOfClass:BaoTitlebar.class]);
+        NSUInteger buttonIndex = 0;
+        for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+            NSButton *button = [owner.window standardWindowButton:kind.unsignedIntegerValue];
+            assert(!button.hidden && button.enabled);
+            NSPoint point = [button convertPoint:NSMakePoint(NSMidX(button.bounds), NSMidY(button.bounds)) toView:nil];
+            assert(NSEqualPoints(point, NSMakePoint(24 + buttonIndex++ * 20, content.bounds.size.height - 24)));
+            NSView *frame = content.superview;
+            assert([frame hitTest:[frame convertPoint:point fromView:nil]] == button);
+        }
+        Method dragMethod = class_getInstanceMethod(NSWindow.class, @selector(performWindowDragWithEvent:));
+        IMP realDrag = method_setImplementation(dragMethod, (IMP)record_drag);
+        NSEvent *single = titlebar_click(owner.window, 1);
+        [owner.window sendEvent:single];
+        assert(drag_event == single);
+        method_setImplementation(dragMethod, realDrag);
+        NSRect unzoomed = owner.window.frame;
+        [owner.window sendEvent:titlebar_click(owner.window, 2)];
+        assert(!NSEqualRects(unzoomed, owner.window.frame));
+        [owner.window sendEvent:titlebar_click(owner.window, 2)];
+        assert(NSEqualRects(unzoomed, owner.window.frame));
+        [owner.window setContentSize:NSMakeSize(720, 600)];
+        assert([[content hitTest:NSMakePoint(150, content.bounds.size.height - 24)] isKindOfClass:BaoTitlebar.class]);
+        [owner.window setContentSize:NSMakeSize(1200, 800)];
         [owner.window close];
         assert(!owner.window.visible);
         [owner applicationShouldHandleReopen:app hasVisibleWindows:NO];
@@ -138,21 +181,34 @@ int main(int argc, const char *argv[]) {
         if (argc > 1) {
             NSString *html = [NSString stringWithContentsOfFile:[NSString stringWithUTF8String:argv[1]] encoding:NSUTF8StringEncoding error:NULL];
             assert(html);
-            [owner.webView loadHTMLString:html baseURL:nil];
+            [owner.webView loadHTMLString:html baseURL:owner.serverURL];
             NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
             while (owner.webView.loading && deadline.timeIntervalSinceNow > 0) {
                 [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
             }
             __block BOOL checked = NO;
+            __block BOOL shellChecked = NO;
+            NSString *shellCheck = @"(() => {"
+                "const rail = document.querySelector('#rail');"
+                "const brand = document.createElement('div'); brand.className = 'brand'; rail.append(brand);"
+                "const native = document.documentElement.dataset.baoNative === 'true' && getComputedStyle(rail).paddingTop === '52px' && getComputedStyle(brand).display === 'none';"
+                "delete document.documentElement.dataset.baoNative;"
+                "const browser = getComputedStyle(rail).paddingTop === '10px' && getComputedStyle(brand).display === 'flex';"
+                "document.documentElement.dataset.baoNative = 'true'; brand.remove();"
+                "return native && browser; })()";
+            [owner.webView evaluateJavaScript:shellCheck completionHandler:^(id value, NSError *error) {
+                assert(!error && [value boolValue]);
+                shellChecked = YES;
+            }];
             [owner.webView evaluateJavaScript:@"['label', '.wf-card', '.share-panel', '.shot-stage', '#palette'].every(s => { const e = document.createElement(s === 'label' ? 'label' : 'div'); if (s[0] === '.') e.className = s.slice(1); if (s[0] === '#') e.id = s.slice(1); e.hidden = true; e.textContent = 'Default'; document.body.append(e); const hidden = getComputedStyle(e).display === 'none'; e.hidden = false; const shown = getComputedStyle(e).display !== 'none'; e.remove(); return hidden && shown; })" completionHandler:^(id value, NSError *error) {
                 assert(!error && [value boolValue]);
                 checked = YES;
             }];
             deadline = [NSDate dateWithTimeIntervalSinceNow:5];
-            while (!checked && deadline.timeIntervalSinceNow > 0) {
+            while ((!checked || !shellChecked) && deadline.timeIntervalSinceNow > 0) {
                 [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
             }
-            assert(checked);
+            assert(checked && shellChecked);
         }
 
         char temp[] = "/tmp/bao-window-download-XXXXXX";
