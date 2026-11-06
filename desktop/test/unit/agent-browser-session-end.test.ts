@@ -113,7 +113,14 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
       if (repeat) {
         await delay(10);
         try { process.kill(-child.pid, signal); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+        catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          // macOS can report EPERM while an exited group leader awaits reaping.
+          const alreadyExited = code === "EPERM" && await Promise.race([
+            exited.then(() => true), delay(1000).then(() => false),
+          ]);
+          if (code !== "ESRCH" && !alreadyExited) throw error;
+        }
       }
       await exited;
     },

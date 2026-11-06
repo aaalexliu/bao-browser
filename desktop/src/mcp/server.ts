@@ -122,6 +122,9 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       }).finally(releaseClose);
     }
   });
+  // End proxy ownership immediately; queued catalog work can outlast cleanup.
+  // After stdin closes, catalog work finishes and saves with no cap.
+  // SIGTERM, SIGINT, and SIGHUP cap that wait at 15 s, even mid-run.
   const end = (): void => {
     if (ending) return;
     ending = true;
