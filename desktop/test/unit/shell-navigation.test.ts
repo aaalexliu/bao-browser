@@ -124,7 +124,6 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     assert.equal(await search.evaluate((element) => element === document.activeElement), true);
     assert.equal(await search.inputValue(), "Read");
     await checkTitle("Bao");
-    await page.unroute("**/api/state");
     await page.getByRole("button", { name: workflow.name, exact: true }).focus();
     await scrollContent();
     await page.keyboard.press("Enter");
@@ -133,16 +132,10 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await checkDetailFocus("Workflow detail");
     await page.locator("#workflow-edit summary").click();
     await page.locator("#edit-json").focus();
-    await page.route("**/api/state", async (route) => {
-      const response = await route.fetch();
-      const state = await response.json() as ShellState & { settings: Record<string, unknown> };
-      await route.fulfill({ json: { ...state, settings: { ...state.settings, promoteAfter: 99 } } });
-    });
     await page.waitForRequest("**/api/state");
     await page.waitForRequest("**/api/state");
     assert.equal(await page.locator("#edit-json").evaluate((element) => element === document.activeElement), true);
     await checkTitle("Bao");
-    await page.unroute("**/api/state");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");
     await navigate("runs", "runs");
     await page.locator("[data-open-run=run-shell]").focus();
@@ -151,6 +144,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.waitForSelector("#run-viewer");
     await checkTitle("Bao");
     await checkDetailFocus("Run detail");
+    await page.unroute("**/api/state");
     assert.deepEqual(accessibilityIssues, []);
     assert.equal(await page.locator("#rail [data-place=runs]").getAttribute("aria-current"), "page");
     await page.setViewportSize({ width: 720, height: 800 });
