@@ -2,6 +2,7 @@
 // No network, no DOM.
 
 import { importErrorView } from "./import-error";
+import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import type { AutomationReport } from "../cdp-live/automation";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
@@ -287,12 +288,8 @@ export function maskSecrets(text: string, secrets: string[]): string {
 function icon(name: string): string {
   const paths: Record<string, string> = {
     library: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z",
-    capture: "M12 8a4 4 0 100 8 4 4 0 000-8zm8.5 4a8.5 8.5 0 11-17 0 8.5 8.5 0 0117 0z",
-    teach: "M5 4h10l4 4v12H5V4zm9 0v5h5M8 13h8M8 17h5",
+    sidebar: "M3 4h18v16H3V4zm2 2v12h4V6H5zm6 0v12h8V6h-8z",
     runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
-    heals: "M12 4l2.2 4.6L19 9.2l-3.5 3.4.8 4.9L12 15.8 7.7 17.5l.8-4.9L5 9.2l4.8-.6L12 4z",
-    replay: "M8 5v14l11-7L8 5z",
-    logins: "M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9a7 7 0 0114 0H5z",
     settings: "M12 8.5A3.5 3.5 0 1012 15.5 3.5 3.5 0 0012 8.5zM4 12l2-.6.4-1.6-1.2-1.6 1.8-1.8 1.6 1.2 1.6-.4L11 5h2l.4 2.2 1.6.4 1.6-1.2 1.8 1.8-1.2 1.6.4 1.6 2 .6v2l-2 .6-.4 1.6 1.2 1.6-1.8 1.8-1.6-1.2-1.6.4L13 21h-2l-.4-2.2-1.6-.4-1.6 1.2-1.8-1.8 1.2-1.6-.4-1.6L4 14v-2z",
   };
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
@@ -304,7 +301,7 @@ export function helperJobList(helper?: { capabilities?: { status: string; option
   return `<ul class="helper-jobs">${rows.map((status) => `<li>${esc(status)}</li>`).join("")}</ul>`;
 }
 
-export function rail(state: ShellState): string {
+export function rail(state: ShellState, screen: Screen = "runs"): string {
   const heals = pendingHealCount(state.runs || []);
   const reviews = reviewItems(state.runs);
   const waiting = attentionCount({
@@ -316,19 +313,11 @@ export function rail(state: ShellState): string {
   const rec = state.recording ? "on" : "";
   const helper = state.helper?.label || "helper off";
   const model = state.model?.label || "no model";
-  const healBadge = heals > 0 ? `<span class="count" id="heal-count">${heals}</span>` : "";
   const perm = state.permDot ? permissionDot(state.helper) : "";
-  return `<div class="brand"><strong>bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
-    <nav>
-      <button data-screen="library">${icon("library")} Library</button>
-      <button data-screen="capture">${icon("capture")} Capture</button>
-      <button data-screen="teach">${icon("teach")} Teach</button>
-      <button data-screen="runs">${icon("runs")} Runs</button>
-      <button data-screen="heals">${icon("heals")} Heals ${healBadge}</button>
-      <button data-screen="replay">${icon("replay")} Replay</button>
-      <button data-screen="logins">${icon("logins")} Logins</button>
-      <button data-screen="settings">${icon("settings")} Settings</button>
-    </nav>
+  const current = shellScreens[shellScreen(screen)].place;
+  return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
+    <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
+    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}>${icon(place.icon)} ${place.label}</button>`).join("")}</nav>
     <div class="rail-foot">
       <div id="attention-label">${waiting} waiting</div>
       <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
@@ -336,6 +325,20 @@ export function rail(state: ShellState): string {
       ${helperJobList(state.helper)}
       <div class="channel" id="model-status">${esc(model)}</div>
     </div>`;
+}
+
+export function shellList(screen: Screen, state: ShellState): string {
+  const current = shellScreen(screen);
+  const place = shellPlaces.find((item) => item.id === shellScreens[current].place)!;
+  const heals = pendingHealCount(state.runs || []);
+  return `<header class="pane-bar">
+      <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>
+      <h1>${place.label}</h1>
+    </header>
+    <nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
+        <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}${id === "heals" && heals > 0 ? ` <span id="heal-count">${heals}</span>` : ""}</span>
+        <span class="screen-description">${item.description}</span>
+      </button>`).join("")}</nav>`;
 }
 
 /** Settings control for the outbound relay. Unchecked until this Mac opts in. */
@@ -1751,12 +1754,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): stri
 
 export function commandItems(workflows: { id: string; name: string }[]): CommandItem[] {
   const screens: CommandItem[] = [
-    { id: "library", label: "Library", kind: "screen", screen: "library", hint: "Go" },
-    { id: "capture", label: "Capture", kind: "screen", screen: "capture", hint: "Go" },
-    { id: "teach", label: "Teach", kind: "screen", screen: "teach", hint: "Go" },
-    { id: "runs", label: "Runs", kind: "screen", screen: "runs", hint: "Go" },
-    { id: "heals", label: "Heals", kind: "screen", screen: "heals", hint: "Go" },
-    { id: "settings", label: "Settings", kind: "screen", screen: "settings", hint: "Go" },
+    ...Object.entries(shellScreens).map(([id, item]) => ({ id, label: item.label, kind: "screen" as const, screen: id, hint: "Go" })),
     { id: "theme", label: "Toggle appearance", kind: "theme", hint: "Light or dark" },
   ];
   const open = workflows.map((workflow) => ({ id: `open-${workflow.id}`, label: `Open ${workflow.name}`, kind: "workflow" as const, workflowId: workflow.id, hint: "Workflow" }));

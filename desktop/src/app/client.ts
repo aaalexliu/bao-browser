@@ -2,6 +2,7 @@
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
+import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
@@ -35,6 +36,7 @@ import {
   paletteView,
   helperJobList,
   rail,
+  shellList,
   recordBar,
   saveSheetView,
   runsList,
@@ -64,8 +66,6 @@ import {
   type ShellState,
   type WorkflowSummary,
 } from "./views";
-
-type Screen = "library" | "capture" | "runs" | "live" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
 
 interface OpenedState {
   kind: "workflow" | "import" | "run";
@@ -106,7 +106,7 @@ let state: ShellState & {
   home?: string;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
-let screen: Screen = screenFromQuery(location.search) || "library";
+let screen: Screen = screenFromQuery(location.search) || "runs";
 let lastWf = "";
 let deeplinkInputs: Record<string, string> = {};
 let deeplinkPending = false;
@@ -119,6 +119,9 @@ let selectedStep = "";
 let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();
 let renderKey = "";
+let renderedDetail = "";
+let railHtmlKey = "";
+let listHtmlKey = "";
 let libraryQuery = "";
 let paletteOpen = false;
 let paletteQuery = "";
@@ -236,8 +239,23 @@ function render(): void {
   applyTheme();
   if (screen === "logins") readLoginForm();
   const missing = state.settings?.pageEngine !== "agent-browser" && macPermissionMissing(state.helper);
-  const showCard = missing && !onboarded && screen === "library";
-  railEl().innerHTML = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard });
+  const showCard = missing && !onboarded && (screen === "runs" || screen === "library");
+  const railHtml = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard }, screen);
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedNav = focused?.closest("#rail, #screen-list");
+  const focusSelector = !focusedNav ? "" : focused?.id ? `#${focused.id}` : focused?.dataset.screen ? `#${focusedNav.id} button[data-screen="${focused.dataset.screen}"]` : "";
+  if (railHtmlKey !== railHtml) {
+    railEl().innerHTML = railHtml;
+    railHtmlKey = railHtml;
+  }
+  const list = document.getElementById("screen-list")!;
+  const listHtml = shellList(screen, state);
+  if (listHtmlKey !== listHtml) {
+    list.innerHTML = listHtml;
+    listHtmlKey = listHtml;
+  }
+  if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
+  document.getElementById("screen-title")!.textContent = shellScreens[shellScreen(screen)].label;
   const importAsk = screen === "logins" ? loginAct(login) : "";
   actEl().innerHTML = (state.automationNotice ? `<p role="status" id="automation-notice">${esc(state.automationNotice)}</p>` : "") + remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
@@ -273,7 +291,6 @@ function render(): void {
     }
     if (screen === "replay") void fillArgs(replayId);
   }
-  markNav();
   bind();
   applySearch();
   paintPalette();
@@ -281,17 +298,15 @@ function render(): void {
   paintSaveSheet();
   mountShots();
   paintToasts();
+  const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : "";
+  if (detail && detail !== renderedDetail) {
+    mainEl().focus({ preventScroll: true });
+    document.getElementById("content")!.scrollTop = 0;
+  }
+  renderedDetail = detail;
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
   if (screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
-}
-
-function markNav(): void {
-  const current = screen === "run" ? "runs" : screen === "workflow" || screen === "import" ? "library" : screen;
-  document.querySelectorAll("#rail nav button").forEach((btn) => {
-    const el = btn as HTMLButtonElement;
-    el.classList.toggle("on", el.dataset.screen === current);
-  });
 }
 
 function capture(): string {
@@ -466,6 +481,23 @@ function importSheet(): string {
   </section>`;
 }
 
+function navigate(next: Screen): void {
+  screen = next;
+  renderKey = "";
+  if (screen === "logins") void loadSaved();
+  if (screen === "settings") void loadHostAccess();
+  if (screen === "replay") {
+    debugStepId = "";
+    runFromN = 0;
+    fromNote = "";
+  }
+  render();
+  const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+  if (sidebar.open) sidebar.close("navigate");
+  mainEl().focus();
+  document.getElementById("content")!.scrollTop = 0;
+}
+
 function bind(): void {
   bindDesktopMcp();
   const recordAgain = document.getElementById("library-record-again");
@@ -475,24 +507,24 @@ function bind(): void {
     render();
     document.getElementById("start-url")?.focus();
   };
-  document.querySelectorAll("#rail nav button").forEach((btn) => {
+  const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+  const toggle = document.getElementById("sidebar-toggle");
+  if (toggle) toggle.onclick = () => {
+    sidebar.returnValue = "";
+    sidebar.append(railEl());
+    sidebar.showModal();
+  };
+  const close = document.getElementById("sidebar-close");
+  if (close) close.onclick = () => sidebar.close();
+  document.querySelectorAll("#rail nav button, #screen-list nav button").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      screen = (btn as HTMLButtonElement).dataset.screen as Screen;
-      renderKey = "";
-      if (screen === "logins") void loadSaved();
-      if (screen === "settings") void loadHostAccess();
-      render();
+      navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
   });
-  document.querySelectorAll("[data-screen=replay]").forEach((btn) => {
+  document.querySelectorAll("#main [data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
-      debugStepId = "";
-      runFromN = 0;
-      fromNote = "";
-      screen = "replay";
-      renderKey = "";
-      render();
+      navigate("replay");
     };
   });
   document.querySelectorAll("[data-open-run]").forEach((btn) => {
@@ -787,12 +819,7 @@ function bind(): void {
     applySearch();
   };
   const paletteBtn = document.getElementById("palette-open");
-  if (paletteBtn) paletteBtn.onclick = () => {
-    paletteOpen = true;
-    paletteQuery = "";
-    paletteActive = 0;
-    paintPalette();
-  };
+  if (paletteBtn) paletteBtn.onclick = openPalette;
   const automation = document.getElementById("automation-ask");
   if (automation) automation.onclick = async () => {
     try {
@@ -1291,12 +1318,7 @@ async function openEditor(id: string): Promise<void> {
   host.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || id;
-      debugStepId = "";
-      runFromN = 0;
-      fromNote = "";
-      screen = "replay";
-      renderKey = "";
-      render();
+      navigate("replay");
     };
   });
   host.querySelectorAll("[data-try-step]").forEach((btn) => {
@@ -1995,6 +2017,15 @@ function filteredCommands(): CommandItem[] {
   return commandItems(state.workflows || []).filter((item) => !q || item.label.toLowerCase().includes(q));
 }
 
+function openPalette(): void {
+  const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+  if (sidebar.open) sidebar.close("palette");
+  paletteOpen = true;
+  paletteQuery = "";
+  paletteActive = 0;
+  paintPalette();
+}
+
 function paintPalette(): void {
   const host = document.getElementById("palette");
   if (!host) return;
@@ -2030,11 +2061,15 @@ function runCommand(item?: CommandItem): void {
   if (item.kind === "theme") theme = theme === "dark" ? "light" : "dark";
   else if (item.screen === "replay" && item.workflowId) {
     lastWf = item.workflowId;
-    screen = "replay";
+    navigate("replay");
+    return;
   } else if (item.kind === "workflow" && item.workflowId) {
     openWorkflow = item.workflowId;
     screen = "workflow";
-  } else if (item.screen) screen = item.screen as Screen;
+  } else if (item.screen) {
+    navigate(item.screen as Screen);
+    return;
+  }
   renderKey = "";
   render();
 }
@@ -2292,12 +2327,10 @@ document.addEventListener("keydown", (event) => {
   const meta = event.metaKey || event.ctrlKey;
   if (meta && event.key.toLowerCase() === "k") {
     event.preventDefault();
-    paletteOpen = !paletteOpen;
     if (paletteOpen) {
-      paletteQuery = "";
-      paletteActive = 0;
-    }
-    paintPalette();
+      paletteOpen = false;
+      paintPalette();
+    } else openPalette();
     return;
   }
   if (!paletteOpen) {
@@ -2329,6 +2362,17 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+const sidebarDialog = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+sidebarDialog.addEventListener("close", () => {
+  if (sidebarDialog.open) return;
+  document.getElementById("app")!.prepend(railEl());
+  if (paletteOpen || sidebarDialog.returnValue === "palette") return;
+  if (sidebarDialog.returnValue === "navigate") mainEl().focus();
+  else document.getElementById("sidebar-toggle")?.focus();
+});
+window.matchMedia("(max-width: 1060px)").addEventListener("change", (event) => {
+  if (!event.matches && sidebarDialog.open) sidebarDialog.close("navigate");
+});
 const statePoller = createStatePoller({
   poll: refreshState,
   active: () => activePolling(state),

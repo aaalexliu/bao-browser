@@ -18,7 +18,7 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
   process.env.BAO_CHROME_USER_DATA = path.join(home, "no-chrome");
   const origin = 1_700_000_000_000;
   const app = await startApp({ home, port: 0 });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
     const doc: WorkflowV2 = {
@@ -116,8 +116,11 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
     assert.match(toast, /Run failed/);
     assert.match(toast, /stopped at Save/);
     assert.equal(await page.locator("#toasts [data-open-step]").count(), 0);
+    await page.locator("#rail button[data-place=workflows]").click();
+    await page.locator("#screen-list button[data-screen=library]").click();
     assert.match(await page.locator("article.wf-card .status").innerText(), /failed/);
-    await page.locator("button[data-screen=runs]").click();
+    await page.locator("#rail button[data-place=runs]").click();
+    await page.locator("#screen-list button[data-screen=runs]").click();
     await page.locator("[data-open-run=run-fail]").click();
     await page.waitForSelector("#run-viewer .step.on[data-select-step=save]");
     assert.ok(await page.locator("#pass-grid span.cell.failed").count() >= 1);
@@ -127,7 +130,8 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
     await page.waitForSelector("#run-viewer .step.on[data-select-step=save]");
     assert.equal(await page.locator("#act-bar").getAttribute("data-ask"), "login");
     assert.equal(await page.locator("#act-show").count(), 1);
-    await page.locator("button[data-screen=runs]").click();
+    await page.locator("#rail button[data-place=runs]").click();
+    await page.locator("#screen-list button[data-screen=runs]").click();
     await page.locator("[data-open-run=run-ok]").click();
     await page.waitForSelector("#rerun-run");
     await page.locator("#rerun-run").click();

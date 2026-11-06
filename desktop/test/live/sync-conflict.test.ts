@@ -173,6 +173,7 @@ function relabel(doc: WorkflowV2, stepId: string, label: string): WorkflowV2 {
 }
 
 async function openConflict(page: Page): Promise<void> {
+  await page.locator("#rail button[data-place=workflows]").click();
   await page.getByRole("button", { name: "Shared note" }).click();
   await page.getByTestId("conflict-banner").waitFor();
   assert.match(await page.getByTestId("conflict-banner").innerText(), /Changed on Ada's Mac and Home Mac/);

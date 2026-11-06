@@ -46,6 +46,8 @@ test("Share opens exports that download the original bytes and names within the 
     browser = await testChromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
     const page = await browser.newPage({ acceptDownloads: true });
     await page.goto(base);
+    await page.locator("#rail button[data-place=workflows]").click();
+    await page.locator("#screen-list button[data-screen=library]").click();
     await page.locator(`[data-open-workflow="${doc.id}"]`).click();
     const opener = page.getByTestId("share-open");
     const panel = page.getByTestId("share-panel");

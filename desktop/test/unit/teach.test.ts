@@ -25,7 +25,7 @@ import {
   teachIntentCase,
   teachSummary,
 } from "../../src/v1/teach";
-import { rail, runViewer, teachCard, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
+import { rail, runViewer, shellList, teachCard, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -210,8 +210,10 @@ test("a model narration is labeled, and a failed model call stays on the heurist
   assert.match(review, /data-shot=/);
   assert.doesNotMatch(review, /You do this/);
   assert.doesNotMatch(review, /<h3 class="section">Workflow/);
-  const nav = rail({});
-  assert.ok(nav.indexOf('data-screen="capture"') < nav.indexOf('data-screen="teach"'));
+  const nav = rail({}, "teach");
+  assert.match(nav, /data-place="workflows" data-screen="library" class="on"/);
+  const screens = shellList("teach", {});
+  assert.ok(screens.indexOf('data-screen="capture"') < screens.indexOf('data-screen="teach"'));
 });
 
 test("failed runs keep step details but no longer offer Teach repair", () => {
@@ -221,10 +223,11 @@ test("failed runs keep step details but no longer offer Teach repair", () => {
   );
   assert.match(html, /id="open-failed-step"/);
   assert.doesNotMatch(html, /Teach this step|id="teach-fix"/);
-  const nav = rail({});
-  assert.match(nav, /data-screen="teach"/);
-  assert.match(nav, /data-screen="capture"/);
-  assert.match(nav, /data-screen="heals"/);
+  const workflows = shellList("library", {});
+  assert.match(workflows, /data-screen="teach"/);
+  assert.match(workflows, /data-screen="capture"/);
+  const runs = shellList("runs", {});
+  assert.match(runs, /data-screen="heals"/);
 });
 
 test("marking a secret constant is refused, and a check is a verify step", () => {

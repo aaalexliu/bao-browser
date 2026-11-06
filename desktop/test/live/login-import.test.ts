@@ -80,7 +80,8 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     await ui.goto(`http://127.0.0.1:${app.port}/`);
     await ui.evaluate(() => localStorage.removeItem("bao-theme"));
     await ui.reload();
-    await ui.click("nav button[data-screen=logins]");
+    await ui.click("#rail button[data-place=settings]");
+    await ui.click("#screen-list button[data-screen=logins]");
     await ui.fill("#login-site", `${origin}/account`);
     await ui.click("#show-profiles");
     try {
@@ -176,7 +177,8 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
   const keyUi = await keyBrowser.newPage({ viewport: { width: 1100, height: 1100 } });
   try {
     await keyUi.goto(`http://127.0.0.1:${keyApp.port}/`);
-    await keyUi.click("nav button[data-screen=logins]");
+    await keyUi.click("#rail button[data-place=settings]");
+    await keyUi.click("#screen-list button[data-screen=logins]");
     await keyUi.fill("#login-site", `${origin}/account`);
     await keyUi.click("#show-profiles");
     await keyUi.waitForSelector("[data-import-profile=Default]");
@@ -253,7 +255,8 @@ test("import a public demo login, then block the run after the cookie is cleared
     await ui.goto(`http://127.0.0.1:${app.port}/`);
     await ui.evaluate(() => localStorage.removeItem("bao-theme"));
     await ui.reload();
-    await ui.click("nav button[data-screen=logins]");
+    await ui.click("#rail button[data-place=settings]");
+    await ui.click("#screen-list button[data-screen=logins]");
     await ui.fill("#login-site", probe);
     await ui.click("#show-profiles");
     await ui.waitForSelector("[data-import-profile=Default]");
@@ -289,7 +292,8 @@ test("import a public demo login, then block the run after the cookie is cleared
       createdAt: 1,
     };
     app.library.save(workflow);
-    await ui.click("nav button[data-screen=replay]");
+    await ui.click("#rail button[data-place=workflows]");
+    await ui.click("#screen-list button[data-screen=replay]");
     await ui.waitForSelector("#wf");
     await ui.selectOption("#wf", workflow.id);
     await ui.click("#run");
@@ -359,7 +363,8 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
     await ui.goto(`http://127.0.0.1:${app.port}/`);
     await ui.evaluate(() => localStorage.removeItem("bao-theme"));
     await ui.reload();
-    await ui.click("nav button[data-screen=logins]");
+    await ui.click("#rail button[data-place=settings]");
+    await ui.click("#screen-list button[data-screen=logins]");
     await ui.fill("#login-site", `${origin}/`);
     await ui.click("#show-profiles");
     await ui.waitForSelector("[data-import-profile=Default]");
