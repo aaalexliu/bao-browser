@@ -241,9 +241,9 @@ int main(void) {
     }
   }
 
-  if (bao_port_listening(port)) {
-    bao_show_alert(kAlreadyTitle, kAlreadyBody);
-    return 0;
+  if (bao_recover_server(node_bin, root, bao_home, port) != 0) {
+    bao_show_alert(kOpenTitle, "Bao's local port is in use. Quit the process using it, then open Bao again.");
+    return 1;
   }
 
   if (bao_instance_write_ui_pid(bao_home, (int)getpid()) != 0) {

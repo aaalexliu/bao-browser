@@ -1,5 +1,6 @@
 #import "bao-window.m"
 #import <objc/runtime.h>
+#import <UserNotifications/UserNotifications.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,29 @@ static WKWebsiteDataStore *test_store(id self, SEL cmd) {
 - (BOOL)shouldPerformDownload { return self.download; }
 - (WKFrameInfo *)targetFrame { return self.newWindow ? nil : (WKFrameInfo *)self; }
 @end
+
+@interface TestNotificationResponse : NSObject
+@property(nonatomic, copy) NSString *actionIdentifier;
+@end
+@implementation TestNotificationResponse
+@end
+
+static NSURLRequest *replay_request;
+@interface TestSession : NSObject
+@end
+@implementation TestSession
+- (id)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))handler {
+    (void)handler;
+    replay_request = request;
+    return nil;
+}
+@end
+
+static id test_session(id self, SEL cmd) {
+    (void)self;
+    (void)cmd;
+    return [TestSession new];
+}
 
 static NSURL *opened;
 static BOOL open_external(id self, SEL cmd, NSURL *url) {
@@ -46,7 +70,7 @@ static WKNavigationActionPolicy policy(BaoWindow *owner, NSString *url, WKNaviga
     return result;
 }
 
-int main(void) {
+int main(int argc, const char *argv[]) {
     @autoreleasepool {
         // No persistent WebKit state or external app launch in this test.
         method_setImplementation(class_getClassMethod(WKWebsiteDataStore.class, @selector(defaultDataStore)), (IMP)test_store);
@@ -81,6 +105,51 @@ int main(void) {
         [owner applicationShouldHandleReopen:app hasVisibleWindows:NO];
         assert(owner.window.visible);
         [owner.window orderOut:nil];
+        app.delegate = owner;
+        Method sessionMethod = class_getClassMethod(NSURLSession.class, @selector(sharedSession));
+        IMP realSession = method_setImplementation(sessionMethod, (IMP)test_session);
+        id<UNUserNotificationCenterDelegate> notifier = [NSClassFromString(@"BaoNotify") new];
+        for (NSString *action in @[@"show-window", UNNotificationDefaultActionIdentifier, UNNotificationDismissActionIdentifier]) {
+            [owner.window close];
+            replay_request = nil;
+            TestNotificationResponse *response = [TestNotificationResponse new];
+            response.actionIdentifier = action;
+            __block BOOL completed = NO;
+            [notifier userNotificationCenter:(UNUserNotificationCenter *)[NSObject new] didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:^{ completed = YES; }];
+            NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:3];
+            while (!completed && deadline.timeIntervalSinceNow > 0) {
+                [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+            }
+            assert(completed);
+            BOOL show = ![action isEqualToString:UNNotificationDismissActionIdentifier];
+            assert(owner.window.visible == show);
+            assert((replay_request != nil) == show);
+            if (show) {
+                assert([replay_request.HTTPMethod isEqualToString:@"POST"]);
+                assert([replay_request.URL.path isEqualToString:@"/api/replay/show"]);
+            }
+        }
+        method_setImplementation(sessionMethod, realSession);
+        [owner.window orderOut:nil];
+        if (argc > 1) {
+            NSString *html = [NSString stringWithContentsOfFile:[NSString stringWithUTF8String:argv[1]] encoding:NSUTF8StringEncoding error:NULL];
+            assert(html);
+            [owner.webView loadHTMLString:html baseURL:nil];
+            NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+            while (owner.webView.loading && deadline.timeIntervalSinceNow > 0) {
+                [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+            }
+            __block BOOL checked = NO;
+            [owner.webView evaluateJavaScript:@"['label', '.wf-card', '.share-panel', '.shot-stage', '#palette'].every(s => { const e = document.createElement(s === 'label' ? 'label' : 'div'); if (s[0] === '.') e.className = s.slice(1); if (s[0] === '#') e.id = s.slice(1); e.hidden = true; e.textContent = 'Default'; document.body.append(e); const hidden = getComputedStyle(e).display === 'none'; e.hidden = false; const shown = getComputedStyle(e).display !== 'none'; e.remove(); return hidden && shown; })" completionHandler:^(id value, NSError *error) {
+                assert(!error && [value boolValue]);
+                checked = YES;
+            }];
+            deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+            while (!checked && deadline.timeIntervalSinceNow > 0) {
+                [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+            }
+            assert(checked);
+        }
 
         char temp[] = "/tmp/bao-window-download-XXXXXX";
         assert(mkdtemp(temp));

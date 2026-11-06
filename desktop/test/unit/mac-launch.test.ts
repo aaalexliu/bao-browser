@@ -36,6 +36,10 @@ test("node discovery and the single-instance lock", { skip: macCompileSkip() }, 
   }
 });
 
+test("the launcher recovers an orphan server and preserves unrelated listeners", { skip: launcherSkip() }, () => {
+  execFileSync(process.execPath, ["--test", "desktop/test/native-recovery.test.mjs"], { stdio: "inherit", timeout: 30_000 });
+});
+
 function launcherSkip(): string | false {
   if (process.platform !== "darwin") return "bao-mcp is the Mac app's launcher";
   return macCompileSkip();
@@ -52,7 +56,9 @@ test("the native window keeps navigation, reopen, editing, downloads and server 
       "-framework", "Foundation", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications",
       path.join(MACOS, "bao-window-test.m"), path.join(MACOS, "bao-notify.m"), "-o", bin,
     ], { stdio: "inherit", timeout: 60_000 });
-    const out = execFileSync(bin, { env: { ...process.env, HOME: root }, encoding: "utf8", timeout: 20_000 });
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, CFFIXED_USER_HOME: root, BAO_HOME: root, BAO_HEAL_CURSOR_ACCOUNT: "0" };
+    for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
+    const out = execFileSync(bin, [path.join(process.cwd(), "desktop/src/app/public/index.html")], { env, encoding: "utf8", timeout: 20_000 });
     assert.match(out, /^ok native window policy, reopen, menus, downloads and server cleanup\n$/);
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -41,7 +41,12 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     (void)center;
     if ([response.actionIdentifier isEqualToString:kShowAction] ||
         [response.actionIdentifier isEqualToString:UNNotificationDefaultActionIdentifier]) {
-        raise_waiting_window();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [NSApp sendAction:@selector(showWindow:) to:NSApp.delegate from:nil];
+            raise_waiting_window();
+            completionHandler();
+        });
+        return;
     }
     completionHandler();
 }

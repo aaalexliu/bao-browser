@@ -66,6 +66,7 @@ int bao_instance_write_ui_pid(const char *home, int pid);
 int bao_read_ui_pid(const char *home);
 
 int bao_port_listening(const char *port);
+int bao_recover_server(const char *node, const char *root, const char *home, const char *port);
 /* 0 when the port accepts a connection. -1 on timeout or if child_pid has exited. */
 int bao_wait_for_port(const char *port, int child_pid, int timeout_ms);
 
