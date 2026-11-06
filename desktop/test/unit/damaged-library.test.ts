@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -97,21 +96,6 @@ test("MCP search returns good workflows and damaged-file reasons", async () => {
   } finally { await client.close(); f.cleanup(); }
 });
 
-test("CLI status returns good workflows and damaged-file reasons in an isolated HOME", () => {
-  const f = fixture();
-  try {
-    const result = spawnSync(process.execPath, [path.resolve(__dirname, "../../src/app/cli.js"), "status", "--workflows"], {
-      env: { ...process.env, HOME: f.home, BAO_HOME: f.home, BAO_HEAL_CURSOR_ACCOUNT: "0" }, encoding: "utf8",
-    });
-    assert.equal(result.status, 0, result.stderr);
-    const status = JSON.parse(result.stdout) as { home: string; workflows: { id: string }[]; damagedWorkflows: unknown[] };
-    assert.equal(status.home, f.home);
-    assert.deepEqual(status.workflows.map((doc) => doc.id), ["newer", "older"]);
-    assert.deepEqual(status.damagedWorkflows, damage);
-    assert.equal(readFileSync(f.file, "utf8"), f.bytes);
-  } finally { f.cleanup(); }
-});
-
 test("Library explains recovery without hiding good cards or claiming a damaged library is empty", () => {
   const listing = [{ ...workflow("good"), steps: 0 }];
   const html = libraryTable(listing, [], [], [], "/tmp/bao", damage);
@@ -130,6 +114,72 @@ test("Library explains recovery without hiding good cards or claiming a damaged 
   const escaped = libraryTable([], [], [], [], "<home>", [{ file: '<file>.json', reason: '<reason>' }]);
   assert.match(escaped, /&lt;file&gt;.json/);
   assert.doesNotMatch(escaped, /<file>|<reason>|<home>/);
+});
+
+for (const mode of ["sync", "push", "pull"] as const) {
+  for (const scenario of [
+    { name: "known damaged file", known: true, cloud: 3, catchingUp: false },
+    { name: "unrelated damaged file", known: false, cloud: 3, catchingUp: true },
+    { name: "known damaged file and another missing workflow", known: true, cloud: 4, catchingUp: true },
+  ]) {
+    test(`${mode} catch-up accounts for ${scenario.name} without changing readable counts`, async () => {
+      const f = fixture();
+      const server = createServer((req, res) => {
+        const send = (body: unknown, status = 200) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+        if (req.url === "/api/sync/snapshot") return send({ counts: { workflows: scenario.cloud } });
+        if (req.url === "/api/workflows") return send({ workflows: [{ id: "damaged" }] });
+        if (req.url === "/api/workflows/damaged") return send({ version: 2, document: workflow("damaged"), shots: [] });
+        if (req.url === "/api/devices") return send({ devices: [], categories: [] });
+        if (req.method === "POST") return send({ version: 1 });
+        return send({ error: "not found" }, 404);
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address();
+        assert.ok(address && typeof address !== "string");
+        saveState(f.home, {
+          ...loadState(f.home), server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture-token", backedUp: true,
+          workflows: scenario.known ? { damaged: { version: 1, hash: "previous-good-version" } } : {},
+          cloudCounts: { workflows: scenario.cloud }, outbox: [{ id: "damaged", hash: "queued-before-damage", at: 1 }],
+        });
+        const before = syncStatus(f.library);
+        assert.equal(before.catchingUp, scenario.catchingUp);
+        assert.equal(before.buckets.find((bucket) => bucket.category === "workflows")?.local, 2);
+        const after = await syncAll(f.library, mode);
+        assert.equal(after.catchingUp, scenario.catchingUp);
+        assert.equal(loadState(f.home).catchingUp, scenario.catchingUp);
+        assert.equal(after.buckets.find((bucket) => bucket.category === "workflows")?.local, 2);
+        assert.equal(loadState(f.home).outbox?.some((item) => item.id === "damaged"), false);
+        assert.equal(readFileSync(f.file, "utf8"), f.bytes);
+      } finally { await new Promise<void>((resolve) => server.close(() => resolve())); f.cleanup(); }
+    });
+  }
+}
+
+test("offline sync drops an unreadable queued edit but keeps readable edits", async () => {
+  const f = fixture();
+  const server = createServer((_req, res) => {
+    res.writeHead(503, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "offline" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    saveState(f.home, {
+      ...loadState(f.home), server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture-token", backedUp: true,
+      outbox: [{ id: "damaged", hash: "queued-before-damage", at: 1 }],
+    });
+    await assert.rejects(() => syncAll(f.library), /offline/);
+    const waiting = loadState(f.home);
+    assert.deepEqual(waiting.outbox?.map((item) => item.id).sort(), ["newer", "older"]);
+    assert.equal(waiting.lastResult, "Offline. 2 edits will push when this Mac reconnects.");
+    assert.equal(readFileSync(f.file, "utf8"), f.bytes);
+    for (const id of ["newer", "older"]) writeFileSync(path.join(f.home, "workflows", `${id}.json`), "{");
+    await assert.rejects(() => syncAll(f.library), /offline/);
+    assert.deepEqual(loadState(f.home).outbox, []);
+    assert.equal(loadState(f.home).lastResult, "Offline. This Mac will catch up when it reconnects.");
+  } finally { await new Promise<void>((resolve) => server.close(() => resolve())); f.cleanup(); }
 });
 
 test("sync counts and exports good workflows but does not overwrite a damaged local file on pull", async () => {

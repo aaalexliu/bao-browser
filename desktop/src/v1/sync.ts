@@ -154,7 +154,7 @@ export function saveState(root: string, state: SyncState): void {
 export function syncStatus(library: Library): SyncView {
   const state = loadState(library.root);
   const buckets = syncBuckets(library, state);
-  const catchingUp = Boolean(state.catchingUp) || buckets.some((bucket) => bucket.enabled && bucket.local < bucket.cloud);
+  const catchingUp = Boolean(state.catchingUp) || hasSyncShortfall(library, state, buckets);
   return {
     damagedWorkflows: library.list().damagedWorkflows,
     server: state.server,
@@ -225,6 +225,8 @@ export async function syncAll(library: Library, mode: "sync" | "push" | "pull" =
 
 async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Promise<SyncView> {
   const state = loadState(library.root);
+  const damagedIds = damagedWorkflowIds(library);
+  state.outbox = (state.outbox ?? []).filter((item) => !damagedIds.has(item.id));
   const snapshot = await loadSnapshot(state);
   if (snapshot) {
     state.cloudCounts = normalizeCounts(snapshot.counts);
@@ -248,8 +250,7 @@ async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Pro
     await pushSettings(library, state);
   }
   await refreshAccount(state);
-  const local = localSyncCounts(library);
-  state.catchingUp = SYNC_CATEGORIES.some((category) => categoryOn(state, category) && local[category] < (state.cloudCounts?.[category] ?? 0));
+  state.catchingUp = hasSyncShortfall(library, state);
   state.lastSyncedAt = new Date().toISOString();
   state.lastResult = refused
     ? `Push refused: ${refused}`
@@ -468,6 +469,17 @@ function syncBuckets(library: Library, state: SyncState): SyncBucket[] {
   }));
 }
 
+function damagedWorkflowIds(library: Library): Set<string> {
+  const listing = library.list();
+  const readableIds = new Set(listing.workflows.map((doc) => doc.id));
+  return new Set(listing.damagedWorkflows.map((item) => item.file.slice(0, -5)).filter((id) => !readableIds.has(id)));
+}
+
+function hasSyncShortfall(library: Library, state: SyncState, buckets = syncBuckets(library, state)): boolean {
+  const knownDamaged = [...damagedWorkflowIds(library)].filter((id) => Object.hasOwn(state.workflows, id)).length;
+  return buckets.some((bucket) => bucket.enabled && bucket.local + (bucket.category === "workflows" ? knownDamaged : 0) < bucket.cloud);
+}
+
 function localSyncCounts(library: Library): Record<SyncCategory, number> {
   return {
     workflows: library.list().workflows.length,
@@ -656,7 +668,8 @@ function stash(
 }
 
 function enqueueDirty(library: Library, state: SyncState): void {
-  const outbox = [...(state.outbox ?? [])];
+  const damagedIds = damagedWorkflowIds(library);
+  const outbox = (state.outbox ?? []).filter((item) => !damagedIds.has(item.id));
   for (const doc of library.list().workflows) {
     const hash = docHash(doc);
     const known = state.workflows[doc.id];
