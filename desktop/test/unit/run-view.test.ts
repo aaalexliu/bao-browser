@@ -7,6 +7,7 @@ import Ajv from "ajv";
 import { inspectRunView, listRunViews, openStepPictures, VIEW_PICTURE_BYTES, VIEW_RECORD_BYTES } from "../../src/mcp/run-view";
 import { callViewerTool, VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import { ReceiptLog } from "../../src/v1/receipt";
+import { getRun } from "../../src/mcp/catalog";
 import { shotFile } from "../../src/v1/shots";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";
@@ -76,6 +77,60 @@ test("sealed read-backs bound to secrets never leave the shared privacy boundary
     assert.doesNotMatch(JSON.stringify(detail), /private-value|password/);
     assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
   }
+});
+
+test("private failed read-backs withhold every viewer reason but preserve get_run text", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const reason = 'read-back expected "private-value", read "page private-value text"';
+  for (const scope of ["step", "workflow"]) {
+    const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 1000 };
+    library.save(scope === "step" ? { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] } : { ...workflow, readBack });
+    for (const source of ["failure", "step", "envelope"]) {
+      library.saveRun({
+        ...run, status: "failed", receipts: [],
+        failure: source === "failure" ? { stepId: "preview", reason } : undefined,
+        steps: [{ id: "preview", status: "failed", reason: source === "step" ? reason : undefined }],
+        envelope: source === "envelope" ? { status: "failed", step: "preview", reason, ask: reason } : undefined,
+      });
+      const detail = inspectRunView(library, { run_id: run.id });
+      assert.equal(detail.reason, undefined);
+      assert.doesNotMatch(JSON.stringify(detail), /private-value/);
+      assert.equal(detail.steps[0]?.picturesAllowed, false);
+      assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+      assert.equal(getRun(library, run.id).reason, reason);
+    }
+  }
+});
+
+test("workflow edits cannot make historical secret read-back steps public", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 1000 };
+  library.save({ ...workflow, readBack, steps: [...workflow.steps, { ...workflow.steps[0]!, id: "later", index: 1 }] });
+  for (const source of ["receipt", "failure", "step"]) {
+    const receipts = new ReceiptLog();
+    if (source === "receipt") receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "text", expected: "private-value", actual: "page private-value text", pass: true });
+    library.saveRun({ ...run, receipts: receipts.entries, failure: source === "failure" ? { stepId: "preview", reason: "page private-value text" } : undefined,
+      steps: source === "step" ? [{ id: "preview", status: "failed", reason: "page private-value text" }] : run.steps });
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.equal(detail.steps[0]?.picturesAllowed, false);
+    assert.doesNotMatch(JSON.stringify(detail), /private-value/);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  }
+});
+
+test("public failure and stopped-step reasons remain available without an envelope", (t) => {
+  const { library, run } = fixture(t);
+  for (const source of ["failure", "step"]) {
+    library.saveRun({ ...run, status: "failed", failure: source === "failure" ? { stepId: "preview", reason: "Preview not ready" } : undefined,
+      steps: [{ id: "preview", status: "failed", reason: source === "step" ? "Preview not ready" : undefined }] });
+    assert.equal(inspectRunView(library, { run_id: run.id }).reason, "Preview not ready");
+  }
+});
+
+test("unclassified failure and stop reasons stay in the desktop app", (t) => {
+  const { library, run } = fixture(t);
+  library.saveRun({ ...run, workflowId: "missing", status: "failed", failure: { stepId: "unknown", reason: "private-value" }, steps: [{ id: "unknown", status: "failed", reason: "private-value" }] });
+  assert.doesNotMatch(JSON.stringify(inspectRunView(library, { run_id: run.id })), /private-value/);
 });
 
 test("receipt explains a human stop without exposing the resume authority", (t) => {

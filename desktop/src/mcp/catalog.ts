@@ -309,9 +309,10 @@ export async function reviewWorkflow(
 
 function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string; redacted: true }[] {
   const dir = path.join(library.root, "shots", "runs", runId);
+  const run = library.readRun(runId);
   const shots: { stepId: string; png: string; redacted: true }[] = [];
   for (const step of workflow.steps) {
-    if (privateStep(workflow, step)) continue;
+    if (privateStep(workflow, step, run)) continue;
     const after = path.join(dir, shotFile(step.id, "after"));
     const before = path.join(dir, shotFile(step.id, "before"));
     const file = existsSync(after) ? after : before;

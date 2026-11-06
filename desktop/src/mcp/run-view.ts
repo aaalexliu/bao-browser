@@ -71,10 +71,15 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
   const failure = record(safe.failure);
   const stopped = safe.steps.map(record).find((step) => ["paused", "failed", "timeout", "timed-out"].includes(String(step.status)));
   const results = (safe.receipts || []).map(record);
+  const publicStep = (id: unknown): boolean => {
+    const definition = workflow?.steps.find((candidate) => candidate.id === id);
+    return Boolean(workflow && definition && !privateStep(workflow, definition, run));
+  };
+  const handoffPublic = publicStep(safe.envelope?.step ?? failure.stepId ?? stopped?.id);
   const steps = safe.steps.slice(stepOffset, stepOffset + STEP_PAGE_SIZE).map((item, index) => {
     const step = record(item);
     const definition = workflow?.steps.find((candidate) => candidate.id === step.id);
-    const hidden = definition ? privateStep(workflow!, definition) : true;
+    const hidden = !publicStep(step.id);
     const native = record(step.native);
     const readBacks = hidden ? [] : results.filter((result) => result.stepId === step.id).map((receipt) =>
       `Read back ${text(receipt.source, 60) || "value"}: expected ${text(receipt.expected) || ""}, saw ${text(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
@@ -90,14 +95,16 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
   });
   return {
     view: "receipt", run: summary(run, workflow),
-    reason: text(safe.envelope?.reason) || text(failure.reason) || text(stopped?.reason),
-    handoff: safe.envelope ? { status: text(safe.envelope.status, 60), ask: text(safe.envelope.ask), reason: text(safe.envelope.reason), deadline: text(safe.envelope.deadline, 80) } : null,
+    reason: (handoffPublic ? text(safe.envelope?.reason) : undefined)
+      || (publicStep(failure.stepId) ? text(failure.reason) : undefined)
+      || (publicStep(stopped?.id) ? text(stopped?.reason) : undefined),
+    handoff: safe.envelope ? { status: text(safe.envelope.status, 60), ask: handoffPublic ? text(safe.envelope.ask) : undefined, reason: handoffPublic ? text(safe.envelope.reason) : undefined, deadline: text(safe.envelope.deadline, 80) } : null,
     steps, stepOffset, nextStepOffset: stepOffset + STEP_PAGE_SIZE < safe.steps.length ? stepOffset + STEP_PAGE_SIZE : null,
     workflow: workflow ? {
       id: viewerId(workflow.id), name: text(workflow.name, 120), stepCount: workflow.steps.length,
       steps: workflow.steps.slice(workflowOffset, workflowOffset + STEP_PAGE_SIZE).map((step, index) => ({
         index: workflowOffset + index + 1, action: text(step.action, 40),
-        label: privateStep(workflow, step) ? "Private step" : text(step.label, 160),
+        label: privateStep(workflow, step, run) ? "Private step" : text(step.label, 160),
       })),
       offset: workflowOffset, nextOffset: workflowOffset + STEP_PAGE_SIZE < workflow.steps.length ? workflowOffset + STEP_PAGE_SIZE : null,
     } : null,
@@ -111,7 +118,7 @@ export function openStepPictures(library: Library, args: Record<string, unknown>
   const workflow = workflowFor(library, run);
   const step = workflow?.steps.find((item) => item.id === stepId);
   const recorded = run.steps.map(record).find((item) => item.id === stepId);
-  if (!workflow || !step || privateStep(workflow, step) || !recorded) throw new Error("Pictures withheld for this step");
+  if (!workflow || !step || privateStep(workflow, step, run) || !recorded) throw new Error("Pictures withheld for this step");
   const pictures: { phase: string; mimeType: string; data: string }[] = [];
   for (const phase of ["before", "after"] as const) {
     const names = [recorded[`${phase}Shot`], shotFile(stepId, phase, "png"), shotFile(stepId, phase, "jpg")];

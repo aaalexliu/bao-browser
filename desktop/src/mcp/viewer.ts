@@ -38,6 +38,7 @@ function viewerMain(): void {
   let context: HostContext = {};
   let canRead = false;
   let nextId = 0;
+  let viewRequest = 0;
   let expanded = false;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   const pictures = new Map<string, Pictures>();
@@ -78,10 +79,16 @@ function viewerMain(): void {
     return reply;
   }
   async function show(name: string, args: Record<string, unknown>): Promise<void> {
-    const reply = await tool(name, args);
-    if (!reply._meta?.baoViewer) throw new Error("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
-    current = reply._meta.baoViewer;
-    render();
+    const version = ++viewRequest;
+    try {
+      const reply = await tool(name, args);
+      if (version !== viewRequest) return;
+      if (!reply._meta?.baoViewer) throw new Error("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
+      current = reply._meta.baoViewer;
+      render();
+    } catch (err) {
+      if (version === viewRequest) throw err;
+    }
   }
   const history = () => show("list_runs", {});
   async function inspect(runId: string, stepOffset = 0, workflowOffset = 0): Promise<void> {
@@ -211,7 +218,7 @@ function viewerMain(): void {
       if (message.error) callback.reject(new Error(message.error.message || "Host request failed")); else callback.resolve(message.result);
     } else if (message.method === "ui/notifications/tool-result") {
       const data = (message.params as ToolReply)?._meta?.baoViewer;
-      if (data) { current = data; render(); }
+      if (data) { ++viewRequest; current = data; render(); }
     } else if (message.method === "ui/notifications/host-context-changed") {
       context = { ...context, ...message.params as HostContext }; render();
     } else if (message.id !== undefined && message.method === "ping") {
@@ -223,7 +230,7 @@ function viewerMain(): void {
     context = init.hostContext || {}; canRead = Boolean(init.hostCapabilities?.serverTools); applyContext();
     notify("ui/notifications/initialized", {});
     new ResizeObserver(() => { notify("ui/notifications/size-changed", { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); }).observe(root);
-    setTimeout(() => { if (!current) void history().catch((err: Error) => error(err.message)); }, 500);
+    setTimeout(() => { if (!current && viewRequest === 0) void history().catch((err: Error) => error(err.message)); }, 500);
   })().catch((err: Error) => error(err.message));
 }
 
