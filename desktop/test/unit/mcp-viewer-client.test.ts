@@ -39,10 +39,15 @@ test("viewer keeps the latest host view and user request when replies arrive out
     host.baoCalls = [];
     window.addEventListener("message", (event) => {
       if (event.source !== window) return;
-      const message = event.data;
+      const message: unknown = event.data;
+      if (typeof message !== "object" || message === null || !("method" in message) || !("id" in message)) return;
       if (message.method && message.id !== undefined) event.stopImmediatePropagation();
       if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostCapabilities: { serverTools: {} }, hostContext: {} } }, "*");
-      if (message.method === "tools/call") host.baoCalls.push(message);
+      if (message.method === "tools/call" && typeof message.id === "number" && "params" in message &&
+          typeof message.params === "object" && message.params !== null && "name" in message.params &&
+          typeof message.params.name === "string") {
+        host.baoCalls.push({ ...message, id: message.id, params: { ...message.params, name: message.params.name } });
+      }
     });
   });
   await page.goto(`data:text/html;base64,${Buffer.from(viewerHtml()).toString("base64")}`);
