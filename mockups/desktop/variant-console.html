@@ -1,0 +1,2061 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bao - Home</title>
+<style>
+/* ===== Tokens: Console direction (dark only, by design) ===== */
+:root{
+  /* primitives */
+  --graphite-0:#0C0D0F; --graphite-1:#111215; --graphite-2:#141518; --graphite-3:#1A1C20;
+  --graphite-4:#202329; --graphite-5:#272A31; --graphite-6:#25282E; --graphite-7:#343842;
+  --graphite-8:#4A4F59; --graphite-9:#737985;
+  --ink-1:#ECEDEF; --ink-2:#A9AEB7; --ink-3:#9096A0;
+  --orange-500:#FF8A3D; --orange-450:#FF9A55; --orange-400:#FFA266; --orange-950:#160A02;
+  --green-400:#46D18A; --cyan-400:#4FC3E8; --amber-400:#E9C25A; --violet-400:#B49CFF; --red-400:#FF6E6E;
+
+  /* semantic roles */
+  --surface-rail:var(--graphite-0);
+  --surface-side:var(--graphite-1);
+  --surface-canvas:var(--graphite-2);
+  --surface-card:var(--graphite-3);
+  --surface-raised:var(--graphite-4);
+  --surface-press:var(--graphite-5);
+  --line:var(--graphite-6);
+  --line-strong:var(--graphite-7);
+  --line-selected:var(--graphite-8);
+  --border-control:var(--graphite-9);
+  --text-1:var(--ink-1);
+  --text-2:var(--ink-2);
+  --text-3:var(--ink-3);
+  --accent:var(--orange-500);
+  --accent-hover:var(--orange-450);
+  --accent-text:var(--orange-400);
+  --on-accent:var(--orange-950);
+  --focus:var(--orange-400);
+  --ok:var(--green-400);
+  --heal:var(--cyan-400);
+  --caution:var(--amber-400);
+  --need:var(--violet-400);
+  --fail:var(--red-400);
+  --on-status:#14101F;
+  --ok-tint:color-mix(in oklab,var(--ok) 13%,var(--surface-canvas));
+  --heal-tint:color-mix(in oklab,var(--heal) 13%,var(--surface-canvas));
+  --caution-tint:color-mix(in oklab,var(--caution) 13%,var(--surface-canvas));
+  --need-tint:color-mix(in oklab,var(--need) 15%,var(--surface-canvas));
+  --fail-tint:color-mix(in oklab,var(--fail) 13%,var(--surface-canvas));
+  --glyph-muted:var(--graphite-9);
+  --accent-tint:color-mix(in oklab,var(--accent) 14%,var(--surface-canvas));
+
+  /* type */
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --fs-11:.6875rem; --fs-12:.75rem; --fs-13:.8125rem; --fs-15:.9375rem; --fs-20:1.25rem;
+
+  /* space + shape */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px;
+  --r-control:6px; --r-card:8px; --r-panel:10px;
+  --ease:cubic-bezier(.2,0,0,1);
+}
+
+*{box-sizing:border-box}
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{margin:0;min-height:100vh;background:#D8D9DD;display:flex;flex-direction:column;align-items:center;padding:14px 16px 32px;font-family:var(--font)}
+button,input,select,textarea{font:inherit;color:inherit}
+svg{display:block}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+[hidden]{display:none !important}
+
+/* ===== Harness (outside the design, deliberately plain) ===== */
+.harness{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px;margin:0 0 14px;padding:3px;border-radius:999px;background:#F2F2F3;border:1px solid #C4C5CA;font:500 12px/1 -apple-system,system-ui,sans-serif;color:#3A3A3C;max-width:100%}
+.harness .hl{padding:0 8px 0 10px;color:#6E6E73}
+.harness button{border:0;background:transparent;padding:6px 10px;border-radius:999px;cursor:pointer;color:#3A3A3C;font-size:12px}
+.harness button[aria-pressed="true"]{background:#fff;color:#000;box-shadow:0 0 0 1px #C4C5CA}
+.harness .sep{width:1px;height:16px;background:#C4C5CA;margin:0 4px}
+.harness label{display:inline-flex;align-items:center;gap:5px;padding:0 10px;cursor:pointer}
+.harness :focus-visible{outline:2px solid #0A64D6;outline-offset:1px}
+
+/* ===== Window ===== */
+.window{--w:1280px;width:min(var(--w),100%);height:820px;border-radius:12px;overflow:hidden;background:var(--surface-canvas);color:var(--text-1);
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 30px 70px rgba(0,0,0,.32),0 6px 16px rgba(0,0,0,.18);
+  display:grid;grid-template-rows:32px minmax(0,1fr) auto;container:win/inline-size;position:relative;font-size:var(--fs-13);line-height:1.45}
+.window ::selection{background:color-mix(in oklab,var(--accent) 40%,transparent)}
+.titlebar{position:relative;display:flex;align-items:center;justify-content:center;background:var(--surface-rail);border-bottom:1px solid var(--line);user-select:none}
+.lights{position:absolute;inset-inline-start:12px;top:50%;translate:0 -50%;display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:50%;display:block;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.35)}
+.lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+.wtitle{font-size:var(--fs-13);font-weight:600;color:var(--text-2)}
+.skip{position:absolute;inset-inline-start:84px;top:4px;z-index:50;padding:4px 10px;border-radius:var(--r-control);background:var(--accent);color:var(--on-accent);font-weight:600;font-size:var(--fs-12);text-decoration:none;translate:0 -200%}
+.skip:focus-visible{translate:0 0}
+
+.app{display:grid;grid-template-columns:52px minmax(0,1fr);min-height:0;position:relative}
+.screens{min-width:0;min-height:0;position:relative}
+
+/* ===== Global controls ===== */
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+a{color:var(--accent-text);text-underline-offset:2px;text-decoration-thickness:from-font}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+.t2{color:var(--text-2)} .t3{color:var(--text-3)}
+kbd{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:4px;border:1px solid #3A3E47;background:#1C1F24;color:var(--text-2);font:500 var(--fs-11)/1 var(--mono);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface-raised);color:var(--text-1);font-size:var(--fs-12);font-weight:500;line-height:1;cursor:pointer;white-space:nowrap;text-decoration:none;
+  transition-property:background-color,border-color,scale;transition-duration:.12s,.12s,.15s;transition-timing-function:ease-out}
+.btn svg{width:14px;height:14px}
+.btn.sm{height:24px;padding:0 8px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.primary kbd{background:rgba(0,0,0,.12);border-color:rgba(0,0,0,.22);color:var(--on-accent)}
+.btn.danger{background:transparent;color:var(--fail);border-color:color-mix(in oklab,var(--fail) 50%,var(--surface-canvas))}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn.icon{width:26px;padding:0}
+.btn.sm.icon{width:24px}
+@media (hover:hover){
+  .btn:hover{background:var(--surface-press);border-color:var(--line-selected)}
+  .btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+  .btn.danger:hover{background:var(--fail-tint)}
+  .btn.ghost:hover{color:var(--text-1);background:var(--surface-raised)}
+}
+@media (prefers-reduced-motion:no-preference){.btn:not(:disabled):active{scale:.96}}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:transparent;color:var(--text-2);font-size:var(--fs-12);cursor:pointer;white-space:nowrap;transition:background-color .12s ease-out}
+.chip svg{width:12px;height:12px}
+.chip .mono{color:var(--text-3)}
+.chip[aria-pressed="true"]{background:var(--surface-press);border-color:var(--line-selected);color:var(--text-1);font-weight:600}
+.chip[aria-pressed="true"] .mono{color:var(--text-2)}
+@media (hover:hover){.chip:hover{background:var(--surface-raised);color:var(--text-1)}}
+.select{height:24px;border-radius:var(--r-control);border:1px solid var(--border-control);background:var(--surface-card);color:var(--text-1);font-size:var(--fs-12);padding:0 24px 0 8px;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='%23A9AEB7' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center}
+.field{display:flex;align-items:center;gap:6px;height:26px;border-radius:var(--r-control);border:1px solid var(--border-control);background:var(--surface-card);padding:0 8px;color:var(--text-1);min-width:0}
+.field input{all:unset;flex:1;min-width:0;font-size:var(--fs-12)}
+.field input::placeholder{color:var(--text-3)}
+.field:focus-within{outline:2px solid var(--focus);outline-offset:1px}
+.field svg{width:13px;height:13px;color:var(--text-3);flex:none}
+.seg{display:inline-flex;margin:0;padding:2px;border-radius:7px;background:var(--surface-rail);border:1px solid var(--border-control);min-width:0}
+.seg legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.seg label{position:relative;flex:1}
+.seg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.seg span{display:block;padding:0 10px;height:22px;line-height:22px;border-radius:5px;color:var(--text-2);font-size:var(--fs-12);font-weight:500;text-align:center;white-space:nowrap}
+.seg input:checked + span{background:var(--surface-press);color:var(--text-1);font-weight:600;box-shadow:inset 0 0 0 1px var(--line-selected)}
+.seg input:focus-visible + span{outline:2px solid var(--focus);outline-offset:1px}
+.seg:disabled{opacity:.5}
+.seg:disabled input{cursor:not-allowed}
+.toggle{position:relative;display:inline-block;width:30px;height:18px;flex:none}
+.toggle input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.toggle span{position:absolute;inset:0;border-radius:9px;background:var(--surface-press);border:1px solid var(--border-control);transition:background-color .15s ease-out}
+.toggle span::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:12px;height:12px;border-radius:50%;background:var(--text-2);transition:translate .15s var(--ease),background-color .15s}
+.toggle input:checked + span{background:var(--accent);border-color:var(--accent)}
+.toggle input:checked + span::after{translate:12px 0;background:var(--on-accent)}
+.toggle input:focus-visible + span{outline:2px solid var(--focus);outline-offset:2px}
+
+/* status words: always glyph + word */
+.st{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-12);font-weight:600;white-space:nowrap;line-height:1}
+.st svg{width:12px;height:12px;flex:none}
+.st.ok{color:var(--ok)}.st.heal{color:var(--heal)}.st.caution{color:var(--caution)}.st.need{color:var(--need)}.st.fail{color:var(--fail)}.st.muted{color:var(--text-2)}
+.st.pill{height:20px;padding:0 7px;border-radius:5px}
+.st.pill.ok{background:var(--ok-tint)}.st.pill.heal{background:var(--heal-tint)}.st.pill.caution{background:var(--caution-tint)}.st.pill.need{background:var(--need-tint)}.st.pill.fail{background:var(--fail-tint)}.st.pill.accent{background:var(--accent-tint);color:var(--accent-text)}
+.kind{display:inline-flex;align-items:center;justify-content:center;height:18px;padding:0 6px;border-radius:4px;border:1px solid var(--line-strong);background:var(--surface-rail);color:var(--text-2);font:500 var(--fs-11)/1 var(--mono);white-space:nowrap}
+.kind.need{color:var(--need);border-color:color-mix(in oklab,var(--need) 45%,var(--surface-canvas))}
+.bind{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:4px;background:var(--surface-press);color:var(--text-2);font-size:var(--fs-11);white-space:nowrap}
+.bind svg{width:10px;height:10px}
+.ov{margin:0 0 var(--s2);font-size:var(--fs-11);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3)}
+
+/* ===== Rail ===== */
+.rail{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0;background:var(--surface-rail);border-inline-end:1px solid var(--line);z-index:30}
+.rail .logo{width:28px;height:28px;margin-bottom:10px}
+.rail-btn{position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:8px;color:var(--text-2);text-decoration:none;transition:background-color .12s ease-out,color .12s ease-out}
+.rail-btn svg{width:19px;height:19px}
+.rail-btn[aria-current="page"]{background:var(--surface-raised);color:var(--text-1)}
+.rail-btn[aria-current="page"]::before{content:"";position:absolute;inset-inline-start:-8px;top:9px;bottom:9px;width:2px;border-radius:2px;background:var(--accent)}
+@media (hover:hover){.rail-btn:hover{background:var(--surface-card);color:var(--text-1)}}
+.rail .spacer{flex:1}
+.rail .badge{position:absolute;top:-3px;inset-inline-end:-6px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;display:grid;place-items:center;font:700 10px/1 var(--mono);color:var(--on-status);border:2px solid var(--surface-rail);box-sizing:content-box}
+.badge.need{background:var(--need)} .badge.caution{background:var(--caution)}
+.tip{position:absolute;inset-inline-start:calc(100% + 10px);top:50%;translate:0 -50%;display:flex;align-items:center;gap:6px;white-space:nowrap;padding:5px 8px;border-radius:6px;background:#2A2D34;border:1px solid var(--line-selected);color:var(--text-1);font-size:var(--fs-12);font-weight:500;opacity:0;pointer-events:none;transition:opacity .1s ease-out;box-shadow:0 6px 16px rgba(0,0,0,.4)}
+.tip .t2{font-weight:400}
+.rail-btn:focus-visible .tip{opacity:1}
+@media (hover:hover){.rail-btn:hover .tip{opacity:1}}
+
+/* ===== Screens + columns ===== */
+.screen{display:grid;grid-template-columns:264px minmax(0,1fr) 300px;height:100%;min-height:0}
+.screen.fused{grid-template-columns:minmax(0,1fr) 300px}
+.col-list,.evidence,.canvas{min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3A3E47 transparent}
+.col-list{background:var(--surface-side);border-inline-end:1px solid var(--line);display:flex;flex-direction:column}
+.canvas{background:var(--surface-canvas);padding:var(--s4) var(--s4) var(--s5)}
+.canvas:focus{outline:none}
+.evidence{background:var(--surface-side);border-inline-start:1px solid var(--line);padding:var(--s4) var(--s3) var(--s5)}
+.evidence section{margin-top:20px}
+.evidence > section:first-child,.evidence > .ov-close + section,.evidence .ev-meta + section{margin-top:0}
+.ov-close{display:none}
+.evidence.open .ov-close,.col-list.open .ov-close{display:inline-flex;position:sticky;top:0;float:right;z-index:3;margin:-4px -2px 0 8px}
+.col-list.open .ov-close{position:absolute;top:10px;inset-inline-end:12px;float:none;margin:0}
+.list-head{position:sticky;top:0;z-index:2;background:var(--surface-side);padding:var(--s3) var(--s3) var(--s2);border-bottom:1px solid var(--line);display:grid;gap:var(--s2)}
+.list-head h2{margin:0;font-size:var(--fs-13);font-weight:600;display:flex;align-items:center;gap:6px}
+.list-head h2 .mono{color:var(--text-3);font-weight:500}
+.list-head .row{display:flex;gap:4px;flex-wrap:wrap}
+.list-foot{margin-top:auto;position:sticky;bottom:0;background:var(--surface-side);border-top:1px solid var(--line);padding:6px var(--s3);display:flex;gap:10px;flex-wrap:wrap;font-size:var(--fs-12);color:var(--text-3)}
+.list-foot span{display:inline-flex;align-items:center;gap:4px}
+.group-label{padding:10px var(--s3) 4px;font-size:var(--fs-11);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3)}
+.lrow{display:grid;grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;align-items:center;padding:6px var(--s3);min-height:40px;color:var(--text-1);text-decoration:none;border-inline-start:2px solid transparent;cursor:pointer}
+.lrow > svg{width:12px;height:12px;align-self:start;margin-top:3px}
+.lrow .nm{font-size:var(--fs-13);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .sub{grid-column:2 / 4;font-size:var(--fs-12);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .tm{font:var(--fs-12)/1.2 var(--mono);color:var(--text-3);font-variant-numeric:tabular-nums}
+.lrow.sel{background:var(--surface-raised);border-inline-start-color:var(--accent)}
+.lrow:focus-visible{outline-offset:-2px}
+@media (hover:hover){.lrow:hover{background:var(--surface-card)}.lrow.sel:hover{background:var(--surface-raised)}}
+.ok-c{color:var(--ok)}.heal-c{color:var(--heal)}.caution-c{color:var(--caution)}.need-c{color:var(--need)}.fail-c{color:var(--fail)}.muted-c{color:var(--text-3)}
+
+/* main header */
+.mhead{display:flex;align-items:flex-start;gap:var(--s3);margin-bottom:var(--s4)}
+.mhead .grow{flex:1;min-width:0}
+.crumbs{display:flex;align-items:center;gap:6px;margin:0 0 4px;padding:0;list-style:none;font-size:var(--fs-12);color:var(--text-3)}
+.crumbs a{color:var(--text-2);text-decoration:none}
+.crumbs a:hover{text-decoration:underline}
+.crumbs li + li::before{content:"/";margin-inline-end:6px;color:var(--text-3)}
+h1{margin:0;font-size:var(--fs-15);line-height:1.3;font-weight:600;letter-spacing:-.005em;text-wrap:balance}
+.h1row{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:var(--fs-12);color:var(--text-2)}
+.meta > span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.ev-toggle,.list-toggle{display:none}
+h2.sec{margin:0;font-size:var(--fs-13);font-weight:600}
+.card{background:var(--surface-card);border:1px solid var(--line);border-radius:var(--r-card)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 12px;margin:0;font-size:var(--fs-12)}
+.kv dt{color:var(--text-2)}
+.kv dd{margin:0;text-align:end;color:var(--text-1);font-family:var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kv dd.sans{font-family:var(--font)}
+.note{font-size:var(--fs-12);color:var(--text-2);margin:6px 0 0;text-wrap:pretty}
+
+/* drawn pages */
+.shot{display:block;width:100%;height:auto;border-radius:6px;outline:1px solid oklch(1 0 0 / .1);outline-offset:-1px;background:#fff}
+.browser{border-radius:var(--r-card);border:1px solid var(--line-strong);overflow:hidden;background:var(--surface-rail)}
+.bbar{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;background:#1B1D22;border-bottom:1px solid var(--line-strong);font-size:var(--fs-12);color:var(--text-2)}
+.bbar .url{flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:5px;background:var(--surface-rail);color:var(--text-2);font:var(--fs-12)/1 var(--mono);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.bbar .url svg{width:11px;height:11px;flex:none}
+.bbar .who{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text-2)}
+.bbar .who svg{width:13px;height:13px}
+.browser .page{position:relative;background:#fff}
+.browser .page svg{width:100%;height:auto}
+
+/* ===== Home board ===== */
+.bhead{display:flex;align-items:center;gap:var(--s3);margin-bottom:10px}
+.bhead h1{display:flex;align-items:baseline;gap:10px}
+.bhead h1 .mono{font-size:var(--fs-12);font-weight:400;color:var(--text-3)}
+.needs{border-radius:var(--r-panel);background:var(--need-tint);border:1px solid color-mix(in oklab,var(--need) 42%,var(--surface-canvas));margin-bottom:var(--s3);position:sticky;top:calc(var(--s4) * -1);z-index:3}
+.needs-main{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s4);padding:10px var(--s3)}
+.needs-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--need);color:var(--on-status);flex:none;align-self:flex-start}
+.needs-ic svg{width:15px;height:15px}
+.needs-text{flex:1 1 300px;min-width:0}
+.needs-text h2{margin:0;font-size:var(--fs-13);font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.needs-text h2 .lbl{color:var(--need);font-size:var(--fs-12);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.needs-text p{margin:2px 0 0;color:var(--text-2);font-size:var(--fs-12);text-wrap:pretty}
+.needs-text p b{color:var(--text-1);font-weight:600}
+.count{display:grid;gap:3px;min-width:132px}
+.count .big{font:600 var(--fs-20)/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--text-1)}
+.count .big small{font-size:var(--fs-12);font-weight:500;color:var(--text-2);margin-inline-start:4px}
+.count .t2{font-size:var(--fs-12)}
+.meter{height:4px;border-radius:2px;background:color-mix(in oklab,var(--need) 22%,var(--surface-rail));overflow:hidden}
+.meter span{display:block;height:100%;background:var(--need);border-radius:2px}
+.needs-actions{display:flex;gap:6px;flex-wrap:wrap}
+.also{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0;padding:6px var(--s3);list-style:none;border-top:1px solid color-mix(in oklab,var(--need) 25%,var(--surface-canvas));font-size:var(--fs-12);color:var(--text-2)}
+.also .lbl{color:var(--text-3)}
+.also li{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.also a{color:var(--text-1);text-decoration:underline;text-decoration-color:var(--line-selected);text-underline-offset:3px}
+.also a:hover{text-decoration-color:currentColor}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;margin:0 0 14px;border-radius:var(--r-card);overflow:hidden;background:var(--line);border:1px solid var(--line)}
+.kpi{background:var(--surface-card);padding:7px 10px 6px;min-width:0}
+.kpi dt{font-size:var(--fs-12);color:var(--text-2);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.kpi dt svg{width:12px;height:12px}
+.kpi dd{margin:1px 0 0;display:flex;align-items:baseline;gap:7px;min-width:0;font:600 var(--fs-20)/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.kpi dd small{min-width:0;font:400 var(--fs-12)/1.4 var(--font);color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:8px}
+.tbar h2{margin:0 6px 0 0;font-size:var(--fs-13);font-weight:600;display:flex;gap:6px;align-items:baseline}
+.tbar h2 .mono{color:var(--text-3);font-weight:500;font-size:var(--fs-12)}
+.tbar .grow{flex:1}
+.tbar .field{width:132px;height:24px}
+.keys{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:var(--fs-12);color:var(--text-3)}
+.keys span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0 0 6px;padding:0;list-style:none;font-size:var(--fs-12);color:var(--text-2)}
+.legend li{display:inline-flex;align-items:center;gap:5px}
+.legend .cell{width:16px;height:16px}
+
+table.matrix{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--fs-12)}
+.matrix th{font-weight:500;color:var(--text-3);text-align:start;padding:2px 8px 4px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:var(--fs-12)}
+.matrix th.c-cells{padding-inline-end:0}
+.matrix th .flow{display:flex;justify-content:space-between;width:278px}
+.matrix td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:middle;line-height:1.2}
+.matrix col.c-st{width:112px}.matrix col.c-cells{width:296px}.matrix col.c-last{width:92px}.matrix col.c-next{width:92px}.matrix col.c-act{width:44px}
+.matrix tr.sel td{background:var(--surface-raised)}
+.matrix tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+@media (hover:hover){.matrix tbody tr:hover td{background:var(--surface-card)}.matrix tbody tr.sel:hover td{background:var(--surface-raised)}}
+.wfname{display:block;line-height:1.2;color:var(--text-1);font-size:var(--fs-13);font-weight:500;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wfname:hover{text-decoration:underline;text-decoration-color:var(--line-selected)}
+.wfname:focus-visible{outline:none}
+.matrix tr:has(.wfname:focus-visible){outline:2px solid var(--focus);outline-offset:-2px}
+.wfsub{display:block;line-height:1.2;color:var(--text-3);font-size:var(--fs-12);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cells{display:flex;gap:2px}
+.cell{width:18px;height:18px;border-radius:4px;display:grid;place-items:center;flex:none}
+.cell svg{width:11px;height:11px}
+.cell.c-ok{color:var(--ok);background:var(--ok-tint)}
+.cell.c-heal{color:var(--heal);background:var(--heal-tint)}
+.cell.c-caution{color:var(--caution);background:var(--caution-tint)}
+.cell.c-need{color:var(--need);background:var(--need-tint);box-shadow:inset 0 0 0 1.5px var(--need)}
+.cell.c-fail{color:var(--fail);background:var(--fail-tint);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--fail) 60%,transparent)}
+.cell.c-muted{color:var(--text-2);background:transparent;box-shadow:inset 0 0 0 1px var(--line-selected)}
+.cell.c-none{color:var(--glyph-muted);background:transparent;box-shadow:inset 0 0 0 1px var(--line)}
+@media (prefers-reduced-motion:no-preference){
+  .cell.live{animation:ring 2.4s ease-in-out infinite}
+  @keyframes ring{50%{box-shadow:inset 0 0 0 1.5px var(--need),0 0 0 3px color-mix(in oklab,var(--need) 30%,transparent)}}
+}
+.lastrun{display:block;font:var(--fs-12)/1.2 var(--mono);font-variant-numeric:tabular-nums;color:var(--text-1);white-space:nowrap}
+.lastrun + .t3{display:block;font:var(--fs-12)/1.2 var(--mono);white-space:nowrap}
+.errmsg{display:flex;gap:6px;align-items:flex-start;color:var(--text-1);font-size:var(--fs-12);line-height:1.35;text-wrap:pretty}
+.errmsg svg{width:12px;height:12px;flex:none;margin-top:1px;color:var(--fail)}
+.row-act{display:flex;justify-content:flex-end}
+.matrix .st-word{display:inline}
+
+/* evidence: filmstrip */
+.film{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none}
+.film li{position:relative}
+.film button{all:unset;display:block;width:100%;cursor:pointer;border-radius:5px}
+.film button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.film svg.frame{width:100%;height:auto;border-radius:4px;outline:1px solid oklch(1 0 0 / .1);outline-offset:-1px}
+.film .cap{display:flex;align-items:center;gap:3px;margin-top:2px;font:var(--fs-11)/1.2 var(--mono);color:var(--text-3)}
+.film .cap svg{width:10px;height:10px}
+.ev-title{margin:0 0 4px;font-size:var(--fs-13);font-weight:600;line-height:1.35;overflow-wrap:anywhere}
+.ev-meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:var(--fs-12);color:var(--text-2);margin-bottom:var(--s3)}
+.proof{border-radius:var(--r-card);background:var(--surface-card);border:1px solid var(--line);padding:10px}
+.proof .kv dd{color:var(--text-1)}
+.proof .kv dd.zero{color:var(--ok)}
+.inputs-ro{display:grid;gap:4px;margin:0;font-size:var(--fs-12)}
+.inputs-ro div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.inputs-ro dt{color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inputs-ro dd{margin:0;font-family:var(--mono);color:var(--text-1);text-align:end;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+details.more summary{cursor:pointer;color:var(--text-2);font-size:var(--fs-12);margin-top:6px;list-style:none;display:inline-flex;align-items:center;gap:4px}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary svg{width:10px;height:10px;transition:rotate .15s var(--ease)}
+details[open].more > summary svg{rotate:90deg}
+.ev-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s3)}
+
+/* empty state */
+.empty-board{display:none}
+.is-empty .screen[data-screen="home"] .populated{display:none}
+.is-empty .screen[data-screen="home"] .empty-board{display:block}
+.is-empty .rail .badge,.is-empty .bhead .keys{display:none}
+.how{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2);margin:var(--s3) 0 0;padding:0;list-style:none;counter-reset:how}
+.how li{padding:12px;border-radius:var(--r-card);border:1px solid var(--line);background:var(--surface-card);font-size:var(--fs-12);color:var(--text-2)}
+.how b{display:flex;align-items:center;gap:8px;color:var(--text-1);font-size:var(--fs-13);font-weight:600;margin-bottom:4px}
+.how b .mono{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:5px;background:var(--surface-press);color:var(--text-2);font-size:var(--fs-11)}
+@container win (max-width:860px){.how{grid-template-columns:minmax(0,1fr)}}
+.empty-hero{position:relative;border-radius:var(--r-panel);border:1px solid var(--line);background:var(--surface-card);padding:28px 28px 24px;overflow:hidden}
+.empty-hero .ghost{position:absolute;inset-inline-end:-10px;top:18px;opacity:.5;pointer-events:none}
+.empty-hero h2{margin:0 0 6px;font-size:var(--fs-15);font-weight:600}
+.empty-hero p{margin:0;max-width:44ch;color:var(--text-2);text-wrap:pretty}
+.empty-hero .actions{justify-content:flex-start;margin-top:var(--s4)}
+.checklist{margin:var(--s4) 0 0;padding:0;list-style:none;display:grid;gap:6px;max-width:440px}
+.checklist li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border-radius:var(--r-control);background:var(--surface-canvas);border:1px solid var(--line);font-size:var(--fs-12)}
+.checklist li svg{width:13px;height:13px}
+.checklist .t3{display:block}
+
+/* ===== Workflow ===== */
+.steps{margin:0;padding:0;list-style:none;border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--surface-card)}
+.step{border-top:1px solid var(--line)}
+.step:first-child{border-top:0}
+.step-row{display:grid;grid-template-columns:24px 104px minmax(0,1fr) auto 22px;align-items:center;gap:8px;min-height:34px;padding:4px 8px 4px 10px;width:100%;background:none;border:0;text-align:start;cursor:pointer;color:var(--text-1)}
+.step-row:focus-visible{outline-offset:-2px}
+@media (hover:hover){.step-row:hover{background:var(--surface-raised)}}
+.step-row .kind{justify-self:start}
+.step-row .n{font:var(--fs-12)/1 var(--mono);color:var(--text-3);font-variant-numeric:tabular-nums}
+.step-row .lab{font-size:var(--fs-13);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
+.step-row .lab > span:first-child{min-width:0}
+.step-row .res{display:inline-flex;align-items:center;gap:4px;font:var(--fs-11)/1 var(--mono);color:var(--text-3);white-space:nowrap}
+.step-row .res svg{width:11px;height:11px;color:var(--ok)}
+.step-row .chev{width:12px;height:12px;color:var(--text-3);transition:rotate .15s var(--ease)}
+.step.open .chev{rotate:90deg}
+.step.open{background:var(--surface-raised)}
+.step-body{display:none;padding:2px 10px 12px 42px}
+.step.open .step-body{display:grid;grid-template-columns:176px minmax(0,1fr);gap:var(--s3)}
+.step-body .shotwrap{position:relative}
+.step-body .shotwrap figcaption{margin-top:4px;font:var(--fs-11)/1.3 var(--mono);color:var(--text-3)}
+.target-line{font-size:var(--fs-12);color:var(--text-2);margin:0 0 4px}
+.target-line b{color:var(--text-1);font-weight:600}
+details.disc{margin-top:6px;border-top:1px solid var(--line);padding-top:6px}
+details.disc > summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-12);color:var(--text-2);font-weight:500;border-radius:4px}
+details.disc > summary::-webkit-details-marker{display:none}
+details.disc > summary svg{width:10px;height:10px;transition:rotate .15s var(--ease)}
+details.disc[open] > summary svg{rotate:90deg}
+.sel-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:var(--fs-12)}
+.sel-table th{font-weight:500;color:var(--text-3);text-align:start;padding:3px 6px 3px 0;font-size:var(--fs-11);letter-spacing:.04em;text-transform:uppercase}
+.sel-table td{padding:3px 6px 3px 0;border-top:1px solid var(--line);vertical-align:top}
+.sel-table code,.code{font:var(--fs-12)/1.4 var(--mono);color:var(--text-1);overflow-wrap:anywhere}
+.sel-table .rk{font:var(--fs-12)/1.4 var(--mono);color:var(--text-3);width:18px}
+.sel-table .hits{font:var(--fs-12)/1.4 var(--mono);color:var(--text-2);white-space:nowrap;text-align:end}
+.step-tools{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.wait-note{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-12);color:var(--need)}
+.wait-note svg{width:11px;height:11px}
+.inp{display:grid;gap:4px;margin-bottom:10px}
+.inp-top{display:flex;align-items:center;gap:6px;font-size:var(--fs-12)}
+.inp-top label{font-weight:500;color:var(--text-1)}
+.inp-top .kind{margin-inline-start:auto}
+.inp .help{font-size:var(--fs-12);color:var(--text-3);margin:0;text-wrap:pretty}
+.inp .help .mono{color:var(--text-2)}
+.filechip{display:flex;align-items:center;gap:6px;height:26px;padding:0 4px 0 8px;border-radius:var(--r-control);border:1px dashed var(--border-control);background:var(--surface-card);font-size:var(--fs-12);min-width:0}
+.filechip span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.filechip svg{width:13px;height:13px;color:var(--text-3);flex:none}
+.policy-desc{font-size:var(--fs-12);color:var(--text-2);margin:6px 0 0;text-wrap:pretty}
+.runs-mini{margin:0;padding:0;list-style:none;display:grid;gap:2px}
+.runs-mini li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:4px 6px;border-radius:5px;font-size:var(--fs-12)}
+.runs-mini li:nth-child(odd){background:var(--surface-card)}
+.runs-mini .mono{color:var(--text-2)}
+
+/* ===== Run live ===== */
+.banner{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--s3) var(--s4);padding:var(--s3);border-radius:var(--r-panel);background:var(--need-tint);border:1px solid color-mix(in oklab,var(--need) 50%,var(--surface-canvas));margin-bottom:var(--s3)}
+.banner h2{margin:0;font-size:var(--fs-15);font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.banner h2 .lbl{color:var(--need);font-size:var(--fs-12);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.banner p{margin:3px 0 0;font-size:var(--fs-12);color:var(--text-2);max-width:60ch;text-wrap:pretty}
+.banner .grow{flex:1 1 280px;min-width:0}
+.tl{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));margin:var(--s3) 0 0;padding:0;list-style:none}
+.tl li{position:relative;display:grid;justify-items:center;gap:3px;text-align:center;font-size:var(--fs-12);color:var(--text-2);padding:0 2px}
+.tl li::before{content:"";position:absolute;top:10px;inset-inline-start:-50%;width:100%;height:2px;background:var(--line-strong);z-index:0}
+.tl li:first-child::before{display:none}
+.tl li.done::before,.tl li.cur::before{background:color-mix(in oklab,var(--ok) 55%,var(--surface-canvas))}
+.tl .dot{position:relative;z-index:1;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--surface-canvas);border:1.5px solid var(--line-selected);color:var(--text-3)}
+.tl .dot svg{width:11px;height:11px}
+.tl li.done .dot{border-color:var(--ok);color:var(--ok);background:var(--ok-tint)}
+.tl li.cur .dot{border-color:var(--need);color:var(--on-status);background:var(--need)}
+.tl li.cur{color:var(--text-1);font-weight:600}
+.tl .tlab{line-height:1.25}
+.tl .tt{font:var(--fs-11)/1 var(--mono);color:var(--text-3);font-variant-numeric:tabular-nums}
+.log{margin:0;padding:8px 0;list-style:none;border-radius:var(--r-card);background:var(--surface-rail);border:1px solid var(--line);font:var(--fs-12)/1.5 var(--mono);max-height:340px;overflow:auto;overscroll-behavior:contain}
+.log li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;padding:1px 8px}
+.log .ts{color:var(--text-3);font-variant-numeric:tabular-nums}
+.log .msg{color:var(--text-2);overflow-wrap:anywhere}
+.log .msg b{color:var(--text-1);font-weight:500}
+.log .ok{color:var(--ok)} .log .need{color:var(--need)}
+.log li.hl{background:var(--need-tint)}
+.log li.hl .msg{color:var(--text-1)}
+.loghead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.loghead .ov{margin:0}
+.loghead .grow{flex:1}
+
+/* ===== Run failed / heal compare ===== */
+.headline{margin:0 0 4px;font-size:var(--fs-15);font-weight:600;line-height:1.35;text-wrap:balance}
+.subline{margin:0 0 var(--s3);color:var(--text-2);font-size:var(--fs-12);max-width:72ch;text-wrap:pretty}
+.cmp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:var(--fs-12);color:var(--text-2)}
+.cmp-bar .grow{flex:1}
+.lbl-pill{display:inline-flex;align-items:center;gap:5px;font:var(--fs-12)/1 var(--font);white-space:nowrap}
+.lbl-pill i{width:8px;height:8px;border-radius:2px;display:block}
+.compare{position:relative;border-radius:var(--r-card);overflow:hidden;border:1px solid var(--line-strong);background:#fff;aspect-ratio:640/300}
+.compare:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:2px}
+.compare .layer{position:absolute;inset:0}
+.compare .layer svg{width:100%;height:100%}
+.compare .actual{clip-path:inset(0 0 0 var(--split,50%))}
+.compare .handle{position:absolute;top:0;bottom:0;inset-inline-start:var(--split,50%);width:2px;margin-inline-start:-1px;background:var(--accent);pointer-events:none}
+.compare .grip{position:absolute;top:50%;left:50%;translate:-50% -50%;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.compare .grip svg{width:14px;height:14px}
+.compare input[type=range]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;cursor:ew-resize}
+.compare .tag{position:absolute;bottom:8px;padding:3px 7px;border-radius:4px;background:rgba(12,13,15,.86);color:var(--text-1);font:500 var(--fs-11)/1.2 var(--font);pointer-events:none}
+.compare .tag.l{inset-inline-start:8px}.compare .tag.r{inset-inline-end:8px}
+.compare.mode-overlay .actual{clip-path:none;opacity:var(--ov,.5)}
+.compare.mode-overlay .handle{display:none}
+.compare.mode-side{aspect-ratio:auto;display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--line-strong)}
+.compare.mode-side .layer{position:relative;inset:auto;aspect-ratio:640/300;background:#fff}
+.compare.mode-side .actual{clip-path:none}
+.compare.mode-side .handle,.compare.mode-side input{display:none}
+.diff{width:100%;border-collapse:collapse;font-size:var(--fs-12);table-layout:fixed}
+.diff th{text-align:start;font-weight:500;color:var(--text-3);padding:5px 8px;border-bottom:1px solid var(--line);font-size:var(--fs-12)}
+.diff td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--text-1);overflow-wrap:anywhere}
+.diff td:first-child{color:var(--text-2)}
+.diff .gone{color:var(--fail);display:inline-flex;gap:5px;align-items:center}
+.diff .gone svg,.diff .okm svg{width:11px;height:11px;flex:none}
+.diff .okm{color:var(--ok);display:inline-flex;gap:5px;align-items:center}
+.diff .rank{color:var(--text-3);font-family:var(--mono);margin-inline-end:4px}
+.actbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line)}
+.actbar .note{margin:0;flex:1 1 220px}
+.actbar.top{margin:0 0 var(--s4);padding-top:0;border-top:0}
+.near{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:3px;font-size:var(--fs-12)}
+.near li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;color:var(--text-2)}
+.near .mono{color:var(--text-3)}
+.side2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)}
+.side2 figure{margin:0}
+.side2 figcaption{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:var(--fs-12);color:var(--text-2)}
+.trial{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 var(--s3);font-size:var(--fs-12);color:var(--text-2)}
+.trial .seg3{display:flex;gap:3px}
+.trial .seg3 i{width:28px;height:6px;border-radius:3px;background:var(--surface-press);border:1px solid var(--line-selected)}
+.trial .seg3 i.on{background:var(--caution);border-color:var(--caution)}
+.tgt{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-top:var(--s3)}
+.tgt .card{padding:10px}
+.tgt h3{margin:0 0 6px;font-size:var(--fs-12);font-weight:600;display:flex;align-items:center;gap:6px}
+.tgt h3 i{width:12px;height:0;border-top:2px dashed currentColor;display:block}
+.tgt .kv dd{text-align:start}
+.tgt .kv{grid-template-columns:44px minmax(0,1fr)}
+.chg{display:inline-block;margin-inline-start:6px;padding:0 4px;border-radius:3px;background:var(--heal-tint);color:var(--heal);font:600 var(--fs-11)/16px var(--font)}
+.why{margin:var(--s3) 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:var(--fs-12)}
+.why li{display:flex;gap:6px;align-items:center;color:var(--text-1)}
+.why svg{width:12px;height:12px;color:var(--ok);flex:none}
+.trials{margin:0;padding:0;list-style:none;display:grid;gap:0}
+.trials li{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:8px;align-items:start;padding:7px 0;border-top:1px solid var(--line);font-size:var(--fs-12)}
+.trials li:first-child{border-top:0}
+.trials svg{width:12px;height:12px;margin-top:2px}
+.trials .t3{display:block}
+
+/* ===== Capture ===== */
+.capbar{position:absolute;left:0;right:0;margin-inline:auto;width:max-content;bottom:14px;display:flex;align-items:center;gap:6px;padding:5px;border-radius:12px;background:rgba(17,18,21,.96);border:1px solid var(--line-selected);box-shadow:0 10px 30px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3);white-space:nowrap;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center}
+.capbar .rec{display:inline-flex;align-items:center;gap:6px;padding:0 8px;font:600 var(--fs-12)/1 var(--mono);color:var(--text-1)}
+.recdot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block}
+@media (prefers-reduced-motion:no-preference){.recdot{animation:blink 1.6s ease-in-out infinite}@keyframes blink{50%{opacity:.35}}}
+.capbar .div{width:1px;height:18px;background:var(--line-strong)}
+.tips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2);margin-top:var(--s3)}
+.tips div{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:var(--r-control);border:1px solid var(--line);background:var(--surface-card);font-size:var(--fs-12);color:var(--text-2)}
+.tips svg{width:13px;height:13px;flex:none;margin-top:1px;color:var(--text-2)}
+.tips b{color:var(--text-1);font-weight:600;display:block}
+.cstep{display:grid;grid-template-columns:22px minmax(0,1fr);gap:2px 8px;padding:7px var(--s3);border-inline-start:2px solid transparent;cursor:pointer}
+.cstep .n{font:var(--fs-12)/18px var(--mono);color:var(--text-3)}
+.cstep .ln{min-width:0;font-size:var(--fs-13);line-height:18px}
+.cstep .sub{grid-column:2;font-size:var(--fs-12);line-height:20px;color:var(--text-3)}
+.cstep .sub .kind{vertical-align:1px;margin-inline-end:4px}
+.cstep .sub svg{display:inline-block;width:11px;height:11px;vertical-align:-1px}
+.cstep.sel{background:var(--surface-raised);border-inline-start-color:var(--accent)}
+.cstep.secret .sub{color:var(--text-2)}
+.cstep.new{background:var(--accent-tint)}
+.cstep:focus-visible{outline-offset:-2px}
+.listening{display:flex;align-items:center;gap:8px;padding:10px var(--s3);color:var(--text-3);font-size:var(--fs-12)}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:4px;height:4px;border-radius:50%;background:var(--text-3)}
+@media (prefers-reduced-motion:no-preference){.dots i{animation:bob 1.2s ease-in-out infinite}.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}@keyframes bob{50%{opacity:.3}}}
+.privacy{display:grid;gap:6px;margin:0;padding:0;list-style:none;font-size:var(--fs-12)}
+.privacy li{display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;color:var(--text-2)}
+.privacy svg{width:12px;height:12px;margin-top:2px;color:var(--text-2)}
+.privacy b{color:var(--text-1);font-weight:600}
+
+/* ===== Settings ===== */
+.snav{list-style:none;margin:0;padding:6px 0}
+.snav a{display:flex;align-items:center;gap:8px;padding:6px var(--s3);color:var(--text-2);text-decoration:none;border-inline-start:2px solid transparent;font-size:var(--fs-13)}
+.snav a .mono{margin-inline-start:auto;color:var(--text-3);font-size:var(--fs-11)}
+.snav a[aria-current="true"]{background:var(--surface-raised);color:var(--text-1);border-inline-start-color:var(--accent)}
+.snav a svg{width:14px;height:14px}
+@media (hover:hover){.snav a:hover{background:var(--surface-card);color:var(--text-1)}}
+.sgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3);align-items:start}
+.sgroup{background:var(--surface-card);border:1px solid var(--line);border-radius:var(--r-card)}
+.sgroup > h2{display:flex;align-items:center;gap:8px;margin:0;padding:9px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-13);font-weight:600}
+.sgroup > h2 kbd{margin-inline-start:auto}
+.srow{padding:10px 12px;border-top:1px solid var(--line);display:grid;gap:6px}
+.sgroup > h2 + .srow{border-top:0}
+.srow .top{display:flex;align-items:center;gap:10px}
+.srow .top label,.srow .top .lab{flex:1;font-size:var(--fs-13);color:var(--text-1);cursor:pointer}
+.srow p{margin:0;font-size:var(--fs-12);color:var(--text-2);text-wrap:pretty}
+.srow .seg{width:100%}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--border-control);border-radius:var(--r-control);background:var(--surface-card);height:26px}
+.stepper button{all:unset;width:24px;height:24px;display:grid;place-items:center;color:var(--text-2);cursor:pointer;border-radius:5px}
+.stepper button:focus-visible{outline:2px solid var(--focus);outline-offset:0}
+.stepper output{min-width:46px;text-align:center;font:var(--fs-12)/1 var(--mono);color:var(--text-1);font-variant-numeric:tabular-nums}
+.stepper svg{width:10px;height:10px}
+.srow.off .lock{display:flex;gap:6px;align-items:center;font-size:var(--fs-12);color:var(--text-3)}
+.srow.off .lock svg{width:12px;height:12px}
+.shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;padding:8px 12px 10px;margin:0}
+.shortcuts div{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--fs-12);color:var(--text-2);padding:4px 0;border-bottom:1px solid var(--line)}
+.shortcuts div:nth-last-child(-n+2){border-bottom:0}
+.shortcuts dd{margin:0;display:flex;gap:3px}
+.health{margin:0;padding:0;list-style:none;display:grid;gap:0}
+.health li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:4px 8px;padding:9px 0;border-top:1px solid var(--line)}
+.health li:first-child{border-top:0}
+.health .hd{display:flex;align-items:center;gap:8px;font-size:var(--fs-13);color:var(--text-1);font-weight:500}
+.health .hd .st{margin-inline-start:auto}
+.health > li > svg{width:14px;height:14px;margin-top:2px}
+.health p{grid-column:2;margin:0;font-size:var(--fs-12);color:var(--text-2);text-wrap:pretty}
+.health .btn{grid-column:2;justify-self:start;margin-top:2px}
+
+/* ===== Statusbar ===== */
+.statusbar{display:flex;align-items:center;flex-wrap:wrap;gap:2px 4px;min-height:26px;padding:2px 8px;background:var(--surface-rail);border-top:1px solid var(--line);font-size:var(--fs-12);color:var(--text-2)}
+.sb{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:5px;white-space:nowrap;background:none;border:0;color:var(--text-2);font-size:var(--fs-12);cursor:pointer}
+.sb svg{width:12px;height:12px}
+.sb .mono{color:var(--text-1)}
+@media (hover:hover){button.sb:hover{background:var(--surface-card);color:var(--text-1)}}
+.sb-sep{width:1px;height:12px;background:var(--line-strong)}
+.sb-right{margin-inline-start:auto}
+
+/* toast + dialogs */
+.toast{position:absolute;inset-inline-end:16px;bottom:38px;z-index:60;padding:8px 12px;border-radius:var(--r-card);background:#25282F;border:1px solid var(--line-selected);color:var(--text-1);font-size:var(--fs-12);box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;gap:8px;align-items:center}
+.toast:empty{display:none}
+dialog{border:1px solid var(--line-selected);border-radius:var(--r-panel);background:var(--surface-raised);color:var(--text-1);padding:16px;width:min(420px,calc(100vw - 32px));box-shadow:0 24px 60px rgba(0,0,0,.5);font:var(--fs-13)/1.45 var(--font)}
+dialog::backdrop{background:rgba(5,5,7,.55)}
+dialog h2{margin:0 0 6px;font-size:var(--fs-15);font-weight:600}
+dialog p{margin:0 0 14px;color:var(--text-2);font-size:var(--fs-12)}
+dialog .actions{justify-content:flex-end}
+.btn.danger-solid{background:var(--fail);border-color:var(--fail);color:#1F0606;font-weight:600}
+
+/* ===== Container queries: the window reflows as it shrinks ===== */
+@container win (max-width:1140px){
+  .screen{grid-template-columns:240px minmax(0,1fr)}
+  .screen.fused{grid-template-columns:minmax(0,1fr)}
+  .evidence{display:none}
+  .evidence.open{display:block;position:absolute;top:0;bottom:0;inset-inline-end:0;width:min(300px,88%);z-index:20;box-shadow:-16px 0 40px rgba(0,0,0,.45)}
+  .ev-toggle{display:inline-flex}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@container win (max-width:860px){
+  .screen{grid-template-columns:minmax(0,1fr)}
+  .col-list{display:none}
+  .col-list.open{display:flex;position:absolute;top:0;bottom:0;inset-inline-start:0;width:min(280px,88%);z-index:20;box-shadow:16px 0 40px rgba(0,0,0,.45)}
+  .list-toggle{display:inline-flex}
+  .matrix col.c-next,.matrix .c-next{display:none}
+  .matrix col.c-st{width:34px}
+  .matrix .st-word{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .sgrid,.tips,.side2,.tgt{grid-template-columns:minmax(0,1fr)}
+  .step.open .step-body{grid-template-columns:minmax(0,1fr)}
+  .step-body .shotwrap{max-width:260px}
+  .bhead .keys{display:none}
+}
+@container win (max-width:860px){
+  .matrix col.c-cells{width:160px}
+  .matrix th .flow{width:146px}
+  .cells{flex-wrap:wrap;width:146px;row-gap:2px}
+}
+@container win (max-width:640px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sb-hide-sm{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ SVG sprite: glyphs, icons, page wireframes ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="bao-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient>
+    <radialGradient id="bao-dough" cx="42%" cy="32%" r="78%"><stop offset="0" stop-color="#FFFDF8"/><stop offset=".66" stop-color="#FFF1DE"/><stop offset="1" stop-color="#F8DEBE"/></radialGradient>
+  </defs>
+  <!-- status glyphs (12 grid) -->
+  <symbol id="g-pass" viewBox="0 0 12 12"><path d="M2.75 6.4 5 8.6 9.25 3.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="g-heal" viewBox="0 0 12 12"><path d="M9.25 6.1A3.35 3.35 0 1 1 8.2 3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9.5 1.9v2.5H7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="g-prov" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 2.3a3.7 3.7 0 0 0 0 7.4z" fill="currentColor"/></symbol>
+  <symbol id="g-need" viewBox="0 0 12 12"><rect x="3.1" y="2.6" width="2" height="6.8" rx=".7" fill="currentColor"/><rect x="6.9" y="2.6" width="2" height="6.8" rx=".7" fill="currentColor"/></symbol>
+  <symbol id="g-fail" viewBox="0 0 12 12"><path d="M3.3 3.3l5.4 5.4M8.7 3.3 3.3 8.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="g-none" viewBox="0 0 12 12"><path d="M4.4 6h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="g-warn" viewBox="0 0 12 12"><path d="M6 1.8 10.7 10H1.3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 5v2.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="8.5" r=".8" fill="currentColor"/></symbol>
+  <symbol id="g-live" viewBox="0 0 12 12"><path d="M4 2.6v6.8L9.4 6z" fill="currentColor"/></symbol>
+  <symbol id="g-pending" viewBox="0 0 12 12"><circle cx="6" cy="6" r="1.6" fill="currentColor"/></symbol>
+  <!-- ui icons (16 grid, stroke) -->
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m10.4 10.4 3.1 3.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.5 4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5.3a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.4 8h11.2M8 2.2c-2.2 2.8-2.2 8.8 0 11.6M8 2.2c2.2 2.8 2.2 8.8 0 11.6" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3 7.5 8.5M11 9.5V13H3V5h3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.3v9.4L12.6 8z" fill="currentColor"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 16 16"><path d="M12.6 8.2A4.6 4.6 0 1 1 11 4.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12.8 2.4v3h-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2.4" fill="currentColor"/></symbol>
+  <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 2v3h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-input" viewBox="0 0 16 16"><path d="M5.5 3C4 3 4 4.2 4 5.2s-.6 2.3-1.6 2.8C3.4 8.5 4 9.8 4 10.8S4 13 5.5 13M10.5 3C12 3 12 4.2 12 5.2s.6 2.3 1.6 2.8c-1 .5-1.6 1.8-1.6 2.8S12 13 10.5 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-out" viewBox="0 0 16 16"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 13.2h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><rect x="4" y="3" width="2.6" height="10" rx=".8" fill="currentColor"/><rect x="9.4" y="3" width="2.6" height="10" rx=".8" fill="currentColor"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.8" fill="currentColor"/></symbol>
+  <symbol id="i-table" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6.5h11M2.5 9.8h11M6.5 6.5V13" stroke="currentColor" stroke-width="1.2"/></symbol>
+  <symbol id="i-check2" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m5.2 8.2 2 2 3.6-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-list" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 3v10" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 16 16"><path d="m6 4.5-3.5 3.5L6 11.5M10 4.5l3.5 3.5-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 16 16"><path d="M4 11V7.5a4 4 0 0 1 8 0V11l1.2 1.3H2.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.6 14h2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 16 16"><rect x="2.5" y="4" width="11" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="11" cy="8" r=".9" fill="currentColor"/></symbol>
+  <symbol id="i-keyb" viewBox="0 0 16 16"><rect x="1.8" y="4" width="12.4" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 6.6h.01M7 6.6h.01M9.5 6.6h.01M12 6.6h.01M5 9.6h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-remote" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 13.5h4M8 11v2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8l4.2-1.3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 16 16"><path d="M5.5 8.5V4a1 1 0 0 1 2 0v3.5M7.5 7V3a1 1 0 0 1 2 0v4M9.5 7.2V4a1 1 0 0 1 2 0v5.5c0 2.4-1.6 4-3.8 4-1.6 0-2.6-.8-3.4-2L3 9.6a1 1 0 0 1 1.6-1.2l.9 1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- rail icons (20 grid) -->
+  <symbol id="r-home" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></g></symbol>
+  <symbol id="r-runs" viewBox="0 0 20 20"><path d="M3 5h9M3 10h6M3 15h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12.5 9.2v6.6l5-3.3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="r-heal" viewBox="0 0 20 20"><g transform="rotate(-45 10 10)" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="6.8" width="15" height="6.4" rx="3.2"/><path d="M7.5 6.8v6.4M12.5 6.8v6.4"/></g><circle cx="10" cy="10" r=".9" fill="currentColor"/></symbol>
+  <symbol id="r-rec" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.8" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="3" fill="currentColor"/></symbol>
+  <symbol id="r-key" viewBox="0 0 20 20"><circle cx="6.8" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.4 10h7M15 10v2.6M17.4 10v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="r-set" viewBox="0 0 20 20"><path d="M3 6h4.5M11.5 6H17M3 14h8M15 14h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9.5" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="13" cy="14" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+
+  <!-- Bao mark (reused from mockups/icons/icon-final.html) -->
+  <symbol id="bao" viewBox="0 0 100 100">
+    <rect x="4" y="4" width="92" height="92" rx="24" fill="url(#bao-bg)"/>
+    <g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27 C39.2 24.3 42.8 23 41 20.3"/><path d="M50 26 C48.2 23.3 51.8 22 50 19.3"/><path d="M59 27 C57.2 24.3 60.8 23 59 20.3"/></g>
+    <path d="M50 34 C70 34 79 48 79 62 C79 78 65 84 50 84 C35 84 21 78 21 62 C21 48 30 34 50 34Z" fill="url(#bao-dough)" stroke="#EBD3B2" stroke-width="1.4"/>
+    <ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2" stroke-width="1"/>
+    <path d="M36 60 Q41 52.5 46 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M54 60 Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M44 72 Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- Google Cloud console: OAuth overview -->
+  <symbol id="gc-a" viewBox="0 0 160 100">
+    <rect width="160" height="100" fill="#fff"/><rect width="160" height="12" fill="#fff"/><path d="M0 12.5h160" stroke="#dadce0"/>
+    <path d="M4 4h5M4 6h5M4 8h5" stroke="#5f6368" stroke-width=".8"/><text x="12" y="8.2" font-family="Arial" font-size="5" fill="#5f6368">Google Cloud</text>
+    <rect x="52" y="3" width="64" height="6.5" rx="3.2" fill="#f1f3f4"/>
+    <rect y="13" width="34" height="87" fill="#f8f9fa"/><g fill="#c4c7c5"><rect x="5" y="20" width="22" height="2.4" rx="1"/><rect x="5" y="27" width="18" height="2.4" rx="1"/><rect x="5" y="34" width="24" height="2.4" rx="1"/><rect x="5" y="41" width="16" height="2.4" rx="1"/></g>
+    <rect x="3" y="32" width="29" height="7" rx="3.5" fill="#d3e3fd" opacity=".9"/>
+    <text x="40" y="23" font-family="Arial" font-size="5.6" fill="#202124">OAuth consent screen</text>
+    <circle cx="96" cy="45" r="10" fill="#e8f0fe"/><path d="M91 45h10M96 40v10" stroke="#1a73e8" stroke-width="1.4"/>
+    <rect x="66" y="60" width="60" height="2.6" rx="1" fill="#bdc1c6"/><rect x="74" y="65" width="44" height="2.4" rx="1" fill="#dadce0"/>
+    <rect x="81" y="72" width="30" height="8" rx="4" fill="#1a73e8"/><text x="96" y="77.4" font-family="Arial" font-size="3.8" fill="#fff" text-anchor="middle">Get started</text>
+  </symbol>
+  <!-- Google Cloud console: App information form -->
+  <symbol id="gc-b" viewBox="0 0 160 100">
+    <rect width="160" height="100" fill="#fff"/><path d="M0 12.5h160" stroke="#dadce0"/>
+    <path d="M4 4h5M4 6h5M4 8h5" stroke="#5f6368" stroke-width=".8"/><text x="12" y="8.2" font-family="Arial" font-size="5" fill="#5f6368">Google Cloud</text>
+    <rect x="52" y="3" width="64" height="6.5" rx="3.2" fill="#f1f3f4"/>
+    <text x="10" y="23" font-family="Arial" font-size="5.6" fill="#202124">Project configuration</text>
+    <g font-family="Arial" font-size="3.6" fill="#5f6368"><circle cx="13" cy="31" r="2.4" fill="#1a73e8"/><text x="17.5" y="32.2" fill="#202124">App information</text><circle cx="13" cy="72" r="2.4" fill="#dadce0"/><text x="17.5" y="73.2">Audience</text><circle cx="13" cy="80" r="2.4" fill="#dadce0"/><text x="17.5" y="81.2">Contact information</text><circle cx="13" cy="88" r="2.4" fill="#dadce0"/><text x="17.5" y="89.2">Finish</text></g>
+    <rect x="17" y="37" width="76" height="10" rx="1.5" fill="#fff" stroke="#80868b" stroke-width=".6"/><text x="19.5" y="40.6" font-family="Arial" font-size="2.6" fill="#5f6368">App name</text><text x="19.5" y="45" font-family="Arial" font-size="3.8" fill="#202124">五秒</text>
+    <rect x="17" y="51" width="76" height="10" rx="1.5" fill="#fff" stroke="#80868b" stroke-width=".6"/><text x="19.5" y="54.6" font-family="Arial" font-size="2.6" fill="#5f6368">User support email</text><text x="19.5" y="59" font-family="Arial" font-size="3.6" fill="#202124">owner@example.com</text><path d="M88 55l2 2 2-2" fill="none" stroke="#5f6368" stroke-width=".7"/>
+    <rect x="17" y="64" width="18" height="6" rx="3" fill="#1a73e8"/><text x="26" y="68" font-family="Arial" font-size="3.2" fill="#fff" text-anchor="middle">Next</text>
+    <rect x="104" y="30" width="48" height="40" rx="2" fill="#f8f9fa"/><rect x="108" y="35" width="36" height="2.2" rx="1" fill="#bdc1c6"/><rect x="108" y="40" width="40" height="2" rx="1" fill="#dadce0"/><rect x="108" y="44" width="30" height="2" rx="1" fill="#dadce0"/>
+  </symbol>
+  <!-- Google Cloud console: Create OAuth client -->
+  <symbol id="gc-c" viewBox="0 0 160 100">
+    <rect width="160" height="100" fill="#fff"/><path d="M0 12.5h160" stroke="#dadce0"/>
+    <path d="M4 4h5M4 6h5M4 8h5" stroke="#5f6368" stroke-width=".8"/><text x="12" y="8.2" font-family="Arial" font-size="5" fill="#5f6368">Google Cloud</text>
+    <rect x="52" y="3" width="64" height="6.5" rx="3.2" fill="#f1f3f4"/>
+    <text x="10" y="23" font-family="Arial" font-size="5.6" fill="#202124">Create OAuth client ID</text>
+    <rect x="10" y="30" width="80" height="10" rx="1.5" fill="#fff" stroke="#80868b" stroke-width=".6"/><text x="12.5" y="33.6" font-family="Arial" font-size="2.6" fill="#5f6368">Application type</text><text x="12.5" y="38" font-family="Arial" font-size="3.6" fill="#202124">Web application</text>
+    <rect x="10" y="44" width="80" height="10" rx="1.5" fill="#fff" stroke="#80868b" stroke-width=".6"/><text x="12.5" y="47.6" font-family="Arial" font-size="2.6" fill="#5f6368">Name</text><text x="12.5" y="52" font-family="Arial" font-size="3.6" fill="#202124">五秒 web</text>
+    <text x="10" y="62" font-family="Arial" font-size="3.6" fill="#202124">Authorized redirect URIs</text>
+    <rect x="10" y="65" width="80" height="8" rx="1.5" fill="#fff" stroke="#80868b" stroke-width=".6"/><text x="12.5" y="70.2" font-family="Arial" font-size="3.2" fill="#202124">https://example.com/auth/callback</text>
+    <rect x="10" y="80" width="20" height="7" rx="3.5" fill="#1a73e8"/><text x="20" y="84.6" font-family="Arial" font-size="3.4" fill="#fff" text-anchor="middle">Create</text>
+    <text x="36" y="84.6" font-family="Arial" font-size="3.4" fill="#1a73e8">Cancel</text>
+  </symbol>
+
+  <!-- CA DMV: plate + VIN form -->
+  <symbol id="dmv-a" viewBox="0 0 320 200">
+    <rect width="320" height="200" fill="#fff"/>
+    <rect width="320" height="28" fill="#0d2d5c"/>
+    <rect x="12" y="8" width="12" height="12" rx="2" fill="#f2b632"/>
+    <text x="30" y="18" fill="#fff" font-family="Arial" font-size="9" font-weight="700">California DMV</text>
+    <text x="236" y="18" fill="#cfd8e6" font-family="Arial" font-size="7">Online services</text>
+    <text x="16" y="47" font-family="Arial" font-size="11" font-weight="700" fill="#0d2d5c">Vehicle registration renewal</text>
+    <g font-family="Arial" font-size="6" fill="#56627a">
+      <circle cx="20" cy="62" r="4" fill="#0d2d5c"/><text x="27" y="64">Vehicle</text>
+      <path d="M52 62h14" stroke="#c5ccd8"/><circle cx="72" cy="62" r="4" fill="#c5ccd8"/><text x="79" y="64">Insurance</text>
+      <path d="M112 62h14" stroke="#c5ccd8"/><circle cx="132" cy="62" r="4" fill="#c5ccd8"/><text x="139" y="64">Fees</text>
+      <path d="M158 62h14" stroke="#c5ccd8"/><circle cx="178" cy="62" r="4" fill="#c5ccd8"/><text x="185" y="64">Pay</text>
+    </g>
+    <text x="16" y="88" font-family="Arial" font-size="7" fill="#1f2a3d">License plate number</text>
+    <rect x="16" y="93" width="150" height="19" rx="2" fill="#fff" stroke="#8a94a6"/><text x="22" y="106" font-family="Arial" font-size="8" fill="#111">SAMPLE1</text>
+    <text x="16" y="126" font-family="Arial" font-size="7" fill="#1f2a3d">Last 5 digits of VIN</text>
+    <rect x="16" y="131" width="150" height="19" rx="2" fill="#fff" stroke="#8a94a6"/><text x="22" y="144" font-family="Arial" font-size="8" fill="#111">• • • • •</text>
+    <rect x="16" y="164" width="58" height="19" rx="2" fill="#0d2d5c"/><text x="45" y="176.5" font-family="Arial" font-size="7.5" fill="#fff" text-anchor="middle">Next</text>
+    <rect x="190" y="84" width="114" height="76" rx="3" fill="#eef3fa"/>
+    <text x="198" y="99" font-family="Arial" font-size="7" font-weight="700" fill="#0d2d5c">Have these ready</text>
+    <g fill="#9aa6bb"><rect x="198" y="108" width="92" height="3" rx="1.5"/><rect x="198" y="117" width="80" height="3" rx="1.5"/><rect x="198" y="126" width="88" height="3" rx="1.5"/><rect x="198" y="135" width="64" height="3" rx="1.5"/></g>
+  </symbol>
+
+  <!-- Chase: golden (Oct 5) -->
+  <symbol id="chase-golden" viewBox="0 0 640 300">
+    <rect width="640" height="300" fill="#f4f6f8"/>
+    <rect width="640" height="44" fill="#117aca"/>
+    <text x="22" y="28" fill="#fff" font-family="Arial" font-size="15" font-weight="700" letter-spacing="2">CHASE</text>
+    <g font-family="Arial" font-size="10" fill="#e6f1fb"><text x="120" y="27">Accounts</text><text x="184" y="27">Pay &amp; transfer</text><text x="272" y="27">Plan &amp; track</text><text x="352" y="27">Investments</text><text x="572" y="27">Sign out</text></g>
+    <rect x="20" y="62" width="380" height="176" rx="4" fill="#fff" stroke="#dfe3e8"/>
+    <text x="36" y="86" font-family="Arial" font-size="10.5" font-weight="700" fill="#1c2b39">TOTAL CHECKING (...XXXX)</text>
+    <text x="36" y="118" font-family="Arial" font-size="22" fill="#1c2b39">$4,812.07</text>
+    <text x="36" y="134" font-family="Arial" font-size="9" fill="#5a6772">Available balance</text>
+    <g fill="#d9dee4"><rect x="36" y="152" width="200" height="6" rx="3"/><rect x="36" y="168" width="250" height="6" rx="3"/><rect x="36" y="184" width="180" height="6" rx="3"/><rect x="36" y="200" width="220" height="6" rx="3"/></g>
+    <g fill="#c3cad2"><rect x="320" y="152" width="60" height="6" rx="3"/><rect x="330" y="168" width="50" height="6" rx="3"/><rect x="324" y="184" width="56" height="6" rx="3"/><rect x="334" y="200" width="46" height="6" rx="3"/></g>
+    <rect x="416" y="62" width="204" height="176" rx="4" fill="#fff" stroke="#dfe3e8"/>
+    <text x="432" y="86" font-family="Arial" font-size="10.5" font-weight="700" fill="#1c2b39">Account services</text>
+    <g font-family="Arial" font-size="10" fill="#0b6ab8"><text x="432" y="114">Statements &amp; documents</text><text x="432" y="140">Paperless</text><text x="432" y="166">Account details</text><text x="432" y="192">Set up alerts</text></g>
+    <g stroke="#eef1f4"><path d="M432 124h172M432 150h172M432 176h172"/></g>
+    <rect x="20" y="252" width="600" height="34" rx="4" fill="#fff" stroke="#dfe3e8"/><rect x="36" y="266" width="160" height="6" rx="3" fill="#d9dee4"/>
+  </symbol>
+  <!-- Chase: actual (Nov 5) -->
+  <symbol id="chase-actual" viewBox="0 0 640 300">
+    <rect width="640" height="300" fill="#f4f6f8"/>
+    <rect width="640" height="44" fill="#fff"/><path d="M0 44.5h640" stroke="#dfe3e8"/>
+    <text x="22" y="28" fill="#117aca" font-family="Arial" font-size="15" font-weight="700" letter-spacing="2">CHASE</text>
+    <g font-family="Arial" font-size="10" fill="#1c2b39"><text x="120" y="27" font-weight="700">Accounts</text><text x="184" y="27">Pay &amp; transfer</text><text x="272" y="27">Plan &amp; track</text><text x="352" y="27">More</text><path d="M378 23l3 3 3-3" fill="none" stroke="#1c2b39" stroke-width="1.2"/><text x="572" y="27">Sign out</text></g>
+    <path d="M120 41h46" stroke="#117aca" stroke-width="3"/>
+    <rect x="20" y="62" width="380" height="176" rx="4" fill="#fff" stroke="#dfe3e8"/>
+    <text x="36" y="86" font-family="Arial" font-size="10.5" font-weight="700" fill="#1c2b39">TOTAL CHECKING (...XXXX)</text>
+    <text x="36" y="118" font-family="Arial" font-size="22" fill="#1c2b39">$4,812.07</text>
+    <text x="36" y="134" font-family="Arial" font-size="9" fill="#5a6772">Available balance</text>
+    <g fill="#d9dee4"><rect x="36" y="152" width="200" height="6" rx="3"/><rect x="36" y="168" width="250" height="6" rx="3"/><rect x="36" y="184" width="180" height="6" rx="3"/><rect x="36" y="200" width="220" height="6" rx="3"/></g>
+    <g fill="#c3cad2"><rect x="320" y="152" width="60" height="6" rx="3"/><rect x="330" y="168" width="50" height="6" rx="3"/><rect x="324" y="184" width="56" height="6" rx="3"/><rect x="334" y="200" width="46" height="6" rx="3"/></g>
+    <rect x="416" y="62" width="204" height="176" rx="4" fill="#fff" stroke="#dfe3e8"/>
+    <text x="432" y="86" font-family="Arial" font-size="10.5" font-weight="700" fill="#1c2b39">Account services</text>
+    <g font-family="Arial" font-size="10" fill="#0b6ab8"><text x="432" y="114">Paperless</text><text x="432" y="140">Account details</text><text x="432" y="166">Set up alerts</text></g>
+    <g stroke="#eef1f4"><path d="M432 124h172M432 150h172"/></g>
+    <rect x="432" y="184" width="172" height="40" rx="4" fill="#eaf4fc"/><rect x="442" y="196" width="110" height="5" rx="2.5" fill="#9cc6ea"/><rect x="442" y="208" width="80" height="5" rx="2.5" fill="#bfdaf2"/>
+    <rect x="20" y="252" width="600" height="34" rx="4" fill="#fff" stroke="#dfe3e8"/><rect x="36" y="266" width="160" height="6" rx="3" fill="#d9dee4"/>
+  </symbol>
+
+  <!-- Stripe payouts: golden (old target) -->
+  <symbol id="stripe-golden" viewBox="0 0 320 200">
+    <rect width="320" height="200" fill="#fff"/>
+    <rect width="66" height="200" fill="#f6f8fa"/><path d="M66.5 0v200" stroke="#e3e8ee"/>
+    <text x="10" y="20" font-family="Arial" font-size="9" font-weight="700" fill="#635bff">stripe</text>
+    <g font-family="Arial" font-size="6.5" fill="#414552"><text x="10" y="42">Home</text><text x="10" y="56">Balances</text><rect x="5" y="63" width="56" height="11" rx="2" fill="#e3e8ff"/><text x="10" y="70.5" fill="#533afd" font-weight="700">Payouts</text><text x="10" y="86">Customers</text><text x="10" y="100">Reports</text></g>
+    <text x="78" y="26" font-family="Arial" font-size="11" font-weight="700" fill="#1a1f36">Payouts</text>
+    <g font-family="Arial" font-size="6" fill="#414552"><rect x="78" y="36" width="34" height="12" rx="6" fill="#fff" stroke="#d5dbe1"/><text x="85" y="44">Date</text><rect x="116" y="36" width="38" height="12" rx="6" fill="#fff" stroke="#d5dbe1"/><text x="123" y="44">Status</text></g>
+    <rect x="264" y="35" width="46" height="14" rx="3" fill="#fff" stroke="#d5dbe1"/><path d="M270 39v5M268 42l2 2 2-2M267.5 46h5" fill="none" stroke="#414552" stroke-width=".8"/><text x="276" y="44.5" font-family="Arial" font-size="6.5" fill="#1a1f36">Export</text>
+    <path d="M78 62h232" stroke="#e3e8ee"/><g font-family="Arial" font-size="5.6" fill="#687385"><text x="78" y="58">AMOUNT</text><text x="150" y="58">STATUS</text><text x="210" y="58">ARRIVES</text></g>
+    <g font-family="Arial" font-size="6.2" fill="#1a1f36">
+      <text x="78" y="76">$11,207.88</text><rect x="150" y="70" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="76" font-size="5" fill="#05690d">Paid</text><text x="210" y="76" fill="#414552">Oct 19</text>
+      <text x="78" y="94">$10,540.12</text><rect x="150" y="88" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="94" font-size="5" fill="#05690d">Paid</text><text x="210" y="94" fill="#414552">Oct 12</text>
+      <text x="78" y="112">$9,876.30</text><rect x="150" y="106" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="112" font-size="5" fill="#05690d">Paid</text><text x="210" y="112" fill="#414552">Oct 5</text>
+      <text x="78" y="130">$12,019.65</text><rect x="150" y="124" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="130" font-size="5" fill="#05690d">Paid</text><text x="210" y="130" fill="#414552">Sep 28</text>
+    </g>
+    <g stroke="#f0f2f5"><path d="M78 82h232M78 100h232M78 118h232M78 136h232"/></g>
+  </symbol>
+  <!-- Stripe payouts: actual (new target) -->
+  <symbol id="stripe-actual" viewBox="0 0 320 200">
+    <rect width="320" height="200" fill="#fff"/>
+    <rect width="66" height="200" fill="#f6f8fa"/><path d="M66.5 0v200" stroke="#e3e8ee"/>
+    <text x="10" y="20" font-family="Arial" font-size="9" font-weight="700" fill="#635bff">stripe</text>
+    <g font-family="Arial" font-size="6.5" fill="#414552"><text x="10" y="42">Home</text><text x="10" y="56">Balances</text><rect x="5" y="63" width="56" height="11" rx="2" fill="#e3e8ff"/><text x="10" y="70.5" fill="#533afd" font-weight="700">Payouts</text><text x="10" y="86">Customers</text><text x="10" y="100">Reports</text></g>
+    <text x="78" y="26" font-family="Arial" font-size="11" font-weight="700" fill="#1a1f36">Payouts</text>
+    <g font-family="Arial" font-size="6" fill="#414552"><rect x="78" y="36" width="34" height="12" rx="6" fill="#fff" stroke="#d5dbe1"/><text x="85" y="44">Date</text><rect x="116" y="36" width="38" height="12" rx="6" fill="#fff" stroke="#d5dbe1"/><text x="123" y="44">Status</text><rect x="158" y="36" width="44" height="12" rx="6" fill="#fff" stroke="#d5dbe1"/><text x="165" y="44">Columns</text></g>
+    <rect x="238" y="35" width="72" height="14" rx="3" fill="#635bff"/><path d="M244 39v5M242 42l2 2 2-2M241.5 46h5" fill="none" stroke="#fff" stroke-width=".8"/><text x="250" y="44.5" font-family="Arial" font-size="6.5" fill="#fff">Export payouts</text><path d="M300.5 38v8" stroke="#8f88ff" stroke-width=".6"/><path d="M303 41l2 2 2-2" fill="none" stroke="#fff" stroke-width=".8"/>
+    <path d="M78 62h232" stroke="#e3e8ee"/><g font-family="Arial" font-size="5.6" fill="#687385"><text x="78" y="58">AMOUNT</text><text x="150" y="58">STATUS</text><text x="210" y="58">ARRIVES</text></g>
+    <g font-family="Arial" font-size="6.2" fill="#1a1f36">
+      <text x="78" y="76">$9,915.40</text><rect x="150" y="70" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="76" font-size="5" fill="#05690d">Paid</text><text x="210" y="76" fill="#414552">Oct 26</text>
+      <text x="78" y="94">$11,207.88</text><rect x="150" y="88" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="94" font-size="5" fill="#05690d">Paid</text><text x="210" y="94" fill="#414552">Oct 19</text>
+      <text x="78" y="112">$10,540.12</text><rect x="150" y="106" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="112" font-size="5" fill="#05690d">Paid</text><text x="210" y="112" fill="#414552">Oct 12</text>
+      <text x="78" y="130">$9,876.30</text><rect x="150" y="124" width="22" height="8" rx="2" fill="#d7f7c2"/><text x="153" y="130" font-size="5" fill="#05690d">Paid</text><text x="210" y="130" fill="#414552">Oct 5</text>
+    </g>
+    <g stroke="#f0f2f5"><path d="M78 82h232M78 100h232M78 118h232M78 136h232"/></g>
+  </symbol>
+
+  <!-- Fidelity: tax forms (mini, for step evidence) -->
+  <symbol id="fid-mini" viewBox="0 0 320 170">
+    <rect width="320" height="170" fill="#fff"/><path d="M0 22.5h320" stroke="#e1e4e8"/>
+    <text x="10" y="15" font-family="Arial" font-size="9" font-weight="700" fill="#368727">Fidelity</text>
+    <g font-family="Arial" font-size="5.6" fill="#333"><text x="70" y="14">Accounts &amp; Trade</text><text x="130" y="14">Planning &amp; Advice</text><text x="192" y="14">News &amp; Research</text></g>
+    <rect x="62" y="24" width="96" height="60" rx="2" fill="#fff" stroke="#d0d4d9"/>
+    <g font-family="Arial" font-size="5.6" fill="#1f1f1f"><text x="68" y="36">Portfolio</text><text x="68" y="48">Activity &amp; orders</text><text x="68" y="60" fill="#0e6a2a" font-weight="700">Tax forms &amp; information</text><text x="68" y="72">Statements</text></g>
+    <g fill="#e8ebee"><rect x="176" y="40" width="130" height="8" rx="2"/><rect x="176" y="56" width="110" height="8" rx="2"/><rect x="10" y="100" width="296" height="10" rx="2"/><rect x="10" y="118" width="296" height="10" rx="2"/><rect x="10" y="136" width="296" height="10" rx="2"/></g>
+  </symbol>
+</svg>
+
+<nav class="harness" aria-label="Mock screens (not part of the design)">
+  <span class="hl">Screens</span>
+  <button type="button" data-go="home">home</button>
+  <button type="button" data-go="workflow">workflow</button>
+  <button type="button" data-go="run-live">run-live</button>
+  <button type="button" data-go="run-failed">run-failed</button>
+  <button type="button" data-go="heal">heal</button>
+  <button type="button" data-go="capture">capture</button>
+  <button type="button" data-go="settings">settings</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button type="button" data-width="1280">1280</button>
+  <button type="button" data-width="720">720</button>
+  <span class="sep" aria-hidden="true"></span>
+  <label><input type="checkbox" id="h-empty"> New user</label>
+</nav>
+
+<div class="window" id="win">
+  <a class="skip" href="#" id="skip">Skip to content</a>
+  <div class="titlebar"><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div><span class="wtitle">Bao</span></div>
+
+  <div class="app">
+    <nav class="rail" aria-label="Main">
+      <svg class="logo" role="img" aria-label="Bao"><use href="#bao"/></svg>
+      <a class="rail-btn" href="?screen=home" data-rail="home" data-go="home" aria-label="Home" aria-describedby="tip-home">
+        <svg aria-hidden="true"><use href="#r-home"/></svg>
+        <span class="tip" role="tooltip" id="tip-home">Home <kbd>G</kbd><kbd>H</kbd></span>
+      </a>
+      <a class="rail-btn" href="?screen=run-live" data-rail="runs" data-go="run-live" aria-label="Runs, 1 needs you" aria-describedby="tip-runs">
+        <svg aria-hidden="true"><use href="#r-runs"/></svg><span class="badge need" aria-hidden="true">1</span>
+        <span class="tip" role="tooltip" id="tip-runs">Runs <span class="t2">1 needs you</span> <kbd>G</kbd><kbd>R</kbd></span>
+      </a>
+      <a class="rail-btn" href="?screen=heal" data-rail="heals" data-go="heal" aria-label="Heals, 1 to review" aria-describedby="tip-heals">
+        <svg aria-hidden="true"><use href="#r-heal"/></svg><span class="badge caution" aria-hidden="true">1</span>
+        <span class="tip" role="tooltip" id="tip-heals">Heals <span class="t2">1 to review</span> <kbd>G</kbd><kbd>E</kbd></span>
+      </a>
+      <a class="rail-btn" href="?screen=capture" data-rail="record" data-go="capture" aria-label="Record" aria-describedby="tip-rec">
+        <svg aria-hidden="true"><use href="#r-rec"/></svg>
+        <span class="tip" role="tooltip" id="tip-rec">Record a workflow <kbd>⌘N</kbd></span>
+      </a>
+      <span class="spacer"></span>
+      <a class="rail-btn" href="?screen=settings" data-rail="logins" data-go="settings" data-section="logins" aria-label="Logins" aria-describedby="tip-logins">
+        <svg aria-hidden="true"><use href="#r-key"/></svg>
+        <span class="tip" role="tooltip" id="tip-logins">Logins <span class="t2">3 sites</span></span>
+      </a>
+      <a class="rail-btn" href="?screen=settings" data-rail="settings" data-go="settings" aria-label="Settings" aria-describedby="tip-set">
+        <svg aria-hidden="true"><use href="#r-set"/></svg>
+        <span class="tip" role="tooltip" id="tip-set">Settings <kbd>⌘,</kbd></span>
+      </a>
+    </nav>
+
+    <div class="screens">
+
+<!-- ======================= HOME ======================= -->
+<section class="screen fused" data-screen="home" aria-label="Home">
+  <main class="canvas" id="main-home" tabindex="-1" style="padding-bottom:10px">
+    <div class="bhead">
+      <h1>Today <span class="mono">Thu Nov 5 · 7:43 PM</span></h1>
+      <span style="flex:1"></span>
+      <div class="keys" aria-label="Keyboard shortcuts"><span><kbd>J</kbd><kbd>K</kbd> Move</span><span><kbd>↵</kbd> Open</span><span><kbd>R</kbd> Run</span><span><kbd>E</kbd> Edit</span></div>
+      <button class="btn" type="button" data-go="capture"><svg aria-hidden="true"><use href="#i-rec"/></svg>Record <kbd>⌘N</kbd></button>
+      <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-home"><svg aria-hidden="true"><use href="#i-panel"/></svg>Evidence</button>
+    </div>
+
+    <div class="populated">
+      <section class="needs" aria-labelledby="needs-h">
+        <div class="needs-main">
+          <span class="needs-ic" aria-hidden="true"><svg><use href="#g-need"/></svg></span>
+          <div class="needs-text">
+            <h2 id="needs-h"><span class="lbl">Needs you</span> Book Equinox class</h2>
+            <p>Step 8 of 9: press <b>Reserve</b> on the Equinox page. Bao never presses booking or payment buttons.</p>
+          </div>
+          <div class="count" role="timer" aria-label="1 hour 47 minutes left. The run stops at 9:30 PM.">
+            <span class="big">1:47<small>left</small></span>
+            <span class="t2">Stops at <span class="mono">9:30 PM</span></span>
+            <div class="meter" aria-hidden="true"><span style="width:11%"></span></div>
+          </div>
+          <div class="needs-actions">
+            <button class="btn primary" type="button" data-go="run-live">Open run <kbd>↵</kbd></button>
+            <button class="btn" type="button"><svg aria-hidden="true"><use href="#i-globe"/></svg>Show Bao’s Chrome</button>
+          </div>
+        </div>
+        <ul class="also" aria-label="Also needs a look">
+          <li class="lbl">Also:</li>
+          <li><svg class="fail-c" width="12" height="12" aria-hidden="true"><use href="#g-fail"/></svg><a href="?screen=run-failed" data-go="run-failed">Chase statement failed at step 6</a></li>
+          <li><svg class="caution-c" width="12" height="12" aria-hidden="true"><use href="#g-prov"/></svg><a href="?screen=heal" data-go="heal">Stripe heal on trial, 1 of 3</a></li>
+          <li><svg class="fail-c" width="12" height="12" aria-hidden="true"><use href="#g-warn"/></svg><a href="?screen=capture" data-go="capture">Fidelity 1099 download can’t load</a></li>
+        </ul>
+      </section>
+
+      <dl class="kpis" aria-label="Today’s runs">
+        <div class="kpi"><dt>Runs today</dt><dd>9<small>3 on a schedule</small></dd></div>
+        <div class="kpi"><dt><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg>Passed</dt><dd>7<small>78%</small></dd></div>
+        <div class="kpi"><dt><svg class="need-c" aria-hidden="true"><use href="#g-need"/></svg>Needs you</dt><dd>1<small>Equinox</small></dd></div>
+        <div class="kpi"><dt><svg class="fail-c" aria-hidden="true"><use href="#g-fail"/></svg>Failed</dt><dd>1<small>Chase, step 6</small></dd></div>
+        <div class="kpi"><dt><svg class="t3" aria-hidden="true"><use href="#i-clock"/></svg>Median run</dt><dd>31s<small>fastest 22s</small></dd></div>
+        <div class="kpi"><dt><svg class="t3" aria-hidden="true"><use href="#i-spark"/></svg>Model calls</dt><dd>0<small>No AI used</small></dd></div>
+      </dl>
+
+      <section aria-labelledby="wf-h">
+        <div class="tbar">
+          <h2 id="wf-h">Workflows <span class="mono">11</span></h2>
+          <div role="group" aria-label="Filter by status" style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="chip" type="button" aria-pressed="true">All <span class="mono">11</span></button>
+            <button class="chip" type="button" aria-pressed="false"><svg class="need-c" aria-hidden="true"><use href="#g-need"/></svg>Needs you <span class="mono">1</span></button>
+            <button class="chip" type="button" aria-pressed="false"><svg class="fail-c" aria-hidden="true"><use href="#g-fail"/></svg>Problems <span class="mono">2</span></button>
+            <button class="chip" type="button" aria-pressed="false"><svg class="caution-c" aria-hidden="true"><use href="#g-prov"/></svg>Heals <span class="mono">1</span></button>
+          </div>
+          <label class="sr-only" for="f-site">Site</label>
+          <select class="select" id="f-site" style="width:104px"><option>All sites</option><option>chase.com</option><option>console.cloud.google.com</option><option>dmv.ca.gov</option><option>equinox.com</option></select>
+          <label class="sr-only" for="f-sched">Schedule</label>
+          <select class="select" id="f-sched" style="width:118px"><option>Any schedule</option><option>Scheduled</option><option>Manual</option></select>
+          <span class="grow"></span>
+          <label class="field" for="f-q"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Filter workflows</span><input id="f-q" type="search" placeholder="Filter" data-search><kbd>/</kbd></label>
+        </div>
+
+        <table class="matrix" aria-label="Run health: last 14 runs for each workflow, oldest to newest">
+          <colgroup><col class="c-st"><col><col class="c-cells"><col class="c-last"><col class="c-next"><col class="c-act"></colgroup>
+          <thead><tr><th scope="col"><span class="st-word">Status</span></th><th scope="col">Workflow</th><th scope="col" class="c-cells"><span class="flow"><span>Last 14 runs</span><span>Newest</span></span></th><th scope="col">Last run</th><th scope="col" class="c-next">Next</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="matrix-body" data-navlist></tbody>
+        </table>
+        <ul class="legend" style="margin-top:8px" aria-label="Legend">
+          <li><span class="cell c-ok"><svg aria-hidden="true"><use href="#g-pass"/></svg></span>Passed</li>
+          <li><span class="cell c-heal"><svg aria-hidden="true"><use href="#g-heal"/></svg></span>Healed</li>
+          <li><span class="cell c-caution"><svg aria-hidden="true"><use href="#g-prov"/></svg></span>Heal on trial</li>
+          <li><span class="cell c-need"><svg aria-hidden="true"><use href="#g-need"/></svg></span>Needs you</li>
+          <li><span class="cell c-muted"><svg aria-hidden="true"><use href="#g-need"/></svg></span>No reply</li>
+          <li><span class="cell c-fail"><svg aria-hidden="true"><use href="#g-fail"/></svg></span>Failed</li>
+          <li><span class="cell c-none"><svg aria-hidden="true"><use href="#g-none"/></svg></span>No run</li>
+
+        </ul>
+      </section>
+    </div>
+
+    <div class="empty-board">
+      <div class="empty-hero">
+        <svg class="ghost" width="300" height="150" viewBox="0 0 300 150" aria-hidden="true">
+          <g fill="none" stroke="#2A2D34"><rect x="0.5" y="0.5" width="18" height="18" rx="4"/><rect x="20.5" y="0.5" width="18" height="18" rx="4"/><rect x="40.5" y="0.5" width="18" height="18" rx="4"/><rect x="60.5" y="0.5" width="18" height="18" rx="4"/><rect x="80.5" y="0.5" width="18" height="18" rx="4"/><rect x="100.5" y="0.5" width="18" height="18" rx="4"/><rect x="120.5" y="0.5" width="18" height="18" rx="4"/><rect x="140.5" y="0.5" width="18" height="18" rx="4"/><rect x="160.5" y="0.5" width="18" height="18" rx="4"/><rect x="180.5" y="0.5" width="18" height="18" rx="4"/><rect x="200.5" y="0.5" width="18" height="18" rx="4"/><rect x="220.5" y="0.5" width="18" height="18" rx="4"/><rect x="240.5" y="0.5" width="18" height="18" rx="4"/><rect x="260.5" y="0.5" width="18" height="18" rx="4"/></g>
+          <g fill="none" stroke="#24272D"><rect x="0.5" y="24.5" width="18" height="18" rx="4"/><rect x="20.5" y="24.5" width="18" height="18" rx="4"/><rect x="40.5" y="24.5" width="18" height="18" rx="4"/><rect x="60.5" y="24.5" width="18" height="18" rx="4"/><rect x="80.5" y="24.5" width="18" height="18" rx="4"/><rect x="100.5" y="24.5" width="18" height="18" rx="4"/><rect x="120.5" y="24.5" width="18" height="18" rx="4"/><rect x="140.5" y="24.5" width="18" height="18" rx="4"/><rect x="160.5" y="24.5" width="18" height="18" rx="4"/><rect x="180.5" y="24.5" width="18" height="18" rx="4"/><rect x="200.5" y="24.5" width="18" height="18" rx="4"/><rect x="220.5" y="24.5" width="18" height="18" rx="4"/><rect x="240.5" y="24.5" width="18" height="18" rx="4"/><rect x="260.5" y="24.5" width="18" height="18" rx="4"/></g>
+          <g fill="none" stroke="#1F2227"><rect x="0.5" y="48.5" width="18" height="18" rx="4"/><rect x="20.5" y="48.5" width="18" height="18" rx="4"/><rect x="40.5" y="48.5" width="18" height="18" rx="4"/><rect x="60.5" y="48.5" width="18" height="18" rx="4"/><rect x="80.5" y="48.5" width="18" height="18" rx="4"/><rect x="100.5" y="48.5" width="18" height="18" rx="4"/><rect x="120.5" y="48.5" width="18" height="18" rx="4"/><rect x="140.5" y="48.5" width="18" height="18" rx="4"/><rect x="160.5" y="48.5" width="18" height="18" rx="4"/><rect x="180.5" y="48.5" width="18" height="18" rx="4"/><rect x="200.5" y="48.5" width="18" height="18" rx="4"/><rect x="220.5" y="48.5" width="18" height="18" rx="4"/><rect x="240.5" y="48.5" width="18" height="18" rx="4"/><rect x="260.5" y="48.5" width="18" height="18" rx="4"/></g>
+        </svg>
+        <h2>No workflows yet</h2>
+        <p>Do a browser task once while Bao watches. Bao turns it into steps and replays them the same way every time, in its own Chrome, with no AI at run time.</p>
+        <div class="actions">
+          <button class="btn primary" type="button" data-go="capture"><svg aria-hidden="true"><use href="#i-rec"/></svg>Record your first workflow <kbd>⌘N</kbd></button>
+          <button class="btn" type="button">Import a login from Chrome</button>
+        </div>
+        <ul class="checklist" aria-label="Before your first recording">
+          <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span>Helper app is running</span><span class="st ok"><svg aria-hidden="true"><use href="#g-pass"/></svg>Ready</span></li>
+          <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span>Accessibility allowed<span class="t3">Lets Bao tell one button from another.</span></span><span class="st ok"><svg aria-hidden="true"><use href="#g-pass"/></svg>Allowed</span></li>
+          <li><svg class="caution-c" aria-hidden="true"><use href="#g-warn"/></svg><span>Screen Recording not allowed yet<span class="t3">Bao needs it to save a screenshot of each step.</span></span><button class="btn sm" type="button">Allow in System Settings</button></li>
+        </ul>
+      </div>
+      <ol class="how" aria-label="How Bao works">
+        <li><b><span class="mono">1</span>Record once</b>Do the task in Bao’s Chrome. Each click and keystroke becomes a plain step.</li>
+        <li><b><span class="mono">2</span>Check the steps</b>Name what changes, like a plate number. Secrets stay masked.</li>
+        <li><b><span class="mono">3</span>Replay any time</b>Same steps, same targets, no AI. Bao stops for you before Pay or Reserve.</li>
+      </ol>
+    </div>
+  </main>
+
+  <aside class="evidence" id="ev-home" aria-label="Evidence for the selected workflow">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="empty-board">
+      <p class="ov">Evidence</p>
+      <p class="note" style="margin:0 0 10px;color:var(--text-1)">After each run, this panel shows proof that it went the same way as your recording:</p>
+      <ul class="privacy">
+        <li><svg aria-hidden="true"><use href="#i-file"/></svg><span>A screenshot of every step, next to the one you recorded.</span></li>
+        <li><svg aria-hidden="true"><use href="#g-pass"/></svg><span>Which target each step hit, and on which try.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-spark"/></svg><span>Model calls during the run. Always <span class="mono" style="color:var(--text-1)">0</span>.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-lock"/></svg><span>The inputs used, with secrets masked.</span></li>
+      </ul>
+    </div>
+    <div class="populated">
+    <p class="ov">Selected <kbd>J</kbd> <kbd>K</kbd></p>
+    <h2 class="ev-title" id="ev-name"><span lang="zh-Hans-x-mixed">Set up Google OAuth for 五秒</span></h2>
+    <div class="ev-meta" id="ev-meta"></div>
+    <section>
+      <p class="ov">Proof of the last run</p>
+      <div class="proof"><dl class="kv" id="ev-proof"></dl></div>
+    </section>
+    <section id="ev-film-sec">
+      <p class="ov">Step screenshots <span class="mono" style="text-transform:none;letter-spacing:0" id="ev-film-count">14</span></p>
+      <ol class="film" id="ev-film"></ol>
+    </section>
+    <section id="ev-inputs-sec">
+      <p class="ov">Inputs used</p>
+      <dl class="inputs-ro">
+        <div><dt>App name</dt><dd lang="zh">五秒</dd></div>
+        <div><dt>User support email</dt><dd>owner@example.com</dd></div>
+        <div><dt>Developer contact</dt><dd>owner@example.com</dd></div>
+        <div><dt>Project</dt><dd>Chinglish AI</dd></div>
+      </dl>
+      <details class="more"><summary><svg aria-hidden="true"><use href="#i-chev"/></svg>7 more inputs</summary>
+        <dl class="inputs-ro" style="margin-top:6px">
+          <div><dt>App home page</dt><dd>https://example.com</dd></div>
+          <div><dt>Privacy policy</dt><dd>https://example.com/privacy</dd></div>
+          <div><dt>Terms of service</dt><dd>https://example.com/terms</dd></div>
+          <div><dt>Authorized domain</dt><dd>example.com</dd></div>
+          <div><dt>Client name</dt><dd lang="zh">五秒 web</dd></div>
+          <div><dt>Redirect URI</dt><dd>https://example.com/auth/callback</dd></div>
+          <div><dt>Audience</dt><dd>External</dd></div>
+        </dl>
+      </details>
+    </section>
+    <div class="ev-actions">
+      <button class="btn" type="button" data-go="workflow">Open <kbd>↵</kbd></button>
+      <button class="btn" type="button" data-run>Run <kbd>R</kbd></button>
+      <button class="btn" type="button" data-go="workflow">Edit <kbd>E</kbd></button>
+    </div>
+    </div>
+  </aside>
+</section>
+
+<!-- ======================= WORKFLOW ======================= -->
+<section class="screen" data-screen="workflow" aria-label="Workflow" hidden>
+  <nav class="col-list" id="list-wf" aria-label="Workflows">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="list-head">
+      <h2>Workflows <span class="mono">11</span></h2>
+      <label class="field" for="wq"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Filter workflows</span><input id="wq" type="search" placeholder="Filter" data-search><kbd>/</kbd></label>
+      <div class="row" role="group" aria-label="Filter by status">
+        <button class="chip" type="button" aria-pressed="true">All</button>
+        <button class="chip" type="button" aria-pressed="false">Needs a look <span class="mono">4</span></button>
+        <button class="chip" type="button" aria-pressed="false">Scheduled</button>
+      </div>
+    </div>
+    <div id="wf-list" data-navlist></div>
+    <div class="list-foot"><span><kbd>J</kbd><kbd>K</kbd> Move</span><span><kbd>↵</kbd> Open</span><span><kbd>R</kbd> Run</span></div>
+  </nav>
+
+  <main class="canvas" id="main-workflow" tabindex="-1">
+    <div class="mhead">
+      <div class="grow">
+        <ol class="crumbs" aria-label="Breadcrumb"><li><a href="?screen=home" data-go="home">Home</a></li><li aria-current="page">Workflow</li></ol>
+        <div class="h1row"><h1>Renew CA vehicle registration</h1></div>
+        <p class="note" style="margin-top:2px">Renew the car’s registration on the DMV site. Stops before Pay so you pay yourself.</p>
+        <div class="meta">
+          <span><svg width="12" height="12" aria-hidden="true"><use href="#i-globe"/></svg><span class="mono">dmv.ca.gov</span></span>
+          <span><span class="mono">11</span> steps</span><span><span class="mono">5</span> inputs</span><span>Yearly, in November</span>
+          <span><span class="st ok"><svg aria-hidden="true"><use href="#g-pass"/></svg>Passed</span> <span class="mono t3">Nov 3, 6:20 PM</span></span>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn list-toggle" type="button" aria-expanded="false" aria-controls="list-wf"><svg aria-hidden="true"><use href="#i-list"/></svg>List</button>
+        <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-wf"><svg aria-hidden="true"><use href="#i-panel"/></svg>Inputs</button>
+        <button class="btn" type="button">Edit <kbd>E</kbd></button>
+        <button class="btn primary" type="button" data-run><svg aria-hidden="true"><use href="#i-play"/></svg>Run <kbd>R</kbd></button>
+      </div>
+    </div>
+
+    <div class="tbar"><h2>Steps <span class="mono">11</span></h2><span class="grow"></span>
+      <span class="keys"><span>Ends with</span><span class="st need"><svg aria-hidden="true"><use href="#g-need"/></svg>Wait for you: press Pay</span></span>
+    </div>
+    <ol class="steps" id="steps">
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">01</span><span class="kind">open</span><span class="lab"><span>Open the DMV renewal page</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">02</span><span class="kind">click</span><span class="lab"><span>Click “Renew registration”</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step open"><button class="step-row" type="button" aria-expanded="true" aria-controls="sb3"><span class="n">03</span><span class="kind">type</span><span class="lab"><span>Type the plate number</span><span class="bind"><svg aria-hidden="true"><use href="#i-input"/></svg>Plate number</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
+        <div class="step-body" id="sb3">
+          <figure class="shotwrap" style="margin:0">
+            <svg class="shot" viewBox="0 0 320 200" role="img" aria-label="Golden screenshot of step 3: the DMV renewal form with the license plate field outlined"><use href="#dmv-a"/><rect x="12" y="89" width="158" height="27" rx="3" fill="none" stroke="#FF8A3D" stroke-width="3"/></svg>
+            <figcaption>Golden · Oct 30, 8:44 PM</figcaption>
+          </figure>
+          <div>
+            <p class="target-line">Target: <b>text box “License plate number”</b></p>
+            <p class="target-line">Fills in: <b>Plate number</b> <span class="t3">(text input)</span></p>
+            <p class="target-line">Hit the first-ranked target on all <span class="mono">3</span> runs.</p>
+            <details class="disc" open>
+              <summary><svg aria-hidden="true"><use href="#i-chev"/></svg>Details</summary>
+              <table class="sel-table">
+                <thead><tr><th scope="col">#</th><th scope="col">Target, in the order Bao tries them</th><th scope="col" style="text-align:end">Hits</th></tr></thead>
+                <tbody>
+                  <tr><td class="rk">1</td><td><code>#plateNumber</code></td><td class="hits">3/3</td></tr>
+                  <tr><td class="rk">2</td><td><code>input[name="plate"]</code></td><td class="hits">-</td></tr>
+                  <tr><td class="rk">3</td><td><code>role=textbox[name="License plate number"]</code></td><td class="hits">-</td></tr>
+                  <tr><td class="rk">4</td><td><code>form#vr-renew input:nth-of-type(1)</code></td><td class="hits">-</td></tr>
+                </tbody>
+              </table>
+            </details>
+            <div class="step-tools"><button class="btn sm" type="button">Try this step</button><button class="btn sm" type="button">Run from step 3</button><button class="btn sm ghost" type="button">Re-record</button></div>
+          </div>
+        </div>
+      </li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">04</span><span class="kind">type</span><span class="lab"><span>Type the last 5 of the VIN</span><span class="bind"><svg aria-hidden="true"><use href="#i-lock"/></svg>Last 5 of VIN</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">05</span><span class="kind">click</span><span class="lab"><span>Click “Next”</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">06</span><span class="kind">check</span><span class="lab"><span>Check the page shows plate SAMPLE1</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>ok</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">07</span><span class="kind">upload</span><span class="lab"><span>Upload the insurance card</span><span class="bind"><svg aria-hidden="true"><use href="#i-file"/></svg>Insurance card</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">08</span><span class="kind">type</span><span class="lab"><span>Type the smog check date</span><span class="bind"><svg aria-hidden="true"><use href="#i-clock"/></svg>Smog check date</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#2</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">09</span><span class="kind">extract table</span><span class="lab"><span>Save the fee table</span><span class="bind"><svg aria-hidden="true"><use href="#i-out"/></svg>fees.csv</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">10</span><span class="kind">click</span><span class="lab"><span>Click “Continue to payment”</span></span><span class="res"><svg aria-hidden="true"><use href="#g-pass"/></svg>#1</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+      <li class="step"><button class="step-row" type="button" aria-expanded="false"><span class="n">11</span><span class="kind need">wait for you</span><span class="lab"><span>Press “Pay $218.00” yourself</span><span class="wait-note"><svg aria-hidden="true"><use href="#i-hand"/></svg>Bao stops here</span></span><span class="res"></span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button></li>
+    </ol>
+    <p class="note">The “#1” next to a step means the run found its target on the first try. Step 8 used its second-ranked target.</p>
+  </main>
+
+  <aside class="evidence" id="ev-wf" aria-label="Run setup and evidence">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <section aria-labelledby="inp-h">
+      <p class="ov" id="inp-h">Inputs · asked once per run</p>
+      <div class="inp">
+        <div class="inp-top"><label for="in-plate">Plate number</label><span class="kind">text</span></div>
+        <div class="field"><input id="in-plate" value="SAMPLE1" class="mono"></div>
+      </div>
+      <div class="inp">
+        <div class="inp-top"><label for="in-vin">Last 5 of VIN</label><span class="kind">secret</span></div>
+        <div class="field"><input id="in-vin" type="password" value="4R2K9"><button class="btn ghost sm icon" type="button" aria-label="Show Last 5 of VIN" aria-pressed="false"><svg aria-hidden="true"><use href="#i-eye"/></svg></button></div>
+        <p class="help">Masked everywhere, including run logs.</p>
+      </div>
+      <div class="inp">
+        <div class="inp-top"><span id="in-ins-l" style="font-weight:500">Insurance card</span><span class="kind">file</span></div>
+        <div class="filechip" aria-labelledby="in-ins-l"><svg aria-hidden="true"><use href="#i-file"/></svg><span title="geico-id-card-2026.pdf">geico-id-card-2026.pdf</span><button class="btn sm" type="button" aria-label="Change insurance card file">Change</button></div>
+      </div>
+      <div class="inp">
+        <div class="inp-top"><label for="in-smog">Smog check date</label><span class="kind">date</span></div>
+        <div class="field"><input id="in-smog" value="-2d" class="mono" aria-describedby="smog-h"><span class="t3" style="font-size:var(--fs-12);white-space:nowrap">= Tue Nov 3</span></div>
+        <p class="help" id="smog-h">Counts from the run day. <span class="mono">+14d</span> is two weeks out.</p>
+      </div>
+      <div class="inp">
+        <div class="inp-top"><label for="in-mail">Receipt email</label><span class="kind">text</span></div>
+        <div class="field"><input id="in-mail" value="owner@example.com" type="email"></div>
+      </div>
+    </section>
+    <section>
+      <p class="ov" id="hp-wf-l">If a step misses</p>
+      <fieldset class="seg" style="width:100%" aria-labelledby="hp-wf-l" aria-describedby="hp-desc">
+        <legend>If a step misses</legend>
+        <label><input type="radio" name="hp-wf" value="auto"><span>Auto</span></label>
+        <label><input type="radio" name="hp-wf" value="ask" checked><span>Ask</span></label>
+        <label><input type="radio" name="hp-wf" value="never"><span>Never</span></label>
+      </fieldset>
+      <p class="policy-desc" id="hp-desc">Ask: Bao finds the moved button, shows you the change, and waits for you to keep it.</p>
+    </section>
+    <section>
+      <p class="ov">Recent runs</p>
+      <ul class="runs-mini">
+        <li><span class="st ok"><svg aria-hidden="true"><use href="#g-pass"/></svg>Passed</span><span class="mono">Nov 3, 6:20 PM</span><span class="mono">1m 52s</span></li>
+        <li><span class="st ok"><svg aria-hidden="true"><use href="#g-pass"/></svg>Passed</span><span class="mono">Nov 2, 7:05 PM</span><span class="mono">1m 49s</span></li>
+        <li><span class="st ok"><svg aria-hidden="true"><use href="#g-pass"/></svg>Passed</span><span class="mono">Oct 30, 8:44 PM</span><span class="mono">2m 03s</span></li>
+      </ul>
+      <dl class="kv" style="margin-top:10px">
+        <dt>Model calls, all runs</dt><dd class="zero" style="color:var(--ok)">0</dd>
+        <dt>Heals</dt><dd>0</dd>
+        <dt>Outputs</dt><dd>fees.csv</dd>
+      </dl>
+    </section>
+  </aside>
+</section>
+
+<!-- ======================= RUN LIVE ======================= -->
+<section class="screen" data-screen="run-live" aria-label="Live run" hidden>
+  <nav class="col-list" id="list-live" aria-label="Runs">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="list-head">
+      <h2>Runs</h2>
+      <div class="row" role="group" aria-label="Filter runs">
+        <button class="chip" type="button" aria-pressed="true">All</button>
+        <button class="chip" type="button" aria-pressed="false"><svg class="need-c" aria-hidden="true"><use href="#g-need"/></svg>Needs you <span class="mono">1</span></button>
+        <button class="chip" type="button" aria-pressed="false"><svg class="fail-c" aria-hidden="true"><use href="#g-fail"/></svg>Failed <span class="mono">1</span></button>
+      </div>
+    </div>
+    <div class="runs-list" data-navlist data-sel="0"></div>
+    <div class="list-foot"><span><kbd>J</kbd><kbd>K</kbd> Move</span><span><kbd>↵</kbd> Open</span></div>
+  </nav>
+
+  <main class="canvas" id="main-run-live" tabindex="-1">
+    <div class="mhead">
+      <div class="grow">
+        <ol class="crumbs" aria-label="Breadcrumb"><li><a href="?screen=run-live" data-go="run-live">Runs</a></li><li aria-current="page">Live run</li></ol>
+        <div class="h1row"><h1>Book Equinox class</h1><span class="st pill need"><svg aria-hidden="true"><use href="#g-need"/></svg>Needs you</span></div>
+        <div class="meta"><span>Started <span class="mono">7:30 PM</span> by schedule</span><span>Step <span class="mono">8</span> of <span class="mono">9</span></span><span><span class="mono">0</span> model calls</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn list-toggle" type="button" aria-expanded="false" aria-controls="list-live"><svg aria-hidden="true"><use href="#i-list"/></svg>Runs</button>
+        <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-live"><svg aria-hidden="true"><use href="#i-panel"/></svg>Log</button>
+        <button class="btn danger" type="button" data-dialog="dlg-stop"><svg aria-hidden="true"><use href="#i-stop"/></svg>Stop run</button>
+      </div>
+    </div>
+
+    <section class="banner" aria-labelledby="ban-h">
+      <span class="needs-ic" aria-hidden="true"><svg><use href="#i-hand"/></svg></span>
+      <div class="grow">
+        <h2 id="ban-h"><span class="lbl">Your turn</span> Press Reserve yourself</h2>
+        <p>Bao found the class: Precision Run, Thu Nov 19, 7:00 AM, Hudson Yards. It never presses booking or payment buttons. Press <b style="color:var(--text-1)">Reserve</b> in Bao’s Chrome. Bao then finishes step 9.</p>
+        <div class="needs-actions" style="margin-top:10px">
+          <button class="btn primary" type="button"><svg aria-hidden="true"><use href="#i-globe"/></svg>Show Bao’s Chrome <kbd>⌘↩</kbd></button>
+          <button class="btn" type="button">Give me 30 more min</button>
+        </div>
+      </div>
+      <div class="count" role="timer" aria-label="1 hour 47 minutes left. The run stops at 9:30 PM.">
+        <span class="big">1:47:08</span>
+        <span class="t2">left · stops at <span class="mono">9:30 PM</span></span>
+        <div class="meter" aria-hidden="true"><span style="width:11%"></span></div>
+      </div>
+    </section>
+
+    <div class="browser">
+      <div class="bbar"><span class="url"><svg aria-hidden="true"><use href="#i-lock"/></svg>equinox.com/classes/hudson-yards/precision-run</span><span class="who"><svg aria-hidden="true"><use href="#i-globe"/></svg>Bao’s Chrome · live view</span></div>
+      <div class="page">
+        <svg viewBox="0 0 640 352" role="img" aria-label="Live view of the Equinox class page. The Reserve button is outlined as the step 8 target.">
+          <rect width="640" height="352" fill="#fff"/>
+          <rect width="640" height="40" fill="#000"/>
+          <text x="22" y="25.5" fill="#fff" font-family="Helvetica, Arial" font-size="13" font-weight="700" letter-spacing="3.2">EQUINOX</text>
+          <g font-family="Helvetica, Arial" font-size="10" fill="#bdbdbd"><text x="160" y="24">Clubs</text><text x="204" y="24" fill="#fff">Classes</text><text x="258" y="24">Membership</text><text x="332" y="24">Shop</text><text x="566" y="24" fill="#fff">Hi, Owner</text></g>
+          <text x="22" y="62" fill="#6b6b6b" font-family="Helvetica, Arial" font-size="9">Classes / Hudson Yards / Thu, Nov 19</text>
+          <defs><linearGradient id="eq-hero" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3530"/><stop offset=".55" stop-color="#1c1b1a"/><stop offset="1" stop-color="#0e0e0e"/></linearGradient></defs>
+          <rect x="22" y="74" width="276" height="170" fill="url(#eq-hero)"/>
+          <rect x="22" y="80" width="276" height="4" fill="#b9a27a" opacity=".55"/>
+          <g fill="#0a0a0a" stroke="#4a4744" stroke-width="1.2">
+            <path d="M40 222h62l8-16H50z"/><path d="M128 222h62l8-16h-60z"/><path d="M216 222h62l8-16h-60z"/>
+          </g>
+          <g stroke="#5a5652" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M50 206l-4-46h20M138 206l-4-46h20M226 206l-4-46h20"/></g>
+          <g fill="#2b2927"><rect x="40" y="224" width="70" height="4"/><rect x="128" y="224" width="70" height="4"/><rect x="216" y="224" width="70" height="4"/></g>
+          <text x="322" y="96" font-family="Helvetica, Arial" font-size="20" font-weight="700" fill="#111">Precision Run</text>
+          <g font-family="Helvetica, Arial" font-size="10.5" fill="#333"><text x="322" y="116">Thu, Nov 19 · 7:00–7:45 AM</text><text x="322" y="132">Hudson Yards · Studio 2</text><text x="322" y="148">45 min · Run · All levels</text></g>
+          <circle cx="326" cy="166" r="3" fill="#1a7f37"/><text x="334" y="169.5" font-family="Helvetica, Arial" font-size="10" fill="#1a7f37">6 spots left</text>
+          <rect x="322" y="182" width="132" height="34" fill="#000"/><text x="388" y="203" fill="#fff" text-anchor="middle" font-family="Helvetica, Arial" font-size="11" font-weight="700" letter-spacing="1.5">Reserve</text>
+          <rect x="466" y="182" width="124" height="34" fill="none" stroke="#000"/><text x="528" y="203" fill="#000" text-anchor="middle" font-family="Helvetica, Arial" font-size="10.5">Add to calendar</text>
+          <text x="22" y="266" font-family="Helvetica, Arial" font-size="11" font-weight="700" fill="#111">More classes at Hudson Yards</text>
+          <g fill="#f3f3f3"><rect x="22" y="276" width="190" height="62"/><rect x="224" y="276" width="190" height="62"/><rect x="426" y="276" width="190" height="62"/></g>
+          <g font-family="Helvetica, Arial" font-size="10.5" font-weight="700" fill="#111"><text x="34" y="298">Rhythm Ride</text><text x="236" y="298">Pilates Reformer</text><text x="438" y="298">Precision Run</text></g>
+          <g font-family="Helvetica, Arial" font-size="9.5" fill="#555"><text x="34" y="314">Thu, Nov 19 · 6:00 AM</text><text x="236" y="314">Thu, Nov 19 · 8:15 AM</text><text x="438" y="314">Thu, Nov 19 · 6:30 PM</text><text x="34" y="328">Waitlist</text><text x="236" y="328">2 spots left</text><text x="438" y="328">11 spots left</text></g>
+          <!-- target outline -->
+          <rect x="316" y="176" width="144" height="46" rx="4" fill="none" stroke="#B49CFF" stroke-width="2.5" stroke-dasharray="6 3"/>
+          <rect x="316" y="227" width="160" height="20" rx="4" fill="#B49CFF"/>
+          <text x="324" y="241" font-family="-apple-system, Helvetica, Arial" font-size="10.5" font-weight="600" fill="#14101F">Step 8 · You press this one</text>
+        </svg>
+      </div>
+    </div>
+
+    <ol class="tl" aria-label="Step progress">
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">Open</span><span class="tt">0.9s</span><span class="sr-only">step 1 passed</span></li>
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">Signed in</span><span class="tt">0.3s</span><span class="sr-only">step 2 passed</span></li>
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">Club</span><span class="tt">0.3s</span><span class="sr-only">step 3 passed</span></li>
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">Date</span><span class="tt">0.3s</span><span class="sr-only">step 4 passed</span></li>
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">Class</span><span class="tt">0.4s</span><span class="sr-only">step 5 passed</span></li>
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">7:00 AM</span><span class="tt">0.2s</span><span class="sr-only">step 6 passed</span></li>
+      <li class="done"><span class="dot"><svg aria-hidden="true"><use href="#g-pass"/></svg></span><span class="tlab">Spots</span><span class="tt">0.1s</span><span class="sr-only">step 7 passed</span></li>
+      <li class="cur" aria-current="step"><span class="dot"><svg aria-hidden="true"><use href="#g-need"/></svg></span><span class="tlab">Reserve</span><span class="tt">13m</span><span class="sr-only">step 8 waiting for you</span></li>
+      <li><span class="dot"><svg aria-hidden="true"><use href="#g-pending"/></svg></span><span class="tlab">Confirm</span><span class="tt">-</span><span class="sr-only">step 9 not started</span></li>
+    </ol>
+  </main>
+
+  <aside class="evidence" id="ev-live" aria-label="Run log and evidence">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="loghead"><p class="ov">Log</p><span class="grow"></span><span class="st need"><svg aria-hidden="true"><use href="#g-need"/></svg>Paused</span><button class="btn sm" type="button" aria-pressed="false">Pause scroll</button></div>
+    <ol class="log" aria-label="Run log. Times count from the start of the run." tabindex="0">
+      <li><span class="ts">00:00.0</span><span class="msg">started by <b>schedule</b></span></li>
+      <li><span class="ts">00:00.9</span><span class="msg"><span class="ok">✓1</span> open <b>equinox.com/classes</b></span></li>
+      <li><span class="ts">00:01.2</span><span class="msg"><span class="ok">✓2</span> check <b>“Hi, Owner”</b></span></li>
+      <li><span class="ts">00:01.5</span><span class="msg"><span class="ok">✓3</span> select <b>Hudson Yards</b> #1</span></li>
+      <li><span class="ts">00:01.8</span><span class="msg"><span class="ok">✓4</span> date <b>+14d → Nov 19</b> #1</span></li>
+      <li><span class="ts">00:02.2</span><span class="msg"><span class="ok">✓5</span> type <b>“Precision Run”</b> #1</span></li>
+      <li><span class="ts">00:02.4</span><span class="msg"><span class="ok">✓6</span> click <b>7:00 AM class</b> #2</span></li>
+      <li><span class="ts">00:02.5</span><span class="msg"><span class="ok">✓7</span> check <b>6 spots</b> &gt; 0</span></li>
+      <li class="hl"><span class="ts">00:02.5</span><span class="msg"><span class="need">‖8</span> found <b>“Reserve”</b>, a booking button. Paused for you.</span></li>
+      <li><span class="ts">13:06.0</span><span class="msg">still waiting · stops at <b>9:30 PM</b></span></li>
+    </ol>
+    <section>
+      <p class="ov">Inputs used</p>
+      <dl class="inputs-ro">
+        <div><dt>Club</dt><dd>Hudson Yards</dd></div>
+        <div><dt>Class</dt><dd>Precision Run</dd></div>
+        <div><dt>Class date</dt><dd>+14d = Thu Nov 19</dd></div>
+        <div><dt>Start time</dt><dd>7:00 AM</dd></div>
+      </dl>
+    </section>
+    <section>
+      <p class="ov">This run</p>
+      <dl class="kv">
+        <dt>Browser</dt><dd class="sans">Bao’s Chrome, own profile</dd>
+        <dt>Targets hit first try</dt><dd>6 of 7</dd>
+        <dt>Heals</dt><dd>0</dd>
+        <dt>Model calls</dt><dd style="color:var(--ok)">0</dd>
+        <dt>Next run</dt><dd>Thu Nov 12, 7:30 PM</dd>
+      </dl>
+    </section>
+  </aside>
+</section>
+
+<!-- ======================= RUN FAILED ======================= -->
+<section class="screen" data-screen="run-failed" aria-label="Failed run report" hidden>
+  <nav class="col-list" id="list-failed" aria-label="Runs">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="list-head">
+      <h2>Runs</h2>
+      <div class="row" role="group" aria-label="Filter runs">
+        <button class="chip" type="button" aria-pressed="true">All</button>
+        <button class="chip" type="button" aria-pressed="false"><svg class="need-c" aria-hidden="true"><use href="#g-need"/></svg>Needs you <span class="mono">1</span></button>
+        <button class="chip" type="button" aria-pressed="false"><svg class="fail-c" aria-hidden="true"><use href="#g-fail"/></svg>Failed <span class="mono">1</span></button>
+      </div>
+    </div>
+    <div class="runs-list" data-navlist data-sel="7"></div>
+    <div class="list-foot"><span><kbd>J</kbd><kbd>K</kbd> Move</span><span><kbd>↵</kbd> Open</span></div>
+  </nav>
+
+  <main class="canvas" id="main-run-failed" tabindex="-1">
+    <div class="mhead">
+      <div class="grow">
+        <ol class="crumbs" aria-label="Breadcrumb"><li><a href="?screen=run-live" data-go="run-live">Runs</a></li><li aria-current="page">Today, 8:00 AM</li></ol>
+        <div class="h1row"><h1>Download Chase statement</h1><span class="st pill fail"><svg aria-hidden="true"><use href="#g-fail"/></svg>Failed</span></div>
+        <div class="meta"><span>Scheduled, monthly on the 5th</span><span>Ran <span class="mono">41s</span></span><span>Stopped at step <span class="mono">6</span> of <span class="mono">9</span></span></div>
+      </div>
+      <div class="actions">
+        <button class="btn list-toggle" type="button" aria-expanded="false" aria-controls="list-failed"><svg aria-hidden="true"><use href="#i-list"/></svg>Runs</button>
+        <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-failed"><svg aria-hidden="true"><use href="#i-panel"/></svg>Steps</button>
+      </div>
+    </div>
+
+    <p class="headline">Step 6 missed: “Statements &amp; documents” link not found.</p>
+    <p class="subline">The page changed after the last good run on Oct 5. The link is gone from Account services, and nothing on the page is a close enough match, so Bao stopped instead of guessing.</p>
+
+    <div class="actbar top">
+      <button class="btn primary" type="button" data-go="capture"><svg aria-hidden="true"><use href="#i-rec"/></svg>Re-record step 6</button>
+      <button class="btn" type="button"><svg aria-hidden="true"><use href="#i-redo"/></svg>Retry run</button>
+      <button class="btn" type="button"><svg aria-hidden="true"><use href="#i-ext"/></svg>Open page in Bao’s Chrome</button>
+      <p class="note">Re-record replays steps 1 to 5, then records your one click for step 6.</p>
+    </div>
+    <div class="cmp-bar">
+      <fieldset class="seg" id="cmp-mode">
+        <legend>Compare view</legend>
+        <label><input type="radio" name="cmp" value="side"><span>Side by side</span></label>
+        <label><input type="radio" name="cmp" value="split" checked><span>Split</span></label>
+        <label><input type="radio" name="cmp" value="overlay"><span>Overlay</span></label>
+      </fieldset>
+      <span class="grow"></span>
+      <span class="lbl-pill"><i style="background:var(--ok)"></i>Target on Oct 5</span>
+      <span class="lbl-pill"><i style="background:var(--fail)"></i>Missing today</span>
+    </div>
+    <div class="compare" id="cmp" style="--split:50%">
+      <div class="layer golden"><svg viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Golden screenshot from Oct 5: Account services lists Statements and documents first, outlined as the target."><use href="#chase-golden"/><rect x="424" y="98" width="190" height="24" rx="3" fill="none" stroke="#1F9D5B" stroke-width="2.5" stroke-dasharray="6 3"/></svg></div>
+      <div class="layer actual"><svg viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Actual screenshot from today: Account services starts with Paperless. The spot where the link used to be is marked missing."><use href="#chase-actual"/><rect x="424" y="98" width="190" height="24" rx="3" fill="rgba(255,110,110,.12)" stroke="#E5484D" stroke-width="2.5" stroke-dasharray="6 3"/><rect x="520" y="226" width="96" height="18" rx="3" fill="#E5484D"/><text x="568" y="239" text-anchor="middle" font-family="-apple-system, Arial" font-size="10" font-weight="600" fill="#fff">Link missing</text></svg></div>
+      <span class="tag l">Golden · Oct 5, 8:00 AM</span><span class="tag r">Actual · today, 8:00 AM</span>
+      <div class="handle" aria-hidden="true"><span class="grip"><svg><use href="#i-grip"/></svg></span></div>
+      <label class="sr-only" for="split">Split position</label>
+      <input type="range" id="split" min="0" max="100" value="50" aria-valuetext="50 percent golden">
+    </div>
+
+    <h2 class="sec" style="margin:var(--s4) 0 6px">What Bao looked for</h2>
+    <table class="diff">
+      <colgroup><col style="width:22%"><col style="width:39%"><col style="width:39%"></colgroup>
+      <thead><tr><th scope="col"></th><th scope="col">Oct 5 (golden)</th><th scope="col">Today</th></tr></thead>
+      <tbody>
+        <tr><td>Element</td><td>link “Statements &amp; documents”</td><td><span class="gone"><svg aria-hidden="true"><use href="#g-fail"/></svg>Not on the page</span></td></tr>
+        <tr><td>Where</td><td>Account services, 1st of 4 links</td><td>Account services now has 3 links</td></tr>
+        <tr><td>Targets tried</td><td><span class="rank">1</span><code class="code">a[href*="/statements"]</code></td><td><span class="gone"><svg aria-hidden="true"><use href="#g-fail"/></svg>0 matches</span></td></tr>
+        <tr><td></td><td><span class="rank">2</span><code class="code">role=link[name="Statements &amp; documents"]</code></td><td><span class="gone"><svg aria-hidden="true"><use href="#g-fail"/></svg>0 matches</span></td></tr>
+        <tr><td></td><td><span class="rank">3</span><code class="code">#acct-services li:nth-child(1) a</code></td><td>Matches “Paperless”. Rejected: the name differs.</td></tr>
+        <tr><td>Closest matches</td><td colspan="2"><ul class="near"><li><span>button “More” in the top bar</span><span class="mono">0.41</span></li><li><span>link “Documents &amp; forms” in the footer</span><span class="mono">0.38</span></li></ul><span class="t3" style="font-size:var(--fs-12)">Bao heals only above <span class="mono">0.80</span>.</span></td></tr>
+      </tbody>
+    </table>
+
+
+  </main>
+
+  <aside class="evidence" id="ev-failed" aria-label="Run steps and facts">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <p class="ov">Steps · one screenshot each</p>
+    <ol class="film" style="grid-template-columns:repeat(3,minmax(0,1fr))" id="chase-film"></ol>
+    <section>
+      <p class="ov">This run</p>
+      <dl class="kv">
+        <dt>Started</dt><dd>Nov 5, 8:00:00 AM</dd>
+        <dt>Stopped</dt><dd>8:00:41 AM</dd>
+        <dt>Steps passed</dt><dd>5 of 9</dd>
+        <dt>If a step misses</dt><dd class="sans">Ask</dd>
+        <dt>Model calls</dt><dd style="color:var(--ok)">0</dd>
+        <dt>Last good run</dt><dd>Oct 5, 8:00 AM</dd>
+        <dt>Next run</dt><dd>Sat Dec 5, 8:00 AM</dd>
+      </dl>
+    </section>
+    <section>
+      <p class="ov">Inputs used</p>
+      <dl class="inputs-ro">
+        <div><dt>Account</dt><dd>Total Checking ••XXXX</dd></div>
+        <div><dt>Statement month</dt><dd>-1mo = Oct 2026</dd></div>
+      </dl>
+      <p class="note">No file was saved. It would have been <span class="mono" style="white-space:nowrap">chase-2026-10.pdf</span>.</p>
+    </section>
+  </aside>
+</section>
+
+<!-- ======================= HEAL ======================= -->
+<section class="screen" data-screen="heal" aria-label="Heal review" hidden>
+  <nav class="col-list" id="list-heal" aria-label="Heals">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="list-head">
+      <h2>Heals</h2>
+      <div class="row" role="group" aria-label="Show heals">
+        <button class="chip" type="button" aria-pressed="true">Pending <span class="mono">1</span></button>
+        <button class="chip" type="button" aria-pressed="false">Kept <span class="mono">6</span></button>
+        <button class="chip" type="button" aria-pressed="false">Reverted <span class="mono">1</span></button>
+      </div>
+    </div>
+    <div data-navlist>
+      <p class="group-label">On trial</p>
+      <a class="lrow sel" href="?screen=heal" data-row aria-current="true"><svg class="caution-c" aria-hidden="true"><use href="#g-prov"/></svg><span class="nm">Export Stripe payouts to CSV</span><span class="tm">1/3</span><span class="sub">Step 4 · “Export” is now “Export payouts”</span></a>
+    </div>
+    <p class="note" style="padding:8px 12px">Bao keeps a heal on its own after 3 clean runs. Review it now to keep or revert sooner.</p>
+    <div class="list-foot"><span><kbd>K</kbd> Keep</span><span><kbd>⌫</kbd> Revert</span></div>
+  </nav>
+
+  <main class="canvas" id="main-heal" tabindex="-1">
+    <div class="mhead">
+      <div class="grow">
+        <ol class="crumbs" aria-label="Breadcrumb"><li><a href="?screen=heal" data-go="heal">Heals</a></li><li aria-current="page">Export Stripe payouts to CSV</li></ol>
+        <div class="h1row"><h1>Step 4 target moved</h1><span class="st pill caution"><svg aria-hidden="true"><use href="#g-prov"/></svg>On trial</span></div>
+        <div class="meta"><span>Step 4: Click “Export”</span><span class="mono">dashboard.stripe.com</span><span>Weekly, Mondays 9:00 AM</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn list-toggle" type="button" aria-expanded="false" aria-controls="list-heal"><svg aria-hidden="true"><use href="#i-list"/></svg>Heals</button>
+        <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-heal"><svg aria-hidden="true"><use href="#i-panel"/></svg>History</button>
+      </div>
+    </div>
+    <p class="subline" style="color:var(--text-1);font-size:var(--fs-13)">On Oct 26 the “Export” button was renamed “Export payouts”. Bao matched the new button and finished the run. The new target has worked in 1 clean run since.</p>
+    <div class="trial"><span class="seg3" role="img" aria-label="1 of 3 clean runs"><i class="on"></i><i></i><i></i></span><span><b style="color:var(--text-1)" class="mono">1 of 3</b> clean runs. Kept on its own after 2 more. Next run Mon Nov 9, 9:00 AM.</span></div>
+
+    <div class="side2">
+      <figure>
+        <figcaption><span class="lbl-pill"><i style="background:var(--text-2)"></i>Old target</span><span class="t3">· golden, Oct 19</span></figcaption>
+        <svg class="shot" viewBox="0 0 320 200" role="img" aria-label="Golden screenshot from Oct 19: the Export button at the right of the payouts toolbar, outlined."><use href="#stripe-golden"/><rect x="259" y="31" width="56" height="22" rx="4" fill="none" stroke="#3A3E47" stroke-width="2" stroke-dasharray="5 3"/></svg>
+      </figure>
+      <figure>
+        <figcaption><span class="lbl-pill"><i style="background:var(--heal)"></i>New target</span><span class="t3">· Oct 26 run</span></figcaption>
+        <svg class="shot" viewBox="0 0 320 200" role="img" aria-label="Screenshot from Oct 26: the Export payouts button in the same place, outlined as the new target."><use href="#stripe-actual"/><rect x="233" y="31" width="82" height="22" rx="4" fill="none" stroke="#1E9FC9" stroke-width="2.4" stroke-dasharray="5 3"/></svg>
+      </figure>
+    </div>
+
+    <div class="tgt">
+      <div class="card">
+        <h3 style="color:var(--text-2)"><i></i>Old target</h3>
+        <dl class="kv">
+          <dt>Role</dt><dd>button</dd>
+          <dt>Name</dt><dd>Export</dd>
+          <dt>Place</dt><dd class="sans">Payouts toolbar, right end</dd>
+          <dt>Target</dt><dd>[data-testid="export-button"]</dd>
+        </dl>
+      </div>
+      <div class="card" style="border-color:color-mix(in oklab,var(--heal) 40%,var(--surface-canvas))">
+        <h3 style="color:var(--heal)"><i></i>New target</h3>
+        <dl class="kv">
+          <dt>Role</dt><dd>button</dd>
+          <dt>Name</dt><dd>Export payouts<span class="chg">changed</span></dd>
+          <dt>Place</dt><dd class="sans">Payouts toolbar, right end</dd>
+          <dt>Target</dt><dd>[data-testid="payouts-export"]<span class="chg">changed</span></dd>
+        </dl>
+      </div>
+    </div>
+    <ul class="why" aria-label="Why Bao matched it">
+      <li><svg aria-hidden="true"><use href="#g-pass"/></svg>Same role: button</li>
+      <li><svg aria-hidden="true"><use href="#g-pass"/></svg>Same place in the toolbar</li>
+      <li><svg aria-hidden="true"><use href="#g-pass"/></svg>Name starts with “Export”</li>
+      <li><svg aria-hidden="true"><use href="#g-pass"/></svg>Same download icon</li>
+    </ul>
+    <p class="note">Match score <span class="mono" style="color:var(--text-1)">0.94</span>. Bao heals only above <span class="mono">0.80</span>. Found by page structure, with no model.</p>
+
+    <div class="actbar">
+      <button class="btn primary" type="button"><svg aria-hidden="true"><use href="#g-pass"/></svg>Keep new target <kbd>K</kbd></button>
+      <button class="btn danger" type="button" data-dialog="dlg-revert">Revert to old target…</button>
+      <button class="btn" type="button"><svg aria-hidden="true"><use href="#i-ext"/></svg>Open page</button>
+    </div>
+  </main>
+
+  <aside class="evidence" id="ev-heal" aria-label="Heal history">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <section>
+      <p class="ov">Trial runs</p>
+      <ol class="trials">
+        <li><svg class="heal-c" aria-hidden="true"><use href="#g-heal"/></svg><span>Healed<span class="t3">Oct 26, 9:00 AM · matched the new button</span></span><span class="mono t3">52s</span></li>
+        <li><svg class="caution-c" aria-hidden="true"><use href="#g-prov"/></svg><span>Clean run 1 of 3<span class="t3">Nov 2, 9:00 AM · new target hit first try</span></span><span class="mono t3">48s</span></li>
+        <li><svg class="muted-c" aria-hidden="true"><use href="#g-pending"/></svg><span>Clean run 2 of 3<span class="t3">Scheduled Mon Nov 9, 9:00 AM</span></span><span></span></li>
+        <li><svg class="muted-c" aria-hidden="true"><use href="#g-pending"/></svg><span>Clean run 3 of 3, then kept<span class="t3">Scheduled Mon Nov 16, 9:00 AM</span></span><span></span></li>
+      </ol>
+    </section>
+    <section>
+      <p class="ov">This step before</p>
+      <dl class="kv">
+        <dt>Recorded</dt><dd>Aug 3</dd>
+        <dt>Clean runs on old target</dt><dd>11</dd>
+        <dt>Model calls for this heal</dt><dd style="color:var(--ok)">0</dd>
+      </dl>
+    </section>
+    <section>
+      <p class="ov">If you revert</p>
+      <p class="note" style="margin:0">The next run looks for “Export” again. That button no longer exists, so the run will likely stop at step 4.</p>
+    </section>
+  </aside>
+</section>
+
+<!-- ======================= CAPTURE ======================= -->
+<section class="screen" data-screen="capture" aria-label="Recording" hidden>
+  <nav class="col-list" id="list-cap" aria-label="Recorded steps">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="list-head">
+      <h2>Steps <span class="mono">8</span></h2>
+      <p class="note" style="margin:0">Each click and keystroke shows up here as you work.</p>
+    </div>
+    <ol style="list-style:none;margin:0;padding:4px 0" data-navlist aria-live="polite" aria-relevant="additions">
+      <li class="cstep" data-row tabindex="0"><span class="n">01</span><span class="ln">Open fidelity.com</span><span class="sub"><span class="kind">open</span></span></li>
+      <li class="cstep" data-row tabindex="-1"><span class="n">02</span><span class="ln">Click “Log in”</span><span class="sub"><span class="kind">click</span></span></li>
+      <li class="cstep" data-row tabindex="-1"><span class="n">03</span><span class="ln">Type the username</span><span class="sub"><span class="kind">type</span> Saved as input “Username”</span></li>
+      <li class="cstep secret" data-row tabindex="-1"><span class="n">04</span><span class="ln">Type the password <span class="mono t3">••••••••</span></span><span class="sub"><span class="kind">type</span> <svg aria-hidden="true"><use href="#i-lock"/></svg> Not saved. Runs pause here for you to log in.</span></li>
+      <li class="cstep" data-row tabindex="-1"><span class="n">05</span><span class="ln">Enter the 6-digit code</span><span class="sub"><span class="kind need">wait for you</span> Bao saw a code page and added this</span></li>
+      <li class="cstep" data-row tabindex="-1"><span class="n">06</span><span class="ln">Click “Accounts &amp; Trade”</span><span class="sub"><span class="kind">click</span></span></li>
+      <li class="cstep sel" data-row tabindex="-1" aria-current="true"><span class="n">07</span><span class="ln">Click “Tax forms &amp; information”</span><span class="sub"><span class="kind">click</span></span></li>
+      <li class="cstep new" data-row tabindex="-1"><span class="n">08</span><span class="ln">Click the “2025” tab</span><span class="sub"><span class="kind">click</span> just now</span></li>
+    </ol>
+    <div class="listening"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>Waiting for your next action</div>
+    <div class="list-foot"><span><kbd>⌥L</kbd> Pick list</span><span><kbd>⌘↩</kbd> Stop and save</span></div>
+  </nav>
+
+  <main class="canvas" id="main-capture" tabindex="-1">
+    <div class="mhead">
+      <div class="grow">
+        <ol class="crumbs" aria-label="Breadcrumb"><li>Record</li><li aria-current="page">Fidelity 1099 download</li></ol>
+        <div class="h1row"><h1>Recording in Bao’s Chrome</h1><span class="st pill accent"><span class="recdot" aria-hidden="true"></span>Recording <span class="mono">03:12</span></span></div>
+        <div class="meta"><span>Re-recording to replace the copy that can’t load</span><span class="mono">fidelity.com</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn list-toggle" type="button" aria-expanded="false" aria-controls="list-cap"><svg aria-hidden="true"><use href="#i-list"/></svg>Steps</button>
+        <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-cap"><svg aria-hidden="true"><use href="#i-panel"/></svg>Step detail</button>
+        <button class="btn danger" type="button" data-dialog="dlg-discard">Discard…</button>
+      </div>
+    </div>
+
+    <div class="browser" style="position:relative">
+      <div class="bbar"><span class="url"><svg aria-hidden="true"><use href="#i-lock"/></svg>digital.fidelity.com/ftgw/digital/portfolio/tax-forms</span><span class="who"><svg aria-hidden="true"><use href="#i-globe"/></svg>Bao’s Chrome</span></div>
+      <div class="page">
+        <svg viewBox="0 0 640 486" role="img" aria-label="Bao's Chrome showing Fidelity's Tax forms page. The Download PDF link for Form 1099 Consolidated is outlined, ready to record.">
+          <rect width="640" height="486" fill="#fff"/>
+          <path d="M0 40.5h640" stroke="#e1e4e8"/>
+          <text x="22" y="26" font-family="Arial" font-size="15" font-weight="700" fill="#368727">Fidelity</text>
+          <g font-family="Arial" font-size="10" fill="#333"><text x="120" y="25" font-weight="700">Accounts &amp; Trade</text><text x="230" y="25">Planning &amp; Advice</text><text x="338" y="25">News &amp; Research</text><text x="574" y="25">Log out</text></g>
+          <path d="M120 38h92" stroke="#368727" stroke-width="3"/>
+          <text x="22" y="72" font-family="Arial" font-size="17" font-weight="700" fill="#1f1f1f">Tax forms &amp; information</text>
+          <g font-family="Arial" font-size="10.5"><text x="22" y="100" font-weight="700" fill="#1f1f1f">2025</text><text x="64" y="100" fill="#5c5c5c">2024</text><text x="106" y="100" fill="#5c5c5c">2023</text></g>
+          <path d="M22 106h30" stroke="#368727" stroke-width="2.5"/><path d="M22 108.5h420" stroke="#e1e4e8"/>
+          <g font-family="Arial" font-size="9" fill="#6b6b6b"><text x="22" y="130">FORM</text><text x="182" y="130">ACCOUNT</text><text x="300" y="130">AVAILABLE</text></g>
+          <path d="M22 138h420" stroke="#e1e4e8"/>
+          <g font-family="Arial" font-size="10.5" fill="#1f1f1f">
+            <text x="22" y="160">Form 1099 Consolidated</text><text x="182" y="160">Individual ••XXXX</text><text x="300" y="160">Feb 13, 2026</text><text x="372" y="160" fill="#0f6a99">Download PDF</text>
+            <text x="22" y="190">Form 1099-R</text><text x="182" y="190">Rollover IRA ••XXXX</text><text x="300" y="190">Feb 13, 2026</text><text x="372" y="190" fill="#0f6a99">Download PDF</text>
+            <text x="22" y="220">Form 5498</text><text x="182" y="220">Roth IRA ••XXXX</text><text x="300" y="220">May 29, 2026</text><text x="372" y="220" fill="#0f6a99">Download PDF</text>
+          </g>
+          <g stroke="#eef0f2"><path d="M22 172h420M22 202h420M22 232h420"/></g>
+          <rect x="466" y="120" width="152" height="112" rx="4" fill="#f4f8f3"/>
+          <text x="478" y="140" font-family="Arial" font-size="10" font-weight="700" fill="#1f1f1f">Need help?</text>
+          <g fill="#c9d6c4"><rect x="478" y="152" width="120" height="5" rx="2.5"/><rect x="478" y="164" width="100" height="5" rx="2.5"/><rect x="478" y="176" width="112" height="5" rx="2.5"/></g>
+          <text x="22" y="282" font-family="Arial" font-size="12" font-weight="700" fill="#1f1f1f">Year-end statements</text>
+          <path d="M22 292h420" stroke="#e1e4e8"/>
+          <g font-family="Arial" font-size="10.5" fill="#1f1f1f"><text x="22" y="312">December 2025 statement</text><text x="182" y="312">All accounts</text><text x="300" y="312">Jan 9, 2026</text><text x="372" y="312" fill="#0f6a99">View PDF</text><text x="22" y="342">Realized gain/loss 2025</text><text x="182" y="342">Individual ••XXXX</text><text x="300" y="342">Jan 30, 2026</text><text x="372" y="342" fill="#0f6a99">View PDF</text></g>
+          <g stroke="#eef0f2"><path d="M22 324h420M22 354h420"/></g>
+          <g font-family="Arial" font-size="10.5" fill="#1f1f1f"><text x="22" y="372">Cost basis report 2025</text><text x="182" y="372">Individual ••XXXX</text><text x="300" y="372">Feb 13, 2026</text><text x="372" y="372" fill="#0f6a99">View PDF</text></g>
+          <path d="M22 384h420" stroke="#eef0f2"/>
+          <!-- hover target -->
+          <rect x="366" y="147" width="78" height="19" rx="3" fill="rgba(255,138,61,.12)" stroke="#FF8A3D" stroke-width="2"/>
+          <rect x="296" y="236" width="196" height="20" rx="4" fill="#FF8A3D"/>
+          <text x="304" y="250" font-family="-apple-system, Helvetica, Arial" font-size="10.5" font-weight="600" fill="#160A02">Click to record: link “Download PDF”</text>
+        </svg>
+      </div>
+      <div class="capbar" role="toolbar" aria-label="Capture bar">
+        <span class="rec"><span class="recdot" aria-hidden="true"></span>03:12</span>
+        <span class="t2" style="font-size:var(--fs-12);padding-inline-end:4px"><span class="mono">8</span> steps</span>
+        <span class="div" aria-hidden="true"></span>
+        <button class="btn sm" type="button"><svg aria-hidden="true"><use href="#i-table"/></svg>Pick list</button>
+        <button class="btn sm" type="button"><svg aria-hidden="true"><use href="#i-check2"/></svg>Add check</button>
+        <button class="btn sm" type="button"><svg aria-hidden="true"><use href="#i-pause"/></svg>Pause</button>
+        <span class="div" aria-hidden="true"></span>
+        <button class="btn sm primary" type="button"><svg aria-hidden="true"><use href="#i-stop"/></svg>Stop and save <kbd>⌘↩</kbd></button>
+      </div>
+    </div>
+
+    <div class="tips">
+      <div><svg aria-hidden="true"><use href="#i-lock"/></svg><span><b>Passwords are never saved</b>Runs pause so you can log in.</span></div>
+      <div><svg aria-hidden="true"><use href="#i-table"/></svg><span><b>Pick list</b>Click a table to save it as CSV on each run.</span></div>
+      <div><svg aria-hidden="true"><use href="#i-hand"/></svg><span><b>Codes and bot checks</b>Bao pauses for you there.</span></div>
+    </div>
+  </main>
+
+  <aside class="evidence" id="ev-cap" aria-label="Selected step">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <p class="ov">Step 7 · captured</p>
+    <h2 class="ev-title">Click “Tax forms &amp; information”</h2>
+    <svg class="shot" viewBox="0 0 320 170" role="img" aria-label="Captured screenshot of step 7: the Accounts and Trade menu with Tax forms and information outlined." style="margin-bottom:10px"><use href="#fid-mini"/><rect x="64" y="52" width="92" height="12" rx="2" fill="none" stroke="#FF8A3D" stroke-width="2"/></svg>
+    <dl class="kv">
+      <dt>Kind</dt><dd>click</dd>
+      <dt>Target</dt><dd class="sans">link “Tax forms &amp; information”</dd>
+      <dt>Place</dt><dd class="sans">Accounts &amp; Trade menu</dd>
+    </dl>
+    <details class="disc">
+      <summary><svg aria-hidden="true"><use href="#i-chev"/></svg>Details</summary>
+      <table class="sel-table">
+        <thead><tr><th scope="col">#</th><th scope="col">Target, in order</th></tr></thead>
+        <tbody>
+          <tr><td class="rk">1</td><td><code>a[href$="/tax-forms"]</code></td></tr>
+          <tr><td class="rk">2</td><td><code>role=link[name="Tax forms &amp; information"]</code></td></tr>
+          <tr><td class="rk">3</td><td><code>#acct-trade-menu li:nth-child(3) a</code></td></tr>
+        </tbody>
+      </table>
+    </details>
+    <section>
+      <p class="ov">What Bao keeps</p>
+      <ul class="privacy">
+        <li><svg aria-hidden="true"><use href="#i-lock"/></svg><span><b>Passwords:</b> never saved, never shown.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-input"/></svg><span><b>Typed text:</b> saved as inputs you can change before each run.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-globe"/></svg><span><b>Logins:</b> stay in Bao’s own Chrome profile, not your daily Chrome.</span></li>
+      </ul>
+    </section>
+  </aside>
+</section>
+
+<!-- ======================= SETTINGS ======================= -->
+<section class="screen" data-screen="settings" aria-label="Settings" hidden>
+  <nav class="col-list" id="list-set" aria-label="Settings sections">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="list-head"><h2>Settings</h2></div>
+    <ul class="snav">
+      <li><a href="#s-heal" aria-current="true"><svg aria-hidden="true"><use href="#r-heal"/></svg>Healing<span class="mono">⌥1</span></a></li>
+      <li><a href="#s-runs"><svg aria-hidden="true"><use href="#i-clock"/></svg>Runs and waiting<span class="mono">⌥2</span></a></li>
+      <li><a href="#s-remote"><svg aria-hidden="true"><use href="#i-remote"/></svg>Remote access<span class="mono">⌥3</span></a></li>
+      <li><a href="#s-model"><svg aria-hidden="true"><use href="#i-spark"/></svg>Model<span class="mono">⌥4</span></a></li>
+      <li><a href="#s-logins"><svg aria-hidden="true"><use href="#r-key"/></svg>Chrome and logins<span class="mono">⌥5</span></a></li>
+      <li><a href="#s-keys"><svg aria-hidden="true"><use href="#i-keyb"/></svg>Shortcuts<span class="mono">⌥6</span></a></li>
+    </ul>
+    <div class="list-foot"><span><kbd>⌘,</kbd> Open settings</span></div>
+  </nav>
+
+  <main class="canvas" id="main-settings" tabindex="-1">
+    <div class="mhead">
+      <div class="grow"><h1>Settings</h1><p class="note" style="margin-top:2px">Changes save as you make them.</p></div>
+      <div class="actions">
+        <button class="btn list-toggle" type="button" aria-expanded="false" aria-controls="list-set"><svg aria-hidden="true"><use href="#i-list"/></svg>Sections</button>
+        <button class="btn ev-toggle" type="button" aria-expanded="false" aria-controls="ev-set"><svg aria-hidden="true"><use href="#i-panel"/></svg>Health</button>
+      </div>
+    </div>
+    <div class="sgrid">
+      <div style="display:grid;gap:var(--s3)">
+        <section class="sgroup" id="s-heal" aria-labelledby="s-heal-h">
+          <h2 id="s-heal-h">Healing <kbd>⌥1</kbd></h2>
+          <div class="srow">
+            <div class="top"><span class="lab" id="hp-l">When a step misses</span></div>
+            <fieldset class="seg" aria-labelledby="hp-l"><legend>When a step misses</legend>
+              <label><input type="radio" name="hp" checked><span>Auto</span></label>
+              <label><input type="radio" name="hp"><span>Ask</span></label>
+              <label><input type="radio" name="hp"><span>Never</span></label>
+            </fieldset>
+            <p>Auto: Bao uses a close match and tells you. Each workflow can override this.</p>
+          </div>
+          <div class="srow">
+            <div class="top"><span class="lab" id="keep-l">Clean runs before a heal is kept</span>
+              <span class="stepper" role="group" aria-labelledby="keep-l"><button type="button" aria-label="Fewer runs"><svg aria-hidden="true"><use href="#i-minus"/></svg></button><output aria-live="polite">3</output><button type="button" aria-label="More runs"><svg aria-hidden="true"><use href="#i-plus"/></svg></button></span></div>
+          </div>
+          <div class="srow">
+            <div class="top"><span class="lab" id="stop-l">Stop auto-healing after</span>
+              <span class="stepper" role="group" aria-labelledby="stop-l"><button type="button" aria-label="Fewer failed runs"><svg aria-hidden="true"><use href="#i-minus"/></svg></button><output>3 fails</output><button type="button" aria-label="More failed runs"><svg aria-hidden="true"><use href="#i-plus"/></svg></button></span></div>
+            <p>Counts failed runs in one day. Protects a site that is down from wrong heals.</p>
+          </div>
+        </section>
+        <section class="sgroup" id="s-runs" aria-labelledby="s-runs-h">
+          <h2 id="s-runs-h">Runs and waiting <kbd>⌥2</kbd></h2>
+          <div class="srow">
+            <div class="top"><label for="wait-you">Wait for you up to</label>
+              <select class="select" id="wait-you"><option>30 min</option><option>60 min</option><option selected>120 min</option><option>4 hours</option></select></div>
+            <p>Then the run stops and the report says where.</p>
+          </div>
+          <div class="srow">
+            <div class="top"><label for="wait-el">Wait for a page to load up to</label>
+              <select class="select" id="wait-el"><option>5 s</option><option selected>15 s</option><option>30 s</option></select></div>
+          </div>
+          <div class="srow">
+            <div class="top"><label for="notif">Notify me when a run needs me</label><span class="toggle"><input type="checkbox" id="notif" checked><span></span></span></div>
+          </div>
+        </section>
+        <section class="sgroup" id="s-keys" aria-labelledby="s-keys-h">
+          <h2 id="s-keys-h">Shortcuts <kbd>⌥6</kbd></h2>
+          <dl class="shortcuts">
+            <div><dt>Commands</dt><dd><kbd>⌘K</kbd></dd></div>
+            <div><dt>New recording</dt><dd><kbd>⌘N</kbd></dd></div>
+            <div><dt>Move in a list</dt><dd><kbd>J</kbd><kbd>K</kbd></dd></div>
+            <div><dt>Open</dt><dd><kbd>↵</kbd></dd></div>
+            <div><dt>Run</dt><dd><kbd>R</kbd></dd></div>
+            <div><dt>Edit</dt><dd><kbd>E</kbd></dd></div>
+            <div><dt>Go home</dt><dd><kbd>G</kbd><kbd>H</kbd></dd></div>
+            <div><dt>All shortcuts</dt><dd><kbd>?</kbd></dd></div>
+          </dl>
+        </section>
+      </div>
+      <div style="display:grid;gap:var(--s3)">
+        <section class="sgroup" id="s-remote" aria-labelledby="s-remote-h">
+          <h2 id="s-remote-h">Remote access <kbd>⌥3</kbd></h2>
+          <div class="srow">
+            <div class="top"><label for="remote">Let an agent on another computer run workflows here</label><span class="toggle"><input type="checkbox" id="remote"><span></span></span></div>
+            <p>Off by default. When on, each remote run still waits for you.</p>
+          </div>
+          <div class="srow off">
+            <div class="top"><span class="lab" id="rr-l">Before each remote run</span></div>
+            <fieldset class="seg" aria-labelledby="rr-l" disabled><legend>Before each remote run</legend>
+              <label><input type="radio" name="rr" checked disabled><span>Ask me</span></label>
+              <label><input type="radio" name="rr" disabled><span>Allow</span></label>
+              <label><input type="radio" name="rr" disabled><span>Deny</span></label>
+            </fieldset>
+            <span class="lock"><svg aria-hidden="true"><use href="#i-lock"/></svg>Turn on remote access to change this.</span>
+          </div>
+          <div class="srow">
+            <div class="top"><span class="lab">Paired computer</span><span class="t3" style="font-size:var(--fs-12)">None</span></div>
+          </div>
+        </section>
+        <section class="sgroup" id="s-model" aria-labelledby="s-model-h">
+          <h2 id="s-model-h">Model <kbd>⌥4</kbd></h2>
+          <div class="srow">
+            <fieldset class="seg"><legend>Model for healing</legend>
+              <label><input type="radio" name="model" checked><span>None</span></label>
+              <label><input type="radio" name="model"><span>Cursor account</span></label>
+              <label><input type="radio" name="model"><span>API key</span></label>
+            </fieldset>
+            <p>Runs never call a model. A model only helps find a moved button when a page changed a lot. With None, Bao matches by role, place and label.</p>
+          </div>
+        </section>
+        <section class="sgroup" id="s-logins" aria-labelledby="s-logins-h">
+          <h2 id="s-logins-h">Chrome and logins <kbd>⌥5</kbd></h2>
+          <div class="srow">
+            <div class="top"><span class="lab">Logins imported from your Chrome</span><span class="mono t2" style="font-size:var(--fs-12)">3 sites</span></div>
+            <p>chase.com, equinox.com, dashboard.stripe.com. Bao reads one site’s login only when you click Import.</p>
+            <div><button class="btn sm" type="button">Import a site’s login…</button></div>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </main>
+
+  <aside class="evidence" id="ev-set" aria-label="Permissions health">
+    <button class="btn sm ov-close" type="button" data-close-panel aria-label="Close panel">Close <kbd>esc</kbd></button>
+    <div class="loghead"><p class="ov">Health</p><span class="grow"></span><button class="btn sm" type="button">Check again</button></div>
+    <p class="note" style="margin:0 0 6px">Checked <span class="mono">7:42 PM</span>. 5 of 6 OK.</p>
+    <ul class="health">
+      <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span class="hd">Helper app<span class="st ok">Running</span></span><p>Runs in the background so Bao can see and drive its Chrome.</p></li>
+      <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span class="hd">Accessibility<span class="st ok">Allowed</span></span><p>Lets Bao tell one button from another.</p></li>
+      <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span class="hd">Screen Recording<span class="st ok">Allowed</span></span><p>Lets Bao save a screenshot of each step.</p></li>
+      <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span class="hd">Bao’s Chrome<span class="st ok">Ready</span></span><p>Its own profile. Your daily Chrome is untouched.</p></li>
+      <li><svg class="caution-c" aria-hidden="true"><use href="#g-warn"/></svg><span class="hd">Notifications<span class="st caution">Off</span></span><p>Bao can’t alert you when a run needs you.</p><button class="btn sm" type="button"><svg aria-hidden="true"><use href="#i-bell"/></svg>Turn on in System Settings</button></li>
+      <li><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg><span class="hd">Disk<span class="st ok">412 MB</span></span><p>Step screenshots for 11 workflows.</p></li>
+    </ul>
+  </aside>
+</section>
+
+    </div><!-- /screens -->
+    <div class="toast" role="status" aria-live="polite" id="toast"></div>
+  </div><!-- /app -->
+
+  <footer class="statusbar" aria-label="Status">
+    <button class="sb" type="button" data-go="settings"><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg>Helper OK</button>
+    <span class="sb-sep" aria-hidden="true"></span>
+    <button class="sb" type="button" data-go="settings">Model: none</button>
+    <span class="sb-sep" aria-hidden="true"></span>
+    <span class="sb"><span class="mono">0</span> model calls today</span>
+    <span class="sb-sep sb-hide-sm" aria-hidden="true"></span>
+    <span class="sb sb-hide-sm"><svg aria-hidden="true"><use href="#i-globe"/></svg>Chrome: Bao’s own profile</span>
+    <span class="sb sb-right"><kbd>⌘K</kbd> Commands</span>
+    <button class="sb" type="button" data-dialog="dlg-keys"><kbd>?</kbd> Shortcuts</button>
+  </footer>
+
+  <dialog id="dlg-revert" aria-labelledby="dr-h">
+    <h2 id="dr-h">Revert step 4 to “Export”?</h2>
+    <p>The next run looks for the old “Export” button. It no longer exists on the page, so the run will likely stop at step 4.</p>
+    <div class="actions"><button class="btn" type="button" value="cancel" data-close autofocus>Cancel</button><button class="btn danger-solid" type="button" data-close>Revert step 4</button></div>
+  </dialog>
+  <dialog id="dlg-stop" aria-labelledby="ds-h">
+    <h2 id="ds-h">Stop this Equinox run?</h2>
+    <p>The class won’t be booked. Steps 1 to 7 are saved in the run report.</p>
+    <div class="actions"><button class="btn" type="button" data-close autofocus>Keep waiting</button><button class="btn danger-solid" type="button" data-close>Stop run</button></div>
+  </dialog>
+  <dialog id="dlg-discard" aria-labelledby="dd-h">
+    <h2 id="dd-h">Discard this recording?</h2>
+    <p>The 8 recorded steps are deleted. The Fidelity workflow stays as it is, and still can’t load.</p>
+    <div class="actions"><button class="btn" type="button" data-close autofocus>Keep recording</button><button class="btn danger-solid" type="button" data-close>Discard 8 steps</button></div>
+  </dialog>
+  <dialog id="dlg-keys" aria-labelledby="dk-h">
+    <h2 id="dk-h">Shortcuts</h2>
+    <dl class="shortcuts" style="grid-template-columns:1fr;padding:0 0 12px">
+      <div><dt>Commands</dt><dd><kbd>⌘K</kbd></dd></div>
+      <div><dt>Move in a list</dt><dd><kbd>J</kbd><kbd>K</kbd></dd></div>
+      <div><dt>Open selected</dt><dd><kbd>↵</kbd></dd></div>
+      <div><dt>Run selected workflow</dt><dd><kbd>R</kbd></dd></div>
+      <div><dt>Edit selected workflow</dt><dd><kbd>E</kbd></dd></div>
+      <div><dt>Filter the list</dt><dd><kbd>/</kbd></dd></div>
+      <div><dt>New recording</dt><dd><kbd>⌘N</kbd></dd></div>
+    </dl>
+    <div class="actions"><button class="btn" type="button" data-close autofocus>Close</button></div>
+  </dialog>
+</div><!-- /window -->
+
+<script>
+(function(){
+  "use strict";
+  var $=function(s,r){return (r||document).querySelector(s)};
+  var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var win=$('#win');
+
+  /* ---------- data ---------- */
+  var GL={p:['g-pass','Passed','ok'],h:['g-heal','Healed','heal'],v:['g-prov','Heal on trial','caution'],n:['g-need','Needs you','need'],x:['g-need','No reply','muted'],f:['g-fail','Failed','fail'],'-':['g-none','No run','none']};
+  var WF=[
+    {id:'equinox',name:'Book Equinox class',site:'equinox.com',sched:'Weekly · Thu 7:30 PM',cad:7,end:[10,5],st:'n',word:'Needs you',last:'7:30 PM',lastSub:'waiting 13m',next:'Thu Nov 12',hist:'pppppppphppppn',steps:9,dur:'-',first:'6 of 7',go:'run-live'},
+    {id:'chase',name:'Download Chase statement',site:'chase.com',sched:'Monthly · 5th, 8:00 AM',cad:30,end:[10,5],st:'f',word:'Failed',last:'8:00 AM',lastSub:'41s',next:'Sat Dec 5',hist:'--pppppppppppf',steps:9,first:'5 of 5',go:'run-failed'},
+    {id:'fidelity',name:'Fidelity 1099 download',site:'fidelity.com',sched:'Yearly · Feb 20',err:true,st:'e',word:"Can’t load",last:'Feb 20',lastSub:'2026',next:'Paused',go:'capture'},
+    {id:'stripe',name:'Export Stripe payouts to CSV',site:'dashboard.stripe.com',sched:'Weekly · Mon 9:00 AM',cad:7,end:[10,2],st:'v',word:'Heal on trial',last:'Nov 2',lastSub:'48s',next:'Mon Nov 9',hist:'pppppppppppphv',steps:7,first:'7 of 7',go:'heal'},
+    {id:'agent',name:'agent-browser',site:'localhost:3000',sched:'Manual',cad:0.5,end:[10,5],st:'p',word:'Passed',last:'6:00 PM',lastSub:'29s',next:'Manual',hist:'pppppppppppppp',steps:12,first:'12 of 12',go:'workflow'},
+    {id:'instacart',name:'Instacart: Costco Kirkland organic blueberries',site:'instacart.com',sched:'Manual · stops before checkout',cad:6,end:[10,5],st:'p',word:'Passed',last:'5:12 PM',lastSub:'1m 04s',next:'Manual',hist:'-----pppphpppp',steps:8,first:'8 of 8',go:'workflow'},
+    {id:'uscis',name:'File USCIS case status check',site:'egov.uscis.gov',sched:'Daily · 9:00 AM',cad:1,end:[10,5],st:'p',word:'Passed',last:'9:00 AM',lastSub:'22s',next:'Fri 9:00 AM',hist:'pppppphppppppp',steps:5,first:'5 of 5',go:'workflow'},
+    {id:'dmv',name:'Renew CA vehicle registration',site:'dmv.ca.gov',sched:'Yearly · November',cad:2,end:[10,3],st:'p',word:'Passed',last:'Nov 3',lastSub:'1m 52s',next:'Manual',hist:'-----------ppp',steps:11,first:'10 of 11',go:'workflow'},
+    {id:'oauth',name:'Set up Google OAuth for 五秒',site:'console.cloud.google.com',sched:'Manual',cad:2,end:[10,1],st:'p',word:'Passed',last:'Nov 1',lastSub:'2m 06s',next:'Manual',hist:'---------fpppp',steps:14,first:'13 of 14',go:'workflow',zh:true},
+    {id:'oauthprod',name:'Create production Google OAuth client for 五秒',site:'console.cloud.google.com',sched:'Manual',cad:2,end:[10,1],st:'x',word:'No reply',last:'Nov 1',lastSub:'waited 2h',next:'Manual',hist:'-----------ppx',steps:12,first:'9 of 9',go:'workflow',zh:true},
+    {id:'coned',name:'Con Edison - download last bill',site:'coned.com',sched:'Monthly · 12th',cad:30,end:[9,12],st:'p',word:'Passed',last:'Oct 12',lastSub:'38s',next:'Thu Nov 12',hist:'--pppppppppppp',steps:6,first:'6 of 6',go:'workflow'}
+  ];
+  var RUNS=[
+    {day:'Today · Thu Nov 5'},
+    {st:'n',name:'Book Equinox class',tm:'7:30 PM',sub:'Waiting for you · step 8',go:'run-live'},
+    {st:'p',name:'agent-browser',tm:'6:00 PM',sub:'Passed · 29s'},
+    {st:'p',name:'Instacart: Costco Kirkland organic blueberries',tm:'5:12 PM',sub:'Passed · 1m 04s'},
+    {st:'p',name:'agent-browser',tm:'2:38 PM',sub:'Passed · 31s'},
+    {st:'p',name:'agent-browser',tm:'2:05 PM',sub:'Passed · 30s'},
+    {st:'p',name:'File USCIS case status check',tm:'9:00 AM',sub:'Passed · 22s'},
+    {st:'p',name:'agent-browser',tm:'8:10 AM',sub:'Passed · 32s'},
+    {st:'f',name:'Download Chase statement',tm:'8:00 AM',sub:'Failed at step 6 · 41s',go:'run-failed'},
+    {st:'p',name:'agent-browser',tm:'4:01 AM',sub:'Passed · 30s'},
+    {day:'Wed Nov 4'},
+    {st:'p',name:'File USCIS case status check',tm:'9:00 AM',sub:'Passed · 21s'},
+    {day:'Tue Nov 3'},
+    {st:'p',name:'Renew CA vehicle registration',tm:'6:20 PM',sub:'Passed · 1m 52s'},
+    {st:'p',name:'File USCIS case status check',tm:'9:00 AM',sub:'Passed · 22s'},
+    {day:'Mon Nov 2'},
+    {st:'v',name:'Export Stripe payouts to CSV',tm:'9:00 AM',sub:'Heal on trial · clean run 1 of 3',go:'heal'}
+  ];
+  var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;')}
+  function nameHTML(w){return w.zh?esc(w.name).replace('五秒','<span lang="zh">五秒</span>'):esc(w.name)}
+  function runDate(w,back){
+    var d=new Date(2026,w.end[0],w.end[1]);
+    if(w.cad===30){d.setMonth(d.getMonth()-back)}else{d.setDate(d.getDate()-Math.round(back*w.cad))}
+    return DOW[d.getDay()]+' '+MON[d.getMonth()]+' '+d.getDate();
+  }
+  function cellsHTML(w){
+    return w.hist.split('').map(function(c,i){
+      var g=GL[c],back=13-i,label=c==='-'?'No run':runDate(w,back)+': '+g[1];
+      return '<span class="cell c-'+g[2]+(c==='n'?' live':'')+'" role="img" aria-label="'+esc(label)+'" title="'+esc(label)+'"><svg aria-hidden="true"><use href="#'+g[0]+'"/></svg></span>';
+    }).join('');
+  }
+  function stHTML(w){
+    var map={n:['need','g-need'],f:['fail','g-fail'],e:['fail','g-warn'],v:['caution','g-prov'],p:['ok','g-pass'],x:['muted','g-need']};
+    var m=map[w.st];
+    return '<span class="st '+m[0]+'"><svg aria-hidden="true"><use href="#'+m[1]+'"/></svg><span class="st-word">'+w.word+'</span></span>';
+  }
+
+  /* ---------- home matrix ---------- */
+  var SEL_HOME=8; // Set up Google OAuth for 五秒
+  var tb=$('#matrix-body');
+  tb.innerHTML=WF.map(function(w,i){
+    var mid=w.err
+      ? '<td><div class="errmsg"><svg aria-hidden="true"><use href="#g-warn"/></svg><span>Step 4 has no target, so Bao can’t run it. Re&#8209;record step 4, or open the file.</span></div></td>'
+      : '<td><div class="cells">'+cellsHTML(w)+'</div></td>';
+    var act=w.err
+      ? '<button class="btn sm" type="button" data-go="capture" aria-label="Fix Fidelity 1099 download: re-record step 4">Fix</button>'
+      : '<button class="btn sm icon" type="button" data-run aria-label="Run '+esc(w.name)+'"><svg aria-hidden="true"><use href="#i-play"/></svg></button>';
+    return '<tr data-row data-i="'+i+'"'+(i===SEL_HOME?' class="sel"':'')+'>'+
+      '<td>'+stHTML(w)+'</td>'+
+      '<td><a class="wfname" href="?screen='+w.go+'" data-go="'+w.go+'" title="'+esc(w.name)+'">'+nameHTML(w)+'</a><span class="wfsub" title="'+esc(w.site+' · '+w.sched)+'">'+esc(w.site)+' · '+esc(w.sched)+'</span></td>'+
+      mid+
+      '<td><span class="lastrun">'+w.last+'</span><span class="t3">'+w.lastSub+'</span></td>'+
+      '<td class="c-next"><span class="lastrun t2">'+w.next+'</span></td>'+
+      '<td><div class="row-act">'+act+'</div></td></tr>';
+  }).join('');
+
+  /* ---------- home evidence ---------- */
+  var OAUTH_FILM=[['gc-a',[79,70,34,12],'Click “Get started”'],['gc-b',[15,35,80,14],'Type the app name'],['gc-b',[15,49,80,14],'Open “User support email”'],['gc-b',[15,49,80,14],'Pick owner@example.com'],['gc-b',[15,62,22,10],'Click “Next”'],['gc-b',[8,68,40,8],'Pick “External”'],['gc-b',[15,62,22,10],'Click “Next”'],['gc-b',[8,76,60,8],'Type developer contact'],['gc-b',[15,62,22,10],'Click “Next”'],['gc-b',[8,84,40,8],'Check “I agree”'],['gc-b',[15,62,22,10],'Click “Continue”'],['gc-a',[79,70,34,12],'Click “Create”'],['gc-c',[8,28,84,14],'Pick “Web application”'],['gc-c',[8,78,24,11],'Click “Create”']];
+  function renderEvidence(i){
+    var w=WF[i];
+    $('#ev-name').innerHTML=nameHTML(w);
+    var m={n:['need','g-need'],f:['fail','g-fail'],e:['fail','g-warn'],v:['caution','g-prov'],p:['ok','g-pass'],x:['muted','g-need']}[w.st];
+    $('#ev-meta').innerHTML='<span class="st pill '+m[0]+'"><svg aria-hidden="true"><use href="#'+m[1]+'"/></svg>'+w.word+'</span><span class="mono">'+w.last+(w.lastSub?' · '+w.lastSub:'')+'</span><span class="mono t3">'+esc(w.site)+'</span>';
+    if(w.err){
+      $('#ev-proof').innerHTML='<dt>Problem</dt><dd class="sans">Step 4 has no target</dd><dt>Fix</dt><dd class="sans">Re-record step 4</dd><dt>Other workflows</dt><dd class="sans">Unaffected</dd>';
+    } else {
+      var ran=w.hist.replace(/-/g,'').length, passed=(w.hist.match(/p/g)||[]).length;
+      $('#ev-proof').innerHTML='<dt>Steps matched golden</dt><dd>'+(w.st==='f'?'5 of 9':w.st==='n'?'7 of 9':w.steps+' of '+w.steps)+'</dd>'+
+        '<dt>Target hit first try</dt><dd>'+w.first+'</dd>'+
+        '<dt>Recent runs passed</dt><dd>'+passed+' of '+ran+'</dd>'+
+        '<dt>Model calls</dt><dd class="zero">0</dd>';
+    }
+    var film=$('#ev-film-sec'), inputs=$('#ev-inputs-sec');
+    film.hidden=w.id!=='oauth'; inputs.hidden=w.id!=='oauth';
+  }
+  $('#ev-film').innerHTML=OAUTH_FILM.map(function(f,i){
+    var r=f[1];
+    return '<li><button type="button" aria-label="Step '+(i+1)+': '+esc(f[2])+', passed"><svg class="frame" viewBox="0 0 160 100" aria-hidden="true"><use href="#'+f[0]+'"/><rect x="'+r[0]+'" y="'+r[1]+'" width="'+r[2]+'" height="'+r[3]+'" rx="2" fill="none" stroke="#FF8A3D" stroke-width="2.4"/></svg><span class="cap"><svg class="ok-c" aria-hidden="true"><use href="#g-pass"/></svg>'+(i+1)+'</span></button></li>';
+  }).join('');
+  renderEvidence(SEL_HOME);
+
+  /* ---------- chase filmstrip ---------- */
+  var CH=[['Open chase.com','p','chase-golden',[0,0,0,0]],['Check signed in','p','chase-golden',[560,10,70,24]],['Click Total Checking','p','chase-golden',[28,70,200,24]],['Check “Available balance”','p','chase-golden',[28,100,160,40]],['Open Account services','p','chase-golden',[416,62,204,34]],['Click “Statements & documents”','f','chase-actual',[424,98,190,24]],['Pick month','-'],['Download PDF','-'],['Check file is a PDF','-']];
+  $('#chase-film').innerHTML=CH.map(function(c,i){
+    var g=GL[c[1]], label='Step '+(i+1)+': '+c[0]+', '+(c[1]==='-'?'not run':g[1].toLowerCase());
+    var inner;
+    if(c[1]==='-'){inner='<svg class="frame" viewBox="0 0 640 300" aria-hidden="true"><rect width="640" height="300" fill="#16181C"/><path d="M290 150h60" stroke="#3A3E47" stroke-width="10" stroke-linecap="round"/></svg>';}
+    else{var r=c[3],col=c[1]==='f'?'#E5484D':'#FF8A3D';inner='<svg class="frame" viewBox="0 0 640 300" aria-hidden="true"><use href="#'+c[2]+'"/>'+(r[2]?'<rect x="'+r[0]+'" y="'+r[1]+'" width="'+r[2]+'" height="'+r[3]+'" rx="4" fill="none" stroke="'+col+'" stroke-width="7"/>':'')+'</svg>';}
+    return '<li><button type="button" aria-label="'+esc(label)+'">'+inner+'<span class="cap"><svg class="'+(g[2]==='ok'?'ok-c':g[2]==='fail'?'fail-c':'muted-c')+'" aria-hidden="true"><use href="#'+g[0]+'"/></svg>'+(i+1)+' '+(c[1]==='f'?'missed':c[1]==='-'?'not run':'')+'</span></button></li>';
+  }).join('');
+
+  /* ---------- workflow list ---------- */
+  var stc={n:['need-c','g-need'],f:['fail-c','g-fail'],e:['fail-c','g-warn'],v:['caution-c','g-prov'],p:['ok-c','g-pass'],x:['muted-c','g-need']};
+  $('#wf-list').innerHTML=WF.map(function(w){
+    var c=stc[w.st], sel=w.id==='dmv';
+    return '<a class="lrow'+(sel?' sel':'')+'" data-row href="?screen=workflow"'+(sel?' aria-current="page"':'')+' title="'+esc(w.name)+'"><svg class="'+c[0]+'" aria-hidden="true"><use href="#'+c[1]+'"/></svg><span class="nm">'+nameHTML(w)+'</span><span class="tm">'+w.last+'</span><span class="sub"><span class="sr-only">'+w.word+'. </span>'+esc(w.site)+' · '+esc(w.sched)+'</span></a>';
+  }).join('');
+
+  /* ---------- runs lists ---------- */
+  $$('.runs-list').forEach(function(box){
+    var sel=+box.getAttribute('data-sel'), n=-1;
+    box.innerHTML=RUNS.map(function(r){
+      if(r.day) return '<p class="group-label">'+r.day+'</p>';
+      n++; var c=stc[r.st], isSel=n===sel;
+      return '<a class="lrow'+(isSel?' sel':'')+'" data-row href="?screen='+(r.go||'run-live')+'"'+(r.go?' data-go="'+r.go+'"':'')+(isSel?' aria-current="page"':'')+' title="'+esc(r.name)+'"><svg class="'+c[0]+'" aria-hidden="true"><use href="#'+c[1]+'"/></svg><span class="nm">'+esc(r.name)+'</span><span class="tm">'+r.tm+'</span><span class="sub">'+r.sub+'</span></a>';
+    }).join('');
+  });
+
+  /* ---------- screen switching ---------- */
+  var NAMES={home:'Home',workflow:'Workflow','run-live':'Live run','run-failed':'Failed run',heal:'Heal review',capture:'Recording',settings:'Settings'};
+  var RAIL={home:'home',workflow:'home','run-live':'runs','run-failed':'runs',heal:'heals',capture:'record',settings:'settings'};
+  var p=new URLSearchParams(location.search);
+  var state={screen:NAMES[p.get('screen')]?p.get('screen'):'home',w:p.get('w')==='720'?'720':'1280',empty:p.get('empty')==='1'};
+  function sync(){var q=new URLSearchParams();q.set('screen',state.screen);if(state.w==='720')q.set('w','720');if(state.empty)q.set('empty','1');history.replaceState(null,'','?'+q.toString());}
+  function render(focus){
+    $$('.screen').forEach(function(s){s.hidden=s.getAttribute('data-screen')!==state.screen});
+    $$('.rail-btn').forEach(function(b){if(b.getAttribute('data-rail')===RAIL[state.screen])b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+    $$('.harness [data-go]').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-go')===state.screen))});
+    $$('.harness [data-width]').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-width')===state.w))});
+    $('#h-empty').checked=state.empty;
+    win.style.setProperty('--w',state.w+'px');
+    win.classList.toggle('is-empty',state.empty);
+    $('[data-rail=runs]').setAttribute('aria-label',state.empty?'Runs':'Runs, 1 needs you');
+    $('[data-rail=heals]').setAttribute('aria-label',state.empty?'Heals':'Heals, 1 to review');
+    $$('.rail .tip .t2').forEach(function(t){t.hidden=state.empty&&!/sites/.test(t.textContent)});
+    $$('.evidence.open,.col-list.open').forEach(function(e){e.classList.remove('open')});
+    $$('.ev-toggle,.list-toggle').forEach(function(b){b.setAttribute('aria-expanded','false')});
+    document.title='Bao - '+NAMES[state.screen];
+    $('#skip').setAttribute('href','#main-'+state.screen);
+    sync();
+    if(focus){var m=$('#main-'+state.screen);if(m)m.focus({preventScroll:true});}
+  }
+  function go(id){if(!NAMES[id])return;state.screen=id;render(true);}
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('[data-go]');
+    if(t&&!e.metaKey&&!e.ctrlKey){e.preventDefault();go(t.getAttribute('data-go'));return;}
+    var w=e.target.closest('[data-width]');
+    if(w){state.w=w.getAttribute('data-width');render();return;}
+    var d=e.target.closest('[data-dialog]');
+    if(d){var dl=document.getElementById(d.getAttribute('data-dialog'));if(dl)dl.showModal();return;}
+    var c=e.target.closest('[data-close]');
+    if(c){c.closest('dialog').close();return;}
+    var r=e.target.closest('[data-run]');
+    if(r){toast(r.getAttribute('aria-label')?r.getAttribute('aria-label').replace(/^Run /,'Starting “')+'”. Inputs first, then Bao’s Chrome opens.':'Starting run. Inputs first, then Bao’s Chrome opens.');return;}
+    var cp=e.target.closest('[data-close-panel]');
+    if(cp){closePanels(true);return;}
+    var tg=e.target.closest('.ev-toggle,.list-toggle');
+    if(tg){var el=document.getElementById(tg.getAttribute('aria-controls'));var open=!el.classList.contains('open');el.classList.toggle('open',open);tg.setAttribute('aria-expanded',String(open));return;}
+    var sr=e.target.closest('.step-row');
+    if(sr){var li=sr.parentNode,o=!li.classList.contains('open');li.classList.toggle('open',o);sr.setAttribute('aria-expanded',String(o));return;}
+    var chip=e.target.closest('.chip');
+    if(chip){var grp=chip.parentNode;$$('.chip',grp).forEach(function(x){x.setAttribute('aria-pressed',String(x===chip))});return;}
+    var row=e.target.closest('#matrix-body tr');
+    if(row&&!e.target.closest('a,button')){select(row);}
+  });
+  $('#h-empty').addEventListener('change',function(e){state.empty=e.target.checked;if(state.empty)state.screen='home';render();});
+  $('#skip').addEventListener('click',function(e){e.preventDefault();var m=$('#main-'+state.screen);if(m)m.focus();});
+
+  function closePanels(refocus){
+    var open=$$('.evidence.open,.col-list.open');
+    open.forEach(function(el){el.classList.remove('open');var b=$('.screen:not([hidden]) [aria-controls="'+el.id+'"]');if(b){b.setAttribute('aria-expanded','false');if(refocus)b.focus();}});
+    return open.length>0;
+  }
+  /* ---------- toast ---------- */
+  var tt;
+  function toast(msg){var t=$('#toast');t.textContent=msg;clearTimeout(tt);tt=setTimeout(function(){t.textContent=''},6000);}
+
+  /* ---------- J/K selection ---------- */
+  function rows(){var s=$('.screen:not([hidden]) [data-navlist]');return s?$$('[data-row]',s):[]}
+  function select(row){
+    var rs=rows();rs.forEach(function(r){r.classList.toggle('sel',r===row);if(r.classList.contains('lrow')||r.classList.contains('cstep')){if(r===row)r.setAttribute('aria-current','true');else r.removeAttribute('aria-current');}});
+    if(row.hasAttribute('data-i'))renderEvidence(+row.getAttribute('data-i'));
+    var f=row.matches('a,[tabindex]')?row:row.querySelector('a');
+    if(f){f.focus({preventScroll:true});f.scrollIntoView({block:'nearest'});}
+  }
+  document.addEventListener('keydown',function(e){
+    var typing=e.target.closest&&e.target.closest('input,select,textarea');
+    if(e.key==='Escape'&&typing){e.target.blur();return;}
+    if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&closePanels(true)){return;}
+    if(typing||e.metaKey||e.ctrlKey||e.altKey)return;
+    var k=e.key.toLowerCase();
+    if(k==='j'||k==='k'){
+      var rs=rows();if(!rs.length)return;e.preventDefault();
+      var i=rs.findIndex(function(r){return r.classList.contains('sel')});
+      i=k==='j'?Math.min(rs.length-1,i+1):Math.max(0,i-1);select(rs[i]);
+    } else if(e.key==='?'){e.preventDefault();$('#dlg-keys').showModal();}
+    else if(e.key==='/'){var s=$('.screen:not([hidden]) [data-search]');if(s){e.preventDefault();s.focus();}}
+    else if(k==='e'&&state.screen==='home'){go('workflow');}
+    else if(k==='r'&&(state.screen==='home'||state.screen==='workflow')){var sel=$('#matrix-body tr.sel');var w=state.screen==='home'&&sel?WF[+sel.getAttribute('data-i')]:WF[7];toast('Starting “'+w.name+'”. Inputs first, then Bao’s Chrome opens.');}
+  });
+
+  /* ---------- compare (split / overlay / side) ---------- */
+  var cmp=$('#cmp'),split=$('#split');
+  function setSplit(){var v=split.value;cmp.style.setProperty('--split',v+'%');cmp.style.setProperty('--ov',(v/100).toFixed(2));split.setAttribute('aria-valuetext',cmp.classList.contains('mode-overlay')?v+' percent of today shown on top':v+' percent golden');}
+  split.addEventListener('input',setSplit);
+  $$('#cmp-mode input').forEach(function(r){r.addEventListener('change',function(){cmp.classList.toggle('mode-overlay',r.value==='overlay'&&r.checked);cmp.classList.toggle('mode-side',r.value==='side'&&r.checked);$('label[for=split]').textContent=r.value==='overlay'?'Overlay strength':'Split position';setSplit();});});
+
+  /* ---------- heal policy description ---------- */
+  var HP={auto:'Auto: Bao uses a close match, finishes the run, and tells you.',ask:'Ask: Bao finds the moved button, shows you the change, and waits for you to keep it.',never:'Never: Bao stops at the step and writes a report.'};
+  $$('input[name=hp-wf]').forEach(function(r){r.addEventListener('change',function(){$('#hp-desc').textContent=HP[r.value];});});
+
+  /* ---------- secret reveal ---------- */
+  var eye=$('#in-vin').nextElementSibling;
+  eye.addEventListener('click',function(){var i=$('#in-vin'),on=i.type==='password';i.type=on?'text':'password';eye.setAttribute('aria-pressed',String(on));eye.setAttribute('aria-label',(on?'Hide':'Show')+' Last 5 of VIN');});
+
+  /* ---------- settings section nav ---------- */
+  $$('.snav a').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();$$('.snav a').forEach(function(x){x.removeAttribute('aria-current')});a.setAttribute('aria-current','true');var t=$(a.getAttribute('href'));if(t){t.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}});});
+
+  render(false);
+})();
+</script>
+</body>
+</html>
