@@ -4,12 +4,24 @@ import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeLaunchArgs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
 /** No BAO_TEST_BROWSER: the product launch. The test lane sets it in process.env. */
 const product: NodeJS.ProcessEnv = {};
+
+test("installed Mac Chrome launches as a new GUI app and waits for that instance", () => {
+  const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--profile-directory=Profile 2"];
+  const stderr = `${owned}/.bao-chrome-startup.stderr`;
+  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", {}, "darwin"), [
+    "-W", "-n", "-g", "-a", "/Applications/Google Chrome.app",
+    "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
+  ]);
+  assert.equal(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), undefined);
+  assert.equal(guiChromeLaunchArgs("/pinned/chromium", args, stderr, "/Users/owner", {}, "darwin"), undefined);
+  assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", {}, "linux"), undefined);
+});
 
 test("the launcher pid is the descendant whose profile is ours", () => {
   const rows = [
