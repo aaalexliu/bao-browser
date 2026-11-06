@@ -51,12 +51,12 @@ Saved workflows whose driver is `cdp-live` must remain readable. Their Library c
 
 Open the running app's Library and Runs, not a component preview. Read the page before taking a screenshot, then open the image. Capture before and after for a UI change.
 
-Check the run's saved command arguments, native results, start/end times, and page screenshots under `shots/runs/<runId>/`. Missing pictures must have a reason, not an older picture relabeled as current. Explicit close, disconnect, and closing the owned Chrome window must finish the run and remove only its marked profile copy. Confirm the source profile and unrelated tabs remain unchanged.
+Check the run's saved command arguments, native results, start/end times, and page screenshots under `shots/runs/<runId>/`. Missing pictures must have a reason, not an older picture relabeled as current. Explicit close and closing the owned Chrome window during a live session must finish the run and remove only its marked profile copy. Disconnect or MCP stop must do the same by default. With keep-open on, confirm that disconnect or stop finishes the run but keeps the window and copy until the next session reclaims them. Confirm the source profile and unrelated tabs remain unchanged.
 
 Historical live-driver workflows, runs, pictures, and videos stay local and readable. Their existence is not evidence that replay still works. Do not alter or delete historical records to make a new test pass.
 
 ## Run focused checks
 
-Run `npm run check:static`, then only the tests for the changed path. The pass-through has unit coverage in `agent-browser-proxy.test.ts`, `agent-browser-proxy-close.test.ts`, and `agent-browser-startup.test.ts`. The native local fixture is `desktop/test/live/agent-browser-proxy.test.ts`; it requires an explicitly staged `AGENT_BROWSER_PROXY_BINARY`. Keep model keys unset and source profiles synthetic.
+Run `npm run check:static`, then only the tests for the changed path. The pass-through has unit coverage in `agent-browser-proxy.test.ts`, `agent-browser-proxy-close.test.ts`, `agent-browser-startup.test.ts`, and `agent-browser-session-end.test.ts`. The native local fixture is `desktop/test/live/agent-browser-proxy.test.ts`; it requires an explicitly staged `AGENT_BROWSER_PROXY_BINARY`. Keep model keys unset and source profiles synthetic.
 
 The PR always runs [essential checks](guardrails.md). Choose `full-suite` when that set does not cover a shared engine, recording, replay, storage, packaging, or test-infrastructure change. State the choice and reason in the PR body. Never run the full suite on a daily profile.

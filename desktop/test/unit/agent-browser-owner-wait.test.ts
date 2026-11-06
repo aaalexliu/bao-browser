@@ -49,12 +49,17 @@ for (const check of ["signin", "captcha"]) test(`pass-through ${check} waits pri
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), "{}");
   let copyDir = "";
   let closeBrowser: (() => Promise<void>) | undefined;
-  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof profiles.openCopiedChromeForProxy>[0]) => {
+  t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof profiles.openCopiedChromeForProxy>[0]): ReturnType<typeof profiles.openCopiedChromeForProxy> => {
     const copy = await profiles.copyChromeProfile(options);
     copyDir = copy.userDataDir;
     const browser = await launchOwnedChromeEndpoint({ userDataDir: copy.userDataDir, childHome: path.join(root, "user"), headless: true });
     closeBrowser = browser.close;
-    return { target: { kind: "bao" as const, portFile: browser.portFile }, closed: browser.closed, bytes: copy.bytes, copyMs: copy.copyMs, close: async () => { await browser.close(); await copy.close(); } };
+    return {
+      target: { kind: "bao" as const, portFile: browser.portFile }, closed: browser.closed,
+      bytes: copy.bytes, copyMs: copy.copyMs, isClosed: browser.isClosed,
+      keepOpen: async () => { await copy.keepOpen(); browser.keepOpen(); },
+      close: async () => { await browser.close(); await copy.close(); },
+    };
   });
   const log = path.join(root, "native.jsonl");
   const executable = path.join(root, "native");

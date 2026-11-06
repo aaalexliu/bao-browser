@@ -114,9 +114,9 @@ jobs:
           export HOME
           trap 'rm -rf "$HOME"' EXIT
           if [[ "$MEASURE_COVERAGE" == true ]]; then
-            node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage"
+            xvfb-run -a node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage"
           else
-            node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit
+            xvfb-run -a node desktop/test/run-v1.mjs --test-concurrency=2 --test-reporter=tap --test-force-exit
           fi
       - name: Web tests
         if: always() && !cancelled()

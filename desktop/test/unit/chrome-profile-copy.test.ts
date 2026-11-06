@@ -263,6 +263,12 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
         assert.equal((await response.json() as { error: string }).error, "pass-through sessions do not support saved workflow replay");
       }
     }
+    assert.equal(app.library.settings().keepAgentBrowserOpen ?? false, false);
+    assert.equal((await put({ keepAgentBrowserOpen: true })).status, 200);
+    assert.equal(app.library.settings().keepAgentBrowserOpen, true);
+    assert.equal((await put({ keepAgentBrowserOpen: "true" })).status, 400);
+    assert.equal((await put({ keepAgentBrowserOpen: false })).status, 200);
+    assert.equal(app.library.settings().keepAgentBrowserOpen, false);
     assert.equal(app.library.settings().chromeProfile, "Default");
     assert.equal(app.library.settings().chromeProfileExtensions?.Default ?? false, false);
     assert.equal((await put({ chromeProfileExtensions: { Default: true } })).status, 200);
@@ -433,7 +439,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
     source = undefined;
     const file = path.join(sourceRoot, "Default", "Preferences");
     const prefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
-    prefs.session.restore_on_startup = 5;
+    prefs.session = { ...prefs.session, restore_on_startup: 5 };
     await writeFile(file, JSON.stringify(prefs));
     source = await launchOwnedChrome({ userDataDir: sourceRoot, headless: true,
       preserveRestoredTabs: true, loadExtensions: false });
@@ -480,7 +486,7 @@ test("copied Chrome restores two tabs through delayed product startup while sour
     assert.deepEqual((await values(source)).sort(), ["alpha", "beta"]);
     sourcePrefs = JSON.parse(await readFile(file, "utf8")) as TestPreferences;
     assert.equal(sourcePrefs.profile.exit_type, "Crashed");
-    assert.equal(sourcePrefs.session.restore_on_startup, 5);
+    assert.equal(sourcePrefs.session?.restore_on_startup ?? 5, 5, "Chrome may omit the default new-tab startup preference");
     const browserClosed = restored.waitForEvent("close", { timeout: 5000 });
     await Promise.all(restored.pages().map((page) => page.close()));
     await browserClosed;

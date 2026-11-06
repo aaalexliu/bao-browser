@@ -9,7 +9,7 @@ import { launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../..
 
 pinTestBrowser();
 
-for (const mode of ["close", "disconnect", "process-exit", "startup-failure"] as const) {
+for (const mode of ["close", "retained-close", "failed-close", "disconnect", "process-exit", "startup-failure"] as const) {
   test(`endpoint-only launch releases its owned Chrome after ${mode}`, { timeout: 20_000 }, async (t) => {
     const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-endpoint-"));
     const connect = sockets.connectCdp;
@@ -22,6 +22,7 @@ for (const mode of ["close", "disconnect", "process-exit", "startup-failure"] as
       t.mock.method(cdp, "send", (method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => {
         methods.push(method);
         if (mode === "startup-failure" && method === "Target.setDiscoverTargets") return Promise.reject(new Error("discovery failed"));
+        if (mode === "failed-close" && method === "Browser.close") return Promise.reject(new Error("close failed"));
         return send(method, params, sessionId, timeoutMs);
       });
       return cdp;
@@ -43,9 +44,18 @@ for (const mode of ["close", "disconnect", "process-exit", "startup-failure"] as
             catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
           }
         } else {
+          if (mode === "retained-close") {
+            chrome.keepOpen();
+            assert.equal(cdp.isOpen, false);
+            assert.ok(pidsForDataDir(userDataDir).length > 0);
+          }
+          const started = Date.now();
           const closing = chrome.close();
           assert.equal(chrome.close(), closing);
           await closing;
+          if (mode === "retained-close" || mode === "failed-close") {
+            assert.ok(Date.now() - started < 3000, "close without a sent Browser.close must fit within the last four seconds of MCP shutdown");
+          }
         }
         await chrome.closed;
         await chrome.close();

@@ -54,7 +54,7 @@ const CATALOG_TOOLS = [
 
 const AGENT_BROWSER_TOOL = {
   name: "agent_browser",
-  description: "Run an agent-browser command with its native arguments. Ordinary commands return native output; owner handoffs return Bao's wait status. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, wait_for_owner, close. When sign-in or a human check halts a command, keep this session open and call command=wait_for_owner args=[\"60000\"]. Repeat waiting replies without ending your turn; on ready take a fresh snapshot and continue in this same window. The optional timeout is 1-120000 milliseconds, below a 180-second MCP limit. On closed, report that the owner closed the window. While waiting Bao reads only URL and title, not snapshots, text, fields, or screenshots. A page with unchanged URL/title stays waiting. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. This route needs no running Bao app. Sign-in/check pages show an owner-wait banner and omit screenshots. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact or save a workflow. Bao does not block final clicks.",
+  description: "Run an agent-browser command with its native arguments. Ordinary commands return native output; owner handoffs return Bao's wait status. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, wait_for_owner, close. When sign-in or a human check halts a command, keep this session open and call command=wait_for_owner args=[\"60000\"]. Repeat waiting replies without ending your turn; on ready take a fresh snapshot and continue in this same window. The optional timeout is 1-120000 milliseconds, below a 180-second MCP limit. On closed, report that the owner closed the window. While waiting Bao reads only URL and title, not snapshots, text, fields, or screenshots. A page with unchanged URL/title stays waiting. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. Agent exit also closes it unless Keep window open after agent finishes is on in Bao Settings. A new session closes any kept window first. This route needs no running Bao app. Sign-in/check pages show an owner-wait banner and omit screenshots. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact or save a workflow. Bao does not block final clicks.",
   inputSchema: {
     type: "object", properties: {
       command: { type: "string", enum: AGENT_BROWSER_COMMANDS },
@@ -90,7 +90,8 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   }
   let ending = false;
   const library = new Library(home);
-  const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile });
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile,
+    keepOpen: () => library.settings().keepAgentBrowserOpen === true });
   const ctx: Context = { library, libraries, proxy };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
@@ -100,32 +101,54 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       const next = takeRpcChunk(buf, null);
       if (!next) return;
       buf = Buffer.from(next.rest);
-      chain = chain.then(() => handle(next.body, ctx)).catch((err: unknown) => {
+      let msg: Rpc;
+      try { msg = JSON.parse(next.body) as Rpc; }
+      catch (err) {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      });
+        continue;
+      }
+      let releaseClose: (() => void) | undefined;
+      if (msg?.method === "tools/call" && msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close") {
+        try {
+          const { args = [] } = msg.params.arguments;
+          releaseClose = ctx.proxy.queueClose(args);
+          if (ending) void ctx.proxy.end(true).catch((error: unknown) => {
+            process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+          });
+        } catch {}
+      }
+      chain = chain.then(() => handle(msg, ctx)).catch((err: unknown) => {
+        process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      }).finally(releaseClose);
     }
   });
+  // End proxy ownership immediately; queued catalog work can outlast cleanup.
+  // After stdin closes, catalog work finishes and saves with no cap.
+  // SIGTERM, SIGINT, and SIGHUP cap that wait at 15 s, even mid-run.
   const end = (): void => {
     if (ending) return;
     ending = true;
-    ctx.proxy.disconnect();
-    void chain
-      .then(() => ctx.proxy.close())
+    const proxyEnd = ctx.proxy.end();
+    void Promise.all([proxyEnd, chain])
       .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
-      .finally(() => process.exit(0));
+      .finally(async () => {
+        try { await ctx.proxy.end(); }
+        catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); }
+        finally { process.exit(0); }
+      });
   };
   const stop = (): void => {
     setTimeout(() => process.exit(0), 15_000).unref();
     end();
   };
   process.stdin.on("end", end);
-  process.once("SIGTERM", stop);
-  process.once("SIGINT", stop);
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
+  process.on("SIGHUP", stop);
   await new Promise(() => {});
 }
 
-async function handle(body: string, ctx: Context): Promise<void> {
-  const msg = JSON.parse(body) as Rpc;
+async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.method === "initialize") {
     send({
       jsonrpc: "2.0",

@@ -48,6 +48,8 @@ export interface Settings extends HealSettings {
   chromeProfile?: string;
   /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */
   chromeProfileExtensions?: Record<string, boolean>;
+  /** Keep the pass-through window after agent exit. Local, off by default. */
+  keepAgentBrowserOpen?: boolean;
 }
 
 export interface StoredRun {
