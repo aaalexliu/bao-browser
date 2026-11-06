@@ -60,7 +60,7 @@ test("retired repair requests fail clearly without starting capture or changing 
     const current = await state(app.port);
     assert.equal(current.teach.phase, "idle");
     assert.equal(current.recording, false);
-    assert.deepEqual(app.library.list(), []);
+    assert.deepEqual(app.library.list().workflows, []);
   } finally {
     await app.close();
     rmSync(home, { recursive: true, force: true });
@@ -217,7 +217,7 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     await post(app.port, "/api/sessions/drive", { click: "#save-note" });
     await post(app.port, "/api/teach/discard");
     assert.equal((await state(app.port)).teach.phase, "idle");
-    assert.equal(app.library.list().some((workflow) => workflow.name === "Taught workflow" && workflow.steps.length === 1), false);
+    assert.equal(app.library.list().workflows.some((workflow) => workflow.name === "Taught workflow" && workflow.steps.length === 1), false);
   } finally {
     await browser.close();
     await app.close();

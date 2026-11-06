@@ -113,6 +113,22 @@ const DEFAULT_SETTINGS: Settings = {
   circuitWindowMs: DEFAULT_CIRCUIT_WINDOW_MS,
 };
 
+export interface DamagedWorkflow {
+  file: string;
+  reason: string;
+}
+
+export interface WorkflowListing {
+  workflows: WorkflowV2[];
+  damagedWorkflows: DamagedWorkflow[];
+}
+
+class WorkflowFileError extends Error {
+  constructor(id: string, readonly reason: string) {
+    super(`workflow ${id} is invalid: ${reason}`);
+  }
+}
+
 export class Library {
   constructor(readonly root: string) {
     mkdirSync(path.join(root, "workflows"), { recursive: true });
@@ -122,18 +138,46 @@ export class Library {
     mkdirSync(path.join(root, "promotions"), { recursive: true });
   }
 
-  list(): WorkflowV2[] {
-    return readdirSync(path.join(this.root, "workflows"))
-      .filter((name) => name.endsWith(".json"))
-      .map((name) => this.read(name.replace(/\.json$/, "")))
-      .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
+  list(): WorkflowListing {
+    const workflows: WorkflowV2[] = [];
+    const damagedWorkflows: DamagedWorkflow[] = [];
+    for (const file of readdirSync(path.join(this.root, "workflows")).sort()) {
+      if (!file.endsWith(".json")) continue;
+      try {
+        workflows.push(this.read(file.replace(/\.json$/, "")));
+      } catch (error) {
+        damagedWorkflows.push({
+          file,
+          reason: error instanceof WorkflowFileError ? error.reason : "The file could not be read. Check its name and permissions.",
+        });
+      }
+    }
+    workflows.sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
+    return { workflows, damagedWorkflows };
   }
 
   read(id: string): WorkflowV2 {
-    const raw = JSON.parse(readFileSync(this.file(id), "utf8")) as unknown;
-    const doc = migrate(raw);
-    const errors = validateWorkflow(doc);
-    if (errors.length) throw new Error(`workflow ${id} is invalid: ${errors.join(", ")}`);
+    const text = readFileSync(this.file(id), "utf8");
+    let raw: unknown;
+    try { raw = JSON.parse(text) as unknown; }
+    catch { throw new WorkflowFileError(id, "The file is not valid JSON."); }
+    let doc: WorkflowV2;
+    let errors: string[];
+    try {
+      doc = migrate(raw);
+      errors = validateWorkflow(doc);
+    } catch {
+      throw new WorkflowFileError(id, "The workflow has an invalid structure.");
+    }
+    if (errors.length) {
+      const reasons = errors.map((error) => {
+        if (error === "name") return "The workflow name is missing.";
+        if (error === "id") return "The workflow ID is missing.";
+        if (error === "driver") return "The workflow driver is not supported.";
+        return `Workflow check failed: ${error}.`;
+      });
+      throw new WorkflowFileError(id, reasons.join(" "));
+    }
     return doc;
   }
 

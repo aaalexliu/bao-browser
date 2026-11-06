@@ -50,7 +50,10 @@ async function main(): Promise<void> {
     const notices: string[] = [];
     const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });
     for (const line of notices) console.error(line);
-    console.log(JSON.stringify(notices.length ? { home, notices } : { home }));
+    console.log(JSON.stringify({
+      home,
+      ...(notices.length ? { notices } : {}),
+    }));
     return;
   }
   if (cmd === "serve" || !cmd) {

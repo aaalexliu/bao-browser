@@ -10,7 +10,7 @@ export PATH="$(dirname "$(nvm which node)"):$PATH"
 
 `npm run build:desktop` compiles `desktop/` to `desktop/dist`. `npm run bao` then runs `node desktop/dist/desktop/src/app/cli.js` and skips `tsc`. A second `npm run build:desktop` picks up TypeScript edits.
 
-`bao serve` listens on port 4787 unless `BAO_PORT` is set. It prints `bao <port> home <path>`. `bao status` prints the same home as JSON and starts nothing.
+`bao serve` listens on port 4787 unless `BAO_PORT` is set. It prints `bao <port> home <path>`. `bao status` prints the same home as JSON and starts nothing. See [Library recovery](v1.md#install-and-run) for damaged files and [MCP](bao.md#mcp) for search results.
 
 The CLI, `bao mcp`, and the installed Mac app pick the library with one resolver, `desktop/src/library-home.cjs`. `--home`, then `BAO_HOME`, is used as given, even when that directory is empty. Without either, the home is `~/Library/Application Support/bao` on macOS and `~/.local/share/bao` elsewhere. When that directory has no workflows or library data, Bao keeps an older library that has them: `~/.local/share/bao` on macOS, or `.bao-mcp` in the working directory. It names both directories on stderr when it does.
 

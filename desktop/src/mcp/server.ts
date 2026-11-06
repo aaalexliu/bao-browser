@@ -177,6 +177,7 @@ async function callTool(library: Library, libraries: string[] | undefined, name:
   if (name === "search_workflows") {
     const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
     return withLibraries({
+      damagedWorkflows: library.list().damagedWorkflows,
       hits: await searchWorkflows(library, String(args.query || ""), {
         source: stringArg(filters.source),
         site: stringArg(filters.site),

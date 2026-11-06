@@ -489,7 +489,7 @@ test("proxy saves raw commands, native errors, timing, screenshots, partial runs
       if (step.native.command === "close") assert.match(step.afterShotError!, /Session closed/);
       else assert.deepEqual(await readFile(path.join(library.root, "shots", "runs", saved.id, step.afterShot!)), png);
     }
-    assert.equal(library.list().length, 0, "recording does not create a workflow");
+    assert.equal(library.list().workflows.length, 0, "recording does not create a workflow");
     await f.proxy.execute("open");
     f.proxy.disconnect();
     await f.proxy.close();

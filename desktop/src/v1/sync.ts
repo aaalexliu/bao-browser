@@ -11,7 +11,7 @@ import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import { shotFile, workflowShotName } from "./shots";
-import { Library, type Settings } from "./store";
+import { Library, type DamagedWorkflow, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
 
 export const SYNC_CATEGORIES = ["workflows", "run history", "heal records", "settings"] as const;
@@ -75,6 +75,7 @@ export interface SyncState {
 }
 
 export interface SyncView {
+  damagedWorkflows: DamagedWorkflow[];
   server: string;
   deviceId?: string;
   deviceName?: string;
@@ -153,8 +154,9 @@ export function saveState(root: string, state: SyncState): void {
 export function syncStatus(library: Library): SyncView {
   const state = loadState(library.root);
   const buckets = syncBuckets(library, state);
-  const catchingUp = Boolean(state.catchingUp) || buckets.some((bucket) => bucket.enabled && bucket.local < bucket.cloud);
+  const catchingUp = Boolean(state.catchingUp) || hasSyncShortfall(library, state, buckets);
   return {
+    damagedWorkflows: library.list().damagedWorkflows,
     server: state.server,
     deviceId: state.deviceId,
     deviceName: state.deviceName,
@@ -223,6 +225,8 @@ export async function syncAll(library: Library, mode: "sync" | "push" | "pull" =
 
 async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Promise<SyncView> {
   const state = loadState(library.root);
+  const damagedIds = damagedWorkflowIds(library);
+  state.outbox = (state.outbox ?? []).filter((item) => !damagedIds.has(item.id));
   const snapshot = await loadSnapshot(state);
   if (snapshot) {
     state.cloudCounts = normalizeCounts(snapshot.counts);
@@ -246,8 +250,7 @@ async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Pro
     await pushSettings(library, state);
   }
   await refreshAccount(state);
-  const local = localSyncCounts(library);
-  state.catchingUp = SYNC_CATEGORIES.some((category) => categoryOn(state, category) && local[category] < (state.cloudCounts?.[category] ?? 0));
+  state.catchingUp = hasSyncShortfall(library, state);
   state.lastSyncedAt = new Date().toISOString();
   state.lastResult = refused
     ? `Push refused: ${refused}`
@@ -466,9 +469,20 @@ function syncBuckets(library: Library, state: SyncState): SyncBucket[] {
   }));
 }
 
+function damagedWorkflowIds(library: Library): Set<string> {
+  const listing = library.list();
+  const readableIds = new Set(listing.workflows.map((doc) => doc.id));
+  return new Set(listing.damagedWorkflows.map((item) => item.file.slice(0, -5)).filter((id) => !readableIds.has(id)));
+}
+
+function hasSyncShortfall(library: Library, state: SyncState, buckets = syncBuckets(library, state)): boolean {
+  const knownDamaged = [...damagedWorkflowIds(library)].filter((id) => Object.hasOwn(state.workflows, id)).length;
+  return buckets.some((bucket) => bucket.enabled && bucket.local + (bucket.category === "workflows" ? knownDamaged : 0) < bucket.cloud);
+}
+
 function localSyncCounts(library: Library): Record<SyncCategory, number> {
   return {
-    workflows: library.list().length,
+    workflows: library.list().workflows.length,
     "run history": library.listRuns().filter((run) => run.kind !== "capture").length,
     "heal records": countJson(path.join(library.root, "heals")),
     settings: existsSync(path.join(library.root, "settings.json")) ? 1 : 0,
@@ -531,7 +545,7 @@ async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: 
   let pushed = 0;
   let conflicts = 0;
   let refused = "";
-  for (const doc of library.list()) {
+  for (const doc of library.list().workflows) {
     const result = await pushDocument(library, state, doc);
     if (result.kind === "pushed") pushed += 1;
     if (result.kind === "conflict") conflicts += 1;
@@ -608,6 +622,7 @@ function adoptIfNeeded(library: Library, state: SyncState, id: string, remote: P
   try {
     local = library.read(id);
   } catch {
+    if (existsSync(path.join(library.root, "workflows", `${safeId(id)}.json`))) return "skip";
     local = undefined;
   }
   const dirty = local ? !known || known.hash !== docHash(local) : false;
@@ -653,8 +668,9 @@ function stash(
 }
 
 function enqueueDirty(library: Library, state: SyncState): void {
-  const outbox = [...(state.outbox ?? [])];
-  for (const doc of library.list()) {
+  const damagedIds = damagedWorkflowIds(library);
+  const outbox = (state.outbox ?? []).filter((item) => !damagedIds.has(item.id));
+  for (const doc of library.list().workflows) {
     const hash = docHash(doc);
     const known = state.workflows[doc.id];
     if (known && known.hash === hash) continue;
@@ -701,7 +717,7 @@ async function refreshAccount(state: SyncState): Promise<void> {
 
 function localCategoryCounts(library: Library): CategoryCount[] {
   const counts = new Map<string, number>();
-  for (const doc of library.list()) {
+  for (const doc of library.list().workflows) {
     const category = categoryFor(doc);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }

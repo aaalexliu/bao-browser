@@ -1166,7 +1166,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   </article>`;
 }
 
-export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = [], splits: string[] = [], home = ""): string {
+export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = [], splits: string[] = [], home = "", damagedWorkflows: import("../v1/store").DamagedWorkflow[] = []): string {
   const byWorkflow = new Map<string, RunSummary[]>();
   for (const run of runs) {
     const list = byWorkflow.get(run.workflowId) || [];
@@ -1204,12 +1204,22 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
       </div>
     </article>`;
   }).join("");
-  const empty = `<div class="empty" id="library-empty"><strong>No workflows yet</strong>Capture a task, or import a workflow JSON file.</div>`;
+  const empty = damagedWorkflows.length
+    ? `<div class="empty" id="library-empty"><strong>No workflows can open</strong>Restore a saved copy, or record a task again.</div>`
+    : `<div class="empty" id="library-empty"><strong>No workflows yet</strong>Capture a task, or import a workflow JSON file.</div>`;
+  const damaged = damagedWorkflows.length ? `<aside id="library-damaged" aria-labelledby="library-damaged-title" role="note">
+    <h3 id="library-damaged-title">${damagedWorkflows.length === 1 ? "Bao can’t open one workflow" : `Bao can’t open ${damagedWorkflows.length} workflows`}</h3>
+    <p>${workflows.length ? "Your other workflows are fine. " : ""}The files below need attention. Bao has not changed them.</p>
+    <ul>${damagedWorkflows.map(({ file, reason }) => `<li><strong>${esc(file)}</strong><p>${esc(reason)}</p><p class="damaged-path">${esc(home ? `${home}/workflows/${file}` : `workflows/${file}`)}</p></li>`).join("")}</ul>
+    <p>In Finder, choose Go &gt; Go to Folder to find the file above. Restore a backup, fix the file, or remove it from the workflows folder. You can also record the task again.</p>
+    <button type="button" id="library-record-again" data-screen="capture">Record again</button>
+  </aside>` : "";
   const split = splits.length ? `<p id="library-split">${splits.map((line) => esc(line)).join("<br>")}</p>` : "";
   const homeLine = home ? `<p class="meta" id="library-home">${esc(home)}</p>` : "";
   return `<section id="library">
     <header><h2>Library</h2><p class="lede">Workflows you can run again.</p>${homeLine}</header>
     ${split}
+    ${damaged}
     <div class="tools">
       <input id="library-search" type="search" placeholder="Search workflows" aria-label="Search workflows">
       <button type="button" id="palette-open" class="kbd">⌘K</button>
