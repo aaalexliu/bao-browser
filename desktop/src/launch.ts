@@ -276,9 +276,10 @@ export function guiChromeLaunchArgs(
 }
 
 export function stopOwnedChrome(child: ChildProcess, pid: number): void {
+  if (child.exitCode != null || child.signalCode != null) return;
   if (child.spawnfile === "/usr/bin/open") {
     try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
-  } else if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
+  } else child.kill("SIGTERM");
 }
 
 /** Trust this launch's stderr endpoint, not whichever listener won the port. */
@@ -287,7 +288,10 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
   const stderrFile = path.join(userDataDir, ".bao-chrome-startup.stderr");
   const chromeArgs = args(port);
   const guiArgs = guiChromeLaunchArgs(exe, chromeArgs, stderrFile, childHome ?? userInfo().homedir);
-  if (guiArgs) rmSync(stderrFile, { force: true });
+  if (guiArgs) {
+    assertChromeProfileAvailable(userDataDir);
+    rmSync(stderrFile, { force: true });
+  }
   const child = spawn(guiArgs ? "/usr/bin/open" : exe, guiArgs ?? chromeArgs, {
     stdio: ["ignore", "ignore", "pipe"], detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
   });
@@ -312,8 +316,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
       if (child.exitCode != null || child.signalCode != null) {
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
-      const pid = guiArgs && browserPath ? listProcesses().find((row) => row.command.startsWith(`${exe} `)
-        && userDataDirArg(row.command) === userDataDir)?.pid : child.pid;
+      const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, listProcesses()) : child.pid;
       if (browserPath && pid) {
         const text = `${port}\n${browserPath}\n`;
         parseDevToolsActivePort(text);
@@ -729,6 +732,15 @@ export interface ProcessRow {
   pid: number;
   ppid: number;
   command: string;
+}
+
+export function guiChromeBrowserPid(exe: string, userDataDir: string, rows: readonly ProcessRow[]): number | undefined {
+  return rows.find((row) => row.command.startsWith(`${exe} `)
+    && userDataDirArg(row.command) === userDataDir)?.pid;
+}
+
+export function assertChromeProfileAvailable(userDataDir: string): void {
+  if (pidsForDataDir(userDataDir).length) throw new Error(`Chrome profile already open: ${userDataDir}`);
 }
 
 /** The child we spawned. The binary path is not the profile. */
