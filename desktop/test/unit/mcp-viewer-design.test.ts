@@ -231,7 +231,7 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
       await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: { _meta: { baoPictures: { runId: run.id, stepId: "project", pictures: [] } } } });
-      assert.equal(await page.getByText(/No shareable pictures/).count(), 1);
+      assert.equal(await page.getByText(/No pictures found/).count(), 1);
       let count = 2;
       for (const reply of [{ result: { _meta: { baoPictures: { runId: "run-other", stepId: "project", pictures: [] } } } }, { error: { message: "Stale picture read failed" } }]) {
         await deliver(page, view({ ...receipt, run: { ...run, id: "run-other" } }));

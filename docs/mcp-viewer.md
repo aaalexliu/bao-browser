@@ -17,22 +17,21 @@ The viewer checks host capabilities for further reads, theme, locale, and full-s
 
 Read errors keep the loaded receipt or history visible. For a failed read, try **Refresh**; if it keeps failing, open Bao desktop for local details. If the viewer cannot load, reopen it from the conversation. When the host cannot read more data or does not forward viewer data, use the text receipt or Bao desktop instead. Theme and size updates preserve keyboard focus and the open or closed state of **Workflow steps**.
 
-## Data and privacy
+## Run evidence
 
 The viewer reads the same Library files as Bao desktop. It has no second database. Run and workflow reads cap each record at 2 MiB. History pages cap run reads at five records. Detail pages cap run steps and workflow steps at twenty each. Unavailable or oversized history records consume a page slot and show a skipped-record count.
 
-The projection omits input values, raw snapshots, native command arguments and output, dedicated local asset path fields, video, and resume tokens. Ordinary step text may contain local paths. It shows model-call counts as unknown when a record does not track them. A recorded zero counts Bao model calls, not calls made by an external coding agent. Browser captures without a saved workflow still have a receipt; their detailed evidence stays in Bao desktop.
+The projection omits input values, raw snapshots, native command arguments and output, dedicated local asset path fields, video, and resume tokens. Ordinary step text may contain local paths. It shows model-call counts as unknown when a record does not track them. A recorded zero counts Bao model calls, not calls made by an external coding agent. Browser captures without a saved workflow still have a receipt with their stored step reasons and available pictures. Detailed evidence in Bao desktop also exposes native command arguments and output.
 
-Pictures never load with the initial receipt or history. Opening a step's pictures sends those pictures from the Mac to the host app. The host may retain them under its own data policy. Image bytes appear only in tool-result `_meta`, not in the model-visible `content` or `structuredContent`.
+The stored run supplies step reasons, read-back receipts, and owner requests. The current workflow supplies optional labels, not evidence permissions. Editing or deleting a workflow does not hide a past run's evidence. Secret, file, sensitive, and unclassified steps use the same evidence path as every other recorded step. Bao cannot restore values or pictures that an older capture or save discarded.
 
-Picture reads use the same sensitive-step and secret-input exclusion policy as Bao's shared evidence export. Unknown steps and captures without a workflow cannot share pictures. Bao derives filenames on the server, refuses linked files and directories within the Library, and caps each picture at 512 KiB. A request returns at most two PNG/JPEG pictures. Missing, invalid, linked, private, or oversized pictures stay local. This policy does not guarantee that every visible pixel is free of other private page content.
+Pictures load when the owner opens them, not with the initial receipt or history. Image bytes appear in tool-result `_meta`, which the host app renders. Picture reads require a step recorded in that run, not a current workflow definition. Bao reads stored or derived filenames within the run's picture directory and caps each picture at 512 KiB. A request returns at most two PNG/JPEG pictures. Missing, invalid, linked, or oversized pictures remain unavailable.
 
 The viewer offers no run, resume, edit, approve, or browser-control action. In UI-capable connections, existing tools are model-only; only the new reader tools are callable by the iframe. The host enforces tool visibility. This is not a new authorization scheme or a change to the model's existing tool permissions.
 
 ## Known gaps
 
 - If a host advertises full-screen mode but the request fails, the receipt does not fall back to an expanded inline view. This remains deferred.
-- Runs of a workflow edited after the run withhold step evidence and pictures in MCP Apps hosts. Missing workflows and unknown start or file times also withhold that evidence. Run summaries, step labels and statuses, and available workflow steps remain visible. The viewer compares a checked workflow-file snapshot with the existing recording-start timestamp, which must precede the first step and save time. Runs without that timing withhold the same evidence; `run.at` is a save time, not a start time. Durable per-run privacy marks remain a possible follow-up.
 
 ## Follow-ups
 

@@ -9,6 +9,46 @@ import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
 
+test("Runs shows stored step reasons after workflow edits or deletion in both themes", { timeout: 30_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-runs-evidence-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage();
+  const workflow: WorkflowV2 = {
+    schema: "bao.workflow/v2", version: 2, id: "edited", createdAt: 1, name: "Review report", startUrl: "/fixture", inputs: [],
+    steps: [{ id: "review", index: 0, action: "click", label: "Review report", sensitive: true, surface: "dom", timeoutMs: 1000 }],
+  };
+  try {
+    app.library.save(workflow);
+    app.library.saveRun({ id: "historical", workflowId: workflow.id, status: "paused", at: Date.now() - 1000, heals: [],
+      steps: [{ id: "review", status: "paused", reason: "The saved report needs review." }],
+      envelope: { status: "needs_human", step: "review", ask: "Review the report total.", reason: "Waiting for your review." } });
+    app.library.rename(workflow.id, "Review report after editing");
+    for (const theme of ["light", "dark"]) {
+      await page.goto(`http://127.0.0.1:${app.port}/`);
+      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.reload();
+      await page.locator('[data-open-run="historical"]').first().click();
+      await page.locator("#run-receipt").waitFor();
+      assert.match(await page.locator(".receipt-steps").innerText(), /The saved report needs review/);
+      assert.match(await page.locator(".receipt-handoff").innerText(), /Review the report total/);
+      assert.match(await page.locator("#run-receipt").innerText(), /Waiting for your review/);
+      assert.doesNotMatch(await page.locator("#run-receipt").innerText(), /Details are hidden/);
+    }
+    app.library.remove(workflow.id);
+    await page.reload();
+    await page.locator('[data-open-run="historical"]').first().click();
+    await page.locator("#run-receipt").waitFor();
+    assert.match(await page.locator(".receipt-steps").innerText(), /The saved report needs review/);
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("Runs counts waiting runs, undecided heals and failures without changing records", () => {
   const runs = [
     { id: "waiting", workflowId: "wf", status: "paused", heals: [] },

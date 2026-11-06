@@ -19,7 +19,7 @@ export const VIEWER_TOOLS = [
     annotations, _meta: appOnly,
   },
   {
-    name: "open_step_pictures", description: "Read pictures only after the owner clicks Open step pictures. Sends at most two redacted-policy pictures, each at most 512 KiB, to the host app, in UI-only metadata. Sensitive or unclassified steps are withheld.",
+    name: "open_step_pictures", description: "Read a recorded step's pictures after the owner clicks Open step pictures. Sends at most two PNG/JPEG pictures, each at most 512 KiB, to the host app in UI-only metadata.",
     inputSchema: { type: "object", properties: { run_id: id, step_id: id }, required: ["run_id", "step_id"], additionalProperties: false },
     annotations, _meta: appOnly,
   },
@@ -33,7 +33,7 @@ export function callViewerTool(library: Library, name: string, args: Record<stri
   if (name === "open_step_pictures") {
     const data = openStepPictures(library, args);
     return {
-      content: [{ type: "text", text: `${data.pictures.length} shareable step pictures opened for ${data.runId}/${data.stepId}. Pictures go to the host app, not the model-visible result. Missing, linked, private, invalid, or oversized pictures are withheld.` }],
+      content: [{ type: "text", text: `${data.pictures.length} step pictures opened for ${data.runId}/${data.stepId}. Pictures go to the host app, not the model-visible result. Missing, linked, invalid, or oversized pictures are unavailable.` }],
       _meta: { baoPictures: data }, isError: false,
     };
   }
