@@ -17,7 +17,7 @@ Double-click `/Applications/Bao.app` in Finder. No Terminal window, and no `BAO_
 
 Node is not copied into the app. The machine that builds Bao already has Node 24, and a second runtime inside the bundle would be another binary to sign. `codesign --deep` on `Bao.app` would change the helper CDHash and drop the grant. Leave the helper's signature alone.
 
-If Node 24 is not found, Bao shows a native alert that says to install it. If the server never accepts a connection, Bao shows an alert and does not open the window. Opening Bao starts no Chrome or Chromium process. Its UI runs in a native `WKWebView` owned by Bao.app. Closing the window keeps Bao open; clicking its Dock icon reopens that window. Quit Bao stops the local server. External links open in the default browser.
+If Node 24 is not found, Bao shows a native alert that says to install it. If the server never accepts a connection, Bao shows an alert and does not open the window. Opening Bao starts no Chrome or Chromium process. Its UI runs in a native `WKWebView` owned by Bao.app. Closing the window keeps Bao open; clicking its Dock icon reopens that window. Quit Bao stops the local server. Clicked external HTTP and HTTPS links open in the default browser; `mailto` links open in the default mail app. Redirects and scripts cannot open another app.
 
 The default home is `~/Library/Application Support/bao`. Do not delete it. The default port is `4787`. Leave `BAO_HOME` and `BAO_PORT` unset for the installed app.
 
