@@ -223,6 +223,44 @@ test("viewer design survives long labels, host updates, errors and text resize",
     }
   });
 
+  await t.test("both paging directions focus and reveal the changed section of a long receipt", async () => {
+    const page = await mount(browser, { displayMode: "fullscreen" });
+    try {
+      const longReceipt = (stepOffset: number, workflowOffset: number) => ({
+        ...receipt,
+        reason: "Recorded context for this run. ".repeat(200),
+        stepOffset, nextStepOffset: stepOffset + 20,
+        steps: Array.from({ length: 20 }, (_, index) => ({
+          id: `step-${stepOffset + index}`, index: stepOffset + index + 1,
+          label: `Recorded step ${stepOffset + index + 1}`, status: "passed", picturesAllowed: false,
+        })),
+        workflow: {
+          offset: workflowOffset, nextOffset: workflowOffset + 20,
+          steps: Array.from({ length: 20 }, (_, index) => ({ label: `Workflow step ${workflowOffset + index + 1}`, action: "click" })),
+        },
+      });
+      let count = 0;
+      for (const [label, target, stepOffset, workflowOffset] of [
+        ["Next steps", "#step-results", 40, 20],
+        ["Previous steps", "#step-results", 0, 20],
+        ["Next workflow steps", "#workflow-steps", 20, 40],
+        ["Previous workflow steps", "#workflow-steps", 20, 0],
+      ] as const) {
+        await deliver(page, view(longReceipt(20, 20)));
+        await page.getByRole("button", { name: label, exact: true }).click();
+        await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, ++count), result: { _meta: { baoViewer: longReceipt(stepOffset, workflowOffset) } } });
+        await page.waitForFunction((selector) => document.querySelector(selector) === document.activeElement, target);
+        const position = await page.locator(target).evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          return { top: bounds.top, bottom: bounds.bottom, height: innerHeight, scroll: scrollY };
+        });
+        assert.ok(position.top >= 0 && position.bottom <= position.height, `${label} must reveal its changed section`);
+        assert.ok(position.scroll > 0, `${label} must not jump to the run heading`);
+        assert.equal(await page.locator("h1").evaluate((node) => node.getBoundingClientRect().bottom < 0), true);
+      }
+    } finally { await page.close(); }
+  });
+
   await t.test("navigation and picture reads leave focus at the changed content", async () => {
     const page = await mount(browser);
     try {

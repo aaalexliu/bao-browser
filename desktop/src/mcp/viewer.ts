@@ -96,7 +96,7 @@ function viewerMain(): void {
     if (reply.isError) throw new Error(reply.content?.[0]?.text || "Bao could not read this record.");
     return reply;
   }
-  async function show(name: string, args: Record<string, unknown>, automatic = false): Promise<void> {
+  async function show(name: string, args: Record<string, unknown>, automatic = false, focusTarget = "h1"): Promise<void> {
     const version = ++viewRequest;
     if (!automatic) userRequest = version;
     try {
@@ -105,7 +105,7 @@ function viewerMain(): void {
       if (!reply._meta?.baoViewer) throw new HostDataError("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
       current = reply._meta.baoViewer;
       clearError(); render();
-      if (!automatic) focusContent();
+      if (!automatic) focusContent(focusTarget);
     } catch (err) {
       if (version === viewRequest) throw err;
     } finally {
@@ -113,8 +113,8 @@ function viewerMain(): void {
     }
   }
   const history = () => show("list_runs", {});
-  async function inspect(runId: string, stepOffset = 0, workflowOffset = 0): Promise<void> {
-    await show("inspect_run", { run_id: runId, step_offset: stepOffset, workflow_offset: workflowOffset });
+  async function inspect(runId: string, stepOffset = 0, workflowOffset = 0, focusTarget = "h1"): Promise<void> {
+    await show("inspect_run", { run_id: runId, step_offset: stepOffset, workflow_offset: workflowOffset }, false, focusTarget);
   }
   function applyContext(): void {
     document.documentElement.dataset.theme = context.theme === "dark" ? "dark" : "light";
@@ -219,18 +219,19 @@ function viewerMain(): void {
           root.append(section);
         }
         const pages = el("div", undefined, "actions");
-        if (view.stepOffset) pages.append(button("Previous steps", () => inspect(view.run.id, Math.max(0, view.stepOffset - 20), view.workflow?.offset)));
-        if (view.nextStepOffset !== null) pages.append(button("Next steps", () => inspect(view.run.id, view.nextStepOffset!, view.workflow?.offset)));
+        if (view.stepOffset) pages.append(button("Previous steps", () => inspect(view.run.id, Math.max(0, view.stepOffset - 20), view.workflow?.offset, "#step-results")));
+        if (view.nextStepOffset !== null) pages.append(button("Next steps", () => inspect(view.run.id, view.nextStepOffset!, view.workflow?.offset, "#step-results")));
         root.append(pages);
         const workflow = el("details"); workflow.open = true;
-        workflow.append(el("summary", "Workflow steps"));
+        const workflowHeading = el("summary", "Workflow steps"); workflowHeading.id = "workflow-steps";
+        workflow.append(workflowHeading);
         if (!view.workflow) workflow.append(el("p", "No saved workflow is available for this run. Browser captures do not create one.", "muted"));
         else {
           const list = el("ol"); list.start = view.workflow.offset + 1;
           for (const step of view.workflow.steps) list.append(el("li", `${step.label || "Step"} · ${step.action}`));
           workflow.append(list);
-          if (view.workflow.offset) workflow.append(button("Previous workflow steps", () => inspect(view.run.id, view.stepOffset, Math.max(0, view.workflow!.offset - 20))));
-          if (view.workflow.nextOffset !== null) workflow.append(button("Next workflow steps", () => inspect(view.run.id, view.stepOffset, view.workflow!.nextOffset!)));
+          if (view.workflow.offset) workflow.append(button("Previous workflow steps", () => inspect(view.run.id, view.stepOffset, Math.max(0, view.workflow!.offset - 20), "#workflow-steps")));
+          if (view.workflow.nextOffset !== null) workflow.append(button("Next workflow steps", () => inspect(view.run.id, view.stepOffset, view.workflow!.nextOffset!, "#workflow-steps")));
         }
         root.append(workflow);
       }
