@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { rail, runAttention, runsList } from "../../src/app/views";
+import { rail, runAttention, runsList, runWaitLeft } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
+import { makeAsk } from "../../src/v1/human-ask";
 
 test("Runs shows stored step reasons after workflow edits or deletion in both themes", { timeout: 30_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-evidence-"));
@@ -76,7 +77,37 @@ test("Runs rows use filled glyphs, stop reasons and elapsed time without invente
   assert.match(side, /data-count="1"/);
   assert.match(side, /1 run is waiting for you/);
   assert.match(side, /1 workflow can’t open/);
-  assert.match(side, /Optional Mac permissions not granted/);
+  assert.doesNotMatch(side, /Optional Mac permissions not granted/);
+});
+
+test("active asks share attention counts, open Live and use numeric deadlines only", () => {
+  const now = Date.UTC(2026, 10, 6, 12);
+  const ask = { ...makeAsk({ kind: "confirm", workflowId: "wf", workflowName: "Reserve", stepId: "s", stepIndex: 1, stepCount: 1, label: "Reserve", timeoutMs: 120_000, now }), runId: "active" };
+  const runs = [{ id: "failed", workflowId: "wf", status: "failed" }];
+  assert.equal(runAttention(runs, ask).length, 2);
+  assert.match(rail({ runs, activeAsk: ask }), /data-count="2"/);
+  const projected = runsList(runs, [], "", now, ask);
+  assert.match(projected, /data-screen="live" aria-label="Reserve"/);
+  assert.doesNotMatch(projected, /data-open-run="active"/);
+  assert.match(projected, /2 min left/);
+  assert.match(rail({ replaying: true }), />Running</);
+  assert.match(rail({ recording: true }), />Recording</);
+  const waiting = { id: "active", workflowId: "wf", status: "paused", at: now, envelope: { status: "needs_human", ask: "Press Reserve", deadline: "Nov 6, 12:30 PM UTC" } };
+  assert.equal(runAttention([waiting], ask).length, 1);
+  assert.equal(runAttention([], { ...ask, runId: undefined }).length, 1);
+  assert.match(runsList([waiting], [], "", now, ask), /2 min left/);
+  const stored = runsList([waiting], [], "", now);
+  assert.match(stored, /Nov 6, 12:30 PM UTC/);
+  assert.doesNotMatch(stored, /min left|data-run-deadline|datetime=/);
+  assert.match(stored, /<time[^>]*>\d{1,2}:\d{2} [AP]M (?:[A-Z]{2,5}|GMT[+-][\d:]+)</);
+  assert.match(runsList([waiting], [], "", now, { ...ask, runId: "other" }), /Nov 6, 12:30 PM UTC/);
+  assert.equal(runWaitLeft(now + 120_000, now + 60_000), "1 min left");
+  assert.equal(runWaitLeft(now, now + 60_000), "0 min left");
+  for (const status of ["timed-out", "stopped", "failed"]) {
+    const ended = runsList([{ ...waiting, status, envelope: { ...waiting.envelope, status, reason: "Owner wait ended." } }], [], "", now);
+    assert.match(ended, /Owner wait ended\./);
+    assert.doesNotMatch(ended, /Press Reserve|Nov 6/);
+  }
 });
 
 test("Runs first load opens the top Needs-you run, else newest, without replacing a chosen run", { timeout: 60_000 }, async () => {
@@ -102,8 +133,12 @@ test("Runs first load opens the top Needs-you run, else newest, without replacin
     app.library.saveRun({ id: "another", workflowId: "agent-browser", status: "paused", at: 400, steps: [], heals: [] });
     await page.waitForFunction(() => document.querySelector('#attention')?.getAttribute('data-count') === '2');
     assert.equal(await page.locator('#runs [aria-current=true]').first().getAttribute("data-open-run"), "newest");
+    await page.setViewportSize({ width: 720, height: 820 });
+    await page.locator('#sidebar-toggle').click();
     await page.locator('.rail-foot').click();
+    assert.equal(await page.locator('#sidebar-dialog').evaluate((dialog) => (dialog as HTMLDialogElement).open), false);
     assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "another");
+    await page.waitForFunction(() => document.activeElement?.id === "main");
     await page.locator('.runs-record').click();
     await page.locator('#start').waitFor();
     assert.equal(await page.locator('#runs-welcome').count(), 0);

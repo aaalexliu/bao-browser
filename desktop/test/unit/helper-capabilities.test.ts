@@ -119,7 +119,7 @@ test("only current optional native capabilities remain, independent of Chrome Au
       assert.equal(helper.capabilities[0].status, screenCapture ? "window capture ready" : "optional window capture needs Screen Recording (not needed for Chrome)");
       assert.equal(helper.capabilities[1].status, accessibility && screenCapture ? "MCP driver ready" : "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)");
       const html = rail({ helper });
-      assert.equal(html.includes('aria-label="Optional Mac permissions not granted"'), !accessibility || !screenCapture);
+      assert.equal(html.includes('aria-label="Optional Mac permissions not granted"'), false);
       assert.match(html, /Nothing running/);
       assert.doesNotMatch(html, /needs permission|AX press|live Chrome|perm-dot|Automation|Screen Recording|helper-jobs/);
     }

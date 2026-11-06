@@ -1,6 +1,6 @@
 // Desktop window. Talks only to this machine's bao server.
 
-import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { formatWait } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
 import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
@@ -218,9 +218,13 @@ async function loadState(): Promise<void> {
     }
   }
   if (firstLoad && screen === "runs" && !opened) {
-    openRun = runAttention(state.runs || [])[0]?.run.id
-      || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id || "";
-    if (openRun) screen = "run";
+    const first = runAttention(state.runs || [], state.activeAsk)[0];
+    if (first?.live) screen = "live";
+    else {
+      openRun = first?.run.id
+        || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id || "";
+      if (openRun) screen = "run";
+    }
   }
   const key = JSON.stringify({
     recording: state.recording,
@@ -633,6 +637,8 @@ function bind(): void {
   });
   document.querySelectorAll("[data-open-run]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
+      const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+      if (sidebar.open) sidebar.close("navigate");
       selectRun((btn as HTMLButtonElement).dataset.openRun || "");
       renderKey = "";
       render();
@@ -1728,7 +1734,7 @@ function tickClock(): void {
     if (deadline) node.textContent = formatWait(Date.now(), deadline, node.dataset.effect || "run stops, nothing applied");
   }
   for (const node of document.querySelectorAll<HTMLElement>("[data-run-deadline]")) {
-    node.textContent = runWaitLeft(node.dataset.runDeadline || "");
+    node.textContent = runWaitLeft(Number(node.dataset.runDeadline));
   }
   const timer = document.getElementById("rec-timer");
   if (!timer?.dataset.since) return;
@@ -1739,12 +1745,7 @@ function tickClock(): void {
 }
 
 function paintDockBadge(): void {
-  const count = attentionCount({
-    ask: state.activeAsk,
-    importPhase: state.pendingImport?.phase,
-    pendingHeals: pendingHealCount(state.runs || []),
-    reviews: reviewItems(state.runs).length,
-  });
+  const count = runAttention(state.runs || [], state.activeAsk).length;
   document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);

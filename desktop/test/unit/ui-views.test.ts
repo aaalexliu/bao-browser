@@ -194,7 +194,7 @@ test("login act bar offers continue and does not press the site button", () => {
   assert.match(html, /still signed out/);
 });
 
-test("sidebar count covers the Needs-you runs, not unrelated asks or imports", () => {
+test("sidebar count covers Needs-you runs and active asks, not imports", () => {
   const html = rail({
     recording: true,
     helper: { label: "helper off" },
@@ -211,8 +211,8 @@ test("sidebar count covers the Needs-you runs, not unrelated asks or imports", (
   assert.match(html, /data-place="runs"/);
   assert.match(html, /data-screen="settings"/);
   assert.equal(html.includes("data-screen=\"trail\""), false);
-  assert.match(html, /id="attention" data-count="1"/);
-  assert.match(html, /id="attention-label">1 run is waiting for you</);
+  assert.match(html, /id="attention" data-count="2"/);
+  assert.match(html, /id="attention-label">2 runs waiting for you</);
   assert.doesNotMatch(html, /recording|helper off|no model/);
   assert.equal(attentionCount({ ask: { kind: "confirm" }, importPhase: "confirm", pendingHeals: 1 }), 3);
 });
@@ -576,7 +576,7 @@ test("the record bar follows live state without Mac permission onboarding", () =
   const side = rail({
     helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false },
   });
-  assert.match(side, /Optional Mac permissions not granted/);
+  assert.doesNotMatch(side, /Optional Mac permissions not granted/);
   assert.doesNotMatch(side, /perm-dot|needs permission/);
   assert.equal(side.includes('id="onboarding"'), false);
   const quiet = rail({ helper: { label: "helper off", platform: "linux", accessibility: false, screenCapture: false } });
