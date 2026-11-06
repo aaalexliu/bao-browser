@@ -142,9 +142,9 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     end();
   };
   process.stdin.on("end", end);
-  process.once("SIGTERM", stop);
-  process.once("SIGINT", stop);
-  process.once("SIGHUP", stop);
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
+  process.on("SIGHUP", stop);
   await new Promise(() => {});
 }
 

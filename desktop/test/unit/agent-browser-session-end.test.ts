@@ -191,15 +191,13 @@ for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP"
         if (keepOpen) {
           await delay(250);
           assert.ok(pidsForDataDir(copy).length > 0, "terminal signals must not reach a kept Chrome");
-          if (!repeat) {
-            const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
-            assert.equal(lease.retained, true);
-          }
+          const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
+          assert.equal(lease.retained, true);
         } else {
           await until(() => pidsForDataDir(copy).length === 0);
-          if (!repeat) await assert.rejects(access(copy), /ENOENT/);
+          await assert.rejects(access(copy), /ENOENT/);
         }
-        if (!repeat) assert.equal(f.library.listRuns()[0]!.status, "passed");
+        assert.equal(f.library.listRuns()[0]!.status, "passed");
       } finally { await f.close(); }
     });
   }
