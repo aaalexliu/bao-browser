@@ -142,6 +142,7 @@ function viewerMain(): void {
       root.append(el("h1", view.run.name));
       const summary = el("section", undefined, "summary");
       summary.append(el("span", view.run.status, "status"), el("p", `${date(view.run.at)} · ${view.run.stepCount} steps · ${calls(view.run.modelCalls)}`), el("p", view.run.id, "mono"));
+      if (view.detailsHidden) summary.append(el("p", view.detailsHidden, "muted"));
       if (view.reason) summary.append(el("p", `Stop reason: ${view.reason}`));
       if (view.handoff?.ask) {
         const handoff = el("aside"); handoff.append(el("strong", "Needs you in Bao"), el("p", view.handoff.ask));
@@ -167,14 +168,14 @@ function viewerMain(): void {
         const missingReadBack = "No separate read-back recorded. Status does not prove a durable page change.";
         const allMissingReadBack = view.steps.length > 0 && view.steps.every((step) => !step.reason && !step.result);
         if (!view.steps.length) root.append(el("p", "No step results recorded.", "muted"));
-        else if (allMissingReadBack) root.append(el("p", missingReadBack, "muted"));
+        else if (allMissingReadBack && !view.detailsHidden) root.append(el("p", missingReadBack, "muted"));
         for (const step of view.steps) {
           const section = el("section", undefined, "step");
           section.append(el("h3", `${step.index}. ${step.label || step.id || "Step"}`), el("span", step.status, "status"));
           if (step.reason || step.result) section.append(el("p", step.reason || step.result));
-          else if (!allMissingReadBack) section.append(el("p", missingReadBack, "muted"));
+          else if (!allMissingReadBack && !view.detailsHidden) section.append(el("p", missingReadBack, "muted"));
           const key = `${view.run.id}/${step.id}`;
-          const opened = pictures.get(key);
+          const opened = step.picturesAllowed ? pictures.get(key) : undefined;
           if (opened) {
             if (!opened.pictures.length) section.append(el("p", "No shareable pictures: missing, withheld, invalid, or over the size limit.", "muted"));
             const pair = el("div", undefined, "pictures");

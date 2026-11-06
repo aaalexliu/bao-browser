@@ -10,7 +10,7 @@ import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
 import { migrate, toJson, validateWorkflow, type HealMode, type WorkflowV2 } from "./schema";
-import { libraryRunFiles, readLibraryFile, type BoundedRead } from "./library-read";
+import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead } from "./library-read";
 
 export interface Settings extends HealSettings {
   heal: HealMode;
@@ -160,11 +160,18 @@ export class Library {
   }
 
   read(id: string, bounded?: BoundedRead): WorkflowV2 {
-    const text = bounded
-      ? readLibraryFile(this.root, ["workflows", `${id}.json`], bounded.maxBytes).toString("utf8")
-      : readFileSync(this.file(id), "utf8");
+    if (bounded) return this.readWorkflowSnapshot(id, bounded).workflow;
+    return this.parseWorkflow(readFileSync(this.file(id), "utf8"), id);
+  }
+
+  readWorkflowSnapshot(id: string, bounded: BoundedRead): { workflow: WorkflowV2; modifiedAtMs: number } {
+    const snapshot = readLibrarySnapshot(this.root, ["workflows", `${id}.json`], bounded.maxBytes);
+    return { workflow: this.parseWorkflow(snapshot.bytes.toString("utf8"), id), modifiedAtMs: snapshot.modifiedAtMs };
+  }
+
+  private parseWorkflow(json: string, id: string): WorkflowV2 {
     let raw: unknown;
-    try { raw = JSON.parse(text) as unknown; }
+    try { raw = JSON.parse(json) as unknown; }
     catch { throw new WorkflowFileError(id, "The file is not valid JSON."); }
     let doc: WorkflowV2;
     let errors: string[];

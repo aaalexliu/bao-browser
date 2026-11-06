@@ -17,17 +17,20 @@ export function privateStep(workflow: WorkflowV2, step: WorkflowStep, run: Pick<
   };
   walk(workflow.steps);
   const structural = (item: WorkflowStep): boolean => item.sensitive === true || secretSavedField(item) || secretSavedField(item.identity)
-    || secretSavedField(item.readBack?.identity) || secretSavedField(item.expect?.identity);
+    || secretSavedField(item.readBack?.identity) || secretSavedField(item.expect?.identity) || secretSavedField(item.postcondition?.identity);
+  const fields = (item: WorkflowStep) => [item.value, item.readBack?.match, item.expect?.match, item.postcondition?.match];
   const columns = new Map<string, Set<string>>();
   for (const { step: item, row } of scopes) {
     if (!structural(item)) continue;
     if (item.input) secrets.add(item.input);
-    for (const token of bindingTokens(item.value, names)) secrets.add(token.slice(2, -2));
-    if (row && typeof item.value === "string") {
-      const key = `${row.kind}:${row.name}`;
-      const hidden = columns.get(key) || new Set<string>();
-      for (const match of item.value.matchAll(ROW_BINDING)) hidden.add(match[1]!);
-      columns.set(key, hidden);
+    for (const value of fields(item)) {
+      for (const token of bindingTokens(value, names)) secrets.add(token.slice(2, -2));
+      if (row && typeof value === "string") {
+        const key = `${row.kind}:${row.name}`;
+        const hidden = columns.get(key) || new Set<string>();
+        for (const match of value.matchAll(ROW_BINDING)) hidden.add(match[1]!);
+        columns.set(key, hidden);
+      }
     }
   }
   const bound = (value: unknown, row?: Source): boolean => {
@@ -38,7 +41,7 @@ export function privateStep(workflow: WorkflowV2, step: WorkflowStep, run: Pick<
   };
   const hidden = (item: WorkflowStep, row?: Source): boolean => structural(item)
     || Boolean(item.input && secrets.has(item.input))
-    || [item.value, item.readBack?.match, item.expect?.match].some((value) => bound(value, row))
+    || fields(item).some((value) => bound(value, row))
     || Boolean(item.forEach?.steps.some((child) => hidden(child, item.forEach!.over)));
   const recorded = [...(run.receipts || []), run.failure].some((item) =>
     item !== null && typeof item === "object" && "stepId" in item && item.stepId === step.id)

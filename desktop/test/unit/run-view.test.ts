@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import fs, { fstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { mock } from "node:test";
 import Ajv from "ajv";
 import { inspectRunView, listRunViews, openStepPictures, VIEW_PICTURE_BYTES, VIEW_RECORD_BYTES } from "../../src/mcp/run-view";
 import { callViewerTool, VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
@@ -11,6 +11,18 @@ import { getRun } from "../../src/mcp/catalog";
 import { shotFile } from "../../src/v1/shots";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";
+
+const RUN_START = 1_700_000_000_000;
+const WORKFLOW_TIME = RUN_START - 10_000;
+
+function saveWorkflow(library: Library, workflow: WorkflowV2): void {
+  library.save(workflow);
+  utimesSync(path.join(library.root, "workflows", `${workflow.id}.json`), WORKFLOW_TIME / 1000, WORKFLOW_TIME / 1000);
+}
+
+function saveRun(library: Library, run: StoredRun): void {
+  library.saveRun({ ...run, steps: run.steps.map((step) => ({ startedAt: RUN_START, ...step as object })) });
+}
 
 function fixture(t: test.TestContext) {
   const root = mkdtempSync(path.join(tmpdir(), "bao-run-view-"));
@@ -23,8 +35,8 @@ function fixture(t: test.TestContext) {
   };
   const receipts = new ReceiptLog();
   receipts.append({ kind: "read-back", ts: 1, runId: "run-fixture", workflowId: workflow.id, stepId: "preview", source: "text", expected: "Preview ready", actual: "Preview ready", pass: true });
-  const run: StoredRun = { id: "run-fixture", workflowId: workflow.id, at: 1, status: "passed", steps: [{ id: "preview", status: "passed", snapshot: { ax: "raw private snapshot" }, beforeShot: "/private/raw.png" }], receipts: receipts.entries, heals: [] };
-  library.save(workflow); library.saveRun(run);
+  const run: StoredRun = { id: "run-fixture", workflowId: workflow.id, at: RUN_START + 1000, videoStartedAt: RUN_START, status: "passed", steps: [{ id: "preview", status: "passed", startedAt: RUN_START, endedAt: RUN_START + 100, snapshot: { ax: "raw private snapshot" }, beforeShot: "/private/raw.png" }], receipts: receipts.entries, heals: [] };
+  saveWorkflow(library, workflow); saveRun(library, run);
   const shots = path.join(library.root, "shots", "runs", run.id); mkdirSync(shots, { recursive: true });
   const png = Buffer.alloc(32); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
   for (const phase of ["before", "after"]) writeFileSync(path.join(shots, `preview-${phase}.png`), png);
@@ -43,9 +55,9 @@ test("history and receipt share Library data, keep unknown model counts, and exc
   assert.equal(detail.workflow?.steps[0]?.label, "Preview report");
   assert.equal(detail.steps[0]?.picturesAllowed, true);
   assert.doesNotMatch(JSON.stringify(detail), /raw private|private\/raw|base64|png|resume_token/);
-  library.saveRun({ ...run, modelCalls: 0 });
+  saveRun(library, { ...run, modelCalls: 0 });
   assert.equal(inspectRunView(library, { run_id: run.id }).run.modelCalls, 0);
-  library.saveRun({ ...run, modelCalls: -1 });
+  saveRun(library, { ...run, modelCalls: -1 });
   assert.equal(listRunViews(library, {}).runs[0]?.modelCalls, null);
 });
 
@@ -57,10 +69,10 @@ test("receipt projects every persisted read-back with its expected value and out
     { expected: "Workflow done", actual: "Workflow pending", pass: false },
   ]) receipts.append({ kind: "read-back", ts: 2, runId: run.id, workflowId: run.workflowId, stepId: "preview", source: "text", ...body });
   receipts.append({ kind: "read-back", ts: 3, runId: run.id, workflowId: run.workflowId, stepId: "another-step", source: "text", expected: "unrelated", actual: "unrelated", pass: true });
-  library.saveRun({ ...run, receipts: receipts.entries });
+  saveRun(library, { ...run, receipts: receipts.entries });
   const detail = inspectRunView(library, { run_id: run.id });
   assert.equal(detail.steps[0]?.result, "Read back text: expected Status: none, saw Status: none. matches.\nRead back text: expected Workflow done, saw Workflow pending. does not match.");
-  library.saveRun({ ...run, receipts: [], steps: [{ id: "preview", status: "passed", readBack: "Preview ready" }] });
+  saveRun(library, { ...run, receipts: [], steps: [{ id: "preview", status: "passed", readBack: "Preview ready" }] });
   assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.result, "Preview ready");
 });
 
@@ -68,10 +80,10 @@ test("sealed read-backs bound to secrets never leave the shared privacy boundary
   const { library, run, workflow } = fixture(t);
   const receipts = new ReceiptLog();
   receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "text", expected: "private-value", actual: "private-value", pass: true });
-  library.saveRun({ ...run, receipts: receipts.entries });
+  saveRun(library, { ...run, receipts: receipts.entries });
   for (const scope of ["step", "workflow"]) {
     const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 1000 };
-    library.save(scope === "step" ? { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] } : { ...workflow, readBack });
+    saveWorkflow(library, scope === "step" ? { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] } : { ...workflow, readBack });
     const detail = inspectRunView(library, { run_id: run.id });
     assert.equal(detail.steps[0]?.picturesAllowed, false);
     assert.doesNotMatch(JSON.stringify(detail), /private-value|password/);
@@ -84,9 +96,9 @@ test("private failed read-backs withhold every viewer reason but preserve get_ru
   const reason = 'read-back expected "private-value", read "page private-value text"';
   for (const scope of ["step", "workflow"]) {
     const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 1000 };
-    library.save(scope === "step" ? { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] } : { ...workflow, readBack });
+    saveWorkflow(library, scope === "step" ? { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] } : { ...workflow, readBack });
     for (const source of ["failure", "step", "envelope"]) {
-      library.saveRun({
+      saveRun(library, {
         ...run, status: "failed", receipts: [],
         failure: source === "failure" ? { stepId: "preview", reason } : undefined,
         steps: [{ id: "preview", status: "failed", reason: source === "step" ? reason : undefined }],
@@ -105,11 +117,11 @@ test("private failed read-backs withhold every viewer reason but preserve get_ru
 test("workflow edits cannot make historical secret read-back steps public", (t) => {
   const { library, run, workflow } = fixture(t);
   const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 1000 };
-  library.save({ ...workflow, readBack, steps: [...workflow.steps, { ...workflow.steps[0]!, id: "later", index: 1 }] });
+  saveWorkflow(library, { ...workflow, readBack, steps: [...workflow.steps, { ...workflow.steps[0]!, id: "later", index: 1 }] });
   for (const source of ["receipt", "failure", "step"]) {
     const receipts = new ReceiptLog();
     if (source === "receipt") receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "text", expected: "private-value", actual: "page private-value text", pass: true });
-    library.saveRun({ ...run, receipts: receipts.entries, failure: source === "failure" ? { stepId: "preview", reason: "page private-value text" } : undefined,
+    saveRun(library, { ...run, receipts: receipts.entries, failure: source === "failure" ? { stepId: "preview", reason: "page private-value text" } : undefined,
       steps: source === "step" ? [{ id: "preview", status: "failed", reason: "page private-value text" }] : run.steps });
     const detail = inspectRunView(library, { run_id: run.id });
     assert.equal(detail.steps[0]?.picturesAllowed, false);
@@ -121,11 +133,11 @@ test("workflow edits cannot make historical secret read-back steps public", (t) 
 test("nested secret read-backs keep their parent reasons and pictures private", (t) => {
   const { library, run, workflow } = fixture(t);
   const nested: WorkflowStep = { ...workflow.steps[0]!, id: "nested", readBack: { source: "text", match: "{{password}}", timeoutMs: 0 } };
-  const inner: WorkflowStep = { ...workflow.steps[0]!, id: "inner", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [nested] } };
-  library.save({ ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [{ ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [inner] } }] });
+  saveWorkflow(library, { ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [{ ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [nested] } }] });
   const reason = 'read-back expected "private-value", read "page private-value text"';
-  library.saveRun({ ...run, status: "failed", failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+  saveRun(library, { ...run, status: "failed", failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
   const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.detailsHidden, undefined);
   assert.doesNotMatch(JSON.stringify(detail), /private-value/);
   assert.equal(detail.steps[0]?.picturesAllowed, false);
   assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
@@ -134,46 +146,168 @@ test("nested secret read-backs keep their parent reasons and pictures private", 
 
 test("secret expect bindings keep step, summary, and handoff evidence private", (t) => {
   const { library, run, workflow } = fixture(t);
-  library.save({ ...workflow, steps: [{ ...workflow.steps[0]!, expect: { kind: "text", match: "{{password}}", timeoutMs: 0 } }] });
+  saveWorkflow(library, { ...workflow, steps: [{ ...workflow.steps[0]!, expect: { kind: "text", match: "{{password}}", timeoutMs: 0 } }] });
   const reason = "expected private-value";
-  library.saveRun({ ...run, status: "failed", failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+  saveRun(library, { ...run, status: "failed", failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
   const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.detailsHidden, undefined);
   assert.doesNotMatch(JSON.stringify(detail), /private-value/);
   assert.equal(detail.steps[0]?.picturesAllowed, false);
   assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
   assert.equal(getRun(library, run.id).reason, reason);
 });
 
-test("secret row columns stay private in sibling loop values, read-backs, and expectations", (t) => {
+test("secret row discovery and classification cover the same binding fields", (t) => {
   const { library, run, workflow } = fixture(t);
-  const entry: WorkflowStep = { ...workflow.steps[0]!, id: "entry", sensitive: true, value: "{{row.password}}" };
-  const secretLoop: WorkflowStep = { ...workflow.steps[0]!, id: "secret-loop", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [entry] } };
-  for (const patch of [
+  const patches: Partial<WorkflowStep>[] = [
     { value: "{{row.password}}" },
-    { readBack: { source: "text" as const, match: "{{row.password}}", timeoutMs: 0 } },
-    { expect: { kind: "text" as const, match: "{{row.password}}", timeoutMs: 0 } },
+    { readBack: { source: "text", match: "{{row.password}}", timeoutMs: 0 } },
+    { expect: { kind: "text", match: "{{row.password}}", timeoutMs: 0 } },
+    { postcondition: { kind: "text", match: "{{row.password}}", timeoutMs: 0 } },
+  ];
+  for (const source of patches) {
+    const entry: WorkflowStep = { ...workflow.steps[0]!, id: "entry", sensitive: true, ...source };
+    const secretLoop: WorkflowStep = { ...workflow.steps[0]!, id: "secret-loop", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [entry] } };
+    for (const sink of patches) {
+      const child: WorkflowStep = { ...workflow.steps[0]!, id: "check", ...sink };
+      saveWorkflow(library, { ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, index: 1, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [child] } }] });
+      const reason = "expected private-row-value";
+      saveRun(library, { ...run, status: "failed", receipts: [], failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+      const detail = inspectRunView(library, { run_id: run.id });
+      assert.equal(detail.detailsHidden, undefined);
+      assert.doesNotMatch(JSON.stringify(detail), /private-row-value/);
+      assert.equal(detail.steps[0]?.picturesAllowed, false);
+      assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+      assert.equal(getRun(library, run.id).reason, reason);
+    }
+    const publicChild: WorkflowStep = { ...workflow.steps[0]!, id: "check", expect: { kind: "text", match: "{{row.public}}", timeoutMs: 0 } };
+    saveWorkflow(library, { ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, index: 1, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [publicChild] } }] });
+    saveRun(library, run);
+    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, true);
+    assert.equal(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures.length, 2);
+  }
+});
+
+test("sensitive binding discovery covers every input-bearing evidence field", (t) => {
+  const { library, run, workflow } = fixture(t);
+  for (const source of [
+    { value: "{{token}}" },
+    { readBack: { source: "text" as const, match: "{{token}}", timeoutMs: 0 } },
+    { expect: { kind: "text" as const, match: "{{token}}", timeoutMs: 0 } },
+    { postcondition: { kind: "text" as const, match: "{{token}}", timeoutMs: 0 } },
   ]) {
-    const child: WorkflowStep = { ...workflow.steps[0]!, id: "check", ...patch };
-    library.save({ ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [child] } }] });
-    const reason = "expected private-row-value";
-    library.saveRun({ ...run, status: "failed", receipts: [], failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+    saveWorkflow(library, { ...workflow, inputs: [{ name: "token", type: "text" }], steps: [
+      { ...workflow.steps[0]!, id: "source", sensitive: true, ...source },
+      { ...workflow.steps[0]!, index: 1, expect: { kind: "text", match: "{{token}}", timeoutMs: 0 } },
+    ] });
+    const reason = "expected private-token-value";
+    saveRun(library, { ...run, status: "failed", receipts: [], failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
     const detail = inspectRunView(library, { run_id: run.id });
-    assert.doesNotMatch(JSON.stringify(detail), /private-row-value/);
+    assert.equal(detail.detailsHidden, undefined);
+    assert.doesNotMatch(JSON.stringify(detail), /private-token-value/);
     assert.equal(detail.steps[0]?.picturesAllowed, false);
     assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
-    assert.equal(getRun(library, run.id).reason, reason);
   }
-  const publicChild: WorkflowStep = { ...workflow.steps[0]!, id: "check", expect: { kind: "text", match: "{{row.public}}", timeoutMs: 0 } };
-  library.save({ ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [publicChild] } }] });
-  library.saveRun(run);
-  assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, true);
-  assert.equal(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures.length, 2);
+});
+
+test("editing away a secret binding withholds the entire historical viewer receipt", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 0 };
+  saveWorkflow(library, { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] });
+  const receipts = new ReceiptLog();
+  receipts.append({ kind: "read-back", ts: RUN_START + 100, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "text", expected: "private-value", actual: "page private-value text", pass: false });
+  const reason = 'read-back expected "private-value", read "page private-value text"';
+  saveRun(library, { ...run, status: "failed", receipts: receipts.entries, failure: { stepId: "preview", reason }, steps: [{ ...run.steps[0] as object, id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+  assert.equal(inspectRunView(library, { run_id: run.id }).detailsHidden, undefined);
+  library.save(workflow);
+  const file = path.join(library.root, "workflows", `${workflow.id}.json`);
+  utimesSync(file, (RUN_START + 500) / 1000, (RUN_START + 500) / 1000);
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.match(detail.detailsHidden!, /workflow changed after this run/);
+  assert.equal(detail.steps[0]?.label, "Preview report");
+  assert.equal(detail.steps[0]?.status, "failed");
+  assert.equal(detail.steps[0]?.durationMs, 100);
+  assert.equal(detail.steps[0]?.result, undefined);
+  assert.equal(detail.steps[0]?.reason, undefined);
+  assert.equal(detail.reason, undefined);
+  assert.equal(detail.handoff?.ask, undefined);
+  assert.equal(detail.handoff?.reason, undefined);
+  assert.equal(detail.steps[0]?.picturesAllowed, false);
+  assert.doesNotMatch(JSON.stringify(detail), /private-value/);
+  assert.doesNotMatch(JSON.stringify(callViewerTool(library, "inspect_run", { run_id: run.id })), /private-value/);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  assert.equal(getRun(library, run.id).reason, reason);
+});
+
+test("unknown or ambiguous workflow and run times fail closed", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const file = path.join(library.root, "workflows", `${workflow.id}.json`);
+  for (const modified of [0, RUN_START, RUN_START + 500]) {
+    utimesSync(file, modified / 1000, modified / 1000);
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.ok(detail.detailsHidden);
+    assert.equal(detail.steps[0]?.picturesAllowed, false);
+    assert.equal(detail.steps[0]?.result, undefined);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  }
+  saveWorkflow(library, workflow);
+  library.saveRun({ ...run, videoStartedAt: undefined });
+  assert.ok(inspectRunView(library, { run_id: run.id }).detailsHidden);
+  library.saveRun({ ...run, steps: [{ id: "preview", status: "passed", reason: "private-unknown-time" }] });
+  const unknown = inspectRunView(library, { run_id: run.id });
+  assert.ok(unknown.detailsHidden);
+  assert.doesNotMatch(JSON.stringify(unknown), /private-unknown-time/);
+  saveRun(library, run);
+  writeFileSync(file, "not JSON");
+  assert.ok(inspectRunView(library, { run_id: run.id }).detailsHidden);
+  rmSync(file);
+  assert.ok(inspectRunView(library, { run_id: run.id }).detailsHidden);
+});
+
+test("an edit before the first step but after recording began still hides details", (t) => {
+  const { library, run, workflow } = fixture(t);
+  saveRun(library, { ...run, steps: [{ id: "preview", status: "passed", startedAt: RUN_START + 100, reason: "private-between-starts" }] });
+  const modified = (RUN_START + 50) / 1000;
+  utimesSync(path.join(library.root, "workflows", `${workflow.id}.json`), modified, modified);
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.ok(detail.detailsHidden);
+  assert.doesNotMatch(JSON.stringify(detail), /private-between-starts/);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+});
+
+test("workflow snapshots bind parsed contents to the checked file time", (t) => {
+  const { library, workflow } = fixture(t);
+  const snapshot = library.readWorkflowSnapshot(workflow.id, { maxBytes: VIEW_RECORD_BYTES });
+  assert.equal(snapshot.modifiedAtMs, WORKFLOW_TIME);
+  assert.equal(snapshot.workflow.name, "Preview report");
+  assert.equal(snapshot.workflow.steps[0]?.label, "Preview report");
+});
+
+test("workflow snapshot reads reject a replacement between the read and final check", (t) => {
+  const { library, workflow } = fixture(t);
+  const file = path.join(library.root, "workflows", `${workflow.id}.json`);
+  const replacement = path.join(library.root, "replacement.json");
+  writeFileSync(replacement, JSON.stringify({ ...workflow, name: "New snapshot" }));
+  const inode = statSync(file).ino;
+  const read = fs.readSync;
+  let swapped = false;
+  const hook = mock.method(fs, "readSync", (...args: unknown[]) => {
+    const size = Reflect.apply(read, fs, args) as number;
+    if (!swapped && fstatSync(args[0] as number).ino === inode) {
+      swapped = true;
+      renameSync(replacement, file);
+    }
+    return size;
+  });
+  t.after(() => hook.mock.restore());
+  assert.throws(() => library.readWorkflowSnapshot(workflow.id, { maxBytes: VIEW_RECORD_BYTES }), /changed during read/);
+  assert.equal(swapped, true);
 });
 
 test("public failure and stopped-step reasons remain available without an envelope", (t) => {
   const { library, run } = fixture(t);
   for (const source of ["failure", "step"]) {
-    library.saveRun({ ...run, status: "failed", failure: source === "failure" ? { stepId: "preview", reason: "Preview not ready" } : undefined,
+    saveRun(library, { ...run, status: "failed", failure: source === "failure" ? { stepId: "preview", reason: "Preview not ready" } : undefined,
       steps: [{ id: "preview", status: "failed", reason: source === "step" ? "Preview not ready" : undefined }] });
     assert.equal(inspectRunView(library, { run_id: run.id }).reason, "Preview not ready");
   }
@@ -181,13 +315,13 @@ test("public failure and stopped-step reasons remain available without an envelo
 
 test("unclassified failure and stop reasons stay in the desktop app", (t) => {
   const { library, run } = fixture(t);
-  library.saveRun({ ...run, workflowId: "missing", status: "failed", failure: { stepId: "unknown", reason: "private-value" }, steps: [{ id: "unknown", status: "failed", reason: "private-value" }] });
+  saveRun(library, { ...run, workflowId: "missing", status: "failed", failure: { stepId: "unknown", reason: "private-value" }, steps: [{ id: "unknown", status: "failed", reason: "private-value" }] });
   assert.doesNotMatch(JSON.stringify(inspectRunView(library, { run_id: run.id })), /private-value/);
 });
 
 test("receipt explains a human stop without exposing the resume authority", (t) => {
   const { library, run } = fixture(t);
-  library.saveRun({ ...run, status: "paused", failure: { reason: "confirm required", stepId: "preview" }, envelope: { status: "needs_human", ask: "Review the confirmation in Bao", reason: "confirm required", deadline: "2030-01-01", resume_token: "do-not-export" } });
+  saveRun(library, { ...run, status: "paused", failure: { reason: "confirm required", stepId: "preview" }, envelope: { status: "needs_human", ask: "Review the confirmation in Bao", reason: "confirm required", deadline: "2030-01-01", resume_token: "do-not-export" } });
   const detail = inspectRunView(library, { run_id: run.id });
   assert.equal(detail.run.status, "needs_human");
   assert.equal(detail.reason, "confirm required");
@@ -197,7 +331,7 @@ test("receipt explains a human stop without exposing the resume authority", (t) 
 
 test("capture runs work without a workflow, never export native args or pictures, and do not invent model counts", (t) => {
   const { library, run } = fixture(t);
-  library.saveRun({ ...run, kind: "capture", workflowId: "agent-browser", steps: [{ id: "command-1", label: "fill password-value", status: "passed", native: { command: "fill", args: ["password-value"], results: [{ stdout: "raw-output" }] } }] });
+  saveRun(library, { ...run, kind: "capture", workflowId: "agent-browser", steps: [{ id: "command-1", label: "fill password-value", status: "passed", native: { command: "fill", args: ["password-value"], results: [{ stdout: "raw-output" }] } }] });
   const detail = inspectRunView(library, { run_id: run.id });
   assert.equal(detail.run.name, "Browser capture");
   assert.equal(detail.run.modelCalls, null);
@@ -211,9 +345,9 @@ test("capture runs work without a workflow, never export native args or pictures
 test("history, run steps, and workflow steps page independently with bounded text", (t) => {
   const { library, run, workflow } = fixture(t);
   const steps = Array.from({ length: 43 }, (_, index) => ({ ...workflow.steps[0]!, id: `step-${index}`, index, label: "x".repeat(1000) }));
-  library.save({ ...workflow, steps });
-  library.saveRun({ ...run, steps: steps.map((step) => ({ id: step.id, status: "passed", reason: "y".repeat(10_000) })) });
-  for (let index = 0; index < 11; index++) library.saveRun({ ...run, id: `run-page-${index}` });
+  saveWorkflow(library, { ...workflow, steps });
+  saveRun(library, { ...run, steps: steps.map((step) => ({ id: step.id, status: "passed", reason: "y".repeat(10_000) })) });
+  for (let index = 0; index < 11; index++) saveRun(library, { ...run, id: `run-page-${index}` });
   let next: number | null = 0;
   const ids: string[] = [];
   while (next !== null) {
@@ -253,8 +387,8 @@ test("stored dotted and other safe Library IDs work across history, tools, and p
   const pictureSchema = ajv.compile(VIEWER_TOOLS.find((tool) => tool.name === "open_step_pictures")!.inputSchema);
   for (const id of ["wf-my.flow", "saved report", "%2e%2e"]) {
     const stepId = `${id}-step.1`;
-    library.save({ ...workflow, id, steps: [{ ...workflow.steps[0]!, id: stepId }] });
-    library.saveRun({ ...run, workflowId: id, steps: [{ id: stepId, status: "passed" }] });
+    saveWorkflow(library, { ...workflow, id, steps: [{ ...workflow.steps[0]!, id: stepId }] });
+    saveRun(library, { ...run, workflowId: id, steps: [{ id: stepId, status: "passed" }] });
     const shots = path.join(library.root, "shots", "runs", run.id);
     mkdirSync(shots, { recursive: true });
     writeFileSync(path.join(shots, shotFile(stepId, "after")), png);
@@ -288,11 +422,11 @@ test("linked run files, workflow files, picture files, and picture directories n
   const runFile = path.join(library.root, "runs", `${run.id}.json`); rmSync(runFile); symlinkSync(outside, runFile);
   assert.throws(() => inspectRunView(library, { run_id: run.id }), /links/);
   assert.equal(listRunViews(library, {}).runs.length, 0);
-  rmSync(runFile); library.saveRun(run);
+  rmSync(runFile); saveRun(library, run);
   const workflowFile = path.join(library.root, "workflows", `${workflow.id}.json`); rmSync(workflowFile); symlinkSync(outside, workflowFile);
   assert.equal(inspectRunView(library, { run_id: run.id }).workflow, null);
   assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
-  rmSync(workflowFile); library.save(workflow);
+  rmSync(workflowFile); saveWorkflow(library, workflow);
   const image = path.join(root, "outside.png"); writeFileSync(image, png);
   for (const phase of ["before", "after"]) { const file = path.join(shots, `preview-${phase}.png`); rmSync(file); symlinkSync(image, file); }
   assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
@@ -308,7 +442,7 @@ test("live picture names use the same run boundary and guards as replay names", 
   for (const phase of ["before", "after"]) rmSync(path.join(shots, `preview-${phase}.png`));
   writeFileSync(path.join(shots, "0-before.png"), png);
   writeFileSync(path.join(shots, "0-after.png"), png);
-  library.saveRun({ ...run, kind: "capture", steps: [{ id: "preview", status: "passed", beforeShot: "0-before.png", afterShot: "0-after.png" }] });
+  saveRun(library, { ...run, kind: "capture", steps: [{ id: "preview", status: "passed", beforeShot: "0-before.png", afterShot: "0-after.png" }] });
   assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, [
     { phase: "before", mimeType: "image/png", data: png.toString("base64") },
     { phase: "after", mimeType: "image/png", data: png.toString("base64") },
@@ -318,10 +452,10 @@ test("live picture names use the same run boundary and guards as replay names", 
   truncateSync(path.join(shots, "0-before.png"), VIEW_PICTURE_BYTES + 1);
   writeFileSync(path.join(shots, "invalid.png"), "not an image");
   for (const name of ["../0-after.png", outside, "nested/0-after.png", "nested\\0-after.png", "linked.png", "0-before.png", "invalid.png", ".", "..", ""]) {
-    library.saveRun({ ...run, steps: [{ id: "preview", status: "passed", beforeShot: name, afterShot: name }] });
+    saveRun(library, { ...run, steps: [{ id: "preview", status: "passed", beforeShot: name, afterShot: name }] });
     assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
   }
-  library.saveRun({ ...run, steps: [{ id: "preview", status: "passed", beforeShot: "missing.png", afterShot: "missing.png" }] });
+  saveRun(library, { ...run, steps: [{ id: "preview", status: "passed", beforeShot: "missing.png", afterShot: "missing.png" }] });
   writeFileSync(path.join(shots, "preview-after.png"), png);
   assert.equal(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures.length, 1);
 });
@@ -337,7 +471,7 @@ test("pictures use shared sensitive-step redaction, size caps, known steps, and 
   assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
   assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "not-recorded" }), /withheld/);
   for (const patch of [{ sensitive: true }, { input: "password" }, { value: "{{password}}" }, { readBack: { source: "text" as const, match: "{{password}}", timeoutMs: 1000 } }]) {
-    library.save({ ...workflow, steps: [{ ...workflow.steps[0]!, ...patch }] });
+    saveWorkflow(library, { ...workflow, steps: [{ ...workflow.steps[0]!, ...patch }] });
     writeFileSync(path.join(shots, "preview-before.png"), png);
     assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, false);
     assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);

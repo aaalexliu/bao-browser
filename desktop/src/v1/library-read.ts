@@ -17,6 +17,10 @@ export function libraryRunFiles(root: string): string[] {
 
 /** Read only regular files within this Library, without following Library links. */
 export function readLibraryFile(root: string, parts: readonly string[], maxBytes: number): Buffer {
+  return readLibrarySnapshot(root, parts, maxBytes).bytes;
+}
+
+export function readLibrarySnapshot(root: string, parts: readonly string[], maxBytes: number): { bytes: Buffer; modifiedAtMs: number } {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error("invalid read limit");
   if (parts.some((part) => !part || part === "." || part === ".." || /[/\\\0]/.test(part))) throw new Error("invalid Library path");
   const base = path.resolve(root);
@@ -46,8 +50,10 @@ export function readLibraryFile(root: string, parts: readonly string[], maxBytes
       if (!count) break;
       size += count;
     }
-    if (size > maxBytes || size > info.size) throw new Error("Library file changed during read");
-    return bytes.subarray(0, size);
+    if (size > maxBytes || size !== info.size || [fstatSync(fd), lstatSync(check())].some((current) =>
+      current.dev !== info.dev || current.ino !== info.ino || current.size !== info.size
+      || current.mtimeMs !== info.mtimeMs || current.ctimeMs !== info.ctimeMs)) throw new Error("Library file changed during read");
+    return { bytes: bytes.subarray(0, size), modifiedAtMs: info.mtimeMs };
   } finally {
     closeSync(fd);
   }

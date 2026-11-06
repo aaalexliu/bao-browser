@@ -95,4 +95,18 @@ test("viewer keeps the latest host view and user request when replies arrive out
   assert.equal(await page.getByRole("alert").textContent(), "current request failed");
   await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Model navigation after failure") } } });
   assert.equal(await page.locator("h1").textContent(), "Model navigation after failure");
+
+  const step = { id: "preview", index: 1, label: "Preview", status: "passed", picturesAllowed: true };
+  const pictureView = { ...receipt("Picture receipt"), steps: [step] };
+  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: pictureView } } });
+  await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+  await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
+  const picture = (await calls(page, 9))[8]!;
+  await deliver(page, { jsonrpc: "2.0", id: picture.id, result: { _meta: { baoPictures: { runId: "run-fixture", stepId: "preview", pictures: [{ phase: "after", mimeType: "image/png", data: "iVBORw0KGgo=" }] } } } });
+  assert.equal(await page.locator("img").count(), 1);
+  const detailsHidden = "Details are hidden because the workflow changed after this run or could not be verified.";
+  await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: { ...pictureView, detailsHidden, steps: [{ ...step, picturesAllowed: false }] } } } });
+  assert.equal(await page.locator("img").count(), 0);
+  assert.equal(await page.getByText(detailsHidden, { exact: true }).count(), 1);
+  assert.equal(await page.getByText("No separate read-back recorded. Status does not prove a durable page change.", { exact: true }).count(), 0);
 });
