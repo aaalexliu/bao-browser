@@ -146,12 +146,12 @@ test("an offline home catches up on reconnect, and a disabled category stays put
     assert.match(offline.lastResult || "", /reconnect/);
     assert.equal(offline.buckets.find((bucket) => bucket.category === "workflows")?.local, 0);
     assert.equal(offline.buckets.find((bucket) => bucket.category === "workflows")?.cloud, 2);
-    assert.equal(library.list().length, 0);
+    assert.equal(library.list().workflows.length, 0);
 
     await syncAll(library);
     const caught = syncStatus(library);
     assert.equal(caught.catchingUp, false);
-    assert.equal(library.list().length, 2);
+    assert.equal(library.list().workflows.length, 2);
     assert.equal(library.listRuns().length, 1);
     assert.equal(existsSync(path.join(home, "heals", "heal-one-v1.json")), true);
     assert.equal(library.settings().heal, "approve");
@@ -171,7 +171,7 @@ test("an offline home catches up on reconnect, and a disabled category stays put
       settingsCloudAt: undefined,
     });
     await syncAll(other);
-    assert.equal(other.list().length, 2);
+    assert.equal(other.list().workflows.length, 2);
     assert.equal(other.listRuns().length, 0);
     assert.equal(syncStatus(other).buckets.find((bucket) => bucket.category === "run history")?.enabled, false);
   } finally {

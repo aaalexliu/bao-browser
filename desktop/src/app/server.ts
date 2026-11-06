@@ -493,6 +493,7 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname === "/api/state") {
         runScheduledBackup(library);
         syncPending();
+        const listing = library.list();
         return json(res, {
           recording: capture.recording,
           replaying,
@@ -506,7 +507,8 @@ export async function startApp(opts: {
           librarySplits,
           settings: library.settings(),
           profileCopy,
-          workflows: library.list().map(summary),
+          workflows: listing.workflows.map(summary),
+          damagedWorkflows: listing.damagedWorkflows,
           trails: library.listTrails(),
           runs: library.listRuns().map(slimRun),
           helper: helperStatus(await readHelperReport()),
@@ -524,7 +526,7 @@ export async function startApp(opts: {
           guide: guideLive,
           extractPicker: extractProposal && !extractProposal.error ? extractPickerHtml(extractProposal) : "",
           notifications,
-          promotions: library.list().map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
+          promotions: listing.workflows.map((workflow) => library.readPromotion(workflow.id)).filter(Boolean),
           sync: syncStatus(library),
           opened,
           saveSheet: saveSheetState(),

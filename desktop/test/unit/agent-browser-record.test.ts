@@ -38,7 +38,7 @@ test("recorder keeps exact native values and requested image bytes without workf
       const artifact = step.native.screenshots[0]!;
       assert.deepEqual(await readFile(path.join(root, "shots", "runs", initial.id, artifact.file)), png);
     }
-    assert.deepEqual(library.list(), []);
+    assert.deepEqual(library.list().workflows, []);
     recorder.finish();
     assert.deepEqual(library.readRun(initial.id), saved, "finalization is idempotent");
   } finally { await rm(root, { recursive: true, force: true }); }

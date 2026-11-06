@@ -146,7 +146,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
     }
     await assert.rejects(access(proxyCopy), /ENOENT/);
     const library = new Library(home);
-    assert.equal(library.list().length, 0, "the pass-through does not save a workflow");
+    assert.equal(library.list().workflows.length, 0, "the pass-through does not save a workflow");
     const saved = library.listRuns();
     assert.equal(saved.length, 1);
     assert.equal(saved[0]!.status, "passed");
@@ -235,7 +235,7 @@ test("relative, implicit and JPEG native screenshots survive MCP close, disconne
       } finally { await client.close(); }
     }
     assert.equal(library.listRuns().length, 3);
-    assert.equal(library.list().length, 0);
+    assert.equal(library.list().workflows.length, 0);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rmdir(copies(home)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });

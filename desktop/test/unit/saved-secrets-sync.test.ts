@@ -123,7 +123,7 @@ test("sync hashes match saved documents after pull and every conflict choice", a
   });
   const check = async () => {
     const state = loadState(home);
-    for (const doc of library.list()) {
+    for (const doc of library.list().workflows) {
       const expected = createHash("sha256").update(toJson(doc)).digest("hex");
       assert.equal(state.workflows[doc.id]?.hash, expected);
     }

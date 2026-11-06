@@ -67,7 +67,7 @@ test("Experian-shaped pass-through hands sign-in and bot walls to the owner and 
     assert.ok(fixture.requests.some((request) => request.path === "/account"));
     assert.equal(fixture.requests.filter((request) => request.path === "/member/bot").length, 1, "the proxy does not retry the bot wall");
     const library = new Library(home);
-    assert.equal(library.list().length, 0, "pass-through recording creates no saved workflow");
+    assert.equal(library.list().workflows.length, 0, "pass-through recording creates no saved workflow");
     assert.equal(library.listRuns().length, 1, "the same session keeps its run receipt");
   } finally {
     await owner?.close().catch(() => undefined);

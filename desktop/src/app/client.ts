@@ -7,6 +7,7 @@ import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
+import type { DamagedWorkflow } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
@@ -99,6 +100,7 @@ let state: ShellState & {
   opened?: OpenedState | null;
   liveTargetOverride?: string;
   liveSession?: LiveSessionRecord | null;
+  damagedWorkflows?: DamagedWorkflow[];
   librarySplits?: string[];
   home?: string;
 } = {};
@@ -192,6 +194,7 @@ async function refreshState(): Promise<void> {
     ask: state.activeAsk,
     notices: state.notices,
     workflows: state.workflows,
+    damagedWorkflows: state.damagedWorkflows,
     settings: state.settings,
     profileCopy: state.profileCopy,
     runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
@@ -257,7 +260,7 @@ function render(): void {
       : screen === "replay" ? replayForm()
       : screen === "import" ? importSheet()
       : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
-      : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "");
+      : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
     mainEl().innerHTML = body;
@@ -455,6 +458,13 @@ function importSheet(): string {
 }
 
 function bind(): void {
+  const recordAgain = document.getElementById("library-record-again");
+  if (recordAgain) recordAgain.onclick = () => {
+    screen = "capture";
+    renderKey = "";
+    render();
+    document.getElementById("start-url")?.focus();
+  };
   document.querySelectorAll("#rail nav button").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       screen = (btn as HTMLButtonElement).dataset.screen as Screen;

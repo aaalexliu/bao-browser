@@ -322,7 +322,7 @@ test("previously saved taught branches still load and replay with or without the
   writeFileSync(path.join(home, "workflows", `${saved.id}.json`), JSON.stringify(saved));
   const library = new Library(home);
   const spliced = library.read(saved.id);
-  assert.equal(library.list().some((item) => item.id === saved.id), true);
+  assert.equal(library.list().workflows.some((item) => item.id === saved.id), true);
   assert.deepEqual(spliced, saved);
   assert.equal(validate(spliced), true, JSON.stringify(validate.errors));
   assert.deepEqual(validateWorkflow(spliced), []);

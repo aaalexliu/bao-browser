@@ -39,8 +39,9 @@
   },
   "storage": {
     "kind": "desktop",
-    "reason": "Safety: secret stripping and slots across every saved writer, binding, seal, sync/relay, and public report.",
+    "reason": "Safety: damaged workflow isolation and preservation; secret stripping and slots across every saved writer, binding, seal, sync/relay, and public report.",
     "tests": [
+      "desktop/test/unit/damaged-library.test.ts",
       "desktop/test/unit/import-deeplink.test.ts",
       "desktop/test/unit/input-token.test.ts",
       "desktop/test/unit/owner-auth.test.ts",

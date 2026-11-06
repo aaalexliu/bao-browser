@@ -138,7 +138,7 @@ export async function searchWorkflows(
   filters: { source?: string; site?: string; category?: string } = {},
 ): Promise<SearchHit[]> {
   const thisDevice = loadState(library.root).deviceName || "";
-  const local = library.list().map((doc) => ({
+  const local = library.list().workflows.map((doc) => ({
     id: doc.id,
     title: doc.name,
     summary: summaryOf(doc),
