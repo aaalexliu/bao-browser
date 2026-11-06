@@ -28,10 +28,13 @@ function acceptHelper(report, identity, certHash) {
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
   if (report.adhoc) return { ok: false, reason: "helper signature is ad-hoc" };
   if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
-  const leaf = report.authorities[0] || "";
-  if (leaf !== identity) return { ok: false, reason: `helper certificate is not ${identity}` };
   const hash = normalizeCertHash(certHash);
   if (!hash) return { ok: false, reason: "helper certificate hash is not 40 hex digits" };
+  const identityHash = normalizeCertHash(identity);
+  const leaf = report.authorities[0] || "";
+  if (identityHash ? identityHash !== hash : leaf !== identity) {
+    return { ok: false, reason: `helper certificate is not ${identity}` };
+  }
   if (report.designated !== expectedRequirement(hash)) {
     return { ok: false, reason: "designated requirement is not the pinned helper certificate" };
   }

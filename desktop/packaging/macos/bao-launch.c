@@ -26,6 +26,7 @@ extern long syscall(long number, ...);
 #endif
 #if defined(__APPLE__)
 #include <libproc.h>
+#include <sys/sysctl.h>
 #endif
 
 /* sys/types.h's major() macro would rewrite hooks->major(...). */
@@ -597,7 +598,7 @@ static int pid_path(const char *home, char *out, size_t n) {
   return path_join(out, n, home, "ui.pid");
 }
 
-int bao_read_browser_pid(const char *home) {
+int bao_read_ui_pid(const char *home) {
   if (!home || !home[0]) return -1;
   char path[4096];
   if (pid_path(home, path, sizeof path) != 0) return -1;
@@ -627,7 +628,7 @@ int bao_instance_acquire(const char *home, int *other_pid) {
     }
     if (errno == EINTR) continue;
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
-      if (other_pid) *other_pid = bao_read_browser_pid(home);
+      if (other_pid) *other_pid = bao_read_ui_pid(home);
       close(fd);
       return 1;
     }
@@ -642,7 +643,7 @@ void bao_instance_release(void) {
   lock_fd = -1;
 }
 
-int bao_instance_write_browser_pid(const char *home, int pid) {
+int bao_instance_write_ui_pid(const char *home, int pid) {
   if (lock_fd < 0 || pid <= 0 || !home || !home[0]) return -1;
   char path[4096];
   if (pid_path(home, path, sizeof path) != 0) return -1;
@@ -686,6 +687,92 @@ int bao_port_listening(const char *port) {
   int ok = connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0;
   close(fd);
   return ok ? 1 : 0;
+}
+
+#if defined(__APPLE__)
+static int server_matches(pid_t pid, const char *node, const char *root, const char *home, const char *port) {
+  char executable[PROC_PIDPATHINFO_MAXSIZE];
+  char resolved[PROC_PIDPATHINFO_MAXSIZE];
+  struct proc_vnodepathinfo paths;
+  struct proc_bsdinfo process;
+  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &process, sizeof process) != sizeof process ||
+      process.pbi_uid != geteuid() || process.pbi_ppid != 1) return 0;
+  if (!realpath(node, resolved) || proc_pidpath(pid, executable, sizeof executable) <= 0 ||
+      strcmp(executable, resolved) != 0 ||
+      proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof paths) != sizeof paths ||
+      strcmp(paths.pvi_cdir.vip_path, root) != 0) return 0;
+  int mib[] = { CTL_KERN, KERN_PROCARGS2, pid };
+  char args[65536];
+  size_t size = sizeof args;
+  if (sysctl(mib, 3, args, &size, NULL, 0) != 0 || size < sizeof(int)) return 0;
+  int argc;
+  memcpy(&argc, args, sizeof argc);
+  if (argc != 7) return 0;
+  char *p = args + sizeof argc;
+  char *end = args + size;
+  char *zero = memchr(p, 0, (size_t)(end - p));
+  if (!zero) return 0;
+  p = zero + 1;
+  while (p < end && !*p) p++;
+  const char *expected[] = { "node", "src/app/cli.js", "serve", "--home", home, "--port", port };
+  for (int i = 0; i < argc; i++) {
+    zero = memchr(p, 0, (size_t)(end - p));
+    if (!zero || strcmp(p, expected[i]) != 0) return 0;
+    p = zero + 1;
+  }
+  return 1;
+}
+
+static int server_listens(pid_t pid, int port) {
+  int bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, NULL, 0);
+  if (bytes <= 0) return 0;
+  struct proc_fdinfo *fds = malloc((size_t)bytes);
+  if (!fds) return 0;
+  int filled = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds, bytes);
+  int found = 0;
+  for (int i = 0; i < filled / (int)sizeof *fds; i++) {
+    if (fds[i].proc_fdtype != PROX_FDTYPE_SOCKET) continue;
+    struct socket_fdinfo socket;
+    if (proc_pidfdinfo(pid, fds[i].proc_fd, PROC_PIDFDSOCKETINFO, &socket, sizeof socket) != sizeof socket) continue;
+    if (socket.psi.soi_kind == SOCKINFO_TCP && socket.psi.soi_proto.pri_tcp.tcpsi_state == TSI_S_LISTEN &&
+        ntohs((uint16_t)socket.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport) == port) found = 1;
+  }
+  free(fds);
+  return found;
+}
+#endif
+
+int bao_recover_server(const char *node, const char *root, const char *home, const char *port) {
+  if (lock_fd < 0) return -1;
+  if (!bao_port_listening(port)) return 0;
+#if defined(__APPLE__)
+  int count = proc_listallpids(NULL, 0);
+  if (count <= 0) return -1;
+  pid_t *pids = calloc((size_t)count, sizeof *pids);
+  if (!pids) return -1;
+  int filled = proc_listallpids(pids, count * (int)sizeof *pids);
+  pid_t server = -1;
+  for (int i = 0; i < filled; i++) {
+    if (pids[i] <= 1 || pids[i] == getpid()) continue;
+    if (server_matches(pids[i], node, root, home, port) && server_listens(pids[i], atoi(port))) {
+      server = pids[i];
+      break;
+    }
+  }
+  free(pids);
+  if (server <= 0 || !server_matches(server, node, root, home, port) ||
+      !server_listens(server, atoi(port)) || kill(server, SIGTERM) != 0) return -1;
+  for (int i = 0; i < 60; i++) {
+    if (!bao_port_listening(port)) return 0;
+    struct timespec delay = { 0, 50000000L };
+    nanosleep(&delay, NULL);
+  }
+#else
+  (void)node;
+  (void)root;
+  (void)home;
+#endif
+  return -1;
 }
 
 int bao_wait_for_port(const char *port, int child_pid, int timeout_ms) {

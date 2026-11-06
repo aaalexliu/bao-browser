@@ -273,15 +273,18 @@ test("saved tabs are removed and the cookie store is left in place", () => {
   assert.equal(readFileSync(path.join(base, "Network", "Cookies"), "utf8"), "keep");
 });
 
-test("Bao.app is a compiled entry plus bundled Chromium, not Google Chrome", () => {
+test("Bao.app uses a native WebKit window and bundles Chromium only for tasks", () => {
   const script = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/package-app.sh"), "utf8");
   const main = readFileSync(path.join(process.cwd(), "desktop/packaging/macos/bao-main.c"), "utf8");
   assert.equal(script.includes("/Applications/Google Chrome.app"), false);
   assert.match(script, /bao-main\.c/);
   assert.match(script, /Chromium\.app/);
   assert.equal(main.includes("/Applications/Google Chrome.app"), false);
-  assert.match(main, /--app=/);
-  assert.match(main, /--disable-infobars/);
+  assert.doesNotMatch(main, /--app=|--user-data-dir|spawn_browser/);
+  assert.match(main, /bao_window_run/);
+  assert.match(script, /-framework WebKit/);
+  assert.match(script, /bao-window\.m/);
+  assert.match(main, /bao_instance_write_ui_pid\(bao_home, \(int\)getpid\(\)\)/);
   assert.match(script, /bao-launch\.c/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);

@@ -2101,29 +2101,24 @@ function bindShare(host: HTMLElement, id: string): void {
   }
   const exp = host.querySelector("[data-testid=share-export]") as HTMLButtonElement | null;
   if (exp && !exp.disabled) {
-    exp.addEventListener("click", async () => {
-      const body = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
-      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
+    exp.addEventListener("click", () => {
       const link = document.createElement("a");
-      link.href = url;
+      link.href = "/api/workflows/" + encodeURIComponent(id);
       link.download = `${id}.json`;
+      document.body.append(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
     });
   }
   const guide = host.querySelector("[data-testid=share-guide]") as HTMLButtonElement | null;
   if (guide && !guide.disabled) {
-    guide.addEventListener("click", async () => {
-      const res = await fetch("/api/workflows/" + encodeURIComponent(id) + "/guide");
-      if (!res.ok) return;
-      const blob = new Blob([await res.text()], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
+    guide.addEventListener("click", () => {
       const link = document.createElement("a");
-      link.href = url;
+      link.href = "/api/workflows/" + encodeURIComponent(id) + "/guide";
       link.download = `${id.replace(/[^A-Za-z0-9._-]/g, "_")}-guide.html`;
+      document.body.append(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
     });
   }
 }

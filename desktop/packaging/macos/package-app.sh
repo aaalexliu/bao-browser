@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build Bao.app and a dmg on a Mac. Signing identity defaults to "bao dev signing".
 # No notarization. The OS helper is a separate bundle copied into Resources.
-# The product window is Playwright's Chromium copied into the app.
-# An installed Chrome is not launched.
+# The product window is native WebKit. Bundled Chromium stays available for tasks.
+# Opening Bao does not launch a browser.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
@@ -70,9 +70,8 @@ if [[ -z "$FOUND" ]]; then
 fi
 echo "BUNDLED_BROWSER $FOUND"
 
-# Chromium promotes itself to a foreground app, so this Dock icon stays.
-# Name it Bao. Sign only this bundle. --deep on Bao.app would re-sign
-# BaoOSHelper.app and change its cdhash.
+# Re-sign the renamed task browser without touching BaoOSHelper.app.
+# --deep on Bao.app would re-sign BaoOSHelper.app and change its cdhash.
 CHROME="$APP/Contents/Resources/Chromium.app"
 PLIST="$CHROME/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName Bao" "$PLIST"
@@ -84,9 +83,10 @@ done < <(find "$CHROME" -name InfoPlist.strings -print0)
 codesign --force --sign "$IDENTITY" "$CHROME"
 
 /usr/bin/clang -fobjc-arc -O2 \
-  -framework Foundation -framework AppKit -framework UserNotifications \
+  -framework Foundation -framework AppKit -framework WebKit -framework UserNotifications \
   -o "$APP/Contents/MacOS/bao" \
-  desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c desktop/packaging/macos/bao-notify.m
+  desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c \
+  desktop/packaging/macos/bao-window.m desktop/packaging/macos/bao-notify.m
 # The agents' MCP entry. Built and run once, with a temp HOME that holds only a test
 # library, before it and Bao.app are signed.
 bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"

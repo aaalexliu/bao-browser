@@ -730,7 +730,10 @@ export async function startApp(opts: {
         }
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/")) {
-        return json(res, library.read(decodeURIComponent(url.pathname.split("/")[3] || "")));
+        const doc = library.read(decodeURIComponent(url.pathname.split("/")[3] || ""));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(doc, null, 2));
+        return;
       }
       if (req.method === "GET" && url.pathname === "/api/capture/poster") {
         const file = pendingSave?.poster;

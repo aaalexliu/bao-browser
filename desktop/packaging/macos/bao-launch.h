@@ -62,10 +62,11 @@ int bao_run_capture(char *const argv[], char *buf, size_t n, int timeout_ms);
  * and *other_pid is that window's pid or -1. -1 on error. */
 int bao_instance_acquire(const char *home, int *other_pid);
 void bao_instance_release(void);
-int bao_instance_write_browser_pid(const char *home, int pid);
-int bao_read_browser_pid(const char *home);
+int bao_instance_write_ui_pid(const char *home, int pid);
+int bao_read_ui_pid(const char *home);
 
 int bao_port_listening(const char *port);
+int bao_recover_server(const char *node, const char *root, const char *home, const char *port);
 /* 0 when the port accepts a connection. -1 on timeout or if child_pid has exited. */
 int bao_wait_for_port(const char *port, int child_pid, int timeout_ms);
 

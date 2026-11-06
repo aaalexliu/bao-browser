@@ -6,24 +6,21 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 static void raise_waiting_window(void);
 static int listen_fd = -1;
-static int product_browser_pid = -1;
 static char sock_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 static BOOL auth_requested = NO;
 static NSString *const kCategory = @"bao.act";
 static NSString *const kShowAction = @"show-window";
 
-@interface BaoNotify : NSObject <UNUserNotificationCenterDelegate, NSApplicationDelegate>
+@interface BaoNotify : NSObject <UNUserNotificationCenterDelegate>
 @end
 
 static BaoNotify *notify_owner;
@@ -44,16 +41,14 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
     (void)center;
     if ([response.actionIdentifier isEqualToString:kShowAction] ||
         [response.actionIdentifier isEqualToString:UNNotificationDefaultActionIdentifier]) {
-        raise_waiting_window();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [NSApp sendAction:@selector(showWindow:) to:NSApp.delegate from:nil];
+            raise_waiting_window();
+            completionHandler();
+        });
+        return;
     }
     completionHandler();
-}
-
-- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
-    (void)sender;
-    (void)flag;
-    bao_focus_pid(product_browser_pid);
-    return NO;
 }
 
 @end
@@ -76,9 +71,10 @@ void bao_focus_pid(int pid) {
     if (pid <= 0) return;
     @autoreleasepool {
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-        if (!running) return;
+        if (!running || ![running.bundleIdentifier isEqualToString:NSBundle.mainBundle.bundleIdentifier]) return;
         [running unhide];
-        [running activateWithOptions:NSApplicationActivateIgnoringOtherApps | NSApplicationActivateAllWindows];
+        if (running.bundleURL) [NSWorkspace.sharedWorkspace openURL:running.bundleURL];
+        [running activateWithOptions:NSApplicationActivateAllWindows];
     }
 }
 
@@ -407,59 +403,22 @@ int bao_notify_prepare(const char *path) {
     return 0;
 }
 
-int bao_notify_run(int browser_pid, int node_pid) {
-    @autoreleasepool {
-        notify_owner = [BaoNotify new];
-        product_browser_pid = browser_pid;
-        NSApplication *app = [NSApplication sharedApplication];
-        [app setActivationPolicy:NSApplicationActivationPolicyRegular];
-        [app setDelegate:notify_owner];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            bao_focus_pid(browser_pid);
-        });
-        UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
-        center.delegate = notify_owner;
-        install_category(center);
-        fprintf(stderr, "bao notify bundle %s\n", [NSBundle mainBundle].bundleIdentifier.UTF8String ?: "");
-
-        if (listen_fd >= 0) {
-            pthread_t thread;
-            pthread_create(&thread, NULL, accept_loop, NULL);
-            pthread_detach(thread);
-        }
-
-        __block int status = 0;
-        dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-        dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 0), 400 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
-        dispatch_source_set_event_handler(timer, ^{
-            if (browser_pid <= 0) {
-                [app stop:nil];
-                return;
-            }
-            int wait_status = 0;
-            pid_t got = waitpid(browser_pid, &wait_status, WNOHANG);
-            if (got == 0) return;
-            status = wait_status;
-            if (node_pid > 0) {
-                kill(node_pid, SIGTERM);
-                waitpid(node_pid, &wait_status, 0);
-            }
-            if (listen_fd >= 0) close(listen_fd);
-            if (sock_path[0]) unlink(sock_path);
-            [app stop:nil];
-            NSEvent *kick = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
-                                                location:NSMakePoint(0, 0)
-                                           modifierFlags:0
-                                               timestamp:0
-                                            windowNumber:0
-                                                 context:nil
-                                                 subtype:0
-                                                   data1:0
-                                                   data2:0];
-            [app postEvent:kick atStart:NO];
-        });
-        dispatch_resume(timer);
-        [app run];
-        return status;
+void bao_notify_start(void) {
+    notify_owner = [BaoNotify new];
+    UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+    center.delegate = notify_owner;
+    install_category(center);
+    if (listen_fd >= 0) {
+        pthread_t thread;
+        if (pthread_create(&thread, NULL, accept_loop, NULL) == 0) pthread_detach(thread);
     }
+}
+
+void bao_notify_stop(void) {
+    if (listen_fd >= 0) {
+        shutdown(listen_fd, SHUT_RDWR);
+        close(listen_fd);
+        listen_fd = -1;
+    }
+    if (sock_path[0]) unlink(sock_path);
 }

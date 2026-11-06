@@ -67,6 +67,15 @@ test("the recorded helper requirement passes and a different certificate hash fa
   assert.equal(acceptHelper(other, identity, helperCertHash({ BAO_HELPER_CERT_HASH: otherHash })).ok, true);
 });
 
+test("a hash signing selector still requires the pinned helper certificate", () => {
+  const report = fromCodesign("Identifier=dev.bao.oshelper\nAuthority=bao dev signing\n", recordedRequirement);
+  assert.equal(acceptHelper(report, pinnedHash.toUpperCase(), pinnedHash).ok, true);
+  assert.equal(acceptHelper(report, "0123456789abcdef0123456789abcdef01234567", pinnedHash).ok, false);
+  assert.equal(acceptHelper({ ...report, designated: "" }, pinnedHash, pinnedHash).ok, false);
+  assert.equal(acceptHelper({ ...report, adhoc: true }, pinnedHash, pinnedHash).ok, false);
+  assert.equal(acceptHelper({ ...report, identifier: "other" }, pinnedHash, pinnedHash).ok, false);
+});
+
 test("a staged require fails when the module is found outside the copy", () => {
   const outside = mkdtempSync(path.join(tmpdir(), "bao-staged-"));
   const walked = mkdtempSync(path.join(process.cwd(), ".probe-staged-"));
