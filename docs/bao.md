@@ -484,7 +484,7 @@ Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wik
 
 The operational steps for the default `bao mcp` server are in [Agent quickstart](agent-quickstart.md).
 
-`bao mcp` lists the same five tools no matter how many workflows you add: the four catalog tools below and `agent_browser`. They run inside `bao mcp` without a running Bao app. The older live-driver tools have been removed. `bao mcp-live` remains an alias. [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands) describes the pass-through, recording, cleanup, and raw evidence.
+`bao mcp` lists the same five tools no matter how many workflows you add: the four catalog tools below and `agent_browser`. They run inside `bao mcp` without a running Bao app. MCP Apps hosts also get the reader tools described in [Read-only MCP run viewer](mcp-viewer.md), which owns UI negotiation, visibility, and privacy limits. The older live-driver tools have been removed. `bao mcp-live` remains an alias. [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands) describes the pass-through, recording, cleanup, and raw evidence.
 
 | Tool | What it returns |
 | --- | --- |
