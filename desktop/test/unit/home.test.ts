@@ -864,7 +864,8 @@ test("the window names the library directory it is using", async () => {
     assert.ok(state.workflows?.some((item) => item.id === "keep"));
     browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
     const page = await browser.newPage();
-    await page.goto(`http://127.0.0.1:${app.port}/?screen=settings`);
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.locator("#rail [data-place=settings]").click();
     await page.locator("#settings-home").waitFor();
     assert.equal(await page.locator("#settings-home").innerText(), home);
   } finally {

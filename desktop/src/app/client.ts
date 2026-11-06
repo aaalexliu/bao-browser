@@ -131,9 +131,7 @@ let railHtmlKey = "";
 let listHtmlKey = "";
 let libraryQuery = "";
 let librarySearchOpen = false;
-let libraryRecoveryVisible = false;
-let libraryRecoveryOpen = false;
-let libraryRevealStatus = "";
+let libraryRecovery: { key: string; visible: boolean; open: boolean; status: string } | null = null;
 let paletteOpen = false;
 let paletteQuery = "";
 let paletteActive = 0;
@@ -265,6 +263,9 @@ async function loadState(): Promise<void> {
 }
 
 function render(): void {
+  const recoveryKey = screen === "library" ? JSON.stringify(state.damagedWorkflows || []) : null;
+  const keepLibraryRecovery = libraryRecovery !== null && libraryRecovery.key === recoveryKey;
+  if (!keepLibraryRecovery) libraryRecovery = recoveryKey === null ? null : { key: recoveryKey, visible: false, open: false, status: "" };
   applyTheme();
   if (screen === "logins") readLoginForm();
   const railHtml = rail(state, screen);
@@ -323,21 +324,21 @@ function render(): void {
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
-    const recovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
+    const recovery = keepLibraryRecovery ? document.querySelector<HTMLDetailsElement>("#library-damaged details") : null;
     const focusedRecovery = recovery?.querySelector("summary") === document.activeElement;
-    if (recovery) {
-      libraryRecoveryVisible = !recovery.hidden;
-      libraryRecoveryOpen = recovery.open;
+    if (recovery && libraryRecovery) {
+      libraryRecovery.visible = !recovery.hidden;
+      libraryRecovery.open = recovery.open;
     }
     mainEl().innerHTML = body;
     const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
-    if (nextRecovery) {
-      nextRecovery.hidden = !libraryRecoveryVisible;
-      nextRecovery.open = libraryRecoveryOpen;
+    if (nextRecovery && libraryRecovery) {
+      nextRecovery.hidden = !libraryRecovery.visible;
+      nextRecovery.open = libraryRecovery.open;
       if (focusedRecovery) nextRecovery.querySelector("summary")?.focus();
     }
     const revealStatus = document.getElementById("library-reveal-status");
-    if (revealStatus) revealStatus.textContent = libraryRevealStatus;
+    if (revealStatus && libraryRecovery) revealStatus.textContent = libraryRecovery.status;
     const search = document.getElementById("library-search") as HTMLInputElement | null;
     if (search) search.value = libraryQuery;
     const tools = document.getElementById("library-tools");
@@ -580,19 +581,23 @@ function bind(): void {
   });
   const revealWorkflow = document.getElementById("library-reveal") as HTMLButtonElement | null;
   if (revealWorkflow) revealWorkflow.onclick = async () => {
+    const recovery = libraryRecovery;
+    if (!recovery) return;
     revealWorkflow.disabled = true;
     try {
       const response = await fetch("/api/workflows/reveal", { method: "POST" });
+      if (libraryRecovery !== recovery) return;
       if (!response.ok) throw new Error("Could not open the workflow folder.");
-      libraryRevealStatus = "Workflow folder opened in Finder.";
+      recovery.status = "Workflow folder opened in Finder.";
     } catch {
-      libraryRecoveryVisible = true;
+      if (libraryRecovery !== recovery) return;
+      recovery.visible = true;
       const details = document.querySelector<HTMLDetailsElement>("#library-damaged details");
       if (details) details.hidden = false;
-      libraryRevealStatus = "Could not open the workflow folder. Open File details and recovery to find its path.";
+      recovery.status = "Could not open the workflow folder. Open File details and recovery to find its path.";
     } finally {
       const status = document.getElementById("library-reveal-status");
-      if (status) status.textContent = libraryRevealStatus;
+      if (status && libraryRecovery === recovery) status.textContent = recovery.status;
       revealWorkflow.disabled = false;
     }
   };

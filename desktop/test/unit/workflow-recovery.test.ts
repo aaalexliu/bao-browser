@@ -16,7 +16,8 @@ test("workflow recovery keeps user choices, results and focus across state polls
     writeFileSync(path.join(dirs.home, "workflows", "damaged.json"), "{");
     browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
     const page = await browser.newPage();
-    await page.goto(`http://127.0.0.1:${app.port}/?screen=library`);
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.locator("#rail [data-place=workflows]").click();
     const details = page.locator("#library-damaged details");
     const summary = details.locator("summary");
     const status = page.locator("#library-reveal-status");
@@ -27,9 +28,9 @@ test("workflow recovery keeps user choices, results and focus across state polls
     assert.equal(emptyStatus.height, 0);
     const bannerHeight = await status.evaluate((node) => {
       const before = node.parentElement!.getBoundingClientRect().height;
-      node.hidden = true;
+      node.setAttribute("hidden", "");
       const withoutStatus = node.parentElement!.getBoundingClientRect().height;
-      node.hidden = false;
+      node.removeAttribute("hidden");
       return { before, withoutStatus };
     });
     assert.equal(bannerHeight.before, bannerHeight.withoutStatus, "an empty result adds no blank banner row");
@@ -54,8 +55,14 @@ test("workflow recovery keeps user choices, results and focus across state polls
     assert.equal(await details.getAttribute("open"), null, "polls retain a manual collapse");
     assert.equal(await summary.evaluate((node) => node === document.activeElement), true);
 
-    await page.reload();
-    await page.locator("#library-damaged").waitFor();
+    const returnFromRecord = async () => {
+      await page.getByRole("button", { name: "Record", exact: true }).click();
+      await page.locator("#screen-list [data-screen=library]").click();
+      assert.equal(await details.isHidden(), true);
+      assert.equal(await details.getAttribute("open"), null);
+      assert.equal(await status.innerText(), "");
+    };
+    await returnFromRecord();
     await page.route("**/api/workflows/reveal", (route) => route.fulfill({ status: 500, json: { error: "fixture folder failure" } }));
     await page.locator("#library-reveal").click();
     const failure = "Could not open the workflow folder. Open File details and recovery to find its path.";
@@ -76,6 +83,58 @@ test("workflow recovery keeps user choices, results and focus across state polls
     await page.getByRole("status").filter({ hasText: "Workflow folder opened in Finder." }).waitFor();
     await poll();
     assert.equal(await status.innerText(), "Workflow folder opened in Finder.");
+    await page.locator("[data-open-workflow=good]").click();
+    await page.locator("#workflow-detail [data-screen=library]").click();
+    assert.equal(await details.isHidden(), true);
+    assert.equal(await status.innerText(), "");
+    await page.locator("#rail [data-place=settings]").click();
+    await page.locator("#rail [data-place=workflows]").click();
+    assert.equal(await details.isHidden(), true);
+    assert.equal(await status.innerText(), "");
+
+    for (const scenario of [
+      { outcome: 200, boundary: "visit" }, { outcome: 500, boundary: "visit" },
+      { outcome: 200, boundary: "damage" }, { outcome: 500, boundary: "damage" },
+    ]) {
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => { finish = resolve; });
+      let requested!: () => void;
+      const started = new Promise<void>((resolve) => { requested = resolve; });
+      await page.route("**/api/workflows/reveal", async (route) => {
+        requested();
+        await pending;
+        await route.fulfill({ status: scenario.outcome, json: { ok: scenario.outcome === 200 } });
+      });
+      await page.locator("#library-reveal").click();
+      await started;
+      if (scenario.boundary === "visit") await returnFromRecord();
+      else {
+        writeFileSync(path.join(dirs.home, "workflows", "extra.json"), "{");
+        await page.getByRole("button", { name: "extra.json", exact: true }).waitFor();
+      }
+      const replied = page.waitForResponse((response) => response.url().endsWith("/api/workflows/reveal"));
+      finish();
+      await replied;
+      await poll();
+      assert.equal(await details.isHidden(), true, "late folder replies cannot change a later recovery scope");
+      assert.equal(await status.innerText(), "");
+      await page.unroute("**/api/workflows/reveal");
+      if (scenario.boundary === "damage") {
+        rmSync(path.join(dirs.home, "workflows", "extra.json"));
+        await page.getByRole("button", { name: "extra.json", exact: true }).waitFor({ state: "detached" });
+      }
+    }
+
+    await page.route("**/api/workflows/reveal", (route) => route.fulfill({ json: { ok: true } }));
+    await page.locator("[data-damaged-file]").click();
+    await page.locator("#library-reveal").click();
+    await page.getByRole("status").filter({ hasText: "Workflow folder opened in Finder." }).waitFor();
+    rmSync(path.join(dirs.home, "workflows", "damaged.json"));
+    writeFileSync(path.join(dirs.home, "workflows", "other.json"), "{");
+    await page.getByRole("button", { name: "other.json", exact: true }).waitFor();
+    assert.equal(await details.isHidden(), true, "a changed damaged set starts with recovery closed");
+    assert.equal(await details.getAttribute("open"), null);
+    assert.equal(await status.innerText(), "");
     await page.locator("#library-search-open").click();
     await page.locator("#library-search").fill("Good");
     await poll();
