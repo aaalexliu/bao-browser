@@ -108,7 +108,9 @@ import {
 import { editInput } from "../v1/input-token";
 import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
-import { showOnce } from "../home";
+import { baoUserHome, showOnce } from "../home";
+import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
+import { DesktopMcpInstaller } from "./desktop-mcp-config";
 import { Library } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
@@ -206,6 +208,7 @@ export async function startApp(opts: {
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
+  const desktopMcp = new DesktopMcpInstaller(baoUserHome(), mcpLauncher(appBundleOf(__filename) || DEFAULT_APP));
   const librarySplits = showOnce(opts.home, opts.libraryNotices || []);
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
@@ -795,6 +798,23 @@ export async function startApp(opts: {
         if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
         const profiles = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
         return json(res, { profiles });
+      }
+      if (req.method === "POST" && (url.pathname === "/api/desktop-mcp/preview" || url.pathname === "/api/desktop-mcp/confirm")) {
+        const origin = req.headers.origin;
+        if ((origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) || !req.headers["content-type"]?.startsWith("application/json")) {
+          return json(res, { error: "Open Bao Settings on this Mac to preview and confirm the change." }, 403);
+        }
+        try {
+          const body = await readBody(req) as { client?: unknown; token?: unknown } | null;
+          if (url.pathname.endsWith("/preview")) {
+            if (body?.client !== "claude" && body?.client !== "chatgpt") return json(res, { error: "Choose Claude or ChatGPT and preview again." }, 400);
+            return json(res, desktopMcp.preview(body.client));
+          }
+          if (typeof body?.token !== "string") return json(res, { error: "Preview the change again before confirming." }, 400);
+          return json(res, desktopMcp.confirm(body.token));
+        } catch (err) {
+          return json(res, { error: err instanceof Error ? err.message : "Cannot install Bao. Close this dialog and preview again." }, 409);
+        }
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
         const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown };
