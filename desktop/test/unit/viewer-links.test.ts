@@ -116,8 +116,7 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
     assert.match(toast, /stopped at Save/);
     assert.equal(await page.locator("#toasts [data-open-step]").count(), 0);
     await page.locator("#rail button[data-place=workflows]").click();
-    await page.locator("#screen-list button[data-screen=library]").click();
-    assert.match(await page.locator("article.wf-card .status").innerText(), /failed/);
+    assert.match(await page.locator(".workflow-row .status").innerText(), /failed/i);
     await page.locator("#rail button[data-place=runs]").click();
     await page.locator("#screen-list button[data-screen=runs]").click();
     await page.locator("[data-open-run=run-fail]").first().click();

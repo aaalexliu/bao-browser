@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { EventEmitter } from "node:events";
+import childProcess from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -80,6 +82,39 @@ test("desktop state and Runs remain readable with a schema-invalid workflow", as
   } finally { await app.close(); f.cleanup(); }
 });
 
+test("Show in Finder opens this Library’s workflow folder with a recoverable failure", async (t) => {
+  const f = fixture();
+  const oldHome = process.env.HOME;
+  process.env.HOME = f.home;
+  const app = await startApp({ home: f.home, extensionHost: false, chromeProfilesRoot: path.join(f.home, "profiles") });
+  const calls: { command: string; args: readonly string[] | undefined }[] = [];
+  let outcome: "opened" | "failed" | "missing" = "opened";
+  const spawn = t.mock.method(childProcess, "spawn", (command: string, args?: readonly string[]) => {
+    calls.push({ command, args });
+    const child = new EventEmitter();
+    queueMicrotask(() => outcome === "missing" ? child.emit("error", new Error("not installed")) : child.emit("exit", outcome === "opened" ? 0 : 1));
+    return child as unknown as childProcess.ChildProcess;
+  });
+  try {
+    for (const state of ["opened", "failed", "missing"] as const) {
+      outcome = state;
+      const response = await fetch(`http://127.0.0.1:${app.port}/api/workflows/reveal`, { method: "POST" });
+      assert.equal(response.status, state === "opened" ? 200 : 500);
+      const body = await response.json() as { ok?: boolean; error?: string };
+      if (state === "opened") assert.equal(body.ok, true);
+      else assert.match(body.error || "", /File details and recovery/);
+      assert.deepEqual(calls.at(-1), { command: process.platform === "darwin" ? "open" : "xdg-open", args: [path.join(f.home, "workflows")] });
+      assert.equal(readFileSync(f.file, "utf8"), f.bytes);
+    }
+  } finally {
+    spawn.mock.restore();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    f.cleanup();
+  }
+});
+
 test("MCP search returns good workflows and damaged-file reasons", async () => {
   const f = fixture();
   const client = McpClient.start({ ...process.env, HOME: f.home, BAO_HOME: f.home, BAO_HEAL_CURSOR_ACCOUNT: "0" });
@@ -103,7 +138,8 @@ test("Library explains recovery without hiding good cards or claiming a damaged 
   assert.match(html, /Your other workflows are fine/);
   assert.match(html, /The workflow name is missing/);
   assert.match(html, /\/tmp\/bao\/workflows\/damaged.json/);
-  assert.match(html, /Restore a backup, fix the file, or remove it/);
+  assert.match(html, /Restore a backup, fix the file, or move it/);
+  assert.match(html, /id="library-reveal">Show in Finder/);
   assert.match(html, /data-screen="capture">Record again/);
   assert.match(html, /data-open-workflow="good"/);
   assert.doesNotMatch(html, /No workflows yet/);

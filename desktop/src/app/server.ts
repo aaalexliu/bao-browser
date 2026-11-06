@@ -896,6 +896,16 @@ export async function startApp(opts: {
         if (body.action === "keep-theirs" || body.action === "keep-both") return json(res, await resolveConflict(library, body.id, body.action));
         return json(res, { error: "action" }, 400);
       }
+      if (req.method === "POST" && url.pathname === "/api/workflows/reveal") {
+        const command = process.platform === "darwin" ? "open" : "xdg-open";
+        const target = path.join(library.root, "workflows");
+        const opened = await new Promise<boolean>((resolve) => {
+          const child = spawn(command, [target], { stdio: "ignore" });
+          child.once("error", () => resolve(false));
+          child.once("exit", (code) => resolve(code === 0));
+        });
+        return opened ? json(res, { ok: true }) : json(res, { error: "Could not open the workflow folder. Open File details and recovery to find its path." }, 500);
+      }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
         return json(res, library.importJson(String(await readBody(req, true))));
       }
