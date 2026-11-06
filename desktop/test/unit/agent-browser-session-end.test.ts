@@ -259,7 +259,7 @@ test("close near the stop deadline closes a retained window before a queued live
     c.send("tools/call", { name: "live_snapshot", arguments: {} });
     await requested;
     const stopped = c.stop();
-    await until(async () => JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")).retained === true);
+    await until(async () => (JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: unknown }).retained === true);
     await delay(11_500);
     c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
     await until(() => access(copy).then(() => false, () => true));
