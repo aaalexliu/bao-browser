@@ -209,7 +209,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     const startedAt = 1_700_000_000_000;
     for (const [template, reason, expected] of [
       ["{{report.name}}", "ZXQLEFTZXQRIGHT.txt", undefined],
-      ["report.csv", "open /Users/owner/private/report.csv", "open report.csv"],
+      ["report.csv", "open /Users/owner/private/report.csv", "open /Users/owner/private/report.csv"],
     ] as const) {
       const workflow: WorkflowV2 = { ...JSON.parse(shelfWorkflow) as WorkflowV2, version: 3, filesDates: 1, inputs: [{ name: "password", type: "secret" }], steps: [
         { id: "source", index: 0, action: "download", label: "Source", surface: "dom", timeoutMs: 1000, download: { output: "report", name: "{{password}}.txt" } },
@@ -232,7 +232,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       assert.equal(metadata.steps[0]?.reason, expected);
       assert.equal(metadata.steps[0]?.picturesAllowed, expected !== undefined);
       assert.equal(metadata.handoff?.ask, expected);
-      assert.doesNotMatch(JSON.stringify(metadata), /ZXQLEFT|ZXQRIGHT|\/Users\/owner/);
+      assert.doesNotMatch(JSON.stringify(metadata), /ZXQLEFT|ZXQRIGHT/);
       const inspected = await mcp.request("tools/call", { name: "inspect_run", arguments: { run_id: run.id } });
       assert.deepEqual(inspected.result?._meta?.baoViewer, metadata);
       assert.deepEqual(JSON.parse(inspected.result?.content?.[0]?.text || "null"), metadata);

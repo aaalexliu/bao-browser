@@ -19,7 +19,7 @@ The viewer checks host capabilities for further reads, theme, locale, and full-s
 
 The viewer reads the same Library files as Bao desktop. It has no second database. Run and workflow reads cap each record at 2 MiB. History pages cap run reads at five records. Detail pages cap run steps and workflow steps at twenty each. Unavailable or oversized history records consume a page slot and show a skipped-record count.
 
-The projection omits input values, raw snapshots, native command arguments and output, local asset paths, video, and resume tokens. It shows model-call counts as unknown when a record does not track them. A recorded zero counts Bao model calls, not calls made by an external coding agent. Browser captures without a saved workflow still have a receipt; their detailed evidence stays in Bao desktop.
+The projection omits input values, raw snapshots, native command arguments and output, dedicated local asset path fields, video, and resume tokens. Ordinary step text may contain local paths. It shows model-call counts as unknown when a record does not track them. A recorded zero counts Bao model calls, not calls made by an external coding agent. Browser captures without a saved workflow still have a receipt; their detailed evidence stays in Bao desktop.
 
 Pictures never load with the initial receipt or history. Opening a step's pictures sends those pictures from the Mac to the host app. The host may retain them under its own data policy. Image bytes appear only in tool-result `_meta`, not in the model-visible `content` or `structuredContent`.
 
@@ -29,6 +29,7 @@ The viewer offers no run, resume, edit, approve, or browser-control action. In U
 
 ## Known gaps
 
+- The viewer shows local file paths in step text the same way `get_run` does.
 - If a host advertises full-screen mode but the request fails, the receipt does not fall back to an expanded inline view. This remains deferred.
 - Runs of a workflow edited after the run show no details in Claude or other MCP Apps hosts. Missing workflows and unknown start or file times also hide details. The viewer compares a checked workflow-file snapshot with the existing recording-start timestamp, which must precede the first step and save time. Runs without that timing stay private; `run.at` is a save time, not a start time. Durable per-run privacy marks remain a possible follow-up.
 

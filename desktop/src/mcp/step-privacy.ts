@@ -3,18 +3,6 @@ import { secretSavedField } from "../../../shared/saved-secrets";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 import type { StoredRun } from "../v1/store";
 
-export function viewerText(value: string): string {
-  const fileName = (local: string): string => {
-    const name = local.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1);
-    return name && !name.endsWith(":") ? name : "[local path]";
-  };
-  return value
-    .replace(/(["'`])((?:file:\/\/(?:[^/\s]+)?\/|[A-Za-z]:[\\/]|\\\\|\/)[^\r\n]*?)\1/gi,
-      (_match, quote: string, local: string) => `${quote}${fileName(local)}${quote}`)
-    .replace(/((?!file:)[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'`<>]+)|(?<![\w:/\\])(?:file:\/\/(?:[^/\s]+)?\/|[A-Za-z]:[\\/]|\\\\|\/)(?:[^\r\n"'`<>()[\]{};,/\\]*[\\/])*[^\s"'`<>()[\]{};,/\\]*/gi,
-      (local, url: string | undefined) => url ?? fileName(local));
-}
-
 function* fields(value: unknown, excluded?: unknown): Generator<unknown> {
   if (value === excluded) return;
   yield value;

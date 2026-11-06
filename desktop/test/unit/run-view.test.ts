@@ -292,44 +292,39 @@ test("secret marker inputs and derived output filenames never reach viewer evide
   assert.equal(getRun(library, run.id).reason, reason);
 });
 
-test("every viewer text projection reduces absolute local paths to filenames", (t) => {
+test("public viewer text preserves slash separators, web paths, and local paths", (t) => {
   const { library, run, workflow } = fixture(t);
-  const cases: [string, string][] = [
-    ["/var/folders/owner/bao-runs/report.csv", "report.csv"],
-    ["'/Users/Owner Name/private directory/report final.csv'", "'report final.csv'"],
-    ["/Users/Owner Name/private directory/report.csv", "report.csv"],
-    ["C:\\Users\\Owner Name\\AppData\\Local\\report.csv", "report.csv"],
-    ["\\\\server\\share\\private directory\\report.csv", "report.csv"],
-    ["file:///Users/owner/private/report.csv", "report.csv"],
-    ['"FILE:///Users/Owner Name/private directory/report final.csv"', '"report final.csv"'],
-    [`/${"x".repeat(600)}/report.csv`, "report.csv"],
-  ];
-  for (const [local, filename] of cases) {
-    const reason = `open ${local}; URL https://example.test/export-/report.csv`;
-    const expected = `open ${filename}; URL https://example.test/export-/report.csv`;
-    saveWorkflow(library, { ...workflow, name: local, steps: [{ ...workflow.steps[0]!, label: local }] });
+  for (const value of [
+    "Invoice / March", "ready / done", "/orders/1042", "Home / Orders / 1042",
+    "ENOENT open '/Users/O'Brien/secret.txt'",
+    "Command failed: open /Users/O'Brien/Documents/report.csv",
+    "/Users/alex/My Files (2024)/report.csv",
+    "file:/Users/alex/report.csv", "prefix:/Users/alex/report.csv",
+    "C:\\Users\\Owner Name\\report.csv", "https://example.test/export-/report.csv",
+  ]) {
+    saveWorkflow(library, { ...workflow, name: value, steps: [{ ...workflow.steps[0]!, label: value }] });
     const receipts = new ReceiptLog();
-    receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "file", expected: local, actual: reason, pass: false });
-    saveRun(library, { ...run, status: "failed", receipts: receipts.entries, steps: [{ id: "preview", status: "failed", reason }], failure: { stepId: "preview", reason }, envelope: { status: "failed", step: "preview", reason, ask: reason } });
+    receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "text", expected: value, actual: value, pass: false });
+    saveRun(library, { ...run, status: "failed", receipts: receipts.entries, steps: [{ id: "preview", status: "failed", reason: value }], failure: { stepId: "preview", reason: value }, envelope: { status: "failed", step: "preview", reason: value, ask: value } });
     const detail = inspectRunView(library, { run_id: run.id });
     assert.equal(detail.detailsHidden, undefined);
-    assert.equal(detail.reason, expected);
-    assert.equal(detail.steps[0]?.reason, expected);
-    assert.equal(detail.steps[0]?.result, `Read back file: expected ${filename}, saw ${expected}. does not match.`);
+    assert.equal(detail.reason, value);
+    assert.equal(detail.steps[0]?.reason, value);
+    assert.equal(detail.steps[0]?.result, `Read back text: expected ${value}, saw ${value}. does not match.`);
     assert.equal(detail.steps[0]?.picturesAllowed, true);
-    assert.equal(detail.handoff?.ask, expected);
-    assert.equal(detail.handoff?.reason, expected);
-    assert.equal(detail.run.name, filename);
-    assert.equal(detail.steps[0]?.label, filename);
-    assert.equal(detail.workflow?.name, filename);
-    assert.equal(detail.workflow?.steps[0]?.label, filename);
-    assert.equal(listRunViews(library, {}).runs[0]?.name, filename);
+    assert.equal(detail.handoff?.ask, value);
+    assert.equal(detail.handoff?.reason, value);
+    assert.equal(detail.run.name, value);
+    assert.equal(detail.steps[0]?.label, value);
+    assert.equal(detail.workflow?.name, value);
+    assert.equal(detail.workflow?.steps[0]?.label, value);
+    assert.equal(listRunViews(library, {}).runs[0]?.name, value);
     const result = callViewerTool(library, "inspect_run", { run_id: run.id });
     assert.deepEqual(result._meta.baoViewer, detail);
     assert.deepEqual(JSON.parse(result.content[0]!.text), JSON.parse(JSON.stringify(detail)));
-    assert.equal(getRun(library, run.id).reason, reason);
-    saveRun(library, { ...run, receipts: [], steps: [{ id: "preview", status: "passed", readBack: reason }] });
-    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.result, expected);
+    assert.equal(getRun(library, run.id).reason, value);
+    saveRun(library, { ...run, receipts: [], steps: [{ id: "preview", status: "passed", readBack: value }] });
+    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.result, value);
   }
 });
 

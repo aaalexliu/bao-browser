@@ -3,7 +3,7 @@ import { readLibraryFile } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
 import { shotFile, shotFormat } from "../v1/shots";
 import { Library, type StoredRun } from "../v1/store";
-import { privateStep, viewerText } from "./step-privacy";
+import { privateStep } from "./step-privacy";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
 export const VIEW_PICTURE_BYTES = 512 * 1024;
@@ -34,7 +34,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function text(value: unknown, limit = 500): string | undefined {
-  return typeof value === "string" ? viewerText(value).slice(0, limit) : undefined;
+  return typeof value === "string" ? value.slice(0, limit) : undefined;
 }
 
 function count(value: unknown): number | null {
