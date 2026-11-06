@@ -6,13 +6,13 @@ Bao is already installed. For a rebuild, see [Build Bao on a Mac](mac-build.md).
 
 Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
 
-The window title is **Bao**, without an address bar. Library opens first. Sidebar: Library, Capture, Teach, Runs, Heals, Replay, Logins, Settings.
+The Bao window has no address bar. Runs opens first. The sidebar has Runs, Workflows, and Settings.
 
 Check the footer against [Which grant each job needs](permissions.md#which-grant-each-job-needs). For daily Chrome, expect **AX press ready** and **live Chrome ready**, even with Screen Recording off.
 
 ## Record
 
-1. Click **Capture**.
+1. Click **Workflows**, then **Capture**.
 2. Click **Start capture**. A second window opens on the fixture.
 3. Type a made-up username, such as `ada`.
 4. Type a made-up password. Click **Log in**.

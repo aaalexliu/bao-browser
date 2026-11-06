@@ -206,13 +206,13 @@ test("attention count covers the ask, the import, and undecided heals", () => {
     runs: [{ id: "r", workflowId: "w", status: "passed", heals: [{ id: "h1" }], decisions: [] }],
   });
   assert.match(html, /data-screen="library"/);
-  assert.match(html, /data-screen="capture"/);
+  assert.match(html, /data-place="workflows"/);
   assert.match(html, /data-screen="runs"/);
-  assert.match(html, /data-screen="heals"/);
+  assert.match(html, /data-place="runs"/);
   assert.match(html, /data-screen="settings"/);
   assert.equal(html.includes("data-screen=\"trail\""), false);
   assert.match(html, /id="attention" data-count="3"/);
-  assert.match(html, /id="heal-count">1/);
+  assert.match(html, /aria-label="3 waiting"/);
   assert.match(html, /recording/);
   assert.match(html, /helper off/);
   assert.match(html, /no model/);

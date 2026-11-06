@@ -2,6 +2,7 @@
 
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
+import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
@@ -34,6 +35,7 @@ import {
   paletteView,
   helperJobList,
   rail,
+  shellList,
   recordBar,
   saveSheetView,
   runsList,
@@ -63,8 +65,6 @@ import {
   type ShellState,
   type WorkflowSummary,
 } from "./views";
-
-type Screen = "library" | "capture" | "runs" | "live" | "heals" | "settings" | "replay" | "run" | "workflow" | "logins" | "import" | "teach";
 
 interface OpenedState {
   kind: "workflow" | "import" | "run";
@@ -105,7 +105,7 @@ let state: ShellState & {
   home?: string;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
-let screen: Screen = screenFromQuery(location.search) || "library";
+let screen: Screen = screenFromQuery(location.search) || "runs";
 let lastWf = "";
 let deeplinkInputs: Record<string, string> = {};
 let deeplinkPending = false;
@@ -118,6 +118,10 @@ let selectedStep = "";
 let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();
 let renderKey = "";
+let renderedDetail = "";
+const detailTitles = { workflow: "Workflow", run: "Run", import: "Import" } as const;
+let railHtmlKey = "";
+let listHtmlKey = "";
 let libraryQuery = "";
 let paletteOpen = false;
 let paletteQuery = "";
@@ -236,7 +240,24 @@ function render(): void {
   if (screen === "logins") readLoginForm();
   const missing = state.settings?.pageEngine !== "agent-browser" && macPermissionMissing(state.helper);
   const showCard = missing && !onboarded && screen === "library";
-  railEl().innerHTML = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard });
+  const railHtml = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard }, screen);
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedNav = focused?.closest("#rail, #screen-list");
+  const focusSelector = !focusedNav ? "" : focused?.id ? `#${focused.id}` : focused?.dataset.screen ? `#${focusedNav.id} button[data-screen="${focused.dataset.screen}"]` : "";
+  if (railHtmlKey !== railHtml) {
+    railEl().innerHTML = railHtml;
+    railHtmlKey = railHtml;
+  }
+  const list = document.getElementById("screen-list")!;
+  const listHtml = shellList(screen, state);
+  if (listHtmlKey !== listHtml) {
+    list.innerHTML = listHtml;
+    listHtmlKey = listHtml;
+  }
+  if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
+  document.getElementById("screen-title")!.textContent = shellScreens[shellScreen(screen)].label;
+  const title = screen in detailTitles ? detailTitles[screen as keyof typeof detailTitles] : shellScreens[shellScreen(screen)].label;
+  document.title = `${title} - ${productWindowTitle()}`;
   const importAsk = screen === "logins" ? loginAct(login) : "";
   actEl().innerHTML = (state.automationNotice ? `<p role="status" id="automation-notice">${esc(state.automationNotice)}</p>` : "") + remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
@@ -272,7 +293,6 @@ function render(): void {
     }
     if (screen === "replay") void fillArgs(replayId);
   }
-  markNav();
   bind();
   applySearch();
   paintPalette();
@@ -280,17 +300,15 @@ function render(): void {
   paintSaveSheet();
   mountShots();
   paintToasts();
+  const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : "";
+  if (detail && detail !== renderedDetail) {
+    mainEl().focus({ preventScroll: true });
+    document.getElementById("content")!.scrollTop = 0;
+  }
+  renderedDetail = detail;
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
   if (screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
-}
-
-function markNav(): void {
-  const current = screen === "run" ? "runs" : screen === "workflow" || screen === "import" ? "library" : screen;
-  document.querySelectorAll("#rail nav button").forEach((btn) => {
-    const el = btn as HTMLButtonElement;
-    el.classList.toggle("on", el.dataset.screen === current);
-  });
 }
 
 function capture(): string {
@@ -472,16 +490,33 @@ function bind(): void {
     render();
     document.getElementById("start-url")?.focus();
   };
-  document.querySelectorAll("#rail nav button").forEach((btn) => {
+  const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+  const toggle = document.getElementById("sidebar-toggle");
+  if (toggle) toggle.onclick = () => {
+    sidebar.returnValue = "";
+    sidebar.append(railEl());
+    sidebar.showModal();
+  };
+  const close = document.getElementById("sidebar-close");
+  if (close) close.onclick = () => sidebar.close();
+  document.querySelectorAll("#rail nav button, #screen-list nav button").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       screen = (btn as HTMLButtonElement).dataset.screen as Screen;
       renderKey = "";
       if (screen === "logins") void loadSaved();
       if (screen === "settings") void loadHostAccess();
+      if (screen === "replay") {
+        debugStepId = "";
+        runFromN = 0;
+        fromNote = "";
+      }
       render();
+      if (sidebar.open) sidebar.close("navigate");
+      mainEl().focus();
+      document.getElementById("content")!.scrollTop = 0;
     };
   });
-  document.querySelectorAll("[data-screen=replay]").forEach((btn) => {
+  document.querySelectorAll("#main [data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
       debugStepId = "";
@@ -680,7 +715,9 @@ function bind(): void {
     schedule: (schedule as HTMLSelectElement).value,
   });
   const restore = document.getElementById("restore-backup");
-  if (restore) restore.onclick = () => void postSync("/api/sync/backup", { action: "restore" });
+  if (restore) restore.onclick = () => {
+    if (confirm("Restore the backup? This replaces the current Library with its saved copy.")) void postSync("/api/sync/backup", { action: "restore" });
+  };
   const reveal = document.getElementById("reveal-backup");
   if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
@@ -1590,7 +1627,6 @@ function paintDockBadge(): void {
     pendingHeals: pendingHealCount(state.runs || []),
     reviews: reviewItems(state.runs).length,
   });
-  document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);
   else void nav.clearAppBadge?.().catch(() => undefined);
@@ -1715,6 +1751,7 @@ function bindLogins(): void {
   });
   document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
     btn.onclick = async () => {
+      if (!confirm(`Remove ${btn.dataset.remove || "this site"} from saved sites? You can add it again by importing its login.`)) return;
       readLoginForm();
       await fetch("/api/login-sites", {
         method: "DELETE",
@@ -2326,11 +2363,32 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+const sidebarDialog = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+sidebarDialog.addEventListener("close", () => {
+  if (sidebarDialog.open) return;
+  document.getElementById("app")!.prepend(railEl());
+  if (sidebarDialog.returnValue === "navigate") mainEl().focus();
+  else document.getElementById("sidebar-toggle")?.focus();
+});
+window.matchMedia("(max-width: 1060px)").addEventListener("change", (event) => {
+  if (!event.matches && sidebarDialog.open) sidebarDialog.close("navigate");
+});
+const connectionError = document.getElementById("connection-error")!;
+document.getElementById("retry-connection")!.onclick = () => { void refresh().catch(() => undefined); };
 const statePoller = createStatePoller({
-  poll: refreshState,
+  async poll() {
+    try {
+      await refreshState();
+      connectionError.hidden = true;
+    } catch (error) {
+      connectionError.hidden = false;
+      throw error;
+    }
+  },
   active: () => activePolling(state),
   visible: () => document.visibilityState === "visible",
 });
 document.addEventListener("visibilitychange", statePoller.visibilityChanged);
+render();
 void refresh().catch(() => undefined);
 setInterval(tickClock, 250);

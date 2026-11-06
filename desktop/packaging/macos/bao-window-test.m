@@ -78,6 +78,10 @@ int main(int argc, const char *argv[]) {
         NSApplication *app = NSApplication.sharedApplication;
         BaoWindow *owner = [[BaoWindow alloc] initWithURL:[NSURL URLWithString:@"http://127.0.0.1:47879/"] serverPid:-1];
         assert([owner.window.title isEqualToString:@"Bao"]);
+        assert(owner.window.titleVisibility == NSWindowTitleHidden);
+        assert(owner.window.titlebarAppearsTransparent);
+        assert(owner.window.styleMask & NSWindowStyleMaskFullSizeContentView);
+        assert(owner.window.minSize.width == 720);
         assert(!owner.window.releasedWhenClosed);
         assert(!owner.webView.configuration.websiteDataStore.persistent);
         assert([owner isLocalURL:[NSURL URLWithString:@"http://127.0.0.1:47879/?screen=settings"]]);
