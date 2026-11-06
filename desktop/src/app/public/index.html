@@ -213,6 +213,11 @@
       overscroll-behavior: contain;
     }
     #rail .brand { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 6px; font-size: var(--text-sm); color: var(--side-quiet); }
+    [data-bao-native] #rail { padding-block-start: 52px; }
+    [data-bao-native] #rail .brand { display: none; }
+    [data-bao-native] .skip-link:focus { inset-block-start: 52px; }
+    [data-bao-native] #sidebar-dialog #rail { padding-block-start: 94px; }
+    [data-bao-native] #sidebar-dialog #sidebar-close { inset-block-start: 52px; }
     #rail nav { display: flex; flex-direction: column; gap: 2px; }
     #rail nav button {
       display: flex;
@@ -839,6 +844,7 @@
       #app { grid-template-columns: 296px minmax(0, 1fr); }
       #app > #rail { display: none; }
       #sidebar-toggle { display: inline-flex; }
+      [data-bao-native] #screen-list > .pane-bar { padding-block-start: 62px; }
     }
     @media (max-width: 600px) {
       #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

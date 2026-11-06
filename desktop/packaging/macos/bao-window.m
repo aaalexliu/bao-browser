@@ -8,6 +8,22 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+@interface BaoTitlebar : NSView
+@end
+@implementation BaoTitlebar
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
+    return YES;
+}
+- (void)mouseDown:(NSEvent *)event {
+    if (event.clickCount == 2) {
+        NSString *action = [NSUserDefaults.standardUserDefaults stringForKey:@"AppleActionOnDoubleClick"];
+        if ([action isEqualToString:@"Minimize"]) [self.window miniaturize:nil];
+        else if (![action isEqualToString:@"None"]) [self.window zoom:nil];
+    } else [self.window performWindowDragWithEvent:event];
+}
+@end
+
 @interface BaoDownload : NSObject
 @property(nonatomic, strong) NSURL *destination;
 @property(nonatomic, strong) NSURL *directory;
@@ -17,7 +33,7 @@
 @implementation BaoDownload
 @end
 
-@interface BaoWindow : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate>
+@interface BaoWindow : NSObject <NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate>
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) NSURL *serverURL;
@@ -39,26 +55,65 @@
     WKWebViewConfiguration *config = [WKWebViewConfiguration new];
     // Persist UI preferences in Bao's WebKit store, not Safari or a task profile.
     config.websiteDataStore = WKWebsiteDataStore.defaultDataStore;
+    [config.userContentController addUserScript:[[WKUserScript alloc]
+        initWithSource:@"document.documentElement.dataset.baoNative = 'true'"
+        injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
     _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 1200, 800) configuration:config];
     _webView.navigationDelegate = self;
     _webView.UIDelegate = self;
     _window = [[NSWindow alloc] initWithContentRect:_webView.frame
                                         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                                  NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
+                                                  NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
+                                                  NSWindowStyleMaskFullSizeContentView
                                           backing:NSBackingStoreBuffered defer:NO];
+    _window.delegate = self;
     _window.title = @"Bao";
+    _window.titleVisibility = NSWindowTitleHidden;
+    _window.titlebarAppearsTransparent = YES;
+    _window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     _window.minSize = NSMakeSize(720, 600);
     _window.releasedWhenClosed = NO;
-    _window.contentView = _webView;
+    NSView *content = [[NSView alloc] initWithFrame:_webView.frame];
+    _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [content addSubview:_webView];
+    BaoTitlebar *titlebar = [[BaoTitlebar alloc] initWithFrame:NSMakeRect(0, content.bounds.size.height - 52, 212, 52)];
+    titlebar.autoresizingMask = NSViewMinYMargin;
+    [content addSubview:titlebar];
+    _window.contentView = content;
     [_window center];
     [_webView loadRequest:[NSURLRequest requestWithURL:url]];
     return self;
+}
+
+- (void)positionWindowButtons {
+    if (self.window.styleMask & NSWindowStyleMaskFullScreen) return;
+    NSUInteger index = 0;
+    for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+        NSButton *button = [self.window standardWindowButton:kind.unsignedIntegerValue];
+        NSUInteger position = index++;
+        if (button.window != self.window) continue;
+        NSPoint center = [button.superview convertPoint:NSMakePoint(24 + position * 20, self.window.contentView.bounds.size.height - 24)
+                                              fromView:self.window.contentView];
+        [button setFrameOrigin:NSMakePoint(center.x - button.frame.size.width / 2, center.y - button.frame.size.height / 2)];
+    }
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+    (void)notification;
+    [self positionWindowButtons];
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+    (void)notification;
+    [self positionWindowButtons];
 }
 
 - (void)showWindow:(id)sender {
     (void)sender;
     [self.window deminiaturize:nil];
     [self.window makeKeyAndOrderFront:nil];
+    [self.window displayIfNeeded];
+    [self positionWindowButtons];
     [NSApp activateIgnoringOtherApps:YES];
 }
 

@@ -10,7 +10,7 @@ Do not rebuild the helper, reset TCC, request Screen Recording, enable Apple Eve
 
 ## Open the installed app
 
-Open `/Applications/Bao.app` from Finder. The window title is **Bao**, with no address bar. The Dock shows one Bao app, not a second Chrome for Testing app. Opening Bao starts no Chrome or Chromium process; macOS WebKit renders the UI inside Bao's native window. Open it again and check that it focuses the same window without starting another app server. Close the window, then click Bao in the Dock: the same window reopens. Quit Bao: its local server stops. Use `bao status` to confirm the Library home. Do not start a checkout `bao serve` beside the installed app: its native-host write can replace the installed manifest.
+Open `/Applications/Bao.app` from Finder. Check the native window against [Mac launch](mac-build.md#launch), including the drag strip and title-bar double-click setting. The Dock shows one Bao app, not a second Chrome for Testing app. Opening Bao starts no Chrome or Chromium process; macOS WebKit renders the UI inside Bao's native window. Open it again and check that it focuses the same window without starting another app server. Close the window, then click Bao in the Dock: the same window reopens. Quit Bao: its local server stops. Use `bao status` to confirm the Library home. Do not start a checkout `bao serve` beside the installed app: its native-host write can replace the installed manifest.
 
 Check bundle identity and the running server's checkout:
 
@@ -25,7 +25,7 @@ The app identifier is `dev.bao.desktop`. The server's cwd should point inside Ba
 
 ## Check the three places and Runs
 
-Check the running app in light and dark at the default window size, 720 px, 320 px, and 200% zoom. Runs opens first. The visible title bar says Bao. The sidebar contains exactly Runs, Workflows, and Settings. At narrow widths, Show sidebar opens Places; Escape closes it and returns focus.
+Check the running app in light and dark at the default window size, 720 px, 320 px, and 200% zoom. Runs opens first. The sidebar contains exactly Runs, Workflows, and Settings. At narrow widths, Show sidebar opens Places; Escape closes it and returns focus.
 
 Check the second-pane screens: Runs, Live, and Heals under Runs; Library, Capture, Teach, and Replay under Workflows; Settings and Logins under Settings. Every screen remains reachable by keyboard and the command list. Opening a workflow or run keeps its place selected and moves focus to the content pane.
 
