@@ -277,9 +277,6 @@ test("extension replay asks for one origin and does not error with no host permi
     assert.ok(ui, "cdp context");
     const settings = await ui.newPage();
     await settings.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded", timeout: 20_000 });
-    if (await settings.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
-      await settings.getByRole("button", { name: "Show sidebar", exact: true }).click();
-    }
     await settings.locator("#rail button[data-place='settings']").click();
     await settings.locator("#host-access-status").waitFor({ timeout: 10_000 });
     await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("all sites"), undefined, { timeout: 10_000 });

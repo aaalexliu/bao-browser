@@ -67,6 +67,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   }
   async function navigate(screen: Screen, place: string): Promise<void> {
     const primary = page.locator(`#rail [data-place="${place}"]`);
+    await page.locator("#screen-list nav").waitFor();
     if (!await primary.isVisible()) await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await primary.click();
     await page.locator(`#screen-list [data-screen="${screen}"]`).click();
@@ -87,13 +88,29 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
         await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), heading);
         await checkTitle("Bao");
         assert.equal(await page.locator("#screen-list [aria-current=page]").count(), 1);
-        if (screen === "library") assert.ok((await page.getByRole("button", { name: "Open command menu", exact: true }).boundingBox())!.height < 40);
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
         assert.ok(bounds.scroll <= bounds.width + 1, `${screen} at ${width}px overflows: ${JSON.stringify(bounds)}`);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       }
     }
     await page.setViewportSize({ width: 1200, height: 800 });
+    for (const [theme, linkColor, inputBorder, cardColor] of [
+      ["light", "rgb(0, 113, 227)", "rgb(210, 210, 215)", "rgb(255, 255, 255)"],
+      ["dark", "rgb(10, 132, 255)", "rgb(58, 58, 60)", "rgb(44, 44, 46)"],
+    ] as const) {
+      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.reload();
+      await navigate("runs", "runs");
+      assert.equal(await page.locator("[data-open-run=run-shell]").evaluate((element) => getComputedStyle(element).color), linkColor);
+      await navigate("library", "workflows");
+      const title = page.getByRole("button", { name: workflow.name, exact: true });
+      assert.ok((await title.boundingBox())!.height < 32);
+      assert.equal(await page.locator("#library-search").evaluate((element) => getComputedStyle(element).borderTopColor), inputBorder);
+      assert.equal(await page.locator(".wf-card").evaluate((element) => getComputedStyle(element).backgroundColor), cardColor);
+      assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "10px");
+    }
+    await page.evaluate(() => localStorage.setItem("bao-theme", "light"));
+    await page.reload();
     await navigate("library", "workflows");
     const search = page.locator("#library-search");
     await search.fill("Read");
@@ -140,12 +157,17 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.getByRole("button", { name: "Show sidebar", exact: true }).focus();
     await page.keyboard.press("Enter");
     assert.equal(await page.locator("#sidebar-dialog").evaluate((element) => (element as HTMLDialogElement).open), true);
+    assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "52px");
+    await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
+    await page.waitForFunction(() => document.activeElement?.id === "sidebar-toggle");
+    await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => document.activeElement?.id === "sidebar-toggle");
     await page.keyboard.press("Enter");
     await page.getByRole("button", { name: "Settings", exact: true }).focus();
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.activeElement?.id === "main");
+    assert.equal(await page.locator("#screen-list > .pane-bar").evaluate((element) => getComputedStyle(element).paddingInlineStart), "16px");
     await page.goto(`${url}/?screen=live`);
     await page.waitForSelector("#live-session");
     assert.equal(await page.locator("#screen-list [data-screen=live]").getAttribute("aria-current"), "page");
@@ -192,6 +214,21 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     assert.equal(await page.locator("#onboarding").count(), 0);
     await navigate("library", "workflows");
     assert.equal(await page.locator("#onboarding").count(), 0);
+    await page.unroute("**/api/state");
+    for (const mode of ["record", "teach"] as const) {
+      await page.route("**/api/state", async (route) => {
+        const response = await route.fetch();
+        const current = await response.json();
+        await route.fulfill({ json: { ...current, recording: mode === "record", teach: mode === "teach" ? { phase: "live", cards: [], decisions: [] } : undefined } });
+      });
+      await page.goto(url);
+      const bar = page.locator(mode === "record" ? "#record-bar" : "#teach-bar");
+      await bar.waitFor();
+      for (const button of await bar.locator("button").all()) {
+        assert.equal((await button.boundingBox())!.height, 26);
+      }
+      await page.unroute("**/api/state");
+    }
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

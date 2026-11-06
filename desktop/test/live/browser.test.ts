@@ -68,6 +68,7 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     const ui = await launchOwnedChrome({ userDataDir: uiProfile, headless: true });
     try {
       const uiPage = ui.pages()[0] || await ui.newPage();
+      await uiPage.setViewportSize({ width: 1200, height: 900 });
       await uiPage.goto(`http://127.0.0.1:${app.port}/`);
       await uiPage.click("#rail button[data-place=workflows]");
       await uiPage.click("#screen-list button[data-screen=replay]");

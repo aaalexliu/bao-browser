@@ -315,7 +315,7 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
   const model = state.model?.label || "no model";
   const perm = state.permDot ? permissionDot(state.helper) : "";
   const current = shellScreens[shellScreen(screen)].place;
-  return `<button id="sidebar-close" type="button" aria-label="Hide sidebar">Close</button>
+  return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
     <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}" aria-label="${waiting} waiting">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
     <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}>${icon(place.icon)} ${place.label}</button>`).join("")}</nav>
     <div class="rail-foot">
@@ -1225,7 +1225,7 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     ${damaged}
     <div class="tools">
       <input id="library-search" type="search" placeholder="Search workflows" aria-label="Search workflows">
-      <button type="button" id="palette-open" class="kbd" aria-label="Open command menu">⌘K</button>
+      <button type="button" id="palette-open" class="kbd">⌘K</button>
     </div>
     ${workflows.length ? statusLegend() : ""}
     <div class="wf-grid">${cards || empty}</div>

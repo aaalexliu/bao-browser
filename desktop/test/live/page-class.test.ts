@@ -315,10 +315,6 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
   try {
     await page.goto(`http://127.0.0.1:${server.port}/`);
     await page.waitForSelector("#act-bar");
-    if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
-      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-    }
-    await page.click("#rail button[data-place=runs]");
     await page.click("button[data-open-run=run-wall]");
     await page.waitForSelector("#page-class");
     await page.waitForSelector("#act-continue");
@@ -336,10 +332,6 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     await page.evaluate(() => localStorage.setItem("bao-theme", "dark"));
     await page.reload();
     await page.waitForSelector("#act-bar");
-    if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
-      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-    }
-    await page.click("#rail button[data-place=runs]");
     await page.click("button[data-open-run=run-wall]");
     await page.waitForSelector("#page-class");
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");
@@ -396,10 +388,6 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
       await page.evaluate(() => localStorage.setItem("bao-theme", "light"));
       await page.reload();
       await page.waitForSelector("#act-bar");
-      if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
-        await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-      }
-      await page.click("#rail button[data-place=runs]");
       await page.click("button[data-open-run=run-login]");
       await page.waitForSelector("#page-class");
       assert.equal(await page.locator("#envelope-ask").innerText(), LOGIN_LINE);
@@ -410,10 +398,6 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
       await page.evaluate(() => localStorage.setItem("bao-theme", "dark"));
       await page.reload();
       await page.waitForSelector("#act-bar");
-      if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
-        await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-      }
-      await page.click("#rail button[data-place=runs]");
       await page.click("button[data-open-run=run-login]");
       await page.waitForSelector("#envelope-ask");
       assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");

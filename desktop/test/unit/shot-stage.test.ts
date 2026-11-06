@@ -77,10 +77,6 @@ test("Library step frame fits the captured viewport without letterboxing or crop
       return route.continue();
     });
     await page.goto(`http://127.0.0.1:${app.port}/`);
-    if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
-      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
-    }
-    await page.click("#rail button[data-place=runs]");
     await page.click(`[data-open-run=${runId}]`);
     await page.waitForSelector("#step-list [data-select-step=shot]");
     for (const [step, which, width, height] of [
