@@ -494,14 +494,14 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = fal
 }
 
 /** Own the process and browser endpoint without attaching to page renderers. */
-export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions): Promise<{
+export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions & { detached?: boolean }): Promise<{
   portFile: string;
   closed: Promise<void>;
   isClosed(): boolean;
   keepOpen(): void;
   close(): Promise<void>;
 }> {
-  const { child } = await spawnNormalChrome(opts, true);
+  const { child } = await spawnNormalChrome(opts, opts.detached === true);
   const portFile = path.join(opts.userDataDir, "DevToolsActivePort");
   let cdp: CdpSocket | undefined;
   let closing: Promise<void> | undefined;

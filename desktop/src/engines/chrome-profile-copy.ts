@@ -195,7 +195,7 @@ export async function copyChromeProfile(options: {
 
 /** Pass-through startup owns Chrome without attaching Playwright to restored tabs. */
 export async function openCopiedChromeForProxy(options: {
-  sourceRoot: string; directory: string; home: string;
+  sourceRoot: string; directory: string; home: string; detached?: boolean;
 }): Promise<{ target: { kind: "bao"; portFile: string }; close(): Promise<void>; keepOpen(): Promise<void>; isClosed(): boolean; closed: Promise<void>; bytes: number; copyMs: number }> {
   const copy = await copyChromeProfile(options);
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
@@ -206,7 +206,7 @@ export async function openCopiedChromeForProxy(options: {
   try {
     chrome = await launchOwnedChromeEndpoint({
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
-      loadExtensions: false, preserveRestoredTabs: true, args: copy.launchArgs,
+      loadExtensions: false, preserveRestoredTabs: true, args: copy.launchArgs, detached: options.detached,
     });
     return {
       target: { kind: "bao", portFile: chrome.portFile }, closed: chrome.closed, close,

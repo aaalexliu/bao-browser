@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -103,11 +103,20 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     send(method, params, id);
   });
   return {
-    request, send,
+    request, send, pid: child.pid,
     call: (command: string) => request("tools/call", { name: "agent_browser", arguments: { command } }),
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
-    async interruptGroup() { assert.ok(group && child.pid); process.kill(-child.pid, "SIGINT"); await exited; },
+    async interruptGroup(signal: "SIGINT" | "SIGTERM" | "SIGHUP", repeat: boolean) {
+      assert.ok(group && child.pid);
+      process.kill(-child.pid, signal);
+      if (repeat) {
+        await delay(10);
+        try { process.kill(-child.pid, signal); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+      }
+      await exited;
+    },
   };
 }
 
@@ -158,28 +167,34 @@ for (const ending of ["agent-exit", "disconnect", "signal"] as const) {
   });
 }
 
-for (const keepOpen of [false, true]) {
-  test(`terminal group SIGINT respects keep-open=${keepOpen}`, { timeout: 60_000 }, async () => {
-    const f = await fixture();
-    try {
-      f.library.updateSettings({ keepAgentBrowserOpen: keepOpen });
-      const c = f.start(false, true);
-      await c.request("initialize");
-      assert.equal((await c.call("open")).isError, false);
-      const copy = await f.copy();
-      await c.interruptGroup();
-      if (keepOpen) {
-        await delay(250);
-        assert.ok(pidsForDataDir(copy).length > 0, "terminal Ctrl-C must not reach a kept Chrome");
-        const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
-        assert.equal(lease.retained, true);
-      } else {
-        assert.equal(pidsForDataDir(copy).length, 0);
-        await assert.rejects(access(copy), /ENOENT/);
-      }
-      assert.equal(f.library.listRuns()[0]!.status, "passed");
-    } finally { await f.close(); }
-  });
+for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP", false], ["SIGINT", true], ["SIGTERM", true]] as const) {
+  for (const keepOpen of [false, true]) {
+    test(`terminal group ${signal}${repeat ? " twice" : ""} respects keep-open=${keepOpen}`, { timeout: 60_000 }, async () => {
+      const f = await fixture();
+      try {
+        f.library.updateSettings({ keepAgentBrowserOpen: keepOpen });
+        const c = f.start(false, true);
+        await c.request("initialize");
+        assert.equal((await c.call("open")).isError, false);
+        const copy = await f.copy();
+        const groups = execFileSync("ps", ["-o", "pgid=", "-p", pidsForDataDir(copy).join(",")], { encoding: "utf8" }).trim().split(/\s+/).map(Number);
+        assert.equal(groups.includes(c.pid!), !keepOpen, "only keep-open at launch may detach Chrome from the MCP group");
+        await c.interruptGroup(signal, repeat);
+        if (keepOpen) {
+          await delay(250);
+          assert.ok(pidsForDataDir(copy).length > 0, "terminal signals must not reach a kept Chrome");
+          if (!repeat) {
+            const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
+            assert.equal(lease.retained, true);
+          }
+        } else {
+          await until(() => pidsForDataDir(copy).length === 0);
+          if (!repeat) await assert.rejects(access(copy), /ENOENT/);
+        }
+        if (!repeat) assert.equal(f.library.listRuns()[0]!.status, "passed");
+      } finally { await f.close(); }
+    });
+  }
 }
 
 test("a stopped MCP cleans up its proxy even while a live request is stuck", { timeout: 45_000 }, async () => {
