@@ -219,7 +219,7 @@ test("renderer token kinds export evidence only for non-secret input bindings", 
       ...workflow.inputs, { name: "public", type: "text" }, { name: "quantity", type: "number" }, { name: "attachment", type: "file" },
       { name: "suggested", type: "text" }, { name: "row_index", type: "number" }, { name: "rows", type: "table" },
     ], steps: [step] });
-    const rendered = row ? expectedText(bindStep(nested, { public: "Visible cell" }, 0).expect!.match, scope.args) : renderTemplate(template, scope);
+    const rendered = row ? expectedText(bindStep(nested, { public: "Visible cell" }, 0).expect!.match!, scope.args) : renderTemplate(template, scope);
     assert.equal(rendered, expected, template);
     const reason = `rendered ${rendered}`;
     const receipts = new ReceiptLog();

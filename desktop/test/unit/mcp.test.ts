@@ -224,7 +224,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       const projected = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
       const plain = await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
       assert.deepEqual(projected.result?.content, plain.result?.content);
-      assert.ok(projected.result?.content?.[0]?.text.includes(reason));
+      assert.ok(projected.result?.content?.[0]?.text?.includes(reason));
       const metadata = projected.result?._meta?.baoViewer as { detailsHidden?: string; reason?: string; handoff?: { ask?: string }; steps: { reason?: string; picturesAllowed: boolean }[] };
       assert.ok(metadata);
       assert.equal(metadata.detailsHidden, undefined);

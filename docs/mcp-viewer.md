@@ -29,9 +29,8 @@ The viewer offers no run, resume, edit, approve, or browser-control action. In U
 
 ## Known gaps
 
-- The viewer shows local file paths in step text the same way `get_run` does.
 - If a host advertises full-screen mode but the request fails, the receipt does not fall back to an expanded inline view. This remains deferred.
-- Runs of a workflow edited after the run show no details in Claude or other MCP Apps hosts. Missing workflows and unknown start or file times also hide details. The viewer compares a checked workflow-file snapshot with the existing recording-start timestamp, which must precede the first step and save time. Runs without that timing stay private; `run.at` is a save time, not a start time. Durable per-run privacy marks remain a possible follow-up.
+- Runs of a workflow edited after the run withhold step evidence and pictures in MCP Apps hosts. Missing workflows and unknown start or file times also withhold that evidence. Run summaries, step labels and statuses, and available workflow steps remain visible. The viewer compares a checked workflow-file snapshot with the existing recording-start timestamp, which must precede the first step and save time. Runs without that timing withhold the same evidence; `run.at` is a save time, not a start time. Durable per-run privacy marks remain a possible follow-up.
 
 ## Follow-ups
 

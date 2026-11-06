@@ -9,8 +9,8 @@ type Call = { id: number; params: { name: string } };
 type HostWindow = Window & { baoCalls: Call[] };
 
 async function calls(page: Page, count: number): Promise<Call[]> {
-  await page.waitForFunction((size) => (window as HostWindow).baoCalls.length >= size, count);
-  return page.evaluate(() => (window as HostWindow).baoCalls);
+  await page.waitForFunction((size) => (window as unknown as HostWindow).baoCalls.length >= size, count);
+  return page.evaluate(() => (window as unknown as HostWindow).baoCalls);
 }
 
 async function deliver(page: Page, message: unknown): Promise<void> {
@@ -35,11 +35,12 @@ test("viewer keeps the latest host view and user request when replies arrive out
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.addInitScript(() => {
-    const host = window as HostWindow;
+    const host = window as unknown as HostWindow;
     host.baoCalls = [];
     window.addEventListener("message", (event) => {
       if (event.source !== window) return;
       const message = event.data;
+      if (message.method && message.id !== undefined) event.stopImmediatePropagation();
       if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostCapabilities: { serverTools: {} }, hostContext: {} } }, "*");
       if (message.method === "tools/call") host.baoCalls.push(message);
     });
