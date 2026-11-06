@@ -23,7 +23,7 @@ The helper reports only two optional capabilities. The retired `ax-press` and `l
 - **Window capture** (`window-capture`) supplies `bao mcp-ax` with window pictures through `shot`. It needs Screen Recording, not a Chrome page screenshot grant.
 - **Native-app MCP driver** (`mcp-ax`) drives Calculator and TextEdit through `bao mcp-ax`. It uses Accessibility and Screen Recording to observe and act on those apps, not Chrome.
 
-Both API rows have `optional: true`; neither creates a footer warning, onboarding card, or permission button. These rows do not read the Screen Recording grant and cannot report whether it is on. Without the helper or outside macOS, `helper.label` reads `helper off`. With the helper present on macOS, it reads `helper available`, regardless of grants. That label reports presence, not native-app readiness. Settings shows helper presence and states that Chrome agents need no Mac privacy grant. Normal Chrome agents need no Mac privacy grant.
+Both API rows have `optional: true`; neither creates a footer warning, onboarding card, or permission button. These rows do not read the Screen Recording grant and cannot report whether it is on. Without the helper or outside macOS, `helper.label` reads `helper off`. With the helper present on macOS, it reads `helper available`, regardless of grants. That label reports presence, not native-app readiness. Settings shows helper presence and states that Chrome agents need no Mac privacy grant.
 
 The separate remote-debugging CLI still checks Accessibility before changing Chrome's checkbox and retains its Automation gate. Extension replay has its own site grant. Neither is a required helper capability.
 
