@@ -60,15 +60,19 @@ function viewerMain(): void {
   }
   const alert = document.querySelector<HTMLElement>("#error [role=alert]")!;
   const recovery = document.querySelector<HTMLElement>("#error .muted")!;
-  function error(message: string): void {
-    alert.textContent = message;
-    recovery.textContent = current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
+  class HostDataError extends Error {}
+  function error(cause: unknown): void {
+    alert.textContent = cause instanceof Error ? cause.message : String(cause);
+    recovery.textContent = cause instanceof HostDataError ? "" : current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
     if (!current) root.textContent = "Could not load the run viewer.";
   }
   function clearError(): void { alert.textContent = ""; recovery.textContent = ""; }
   function focusContent(selector = "h1"): void {
     const node = root.querySelector<HTMLElement>(selector);
-    if (node) { node.tabIndex = -1; node.focus(); }
+    if (node) {
+      if (!node.hasAttribute("tabindex") && node.tabIndex < 0) node.tabIndex = -1;
+      node.focus();
+    }
   }
   function button(label: string, act: () => Promise<void>, className?: string): HTMLButtonElement {
     const node = el("button", label, className);
@@ -76,7 +80,8 @@ function viewerMain(): void {
     node.onclick = async () => {
       const hadFocus = document.activeElement === node;
       node.disabled = true;
-      try { await act(); } catch (err) { error(err instanceof Error ? err.message : String(err)); }
+      clearError();
+      try { await act(); } catch (err) { error(err); }
       finally {
         node.disabled = false;
         const active = document.activeElement;
@@ -86,7 +91,7 @@ function viewerMain(): void {
     return node;
   }
   async function tool(name: string, args: Record<string, unknown>): Promise<ToolReply> {
-    if (!canRead) throw new Error("This host cannot read more Bao data. The text receipt is still available in the conversation.");
+    if (!canRead) throw new HostDataError("This host cannot read more Bao data. The text receipt is still available in the conversation.");
     const reply = await request("tools/call", { name, arguments: args }) as ToolReply;
     if (reply.isError) throw new Error(reply.content?.[0]?.text || "Bao could not read this record.");
     return reply;
@@ -97,7 +102,7 @@ function viewerMain(): void {
     try {
       const reply = await tool(name, args);
       if (version !== viewRequest) return;
-      if (!reply._meta?.baoViewer) throw new Error("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
+      if (!reply._meta?.baoViewer) throw new HostDataError("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
       current = reply._meta.baoViewer;
       clearError(); render();
       if (!automatic) focusContent();
@@ -205,9 +210,9 @@ function viewerMain(): void {
             section.append(button("Open step pictures", async () => {
               let reply: ToolReply;
               try { reply = await tool("open_step_pictures", { run_id: view.run.id, step_id: step.id }); }
-              catch (err) { if (current !== view) return; throw err; }
-              if (current !== view) return;
-              if (!reply._meta?.baoPictures) throw new Error("This host did not forward the pictures.");
+              catch (err) { if (!current || !("run" in current) || current.run.id !== view.run.id) return; throw err; }
+              if (!current || !("run" in current) || current.run.id !== view.run.id) return;
+              if (!reply._meta?.baoPictures) throw new HostDataError("This host did not forward the pictures.");
               pictures.set(key, reply._meta.baoPictures); render(); focusContent(`#step-${step.index}`);
             }));
           }
@@ -257,8 +262,8 @@ function viewerMain(): void {
     context = init.hostContext || {}; canRead = Boolean(init.hostCapabilities?.serverTools); applyContext();
     notify("ui/notifications/initialized", {});
     new ResizeObserver(() => { notify("ui/notifications/size-changed", { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); }).observe(root.parentElement!);
-    setTimeout(() => { if (!current && viewRequest === 0) void show("list_runs", {}, true).catch((err: Error) => error(err.message)); }, 500);
-  })().catch((err: Error) => error(err.message));
+    setTimeout(() => { if (!current && viewRequest === 0) void show("list_runs", {}, true).catch((err: Error) => error(err)); }, 500);
+  })().catch((err: Error) => error(err));
 }
 
 export function viewerHtml(): string {

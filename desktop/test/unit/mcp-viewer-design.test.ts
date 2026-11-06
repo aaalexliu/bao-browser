@@ -11,22 +11,23 @@ async function deliver(page: Page, data: unknown): Promise<void> {
   await page.evaluate((message) => window.dispatchEvent(new MessageEvent("message", { source: window, data: message })), data);
 }
 
-async function mount(browser: Browser, hostContext: object = {}): Promise<Page> {
+async function mount(browser: Browser, hostContext: object = {}, serverTools = true): Promise<Page> {
   const page = await browser.newPage({ viewport: { width: 560, height: 900 } });
-  await page.addInitScript((context) => {
+  await page.addInitScript(({ context, serverTools }) => {
     const host = window as unknown as HostWindow;
     host.viewerCalls = [];
     window.addEventListener("message", (event) => {
       const message: unknown = event.data;
       if (event.source !== window || typeof message !== "object" || message === null || !("method" in message) || !("id" in message)) return;
       event.stopImmediatePropagation();
-      if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostContext: context, hostCapabilities: { serverTools: {} } } }, "*");
+      if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostContext: context, hostCapabilities: serverTools ? { serverTools: {} } : {} } }, "*");
+      if (message.method === "ui/request-display-mode" && typeof message.id === "number") host.viewerCalls.push({ id: message.id, params: { name: "display-mode" } });
       if (message.method === "tools/call" && typeof message.id === "number" && "params" in message &&
           typeof message.params === "object" && message.params !== null && "name" in message.params && typeof message.params.name === "string") {
         host.viewerCalls.push({ id: message.id, params: { name: message.params.name } });
       }
     });
-  }, hostContext);
+  }, { context: hostContext, serverTools });
   await page.goto(`data:text/html;base64,${Buffer.from(viewerHtml()).toString("base64")}`);
   await page.waitForFunction(() => document.documentElement.dataset.theme !== undefined);
   return page;
@@ -116,6 +117,81 @@ test("viewer design survives long labels, host updates, errors and text resize",
       assert.equal(await page.getByRole("button", { name: "History", exact: true }).evaluate((node) => node === document.activeElement), true);
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
     } finally { await page.close(); }
+  });
+
+  await t.test("display-mode retries clear errors and preserve the return button's Tab order", async () => {
+    const page = await mount(browser, { displayMode: "inline", availableDisplayModes: ["inline", "fullscreen"] });
+    try {
+      await deliver(page, view(receipt));
+      await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+      await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), error: { message: "Mode request failed" } });
+      assert.equal(await page.getByRole("alert").textContent(), "Mode request failed");
+      await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+      assert.equal(await page.getByRole("alert").textContent(), "");
+      await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: { mode: "fullscreen" } });
+      assert.equal(await page.locator("#step-results").evaluate((node) => node === document.activeElement), true);
+      await page.getByRole("button", { name: "Back to conversation", exact: true }).click();
+      await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 3), result: { mode: "inline" } });
+      await deliver(page, context({ displayMode: "inline" }));
+      const inspect = page.getByRole("button", { name: "Inspect receipt", exact: true });
+      assert.equal(await inspect.evaluate((node) => node === document.activeElement), true);
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await page.getByRole("button", { name: "Refresh", exact: true }).evaluate((node) => node === document.activeElement), true);
+      await page.keyboard.press("Tab");
+      assert.equal(await inspect.evaluate((node) => node === document.activeElement), true);
+    } finally { await page.close(); }
+  });
+
+  await t.test("capability and forwarding errors omit retry hints", async () => {
+    for (const serverTools of [true, false]) {
+      const page = await mount(browser, {}, serverTools);
+      try {
+        await deliver(page, view(receipt));
+        await page.getByRole("button", { name: "Refresh", exact: true }).click();
+        if (serverTools) await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), result: {} });
+        assert.equal(await page.getByRole("alert").textContent(), serverTools
+          ? "This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app."
+          : "This host cannot read more Bao data. The text receipt is still available in the conversation.");
+        assert.equal(await page.locator("#error .muted").textContent(), "");
+        await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+        assert.equal(await page.getByRole("alert").textContent(), "");
+        await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
+        if (serverTools) await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: {} });
+        assert.equal(await page.getByRole("alert").textContent(), serverTools
+          ? "This host did not forward the pictures."
+          : "This host cannot read more Bao data. The text receipt is still available in the conversation.");
+        assert.equal(await page.locator("#error .muted").textContent(), "");
+      } finally { await page.close(); }
+    }
+  });
+
+  await t.test("picture replies survive same-run updates without clearing newer errors", async () => {
+    for (const update of ["refresh", "host"] as const) {
+      const page = await mount(browser);
+      try {
+        await deliver(page, view(receipt));
+        await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
+        await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
+        const failedPicture = await lastCall(page);
+        await deliver(page, view(receipt));
+        await deliver(page, { jsonrpc: "2.0", id: failedPicture, error: { message: "Picture read failed" } });
+        assert.equal(await page.getByRole("alert").textContent(), "Picture read failed");
+        await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
+        const picture = await lastCall(page, 2);
+        assert.equal(await page.getByRole("alert").textContent(), "");
+        if (update === "refresh") {
+          await page.getByRole("button", { name: "Refresh", exact: true }).click();
+          await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 3), result: { _meta: { baoViewer: receipt } } });
+        } else await deliver(page, view(receipt));
+        await page.getByRole("button", { name: "History", exact: true }).click();
+        await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, update === "refresh" ? 4 : 3), error: { message: "Newer read failed" } });
+        await deliver(page, { jsonrpc: "2.0", id: picture, result: { _meta: { baoPictures: { runId: run.id, stepId: "project", pictures: [{ phase: "after", mimeType: "image/png", data: "iVBORw0KGgo=" }] } } } });
+        assert.equal(await page.locator("img").count(), 1);
+        assert.equal(await page.getByRole("alert").textContent(), "Newer read failed");
+        await deliver(page, view({ ...receipt, steps: [{ ...receipt.steps[0], picturesAllowed: false }] }));
+        assert.equal(await page.locator("img").count(), 0);
+      } finally { await page.close(); }
+    }
   });
 
   await t.test("fallback and host text pairs pass AA in both themes", async () => {
