@@ -258,7 +258,15 @@ test("close near the stop deadline closes a retained window before a queued cata
     c.send("tools/call", { name: "search_workflows", arguments: {} });
     await requested;
     const stopped = c.stop();
-    await until(async () => (JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: unknown }).retained === true);
+    await until(async () => {
+      const contents = await readFile(path.join(copy, "lease.json"), "utf8");
+      try { return (JSON.parse(contents) as { retained?: unknown }).retained === true; }
+      catch (error) {
+        // keepOpen rewrites the lease while this assertion polls it.
+        if (error instanceof SyntaxError) return false;
+        throw error;
+      }
+    });
     await delay(11_500);
     c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
     await until(() => access(copy).then(() => false, () => true));
