@@ -71,7 +71,8 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     await page.waitForSelector('#desktop-mcp-confirm', { state: 'detached' });
     assert.match(await page.locator('#desktop-mcp-feedback').innerText(), /Restart Claude Desktop/);
     const claudeText = readFileSync(claude, 'utf8');
-    assert.equal(JSON.parse(claudeText).mcpServers.bao.command, process.execPath);
+    const claudeConfig = JSON.parse(claudeText) as { mcpServers: { bao: { command: string } } };
+    assert.equal(claudeConfig.mcpServers.bao.command, process.execPath);
     await page.getByRole('button', { name: 'Add to Claude', exact: true }).click();
     await page.waitForSelector('#desktop-mcp-confirm[open]');
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /already set up/);
