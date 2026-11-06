@@ -77,7 +77,6 @@
       "desktop/test/unit/cursor-account.test.ts",
       "desktop/test/unit/owned-port.test.ts",
       "desktop/test/unit/ax-dump-guard.test.ts",
-      "desktop/test/unit/automation.test.ts",
       "desktop/test/unit/app-permissions.test.ts",
       "desktop/test/unit/helper-capabilities.test.ts",
       "desktop/test/unit/remote-debugging.test.ts",

@@ -25,7 +25,7 @@ The app identifier is `dev.bao.desktop`. The server's cwd should point inside Ba
 
 ## Check the helper only when its feature needs it
 
-The pass-through does not use the helper. Native Accessibility and window-capture features still do. Check both helper permission bits without changing grants. Accessibility blocks those live-helper operations; Screen Recording affects window capture, not page screenshots.
+The pass-through does not use the helper. The optional `bao mcp-ax` driver uses Accessibility and window capture for Calculator and TextEdit. The separate remote-debugging CLI uses Accessibility and Automation for Chrome's debugging switch. Check only the relevant permission bits without changing grants. Screen Recording affects native window capture, not page screenshots.
 
 ```sh
 codesign --verify --strict /Applications/Bao.app/Contents/Resources/BaoOSHelper.app

@@ -97,7 +97,6 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
       }),
     });
     await page.addInitScript(() => {
-      localStorage.setItem("bao-onboarded", "1");
       localStorage.setItem("bao-theme", "light");
     });
     await page.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded" });

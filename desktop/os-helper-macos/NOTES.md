@@ -13,7 +13,7 @@ APIs do not build on Linux.
   `--allow-bundle`, it tries the allowed app's tree without storing a foreign title.
 - `press` and `set-value` look the element up again by role, name, and path.
   They do not click a stored coordinate.
-- For permission commands and the live Chrome restrictions, see
+- For permission commands and the remote-debugging CLI restrictions, see
   [What Bao asks permission for](../../docs/permissions.md#which-grant-each-job-needs).
 
 Frames in the JSON are top-left screen points, not Retina pixels. Geometry uses
