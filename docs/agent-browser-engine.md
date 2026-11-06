@@ -59,7 +59,7 @@ The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuse
 
 ## Evidence
 
-Each session creates one `kind: "capture"` run in the Library home Bao.app reads. Open **Runs** for commands, screenshots, and native output under **Console**. A recording-only run has no workflow, replay, or teaching actions. It omits Identity and Snapshot inspectors because it does not collect those records. Capture runs do not claim to count the outside agent's model calls or establish replay green status.
+Each session creates one `kind: "capture"` run in the Library home Bao.app reads. See [Runs and Detailed evidence](v1.md#install-and-run) for the desktop controls that expose commands, screenshots, and native output. A recording-only run has no workflow, replay, or teaching actions. It omits Identity and Snapshot inspectors because it does not collect those records. Capture runs do not claim to count the outside agent's model calls or establish replay green status.
 
 Each step stores its exact command and argv, native stdout/stderr and exit codes, error flag, and start/end times. Bao saves a pending `open` before startup and updates the run atomically as results arrive. Startup failure produces a failed run with its original error and no invented picture. Uncatchable process termination can leave readable partial runs marked `recording`; handled stops finish the run as described in [Session end](#session-end).
 

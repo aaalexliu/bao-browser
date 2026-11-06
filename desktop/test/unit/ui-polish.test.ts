@@ -88,7 +88,8 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
       assert.equal(await page.locator("#live-audit tbody tr").count(), 40);
 
       await page.locator('#screen-list button[data-screen="runs"]').click();
-      await page.locator('[data-open-run="run-ui-polish"]').click();
+      await page.locator('[data-open-run="run-ui-polish"]').first().click();
+      await page.getByText("Detailed evidence", { exact: true }).click();
       await page.locator("#step-list .step-duration").waitFor();
       const timing = await page.locator("#step-list .step").evaluate((row) => {
         const label = row.querySelector(".step-label")!.getBoundingClientRect();
@@ -103,7 +104,8 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
     }
 
     await page.locator('#screen-list button[data-screen="runs"]').click();
-    await page.locator('[data-open-run="run-ui-paused"]').click();
+    await page.locator('[data-open-run="run-ui-paused"]').first().click();
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.locator("#page-class-list").waitFor();
     assert.deepEqual(await page.locator("#page-class-list li").allTextContents(), [
       "page changed", "page changed The upload control moved", "page changed dom: A new form appeared",

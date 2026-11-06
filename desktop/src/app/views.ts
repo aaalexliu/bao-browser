@@ -2,11 +2,12 @@
 // No network, no DOM.
 
 import { importErrorView } from "./import-error";
+import type { inspectRunView } from "../mcp/run-view";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
-import { formatClock, formatWhen } from "../v1/time";
+import { formatClock, formatTime, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -314,7 +315,7 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
     </div>`;
 }
 
-export function shellList(screen: Screen, state: ShellState): string {
+export function shellList(screen: Screen, state: ShellState, selectedRun = "", available = true): string {
   const current = shellScreen(screen);
   const place = shellPlaces.find((item) => item.id === shellScreens[current].place)!;
   const heals = pendingHealCount(state.runs || []);
@@ -322,10 +323,10 @@ export function shellList(screen: Screen, state: ShellState): string {
       <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>
       <h1>${place.label}</h1>
     </header>
-    <nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
+    <nav aria-label="${place.label} screens" class="screen-list${place.id === "runs" ? " runs-screens" : ""}">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}${id === "heals" && heals > 0 ? ` <span id="heal-count">${heals}</span>` : ""}</span>
         <span class="screen-description">${item.description}</span>
-      </button>`).join("")}</nav>`;
+      </button>`).join("")}</nav>${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : ""}`;
 }
 
 /** Settings control for the outbound relay. Unchecked until this Mac opts in. */
@@ -1237,7 +1238,7 @@ export function healWorkflowName(
 function countedModelCalls(run: RunSummary): number | undefined {
   // A live capture records an outside agent, whose model calls Bao does not count.
   if (run.kind === "capture") return undefined;
-  return run.modelCalls ?? (run.heals || []).filter((heal) => heal.model).length;
+  return typeof run.modelCalls === "number" && Number.isSafeInteger(run.modelCalls) && run.modelCalls >= 0 ? run.modelCalls : undefined;
 }
 
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
@@ -1724,19 +1725,95 @@ export function versionsPanel(versions: VersionRow[]): string {
   </section>`;
 }
 
-export function runsList(runs: RunSummary[], workflows: WorkflowSummary[]): string {
+export function runWorkflowName(run: RunSummary, workflows: WorkflowSummary[]): string {
+  return workflows.find((workflow) => workflow.id === run.workflowId)?.name
+    || (run.workflowId === "agent-browser" ? "Browser session" : run.kind === "capture" ? "Browser capture" : "Workflow unavailable");
+}
+
+function runTime(run: RunSummary): number | undefined {
+  return typeof run.at === "number" && Number.isFinite(run.at) && !Number.isNaN(new Date(run.at).getTime()) ? run.at : undefined;
+}
+
+function runWaiting(run: RunSummary): boolean {
+  return ["paused", "needs_human", "needs_signin"].includes(run.envelope?.status || run.status);
+}
+
+export function runAttention(runs: RunSummary[]): { run: RunSummary; label: string; kind: string }[] {
+  return [...runs].sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity)).flatMap((run) => {
+    const items: { run: RunSummary; label: string; kind: string }[] = [];
+    if (runWaiting(run)) items.push({ run, label: "Needs you", kind: "paused" });
+    const decided = new Set((run.decisions || []).map((decision) => decision.healId));
+    for (const heal of run.heals || []) if (!decided.has(heal.id)) items.push({ run, label: "Heal to keep", kind: "healed" });
+    if (["failed", "timed-out", "timeout"].includes(run.status)) items.push({ run, label: run.status === "failed" ? "Failed" : "Timed out", kind: "failed" });
+    return items;
+  });
+}
+
+function runListKind(run: RunSummary): string {
+  if (runWaiting(run)) return "paused";
+  if (run.status === "timeout") return "timed-out";
+  if (!["passed", "ok", "completed", "failed", "timed-out"].includes(run.status)) return run.status;
+  return runKind(run);
+}
+
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now()): string {
+  const attention = runAttention(runs);
   const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
-  if (!runs.length) {
-    return `<section id="runs"><h2>Runs</h2><div class="empty"><strong>No runs yet</strong>Open a workflow and run it.</div></section>`;
-  }
-  const rows = runs.map((run) => {
-    const kind = runKind(run);
+  const row = (run: RunSummary, label = statusLabel(runListKind(run)), kind = runListKind(run)) => {
+    const at = runTime(run);
+    const name = names.get(run.workflowId) || runWorkflowName(run, []);
     const calls = countedModelCalls(run);
-    const bolt = calls === 0 ? `<span class="badge quiet-badge">0 model calls</span>` : "";
-    const when = typeof run.at === "number" ? formatWhen(run.at) : "";
-    return `<tr><td><button type="button" class="link" data-open-run="${esc(run.id)}" aria-label="${esc(run.id)}">${esc(names.get(run.workflowId) || run.workflowId)}</button></td><td><span class="status ${esc(kind)}">${esc(statusLabel(kind))}</span> ${bolt}</td><td>${esc(when)}</td><td>${esc(run.id)}</td></tr>`;
-  }).join("");
-  return `<section id="runs"><h2>Runs</h2><table class="grid"><thead><tr><th>Workflow</th><th>Status</th><th>When</th><th>Run</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+    const when = at === undefined ? "Time unknown" : formatTime(at);
+    return `<li><button type="button" class="run-row${selectedRun === run.id ? " selected" : ""}" data-open-run="${esc(run.id)}" aria-label="${esc(name)}" aria-description="${esc(label)} · ${esc(when)}${calls === undefined ? "" : ` · ${calls} model calls`}"${selectedRun === run.id ? ` aria-current="true"` : ""}>
+      <span class="run-glyph ${esc(kind)}" aria-hidden="true">${["failed", "timeout", "timed-out"].includes(kind) ? "!" : kind === "paused" ? "Ⅱ" : kind === "healed" ? "↗" : kind === "passed" ? "✓" : "·"}</span>
+      <span class="run-name">${esc(name)}</span><time>${esc(when)}</time>
+      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${calls === undefined ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</span>
+    </button></li>`;
+  };
+  const day = (value: number) => new Date(value).toDateString();
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  const groups = new Map<string, RunSummary[]>();
+  for (const run of [...runs].sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
+    const at = runTime(run);
+    const label = at === undefined ? "Date unknown" : day(at) === day(now) ? "Today" : day(at) === day(+yesterday) ? "Yesterday" : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric", ...(new Date(at).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(at);
+    const entries = groups.get(label);
+    if (entries) entries.push(run);
+    else groups.set(label, [run]);
+  }
+  return `<div id="runs" class="runs-list" tabindex="0" aria-label="Run history, newest first">
+    <section aria-labelledby="needs-you-heading"><h2 id="needs-you-heading" class="run-group-heading">Needs you <span class="run-count" aria-label="${attention.length} items">${attention.length}</span></h2>
+      ${attention.length ? `<ul aria-label="Needs you">${attention.map(({ run, label, kind }) => row(run, label, kind)).join("")}</ul>` : `<p class="run-list-note">Nothing needs you.</p>`}</section>
+    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>`}
+  </div>`;
+}
+
+export function runsWelcome(hasRuns: boolean): string {
+  return `<section id="runs-welcome"><h2>Runs</h2>${hasRuns ? `<h3>Every run leaves a receipt.</h3><p>Select a run to see what happened, what needs you, and the steps Bao took.</p>` : `<h3>Record a task once.</h3><p>Run a saved workflow to see its receipt here. Bao keeps runs that need you above your history.</p><button type="button" data-screen="library">Open Workflows</button>`}</section>`;
+}
+
+export function connectionError(): string {
+  return `<section id="connection-error" class="connection-card" aria-labelledby="connection-heading"><h2 id="connection-heading">Can’t connect to Bao</h2><p role="alert">Bao couldn’t load this Mac’s runs and workflows.</p><p>Check that Bao is running, then try again. Your saved work stays on this Mac.</p><button id="retry-state" type="button">Retry</button></section>`;
+}
+
+export function receiptError(): string {
+  return `<section class="connection-card"><h2>Can’t open this receipt</h2><p role="alert">Bao couldn’t load the receipt summary. Try again, choose another run, or open any detailed evidence below.</p><button id="retry-run" type="button">Retry</button></section>`;
+}
+
+export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary): string {
+  const kind = runListKind(run);
+  const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
+  const calls = view.run.modelCalls;
+  const ask = view.handoff?.ask || run.envelope?.ask;
+  return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
+    <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
+    ${ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
+    ${view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
+    ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
+    ${view.detailsHidden ? `<p class="quiet">${esc(view.detailsHidden)} Local evidence is available below.</p>` : ""}
+    <h3 id="receipt-step-heading" class="section" tabindex="-1">Step results</h3><ol class="receipt-steps" start="${view.stepOffset + 1}">${view.steps.map((step) => `<li><div><strong>${esc(step.label || "Step")}</strong><span class="run-state">${esc(step.status)}</span></div>${step.reason || step.result ? `<p>${esc(ownerStopText(step.reason || step.result || ""))}</p>` : ""}</li>`).join("")}</ol>
+    ${view.steps.length ? "" : `<p class="quiet">No step results recorded.</p>`}
+    <div class="receipt-pages">${view.stepOffset ? `<button type="button" data-receipt-offset="${Math.max(0, view.stepOffset - 20)}">Previous steps</button>` : ""}${view.nextStepOffset === null ? "" : `<button type="button" data-receipt-offset="${view.nextStepOffset}">Next steps</button>`}</div>
+  </section>`;
 }
 
 export function commandItems(workflows: { id: string; name: string }[]): CommandItem[] {

@@ -23,6 +23,21 @@ lsof -a -c node -d cwd -Fn
 
 The app identifier is `dev.bao.desktop`. The server's cwd should point inside Bao.app, not a development checkout. The MCP launcher is `/Applications/Bao.app/Contents/MacOS/bao-mcp`.
 
+## Check the three places and Runs
+
+Check the running app in light and dark at the default window size, 720 px, 320 px, and 200% zoom. Runs opens first. The visible title bar says Bao. The sidebar contains exactly Runs, Workflows, and Settings. At narrow widths, Show sidebar opens Places; Escape closes it and returns focus.
+
+Check the second-pane screens: Runs, Live, and Heals under Runs; Library, Capture, Teach, and Replay under Workflows; Settings and Logins under Settings. Every screen remains reachable by keyboard and the command list. Opening a workflow or run keeps its place selected and moves focus to the content pane.
+
+Use isolated historical fixtures for display checks, not as proof of recording or replay:
+
+- **Empty Runs:** Needs you shows 0 and History says No runs yet. Open Workflows reaches Library.
+- **Needs you:** Paused runs, pending heals, and failures appear above history. The count matches the items. Keeping or reverting a heal removes that item after refresh. The receipt links to Heals for review.
+- **Run history:** Several local days appear newest first, with rows sorted by time within each day. Unknown dates appear last. Each row’s accessible name is its workflow name, never its raw run id. Long names wrap and stay leading-aligned. Model calls appear only when recorded, including a known zero.
+- **Open receipt:** Open a saved-workflow run and a browser session without a saved workflow. Check the workflow name, status, time, step results, and paged receipts beyond 20 steps. Detailed evidence still exposes the existing local picture, video, input, and debug controls. A failed receipt read offers Retry and allows another run to open.
+- **Connection recovery:** Fail the first state request. Check the connection-error card and Retry. Restore the server and retry without reloading; Runs and history appear instead of a silent empty screen.
+- **Access and layout:** Tab through rows and receipt controls, check visible focus, then open a row with Enter. Check reduced motion, non-color status text, full long names, no horizontal overflow, and reachable scrollers at every width and zoom. Read the page, take before and after screenshots, and open each image.
+
 ## Check the helper only when its feature needs it
 
 The pass-through does not use the helper. The optional `bao mcp-ax` driver uses Accessibility and window capture for Calculator and TextEdit. The separate remote-debugging CLI uses Accessibility and Automation for Chrome's debugging switch. Check only the relevant permission bits without changing grants. Screen Recording affects native window capture, not page screenshots.

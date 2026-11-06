@@ -145,6 +145,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("#rail button[data-place=runs]");
     await page.click("#screen-list button[data-screen=runs]");
     await page.click(`[data-open-run="${confirmRun.runId}"]`);
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#model-calls");
     assert.match(await page.locator("#model-calls").innerText(), /0 model calls/);
 
@@ -174,6 +175,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("#rail button[data-place=runs]");
     await page.click("#screen-list button[data-screen=runs]");
     await page.click(`[data-open-run="${failed.runId}"]`);
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#why-stopped");
     const why = await page.locator("#why-stopped").innerText();
     assert.match(why, /Step 1 "click Upload"/);

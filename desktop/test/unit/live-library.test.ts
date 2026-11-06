@@ -56,7 +56,7 @@ test("finished live captures show their end status without uncounted model-call 
         const label = kind === "paused" ? "needs you" : kind === "timed-out" ? "stopped, timed out" : kind;
         assert.equal(runKind(run, workflowPromotion), kind);
         const list = runsList([run], []);
-        assert.match(list, new RegExp(`class="status ${kind}">${label}</span>`));
+        assert.match(list, new RegExp(`class="run-state ${kind}">${label}</span>`));
         assert.doesNotMatch(list, /recording|model calls/);
         const viewer = runViewer(run, workflow);
         assert.match(viewer, new RegExp(`id="run-status"><strong>${label}</strong>`));
@@ -72,7 +72,7 @@ test("finished live captures show their end status without uncounted model-call 
   const replay: RunSummary = { id: "run-replay", workflowId: workflow.id, status: "passed", at: 1, modelCalls: 3, heals: [], steps: [] };
   for (const modelCalls of [1, 3]) {
     const counted = { ...replay, modelCalls };
-    assert.doesNotMatch(runsList([counted], []), /model calls?/);
+    assert.match(runsList([counted], []), new RegExp(`${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`));
     assert.match(runViewer(counted, workflow), new RegExp(`id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}<`));
   }
   assert.match(runsList([{ ...replay, modelCalls: 0 }], []), /0 model calls/);

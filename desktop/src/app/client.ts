@@ -9,6 +9,7 @@ import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
+import type { inspectRunView } from "../mcp/run-view";
 import type { DamagedWorkflow } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
@@ -36,7 +37,11 @@ import {
   shellList,
   recordBar,
   saveSheetView,
-  runsList,
+  runsWelcome,
+  connectionError,
+  runReceipt,
+  receiptError,
+  runWorkflowName,
   runKind,
   reviewItems,
   runViewer,
@@ -116,6 +121,11 @@ let selectedStep = "";
 let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();
 let renderKey = "";
+let stateLoaded = false;
+let initialConnectionError = false;
+let receiptOffset = 0;
+let evidenceOpen = false;
+let runRequest = 0;
 let renderedDetail = "";
 let railHtmlKey = "";
 let listHtmlKey = "";
@@ -163,12 +173,27 @@ function refresh(): Promise<void> {
 
 async function refreshState(): Promise<void> {
   try {
+    await loadState();
+  } catch (error) {
+    if (!stateLoaded && !initialConnectionError) {
+      initialConnectionError = true;
+      render();
+    }
+    throw error;
+  }
+}
+
+async function loadState(): Promise<void> {
+  try {
     const stored = localStorage.getItem("bao-theme");
     if (stored === "dark" || stored === "light") theme = stored;
   } catch { /* private mode */ }
   const response = await fetch("/api/state");
   if (!response.ok) throw new Error(`state request failed: ${response.status}`);
+  const recovering = initialConnectionError;
   state = await response.json();
+  stateLoaded = true;
+  initialConnectionError = false;
   const opened = state.opened;
   if (opened) {
     const token = `${opened.kind}:${opened.id}:${opened.saved}:${JSON.stringify(opened.inputs || {})}`;
@@ -196,7 +221,12 @@ async function refreshState(): Promise<void> {
     damagedWorkflows: state.damagedWorkflows,
     settings: state.settings,
     profileCopy: state.profileCopy,
-    runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
+    runs: (state.runs || []).map((run) => ({
+      id: run.id, workflowId: run.workflowId, status: run.status, envelopeStatus: run.envelope?.status,
+      at: run.at, kind: run.kind, modelCalls: run.modelCalls,
+      heals: run.heals?.map((heal) => heal.id), decisions: run.decisions, promotionStatus: run.promotion?.status,
+    })),
+    day: new Date().toDateString(),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
     helper: state.helper,
     model: state.model,
@@ -226,6 +256,7 @@ async function refreshState(): Promise<void> {
   if (key === renderKey) return;
   renderKey = key;
   render();
+  if (recovering) mainEl().focus({ preventScroll: true });
   paintGuide();
 }
 
@@ -235,16 +266,29 @@ function render(): void {
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
   const focusedNav = focused?.closest("#rail, #screen-list");
+  const focusedRun = focused?.dataset.openRun;
+  const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
   const focusSelector = !focusedNav ? "" : focused?.id ? `#${focused.id}` : focused?.dataset.screen ? `#${focusedNav.id} button[data-screen="${focused.dataset.screen}"]` : "";
+  const runsScroll = document.getElementById("runs")?.scrollTop || 0;
+  const runsPlace = shellScreens[shellScreen(screen)].place === "runs";
+  document.getElementById("app")!.dataset.runsDetail = screen === "run" ? "true" : "false";
+  document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
   if (railHtmlKey !== railHtml) {
     railEl().innerHTML = railHtml;
     railHtmlKey = railHtml;
   }
   const list = document.getElementById("screen-list")!;
-  const listHtml = shellList(screen, state);
+  const listHtml = shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError);
   if (listHtmlKey !== listHtml) {
     list.innerHTML = listHtml;
     listHtmlKey = listHtml;
+    const runs = document.getElementById("runs");
+    if (runs) runs.scrollTop = runsScroll;
+    if (focusedRun) {
+      const copies = [...list.querySelectorAll<HTMLElement>("[data-open-run]")].filter((row) => row.dataset.openRun === focusedRun);
+      const target = copies.find((row) => row.closest("section")?.getAttribute("aria-label") === focusedRunGroup) || copies[0];
+      target?.focus();
+    }
   }
   if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
   document.getElementById("screen-title")!.textContent = shellScreens[shellScreen(screen)].label;
@@ -258,9 +302,10 @@ function render(): void {
   const keepWorkflow = screen === "workflow" && document.getElementById("workflow-detail")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   if (!keepReplay && !keepWorkflow && !keepImport) {
-    const body = screen === "capture" ? capture()
+    const body = initialConnectionError ? connectionError()
+      : screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
-      : screen === "runs" ? runsList(state.runs || [], state.workflows || [])
+      : screen === "runs" ? runsWelcome(Boolean(state.runs?.length))
       : screen === "live" ? liveSessionView(state.liveSession, livePageFromQuery(location.search))
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
@@ -295,7 +340,7 @@ function render(): void {
   }
   renderedDetail = detail;
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
-  if (screen === "run" && openRun) void showRun(openRun);
+  if (!initialConnectionError && screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
 }
 
@@ -490,6 +535,11 @@ function navigate(next: Screen): void {
 
 function bind(): void {
   bindDesktopMcp();
+  const retry = document.getElementById("retry-state");
+  if (retry) retry.onclick = () => { void refresh().catch(() => document.getElementById("retry-state")?.focus()); };
+  document.querySelectorAll<HTMLElement>("#runs-welcome [data-screen]").forEach((button) => {
+    button.onclick = () => navigate(button.dataset.screen as Screen);
+  });
   const recordAgain = document.getElementById("library-record-again");
   if (recordAgain) recordAgain.onclick = () => {
     screen = "capture";
@@ -519,9 +569,7 @@ function bind(): void {
   });
   document.querySelectorAll("[data-open-run]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      openRun = (btn as HTMLButtonElement).dataset.openRun || "";
-      selectedStep = "";
-      screen = "run";
+      selectRun((btn as HTMLButtonElement).dataset.openRun || "");
       renderKey = "";
       render();
     };
@@ -659,9 +707,7 @@ function bind(): void {
     const stepId = review.dataset.step || "";
     const run = (state.runs || []).filter((item) => item.workflowId === workflowId).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
     if (run) {
-      openRun = run.id;
-      selectedStep = stepId;
-      screen = "run";
+      selectRun(run.id, stepId);
     } else {
       openWorkflow = workflowId;
       screen = "workflow";
@@ -1011,13 +1057,31 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
 }
 
 async function showRun(id: string): Promise<void> {
-  const run = await (await fetch("/api/runs/" + encodeURIComponent(id))).json() as RunSummary;
+  const request = ++runRequest;
+  try {
+    await loadRun(id, request);
+  } catch {
+    const host = document.getElementById("run-host");
+    if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
+    host.innerHTML = receiptError();
+    document.getElementById("retry-run")!.onclick = () => { void showRun(id).then(() => mainEl().focus({ preventScroll: true })); };
+  }
+}
+
+async function loadRun(id: string, request: number): Promise<void> {
+  const [runResponse, receiptResponse] = await Promise.all([
+    fetch("/api/runs/" + encodeURIComponent(id)),
+    fetch("/api/runs/" + encodeURIComponent(id) + "/receipt?step_offset=" + receiptOffset).catch(() => null),
+  ]);
+  if (!runResponse.ok) throw new Error("Run unavailable");
+  const run = await runResponse.json() as RunSummary;
+  const receipt = receiptResponse?.ok ? await receiptResponse.json().catch(() => null) as ReturnType<typeof inspectRunView> | null : null;
   const response = await fetch("/api/workflows/" + encodeURIComponent(run.workflowId));
   const workflow = response.ok
     ? await response.json() as { name: string; id: string; steps: { id: string; label?: string; action?: string }[]; recordedOnly?: boolean }
-    : { name: run.workflowId, id: run.workflowId, steps: run.steps || [], recordedOnly: true };
+    : { name: runWorkflowName(run, state.workflows || []), id: run.workflowId, steps: run.steps || [], recordedOnly: true };
   const host = document.getElementById("run-host");
-  if (!host || screen !== "run" || openRun !== id) return;
+  if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
   const timings = (run.steps || []).map((step) => Math.max(0, (step.endedAt || 0) - (step.startedAt || 0)));
   const recorded = !workflow.recordedOnly && workflow.steps ? trajectoryFromWorkflow(workflow as unknown as WorkflowV2, timings) : [];
   const recent = (state.runs || []).filter((item) => item.workflowId === run.workflowId);
@@ -1025,7 +1089,20 @@ async function showRun(id: string): Promise<void> {
   merged.set(run.id, run);
   const history = [...merged.values()].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
-  host.innerHTML = runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds });
+  host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
+  const retry = document.getElementById("retry-run");
+  if (retry) retry.onclick = () => { void showRun(id).then(() => mainEl().focus({ preventScroll: true })); };
+  const evidence = document.getElementById("run-evidence") as HTMLDetailsElement;
+  evidence.ontoggle = () => { if (evidence.isConnected) evidenceOpen = evidence.open; };
+  host.querySelectorAll<HTMLElement>("[data-receipt-offset]").forEach((button) => {
+    button.onclick = () => {
+      receiptOffset = Number(button.dataset.receiptOffset);
+      void showRun(id).then(() => document.querySelector<HTMLElement>("#receipt-step-heading")?.focus());
+    };
+  });
+  host.querySelectorAll<HTMLElement>("[data-screen=heals]").forEach((button) => {
+    button.onclick = () => navigate("heals");
+  });
   host.querySelectorAll("[data-select-step]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       const stepId = (btn as HTMLButtonElement).dataset.selectStep || "";
@@ -1541,16 +1618,22 @@ async function runReplay(): Promise<void> {
     if (live) live.textContent = run.error || "The run did not start.";
     return;
   }
-  openRun = runId;
-  selectedStep = fromStep;
+  selectRun(runId, fromStep);
   pinnedRunId = "";
   pinnedInputs = null;
   debugStepId = "";
   runFromN = 0;
   fromNote = "";
-  screen = "run";
   renderKey = "";
   await refresh();
+}
+
+function selectRun(id: string, stepId = ""): void {
+  openRun = id;
+  selectedStep = stepId;
+  receiptOffset = 0;
+  evidenceOpen = Boolean(stepId);
+  screen = "run";
 }
 
 async function answerImport(body: { accept: boolean; profile?: string }): Promise<void> {
