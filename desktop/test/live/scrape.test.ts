@@ -138,7 +138,6 @@ test("books.toscrape: record a category list, replay another category, CSV match
     try {
       const uiPage = ui.pages()[0] || await ui.newPage();
       await uiPage.addInitScript(() => {
-        localStorage.setItem("bao-onboarded", "1");
         localStorage.setItem("bao-theme", "light");
       });
       await uiPage.goto(`http://127.0.0.1:${app.port}/`);

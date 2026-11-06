@@ -255,9 +255,9 @@ async function remoteDebugging(args: string[]): Promise<unknown> {
   const { DEVTOOLS_ACTIVE_PORT } = await import("../cdp-live/endpoint");
   const { acquireCdpLock, releaseCdpLock } = await import("../cdp-live/lock");
   const { explainRemoteDebuggingError, remoteDebuggingDeps, setRemoteDebugging } = await import("../cdp-live/remote-debugging");
-  const { liveChromeBlock } = await import("../helper-capabilities");
+  const { remoteDebuggingBlock } = await import("../helper-capabilities");
   const helper = chromeHelper();
-  const block = liveChromeBlock(await helper.permissions(false));
+  const block = remoteDebuggingBlock(await helper.permissions(false));
   if (block) throw new Error(explainRemoteDebuggingError(new Error(block)).message);
   const agent = "bao-remote-debugging";
   const axLog = path.join(resolveHome(args), "live-session", "ax.jsonl");

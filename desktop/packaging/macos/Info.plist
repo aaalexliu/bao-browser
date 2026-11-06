@@ -13,6 +13,6 @@
   <key>LSMultipleInstancesProhibited</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSAppleEventsUsageDescription</key>
-  <string>Bao opens Chrome's remote-debugging page so your agent can use your Chrome.</string>
+  <string>The optional bao remote-debugging command opens Chrome's debugging page to change its debugging switch. Chrome agents do not need this permission.</string>
 </dict>
 </plist>

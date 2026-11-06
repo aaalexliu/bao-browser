@@ -267,22 +267,9 @@
     .dot.on { background: #ff3b30; }
     .dot.need { background: var(--need); }
     #helper-status { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-    .helper-jobs { list-style: none; margin: 0; padding: 0 0 0 0.9rem; display: grid; gap: 0.2rem; }
-    #perm-dot summary { cursor: pointer; list-style: none; display: flex; }
-    #perm-dot summary::-webkit-details-marker { display: none; }
-    #perm-dot .perms {
-      position: static; min-width: 0; width: auto; margin: 6px 0;
-      background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem;
-    }
-    #perm-dot .perm { display: grid; grid-template-columns: 1.1rem 1fr; }
-    #perm-dot[open] { width: 100%; }
-    #perm-dot .perm strong { white-space: normal; }
-    #perm-dot .perm button { grid-column: 2; justify-self: start; }
-    #onboarding summary { cursor: pointer; font-weight: 650; }
     #content { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scroll-padding-block-start: 64px; container: detail / inline-size; overflow-wrap: anywhere; }
     #act { padding: var(--space-4) var(--space-5) 0; }
     #act:empty { display: none; }
-    #onboard { padding: 0 var(--space-5); }
     #main { padding: var(--space-3) var(--space-5) 4rem; }
     #main:focus { scroll-margin-block-start: 64px; }
     #main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -763,12 +750,6 @@
     #rec-timer { font-variant-numeric: tabular-nums; min-width: 2.8rem; }
     .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; }
     #record-bar[data-paused="true"] .rec-dot { background: var(--need); }
-    #onboarding { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1.1rem; margin-top: var(--space-3); }
-    .perms { list-style: none; padding: 0; margin: 0.6rem 0; display: grid; gap: 0.35rem; }
-    .perm { display: flex; gap: 0.5rem; align-items: center; }
-    .perm .mark { flex: none; width: 1.1rem; text-align: center; }
-    .perm[data-ok="true"] .mark::before { content: "✓"; color: var(--ok); font-weight: 700; }
-    .perm[data-ok="false"] .mark::before { content: "○"; color: var(--quiet); }
     #palette { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.28); z-index: 40; display: grid; align-items: start; justify-content: center; padding-top: 12vh; }
     #palette[hidden] { display: none; }
     #palette .panel { width: min(520px, 92vw); background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18); }
@@ -798,7 +779,7 @@
       .backup-row label, .saved-row strong { min-width: 0; }
       .wf-head { flex-wrap: wrap; }
       #palette-open { flex: none; white-space: nowrap; }
-      #main, #act, #onboard { padding-inline: 20px; }
+      #main, #act { padding-inline: 20px; }
       table.grid { table-layout: fixed; }
       table.grid button { max-width: 100%; overflow-wrap: anywhere; }
       input, select, textarea { max-width: 100%; min-width: 0; }
@@ -815,7 +796,7 @@
       .screen-list { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 12px 10px; }
       .screen-list button { width: auto; flex: 1 1 auto; padding: 8px; }
       .screen-description { display: none; }
-      #main, #act, #onboard { padding-inline: 12px; }
+      #main, #act { padding-inline: 12px; }
     }
   </style>
 </head>
@@ -828,7 +809,6 @@
     <div id="content">
       <header id="detail-bar" class="pane-bar"><span id="screen-title"></span></header>
       <div id="act"></div>
-      <div id="onboard"></div>
       <main id="main" tabindex="-1"></main>
     </div>
   </div>

@@ -212,7 +212,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer reads **helper ok**, even with Screen Recording off.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With the helper present, the footer reads **helper available**, regardless of optional grants. Chrome agents need no Mac privacy grant.
 
 ## Logs
 
@@ -235,11 +235,9 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-Bao's status checks read Accessibility and Automation for Google Chrome without prompting or checking Screen Recording. See [What Bao asks permission for](permissions.md) for grant requirements, Automation attribution and purpose strings, prompt timing, and live Chrome readiness.
+[What Bao asks permission for](permissions.md) owns the optional feature requirements and status-check policy.
 
-Enable BaoOSHelper in System Settings → Privacy & Security → Accessibility. Add `Bao.app/Contents/Resources/BaoOSHelper.app` with the + button if the Accessibility row is missing. Keep the helper identity described in [Rebuild with an existing grant](#rebuild-with-an-existing-grant).
-
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With Accessibility on and Automation for Google Chrome granted (or Chrome closed), the footer shows **helper ok**, **AX press ready**, and **live Chrome ready**. Screen Recording on or off makes no difference. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for API capability rows.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With the helper present, the footer shows **helper available**; missing optional grants do not create a warning or onboarding card. Do not grant permissions to make this check pass. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for the helper label and API capability contract.
 
 An agent can check the local server. This is not a page to open:
 
@@ -247,7 +245,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` is true. The `live-chrome` row in `helper.capabilities` and `helper.label` follow [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` stays false because app status does not check Screen Recording. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+Interpret `helper` using [Which grant each job needs](permissions.md#which-grant-each-job-needs), not as a native-feature readiness check. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 

@@ -8,7 +8,7 @@ Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
 
 The Bao window has no address bar. Runs opens first. The sidebar has Runs, Workflows, and Settings.
 
-Check the footer against [Which grant each job needs](permissions.md#which-grant-each-job-needs). For daily Chrome, expect **AX press ready** and **live Chrome ready**, even with Screen Recording off.
+Check the footer against [Which grant each job needs](permissions.md#which-grant-each-job-needs). Expect **helper available** or **helper off**, with no Mac permission warning for Chrome agents.
 
 ## Record
 

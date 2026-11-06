@@ -23,10 +23,10 @@
   <key>LSUIElement</key>
   <true/>
   <key>NSAppleEventsUsageDescription</key>
-  <string>Bao opens Chrome's remote-debugging page so your agent can use your Chrome.</string>
+  <string>The optional bao remote-debugging command opens Chrome's debugging page to change its debugging switch. Chrome agents do not need this permission.</string>
   <key>NSAccessibilityUsageDescription</key>
-  <string>BaoOSHelper reads accessibility elements in throwaway apps so a computer-use click can be replayed by role and name.</string>
+  <string>The optional native-app MCP driver reads and presses controls in Calculator and TextEdit. The separate bao remote-debugging command changes Chrome's debugging switch. Chrome agents do not need this permission.</string>
   <key>NSScreenCaptureUsageDescription</key>
-  <string>BaoOSHelper captures one throwaway window so the spike can show the control it pressed.</string>
+  <string>The optional native-app MCP driver captures Calculator and TextEdit windows. Chrome agents use page screenshots and do not need this permission.</string>
 </dict>
 </plist>

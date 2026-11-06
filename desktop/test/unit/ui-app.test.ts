@@ -45,7 +45,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
   const previousBrowser = process.env.BAO_BROWSER;
   const dirs = applyHermeticApp("ui-app");
   const app = await startApp({ home: dirs.home, port: 0 });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
     const confirmWf = workflow(app.port, "wf-confirm", "fixture apply", "/fixture", [
@@ -84,7 +84,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(screens, /Library/);
     assert.match(screens, /Capture/);
     assert.equal(await page.locator("#rail button[data-screen=trail]").count(), 0);
-    assert.match(rail, /helper off|helper ok|helper needs permission/);
+    assert.match(rail, /helper off|helper available/);
     assert.match(rail, /no model|fixture model|model ready|cursor account/);
 
     // Open the replay window before exercising the handoffs.

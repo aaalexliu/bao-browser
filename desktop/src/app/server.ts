@@ -15,7 +15,6 @@ import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
-import { askAutomation, readAutomation, type AutomationReport } from "../cdp-live/automation";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
@@ -214,7 +213,6 @@ export async function startApp(opts: {
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
   const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
-  let automationNotice = "";
   const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
   let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
   let signIn: { close(): Promise<void> } | undefined;
@@ -390,15 +388,10 @@ export async function startApp(opts: {
     const app = bundledHelperApp();
     if (process.platform !== "darwin" || !app) return undefined;
     const helper = new MacOsHelper(app);
-    const permissions = await helper.exec(["permissions-ax"]).catch((err) => ({
+    return helper.exec(["permissions-ax"]).catch((err) => ({
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }));
-    const automation = await readAutomation({ helper }).catch((err): AutomationReport => ({
-      state: "unavailable",
-      message: err instanceof Error ? err.message : String(err),
-    }));
-    return { ...permissions, automation };
   }
 
   function localWorkflow(link: string): WorkflowV2 | null {
@@ -483,17 +476,6 @@ export async function startApp(opts: {
         if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
         return sendPicture(res, path.join(library.root, "live-session", "shots", name));
       }
-      if (req.method === "POST" && url.pathname === "/api/helper/automation") {
-        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
-        const helperApp = bundledHelperApp();
-        if (!helperApp) return json(res, { error: "BaoOSHelper is older than this Bao; rebuild it" }, 500);
-        try {
-          const automation = await askAutomation({ helper: new MacOsHelper(helperApp), onNotice: (message) => { automationNotice = message; } });
-          return json(res, { ok: automation.state === "granted", message: automation.message, automation });
-        } finally {
-          automationNotice = "";
-        }
-      }
       if (req.method === "GET" && url.pathname === "/api/state") {
         runScheduledBackup(library);
         syncPending();
@@ -516,7 +498,6 @@ export async function startApp(opts: {
           trails: library.listTrails(),
           runs: library.listRuns().map(slimRun),
           helper: helperStatus(await readHelperReport()),
-          automationNotice,
           helperApp: bundledHelperApp() || null,
           model: modelStatus(),
           pendingImport: pending ? publicPending(pending) : null,
@@ -3461,13 +3442,12 @@ function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, st
 
 function helperStatus(report: unknown): HelperStatus {
   const platform = process.platform;
-  const row = report as { accessibility?: boolean; screenCapture?: boolean; automation?: AutomationReport } | undefined;
+  const row = report as { accessibility?: boolean; screenCapture?: boolean } | undefined;
   return capabilityReport({
     platform,
     helperPresent: platform === "darwin" && !!bundledHelperApp(),
     accessibility: row?.accessibility === true,
     screenCapture: row?.screenCapture === true,
-    automation: row?.automation,
   });
 }
 

@@ -1,39 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { helperJobList, htmlEsc, rail } from "../../src/app/views";
-import type { AutomationReport } from "../../src/cdp-live/automation";
-import { AUTOMATION_DENIED } from "../../src/cdp-live/remote-debugging";
+import { rail } from "../../src/app/views";
 import { chromeHelper } from "../../src/cdp-live/ax";
-import {
-  capabilityReport,
-  liveChromeBlock,
-  usesScreenRecording,
-} from "../../src/helper-capabilities";
+import { capabilityReport, remoteDebuggingBlock, usesScreenRecording } from "../../src/helper-capabilities";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 
-test("live Chrome starts when Screen Recording is already granted", () => {
-  assert.equal(
-    liveChromeBlock({ accessibility: true, screenCapture: true, prompted: false }),
-    undefined,
-  );
-  assert.equal(
-    liveChromeBlock({ accessibility: true, screenCapture: false, prompted: false }),
-    undefined,
-  );
+test("remote-debugging CLI ignores Screen Recording", () => {
+  for (const screenCapture of [true, false]) {
+    assert.equal(remoteDebuggingBlock({ accessibility: true, screenCapture, prompted: false }), undefined);
+  }
 });
 
-test("live Chrome still requires Accessibility and still refuses a permission prompt", () => {
-  assert.equal(
-    liveChromeBlock({ accessibility: false, screenCapture: true }),
-    "BaoOSHelper accessibility is not granted",
-  );
-  assert.equal(
-    liveChromeBlock({ accessibility: true, prompted: true, screenCapture: false }),
-    "helper asked for a permission prompt",
-  );
+test("remote-debugging CLI still requires Accessibility and refuses a permission prompt", () => {
+  assert.equal(remoteDebuggingBlock({ accessibility: false, screenCapture: true }), "BaoOSHelper accessibility is not granted");
+  assert.equal(remoteDebuggingBlock({ accessibility: true, prompted: true, screenCapture: false }), "helper asked for a permission prompt");
 });
 
-test("live Chrome rejects window capture without calling it", async () => {
+test("Chrome helper rejects window capture without calling it", async () => {
   assert.equal(usesScreenRecording([["permissions"], ["nodes", "--bundle", "com.google.Chrome"], ["press"]]), false);
   assert.equal(usesScreenRecording([["shot", "--bundle", "com.google.Chrome", "--out", "/tmp/bao-live.png"]]), true);
   const live = chromeHelper();
@@ -56,7 +39,7 @@ test("live Chrome rejects window capture without calling it", async () => {
   assert.equal(other.refuseWindowShot, false);
 });
 
-test("live Chrome helper refuses nodes outside stable Chrome before launching the helper", async () => {
+test("Chrome helper refuses nodes outside stable Chrome before launching the helper", async () => {
   const live = chromeHelper();
   for (const bundle of [
     "com.apple.UserNotificationCenter", "", "com.google.Chrome.helper", "com.google.Chrome.evil",
@@ -78,7 +61,7 @@ test("live Chrome helper refuses nodes outside stable Chrome before launching th
   assert.deepEqual(live.calls, []);
 });
 
-test("live Chrome helper accepts stable Chrome nodes and skips ScreenCapture preflight", async (t) => {
+test("Chrome helper accepts stable Chrome nodes and skips ScreenCapture preflight", async (t) => {
   const sent: string[][] = [];
   t.mock.method(MacOsHelper.prototype, "exec", async (args: string[]) => {
     sent.push(args);
@@ -95,7 +78,7 @@ test("live Chrome helper accepts stable Chrome nodes and skips ScreenCapture pre
   ]);
 });
 
-test("live Chrome helper leaves other commands' bundle handling to the native helper", async (t) => {
+test("Chrome helper leaves other commands' bundle handling to the native helper", async (t) => {
   const sent: string[][] = [];
   t.mock.method(MacOsHelper.prototype, "exec", async (args: string[]) => {
     sent.push(args);
@@ -124,159 +107,29 @@ test("live Chrome helper leaves other commands' bundle handling to the native he
   assert.deepEqual(sent.at(-1), ["move-window", "--pid", "42", "--frontmost", "--x", "50", "--y", "50", "--w", "550", "--h", "500"]);
 });
 
-test("helper status requires Accessibility and Automation, not Screen Recording", () => {
-  const axOnly = capabilityReport({
-    platform: "darwin",
-    helperPresent: true,
-    accessibility: true,
-    screenCapture: false,
-    automation: { state: "granted", message: "allowed" },
-  });
-  assert.equal(axOnly.label, "helper ok");
-  assert.equal(axOnly.accessibility, true);
-  assert.equal(axOnly.screenCapture, false);
-  const axStatus = axOnly.capabilities.map((row) => row.status);
-  assert.deepEqual(axStatus, [
-    "AX press ready",
-    "optional window capture needs Screen Recording (not needed for Chrome)",
-    "live Chrome ready",
-    "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)",
-  ]);
-  assert.deepEqual(axOnly.capabilities.filter((row) => row.optional).map((row) => row.id), ["window-capture", "mcp-ax"]);
-
-  const both = capabilityReport({
-    platform: "darwin",
-    helperPresent: true,
-    accessibility: true,
-    screenCapture: true,
-    automation: { state: "granted", message: "allowed" },
-  });
-  assert.equal(both.label, "helper ok");
-  assert.deepEqual(both.capabilities.map((row) => row.status), [
-    "AX press ready",
-    "window capture ready",
-    "live Chrome ready",
-    "MCP driver ready",
-  ]);
-
-  const screenOnly = capabilityReport({
-    platform: "darwin",
-    helperPresent: true,
-    accessibility: false,
-    screenCapture: true,
-  });
-  assert.equal(screenOnly.label, "helper needs permission");
-  assert.ok(screenOnly.capabilities.some((row) => row.status === "window capture ready"));
-  assert.ok(screenOnly.capabilities.some((row) => row.status === "live Chrome needs Accessibility"));
-
-  const linux = capabilityReport({
-    platform: "linux",
-    helperPresent: false,
-    accessibility: true,
-    screenCapture: true,
-  });
-  assert.equal(linux.label, "helper off");
-  assert.equal(linux.accessibility, false);
-  assert.equal(linux.screenCapture, false);
-  assert.deepEqual(linux.capabilities, []);
-
-  const noBundle = capabilityReport({
-    platform: "darwin",
-    helperPresent: false,
-    accessibility: true,
-    screenCapture: true,
-  });
-  assert.equal(noBundle.label, "helper off");
-  assert.deepEqual(noBundle.capabilities, []);
-});
-
-test("live Chrome readiness counts Automation or an existing listener without counting Screen Recording", () => {
-  const reports: (AutomationReport | undefined)[] = [
-    { state: "granted", message: "allowed" },
-    { state: "closed", message: "Chrome is not open" },
-    { state: "not-asked", message: "not yet asked" },
-    { state: "denied", message: AUTOMATION_DENIED },
-    { state: "unavailable", message: "BaoOSHelper is older than this Bao; rebuild it" },
-    undefined,
-  ];
-  for (const report of reports) {
-    for (const remoteDebugging of [false, true]) {
-      for (const accessibility of [false, true]) {
-        for (const screenCapture of [false, true]) {
-          const automation = report ? { ...report, remoteDebugging } : undefined;
-          const helper = capabilityReport({ platform: "darwin", helperPresent: true, accessibility, screenCapture, automation });
-          const live = helper.capabilities.find((row) => row.id === "live-chrome")?.status;
-          const ready = accessibility && !!automation && (automation.state === "granted" || automation.state === "closed" || remoteDebugging);
-          const context = JSON.stringify({ automation, accessibility, screenCapture });
-          assert.equal(live === "live Chrome ready", ready, context);
-          if (!accessibility) {
-            assert.equal(live, "live Chrome needs Accessibility", context);
-          } else if (!ready && automation?.state === "not-asked") {
-            assert.equal(live, "live Chrome needs one more permission: use Allow beside Automation: Google Chrome", context);
-          } else if (!ready && automation?.state === "denied") {
-            assert.equal(live, `live Chrome needs one more permission: ${AUTOMATION_DENIED}`, context);
-          } else if (!ready) {
-            assert.ok(live?.startsWith("live Chrome Automation status unavailable:"), context);
-            if (automation) assert.ok(live?.includes(automation.message), context);
-          }
-          assert.ok(helperJobList(helper).includes(htmlEsc(live)), context);
-          assert.ok(rail({ helper }).includes(htmlEsc(live)), context);
-          const labelReady = accessibility && (automation?.state === "granted" || automation?.state === "closed");
-          assert.equal(helper.label, labelReady ? "helper ok" : "helper needs permission", context);
-          assert.equal(helper.capabilities.find((row) => row.id === "window-capture")?.status, screenCapture ? "window capture ready" : "optional window capture needs Screen Recording (not needed for Chrome)");
-        }
-      }
+test("only current optional native capabilities remain, independent of Chrome Automation", () => {
+  for (const accessibility of [false, true]) {
+    for (const screenCapture of [false, true]) {
+      const helper = capabilityReport({ platform: "darwin", helperPresent: true, accessibility, screenCapture });
+      assert.equal(helper.label, "helper available");
+      assert.equal(helper.accessibility, accessibility);
+      assert.equal(helper.screenCapture, screenCapture);
+      assert.deepEqual(helper.capabilities.map((row) => row.id), ["window-capture", "mcp-ax"]);
+      assert.ok(helper.capabilities.every((row) => row.optional));
+      assert.equal(helper.capabilities[0].status, screenCapture ? "window capture ready" : "optional window capture needs Screen Recording (not needed for Chrome)");
+      assert.equal(helper.capabilities[1].status, accessibility && screenCapture ? "MCP driver ready" : "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)");
+      const html = rail({ helper });
+      assert.match(html, /id="helper-status">helper available/);
+      assert.doesNotMatch(html, /needs permission|AX press|live Chrome|perm-dot|Automation|Screen Recording|helper-jobs/);
     }
   }
 });
 
-function helperLine(html: string): string | undefined {
-  return html.match(/<div class="channel" id="helper-status">([^<]*)<\/div>/)?.[1];
-}
-
-function jobRows(html: string): string[] {
-  const list = html.match(/<ul class="helper-jobs">(.*?)<\/ul>/)?.[1] ?? "";
-  return [...list.matchAll(/<li>([^<]*)<\/li>/g)].map((row) => row[1]);
-}
-
-test("the footer shows Chrome readiness without optional native capture", () => {
-  const both = capabilityReport({
-    platform: "darwin",
-    helperPresent: true,
-    accessibility: true,
-    screenCapture: true,
-    automation: { state: "granted", message: "allowed" },
-  });
-  assert.deepEqual(jobRows(helperJobList(both)), [
-    "AX press ready",
-    "live Chrome ready",
-  ]);
-  const html = rail({ helper: both });
-  assert.equal(helperLine(html), "helper ok");
-  assert.deepEqual(jobRows(html), both.capabilities.filter((row) => !row.optional).map((row) => row.status));
-
-  const axOnly = capabilityReport({
-    platform: "darwin",
-    helperPresent: true,
-    accessibility: true,
-    screenCapture: false,
-    automation: { state: "granted", message: "allowed" },
-  });
-  const axHtml = rail({ helper: axOnly });
-  assert.equal(helperLine(axHtml), "helper ok");
-  assert.deepEqual(jobRows(axHtml), [
-    "AX press ready",
-    "live Chrome ready",
-  ]);
-  assert.doesNotMatch(axHtml, /Screen Recording|MCP driver needs|window capture needs/);
-  assert.doesNotMatch(axHtml, /helper needs permission AX press ready/);
-  assert.doesNotMatch(axHtml, /BaoOSHelper screen recording is granted/);
-
-  const off = capabilityReport({
-    platform: "linux",
-    helperPresent: false,
-  });
-  assert.equal(helperJobList(off), "");
-  assert.equal(helperLine(rail({ helper: off })), "helper off");
-  assert.equal(helperLine(rail({})), "helper off");
+test("helper off means absent or unsupported, not missing optional grants", () => {
+  for (const [platform, helperPresent] of [["linux", true], ["darwin", false]] as const) {
+    const helper = capabilityReport({ platform, helperPresent, accessibility: true, screenCapture: true });
+    assert.deepEqual(helper, { label: "helper off", platform, accessibility: false, screenCapture: false, capabilities: [] });
+    assert.match(rail({ helper }), /id="helper-status">helper off/);
+  }
+  assert.match(rail({}), /id="helper-status">helper off/);
 });

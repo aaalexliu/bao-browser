@@ -4,7 +4,6 @@
 import { importErrorView } from "./import-error";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
-import type { AutomationReport } from "../cdp-live/automation";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatWhen } from "../v1/time";
@@ -185,12 +184,8 @@ export interface ShellState {
     platform?: string;
     accessibility?: boolean;
     screenCapture?: boolean;
-    automation?: AutomationReport;
     capabilities?: { id: string; status: string; optional?: boolean }[];
   };
-  /** Sidebar dot after the Library card has been dismissed, or on any other screen. */
-  permDot?: boolean;
-  automationNotice?: string;
   model?: { label: string };
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
@@ -295,12 +290,6 @@ function icon(name: string): string {
   return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
 }
 
-export function helperJobList(helper?: { capabilities?: { status: string; optional?: boolean }[] }): string {
-  const rows = (helper?.capabilities ?? []).filter((row) => !row.optional).map((row) => row.status).filter((status) => status.length > 0);
-  if (!rows.length) return "";
-  return `<ul class="helper-jobs">${rows.map((status) => `<li>${esc(status)}</li>`).join("")}</ul>`;
-}
-
 export function rail(state: ShellState, screen: Screen = "runs"): string {
   const heals = pendingHealCount(state.runs || []);
   const reviews = reviewItems(state.runs);
@@ -313,7 +302,6 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
   const rec = state.recording ? "on" : "";
   const helper = state.helper?.label || "helper off";
   const model = state.model?.label || "no model";
-  const perm = state.permDot ? permissionDot(state.helper) : "";
   const current = shellScreens[shellScreen(screen)].place;
   return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
     <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
@@ -321,8 +309,7 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
     <div class="rail-foot">
       <div id="attention-label">${waiting} waiting</div>
       <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
-      <div class="channel" id="helper-status">${perm}${esc(helper)}</div>
-      ${helperJobList(state.helper)}
+      <div class="channel" id="helper-status">${esc(helper)}</div>
       <div class="channel" id="model-status">${esc(model)}</div>
     </div>`;
 }
@@ -2039,46 +2026,4 @@ export function liveStepList(events: { id?: string; op?: string; kind?: string }
     const label = event.op || event.kind || "step";
     return `<li class="live-step"><div class="thumb mini" ${shot ? `data-shot="${esc(shot)}"` : ""}>${placeholder(event.op, label)}</div><span><span class="meta">${index + 1}</span> ${esc(label)}</span></li>`;
   }).join("")}</ol>`;
-}
-
-type PermissionState = { label?: string; platform?: string; accessibility?: boolean; screenCapture?: boolean; automation?: AutomationReport };
-
-function automationPermissionMissing(automation?: AutomationReport): boolean {
-  return automation?.state === "not-asked" || automation?.state === "denied";
-}
-
-export function macPermissionMissing(helper?: PermissionState): boolean {
-  return helper?.platform === "darwin" && (!helper.accessibility || automationPermissionMissing(helper.automation));
-}
-
-function permRows(helper?: PermissionState): string {
-  const access = !!helper?.accessibility;
-  const automation = helper?.automation;
-  const automationOk = automation?.state === "granted";
-  const automationMissing = automationPermissionMissing(automation);
-  const automationMessage = automation?.state === "closed"
-    ? "Chrome isn't running, so Bao can't check this right now"
-    : automation?.message || "BaoOSHelper is unavailable.";
-  return `<ul class="perms">
-      <li class="perm" data-perm="accessibility" data-ok="${access ? "true" : "false"}"><span class="mark"></span><span><strong>Accessibility</strong> ${access ? "allowed" : "not granted yet"}</span></li>
-      <li class="perm" data-perm="automation" data-ok="${automationOk ? "true" : automationMissing ? "false" : "unknown"}"><span class="mark"></span><span><strong>Automation: Google Chrome</strong> ${esc(automationMessage)}</span> <button type="button" id="automation-ask">${automationOk ? "Check" : "Allow"}</button></li>
-    </ul>`;
-}
-
-export function onboarding(helper?: PermissionState): string {
-  if (!macPermissionMissing(helper)) return "";
-  return `<section id="onboarding">
-    <details>
-      <summary>Two permissions on the Mac</summary>
-      <p>Accessibility lets bao read Chrome's controls and press Allow for remote debugging. Automation lets bao open Chrome's remote-debugging page. Chrome supplies screenshots and video without Screen Recording. The marks follow the helper. Here the helper reports “${esc(helper?.label || "helper needs permission")}”.</p>
-      ${permRows(helper)}
-      <button type="button" id="onboard-done">Continue</button>
-    </details>
-  </section>`;
-}
-
-/** Collapsed sidebar mark. The Library card is the other place this list appears. */
-export function permissionDot(helper?: PermissionState): string {
-  if (helper?.platform !== "darwin") return "";
-  return `<details id="perm-dot"><summary title="Mac permissions"><span class="dot${macPermissionMissing(helper) ? " need" : ""}" id="perm-mark"></span></summary>${permRows(helper)}</details>`;
 }

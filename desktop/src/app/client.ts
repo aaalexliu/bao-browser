@@ -30,11 +30,8 @@ import {
   libraryTable,
   networkPane,
   liveStepList,
-  macPermissionMissing,
   notices,
-  onboarding,
   paletteView,
-  helperJobList,
   rail,
   shellList,
   recordBar,
@@ -126,7 +123,6 @@ let libraryQuery = "";
 let paletteOpen = false;
 let paletteQuery = "";
 let paletteActive = 0;
-let onboarded = false;
 let theme: "light" | "dark" = "light";
 let login: LoginForm = emptyLogin();
 let gateNote = "";
@@ -142,7 +138,6 @@ const noteTimers = new Map<string, number>();
 let teachOpenId = "";
 let teachHighlighted = "";
 try {
-  onboarded = localStorage.getItem("bao-onboarded") === "1";
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
 } catch { /* private mode */ }
 const railEl = () => document.getElementById("rail")!;
@@ -204,7 +199,6 @@ async function refreshState(): Promise<void> {
     runs: (state.runs || []).map((run) => ({ id: run.id, status: run.status, decisions: run.decisions, heals: (run.heals || []).map((heal) => heal.id) })),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
     helper: state.helper,
-    automationNotice: state.automationNotice,
     model: state.model,
     paused: state.capturePaused,
     since: state.recordingSince,
@@ -238,9 +232,7 @@ async function refreshState(): Promise<void> {
 function render(): void {
   applyTheme();
   if (screen === "logins") readLoginForm();
-  const missing = state.settings?.pageEngine !== "agent-browser" && macPermissionMissing(state.helper);
-  const showCard = missing && !onboarded && (screen === "runs" || screen === "library");
-  const railHtml = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard }, screen);
+  const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusSelector = !focusedNav ? "" : focused?.id ? `#${focused.id}` : focused?.dataset.screen ? `#${focusedNav.id} button[data-screen="${focused.dataset.screen}"]` : "";
@@ -257,9 +249,7 @@ function render(): void {
   if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
   document.getElementById("screen-title")!.textContent = shellScreens[shellScreen(screen)].label;
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = (state.automationNotice ? `<p role="status" id="automation-notice">${esc(state.automationNotice)}</p>` : "") + remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
-  const onboard = document.getElementById("onboard");
-  if (onboard) onboard.innerHTML = showCard ? onboarding(state.helper) : "";
+  actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const float = document.getElementById("float");
   if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state) + (state.extractPicker || "");
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
@@ -447,7 +437,7 @@ function settings(): string {
     <div class="card">
       <h3>Mac</h3>
       <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
-      ${state.settings?.pageEngine === "agent-browser" ? `<p class="quiet">The selected profile-copy engine does not need the helper or OS permission grants.</p>` : helperJobList(state.helper)}
+      <p>Chrome agents need no Accessibility, Automation, or Screen Recording permission.</p>
     </div>
   </section>`;
 }
@@ -820,25 +810,6 @@ function bind(): void {
   };
   const paletteBtn = document.getElementById("palette-open");
   if (paletteBtn) paletteBtn.onclick = openPalette;
-  const automation = document.getElementById("automation-ask");
-  if (automation) automation.onclick = async () => {
-    try {
-      const res = await fetch("/api/helper/automation", { method: "POST" });
-      const reply = await res.json() as { message?: string; error?: string };
-      banner = { id: `automation-${Date.now()}`, title: "Automation: Google Chrome", body: reply.message || reply.error || "Could not check Automation permission." };
-    } catch (err) {
-      banner = { id: `automation-${Date.now()}`, title: "Automation: Google Chrome", body: err instanceof Error ? err.message : String(err) };
-    }
-    renderKey = "";
-    await refresh();
-  };
-  const done = document.getElementById("onboard-done");
-  if (done) done.onclick = () => {
-    onboarded = true;
-    try { localStorage.setItem("bao-onboarded", "1"); } catch { /* ignore */ }
-    renderKey = "";
-    render();
-  };
   const themeSel = document.getElementById("theme") as HTMLSelectElement | null;
   if (themeSel) themeSel.onchange = () => {
     theme = themeSel.value === "dark" ? "dark" : "light";

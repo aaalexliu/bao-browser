@@ -211,19 +211,13 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
       const current = await response.json() as ShellState & { settings: Record<string, unknown> };
-      await route.fulfill({ json: { ...current, settings: { ...current.settings, pageEngine: "dom" }, helper: { platform: "darwin", accessibility: false, automation: { state: "granted" } } } });
+      await route.fulfill({ json: { ...current, settings: { ...current.settings, pageEngine: "dom" }, helper: { label: "helper available", platform: "darwin", accessibility: false } } });
     });
     await page.goto(url);
     await page.locator("#runs").waitFor();
-    await page.locator("#onboarding").waitFor();
+    assert.equal(await page.locator("#onboarding, #perm-dot").count(), 0);
     await navigate("library", "workflows");
-    await page.locator("#onboarding").waitFor();
-    await navigate("runs", "runs");
-    await page.locator("#onboarding summary").click();
-    await page.locator("#onboard-done").click();
-    assert.equal(await page.locator("#onboarding").count(), 0);
-    await navigate("library", "workflows");
-    assert.equal(await page.locator("#onboarding").count(), 0);
+    assert.equal(await page.locator("#onboarding, #perm-dot").count(), 0);
     await page.unroute("**/api/state");
     for (const mode of ["record", "teach"] as const) {
       await page.route("**/api/state", async (route) => {

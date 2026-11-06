@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, onboarding, passGrid, permissionDot, macPermissionMissing, plainFailure, promotionLine, rail, recordBar, remoteMcpSetting, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, passGrid, plainFailure, promotionLine, rail, recordBar, remoteMcpSetting, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { actSurfaceText, attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
 import { notices, runsList, teachReview, trailPane, consolePane, tryResult, type RunSummary } from "../../src/app/views";
@@ -557,94 +557,22 @@ test("a provisional heal can be shown as promoted without editing the record", (
   assert.equal(detail.includes("textedit write"), false);
 });
 
-test("the record bar and the permission card follow live state", () => {
+test("the record bar follows live state without Mac permission onboarding", () => {
   const bar = recordBar({ recording: true, capturePaused: true, recordingSince: 10 });
   assert.match(bar, /id="rec-timer"/);
   assert.match(bar, /id="rec-stop"/);
   assert.match(bar, /Mark step/);
   assert.match(bar, />Resume</);
-  const linux = onboarding({ label: "helper off", platform: "linux", accessibility: false, screenCapture: false });
-  assert.equal(linux, "");
-  assert.equal(permissionDot({ platform: "linux", accessibility: false, screenCapture: false }), "");
-  const granted = onboarding({ label: "helper ok", platform: "darwin", accessibility: true, screenCapture: false, automation: { state: "granted", message: "granted" } });
-  assert.equal(granted, "");
-  const missing = onboarding({ label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: false, automation: { state: "granted", message: "allowed" } });
-  assert.match(missing, /<details>/);
-  assert.match(missing, /<summary>Two permissions on the Mac<\/summary>/);
-  assert.match(missing, /data-perm="accessibility" data-ok="false"/);
-  assert.doesNotMatch(missing, /data-perm="screen"/);
-  assert.match(missing, /not granted yet/);
-  assert.match(missing, /allowed/);
-  const dot = permissionDot({ platform: "darwin", accessibility: false, screenCapture: false });
-  assert.match(dot, /id="perm-dot"/);
-  assert.match(dot, /id="perm-mark"/);
   const side = rail({
-    helper: { label: "helper needs permission", platform: "darwin", accessibility: false, screenCapture: false },
-    permDot: true,
+    helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false },
   });
-  assert.match(side, /id="perm-dot"/);
+  assert.doesNotMatch(side, /perm-dot|not granted|needs permission/);
   assert.equal(side.includes('id="onboarding"'), false);
   const quiet = rail({ helper: { label: "helper off", platform: "linux", accessibility: false, screenCapture: false } });
   assert.match(quiet, /helper off/);
   assert.equal(quiet.includes("not granted yet"), false);
   assert.equal(quiet.includes("perm-dot"), false);
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));
-});
-
-test("only known missing Automation grants bring back the permission card and need dot", () => {
-  for (const state of ["granted", "closed", "unavailable", "not-asked", "denied", undefined] as const) {
-    for (const accessibility of [true, false]) {
-      for (const screenCapture of [true, false]) {
-        const helper = {
-          platform: "darwin",
-          accessibility,
-          screenCapture,
-          automation: state ? { state, message: `${state} report` } : undefined,
-        };
-        const automationMissing = state === "not-asked" || state === "denied";
-        const missing = !accessibility || automationMissing;
-        const context = JSON.stringify(helper);
-        assert.equal(macPermissionMissing(helper), missing, context);
-        const card = onboarding(helper);
-        const dot = permissionDot(helper);
-        assert.equal(card !== "", missing, context);
-        assert.equal(dot.includes('class="dot need"'), missing, context);
-        for (const html of [dot, ...(missing ? [card] : [])]) {
-          const mark = state === "granted" ? "true" : automationMissing ? "false" : "unknown";
-          assert.ok(html.includes(`data-perm="automation" data-ok="${mark}"`), context);
-          assert.doesNotMatch(html, /data-perm="screen"|Screen Recording<\/strong>/, context);
-          if (state === "closed") {
-            assert.match(html, /Chrome isn&#39;t running, so Bao can&#39;t check this right now/);
-          } else if (state === "unavailable") {
-            assert.ok(html.includes("unavailable report"), context);
-          }
-        }
-        assert.equal(macPermissionMissing({ ...helper, platform: "linux" }), false);
-        assert.equal(onboarding({ ...helper, platform: "linux" }), "");
-        assert.equal(permissionDot({ ...helper, platform: "linux" }), "");
-      }
-    }
-  }
-});
-
-test("unavailable Automation rows keep the real error without marking a missing grant", () => {
-  for (const message of [
-    "BaoOSHelper is older than this Bao; rebuild it",
-    "Apple Event failed (-600)",
-    "os helper produced no result for ae-permission",
-    "Could not read Automation permission for Google Chrome.",
-    "more than one Chrome runs on the dir",
-  ]) {
-    const helper = { platform: "darwin", accessibility: true, screenCapture: true, automation: { state: "unavailable" as const, message } };
-    assert.equal(macPermissionMissing(helper), false);
-    assert.equal(onboarding(helper), "");
-    assert.equal(onboarding({ ...helper, screenCapture: false }), "");
-    for (const html of [permissionDot(helper), permissionDot({ ...helper, screenCapture: false })]) {
-      assert.ok(html.includes(htmlEsc(message)), message);
-      assert.ok(html.includes('data-perm="automation" data-ok="unknown"'), message);
-      assert.doesNotMatch(html, /Chrome isn&#39;t running/);
-    }
-  }
 });
 
 test("a target clip is the element rect, padded and centered, and stays inside the viewport", () => {
