@@ -605,6 +605,8 @@ export function runViewer(
     ? wallStopLine((failure?.index ?? steps.indexOf(failed)) + 1, failed.label || failure?.intent || failed.id, wall)
     : "";
   const agentBrowser = run.pageEngine === "agent-browser";
+  const ownerCheck = agentBrowser && steps.at(-1)?.native?.command === "wait_for_owner" ? steps.at(-1) : undefined;
+  const envelopeWait = failed ? ownerCheck || failed : undefined;
   const nativeRecording = agentBrowser && workflow.recordedOnly;
   const headline = failed && nativeRecording
     ? `Step ${stopped} ${failed.label || failed.id} failed${failed.reason ? `: ${failed.reason}` : "."}`
@@ -694,7 +696,7 @@ export function runViewer(
     ${outputsHtml(run.id, run.outputs)}
     ${video}
     ${pageClassPane(run)}
-    ${envelopePane(run.envelope, failed ? { stepNumber: stopped, label: failed.label || failed.id } : undefined, agentBrowser ? ownerCheckLimit(steps.at(-1)) : undefined)}
+    ${envelopePane(run.envelope, envelopeWait ? { stepNumber: steps.indexOf(envelopeWait) + 1, label: envelopeWait.label || envelopeWait.id } : undefined, ownerCheckLimit(ownerCheck))}
     ${handoffPane(run.trail)}
     ${workflow.recordedOnly ? "" : `<div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
@@ -786,7 +788,7 @@ function envelopePane(
         : "waiting";
     const deadline = (envelope.deadline || "").trim();
     const limit = !deadline || deadline === "No timeout"
-      ? checkLimit ? `up to ${checkLimit} per check; no overall timeout` : "no timeout"
+      ? checkLimit ? `${wait ? "" : `up to ${checkLimit} per check; `}no overall timeout` : "no timeout"
       : deadline;
     const bits = [
       `<p id="envelope-status"><strong>${esc(heading)}</strong></p>`,

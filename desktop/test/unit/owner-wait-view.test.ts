@@ -51,6 +51,36 @@ test("a completed waiting check keeps its limit while the session stays open", (
   assert.match(render(run), /waiting · up to 1 min per check; no overall timeout/);
 });
 
+for (const previous of [
+  { id: "click", status: "failed", label: "Click Sign in", native: { command: "click", args: ["@e1"] } },
+  { id: "earlier-check", status: "failed", native: { command: "wait_for_owner", args: ["30000"] } },
+  { id: "earlier-check", status: "paused", native: { command: "wait_for_owner", args: ["30000"] } },
+] as const) {
+  for (const status of ["pending", "passed", "failed"] as const) {
+    test(`envelope names the current ${status} check after ${previous.id} ${previous.status}`, () => {
+      const run = ownerRun(["60000"]);
+      run.steps![0]!.status = status;
+      run.steps!.unshift({ ...previous, native: { ...previous.native, args: [...previous.native.args] } });
+      const stored = JSON.stringify(run);
+      const html = render(run);
+      const wait = html.match(/<p id="envelope-wait">([^<]*)<\/p>/)?.[1];
+      assert.equal(wait, "waiting on step 2, Wait for you to sign in or clear a check (up to 1 min per check) · no overall timeout");
+      assert.match(html, /id="run-status"><strong>needs you<\/strong> at step 1/);
+      assert.equal(JSON.stringify(run), stored);
+      run.envelope!.deadline = "10:30 PM";
+      assert.equal(render(run).match(/<p id="envelope-wait">([^<]*)<\/p>/)?.[1],
+        "waiting on step 2, Wait for you to sign in or clear a check (up to 1 min per check) · 10:30 PM");
+    });
+  }
+}
+
+test("an invalid current check does not borrow an earlier check's limit", () => {
+  const run = ownerRun(["bad"]);
+  run.steps!.unshift({ id: "earlier-check", status: "failed", native: { command: "wait_for_owner", args: ["30000"] } });
+  assert.equal(render(run).match(/<p id="envelope-wait">([^<]*)<\/p>/)?.[1],
+    "waiting on step 2, Wait for you to sign in or clear a check · no timeout");
+});
+
 test("an invalid recorded timeout never invents a check limit", () => {
   for (const args of [["bad"], ["0"], ["120001"]]) {
     const html = render(ownerRun(args));
