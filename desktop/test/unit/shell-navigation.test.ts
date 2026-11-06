@@ -210,7 +210,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     }
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
-      const current = await response.json();
+      const current = await response.json() as ShellState & { settings: Record<string, unknown> };
       await route.fulfill({ json: { ...current, settings: { ...current.settings, pageEngine: "dom" }, helper: { platform: "darwin", accessibility: false, automation: { state: "granted" } } } });
     });
     await page.goto(url);
@@ -228,7 +228,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     for (const mode of ["record", "teach"] as const) {
       await page.route("**/api/state", async (route) => {
         const response = await route.fetch();
-        const current = await response.json();
+        const current = await response.json() as ShellState & { settings: Record<string, unknown> };
         await route.fulfill({ json: { ...current, recording: mode === "record", teach: mode === "teach" ? { phase: "live", cards: [], decisions: [] } : undefined } });
       });
       await page.goto(url);
