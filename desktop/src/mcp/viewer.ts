@@ -58,18 +58,30 @@ function viewerMain(): void {
       window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
     });
   }
+  const alert = document.querySelector<HTMLElement>("#error [role=alert]")!;
+  const recovery = document.querySelector<HTMLElement>("#error .muted")!;
   function error(message: string): void {
-    let node = root.querySelector<HTMLElement>("[role=alert]");
-    if (!node) { node = el("p"); node.setAttribute("role", "alert"); root.append(node); }
-    node.textContent = message;
+    alert.textContent = message;
+    recovery.textContent = current ? "Try Refresh. If this keeps happening, open Bao desktop for local details." : "Reopen this viewer from the conversation, or open Bao desktop for local details.";
+    if (!current) root.textContent = "Could not load the run viewer.";
+  }
+  function clearError(): void { alert.textContent = ""; recovery.textContent = ""; }
+  function focusContent(selector = "h1"): void {
+    const node = root.querySelector<HTMLElement>(selector);
+    if (node) { node.tabIndex = -1; node.focus(); }
   }
   function button(label: string, act: () => Promise<void>, className?: string): HTMLButtonElement {
     const node = el("button", label, className);
     node.type = "button";
     node.onclick = async () => {
+      const hadFocus = document.activeElement === node;
       node.disabled = true;
       try { await act(); } catch (err) { error(err instanceof Error ? err.message : String(err)); }
-      finally { node.disabled = false; }
+      finally {
+        node.disabled = false;
+        const active = document.activeElement;
+        if (hadFocus && node.isConnected && (active === node || active === document.body || active === null)) node.focus();
+      }
     };
     return node;
   }
@@ -87,7 +99,8 @@ function viewerMain(): void {
       if (version !== viewRequest) return;
       if (!reply._meta?.baoViewer) throw new Error("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
       current = reply._meta.baoViewer;
-      render();
+      clearError(); render();
+      if (!automatic) focusContent();
     } catch (err) {
       if (version === viewRequest) throw err;
     } finally {
@@ -151,27 +164,29 @@ function viewerMain(): void {
       }
       root.append(summary);
       if (!expanded && context.displayMode !== "fullscreen") {
-        root.append(button("Inspect receipt", async () => {
+        const inspectReceipt = button("Inspect receipt", async () => {
           expanded = true;
           if (context.availableDisplayModes?.includes("fullscreen")) {
             const result = await request("ui/request-display-mode", { mode: "fullscreen" }) as { mode?: string };
             context.displayMode = result.mode || context.displayMode;
           }
-          render();
-        }, "primary"));
+          render(); focusContent("#step-results");
+        }, "primary");
+        inspectReceipt.id = "inspect-receipt"; root.append(inspectReceipt);
       } else {
         if (context.displayMode === "fullscreen" && context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", async () => {
           const result = await request("ui/request-display-mode", { mode: "inline" }) as { mode?: string };
-          context.displayMode = result.mode || context.displayMode; expanded = false; render();
+          context.displayMode = result.mode || context.displayMode; expanded = false; render(); focusContent("#inspect-receipt");
         }));
-        root.append(el("h2", "Step results"));
+        const stepHeading = el("h2", "Step results"); stepHeading.id = "step-results"; root.append(stepHeading);
         const missingReadBack = "No separate read-back recorded. Status does not prove a durable page change.";
         const allMissingReadBack = view.steps.length > 0 && view.steps.every((step) => !step.reason && !step.result);
         if (!view.steps.length) root.append(el("p", "No step results recorded.", "muted"));
         else if (allMissingReadBack && !view.detailsHidden) root.append(el("p", missingReadBack, "muted"));
         for (const step of view.steps) {
           const section = el("section", undefined, "step");
-          section.append(el("h3", `${step.index}. ${step.label || step.id || "Step"}`), el("span", step.status, "status"));
+          const heading = el("h3", `${step.index}. ${step.label || step.id || "Step"}`); heading.id = `step-${step.index}`;
+          section.append(heading, el("span", step.status, "status"));
           if (step.reason || step.result) section.append(el("p", step.reason || step.result));
           else if (!allMissingReadBack && !view.detailsHidden) section.append(el("p", missingReadBack, "muted"));
           const key = `${view.run.id}/${step.id}`;
@@ -188,9 +203,12 @@ function viewerMain(): void {
           } else if (step.picturesAllowed && step.id) {
             section.append(el("p", "Opening pictures sends them from this Mac to the host app. Other page content may be visible.", "muted"));
             section.append(button("Open step pictures", async () => {
-              const reply = await tool("open_step_pictures", { run_id: view.run.id, step_id: step.id });
+              let reply: ToolReply;
+              try { reply = await tool("open_step_pictures", { run_id: view.run.id, step_id: step.id }); }
+              catch (err) { if (current !== view) return; throw err; }
+              if (current !== view) return;
               if (!reply._meta?.baoPictures) throw new Error("This host did not forward the pictures.");
-              pictures.set(key, reply._meta.baoPictures); render();
+              pictures.set(key, reply._meta.baoPictures); render(); focusContent(`#step-${step.index}`);
             }));
           }
           root.append(section);
@@ -212,6 +230,7 @@ function viewerMain(): void {
         root.append(workflow);
       }
     }
+    document.title = `${root.querySelector("h1")?.textContent || "Run viewer"} · Bao`;
     root.append(el("footer", "Reads the same Library as Bao desktop. No run, edit, resume, approve, or browser controls."));
   }
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -223,9 +242,12 @@ function viewerMain(): void {
       if (message.error) callback.reject(new Error(message.error.message || "Host request failed")); else callback.resolve(message.result);
     } else if (message.method === "ui/notifications/tool-result") {
       const data = (message.params as ToolReply)?._meta?.baoViewer;
-      if (data && userRequest === undefined) { ++viewRequest; current = data; render(); }
+      if (data && userRequest === undefined) { ++viewRequest; current = data; clearError(); render(); }
     } else if (message.method === "ui/notifications/host-context-changed") {
-      context = { ...context, ...message.params as HostContext }; render();
+      const changes = message.params as HostContext;
+      const contentChanged = (["locale", "timeZone", "displayMode"] as const).some((key) => key in changes && changes[key] !== context[key]);
+      context = { ...context, ...changes }; applyContext();
+      if (contentChanged) render();
     } else if (message.id !== undefined && message.method === "ping") {
       window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
     }
@@ -234,13 +256,51 @@ function viewerMain(): void {
     const init = await request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "Bao run viewer", version: "1.0.0" }, appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } }) as { hostContext?: HostContext; hostCapabilities?: { serverTools?: unknown } };
     context = init.hostContext || {}; canRead = Boolean(init.hostCapabilities?.serverTools); applyContext();
     notify("ui/notifications/initialized", {});
-    new ResizeObserver(() => { notify("ui/notifications/size-changed", { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); }).observe(root);
+    new ResizeObserver(() => { notify("ui/notifications/size-changed", { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); }).observe(root.parentElement!);
     setTimeout(() => { if (!current && viewRequest === 0) void show("list_runs", {}, true).catch((err: Error) => error(err.message)); }, 500);
   })().catch((err: Error) => error(err.message));
 }
 
 export function viewerHtml(): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"><title>Bao run viewer</title><style>
-*{box-sizing:border-box}html{color-scheme:light;--bg:#fff;--fg:#1c3029;--muted:#5f7069;--line:#dce5df;--soft:#f5f8f6;--accent:#21604c}html[data-theme=dark]{color-scheme:dark;--bg:#19221e;--fg:#e6eee8;--muted:#a8b8ae;--line:#3b4d42;--soft:#24332a;--accent:#a5d8b8}body{margin:0;background:var(--color-background-primary,var(--bg));color:var(--color-text-primary,var(--fg));font:14px var(--font-sans,system-ui,sans-serif);line-height:1.45}main{max-width:900px;margin:auto;padding:18px}header,.actions,.run-row{display:flex;align-items:center;gap:12px}header{flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px}header .actions{margin-left:auto}.brand{letter-spacing:3px;color:var(--accent)}h1{font-size:20px;line-height:1.3;margin:18px 0 6px}h2{font-size:15px;margin:0 0 4px}main>h2{margin-top:18px}h3{font-size:14px;margin:0 0 8px}p{margin:6px 0;overflow-wrap:anywhere}.muted,footer,figcaption{color:var(--color-text-secondary,var(--muted));font-size:12px}.run-row{padding:14px 0;border-bottom:1px solid var(--line)}.run-row>div{flex:1;min-width:0}button{font:inherit;font-size:12px;cursor:pointer;background:var(--color-background-primary,var(--bg));color:var(--accent);border:1px solid var(--line);border-radius:6px;padding:7px 11px;white-space:nowrap}button:hover{background:var(--soft)}button:disabled{opacity:.5;cursor:wait}.primary{font-weight:600}.status{display:inline-block;font-size:11px;font-weight:650;padding:3px 8px;border-radius:4px;background:var(--soft);color:var(--accent);overflow-wrap:anywhere}.summary,.step{padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:12px}.mono{font:11px ui-monospace,monospace;color:var(--muted)}aside{border-left:3px solid var(--accent);padding:8px 12px;margin-top:12px;background:var(--soft)}.pictures{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}figure{margin:0;max-width:100%}img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:4px}figcaption{margin-top:4px}details{margin-top:18px}summary{font-weight:600;cursor:pointer}li{padding:4px 0;overflow-wrap:anywhere}footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:11px}[role=alert]{color:var(--color-text-danger,#b12c35)}.empty{padding:20px 0}@media(max-width:440px){main{padding:12px}.run-row{flex-wrap:wrap}.run-row>div{flex-basis:65%}.run-row>button{margin-left:auto}header{gap:8px}header .muted{display:none}}
-</style></head><body><main id="root" aria-live="polite">Connecting to Bao...</main><script>(${viewerMain.toString()})();</script></body></html>`;
+*{box-sizing:border-box}
+html{color-scheme:light;--bg:#fff;--fg:#1c3029;--muted:#5f7069;--line:#dce5df;--soft:#f5f8f6;--accent:#21604c;--danger:#b12c35}
+html[data-theme=dark]{color-scheme:dark;--bg:#19221e;--fg:#e6eee8;--muted:#a8b8ae;--line:#3b4d42;--soft:#24332a;--accent:#a5d8b8;--danger:#ff929b}
+body{margin:0;background:var(--color-background-primary,var(--bg));color:var(--color-text-primary,var(--fg));font:.875rem var(--font-sans,system-ui,sans-serif);line-height:1.45}
+main{max-width:900px;margin:auto;padding:18px}
+header,.actions,.run-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header{border-bottom:1px solid var(--line);padding-bottom:12px}
+header .actions{margin-inline-start:auto}
+.brand{letter-spacing:.2em;color:var(--accent)}
+h1,h2,h3{overflow-wrap:anywhere}
+h1{font-size:1.25rem;line-height:1.3;margin:18px 0 6px}
+h2{font-size:.9375rem;margin:0 0 4px}
+#root>h2{margin-top:18px}
+h3{font-size:.875rem;margin:0 0 8px}
+p{margin:6px 0;overflow-wrap:anywhere}
+.muted,footer,figcaption{color:var(--color-text-secondary,var(--muted));font-size:.75rem}
+.run-row{padding:14px 0;border-bottom:1px solid var(--line)}
+.run-row>div{flex:1;min-width:0}
+button{font:inherit;font-size:.75rem;cursor:pointer;background:var(--color-background-primary,var(--bg));color:var(--accent);border:1px solid var(--line);border-radius:6px;padding:7px 11px;max-width:100%;overflow-wrap:anywhere}
+button:hover{background:var(--soft)}
+button:disabled{opacity:.5;cursor:wait}
+:focus-visible{outline-offset:2px}
+.primary{font-weight:600}
+.status{display:inline-block;font-size:.6875rem;font-weight:650;padding:3px 8px;border-radius:4px;background:var(--soft);color:var(--accent);overflow-wrap:anywhere}
+.summary,.step{padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:12px}
+.mono{font:.6875rem ui-monospace,monospace;color:var(--muted)}
+aside{border-inline-start:3px solid var(--accent);padding:8px 12px;margin-top:12px;background:var(--soft)}
+.pictures{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
+figure{margin:0;max-width:100%}
+img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:4px}
+figcaption{margin-top:4px}
+details{margin-top:18px}
+summary{font-weight:600;cursor:pointer}
+li{padding:4px 0;overflow-wrap:anywhere}
+footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:.6875rem}
+[role=alert]{color:var(--color-text-danger,var(--danger))}
+#error p:empty{margin:0}
+.empty{padding:20px 0}
+@media(max-width:440px){main{padding:12px}.run-row>div{flex-basis:65%}.run-row>button{margin-inline-start:auto}header{gap:8px}header .muted{display:none}}
+</style></head><body><main><div id="root" aria-live="polite">Connecting to Bao…</div><section id="error"><p role="alert"></p><p class="muted"></p></section></main><script>(${viewerMain.toString()})();</script></body></html>`;
 }
