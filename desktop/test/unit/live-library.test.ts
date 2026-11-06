@@ -110,13 +110,19 @@ test("live card posters use stored full-page workflow pictures, never crops or s
     response = await fetch(url);
     assert.equal(response.status, 200);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
-    library.save({ ...workflow, driver: "playwright" });
-    response = await fetch(url);
+    const ordinary = { ...workflow, id: "wf-ordinary", driver: "playwright" as const };
+    library.save(ordinary);
+    const ordinaryShots = path.join(home, "shots", "workflows", ordinary.id);
+    mkdirSync(ordinaryShots, { recursive: true });
+    writeFileSync(path.join(ordinaryShots, `${ordinary.steps[0]!.id}.png`), page);
+    writeFileSync(path.join(ordinaryShots, "poster.png"), poster);
+    const ordinaryUrl = `http://127.0.0.1:${app.port}/api/workflows/${ordinary.id}/poster`;
+    response = await fetch(ordinaryUrl);
     assert.equal(response.status, 200);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
     for (const rejected of [blankPng(80, 40), redactedPng(1)]) {
-      writeFileSync(path.join(shots, "poster.png"), rejected);
-      assert.equal((await fetch(url)).status, 404, "non-live cards still require a full-page poster");
+      writeFileSync(path.join(ordinaryShots, "poster.png"), rejected);
+      assert.equal((await fetch(ordinaryUrl)).status, 404, "non-live cards still require a full-page poster");
     }
   } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
 });
