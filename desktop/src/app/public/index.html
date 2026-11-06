@@ -2,6 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bao</title>
   <style>
     [hidden] { display: none !important; }
@@ -14,6 +15,7 @@
       --quiet: #6e6e73;
       --line: #d2d2d7;
       --accent: #0071e3;
+      --action-fill: #0073e6;
       --select: #e8e8ed;
       --ok: #248a3d;
       --ok-bg: #e7f6ec;
@@ -111,6 +113,24 @@
     #chrome-profile-extensions { width: auto; }
     #agent-window-settings label { display: flex; align-items: center; gap: 8px; }
     #keep-agent-browser-open { width: auto; flex: none; margin: 0; }
+    #settings { overflow-wrap: anywhere; }
+    #settings :is(input, select) { min-width: 0; max-width: 100%; }
+    .desktop-mcp-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-block: var(--space-4); }
+    .desktop-mcp-actions button { height: auto; min-height: 36px; padding-block: var(--space-2); }
+    #desktop-mcp-settings p, #desktop-mcp-confirm p { max-width: 72ch; line-height: 1.5; }
+    #desktop-mcp-settings :is([role="status"], [role="alert"]):empty { margin: 0; }
+    #desktop-mcp-confirm { width: min(46rem, calc(100% - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink); background: var(--card); overflow: auto; overscroll-behavior: contain; }
+    #desktop-mcp-confirm::backdrop { background: rgba(0, 0, 0, 0.35); }
+    #desktop-mcp-confirm h2 { line-height: 1.4; }
+    #desktop-mcp-confirm pre { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-sm)/1.5 var(--mono); padding: var(--space-3); background: var(--bg); border-radius: 8px; }
+    .desktop-mcp-path, #desktop-mcp-feedback { overflow-wrap: anywhere; }
+    #desktop-mcp-settings button, #desktop-mcp-confirm button { border-color: var(--quiet); }
+    #desktop-mcp-confirm button.primary { background: var(--action-fill); border-color: var(--action-fill); }
+    @media (max-width: 500px) {
+      #settings .backup-row { flex-wrap: wrap; }
+      #settings .backup-row label { min-width: 0; }
+      #desktop-mcp-confirm { padding: var(--space-4); }
+    }
     .sync-cats p { margin: 0.2rem 0 0; color: var(--quiet); font-size: var(--text-sm); }
     .versions { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.7rem; }
     .versions li { padding-top: 0.55rem; border-top: 1px solid var(--line); }
