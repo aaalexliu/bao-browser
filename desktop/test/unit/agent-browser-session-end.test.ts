@@ -53,7 +53,7 @@ if (args.includes(${JSON.stringify(blockCommand)})) {
   return {
     home, library, env, copies,
     pending: () => until(() => access(path.join(root, "native-pending")).then(() => true, () => false)),
-    start(agent = false) { const c = client(env, agent); clients.push(c); return c; },
+    start(agent = false, group = false) { const c = client(env, agent, group); clients.push(c); return c; },
     async copy() {
       const entries = await readdir(copies);
       assert.equal(entries.length, 1);
@@ -72,13 +72,13 @@ if (args.includes(${JSON.stringify(blockCommand)})) {
   };
 }
 
-function client(env: NodeJS.ProcessEnv, agent: boolean) {
+function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
   // Exiting this parent closes the MCP pipe, just as a real agent exiting does.
   const parent = `const {spawn}=require('node:child_process');
     const c=spawn(process.execPath, [${JSON.stringify(cli)}, 'mcp'], {stdio:['pipe','inherit','inherit']});
     process.stdin.on('data', chunk=>c.stdin.write(chunk));
     process.stdin.on('end', ()=>process.exit(0));`;
-  const child = spawn(process.execPath, agent ? ["-e", parent] : [cli, "mcp"], { env, stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(process.execPath, agent ? ["-e", parent] : [cli, "mcp"], { env, detached: group, stdio: ["pipe", "pipe", "pipe"] });
   let buffer = "";
   let stderr = "";
   let sequence = 0;
@@ -107,6 +107,7 @@ function client(env: NodeJS.ProcessEnv, agent: boolean) {
     call: (command: string) => request("tools/call", { name: "agent_browser", arguments: { command } }),
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
+    async interruptGroup() { assert.ok(group && child.pid); process.kill(-child.pid, "SIGINT"); await exited; },
   };
 }
 
@@ -157,6 +158,30 @@ for (const ending of ["agent-exit", "disconnect", "signal"] as const) {
   });
 }
 
+for (const keepOpen of [false, true]) {
+  test(`terminal group SIGINT respects keep-open=${keepOpen}`, { timeout: 60_000 }, async () => {
+    const f = await fixture();
+    try {
+      f.library.updateSettings({ keepAgentBrowserOpen: keepOpen });
+      const c = f.start(false, true);
+      await c.request("initialize");
+      assert.equal((await c.call("open")).isError, false);
+      const copy = await f.copy();
+      await c.interruptGroup();
+      if (keepOpen) {
+        await delay(250);
+        assert.ok(pidsForDataDir(copy).length > 0, "terminal Ctrl-C must not reach a kept Chrome");
+        const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
+        assert.equal(lease.retained, true);
+      } else {
+        assert.equal(pidsForDataDir(copy).length, 0);
+        await assert.rejects(access(copy), /ENOENT/);
+      }
+      assert.equal(f.library.listRuns()[0]!.status, "passed");
+    } finally { await f.close(); }
+  });
+}
+
 test("a stopped MCP cleans up its proxy even while a live request is stuck", { timeout: 45_000 }, async () => {
   const f = await fixture();
   let received!: () => void;
@@ -188,7 +213,7 @@ test("a stopped MCP cleans up its proxy even while a live request is stuck", { t
   }
 });
 
-test("close received after stop closes a retained window before a queued live call finishes", { timeout: 45_000 }, async () => {
+test("close near the stop deadline closes a retained window before a queued live call finishes", { timeout: 45_000 }, async () => {
   const f = await fixture();
   let received!: () => void;
   let reply: (() => void) | undefined;
@@ -213,6 +238,7 @@ test("close received after stop closes a retained window before a queued live ca
     await requested;
     const stopped = c.stop();
     await until(async () => JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")).retained === true);
+    await delay(11_500);
     c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
     await until(() => access(copy).then(() => false, () => true));
     assert.equal(pidsForDataDir(copy).length, 0);

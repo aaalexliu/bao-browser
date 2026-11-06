@@ -270,10 +270,10 @@ async function ownedDebugPort(): Promise<number> {
  * Chrome writes DevToolsActivePort only for port zero, so publish this child's
  * reported endpoint for the existing CDP clients.
  */
-async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string): Promise<{ child: ChildProcess; port: number }> {
+async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false): Promise<{ child: ChildProcess; port: number }> {
   const port = await ownedDebugPort();
   const child: ChildProcess = spawn(exe, args(port), {
-    stdio: ["ignore", "ignore", "pipe"], env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+    stdio: ["ignore", "ignore", "pipe"], detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
   });
   let output = "";
   let browserPath = "";
@@ -474,7 +474,7 @@ interface OwnedChromeProcessOptions {
   executablePath?: string;
 }
 
-async function spawnNormalChrome(opts: OwnedChromeProcessOptions): Promise<{ child: ChildProcess; port: number }> {
+async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = false): Promise<{ child: ChildProcess; port: number }> {
   assertNotDailyChrome(opts.userDataDir);
   mkdirSync(opts.userDataDir, { recursive: true });
   if (!opts.preserveRestoredTabs) {
@@ -490,7 +490,7 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions): Promise<{ chi
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
   ];
-  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome);
+  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome, detached);
 }
 
 /** Own the process and browser endpoint without attaching to page renderers. */
@@ -501,7 +501,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions)
   keepOpen(): void;
   close(): Promise<void>;
 }> {
-  const { child } = await spawnNormalChrome(opts);
+  const { child } = await spawnNormalChrome(opts, true);
   const portFile = path.join(opts.userDataDir, "DevToolsActivePort");
   let cdp: CdpSocket | undefined;
   let closing: Promise<void> | undefined;
@@ -519,7 +519,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions)
           browserClose = "sent";
         } catch { browserClose = "failed"; }
       }
-      const released = await releaseProfileProcesses(opts.userDataDir, child);
+      const released = await releaseProfileProcesses(opts.userDataDir, child, browserClose === "sent");
       console.error(formatShutdown({ browserClose, openPages, ...released, profile: opts.userDataDir }));
     } finally {
       cdp?.close();
@@ -593,7 +593,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
           browserClose = "failed";
         }
       }
-      const released = await releaseProfileProcesses(opts.userDataDir, child);
+      const released = await releaseProfileProcesses(opts.userDataDir, child, browserClose === "sent");
       await browser.close().catch(() => undefined);
       console.error(formatShutdown({
         browserClose,
@@ -606,8 +606,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     })();
     return context;
   } catch (err) {
-    stop();
-    await releaseProfileProcesses(opts.userDataDir, child);
+    await releaseProfileProcesses(opts.userDataDir, child, false);
     throw err;
   }
 }
@@ -641,8 +640,8 @@ export function formatShutdown(trace: ShutdownTrace): string {
   return `bao shutdown browserClose=${trace.browserClose} openPages=${trace.openPages} childExit=${trace.childExit ?? "none"} signal=${trace.signal ?? "none"} killedPids=${killed} profile=${trace.profile}`;
 }
 
-async function releaseProfileProcesses(userDataDir: string, child: ChildProcess): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
-  const deadline = Date.now() + 4000;
+async function releaseProfileProcesses(userDataDir: string, child: ChildProcess, browserCloseSent: boolean): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
+  const deadline = Date.now() + (browserCloseSent ? 4000 : 0);
   while (Date.now() < deadline && child.exitCode == null && child.signalCode == null) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
