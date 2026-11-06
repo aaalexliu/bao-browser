@@ -54,11 +54,42 @@ static void record_drag(id self, SEL cmd, NSEvent *event) {
     drag_event = event;
 }
 
-static NSEvent *titlebar_click(NSWindow *window, NSInteger count) {
-    return [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+static NSEvent *titlebar_click(NSWindow *window, NSInteger count, NSEventType type) {
+    return [NSEvent mouseEventWithType:type
         location:NSMakePoint(150, window.contentView.bounds.size.height - 24)
         modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
         windowNumber:window.windowNumber context:nil eventNumber:1 clickCount:count pressure:1];
+}
+
+static void double_click_titlebar(NSWindow *window) {
+    [window sendEvent:titlebar_click(window, 2, NSEventTypeLeftMouseDown)];
+    [window sendEvent:titlebar_click(window, 2, NSEventTypeLeftMouseUp)];
+}
+
+static void assert_window_buttons(BaoWindow *owner) {
+    NSView *content = owner.window.contentView;
+    NSUInteger index = 0;
+    for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+        NSButton *button = [owner.window standardWindowButton:kind.unsignedIntegerValue];
+        assert(!button.hidden && button.enabled);
+        assert(button.window == owner.window);
+        NSPoint point = [button convertPoint:NSMakePoint(NSMidX(button.bounds), NSMidY(button.bounds)) toView:nil];
+        assert(NSEqualPoints(point, NSMakePoint(24 + index++ * 20, content.bounds.size.height - 24)));
+        NSView *frame = content.superview;
+        assert([frame hitTest:[frame convertPoint:point fromView:nil]] == button);
+    }
+}
+
+static NSWindow *miniaturize_window;
+static void record_miniaturize(id self, SEL cmd, id sender) {
+    (void)cmd;
+    (void)sender;
+    miniaturize_window = self;
+}
+
+static IMP real_style_mask;
+static NSWindowStyleMask full_screen_style_mask(id self, SEL cmd) {
+    return ((NSWindowStyleMask (*)(id, SEL))real_style_mask)(self, cmd) | NSWindowStyleMaskFullScreen;
 }
 
 static NSURL *opened;
@@ -124,27 +155,65 @@ int main(int argc, const char *argv[]) {
         assert([[content hitTest:strip] isKindOfClass:BaoTitlebar.class]);
         assert(![[content hitTest:NSMakePoint(220, strip.y)] isKindOfClass:BaoTitlebar.class]);
         assert(![[content hitTest:NSMakePoint(150, strip.y - 52)] isKindOfClass:BaoTitlebar.class]);
-        NSUInteger buttonIndex = 0;
-        for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
-            NSButton *button = [owner.window standardWindowButton:kind.unsignedIntegerValue];
-            assert(!button.hidden && button.enabled);
-            NSPoint point = [button convertPoint:NSMakePoint(NSMidX(button.bounds), NSMidY(button.bounds)) toView:nil];
-            assert(NSEqualPoints(point, NSMakePoint(24 + buttonIndex++ * 20, content.bounds.size.height - 24)));
-            NSView *frame = content.superview;
-            assert([frame hitTest:[frame convertPoint:point fromView:nil]] == button);
-        }
+        assert_window_buttons(owner);
         Method dragMethod = class_getInstanceMethod(NSWindow.class, @selector(performWindowDragWithEvent:));
         IMP realDrag = method_setImplementation(dragMethod, (IMP)record_drag);
-        NSEvent *single = titlebar_click(owner.window, 1);
+        NSEvent *single = titlebar_click(owner.window, 1, NSEventTypeLeftMouseDown);
         [owner.window sendEvent:single];
         assert(drag_event == single);
         method_setImplementation(dragMethod, realDrag);
+        [owner.window sendEvent:titlebar_click(owner.window, 1, NSEventTypeLeftMouseUp)];
         NSRect unzoomed = owner.window.frame;
-        [owner.window sendEvent:titlebar_click(owner.window, 2)];
+        double_click_titlebar(owner.window);
         assert(!NSEqualRects(unzoomed, owner.window.frame));
-        [owner.window sendEvent:titlebar_click(owner.window, 2)];
+        double_click_titlebar(owner.window);
         assert(NSEqualRects(unzoomed, owner.window.frame));
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        NSDictionary *arguments = [defaults volatileDomainForName:NSArgumentDomain];
+        NSMutableDictionary *preferences = [arguments mutableCopy];
+        Method miniaturizeMethod = class_getInstanceMethod(NSWindow.class, @selector(miniaturize:));
+        IMP realMiniaturize = method_setImplementation(miniaturizeMethod, (IMP)record_miniaturize);
+        preferences[@"AppleActionOnDoubleClick"] = @"None";
+        [defaults setVolatileDomain:preferences forName:NSArgumentDomain];
+        double_click_titlebar(owner.window);
+        assert(NSEqualRects(unzoomed, owner.window.frame));
+        assert(!miniaturize_window);
+        preferences[@"AppleActionOnDoubleClick"] = @"Minimize";
+        [defaults setVolatileDomain:preferences forName:NSArgumentDomain];
+        assert([[defaults stringForKey:@"AppleActionOnDoubleClick"] isEqualToString:@"Minimize"]);
+        double_click_titlebar(owner.window);
+        assert(miniaturize_window == owner.window);
+        assert(NSEqualRects(unzoomed, owner.window.frame));
+        method_setImplementation(miniaturizeMethod, realMiniaturize);
+        preferences[@"AppleActionOnDoubleClick"] = @"Maximize";
+        [defaults setVolatileDomain:preferences forName:NSArgumentDomain];
+        double_click_titlebar(owner.window);
+        assert(!NSEqualRects(unzoomed, owner.window.frame));
+        double_click_titlebar(owner.window);
+        assert(NSEqualRects(unzoomed, owner.window.frame));
+        [defaults setVolatileDomain:arguments forName:NSArgumentDomain];
+        Method styleMaskMethod = class_getInstanceMethod(NSWindow.class, @selector(styleMask));
+        real_style_mask = method_setImplementation(styleMaskMethod, (IMP)full_screen_style_mask);
+        NSMutableArray<NSValue *> *buttonFrames = [NSMutableArray new];
+        for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+            NSButton *button = [owner.window standardWindowButton:kind.unsignedIntegerValue];
+            [button setFrameOrigin:NSMakePoint(0, 0)];
+            [buttonFrames addObject:[NSValue valueWithRect:button.frame]];
+        }
+        [owner windowDidResize:[NSNotification notificationWithName:NSWindowDidResizeNotification object:owner.window]];
+        [owner showWindow:nil];
+        NSUInteger index = 0;
+        for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+            assert(NSEqualRects([owner.window standardWindowButton:kind.unsignedIntegerValue].frame, buttonFrames[index++].rectValue));
+        }
+        method_setImplementation(styleMaskMethod, real_style_mask);
+        for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+            [[owner.window standardWindowButton:kind.unsignedIntegerValue] setFrameOrigin:NSMakePoint(0, 0)];
+        }
+        [owner windowDidExitFullScreen:[NSNotification notificationWithName:NSWindowDidExitFullScreenNotification object:owner.window]];
+        assert_window_buttons(owner);
         [owner.window setContentSize:NSMakeSize(720, 600)];
+        assert_window_buttons(owner);
         assert([[content hitTest:NSMakePoint(150, content.bounds.size.height - 24)] isKindOfClass:BaoTitlebar.class]);
         [owner.window setContentSize:NSMakeSize(1200, 800)];
         [owner.window close];

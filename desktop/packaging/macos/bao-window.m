@@ -16,8 +16,11 @@
     return YES;
 }
 - (void)mouseDown:(NSEvent *)event {
-    if (event.clickCount == 2) [self.window performZoom:nil];
-    else [self.window performWindowDragWithEvent:event];
+    if (event.clickCount == 2) {
+        NSString *action = [NSUserDefaults.standardUserDefaults stringForKey:@"AppleActionOnDoubleClick"];
+        if ([action isEqualToString:@"Minimize"]) [self.window miniaturize:nil];
+        else if (![action isEqualToString:@"None"]) [self.window zoom:nil];
+    } else [self.window performWindowDragWithEvent:event];
 }
 @end
 
@@ -83,16 +86,24 @@
 }
 
 - (void)positionWindowButtons {
+    if (self.window.styleMask & NSWindowStyleMaskFullScreen) return;
     NSUInteger index = 0;
     for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
         NSButton *button = [self.window standardWindowButton:kind.unsignedIntegerValue];
-        NSPoint center = [button.superview convertPoint:NSMakePoint(24 + index++ * 20, self.window.contentView.bounds.size.height - 24)
+        NSUInteger position = index++;
+        if (button.window != self.window) continue;
+        NSPoint center = [button.superview convertPoint:NSMakePoint(24 + position * 20, self.window.contentView.bounds.size.height - 24)
                                               fromView:self.window.contentView];
         [button setFrameOrigin:NSMakePoint(center.x - button.frame.size.width / 2, center.y - button.frame.size.height / 2)];
     }
 }
 
 - (void)windowDidResize:(NSNotification *)notification {
+    (void)notification;
+    [self positionWindowButtons];
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
     (void)notification;
     [self positionWindowButtons];
 }
