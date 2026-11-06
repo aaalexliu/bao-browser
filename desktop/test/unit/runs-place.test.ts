@@ -20,6 +20,48 @@ test("Runs counts waiting runs, undecided heals and failures without changing re
   assert.equal(JSON.stringify(runs), saved);
 });
 
+test("Runs keeps current owner waits actionable and ended asks informational", { timeout: 30_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-runs-waits-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage();
+  const cases = [
+    { id: "signin", status: "paused", envelopeStatus: "needs_signin", waiting: true, ask: "Sign in in the Bao window." },
+    { id: "human", status: "needs_human", envelopeStatus: "needs_human", waiting: true, ask: "Press Reserve in the Bao window." },
+    { id: "timeout", status: "timed-out", envelopeStatus: "timed-out", waiting: false, ask: "Press Reserve in the Bao window." },
+    { id: "cancelled", status: "stopped", envelopeStatus: "cancelled", waiting: false, ask: "Press Reserve in the Bao window." },
+    { id: "stopped", status: "stopped", envelopeStatus: "stopped", waiting: false, ask: "Press Reserve in the Bao window." },
+    { id: "ended-session", status: "failed", envelopeStatus: "failed", waiting: false, ask: "The Bao session ended before the owner wait completed. This session cannot continue." },
+  ];
+  try {
+    for (const item of cases) app.library.saveRun({
+      id: item.id, workflowId: "agent-browser", kind: item.id === "ended-session" ? "capture" : "replay", status: item.status,
+      at: Date.now(), steps: [], heals: [],
+      envelope: { status: item.envelopeStatus, ask: item.ask, deadline: "Nov 6, 12:30 PM UTC" },
+    });
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.locator("#runs").waitFor();
+    assert.deepEqual(await page.locator('#runs ul[aria-label="Needs you"] button:has(.run-state.paused)').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run")).sort()), ["human", "signin"], "only current human and sign-in waits contribute waiting rows");
+    assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "4", "two waits, one timeout and one failure need attention");
+    for (const item of cases) {
+      await page.locator(`[data-open-run="${item.id}"]`).first().click();
+      await page.locator("#run-receipt").waitFor();
+      assert.equal((await page.locator("#run-receipt").innerText()).includes(item.ask), true, "ended runs retain the original ask as information");
+      assert.equal(await page.locator(".receipt-handoff").count(), item.waiting ? 1 : 0, item.id);
+      assert.equal((await page.locator("#run-receipt").innerText()).includes("Deadline:"), item.waiting, item.id);
+      assert.equal(await page.locator(".receipt-kicker .run-state").innerText(), item.waiting ? "needs you" : item.status === "timed-out" ? "stopped, timed out" : item.status);
+      await page.getByText("Detailed evidence", { exact: true }).click();
+      assert.equal(await page.locator("#run-viewer").isVisible(), true);
+    }
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("running Runs groups history, opens shared receipts, survives polling and recovers failed loads", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-place-"));
   const previousHome = process.env.HOME;

@@ -316,6 +316,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     await page.goto(`http://127.0.0.1:${server.port}/`);
     await page.waitForSelector("#act-bar");
     await page.click("button[data-open-run=run-wall]");
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#page-class");
     await page.waitForSelector("#act-continue");
     const lightText = await page.locator("#act-bar .instruction").innerText();
@@ -333,6 +334,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     await page.reload();
     await page.waitForSelector("#act-bar");
     await page.click("button[data-open-run=run-wall]");
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#page-class");
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");
     assert.equal(await page.locator("#act-bar .instruction").innerText(), LINE);
@@ -389,6 +391,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
       await page.reload();
       await page.waitForSelector("#act-bar");
       await page.click("button[data-open-run=run-login]");
+      await page.getByText("Detailed evidence", { exact: true }).click();
       await page.waitForSelector("#page-class");
       assert.equal(await page.locator("#envelope-ask").innerText(), LOGIN_LINE);
       assert.equal(await page.locator("#act-bar .instruction").innerText(), LOGIN_LINE);
@@ -399,6 +402,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
       await page.reload();
       await page.waitForSelector("#act-bar");
       await page.click("button[data-open-run=run-login]");
+      await page.getByText("Detailed evidence", { exact: true }).click();
       await page.waitForSelector("#envelope-ask");
       assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "dark");
       assert.equal(await page.locator("#envelope-ask").innerText(), LOGIN_LINE);

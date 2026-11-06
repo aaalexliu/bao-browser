@@ -1734,10 +1734,14 @@ function runTime(run: RunSummary): number | undefined {
   return typeof run.at === "number" && Number.isFinite(run.at) && !Number.isNaN(new Date(run.at).getTime()) ? run.at : undefined;
 }
 
+function runWaiting(run: RunSummary): boolean {
+  return ["paused", "needs_human", "needs_signin"].includes(run.envelope?.status || run.status);
+}
+
 export function runAttention(runs: RunSummary[]): { run: RunSummary; label: string; kind: string }[] {
   return [...runs].sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity)).flatMap((run) => {
     const items: { run: RunSummary; label: string; kind: string }[] = [];
-    if (["paused", "needs_human"].includes(run.envelope?.status || run.status)) items.push({ run, label: "Needs you", kind: "paused" });
+    if (runWaiting(run)) items.push({ run, label: "Needs you", kind: "paused" });
     const decided = new Set((run.decisions || []).map((decision) => decision.healId));
     for (const heal of run.heals || []) if (!decided.has(heal.id)) items.push({ run, label: "Heal to keep", kind: "healed" });
     if (["failed", "timed-out", "timeout"].includes(run.status)) items.push({ run, label: run.status === "failed" ? "Failed" : "Timed out", kind: "failed" });
@@ -1746,7 +1750,7 @@ export function runAttention(runs: RunSummary[]): { run: RunSummary; label: stri
 }
 
 function runListKind(run: RunSummary): string {
-  if (["paused", "needs_human"].includes(run.envelope?.status || run.status)) return "paused";
+  if (runWaiting(run)) return "paused";
   if (run.status === "timeout") return "timed-out";
   if (!["passed", "ok", "completed", "failed", "timed-out"].includes(run.status)) return run.status;
   return runKind(run);
@@ -1799,9 +1803,10 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
+  const ask = view.handoff?.ask || run.envelope?.ask;
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
-    ${view.handoff?.ask || run.envelope?.ask ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(view.handoff?.ask || run.envelope?.ask || ""))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : ""}
+    ${ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
     ${view.detailsHidden ? `<p class="quiet">${esc(view.detailsHidden)} Local evidence is available below.</p>` : ""}
