@@ -15,10 +15,7 @@ import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
 import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
-import { createLiveHost } from "../cdp-live/live-host";
 import { askAutomation, readAutomation, type AutomationReport } from "../cdp-live/automation";
-import { liveReplayArgs } from "../cdp-live/live-replay";
-import { parseLiveTarget } from "../cdp-live/live-target";
 import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
@@ -60,7 +57,7 @@ import {
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
-import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles, openCopiedChrome } from "../engines/chrome-profile-copy";
+import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -203,10 +200,6 @@ export async function startApp(opts: {
   extensionHostDirs?: string[];
   /** Resolver notices for this launch. Each shows in the window once per library. */
   libraryNotices?: string[];
-  /** The Chrome a live session drives when the agent names none: daily (default), daily:<profile>, bao, or throwaway:<DevToolsActivePort>. */
-  liveTarget?: string;
-  /** Live session lock. Default /tmp/bao-cdp-session.lock, shared by every Bao on this machine. */
-  liveLockFile?: string;
   evalVideoNoBlur?: true;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
@@ -220,32 +213,6 @@ export async function startApp(opts: {
   let automationNotice = "";
   const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
   let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
-  const liveTarget = () => parseLiveTarget(opts.liveTarget || `daily:${library.settings().liveChromeProfile || "Default"}`, baoProfile,
-    profileSourceRoot ? path.join(profileSourceRoot, "DevToolsActivePort") : undefined);
-  const live = createLiveHost({
-    careful: () => library.settings().careful === true,
-    home: library.root,
-    target: liveTarget(),
-    lockFile: opts.liveLockFile,
-    selectRun: async () => {
-      const settings = library.settings();
-      const engineName = pageEngineName(settings.pageEngine);
-      if (engineName === "old" || opts.liveTarget?.startsWith("throwaway:")) {
-        return { target: liveTarget(), engineName };
-      }
-      if (!profileSourceRoot || !settings.chromeProfile) throw new Error("choose a Chrome profile in Settings before starting agent-browser");
-      const copied = await openCopiedChrome({ sourceRoot: profileSourceRoot, directory: settings.chromeProfile, home: library.root,
-        loadExtensions: settings.chromeProfileExtensions?.[settings.chromeProfile] === true });
-      profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "open" };
-      return {
-        target: copied.target, engineName, artifactRoot: library.root, closed: copied.closed, parkedTargetId: copied.parkedTargetId,
-        close: async () => { await copied.close(); profileCopy = { bytes: copied.bytes, copyMs: copied.copyMs, status: "deleted" }; },
-      };
-    },
-    onNotice: (message) => { automationNotice = message; },
-    videoDir: process.env.BAO_RUN_VIDEO === "1" || opts.evalVideoNoBlur ? path.join(library.root, "videos") : undefined,
-    evalVideoNoBlur: opts.evalVideoNoBlur,
-  });
   let signIn: { close(): Promise<void> } | undefined;
   const notices: Notice[] = [];
   let boundPort = opts.port ?? 0;
@@ -410,7 +377,6 @@ export async function startApp(opts: {
           reason: result.failure?.reason || result.reason,
         };
       },
-      live: (workflow, inputs) => live.replay(workflow, inputs),
     },
   });
   const sessions = new Map<string, FreezeSession>();
@@ -508,11 +474,6 @@ export async function startApp(opts: {
         }
         return sendFile(res, path.join(publicDir, "freeze.html"), "text/html");
       }
-      if (req.method === "POST" && url.pathname === "/api/live") {
-        if (foreignOrigin(req)) return json(res, { error: "local clients only" }, 403);
-        const body = await readBody(req);
-        return json(res, await live.call(body));
-      }
       if (req.method === "GET" && url.pathname.startsWith("/api/live-session/shots/")) {
         const name = path.basename(decodeURIComponent(url.pathname.split("/")[4] || ""));
         if (!shotNameOk(name)) return json(res, { error: "no picture" }, 404);
@@ -544,7 +505,6 @@ export async function startApp(opts: {
           home: opts.home,
           librarySplits,
           settings: library.settings(),
-          liveTargetOverride: opts.liveTarget || "",
           profileCopy,
           workflows: library.list().map(summary),
           trails: library.listTrails(),
@@ -571,7 +531,6 @@ export async function startApp(opts: {
           remote: remote.view(),
           relay: relayStatus(library.root),
           liveSession: readLiveSessionFile(library.root),
-          liveSessionOpen: live.isOpen(),
         });
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
@@ -833,20 +792,11 @@ export async function startApp(opts: {
         return json(res, { profiles });
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; careful?: boolean; pageEngine?: string; chromeProfile?: string; liveChromeProfile?: string; chromeProfileExtensions?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown };
         const patch: Partial<Settings> = {};
-        if (body.careful !== undefined) {
-          if (typeof body.careful !== "boolean") return json(res, { error: "careful must be a boolean" }, 400);
-          patch.careful = body.careful;
-        }
         if (body.pageEngine !== undefined) {
           if (body.pageEngine !== "old" && body.pageEngine !== "agent-browser") return json(res, { error: "unknown page engine" }, 400);
           patch.pageEngine = body.pageEngine;
-        }
-        if (body.liveChromeProfile !== undefined) {
-          const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
-          if (typeof body.liveChromeProfile !== "string" || !choices.some((entry) => entry.directory === body.liveChromeProfile)) return json(res, { error: "choose an existing live Chrome profile" }, 400);
-          patch.liveChromeProfile = body.liveChromeProfile;
         }
         if (body.chromeProfile !== undefined) {
           const choices = profileSourceRoot ? await listChromeProfiles(profileSourceRoot).catch(() => []) : [];
@@ -1176,22 +1126,7 @@ export async function startApp(opts: {
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         if (refusesOwnedBrowser(workflow.driver)) {
-          const liveArgs = liveReplayArgs(workflow, body.args || {});
-          let run: RunResult;
-          try {
-            run = await live.replay(workflow, liveArgs, { leaveOpen: body.leaveOpen === true });
-          } catch (err) {
-            const message = err instanceof Error ? err.message : "live replay failed";
-            return json(res, { error: message, modelCalls: 0 }, 409);
-          }
-          library.saveRun(persistedRun(run, workflow, liveArgs, {
-            promotion: undefined,
-            recorded: { wrote: false },
-            videoStartedAt: 0,
-            secretList: [],
-          }));
-          library.savePublicInputs(workflow.id, keptInputs(workflow, liveArgs));
-          return json(res, { ...run, id: run.runId });
+          return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
@@ -1464,7 +1399,14 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/promotions/check") {
         const body = await readBody(req) as { id?: string };
-        const checked = await checkPromotion(library, body.id || "", notices);
+        const id = body.id || "";
+        const current = library.readPromotion(id) as (Promotion & { version?: number }) | undefined;
+        const workflow = library.read(id);
+        const candidate = current?.version ? versionDocument(library, id, current.version) : workflow;
+        if (refusesOwnedBrowser(workflow.driver) || refusesOwnedBrowser(candidate.driver)) {
+          return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
+        }
+        const checked = await checkPromotion(library, id, notices);
         return json(res, checked);
       }
       if (req.method === "POST" && url.pathname === "/api/heal/keep") {
@@ -1497,6 +1439,7 @@ export async function startApp(opts: {
         } catch {
           return json(res, { error: "no workflow" }, 404);
         }
+        if (refusesOwnedBrowser(doc.driver)) return json(res, { error: CDP_LIVE_SERVER_REFUSAL }, 409);
         const step = doc.steps.find((item) => item.id === body.stepId);
         if (!step) return json(res, { error: "no step" }, 404);
         try {
@@ -1550,8 +1493,8 @@ export async function startApp(opts: {
         }
         if (body.workflow) {
           const next = { ...body.workflow, id, updatedAt: Date.now() };
-          draftVersion(library, next, "edit");
-          return json(res, next);
+          const drafted = draftVersion(library, next, "edit");
+          return json(res, drafted.document);
         }
         if (body.driver === "playwright" || body.driver === "extension" || body.driver === null) {
           const doc = library.read(id);
@@ -2555,7 +2498,6 @@ export async function startApp(opts: {
       }
       replays.clear();
       await remote.stop();
-      await live.close();
       await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },

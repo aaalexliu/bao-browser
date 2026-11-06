@@ -30,6 +30,8 @@ for (const key of Object.keys(env)) {
 }
 delete env.NODE_PATH;
 delete env.NODE_OPTIONS;
+for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
+env.BAO_HEAL_CURSOR_ACCOUNT = "0";
 
 const started = Date.now();
 const child = spawn(launcher, [], { cwd: agentDir, env, stdio: ["pipe", "pipe", "pipe"] });
@@ -78,16 +80,14 @@ try {
   check(init.result?.serverInfo?.name === "bao", `initialize did not name the bao server: ${JSON.stringify(init)}`);
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
   const names = ((await request("tools/list")).result?.tools || []).map((item) => item.name);
-  for (const name of ["search_workflows", "run_workflow", "live_session_start", "live_stop"]) {
-    check(names.includes(name), `tools/list has no ${name}: ${names.join(", ")}`);
-  }
+  const expected = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "agent_browser"];
+  check(names.length === expected.length && expected.every((name) => names.includes(name)), `unexpected tools/list: ${names.join(", ")}`);
   const search = await tool("search_workflows", { query: "launcher" });
   const ids = (JSON.parse(search.text).hits || []).map((hit) => hit.id);
   check(ids.includes("launcher-home"), `search did not read the app's library: ${search.text}`);
   check(!ids.includes("launcher-cwd"), `search read the agent's .bao-mcp library: ${search.text}`);
-  const live = await tool("live_snapshot");
-  const expected = `Bao is not running. Open the Bao app, or run: open `;
-  check(live.isError && live.text.startsWith(expected) && live.text.includes(app), `live tool without the app: ${live.text}`);
+  const proxy = await tool("agent_browser", { command: "snapshot", args: [] });
+  check(proxy.isError && proxy.text.includes("start agent-browser with open"), `proxy command without a session: ${proxy.text}`);
   child.stdin.end();
   const end = await Promise.race([exited, new Promise((resolve) => setTimeout(() => resolve(undefined), 10_000).unref())]);
   check(end?.code === 0, `bao-mcp did not exit 0 within 10 s of stdin closing: ${JSON.stringify(end)}`);

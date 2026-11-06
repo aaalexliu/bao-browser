@@ -6,10 +6,13 @@ import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { baoUserHome } from "../home";
-import { shellWord } from "../mcp/live-proxy";
 import { DEFAULT_APP, mcpLauncher } from "./bundle";
 import { allowBaoTools, CLAUDE_BAO_RULE, ClaudeSettingsError } from "./claude-settings";
 import { codexServerBlock, upsertCodexServer } from "./codex-config";
+
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
+}
 
 export const AGENT_USAGE = "usage: bao agent config claude|codex [--write] [--app /Applications/Bao.app]";
 

@@ -3,6 +3,8 @@
 Bao lets an agent drive Chrome through the `agent_browser` pass-through MCP tool.
 See [Direct MCP commands](docs/agent-browser-engine.md#direct-mcp-commands) for commands and limits.
 
+The older live tools and their replay driver are retired. Saved `cdp-live` workflows stay readable but cannot replay until replay is rebuilt on the pass-through. Bao does not block final clicks.
+
 ## Agent quickstart
 
 This checkout has three products:
@@ -61,8 +63,7 @@ Agents run `/Applications/Bao.app/Contents/MacOS/bao-mcp`. After building the
 desktop, `node desktop/dist/desktop/src/app/cli.js agent config claude --write`
 (or `codex`) adds that entry and pre-approves Bao's tools in that agent.
 [Agent quickstart](docs/agent-quickstart.md#mcp) has the entries and checkout form.
-[Page engine](docs/agent-browser-engine.md) explains profile selection, trial
-limits, and evidence.
+[Agent-browser pass-through](docs/agent-browser-engine.md) explains profile selection, copy limits, owner handoff, and evidence.
 
 ## Development guides
 

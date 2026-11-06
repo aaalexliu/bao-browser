@@ -1,7 +1,4 @@
-// Driver choice for a remote run. workflowDriver is unchanged: absent and
-// cdp-live still map to Playwright there. This function is the remote path.
-// A cdp-live run goes through run_workflow with the app's live runner,
-// replayLiveWorkflow in desktop/src/cdp-live/live-replay.ts.
+// Preserve the retired driver tag so the remote path refuses it before launch.
 
 export type RemoteDriverKind = "extension" | "cdp-live" | "playwright";
 

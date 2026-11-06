@@ -4,7 +4,15 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { until } from "../instacart/lane";
+async function until<T>(read: () => T | undefined, what: string, timeoutMs = 30_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = read();
+    if (value !== undefined) return value;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
 
 for (const [name, args, workers] of [
   ["defaults to two workers", [], 2],

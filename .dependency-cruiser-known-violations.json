@@ -341,20 +341,6 @@
   {
     "type": "dependency",
     "from": "desktop/src/app/cli.ts",
-    "to": "desktop/src/eval/agent-instacart.ts",
-    "unresolvedTo": "../eval/agent-instacart",
-    "dependencyTypes": [
-      "local",
-      "dynamic-import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-runtime-to-dev-tools"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "desktop/src/app/cli.ts",
     "to": "desktop/src/eval/drivers.ts",
     "unresolvedTo": "../eval/drivers",
     "dependencyTypes": [

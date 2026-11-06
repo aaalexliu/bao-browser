@@ -1,6 +1,6 @@
 // The library is files under one directory. Sync state lives beside it, not in here.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact, scrubSaved } from "../../../shared/saved-secrets";
@@ -42,12 +42,8 @@ export interface Settings extends HealSettings {
    * This is not synced. Another machine has its own Chrome grant.
    */
   hostAccess?: "all" | "site" | "none";
-  /** Opt into live-session confirm checks, sign-in halts, and site deny rules. Local, default false. */
-  careful?: boolean;
   /** Local run choice. Old remains the default. */
   pageEngine?: "old" | "agent-browser";
-  /** Profile for live sessions in the running Chrome. Local to this Mac. */
-  liveChromeProfile?: string;
   /** Chrome profile directory explicitly picked on this Mac. Never synced. */
   chromeProfile?: string;
   /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */
@@ -152,6 +148,7 @@ export class Library {
 
   save(doc: WorkflowV2): void {
     const saved = scrubSaved(doc);
+    if (existsSync(this.file(saved.id)) && this.read(saved.id).driver === "cdp-live") saved.driver = "cdp-live";
     const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));
     writeFileSync(this.file(saved.id), toJson(saved));
@@ -296,7 +293,10 @@ export class Library {
   settings(): Settings {
     const file = path.join(this.root, "settings.json");
     try {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(readFileSync(file, "utf8")) as Settings };
+      const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<Settings> & Record<string, unknown>;
+      delete saved.careful;
+      delete saved.liveChromeProfile;
+      return { ...DEFAULT_SETTINGS, ...saved };
     } catch {
       return { ...DEFAULT_SETTINGS };
     }

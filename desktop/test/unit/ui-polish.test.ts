@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { SessionLog, liveSessionDir } from "../../src/cdp-live/audit";
+import type { LiveSessionRecord } from "../../src/cdp-live/live-record";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp } from "../runtime";
 
-test("Live, Runs and Capture keep their content aligned in the app", { timeout: 60_000 }, async () => {
+test("historical sessions, Runs and Capture keep their content aligned in the app", { timeout: 60_000 }, async () => {
   const dirs = applyHermeticApp("ui-polish");
   const app = await startApp({ home: dirs.home, port: 0, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   const browser = await chromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
@@ -17,16 +17,19 @@ test("Live, Runs and Capture keep their content aligned in the app", { timeout: 
   try {
     await page.goto(`${base}/fixture`);
     const png = await page.screenshot();
-    const log = new SessionLog(liveSessionDir(dirs.home), "Read member report");
     const liveSteps = Array.from({ length: 41 }, (_, index) => ({ name: index === 0 ? "start" : `click-${index}`, status: "passed", ms: 100 }));
-    log.setSteps(liveSteps);
-    await log.add({ action: "start", label: "http://127.0.0.1:47811/member", path: "/member", isTrusted: null, ms: 0, png });
-    await log.add({ action: "start", label: "Member report", path: "/member", isTrusted: null, ms: 100 });
+    const audit: LiveSessionRecord["audit"] = [
+      { action: "start", label: "http://127.0.0.1:47811/member", path: "/member", isTrusted: null, ms: 0, at: 1, shot: "shot-001.png", via: "cdp" },
+      { action: "start", label: "Member report", path: "/member", isTrusted: null, ms: 100, at: 2, shot: "", via: "cdp" },
+    ];
     for (let index = 1; index < liveSteps.length; index += 1) {
-      await log.add({ action: "click", label: `Control ${index}`, path: "/member", isTrusted: true, ms: 0 });
-      await log.add({ action: "click", label: "Member report", path: "/member", isTrusted: null, ms: 100, ...(index === liveSteps.length - 1 ? { png } : {}) });
+      audit.push({ action: "click", label: `Control ${index}`, path: "/member", isTrusted: true, ms: 0, at: index * 2 + 1, shot: "", via: "cdp" });
+      audit.push({ action: "click", label: "Member report", path: "/member", isTrusted: null, ms: 100, at: index * 2 + 2, shot: index === liveSteps.length - 1 ? "shot-002.png" : "", via: "cdp" });
     }
-    await log.flush("passed");
+    const sessionDir = path.join(dirs.home, "live-session");
+    mkdirSync(path.join(sessionDir, "shots"), { recursive: true });
+    for (const name of ["shot-001.png", "shot-002.png"]) writeFileSync(path.join(sessionDir, "shots", name), png);
+    writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: "live", intent: "Read member report", status: "passed", host: "", updatedAt: 1, steps: liveSteps, audit, note: "" }));
     const label = 'Click "View full credit report"';
     const workflow: WorkflowV2 = {
       schema: "bao.workflow/v2", version: 2, id: "wf-ui-polish", name: "Read member report", createdAt: 1,
@@ -107,9 +110,9 @@ test("Live, Runs and Capture keep their content aligned in the app", { timeout: 
     ], "hide only a repeated class label, not a distinct reason or evidence");
     await page.locator('button[data-screen="capture"]').click();
     const mcp = page.locator(".card").filter({ has: page.getByRole("heading", { name: "Agent and MCP" }) });
-    assert.match(await mcp.innerText(), /live_\*/);
-    assert.match(await mcp.innerText(), /live_stop.*saves.*workflow/);
-    assert.match(await mcp.innerText(), /Watch.*Live/);
+    assert.match(await mcp.innerText(), /agent_browser/);
+    assert.match(await mcp.innerText(), /do not save replayable workflows/);
+    assert.match(await mcp.innerText(), /Watch.*Runs/);
   } finally {
     await browser.close();
     await app.close();

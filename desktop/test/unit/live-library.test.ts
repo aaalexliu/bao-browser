@@ -5,124 +5,32 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../../src/app/views";
-import { LIVE_TRAIL_SOURCE, workflowFromTrail } from "../../src/cdp-live/live-trail";
-import { guardPreset } from "../../src/cdp-live/presets";
-import { redactOverlay } from "../../src/cdp-live/driver";
-import type { TrailEvent } from "../../src/v1/interpret";
-import { dumpPage } from "../../src/v1/dom-page";
 import { testChromium } from "../../src/test-browser";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import { subst, type Identity } from "../../src/v1/schema";
+import { subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
-function recorded(identities: Partial<Identity>[], op: "type" | "select" = "type") {
-  const events: TrailEvent[] = identities.map((identity, i) => ({
-    id: `live-${i}`, ts: i + 1, kind: "act", op, source: LIVE_TRAIL_SOURCE,
-    identity: { surface: "dom", role: "textbox", tag: "input", path: [], ...identity },
-    value: `value-${i}`, beforeUrl: "https://example.test/", afterUrl: "https://example.test/",
-  }));
-  return workflowFromTrail({ id: "wf-live", name: "Live form", intent: "Fill a form", startUrl: "https://example.test/", createdAt: 1, savedAt: 2, events, guard: guardPreset("generic") });
+function recorded(identities: Partial<Identity>[]): WorkflowV2 {
+  return {
+    schema: "bao.workflow/v2", version: 2, driver: "cdp-live", id: "wf-live", name: "Saved live form",
+    startUrl: "https://example.test/", createdAt: 1,
+    inputs: [{ name: "text", type: "text", default: "value" }],
+    steps: identities.map((identity, index) => ({
+      id: `live-${index}`, index, action: "type", label: "Saved field", surface: "dom", timeoutMs: 1000,
+      identity: { surface: "dom", role: "textbox", path: [], ...identity }, input: "text", value: "{{text}}",
+    })),
+  };
 }
 
 async function pagePng(width: number, height: number, veiled = false): Promise<Buffer> {
+  if (veiled) return redactedPng(1);
   const browser = await testChromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width, height } });
     await page.setContent('<main style="margin:15%;font:24px system-ui"><h1>App settings</h1><p>Configure the saved workflow.</p><label>App name <input value="Example" style="font:inherit"></label><p><button style="font:inherit">Continue</button></p></main>');
-    if (veiled) await page.evaluate(redactOverlay, "inspect /settings");
     return await page.screenshot({ type: "png" });
   } finally { await browser.close(); }
 }
-
-test("live inputs use field labels, placeholders and names with safe unique tokens", () => {
-  const workflow = recorded([
-    { label: "App name", nameAttr: "app", id: "_generated" },
-    { label: "App name" },
-    { placeholder: "Authorized domain 1" },
-    { nameAttr: "redirect-uri" },
-    { label: "Support email" },
-    {},
-    { label: "!!!", nameAttr: "fallback" },
-    { label: "1st café" },
-  ]);
-  assert.deepEqual(workflow.inputs.map(input => input.name), ["app_name", "app_name2", "authorized_domain_1", "redirect_uri", "support_email", "text", "fallback", "field_1st_cafe"]);
-  for (const step of workflow.steps.filter(step => step.action === "type")) {
-    assert.equal(subst(step.value || "", { [step.input!]: "replacement" }), "replacement");
-  }
-});
-
-for (const op of ["type", "select"] as const) {
-  test(`live ${op} inputs separate numbered field labels from duplicate counters`, () => {
-    const workflow = recorded([
-      { label: "App name" },
-      { label: "App name" },
-      { label: "URIs 1" },
-      { label: "URIs 1" },
-      { label: "URIs 1" },
-      { label: "URIs 12" },
-      { label: "URIs 12" },
-      { label: "URIs 1 2" },
-    ], op);
-    assert.deepEqual(workflow.inputs.map(input => input.name), [
-      "app_name", "app_name2", "uris_1", "uris_1_2", "uris_1_3", "uris_12", "uris_12_2", "uris_1_2_2",
-    ]);
-    for (const step of workflow.steps.filter(step => step.action === op)) {
-      assert.equal(subst(step.value || "", { [step.input!]: "replacement" }), "replacement");
-    }
-    const occupied = recorded([{ label: "URIs 1" }, { label: "URIs 1 2" }, { label: "URIs 1" }], op);
-    assert.deepEqual(occupied.inputs.map(input => input.name), ["uris_1", "uris_1_2", "uris_1_3"]);
-  });
-}
-
-test("live field metadata comes from the page, not the typed value", async () => {
-  const browser = await testChromium.launch();
-  try {
-    const page = await browser.newPage();
-    await page.setContent('<label>App name<input value="Personal text"></label><input placeholder="Redirect URI" value="Private value"><input name="support-email">');
-    const tree = await page.evaluate(dumpPage);
-    const fields = tree.nodes.filter(node => node.tag === "input");
-    assert.equal(fields[1]?.placeholder, "Redirect URI");
-    assert.deepEqual(recorded(fields).inputs.map(input => input.name), ["app_name", "redirect_uri", "support_email"]);
-  } finally { await browser.close(); }
-});
-
-test("live textarea and select tokens exclude control text from every label source", async () => {
-  const browser = await testChromium.launch();
-  try {
-    const page = await browser.newPage();
-    for (const source of ["wrapping", "for", "aria-labelledby"] as const) {
-      for (const tag of ["textarea", "select"] as const) {
-        const label = tag === "textarea" ? "Quarterly revenue notes" : "Apple choice";
-        const value = tag === "textarea" ? "quarterly revenue" : "Apple";
-        const contents = tag === "textarea" ? value : "<option>Apple</option><option>Banana</option>";
-        const control = `<${tag} id="field"${source === "aria-labelledby" ? ' aria-labelledby="caption extra"' : ""}>${contents}</${tag}>`;
-        const markup = source === "wrapping" ? `<label><span>${label}</span>${control}</label>`
-          : source === "for" ? `<label for="field"><span>${label}</span>${control}</label>`
-            : `<div id="caption"><span>${label}</span>${control}</div><span id="extra">Details</span>`;
-        await page.setContent(markup);
-        const originalText = await page.locator("#field").textContent();
-        const tree = await page.evaluate(dumpPage);
-        const field = tree.nodes.find(node => node.id === "field");
-        assert.ok(field);
-        const expectedLabel = label + (source === "aria-labelledby" ? " Details" : "");
-        assert.equal(field.label, expectedLabel);
-        assert.equal(field.name, expectedLabel);
-        assert.equal(await page.locator("#field").textContent(), originalText);
-        assert.equal(await page.locator("#field").inputValue(), value);
-        const workflow = workflowFromTrail({
-          id: "wf-label", name: "Labeled form", intent: "Fill a form", startUrl: "https://example.test/", createdAt: 1, savedAt: 2,
-          events: [{ id: "event", ts: 1, kind: "act", op: tag === "select" ? "select" : "type", source: LIVE_TRAIL_SOURCE,
-            identity: field, value, beforeUrl: "https://example.test/", afterUrl: "https://example.test/" }],
-          guard: guardPreset("generic"),
-        });
-        const token = expectedLabel.toLowerCase().replace(/ /g, "_");
-        assert.deepEqual(workflow.inputs.map(input => input.name), [token]);
-        assert.equal(workflow.steps[0]?.input, token);
-        assert.equal(subst(workflow.steps[0]?.value || "", { [token]: "replacement" }), "replacement");
-      }
-    }
-  } finally { await browser.close(); }
-});
 
 test("saved generic input tokens stay usable without a migration", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
@@ -202,13 +110,19 @@ test("live card posters use stored full-page workflow pictures, never crops or s
     response = await fetch(url);
     assert.equal(response.status, 200);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
-    library.save({ ...workflow, driver: "playwright" });
-    response = await fetch(url);
+    const ordinary = { ...workflow, id: "wf-ordinary", driver: "playwright" as const };
+    library.save(ordinary);
+    const ordinaryShots = path.join(home, "shots", "workflows", ordinary.id);
+    mkdirSync(ordinaryShots, { recursive: true });
+    writeFileSync(path.join(ordinaryShots, `${ordinary.steps[0]!.id}.png`), page);
+    writeFileSync(path.join(ordinaryShots, "poster.png"), poster);
+    const ordinaryUrl = `http://127.0.0.1:${app.port}/api/workflows/${ordinary.id}/poster`;
+    response = await fetch(ordinaryUrl);
     assert.equal(response.status, 200);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
     for (const rejected of [blankPng(80, 40), redactedPng(1)]) {
-      writeFileSync(path.join(shots, "poster.png"), rejected);
-      assert.equal((await fetch(url)).status, 404, "non-live cards still require a full-page poster");
+      writeFileSync(path.join(ordinaryShots, "poster.png"), rejected);
+      assert.equal((await fetch(ordinaryUrl)).status, 404, "non-live cards still require a full-page poster");
     }
   } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
 });

@@ -315,6 +315,7 @@ export function versionDocument(library: Library, id: string, n: number): Workfl
 
 export function draftVersion(library: Library, document: WorkflowV2, source: Exclude<VersionSource, "saved">): WorkflowVersion {
   document = scrubSaved(document);
+  if (library.read(document.id).driver === "cdp-live") document.driver = "cdp-live";
   const errors = validateWorkflow(document);
   if (errors.length) throw new Error(errors.join(", "));
   const versions = seed(library, document.id);
@@ -335,8 +336,8 @@ export function promoteVersion(library: Library, id: string, n: number): Workflo
   const versions = seed(library, id);
   const row = versions.find((item) => item.n === n);
   if (!row) throw new Error("no version");
-  const document = { ...row.document, id, updatedAt: Date.now() };
-  library.save(document);
+  library.save({ ...row.document, id, updatedAt: Date.now() });
+  const document = library.read(id);
   for (const item of versions) {
     if (item.n === n) {
       item.role = "live";

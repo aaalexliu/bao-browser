@@ -243,7 +243,7 @@ test("malformed copied preferences stop before Chrome starts without exposing co
 
 test("settings chooser persists a whole-run choice and rejects paths and unknown profiles", async () => {
   const f = await fixture();
-  const app = await startApp({ home: f.home, port: 0, chromeProfilesRoot: f.sourceRoot, liveTarget: `throwaway:${path.join(f.root, "DevToolsActivePort")}` });
+  const app = await startApp({ home: f.home, port: 0, chromeProfilesRoot: f.sourceRoot });
   const base = `http://127.0.0.1:${app.port}`;
   const put = (body: object) => fetch(`${base}/api/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   try {
@@ -260,7 +260,7 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
       for (const guide of [false, true]) {
         const response = await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: `wf-${driver}`, guide }) });
         assert.equal(response.status, 409);
-        assert.equal((await response.json() as { error: string }).error, "profile-copy runs use a recorded live workflow; start one with Bao's live tools");
+        assert.equal((await response.json() as { error: string }).error, "pass-through sessions do not support saved workflow replay");
       }
     }
     assert.equal(app.library.settings().chromeProfile, "Default");

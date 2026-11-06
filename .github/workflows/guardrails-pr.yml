@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [auth, password-slot, experian, mode, key-privacy, navigation-privacy, storage, isolation, browser, core, web]
+        group: [auth, password-slot, experian, storage, isolation, browser, core, web]
     env:
       BAO_HEAL_CURSOR_ACCOUNT: "0"
       PLAYWRIGHT_BROWSERS_PATH: /tmp/bao-playwright
@@ -111,6 +111,11 @@ jobs:
       - name: Emit desktop JavaScript
         if: steps.compiled.outputs.cache-hit != 'true'
         run: npm run build:desktop -- --noCheck
+      - name: Stage pinned agent-browser for the Experian pass-through fixture
+        if: matrix.group == 'experian'
+        run: |
+          node desktop/packaging/stage-agent-browser.mjs "$RUNNER_TEMP/bao-agent-browser"
+          echo "AGENT_BROWSER_PROXY_BINARY=$RUNNER_TEMP/bao-agent-browser/agent-browser" >> "$GITHUB_ENV"
       - name: Essential tests
         env:
           GROUP: ${{ matrix.group }}
@@ -119,7 +124,11 @@ jobs:
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
           export HOME="$(mktemp -d)"
           trap 'rm -rf "$HOME"' EXIT
-          node scripts/test-essential.mjs "$GROUP"
+          if [ "$GROUP" = experian ]; then
+            xvfb-run --auto-servernum node scripts/test-essential.mjs "$GROUP"
+          else
+            node scripts/test-essential.mjs "$GROUP"
+          fi
 
   guardrails:
     name: guardrails

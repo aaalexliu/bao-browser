@@ -7,10 +7,10 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 13
+      "count": 11
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
+      "count": 2
     }
   },
   "desktop/src/app/server.ts": {
@@ -18,11 +18,6 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    }
-  },
-  "desktop/src/cdp-live/session.ts": {
-    "@typescript-eslint/await-thenable": {
       "count": 1
     }
   },
@@ -54,11 +49,6 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    }
-  },
-  "desktop/test/live/agent-browser-parity.test.ts": {
-    "no-duplicate-imports": {
       "count": 1
     }
   },
@@ -101,29 +91,7 @@
       "count": 1
     }
   },
-  "desktop/test/unit/agent-browser.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 20
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 4
-    }
-  },
   "desktop/test/unit/backup-schedule.test.ts": {
-    "no-duplicate-imports": {
-      "count": 1
-    }
-  },
-  "desktop/test/unit/cdp-live.test.ts": {
     "no-duplicate-imports": {
       "count": 1
     }
@@ -156,23 +124,6 @@
   },
   "desktop/test/unit/eval-drivers.test.ts": {
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "desktop/test/unit/experian-gaps.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 11
-    },
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 25
-    },
-    "@typescript-eslint/no-unsafe-return": {
       "count": 1
     }
   },
@@ -216,54 +167,9 @@
       "count": 2
     }
   },
-  "desktop/test/unit/live-contenteditable.test.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 2
-    }
-  },
-  "desktop/test/unit/live-mode-regressions.test.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
-    }
-  },
-  "desktop/test/unit/live-oauth-regressions.test.ts": {
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 7
-    },
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 21
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 2
-    }
-  },
-  "desktop/test/unit/live-read.test.ts": {
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 3
-    }
-  },
-  "desktop/test/unit/live-recording.test.ts": {
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
   "desktop/test/unit/locators.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
-    }
-  },
-  "desktop/test/unit/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-call": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 3
     }
   },
   "desktop/test/unit/repair-promote.test.ts": {
@@ -358,10 +264,10 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 4
+      "count": 3
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 14
+      "count": 11
     },
     "@typescript-eslint/no-unsafe-return": {
       "count": 2
@@ -372,13 +278,13 @@
       "count": 2
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 3
+      "count": 2
     },
     "@typescript-eslint/no-unsafe-call": {
       "count": 1
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 24
+      "count": 20
     },
     "@typescript-eslint/no-unsafe-return": {
       "count": 2

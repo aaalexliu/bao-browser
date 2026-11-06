@@ -7,7 +7,6 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { replayRefusal } from "../cdp-live/launch-guard";
-import { liveReplayArgs, type LiveReplayOptions } from "../cdp-live/live-replay";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
@@ -186,14 +185,9 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   };
 }
 
-/** Replays a cdp-live workflow in the live Chrome and returns the engine's run. */
-export type LiveReplayer = (workflow: WorkflowV2, inputs: ReplayArgs, options?: LiveReplayOptions) => Promise<RunResult>;
-
 export interface RunControl {
   prompts?: PersonPrompts;
   onContext?: (context: BrowserContext) => void;
-  /** The live runner. Without it a cdp-live workflow is refused, because it never runs in Bao's own Chrome. */
-  live?: LiveReplayer;
 }
 
 export async function runWorkflow(
@@ -218,10 +212,8 @@ export async function runWorkflow(
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
-  // A cdp-live workflow runs only through the live runner. Anything else opens Bao's own Chrome, and no extension links to it.
   const driver = (request.document ?? placed!.document).driver;
-  const liveRun = driver === "cdp-live" ? control?.live : undefined;
-  const refusal = liveRun ? null : replayRefusal(driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
+  const refusal = replayRefusal(driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
   if (refusal) return emptyOutcome(id, "failed", refusal);
   if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
     const listingId = placed.forkedFrom || placed.document.id;
@@ -255,15 +247,12 @@ export async function runWorkflow(
     ...(resumed?.publicInputs ?? {}),
     ...(request.inputs ?? {}),
   };
-  // A live replay types the recorded text for an input the caller leaves out.
-  const inputs = liveRun ? liveReplayArgs(workflow, given) : given;
+  const inputs = given;
   const missing = missingHuman(workflow, inputs);
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs));
   const secrets = secretStrings(workflow, inputs);
   try {
-    const played = liveRun
-      ? await replayLive(library, workflow, inputs, secrets, liveRun, { leaveOpen: request.leaveOpen })
-      : await replayInBrowser(library, workflow, inputs, secrets, control);
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
@@ -491,19 +480,6 @@ async function replayInBrowser(
     await finishVideo();
     if (!hold) await releaseBrowser(library, { context, video, profile, runId });
   }
-}
-
-/** A live replay holds no page. A pause for a person ends the run, and the person runs it again. */
-async function replayLive(
-  library: Library,
-  workflow: WorkflowV2,
-  args: ReplayArgs,
-  secrets: string[],
-  live: LiveReplayer,
-  options: LiveReplayOptions,
-): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: false; clip?: undefined }> {
-  const run = await live(workflow, args, options);
-  return { run, outcome: rememberRun(library, workflow, run, args, secrets), held: false };
 }
 
 async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs): Promise<WorkflowOutcome> {

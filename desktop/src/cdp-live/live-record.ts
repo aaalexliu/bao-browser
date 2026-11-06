@@ -1,4 +1,4 @@
-/** Browser-safe live session shape. File IO stays in audit.ts so the app bundle can import this. */
+/** Browser-safe types and display helpers for historical live-session records. */
 
 export interface AuditRow {
   action: string;

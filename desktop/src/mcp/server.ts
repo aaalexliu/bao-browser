@@ -1,9 +1,6 @@
 import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
-import { randomUUID } from "node:crypto";
-import { isLiveOp, LIVE_DISCONNECT, LIVE_TOOLS } from "../cdp-live/live-ops";
-import { describeWorkflow, getRun, runWorkflow, searchWorkflows, type LiveReplayer } from "./catalog";
+import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
-import { appLiveReplay, liveToolResult, postLive } from "./live-proxy";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
 
@@ -36,7 +33,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a workflow on this device, in Bao's own Chrome. A cdp-live workflow, which a live session saves, replays instead through the running Bao app in a new window of the Chrome the live tools drive, with no model call and no approval step. It repeats the recorded steps, including the search text the session typed. It skips a cart add when the item is already in the cart, and it keeps the live guards: checkout and other confirm or denied controls are refused, and a sign-in page or bot check stops it with needs_human. An extension workflow returns failed with the reason and does not run. A workflow that is only on another device or a marketplace listing is installed onto this Mac first. A marketplace listing that has not been allowed returns needs_approval and does not run. A passed run stamps the last green time and returns declared outputs, including fresh text from live_read steps. For a cdp-live workflow, leaveOpen keeps the passed or paused final page in Chrome; pageLeftOpen confirms it. Closing all windows of the copied Chrome frees its profile for another run without quitting Bao; Bao shutdown also closes it. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a saved workflow on this device in Bao's own Chrome. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. A listing that has not been allowed returns needs_approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -45,7 +42,6 @@ const CATALOG_TOOLS = [
         resume: { type: "string" },
         rerun: { type: "boolean" },
         cancel: { type: "boolean" },
-        leaveOpen: { type: "boolean", description: "Live workflows only: keep the passed or paused final page open in Chrome. Default false." },
       },
     },
   },
@@ -58,7 +54,7 @@ const CATALOG_TOOLS = [
 
 const AGENT_BROWSER_TOOL = {
   name: "agent_browser",
-  description: "Run an agent-browser command with its native arguments. Ordinary commands return native output; owner handoffs return Bao's wait status. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, wait_for_owner, close. When sign-in or a human check halts a command, keep this session open and call command=wait_for_owner args=[\"60000\"]. Repeat waiting replies without ending your turn; on ready take a fresh snapshot and continue in this same window. The optional timeout is 1-120000 milliseconds, below a 180-second MCP limit. On closed, report that the owner closed the window. While waiting Bao reads only URL and title, not snapshots, text, fields, or screenshots. A page with unchanged URL/title stays waiting. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. This route needs no running Bao app. Sign-in/check pages show an owner-wait banner and omit screenshots. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact, save a workflow, or apply live-tool guards.",
+  description: "Run an agent-browser command with its native arguments. Ordinary commands return native output; owner handoffs return Bao's wait status. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, wait_for_owner, close. When sign-in or a human check halts a command, keep this session open and call command=wait_for_owner args=[\"60000\"]. Repeat waiting replies without ending your turn; on ready take a fresh snapshot and continue in this same window. The optional timeout is 1-120000 milliseconds, below a 180-second MCP limit. On closed, report that the owner closed the window. While waiting Bao reads only URL and title, not snapshots, text, fields, or screenshots. A page with unchanged URL/title stays waiting. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. This route needs no running Bao app. Sign-in/check pages show an owner-wait banner and omit screenshots. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact or save a workflow. Bao does not block final clicks.",
   inputSchema: {
     type: "object", properties: {
       command: { type: "string", enum: AGENT_BROWSER_COMMANDS },
@@ -67,38 +63,19 @@ const AGENT_BROWSER_TOOL = {
   },
 } as const;
 
-/** The catalog and native proxy run here. The existing live tools go to the running Bao app. */
-export const TOOLS = [...CATALOG_TOOLS, ...LIVE_TOOLS, AGENT_BROWSER_TOOL];
+export const TOOLS = [...CATALOG_TOOLS, AGENT_BROWSER_TOOL];
 
 export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
-  "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report that the owner closed the window. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact, save a workflow, or use live-tool guards. It needs no running Bao app. The separate live_* workflow tools work as follows.",
-  "Bao drives a Chrome window for you and saves what you did as a workflow.",
-  "To do a task in the browser:",
-  "1. Start: live_session_start with the user's intent and the site's start page, such as its home or store page, not a search results url. The Bao app picks the Chrome to drive. portFile and preset are optional.",
-  "2. Read: live_snapshot lists controls. Applied acknowledges dispatch, not a verified save; verify critical non-secret field values and durable results before Next, Create, or success-named reads. Use only refs from the latest snapshot. A long page comes in pages; pass page to read the next one. To read and record page text, call live_read with a unique name and a CSS selector for one region (default body). It keeps scores and amounts, redacts credential-label values and known secret shapes, and caps text at 4000 characters. Replay returns fresh text in outputs.",
-  "3. Act: live_click, live_type, live_key, or live_scroll on one ref, then read again. To search, use the site's own search box: live_type the query into it, then live_key Enter on it or live_click its search button. Do not put the query in a url. The workflow keeps only the steps you take, so a typed search is a step that replay repeats.",
-  "4. End: live_stop. Ending the session saves the workflow in the Bao library. If the client disconnects first, Bao saves it too.",
-  "By default Bao performs the action, including Create, Save, Submit, Confirm, and purchase buttons. Sign-in detection adds a note without halting. Set careful: true at session start, or in this Mac's settings, to opt into confirm checks, sign-in halts, and preset deny rules. For a stale_ref or unknown_ref refusal, read again. If an element is covered, read again and dismiss the covering popup or choose another visible control that fits the task. A careful-mode guard reports what it held; a halted session can be saved with live_stop. YOLO keeps full control labels, accepts credential fields and long text, follows http(s) redirects, and saves readable screenshots and video. live_navigate opens a URL in the current tab. live_tabs lists only this session's tabs; live_switch_tab selects one. Use live_select for native selects. Read-back secret redaction stays on. Saved workflow replay keeps its existing guards.",
-  "search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows. run_workflow replays a saved live workflow through the running Bao app with no model call. It repeats the recorded search and skips a cart add when the item is already in the cart.",
-  "The live tools need the Bao app running. When a live tool says Bao is not running, tell the user the command it names.",
+  "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report that the owner closed the window. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact or save a workflow. It needs no running Bao app. Bao does not block final clicks.",
+  "search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
 ].join("\n");
 
 interface Context {
   library: Library;
   libraries: string[] | undefined;
-  /** CLI arguments and environment from before BAO_HOME was set, so live calls find the app the way bao open does. */
-  args: readonly string[];
-  env: NodeJS.ProcessEnv;
-  /** One id per process. The app saves and ends only this client's session when it goes away. */
-  client: string;
-  live: LiveReplayer;
-  /** Set once this process sends a live call, so a disconnect is sent only then. */
-  liveUsed: boolean;
   proxy: AgentBrowserProxy;
-  /** Resolves when the client goes away. From then on each live_* call and the disconnect post get 15 s. */
-  gone: Promise<void>;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
@@ -112,11 +89,9 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     return;
   }
   let ending = false;
-  let ended: () => void = () => undefined;
-  const gone = new Promise<void>((resolve) => { ended = resolve; });
   const library = new Library(home);
   const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile });
-  const ctx: Context = { library, libraries, args, env, client: randomUUID(), live: appLiveReplay(args, env), liveUsed: false, proxy, gone };
+  const ctx: Context = { library, libraries, proxy };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -130,17 +105,11 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
       });
     }
   });
-  // The client closed stdin or stopped this process: finish queued calls, then save its live session.
-  // A live_* call or the disconnect stuck in the app must not keep this process alive.
-  // After stdin closes, catalog work, a run_workflow live replay included, finishes and saves with no cap. A SIGTERM or SIGINT exits within 15 s, even mid-run.
   const end = (): void => {
     if (ending) return;
     ending = true;
     ctx.proxy.disconnect();
-    ended();
     void chain
-      .then(() => ctx.liveUsed ? limited(postLive({ op: LIVE_DISCONNECT, client: ctx.client }, ctx.args, ctx.env), gone) : undefined)
-      .catch(() => undefined)
       .then(() => ctx.proxy.close())
       .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
       .finally(() => process.exit(0));
@@ -181,9 +150,7 @@ async function handle(body: string, ctx: Context): Promise<void> {
     try {
       const result = name === "agent_browser"
         ? await proxyTool(args, ctx.proxy)
-        : isLiveOp(name)
-        ? liveToolResult(await liveCall({ ...args, op: name, client: ctx.client }, ctx))
-        : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.libraries, ctx.live, name, args)) }], isError: false };
+        : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.libraries, name, args)) }], isError: false };
       send({ jsonrpc: "2.0", id: msg.id, result });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -206,20 +173,7 @@ async function proxyTool(args: Record<string, unknown>, proxy: AgentBrowserProxy
   };
 }
 
-function liveCall(body: Record<string, unknown>, ctx: Context): Promise<unknown> {
-  ctx.liveUsed = true;
-  return limited(postLive(body, ctx.args, ctx.env), ctx.gone);
-}
-
-/** A live_* call or the disconnect gets 15 s from when it starts or the client goes away, whichever is later. */
-function limited<T>(work: Promise<T>, gone: Promise<void>): Promise<T> {
-  const deadline = gone.then(() => new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error("The Bao app did not answer.")), 15_000).unref();
-  }));
-  return Promise.race([work, deadline]);
-}
-
-async function callTool(library: Library, libraries: string[] | undefined, live: LiveReplayer, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(library: Library, libraries: string[] | undefined, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "search_workflows") {
     const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
     return withLibraries({
@@ -238,8 +192,7 @@ async function callTool(library: Library, libraries: string[] | undefined, live:
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
-      leaveOpen: args.leaveOpen === true,
-    }, undefined, { live });
+    });
     return withLibraries(result, libraries);
   }
   if (name === "get_run") return withLibraries(getRun(library, String(args.run_id || "")), libraries);

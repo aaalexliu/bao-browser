@@ -228,11 +228,11 @@ test("the run form shows Playwright unless the workflow asks for the extension",
   assert.match(extension, /value="extension"[^>]*selected/);
   const live = runDriverField("cdp-live");
   assert.match(live, /<select id="wf-driver" data-testid="run-driver" disabled>/);
-  assert.match(live, /value="cdp-live" selected>Live - the Chrome the live session drove</);
+  assert.match(live, /value="cdp-live" selected>Retired live driver</);
   assert.doesNotMatch(live, /Playwright|Extension/);
 });
 
-test("the run form locks healing off for a live workflow and keeps the choice for the others", () => {
+test("the run form disables healing for a retired workflow and keeps the choice for the others", () => {
   for (const driver of [undefined, "playwright", "extension"]) {
     const field = runHealField(driver, "approve", "auto");
     assert.match(field, /<select id="wf-heal" data-testid="run-heal">/);
@@ -242,7 +242,7 @@ test("the run form locks healing off for a live workflow and keeps the choice fo
   }
   const live = runHealField("cdp-live", "approve", "auto");
   assert.match(live, /<select id="wf-heal" data-testid="run-heal" disabled>/);
-  assert.match(live, /live replays run without healing or approval/);
+  assert.match(live, /value="" selected>Unavailable - retired live driver</);
   assert.doesNotMatch(live, /Approve before applying|Auto self-heal|global setting/);
 });
 

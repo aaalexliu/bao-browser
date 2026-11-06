@@ -47,16 +47,19 @@ required check name stays unchanged.
 It gives each group a reason, lists its test files, and names selected tests when
 a large mixed file contains both safety cases and slower feature cases. A
 manifest self-test rejects missing files, stale test names, and overlapping
-selections. The full workflow always runs the full source inventory; tests not
-in the essential set are not deleted or disabled locally.
+selections. The full workflow always runs the full source inventory. Tests for retired
+features leave both the source inventory and the manifest. The retired live
+driver's tests are listed in [selection evidence](ci-test-selection.md). The
+pass-through keeps sign-in and bot-wall handoffs and redirect coverage; it has
+no final-click guard.
 
 Both workflows cache npm downloads and the lockfile-pinned Playwright Chromium.
 Ubuntu 24.04 already has Chromium's system libraries, so the essential groups
 skip apt browser setup. The optional full check keeps main's canonical
 `playwright install --with-deps chromium`, including its extra fonts, so full
 suite layout tests retain their original environment. Only groups that declare
-`ffmpeg` in the manifest set up video tools. The core group contains video privacy and live recording,
-which need them; other groups never install them. Both workflows use the shared
+`ffmpeg` in the manifest set up video tools. The core group contains video privacy checks, which need them; other groups
+never install them. Both workflows use the shared
 [CI video-tools action](../.github/actions/setup-ffmpeg/action.yml), with a pinned
 static FFmpeg/ffprobe release, a content-keyed cache, and SHA-256 checks on every
 use. A cache miss downloads two files with a 20-second limit each instead of
