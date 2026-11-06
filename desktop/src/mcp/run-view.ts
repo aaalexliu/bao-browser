@@ -3,7 +3,7 @@ import { readLibraryFile } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
 import { shotFile, shotFormat } from "../v1/shots";
 import { Library, type StoredRun } from "../v1/store";
-import { privateStep } from "./step-privacy";
+import { privateStep, viewerText } from "./step-privacy";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
 export const VIEW_PICTURE_BYTES = 512 * 1024;
@@ -34,7 +34,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function text(value: unknown, limit = 500): string | undefined {
-  return typeof value === "string" ? value.slice(0, limit) : undefined;
+  return typeof value === "string" ? viewerText(value).slice(0, limit) : undefined;
 }
 
 function count(value: unknown): number | null {
@@ -93,8 +93,7 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
       `Read back ${text(receipt.source, 60) || "value"}: expected ${text(receipt.expected) || ""}, saw ${text(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
     return {
       id: text(step.id, 128), index: stepOffset + index + 1,
-      label: !trusted && run.kind !== "capture" ? text(definition?.label, 160) || text(step.id, 128)
-        : hidden ? (run.kind === "capture" ? text(native.command, 40) || "Captured command" : "Private or unavailable step") : text(definition?.label, 160) || text(step.id, 128),
+      label: text(definition?.label, 160) || (run.kind === "capture" ? text(native.command, 40) || "Captured command" : text(step.id, 128)),
       action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
       reason: hidden ? undefined : text(step.reason),
       result: !trusted ? undefined : hidden ? "Detailed evidence stays in the Bao desktop app." : readBacks.length ? readBacks.join("\n") : text(step.readBack),
@@ -114,7 +113,7 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
       id: viewerId(workflow.id), name: text(workflow.name, 120), stepCount: workflow.steps.length,
       steps: workflow.steps.slice(workflowOffset, workflowOffset + STEP_PAGE_SIZE).map((step, index) => ({
         index: workflowOffset + index + 1, action: text(step.action, 40),
-        label: trusted && privateStep(workflow, step, run) ? "Private step" : text(step.label, 160),
+        label: text(step.label, 160),
       })),
       offset: workflowOffset, nextOffset: workflowOffset + STEP_PAGE_SIZE < workflow.steps.length ? workflowOffset + STEP_PAGE_SIZE : null,
     } : null,

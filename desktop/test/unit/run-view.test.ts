@@ -9,10 +9,9 @@ import { callViewerTool, VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import { ReceiptLog } from "../../src/v1/receipt";
 import { getRun } from "../../src/mcp/catalog";
 import { shotFile } from "../../src/v1/shots";
-import { composeV3Schema, downloadFileName, renderTemplate } from "../../src/v1/files-dates";
-import { usesFilesDates } from "../../src/v1/files-dates-check";
+import { downloadFileName, fileDigest, renderTemplate } from "../../src/v1/files-dates";
+import { bindStep } from "../../src/v1/data-steps";
 import { expectedText } from "../../src/v1/replay";
-import { validateWorkflow } from "../../src/v1/schema";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";
 
@@ -187,81 +186,150 @@ test("secret row discovery and classification cover the same binding fields", (t
     const publicChild: WorkflowStep = { ...workflow.steps[0]!, id: "check", expect: { kind: "text", match: "{{row.public}}", timeoutMs: 0 } };
     saveWorkflow(library, { ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, index: 1, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [publicChild] } }] });
     saveRun(library, run);
-    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, true);
-    assert.equal(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures.length, 2);
+    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, false);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
   }
 });
 
-test("schema string fields rendered with secrets cannot export evidence", (t) => {
-  const { library, run, workflow } = fixture(t);
-  type Schema = { $ref?: string; type?: string; const?: unknown; enum?: unknown[]; required?: string[]; properties?: Record<string, Schema>; items?: Schema; oneOf?: Schema[] };
-  const schema = composeV3Schema() as unknown as { $defs: Record<string, Schema> };
-  const resolve = (node: Schema): Schema => node.$ref ? schema.$defs[node.$ref.split("/").at(-1)!]! : node;
-  const seed = (raw: Schema): unknown => {
-    const node = resolve(raw);
-    if (node.const !== undefined) return node.const;
-    if (node.enum) return node.enum[0];
-    if (node.oneOf) return seed(node.oneOf[0]!);
-    if (node.type === "array") return [];
-    if (node.properties) return Object.fromEntries((node.required || []).map((key) => [key, seed(node.properties![key]!)]));
-    if (node.type === "number" || node.type === "integer") return 0;
-    if (node.type === "boolean") return false;
-    return "public";
+test("renderer token kinds export evidence only for non-secret input bindings", (t) => {
+  const { library, run, workflow, root } = fixture(t);
+  const asset = path.join(root, "report.txt");
+  writeFileSync(asset, "");
+  const scope = {
+    args: { public: "Ready", quantity: 42, password: "private-token", attachment: { name: "attachment.txt", path: "/tmp/owner/attachment.txt" }, suggested: "input-not-filename", row_index: 42 },
+    run: { id: run.id, date: "2026-01-01" }, suggested: "suggested.txt", outputs: new Map([["report", fileDigest(asset)]]),
   };
-  function* variants(raw: Schema, template: string, seen = new Set(["#/$defs/step"])): Generator<{ path: string; value: unknown }> {
-    if (raw.$ref && seen.has(raw.$ref)) return;
-    const next = new Set(seen);
-    if (raw.$ref) next.add(raw.$ref);
-    const node = resolve(raw);
-    if (node.const !== undefined || node.enum) return;
-    if (node.oneOf) {
-      for (const option of node.oneOf) yield* variants(option, template, next);
-    } else if (node.type === "string") {
-      yield { path: "", value: template };
-    } else if (node.items) {
-      for (const child of variants(node.items, template, next)) yield { path: `0${child.path ? `.${child.path}` : ""}`, value: [child.value] };
-    } else if (node.properties) {
-      for (const [key, property] of Object.entries(node.properties)) {
-        for (const child of variants(property, template, next)) yield {
-          path: `${key}${child.path ? `.${child.path}` : ""}`,
-          value: { ...seed(node) as object, [key]: child.value },
-        };
-      }
+  const cases: [string, string, boolean][] = [
+    ["public", "Ready", true], ["quantity", "42", true], ["password", "private-token", false],
+    ["attachment", "attachment.txt", false], ["suggested", "suggested.txt", false],
+    ["run.id", run.id, false], ["run.date", "2026-01-01", false],
+    ["report.name", "report.txt", false], ["report.path", asset, false], ["report.size", "0", false],
+    ["report.sha256", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", false],
+    ["report.kind", "file", false], ["report.unknown", "", false], ["report.name.extra", "", false], ["missing", "", false],
+    ["row.public", "Visible cell", false], ["row_index", "1", false],
+  ];
+  for (const [token, expected, allowed] of cases) for (const spaced of [false, true]) {
+    const template = spaced ? `{{ ${token} }}` : `{{${token}}}`;
+    const nested = { ...workflow.steps[0]!, id: "nested", expect: { kind: "text" as const, match: template, timeoutMs: 0 } };
+    const row = token === "row.public" || token === "row_index";
+    const step: WorkflowStep = row
+      ? { ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [nested] } }
+      : { ...workflow.steps[0]!, readBack: { source: "text", match: template, timeoutMs: 0 } };
+    saveWorkflow(library, { ...workflow, version: row ? 3 : 2, inputs: [
+      ...workflow.inputs, { name: "public", type: "text" }, { name: "quantity", type: "number" }, { name: "attachment", type: "file" },
+      { name: "suggested", type: "text" }, { name: "row_index", type: "number" }, { name: "rows", type: "table" },
+    ], steps: [step] });
+    const rendered = row ? expectedText(bindStep(nested, { public: "Visible cell" }, 0).expect!.match, scope.args) : renderTemplate(template, scope);
+    assert.equal(rendered, expected, template);
+    const reason = `rendered ${rendered}`;
+    const receipts = new ReceiptLog();
+    receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: step.id, source: "text", expected: rendered, actual: `page ${rendered} text`, pass: true });
+    saveRun(library, { ...run, status: "failed", receipts: receipts.entries, steps: [{ id: step.id, status: "failed", reason }], failure: { stepId: step.id, reason }, envelope: { status: "failed", step: step.id, reason, ask: reason } });
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.equal(detail.detailsHidden, undefined, template);
+    assert.equal(detail.steps[0]?.picturesAllowed, allowed, template);
+    assert.equal(detail.steps[0]?.reason, allowed ? reason : undefined, template);
+    assert.equal(detail.reason, allowed ? reason : undefined, template);
+    assert.equal(detail.handoff?.ask, allowed ? reason : undefined, template);
+    assert.equal(detail.steps[0]?.label, "Preview report", template);
+    const result = callViewerTool(library, "inspect_run", { run_id: run.id });
+    assert.deepEqual(result._meta.baoViewer, detail);
+    assert.deepEqual(JSON.parse(result.content[0]!.text), JSON.parse(JSON.stringify(detail)));
+    if (allowed) {
+      assert.equal(detail.steps[0]?.result, `Read back text: expected ${expected}, saw page ${expected} text. matches.`, template);
+      assert.equal(openStepPictures(library, { run_id: run.id, step_id: step.id }).pictures.length, 2, template);
+    } else {
+      assert.equal(detail.steps[0]?.result, "Detailed evidence stays in the Bao desktop app.", template);
+      assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: step.id }), /withheld/, template);
     }
   }
-  const secret = "private-template-value";
-  const scope = { args: { password: secret }, run: { id: run.id, date: "2026-01-01" }, outputs: new Map() };
-  for (const template of ["{{password}}", "{{ password }}"]) {
-    const checked = new Set<string>();
-    for (const candidate of variants(schema.$defs.step!, template)) {
-      const step = { ...workflow.steps[0]!, ...candidate.value as object, action: "click" } as WorkflowStep;
-      if (step.download) step.action = "download";
-      if (step.open) {
-        step.action = "open";
-        step.open.target = candidate.path === "open.url" ? "url" : "file";
-        if (step.open.target === "file" && !step.open.file) step.open.file = "public.txt";
-      }
-      const doc = { ...workflow, version: 3, steps: [step] };
-      if (usesFilesDates(doc)) doc.filesDates = 1;
-      if (validateWorkflow(doc).length) continue;
-      saveWorkflow(library, doc);
-      const value = candidate.path.split(".").reduce<unknown>((node, key) =>
-        node && typeof node === "object" ? (node as Record<string, unknown>)[key] : undefined, library.read(workflow.id).steps[0]);
-      if (typeof value !== "string") continue;
-      const rendered = renderTemplate(value, scope);
-      if (rendered !== secret) continue;
-      if (template === "{{password}}") assert.equal(expectedText(value, scope.args), secret);
-      const reason = `rendered ${rendered}`;
-      saveRun(library, { ...run, status: "failed", receipts: [], steps: [{ id: step.id, status: "failed", reason }], failure: { stepId: step.id, reason }, envelope: { status: "failed", step: step.id, reason, ask: reason } });
-      const detail = inspectRunView(library, { run_id: run.id });
-      assert.equal(detail.detailsHidden, undefined, candidate.path);
-      assert.equal(detail.steps[0]?.picturesAllowed, false, candidate.path);
-      assert.doesNotMatch(JSON.stringify(callViewerTool(library, "inspect_run", { run_id: run.id })), /private-template-value/, candidate.path);
-      assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: step.id }), /withheld/, candidate.path);
-      checked.add(candidate.path);
-    }
-    for (const path of ["download.name", "download.url", "open.url", "open.file", "waitFor.match", "waitFor.identity.name", "gone.match", "gone.identity.name", "readBack.match", "expect.match"]) assert.ok(checked.has(path), `${template}: ${path}`);
-    t.diagnostic(`${template}: executed ${checked.size} schema string-field privacy cases`);
+});
+
+test("secret marker inputs and derived output filenames never reach viewer evidence", (t) => {
+  const { library, run, workflow, root } = fixture(t);
+  const args = { password: "ZXQLEFTZXQRIGHT", otp: "OTPFRONTOTPBACK" };
+  const scope = { args, run: { id: run.id, date: "2026-01-01" }, outputs: new Map<string, ReturnType<typeof fileDigest>>() };
+  const name = downloadFileName("{{ password }}-{{otp}}.txt", scope);
+  assert.equal(name, "ZXQLEFTZXQRIGHT-OTPFRONTOTPBACK.txt");
+  const asset = path.join(root, name);
+  writeFileSync(asset, "report");
+  const output = fileDigest(asset);
+  scope.outputs.set("report", output);
+  const copy = downloadFileName("{{report.name}}", scope);
+  assert.equal(copy, name);
+  const open = renderTemplate("{{report.path}}", scope);
+  assert.equal(open, asset);
+  const base = workflow.steps[0]!;
+  saveWorkflow(library, { ...workflow, version: 3, filesDates: 1, inputs: [...workflow.inputs, { name: "otp", type: "secret" }], steps: [
+    base,
+    { ...base, id: "source", index: 1, action: "download", download: { output: "report", name: "{{ password }}-{{otp}}.txt" } },
+    { ...base, id: "derived", index: 2, action: "download", download: { output: "copy", name: "{{report.name}}" } },
+    { ...base, id: "open", index: 3, action: "open", open: { target: "file", file: "{{report.path}}" } },
+  ] });
+  const reason = `execFile failed for ${open}`;
+  const receipts = new ReceiptLog();
+  for (const stepId of ["source", "derived", "open"]) receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId, source: "text", expected: copy, actual: `page ${copy} text`, pass: true });
+  saveRun(library, { ...run, status: "failed", receipts: receipts.entries, steps: [
+    { id: "preview", status: "passed", reason: "Public check complete" },
+    { id: "source", status: "passed", reason: `${name} ${output.sha256}` },
+    { id: "derived", status: "passed", reason: `${copy} ${output.sha256}` },
+    { id: "open", status: "failed", reason },
+  ], failure: { stepId: "open", reason }, envelope: { status: "failed", step: "open", reason, ask: `Open ${open}` } });
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.detailsHidden, undefined);
+  assert.equal(detail.steps[0]?.reason, "Public check complete");
+  assert.equal(detail.steps[0]?.picturesAllowed, true);
+  assert.equal(detail.reason, undefined);
+  assert.equal(detail.handoff?.ask, undefined);
+  for (const stepId of ["source", "derived", "open"]) {
+    const step = detail.steps.find((item) => item.id === stepId)!;
+    assert.equal(step.reason, undefined);
+    assert.equal(step.picturesAllowed, false);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: stepId }), /withheld/);
+  }
+  const exported = JSON.stringify(callViewerTool(library, "inspect_run", { run_id: run.id }));
+  for (const marker of ["ZXQLEFT", "ZXQRIGHT", "OTPFRONT", "OTPBACK", root]) assert.equal(exported.includes(marker), false, marker);
+  assert.equal(getRun(library, run.id).reason, reason);
+});
+
+test("every viewer text projection reduces absolute local paths to filenames", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const cases: [string, string][] = [
+    ["/var/folders/owner/bao-runs/report.csv", "report.csv"],
+    ["'/Users/Owner Name/private directory/report final.csv'", "'report final.csv'"],
+    ["/Users/Owner Name/private directory/report.csv", "report.csv"],
+    ["C:\\Users\\Owner Name\\AppData\\Local\\report.csv", "report.csv"],
+    ["\\\\server\\share\\private directory\\report.csv", "report.csv"],
+    ["file:///Users/owner/private/report.csv", "report.csv"],
+    ['"FILE:///Users/Owner Name/private directory/report final.csv"', '"report final.csv"'],
+    [`/${"x".repeat(600)}/report.csv`, "report.csv"],
+  ];
+  for (const [local, filename] of cases) {
+    const reason = `open ${local}; URL https://example.test/export-/report.csv`;
+    const expected = `open ${filename}; URL https://example.test/export-/report.csv`;
+    saveWorkflow(library, { ...workflow, name: local, steps: [{ ...workflow.steps[0]!, label: local }] });
+    const receipts = new ReceiptLog();
+    receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "file", expected: local, actual: reason, pass: false });
+    saveRun(library, { ...run, status: "failed", receipts: receipts.entries, steps: [{ id: "preview", status: "failed", reason }], failure: { stepId: "preview", reason }, envelope: { status: "failed", step: "preview", reason, ask: reason } });
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.equal(detail.detailsHidden, undefined);
+    assert.equal(detail.reason, expected);
+    assert.equal(detail.steps[0]?.reason, expected);
+    assert.equal(detail.steps[0]?.result, `Read back file: expected ${filename}, saw ${expected}. does not match.`);
+    assert.equal(detail.steps[0]?.picturesAllowed, true);
+    assert.equal(detail.handoff?.ask, expected);
+    assert.equal(detail.handoff?.reason, expected);
+    assert.equal(detail.run.name, filename);
+    assert.equal(detail.steps[0]?.label, filename);
+    assert.equal(detail.workflow?.name, filename);
+    assert.equal(detail.workflow?.steps[0]?.label, filename);
+    assert.equal(listRunViews(library, {}).runs[0]?.name, filename);
+    const result = callViewerTool(library, "inspect_run", { run_id: run.id });
+    assert.deepEqual(result._meta.baoViewer, detail);
+    assert.deepEqual(JSON.parse(result.content[0]!.text), JSON.parse(JSON.stringify(detail)));
+    assert.equal(getRun(library, run.id).reason, reason);
+    saveRun(library, { ...run, receipts: [], steps: [{ id: "preview", status: "passed", readBack: reason }] });
+    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.result, expected);
   }
 });
 

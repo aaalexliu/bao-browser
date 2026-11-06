@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -164,7 +164,7 @@ test("non-UI clients retain exactly the existing catalog and results, including 
     assert.deepEqual(other.result?.capabilities, first.result?.capabilities);
     assert.deepEqual((await legacy.request("tools/list")).result?.tools, TOOLS);
     assert.deepEqual((await unsupported.request("tools/list")).result?.tools, TOOLS);
-    assert.deepEqual(await legacy.tool("search_workflows", { query: "missing" }), { text: '{"hits":[]}', isError: false });
+    assert.deepEqual(await legacy.tool("search_workflows", { query: "missing" }), { text: '{"damagedWorkflows":[],"hits":[]}', isError: false });
     assert.equal((await legacy.tool("list_runs")).isError, true);
     assert.equal((await legacy.request("resources/list")).error?.code, -32601);
     assert.equal((await legacy.request("resources/read", { uri: VIEWER_URI })).error?.code, -32601);
@@ -206,6 +206,37 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     const invalid = await mcp.request("tools/call", { name: "inspect_run", arguments: { run_id: "../outside" } });
     assert.equal(invalid.result?.isError, true);
     assert.doesNotMatch(invalid.result?.content?.[0]?.text || "", new RegExp(mcp.home));
+    const startedAt = 1_700_000_000_000;
+    for (const [template, reason, expected] of [
+      ["{{report.name}}", "ZXQLEFTZXQRIGHT.txt", undefined],
+      ["report.csv", "open /Users/owner/private/report.csv", "open report.csv"],
+    ] as const) {
+      const workflow: WorkflowV2 = { ...JSON.parse(shelfWorkflow) as WorkflowV2, version: 3, filesDates: 1, inputs: [{ name: "password", type: "secret" }], steps: [
+        { id: "source", index: 0, action: "download", label: "Source", surface: "dom", timeoutMs: 1000, download: { output: "report", name: "{{password}}.txt" } },
+        { id: "preview", index: 1, action: "download", label: "Report", surface: "dom", timeoutMs: 1000, download: { output: "copy", name: template } },
+      ] };
+      for (const home of [mcp.home, legacy.home]) {
+        const library = new Library(home);
+        library.save(workflow);
+        utimesSync(path.join(home, "workflows", `${workflow.id}.json`), (startedAt - 10_000) / 1000, (startedAt - 10_000) / 1000);
+        library.saveRun({ ...run, at: startedAt + 1000, videoStartedAt: startedAt, status: "failed", steps: [{ id: "preview", status: "failed", startedAt, reason }], failure: { stepId: "preview", reason }, envelope: { status: "failed", step: "preview", reason, ask: reason } });
+      }
+      const projected = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
+      const plain = await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
+      assert.deepEqual(projected.result?.content, plain.result?.content);
+      assert.ok(projected.result?.content?.[0]?.text.includes(reason));
+      const metadata = projected.result?._meta?.baoViewer as { detailsHidden?: string; reason?: string; handoff?: { ask?: string }; steps: { reason?: string; picturesAllowed: boolean }[] };
+      assert.ok(metadata);
+      assert.equal(metadata.detailsHidden, undefined);
+      assert.equal(metadata.reason, expected);
+      assert.equal(metadata.steps[0]?.reason, expected);
+      assert.equal(metadata.steps[0]?.picturesAllowed, expected !== undefined);
+      assert.equal(metadata.handoff?.ask, expected);
+      assert.doesNotMatch(JSON.stringify(metadata), /ZXQLEFT|ZXQRIGHT|\/Users\/owner/);
+      const inspected = await mcp.request("tools/call", { name: "inspect_run", arguments: { run_id: run.id } });
+      assert.deepEqual(inspected.result?._meta?.baoViewer, metadata);
+      assert.deepEqual(JSON.parse(inspected.result?.content?.[0]?.text || "null"), metadata);
+    }
   } finally { mcp.child.kill(); legacy.child.kill(); }
 });
 
