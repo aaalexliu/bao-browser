@@ -302,6 +302,7 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     await page.click('#rail button[data-place="runs"]');
     await page.click('#screen-list button[data-screen="runs"]');
     await page.click(`[data-open-run="${loginRun.runId}"]`);
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#route-ran");
     assert.equal(await page.locator("#route-ran").getAttribute("data-route"), "Log in first");
 
@@ -315,6 +316,7 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     await page.click('#rail button[data-place="runs"]');
     await page.click('#screen-list button[data-screen="runs"]');
     await page.click(`[data-open-run="${signedRun.runId}"]`);
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#route-ran");
     assert.equal(await page.locator("#route-ran").getAttribute("data-route"), "Already signed in");
   } finally {

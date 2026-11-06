@@ -2,6 +2,7 @@
 // Nothing is recorded unless a session was started.
 
 import { spawn } from "node:child_process";
+import { inspectRunView } from "../mcp/run-view";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -764,6 +765,9 @@ export async function startApp(opts: {
         const file = existsSync(frame) ? frame : newestRunShot(path.join(library.root, "shots", "runs", id));
         if (!file) return json(res, { error: "no picture" }, 404);
         return sendPicture(res, file);
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/runs/") && url.pathname.endsWith("/receipt")) {
+        return json(res, inspectRunView(library, { run_id: decodeURIComponent(url.pathname.split("/")[3] || ""), step_offset: Number(url.searchParams.get("step_offset") || 0) }));
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/runs/")) {
         return json(res, library.readRun(decodeURIComponent(url.pathname.split("/")[3] || "")));

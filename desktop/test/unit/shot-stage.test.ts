@@ -78,6 +78,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     });
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click(`[data-open-run=${runId}]`);
+    await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#step-list [data-select-step=shot]");
     for (const [step, which, width, height] of [
       ["shot", "after", 320, 720], ["shot", "before", 1280, 720], ["shot", "after", 320, 720], ["crop", "after", 1280, 80], ["jpeg", "after", 1280, 720], ["jpeg", "before", 1280, 720],

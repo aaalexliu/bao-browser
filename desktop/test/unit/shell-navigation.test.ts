@@ -109,8 +109,8 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     }
     await page.setViewportSize({ width: 1200, height: 800 });
     for (const [theme, linkColor, inputBorder, cardColor] of [
-      ["light", "rgb(0, 113, 227)", "rgb(210, 210, 215)", "rgb(255, 255, 255)"],
-      ["dark", "rgb(10, 132, 255)", "rgb(58, 58, 60)", "rgb(44, 44, 46)"],
+      ["light", "rgb(29, 29, 31)", "rgb(210, 210, 215)", "rgb(255, 255, 255)"],
+      ["dark", "rgb(242, 242, 247)", "rgb(58, 58, 60)", "rgb(44, 44, 46)"],
     ] as const) {
       await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
       await page.reload();
@@ -154,10 +154,10 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await checkTitle("Bao");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");
     await navigate("runs", "runs");
-    await page.locator("[data-open-run=run-shell]").focus();
+    await page.locator("[data-open-run=run-shell]").first().focus();
     await scrollContent();
     await page.keyboard.press("Enter");
-    await page.waitForSelector("#run-viewer");
+    await page.waitForSelector("#run-receipt");
     await checkTitle("Bao");
     await checkDetailFocus("Run detail");
     await page.unroute("**/api/state");
