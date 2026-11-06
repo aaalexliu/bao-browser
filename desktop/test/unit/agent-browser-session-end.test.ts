@@ -9,6 +9,7 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { Library } from "../../src/v1/store";
+import { loadState, saveState } from "../../src/v1/sync";
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 interface Result { isError?: boolean; content?: { text: string }[] }
@@ -204,7 +205,7 @@ for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP"
   }
 }
 
-test("a stopped MCP cleans up its proxy even while a live request is stuck", { timeout: 45_000 }, async () => {
+test("a stopped MCP cleans up its proxy even while a catalog request is stuck", { timeout: 45_000 }, async () => {
   const f = await fixture();
   let received!: () => void;
   const requested = new Promise<void>(resolve => { received = resolve; });
@@ -212,13 +213,13 @@ test("a stopped MCP cleans up its proxy even while a live request is stuck", { t
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  await writeFile(path.join(f.home, "server.json"), JSON.stringify({ port: address.port }));
+  saveState(f.home, { ...loadState(f.home), server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture" });
   try {
     const c = f.start();
     await c.request("initialize");
     assert.equal((await c.call("open")).isError, false);
     const copy = await f.copy();
-    c.send("tools/call", { name: "live_snapshot", arguments: {} });
+    c.send("tools/call", { name: "search_workflows", arguments: {} });
     await requested;
     await c.stop();
     assert.equal(pidsForDataDir(copy).length, 0);
@@ -235,7 +236,7 @@ test("a stopped MCP cleans up its proxy even while a live request is stuck", { t
   }
 });
 
-test("close near the stop deadline closes a retained window before a queued live call finishes", { timeout: 45_000 }, async () => {
+test("close near the stop deadline closes a retained window before a queued catalog call finishes", { timeout: 45_000 }, async () => {
   const f = await fixture();
   let received!: () => void;
   let reply: (() => void) | undefined;
@@ -249,14 +250,14 @@ test("close near the stop deadline closes a retained window before a queued live
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  await writeFile(path.join(f.home, "server.json"), JSON.stringify({ port: address.port }));
+  saveState(f.home, { ...loadState(f.home), server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture" });
   try {
     f.library.updateSettings({ keepAgentBrowserOpen: true });
     const c = f.start();
     await c.request("initialize");
     assert.equal((await c.call("open")).isError, false);
     const copy = await f.copy();
-    c.send("tools/call", { name: "live_snapshot", arguments: {} });
+    c.send("tools/call", { name: "search_workflows", arguments: {} });
     await requested;
     const stopped = c.stop();
     await until(async () => (JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: unknown }).retained === true);
