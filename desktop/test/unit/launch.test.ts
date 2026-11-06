@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { ChildProcess, spawnSync } from "node:child_process";
 import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeLaunchArgs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeLaunchArgs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
@@ -15,12 +15,50 @@ test("installed Mac Chrome launches as a new GUI app and waits for that instance
   const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--profile-directory=Profile 2"];
   const stderr = `${owned}/.bao-chrome-startup.stderr`;
   assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", {}, "darwin"), [
-    "-W", "-n", "-g", "-a", "/Applications/Google Chrome.app",
+    "-W", "-n", "-a", "/Applications/Google Chrome.app",
     "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
   ]);
   assert.equal(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), undefined);
   assert.equal(guiChromeLaunchArgs("/pinned/chromium", args, stderr, "/Users/owner", {}, "darwin"), undefined);
   assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", {}, "linux"), undefined);
+});
+
+test("GUI shutdown signals only the browser and leaves its waiting launcher alive", (t) => {
+  const child = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open" });
+  const signals: Array<[number, NodeJS.Signals | number | undefined]> = [];
+  t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+    signals.push([pid, signal]);
+    return true;
+  });
+  const launcherKill = t.mock.method(child, "kill", () => true);
+  stopOwnedChrome(child, 31415);
+  assert.deepEqual(signals, [[31415, "SIGTERM"]]);
+  assert.equal(launcherKill.mock.callCount(), 0);
+  child.exitCode = 0;
+  stopOwnedChrome(child, 31415);
+  assert.deepEqual(signals, [[31415, "SIGTERM"], [31415, "SIGTERM"]]);
+  assert.equal(launcherKill.mock.callCount(), 0);
+});
+
+test("GUI shutdown tolerates an already exited browser without killing the launcher", (t) => {
+  const child = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open" });
+  t.mock.method(process, "kill", () => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); });
+  const launcherKill = t.mock.method(child, "kill", () => true);
+  assert.doesNotThrow(() => stopOwnedChrome(child, 31415));
+  assert.equal(launcherKill.mock.callCount(), 0);
+});
+
+test("direct shutdown signals its child only while it is running", (t) => {
+  const child = Object.assign(new ChildProcess(), { spawnfile: "/pinned/chromium" });
+  const kill = t.mock.method(child, "kill", () => true);
+  stopOwnedChrome(child, 31415);
+  assert.deepEqual(kill.mock.calls.map((call) => call.arguments), [["SIGTERM"]]);
+  child.exitCode = 0;
+  stopOwnedChrome(child, 31415);
+  child.exitCode = null;
+  child.signalCode = "SIGTERM";
+  stopOwnedChrome(child, 31415);
+  assert.equal(kill.mock.callCount(), 1);
 });
 
 test("the launcher pid is the descendant whose profile is ours", () => {
