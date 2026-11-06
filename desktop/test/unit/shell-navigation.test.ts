@@ -236,3 +236,121 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test("the palette takes focus from the modal sidebar without a queued close stealing it", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-shell-palette-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const workflow: WorkflowV2 = {
+    schema: "bao.workflow/v2", version: 2, id: "wf-palette", name: "Local palette fixture", createdAt: 1,
+    startUrl: "/fixture", inputs: [], steps: [],
+  };
+  app.library.save(workflow);
+  const page = await browser.newPage({ viewport: { width: 720, height: 800 } });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator("#runs").waitFor();
+    await page.evaluate(() => {
+      document.querySelector("#sidebar-dialog")!.addEventListener("close", () => {
+        document.documentElement.dataset.sidebarCloseFocus = document.activeElement?.id || document.activeElement?.tagName;
+      });
+    });
+    const dialog = page.locator("#sidebar-dialog");
+    const input = page.locator("#palette-input");
+    const commands = [
+      ["Settings", "settings", "#page-engine-settings", "main"],
+      [`Open ${workflow.name}`, `open-${workflow.id}`, "#workflow-detail", "main"],
+      [`Run ${workflow.name}`, `run-${workflow.id}`, "#run", "main"],
+      ["Toggle appearance", "theme", "#run", "BODY"],
+    ] as const;
+    for (const width of [1060, 720]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const [label, id, result, focus] of commands) {
+        await page.evaluate(() => { delete document.documentElement.dataset.sidebarCloseFocus; });
+        await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+        assert.equal(await dialog.evaluate((element) => (element as HTMLDialogElement).open), true);
+        await page.keyboard.press("ControlOrMeta+k");
+        await page.waitForFunction(() => document.documentElement.dataset.sidebarCloseFocus === "palette-input");
+        assert.equal(await dialog.evaluate((element) => (element as HTMLDialogElement).open), false);
+        assert.equal(await input.evaluate((element) => element === document.activeElement), true);
+        await page.keyboard.type(label);
+        assert.equal(await input.inputValue(), label);
+        const selected = page.locator("#palette-list button.on");
+        assert.equal(await selected.getAttribute("data-command"), id);
+        assert.equal(await selected.isVisible(), true);
+        const theme = await page.locator("html").getAttribute("data-theme");
+        await page.keyboard.press("Enter");
+        await page.locator(result).waitFor();
+        assert.equal(await page.locator("#palette").isHidden(), true);
+        assert.equal(await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName), focus);
+        if (id === "theme") assert.notEqual(await page.locator("html").getAttribute("data-theme"), theme);
+      }
+    }
+    for (const [label, , result, focus] of commands) {
+      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+      const theme = await page.locator("html").getAttribute("data-theme");
+      await page.evaluate((query) => {
+        delete document.documentElement.dataset.sidebarCloseFocus;
+        document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true }));
+        const input = document.querySelector<HTMLInputElement>("#palette-input")!;
+        input.value = query;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      }, label);
+      await page.waitForFunction(() => document.documentElement.dataset.sidebarCloseFocus !== undefined);
+      await page.locator(result).waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName), focus);
+      assert.equal(await page.locator("html").getAttribute("data-sidebar-close-focus"), focus);
+      assert.equal(await dialog.evaluate((element) => (element as HTMLDialogElement).open), false);
+      if (label === "Toggle appearance") assert.notEqual(await page.locator("html").getAttribute("data-theme"), theme);
+    }
+    for (const action of ["close", "escape"] as const) {
+      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+      if (action === "close") await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
+      else await page.keyboard.press("Escape");
+      await page.waitForFunction(() => document.activeElement?.id === "sidebar-toggle");
+    }
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+    await page.evaluate(() => {
+      delete document.documentElement.dataset.sidebarCloseFocus;
+      document.querySelector<HTMLButtonElement>("#sidebar-close")!.click();
+      document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true }));
+    });
+    await page.waitForFunction(() => document.documentElement.dataset.sidebarCloseFocus === "palette-input");
+    assert.equal(await input.evaluate((element) => element === document.activeElement), true);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>("#sidebar-close")!.click();
+      document.querySelector<HTMLButtonElement>("#sidebar-toggle")!.click();
+    });
+    await page.waitForFunction(() => document.documentElement.dataset.sidebarCloseFocus === "sidebar-close");
+    assert.equal(await dialog.evaluate((element) => (element as HTMLDialogElement).open), true);
+    assert.equal(await page.locator("#sidebar-dialog #rail").count(), 1);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.activeElement?.id === "sidebar-toggle");
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.press("ControlOrMeta+k");
+    assert.equal(await page.locator("#palette").isHidden(), true);
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#palette").isHidden(), true);
+    await page.keyboard.press("ControlOrMeta+k");
+    await input.fill("Library");
+    await page.keyboard.press("Enter");
+    await page.locator("#palette-open").click();
+    assert.equal(await input.evaluate((element) => element === document.activeElement), true);
+    assert.equal(await input.inputValue(), "");
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});

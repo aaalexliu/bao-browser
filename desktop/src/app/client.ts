@@ -816,12 +816,7 @@ function bind(): void {
     applySearch();
   };
   const paletteBtn = document.getElementById("palette-open");
-  if (paletteBtn) paletteBtn.onclick = () => {
-    paletteOpen = true;
-    paletteQuery = "";
-    paletteActive = 0;
-    paintPalette();
-  };
+  if (paletteBtn) paletteBtn.onclick = openPalette;
   const automation = document.getElementById("automation-ask");
   if (automation) automation.onclick = async () => {
     try {
@@ -2019,6 +2014,15 @@ function filteredCommands(): CommandItem[] {
   return commandItems(state.workflows || []).filter((item) => !q || item.label.toLowerCase().includes(q));
 }
 
+function openPalette(): void {
+  const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+  if (sidebar.open) sidebar.close("palette");
+  paletteOpen = true;
+  paletteQuery = "";
+  paletteActive = 0;
+  paintPalette();
+}
+
 function paintPalette(): void {
   const host = document.getElementById("palette");
   if (!host) return;
@@ -2320,12 +2324,10 @@ document.addEventListener("keydown", (event) => {
   const meta = event.metaKey || event.ctrlKey;
   if (meta && event.key.toLowerCase() === "k") {
     event.preventDefault();
-    paletteOpen = !paletteOpen;
     if (paletteOpen) {
-      paletteQuery = "";
-      paletteActive = 0;
-    }
-    paintPalette();
+      paletteOpen = false;
+      paintPalette();
+    } else openPalette();
     return;
   }
   if (!paletteOpen) {
@@ -2361,6 +2363,7 @@ const sidebarDialog = document.getElementById("sidebar-dialog") as HTMLDialogEle
 sidebarDialog.addEventListener("close", () => {
   if (sidebarDialog.open) return;
   document.getElementById("app")!.prepend(railEl());
+  if (paletteOpen || sidebarDialog.returnValue === "palette") return;
   if (sidebarDialog.returnValue === "navigate") mainEl().focus();
   else document.getElementById("sidebar-toggle")?.focus();
 });
