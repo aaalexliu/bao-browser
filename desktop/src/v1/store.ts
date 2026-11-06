@@ -10,6 +10,7 @@ import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
 import { migrate, toJson, validateWorkflow, type HealMode, type WorkflowV2 } from "./schema";
+import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead } from "./library-read";
 
 export interface Settings extends HealSettings {
   heal: HealMode;
@@ -158,10 +159,19 @@ export class Library {
     return { workflows, damagedWorkflows };
   }
 
-  read(id: string): WorkflowV2 {
-    const text = readFileSync(this.file(id), "utf8");
+  read(id: string, bounded?: BoundedRead): WorkflowV2 {
+    if (bounded) return this.readWorkflowSnapshot(id, bounded).workflow;
+    return this.parseWorkflow(readFileSync(this.file(id), "utf8"), id);
+  }
+
+  readWorkflowSnapshot(id: string, bounded: BoundedRead): { workflow: WorkflowV2; modifiedAtMs: number } {
+    const snapshot = readLibrarySnapshot(this.root, ["workflows", `${id}.json`], bounded.maxBytes);
+    return { workflow: this.parseWorkflow(snapshot.bytes.toString("utf8"), id), modifiedAtMs: snapshot.modifiedAtMs };
+  }
+
+  private parseWorkflow(json: string, id: string): WorkflowV2 {
     let raw: unknown;
-    try { raw = JSON.parse(text) as unknown; }
+    try { raw = JSON.parse(json) as unknown; }
     catch { throw new WorkflowFileError(id, "The file is not valid JSON."); }
     let doc: WorkflowV2;
     let errors: string[];
@@ -296,11 +306,13 @@ export class Library {
     }
   }
 
-  readRun(id: string): StoredRun {
+  readRun(id: string, bounded?: BoundedRead): StoredRun {
     if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error("bad id");
     let raw: string;
     try {
-      raw = readFileSync(path.join(this.root, "runs", `${id}.json`), "utf8");
+      raw = bounded
+        ? readLibraryFile(this.root, ["runs", `${id}.json`], bounded.maxBytes).toString("utf8")
+        : readFileSync(path.join(this.root, "runs", `${id}.json`), "utf8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error("run not found");
       throw error;
@@ -334,6 +346,18 @@ export class Library {
           return [];
         }
       });
+  }
+
+  /** Recent file updates, with bounded record reads. Invalid records consume a page slot. */
+  readRunPage(offset: number, limit: number, bounded: BoundedRead): { runs: StoredRun[]; nextOffset: number | null; skipped: number } {
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new Error("invalid run page");
+    const ids = libraryRunFiles(this.root);
+    let skipped = 0;
+    const runs = ids.slice(offset, offset + limit).flatMap((id) => {
+      try { return [this.readRun(id, bounded)]; }
+      catch { skipped += 1; return []; }
+    });
+    return { runs, nextOffset: offset + limit < ids.length ? offset + limit : null, skipped };
   }
 
   settings(): Settings {

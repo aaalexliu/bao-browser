@@ -3,6 +3,7 @@
 import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
 import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
+import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { formatWhen } from "../v1/time";
@@ -391,8 +392,9 @@ function settings(): string {
   const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
   const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
-  return `<section><h2>Settings</h2>
+  return `<section id="settings"><h2>Settings</h2>
     ${libraryHome}
+    ${desktopMcpSettings()}
     <div class="card" id="page-engine-settings">
       <h3>Page engine</h3>
       <label>Run engine <select id="page-engine">
@@ -497,6 +499,7 @@ function navigate(next: Screen): void {
 }
 
 function bind(): void {
+  bindDesktopMcp();
   const recordAgain = document.getElementById("library-record-again");
   if (recordAgain) recordAgain.onclick = () => {
     screen = "capture";

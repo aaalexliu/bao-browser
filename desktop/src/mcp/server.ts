@@ -3,12 +3,15 @@ import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalo
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
+import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
+import { callViewerTool, isViewerTool, VIEWER_TOOLS } from "./viewer-tools";
+import { inspectRunView } from "./run-view";
 
 interface Rpc {
   jsonrpc: "2.0";
   id?: number | string;
   method?: string;
-  params?: { name?: string; arguments?: Record<string, unknown> };
+  params?: { name?: string; arguments?: Record<string, unknown>; capabilities?: unknown; uri?: string };
 }
 
 const CATALOG_TOOLS = [
@@ -76,6 +79,7 @@ interface Context {
   library: Library;
   libraries: string[] | undefined;
   proxy: AgentBrowserProxy;
+  ui: boolean;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
@@ -92,7 +96,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const library = new Library(home);
   const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile,
     keepOpen: () => library.settings().keepAgentBrowserOpen === true });
-  const ctx: Context = { library, libraries, proxy };
+  const ctx: Context = { library, libraries, proxy, ui: false };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -150,12 +154,13 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
 
 async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.method === "initialize") {
+    ctx.ui = supportsViewer(msg.params?.capabilities);
     send({
       jsonrpc: "2.0",
       id: msg.id,
       result: {
         protocolVersion: "2024-11-05",
-        capabilities: { tools: {} },
+        capabilities: ctx.ui ? { tools: {}, resources: {}, extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } : { tools: {} },
         serverInfo: { name: "bao", version: "0.2.0" },
         instructions: INSTRUCTIONS,
       },
@@ -164,19 +169,43 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   }
   if (msg.method === "notifications/initialized") return;
   if (msg.method === "tools/list") {
-    send({ jsonrpc: "2.0", id: msg.id, result: { tools: TOOLS } });
+    const tools = ctx.ui ? [
+      ...TOOLS.map((tool) => ({ ...tool, _meta: { ui: { visibility: ["model"], ...(tool.name === "get_run" ? { resourceUri: VIEWER_URI } : {}) } } })),
+      ...VIEWER_TOOLS,
+    ] : TOOLS;
+    send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
+    return;
+  }
+  if (ctx.ui && msg.method === "resources/list") {
+    send({ jsonrpc: "2.0", id: msg.id, result: { resources: [VIEWER_RESOURCE] } });
+    return;
+  }
+  if (ctx.ui && msg.method === "resources/read") {
+    if (msg.params?.uri !== VIEWER_URI) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32002, message: "resource not found" } });
+    else send({ jsonrpc: "2.0", id: msg.id, result: viewerResource() });
     return;
   }
   if (msg.method === "tools/call") {
     const name = msg.params?.name || "";
     const args = msg.params?.arguments || {};
     try {
-      const result = name === "agent_browser"
+      const result = ctx.ui && isViewerTool(name)
+        ? callViewerTool(ctx.library, name, args)
+        : name === "agent_browser"
         ? await proxyTool(args, ctx.proxy)
         : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.libraries, name, args)) }], isError: false };
-      send({ jsonrpc: "2.0", id: msg.id, result });
+      if (ctx.ui && name === "get_run") {
+        try {
+          send({ jsonrpc: "2.0", id: msg.id, result: { ...result, _meta: { baoViewer: inspectRunView(ctx.library, args) } } });
+        } catch {
+          // A missing/oversized viewer record must not change the existing text receipt.
+          send({ jsonrpc: "2.0", id: msg.id, result });
+        }
+      } else send({ jsonrpc: "2.0", id: msg.id, result });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = ctx.ui && isViewerTool(name)
+        ? "Bao viewer data unavailable: invalid request, missing, private, linked, or oversized record. Open Bao desktop for local details."
+        : err instanceof Error ? err.message : String(err);
       send({
         jsonrpc: "2.0",
         id: msg.id,

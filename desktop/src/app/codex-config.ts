@@ -28,7 +28,11 @@ export class CodexConfigError extends Error {
  */
 export const CODEX_APPROVAL_MODE = "approve";
 
-const OWNED = new Set(["command", "args", "env", "tool_timeout_sec", "default_tools_approval_mode"]);
+export function codexOwnedSettings(command: string, approvalMode = CODEX_APPROVAL_MODE): Record<string, unknown> {
+  return { command, args: [], env: undefined, tool_timeout_sec: CODEX_TOOL_TIMEOUT_SEC, default_tools_approval_mode: approvalMode };
+}
+
+const OWNED = new Set(Object.keys(codexOwnedSettings("")));
 
 function ownedLines(command: string): string {
   return [
