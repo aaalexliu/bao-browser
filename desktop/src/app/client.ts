@@ -221,7 +221,11 @@ async function loadState(): Promise<void> {
     damagedWorkflows: state.damagedWorkflows,
     settings: state.settings,
     profileCopy: state.profileCopy,
-    runs: state.runs,
+    runs: (state.runs || []).map((run) => ({
+      id: run.id, workflowId: run.workflowId, status: run.status, envelopeStatus: run.envelope?.status,
+      at: run.at, kind: run.kind, modelCalls: run.modelCalls,
+      heals: run.heals?.map((heal) => heal.id), decisions: run.decisions, promotionStatus: run.promotion?.status,
+    })),
     day: new Date().toDateString(),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
     helper: state.helper,
@@ -565,11 +569,7 @@ function bind(): void {
   });
   document.querySelectorAll("[data-open-run]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      openRun = (btn as HTMLButtonElement).dataset.openRun || "";
-      selectedStep = "";
-      receiptOffset = 0;
-      evidenceOpen = false;
-      screen = "run";
+      selectRun((btn as HTMLButtonElement).dataset.openRun || "");
       renderKey = "";
       render();
     };
@@ -707,9 +707,7 @@ function bind(): void {
     const stepId = review.dataset.step || "";
     const run = (state.runs || []).filter((item) => item.workflowId === workflowId).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
     if (run) {
-      openRun = run.id;
-      selectedStep = stepId;
-      screen = "run";
+      selectRun(run.id, stepId);
     } else {
       openWorkflow = workflowId;
       screen = "workflow";
@@ -1620,16 +1618,22 @@ async function runReplay(): Promise<void> {
     if (live) live.textContent = run.error || "The run did not start.";
     return;
   }
-  openRun = runId;
-  selectedStep = fromStep;
+  selectRun(runId, fromStep);
   pinnedRunId = "";
   pinnedInputs = null;
   debugStepId = "";
   runFromN = 0;
   fromNote = "";
-  screen = "run";
   renderKey = "";
   await refresh();
+}
+
+function selectRun(id: string, stepId = ""): void {
+  openRun = id;
+  selectedStep = stepId;
+  receiptOffset = 0;
+  evidenceOpen = Boolean(stepId);
+  screen = "run";
 }
 
 async function answerImport(body: { accept: boolean; profile?: string }): Promise<void> {

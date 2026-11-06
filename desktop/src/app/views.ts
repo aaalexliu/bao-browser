@@ -7,7 +7,7 @@ import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-nav
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
-import { formatClock, formatWhen } from "../v1/time";
+import { formatClock, formatTime, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -1759,10 +1759,10 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const at = runTime(run);
     const name = names.get(run.workflowId) || runWorkflowName(run, []);
     const calls = countedModelCalls(run);
-    const when = at === undefined ? "Time unknown" : new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(at);
+    const when = at === undefined ? "Time unknown" : formatTime(at);
     return `<li><button type="button" class="run-row${selectedRun === run.id ? " selected" : ""}" data-open-run="${esc(run.id)}" aria-label="${esc(name)}" aria-description="${esc(label)} · ${esc(when)}${calls === undefined ? "" : ` · ${calls} model calls`}"${selectedRun === run.id ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${["failed", "timeout", "timed-out"].includes(kind) ? "!" : kind === "paused" ? "Ⅱ" : kind === "healed" ? "↗" : kind === "passed" ? "✓" : "·"}</span>
-      <span class="run-name">${esc(name)}</span><time${at === undefined ? "" : ` datetime="${new Date(at).toISOString()}"`}>${esc(when)}</time>
+      <span class="run-name">${esc(name)}</span><time>${esc(when)}</time>
       <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${calls === undefined ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</span>
     </button></li>`;
   };
