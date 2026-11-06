@@ -2,11 +2,13 @@
 
 This is the rebuild. The pass on an installed app is [Test Bao on a Mac](mac-test.md).
 
-Do not open the listen address in a browser. The product is the Bao window: title **Bao**, no address bar. A second double-click focuses that window. It does not start a second server.
+Do not open the listen address in a browser. The product is the [Bao window](#launch), with no address bar. A second double-click focuses that window. It does not start a second server.
 
 ## Launch
 
 Double-click `/Applications/Bao.app` in Finder. No Terminal window, and no `BAO_NODE`.
+
+The native window keeps the title **Bao** but hides the title text and makes the title bar transparent. The page fills the window behind the standard Mac window buttons. Drag the blank top-left sidebar strip to move the window. Double-click that strip to zoom or restore, unless the macOS title-bar double-click setting selects Minimize or Do Nothing. The strip covers the top-left 212 by 52 points, not the full window width. Browser views keep their normal sidebar spacing; only the native window reserves room for the buttons and drag strip.
 
 `bao-main.c` finds Node 24 or newer on its own:
 
