@@ -70,7 +70,7 @@ if [[ -z "$FOUND" ]]; then
 fi
 echo "BUNDLED_BROWSER $FOUND"
 
-# Keep the task browser's existing name and signature. Sign only this bundle.
+# Re-sign the renamed task browser without touching BaoOSHelper.app.
 # --deep on Bao.app would re-sign BaoOSHelper.app and change its cdhash.
 CHROME="$APP/Contents/Resources/Chromium.app"
 PLIST="$CHROME/Contents/Info.plist"
