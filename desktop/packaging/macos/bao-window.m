@@ -44,13 +44,9 @@
     _webView.UIDelegate = self;
     _window = [[NSWindow alloc] initWithContentRect:_webView.frame
                                         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                                  NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
-                                                  NSWindowStyleMaskFullSizeContentView
+                                                  NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
                                           backing:NSBackingStoreBuffered defer:NO];
     _window.title = @"Bao";
-    _window.titleVisibility = NSWindowTitleHidden;
-    _window.titlebarAppearsTransparent = YES;
-    _window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     _window.minSize = NSMakeSize(720, 600);
     _window.releasedWhenClosed = NO;
     _window.contentView = _webView;

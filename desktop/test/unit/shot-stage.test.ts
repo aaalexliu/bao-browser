@@ -10,7 +10,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
   const previousHome = process.env.BAO_HOME;
   const dirs = applyHermeticApp("shot-stage");
   const app = await startApp({ home: dirs.home });
-  const browser = await chromium.launch({ headless: true, args: ["--use-mock-keychain", "--password-store=basic"] });
+  const browser = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true, args: ["--use-mock-keychain", "--password-store=basic"] });
   const page = await browser.newPage();
   const runId = "run-shot-stage";
   const shots = path.join(dirs.home, "shots", "runs", runId);
@@ -77,7 +77,10 @@ test("Library step frame fits the captured viewport without letterboxing or crop
       return route.continue();
     });
     await page.goto(`http://127.0.0.1:${app.port}/`);
-    await page.click("[data-screen=runs]");
+    if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
+      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+    }
+    await page.click("#rail button[data-place=runs]");
     await page.click(`[data-open-run=${runId}]`);
     await page.waitForSelector("#step-list [data-select-step=shot]");
     for (const [step, which, width, height] of [

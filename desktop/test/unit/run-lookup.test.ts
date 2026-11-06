@@ -136,7 +136,10 @@ test("runs/stored: every run lookup finds an imported run with a temp HOME", asy
           try {
             const page = await browser.newPage();
             await page.goto(base);
-            await page.click('button[data-screen="runs"]');
+            if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
+              await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+            }
+            await page.click('#rail button[data-place="runs"]');
             await page.click(`[data-open-run="${stored.id}"]`);
             await page.waitForSelector(`#run-viewer[data-run="${stored.id}"][data-status="passed"]`);
             assert.match(await page.locator("#run-host").innerText(), /Cloud/);

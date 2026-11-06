@@ -142,13 +142,19 @@ test("books.toscrape: record a category list, replay another category, CSV match
         localStorage.setItem("bao-theme", "light");
       });
       await uiPage.goto(`http://127.0.0.1:${app.port}/`);
-      await uiPage.click("button[data-screen=runs]");
+      if (await uiPage.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
+        await uiPage.getByRole("button", { name: "Show sidebar", exact: true }).click();
+      }
+      await uiPage.click("#rail button[data-place=runs]");
       await uiPage.click(`button[data-open-run="${run.runId}"]`);
       await uiPage.waitForSelector("#run-outputs");
       await uiPage.locator("#run-outputs").screenshot({ path: path.join(ARTIFACTS, "scrape-outputs-light.png") });
       await uiPage.evaluate(() => localStorage.setItem("bao-theme", "dark"));
       await uiPage.reload();
-      await uiPage.click("button[data-screen=runs]");
+      if (await uiPage.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
+        await uiPage.getByRole("button", { name: "Show sidebar", exact: true }).click();
+      }
+      await uiPage.click("#rail button[data-place=runs]");
       await uiPage.click(`button[data-open-run="${run.runId}"]`);
       await uiPage.waitForSelector("#run-outputs");
       await uiPage.locator("#run-outputs").screenshot({ path: path.join(ARTIFACTS, "scrape-outputs-dark.png") });

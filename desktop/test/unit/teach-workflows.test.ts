@@ -106,6 +106,8 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     assert.match(apply.intent, /^Click /);
 
     await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.click("#rail button[data-place=workflows]");
+    await page.click("#screen-list button[data-screen=teach]");
     const width = await page.waitForFunction(() => {
       const panel = document.querySelector("#teach-panel");
       if (!panel || getComputedStyle(panel).visibility !== "visible") return null;
@@ -135,7 +137,8 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     assert.match(review.review.summary?.line || "", /^\d+ events → \d+ steps, \d+ inputs found, \d+ dropped$/);
     assert.equal(review.phase, "review");
     await page.reload();
-    await page.click("button[data-screen=teach]");
+    await page.click("#rail button[data-place=workflows]");
+    await page.click("#screen-list button[data-screen=teach]");
     await page.waitForSelector("#teach-review");
     await page.locator("#teach-trail summary").click();
     const reviewText = await page.locator("#teach-review").innerText();
@@ -259,7 +262,8 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     assert.ok(merged.steps.some((step) => step.when?.value === "Log in first"));
     assert.equal(merged.steps.find((step) => step.identity?.id === "apply-btn")?.when, undefined);
     await page.goto(`${base}/`);
-    await page.click('button[data-screen="library"]');
+    await page.click('#rail button[data-place="workflows"]');
+    await page.click('#screen-list button[data-screen="library"]');
     await page.click(`[data-open-workflow="${merged.id}"]`);
     await page.waitForSelector("#route-branch");
     const branch = (await page.locator("#route-branch").innerText()).replace(/\s+/g, " ").trim();
@@ -295,7 +299,8 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     assert.equal(loginRun.status, "passed", JSON.stringify(loginRun.failure));
     assert.equal(loginRun.modelCalls, 0);
     await page.goto(`${base}/`);
-    await page.click('button[data-screen="runs"]');
+    await page.click('#rail button[data-place="runs"]');
+    await page.click('#screen-list button[data-screen="runs"]');
     await page.click(`[data-open-run="${loginRun.runId}"]`);
     await page.waitForSelector("#route-ran");
     assert.equal(await page.locator("#route-ran").getAttribute("data-route"), "Log in first");
@@ -307,7 +312,8 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     assert.equal(signedRun.status, "passed", JSON.stringify(signedRun.failure));
     assert.equal(signedRun.modelCalls, 0);
     await page.goto(`${base}/`);
-    await page.click('button[data-screen="runs"]');
+    await page.click('#rail button[data-place="runs"]');
+    await page.click('#screen-list button[data-screen="runs"]');
     await page.click(`[data-open-run="${signedRun.runId}"]`);
     await page.waitForSelector("#route-ran");
     assert.equal(await page.locator("#route-ran").getAttribute("data-route"), "Already signed in");

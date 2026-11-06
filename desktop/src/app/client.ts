@@ -119,7 +119,6 @@ let banner: { id: string; title: string; body: string } | null = null;
 const dismissed = new Set<string>();
 let renderKey = "";
 let renderedDetail = "";
-const detailTitles = { workflow: "Workflow", run: "Run", import: "Import" } as const;
 let railHtmlKey = "";
 let listHtmlKey = "";
 let libraryQuery = "";
@@ -239,7 +238,7 @@ function render(): void {
   applyTheme();
   if (screen === "logins") readLoginForm();
   const missing = state.settings?.pageEngine !== "agent-browser" && macPermissionMissing(state.helper);
-  const showCard = missing && !onboarded && screen === "library";
+  const showCard = missing && !onboarded && (screen === "runs" || screen === "library");
   const railHtml = rail({ ...state, permDot: state.helper?.platform === "darwin" && !showCard }, screen);
   const focused = document.activeElement as HTMLElement | null;
   const focusedNav = focused?.closest("#rail, #screen-list");
@@ -256,8 +255,6 @@ function render(): void {
   }
   if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
   document.getElementById("screen-title")!.textContent = shellScreens[shellScreen(screen)].label;
-  const title = screen in detailTitles ? detailTitles[screen as keyof typeof detailTitles] : shellScreens[shellScreen(screen)].label;
-  document.title = `${title} - ${productWindowTitle()}`;
   const importAsk = screen === "logins" ? loginAct(login) : "";
   actEl().innerHTML = (state.automationNotice ? `<p role="status" id="automation-notice">${esc(state.automationNotice)}</p>` : "") + remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const onboard = document.getElementById("onboard");
@@ -482,6 +479,23 @@ function importSheet(): string {
   </section>`;
 }
 
+function navigate(next: Screen): void {
+  screen = next;
+  renderKey = "";
+  if (screen === "logins") void loadSaved();
+  if (screen === "settings") void loadHostAccess();
+  if (screen === "replay") {
+    debugStepId = "";
+    runFromN = 0;
+    fromNote = "";
+  }
+  render();
+  const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+  if (sidebar.open) sidebar.close("navigate");
+  mainEl().focus();
+  document.getElementById("content")!.scrollTop = 0;
+}
+
 function bind(): void {
   const recordAgain = document.getElementById("library-record-again");
   if (recordAgain) recordAgain.onclick = () => {
@@ -501,30 +515,13 @@ function bind(): void {
   if (close) close.onclick = () => sidebar.close();
   document.querySelectorAll("#rail nav button, #screen-list nav button").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
-      screen = (btn as HTMLButtonElement).dataset.screen as Screen;
-      renderKey = "";
-      if (screen === "logins") void loadSaved();
-      if (screen === "settings") void loadHostAccess();
-      if (screen === "replay") {
-        debugStepId = "";
-        runFromN = 0;
-        fromNote = "";
-      }
-      render();
-      if (sidebar.open) sidebar.close("navigate");
-      mainEl().focus();
-      document.getElementById("content")!.scrollTop = 0;
+      navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
   });
   document.querySelectorAll("#main [data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
-      debugStepId = "";
-      runFromN = 0;
-      fromNote = "";
-      screen = "replay";
-      renderKey = "";
-      render();
+      navigate("replay");
     };
   });
   document.querySelectorAll("[data-open-run]").forEach((btn) => {
@@ -715,9 +712,7 @@ function bind(): void {
     schedule: (schedule as HTMLSelectElement).value,
   });
   const restore = document.getElementById("restore-backup");
-  if (restore) restore.onclick = () => {
-    if (confirm("Restore the backup? This replaces the current Library with its saved copy.")) void postSync("/api/sync/backup", { action: "restore" });
-  };
+  if (restore) restore.onclick = () => void postSync("/api/sync/backup", { action: "restore" });
   const reveal = document.getElementById("reveal-backup");
   if (reveal) reveal.onclick = () => void postSync("/api/sync/reveal", {});
   bindAsk();
@@ -1325,12 +1320,7 @@ async function openEditor(id: string): Promise<void> {
   host.querySelectorAll("[data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || id;
-      debugStepId = "";
-      runFromN = 0;
-      fromNote = "";
-      screen = "replay";
-      renderKey = "";
-      render();
+      navigate("replay");
     };
   });
   host.querySelectorAll("[data-try-step]").forEach((btn) => {
@@ -1627,6 +1617,7 @@ function paintDockBadge(): void {
     pendingHeals: pendingHealCount(state.runs || []),
     reviews: reviewItems(state.runs).length,
   });
+  document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);
   else void nav.clearAppBadge?.().catch(() => undefined);
@@ -1751,7 +1742,6 @@ function bindLogins(): void {
   });
   document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
     btn.onclick = async () => {
-      if (!confirm(`Remove ${btn.dataset.remove || "this site"} from saved sites? You can add it again by importing its login.`)) return;
       readLoginForm();
       await fetch("/api/login-sites", {
         method: "DELETE",
@@ -2064,11 +2054,15 @@ function runCommand(item?: CommandItem): void {
   if (item.kind === "theme") theme = theme === "dark" ? "light" : "dark";
   else if (item.screen === "replay" && item.workflowId) {
     lastWf = item.workflowId;
-    screen = "replay";
+    navigate("replay");
+    return;
   } else if (item.kind === "workflow" && item.workflowId) {
     openWorkflow = item.workflowId;
     screen = "workflow";
-  } else if (item.screen) screen = item.screen as Screen;
+  } else if (item.screen) {
+    navigate(item.screen as Screen);
+    return;
+  }
   renderKey = "";
   render();
 }
@@ -2373,22 +2367,11 @@ sidebarDialog.addEventListener("close", () => {
 window.matchMedia("(max-width: 1060px)").addEventListener("change", (event) => {
   if (!event.matches && sidebarDialog.open) sidebarDialog.close("navigate");
 });
-const connectionError = document.getElementById("connection-error")!;
-document.getElementById("retry-connection")!.onclick = () => { void refresh().catch(() => undefined); };
 const statePoller = createStatePoller({
-  async poll() {
-    try {
-      await refreshState();
-      connectionError.hidden = true;
-    } catch (error) {
-      connectionError.hidden = false;
-      throw error;
-    }
-  },
+  poll: refreshState,
   active: () => activePolling(state),
   visible: () => document.visibilityState === "visible",
 });
 document.addEventListener("visibilitychange", statePoller.visibilityChanged);
-render();
 void refresh().catch(() => undefined);
 setInterval(tickClock, 250);

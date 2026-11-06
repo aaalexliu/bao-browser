@@ -75,7 +75,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   try {
     await page.goto(url);
     await page.waitForSelector("#runs");
-    await checkTitle("Runs - Bao");
+    await checkTitle("Bao");
     assert.equal(await page.locator("#rail nav button").count(), 3);
     for (const width of [1200, 720, 320]) {
       await page.setViewportSize({ width, height: 800 });
@@ -85,7 +85,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       for (const [screen, place, heading] of routes) {
         await navigate(screen, place);
         await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), heading);
-        await checkTitle(`${shellScreens[screen].label} - Bao`);
+        await checkTitle("Bao");
         assert.equal(await page.locator("#screen-list [aria-current=page]").count(), 1);
         if (screen === "library") assert.ok((await page.getByRole("button", { name: "Open command menu", exact: true }).boundingBox())!.height < 40);
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
@@ -106,13 +106,13 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.waitForFunction((element) => !element?.isConnected, searchBeforePoll);
     assert.equal(await search.evaluate((element) => element === document.activeElement), true);
     assert.equal(await search.inputValue(), "Read");
-    await checkTitle("Library - Bao");
+    await checkTitle("Bao");
     await page.unroute("**/api/state");
     await page.getByRole("button", { name: workflow.name, exact: true }).focus();
     await scrollContent();
     await page.keyboard.press("Enter");
     await page.waitForSelector("#workflow-detail");
-    await checkTitle("Workflow - Bao");
+    await checkTitle("Bao");
     await checkDetailFocus("Workflow detail");
     await page.locator("#workflow-edit summary").click();
     await page.locator("#edit-json").focus();
@@ -124,7 +124,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.waitForRequest("**/api/state");
     await page.waitForRequest("**/api/state");
     assert.equal(await page.locator("#edit-json").evaluate((element) => element === document.activeElement), true);
-    await checkTitle("Workflow - Bao");
+    await checkTitle("Bao");
     await page.unroute("**/api/state");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");
     await navigate("runs", "runs");
@@ -132,7 +132,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await scrollContent();
     await page.keyboard.press("Enter");
     await page.waitForSelector("#run-viewer");
-    await checkTitle("Run - Bao");
+    await checkTitle("Bao");
     await checkDetailFocus("Run detail");
     assert.deepEqual(accessibilityIssues, []);
     assert.equal(await page.locator("#rail [data-place=runs]").getAttribute("aria-current"), "page");
@@ -149,14 +149,49 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.goto(`${url}/?screen=live`);
     await page.waitForSelector("#live-session");
     assert.equal(await page.locator("#screen-list [data-screen=live]").getAttribute("aria-current"), "page");
-    await page.route("**/api/state", (route) => route.fulfill({ status: 503, body: "Unavailable" }));
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await page.route("**/api/login-sites", (route) => route.fulfill({ json: { sites: [{ origin: "https://saved.example", probeUrl: "https://saved.example/account" }] } }));
+    async function command(label: string): Promise<void> {
+      await page.keyboard.press("ControlOrMeta+k");
+      await page.locator("#palette-input").fill(label);
+      await page.locator(`#palette-list [data-command="${label.toLowerCase()}"]`).click();
+    }
+    await command("Logins");
+    await page.getByText("https://saved.example", { exact: true }).waitFor();
+    const hostAccess = page.waitForRequest("**/api/extension/host-access");
+    await command("Settings");
+    await hostAccess;
+    for (const entry of ["palette", "screen-list", "workflow-command"] as const) {
+      await navigate("library", "workflows");
+      await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
+      await page.locator('[data-run-from="open"]').click();
+      await page.getByText("Run from step 1. Earlier steps are not re-run.", { exact: true }).waitFor();
+      await navigate("runs", "runs");
+      if (entry === "palette") await command("Replay");
+      else if (entry === "workflow-command") {
+        await page.keyboard.press("ControlOrMeta+k");
+        await page.locator("#palette-input").fill(`Run ${workflow.name}`);
+        await page.locator(`#palette-list [data-command="run-${workflow.id}"]`).click();
+      } else await navigate("replay", "workflows");
+      assert.equal(await page.locator("#run-from-note").count(), 0);
+      await page.locator("#run").waitFor();
+    }
+    await page.route("**/api/state", async (route) => {
+      const response = await route.fetch();
+      const current = await response.json();
+      await route.fulfill({ json: { ...current, settings: { ...current.settings, pageEngine: "dom" }, helper: { platform: "darwin", accessibility: false, automation: { state: "granted" } } } });
+    });
     await page.goto(url);
-    await page.waitForSelector("#connection-error:not([hidden])");
-    assert.equal(await page.getByRole("button", { name: "Try again", exact: true }).isVisible(), true);
-    await page.unroute("**/api/state");
-    await page.getByRole("button", { name: "Try again", exact: true }).click();
-    await page.waitForSelector("#connection-error[hidden]", { state: "attached" });
-    await page.waitForSelector("[data-open-run=run-shell]");
+    await page.locator("#runs").waitFor();
+    await page.locator("#onboarding").waitFor();
+    await navigate("library", "workflows");
+    await page.locator("#onboarding").waitFor();
+    await navigate("runs", "runs");
+    await page.locator("#onboarding summary").click();
+    await page.locator("#onboard-done").click();
+    assert.equal(await page.locator("#onboarding").count(), 0);
+    await navigate("library", "workflows");
+    assert.equal(await page.locator("#onboarding").count(), 0);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

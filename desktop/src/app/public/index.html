@@ -421,8 +421,8 @@
       padding: 12px;
     }
     .wf-title { grid-area: title; margin: 0; text-align: left; align-self: center; min-width: 0; }
-    .wf-title button.link { color: var(--ink); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.02em; display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: start; }
-    .wf-summary { margin: 0 0 4px; color: var(--quiet); font-size: var(--text-sm); overflow-wrap: anywhere; }
+    .wf-title button.link { color: var(--ink); font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.02em; display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+    .wf-summary { margin: 0 0 4px; color: var(--quiet); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #sheet { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, 0.28); padding: 24px; }
     #sheet:empty { display: none; }
     #save-sheet { width: min(440px, calc(100vw - 32px)); background: var(--card); color: var(--ink); border-radius: 16px; padding: 20px; display: grid; gap: 10px; }
@@ -790,7 +790,6 @@
     <section id="screen-list" aria-label="Screens"></section>
     <div id="content">
       <header id="detail-bar" class="pane-bar"><span id="screen-title"></span></header>
-      <div id="connection-error" class="card" role="alert" hidden><p>Bao could not load this Mac's data. Try again. Bao also retries while this window is open.</p><button id="retry-connection" type="button">Try again</button></div>
       <div id="act"></div>
       <div id="onboard"></div>
       <main id="main" tabindex="-1"></main>
