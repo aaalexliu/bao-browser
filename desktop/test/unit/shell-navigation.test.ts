@@ -93,6 +93,18 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
         assert.ok(bounds.scroll <= bounds.width + 1, `${screen} at ${width}px overflows: ${JSON.stringify(bounds)}`);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        if (screen === "library") {
+          assert.equal(await page.locator("#palette-open").evaluate((element) => {
+            const label = document.createRange();
+            label.selectNodeContents(element);
+            const lines = [...label.getClientRects()];
+            const button = element.getBoundingClientRect();
+            return lines.length === 1 && lines.every((line) => line.left >= button.left && line.right <= button.right && line.top >= button.top && line.bottom <= button.bottom);
+          }), true, `Library command shortcut spills outside its button at ${width}px`);
+          await page.locator("#palette-open").click();
+          assert.equal(await page.locator("#palette-input").evaluate((element) => element === document.activeElement), true);
+          await page.keyboard.press("Escape");
+        }
       }
     }
     await page.setViewportSize({ width: 1200, height: 800 });
