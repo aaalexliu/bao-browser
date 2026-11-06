@@ -90,8 +90,8 @@ test("a pending prompt is restored after the app is closed and opened", async ()
     assert.match(bar, /You need to act/);
     assert.match(bar, /Sign in to the site in the Bao window/);
     const side = rail({ activeAsk: restored.activeAsk, runs: [] });
-    assert.match(side, /id="attention" data-count="1"/);
-    assert.match(side, /1 waiting/);
+    assert.match(side, /id="attention" data-count="0"/);
+    assert.match(side, /Nothing running/);
     const run = second.library.readRun("run-restore");
     assert.equal(run.status, "paused");
     assert.equal(statusLabel(runKind({ id: run.id, workflowId: run.workflowId, status: run.status })), "needs you");

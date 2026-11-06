@@ -6,8 +6,8 @@ import type { inspectRunView } from "../mcp/run-view";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
-import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
-import { formatClock, formatTime, formatWhen } from "../v1/time";
+import { formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
+import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -285,39 +285,32 @@ export function maskSecrets(text: string, secrets: string[]): string {
 function icon(name: string): string {
   if (name === "warning") return `<svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path d="M7 5v3.2" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="10.4" r=".9" fill="var(--bg)"/></svg>`;
   if (name === "search") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/></svg>`;
-  const paths: Record<string, string> = {
-    library: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z",
-    sidebar: "M3 4h18v16H3V4zm2 2v12h4V6H5zm6 0v12h8V6h-8z",
-    runs: "M4 6h16v3H4V6zm0 5h16v3H4v-3zm0 5h10v3H4v-3z",
-    settings: "M12 8.5A3.5 3.5 0 1012 15.5 3.5 3.5 0 0012 8.5zM4 12l2-.6.4-1.6-1.2-1.6 1.8-1.8 1.6 1.2 1.6-.4L11 5h2l.4 2.2 1.6.4 1.6-1.2 1.8 1.8-1.2 1.6.4 1.6 2 .6v2l-2 .6-.4 1.6 1.2 1.6-1.8 1.8-1.6-1.2-1.6.4L13 21h-2l-.4-2.2-1.6-.4-1.6 1.2-1.8-1.8 1.2-1.6-.4-1.6L4 14v-2z",
+  const strokes: Record<string, string> = {
+    library: '<rect x="2.25" y="2.25" width="11.5" height="4.5" rx="1.25"/><rect x="2.25" y="9.25" width="11.5" height="4.5" rx="1.25"/><path d="M5 4.5h3.5M5 11.5h5"/>',
+    runs: '<circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/>',
+    record: '<circle cx="8" cy="8" r="6.25"/><circle cx="8" cy="8" r="3.6" fill="currentColor" stroke="none"/>',
+    sidebar: '<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 2.75v10.5"/>',
+    settings: '<path d="M6.60 2.89L6.90 1.09L9.10 1.09L9.40 2.89L10.63 3.40L12.11 2.34L13.66 3.89L12.60 5.37L13.11 6.60L14.91 6.90L14.91 9.10L13.11 9.40L12.60 10.63L13.66 12.11L12.11 13.66L10.63 12.60L9.40 13.11L9.10 14.91L6.90 14.91L6.60 13.11L5.37 12.60L3.89 13.66L2.34 12.11L3.40 10.63L2.89 9.40L1.09 9.10L1.09 6.90L2.89 6.60L3.40 5.37L2.34 3.89L3.89 2.34L5.37 3.40Z"/><circle cx="8" cy="8" r="2"/>',
   };
-  return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${paths[name] || ""}"/></svg>`;
+  return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${strokes[name] || ""}</svg>`;
+}
+
+function baoMark(): string {
+  return `<svg class="bao-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="bao-mark-bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient><radialGradient id="bao-mark-dough" cx="42%" cy="32%" r="78%"><stop stop-color="#FFFDF8"/><stop offset=".66" stop-color="#FFF1DE"/><stop offset="1" stop-color="#F8DEBE"/></radialGradient></defs><rect x="4" y="4" width="92" height="92" rx="24" fill="url(#bao-mark-bg)"/><g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27C39.2 24.3 42.8 23 41 20.3M50 26C48.2 23.3 51.8 22 50 19.3M59 27C57.2 24.3 60.8 23 59 20.3"/></g><path d="M50 34C70 34 79 48 79 62C79 78 65 84 50 84C35 84 21 78 21 62C21 48 30 34 50 34Z" fill="url(#bao-mark-dough)" stroke="#EBD3B2" stroke-width="1.4"/><ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2"/><path d="M36 60Q41 52.5 46 60M54 60Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M44 72Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>`;
 }
 
 export function rail(state: ShellState, screen: Screen = "runs"): string {
-  const heals = pendingHealCount(state.runs || []);
-  const reviews = reviewItems(state.runs);
-  const waiting = attentionCount({
-    ask: state.activeAsk,
-    importPhase: state.pendingImport?.phase,
-    pendingHeals: heals,
-    reviews: reviews.length,
-  });
-  const rec = state.recording ? "on" : "";
-  const helper = state.helper?.label || "helper off";
-  const model = state.model?.label || "no model";
-  const current = shellScreens[shellScreen(screen)].place;
+  const attention = runAttention(state.runs || []);
+  const waiting = attention.length;
   const damaged = state.damagedWorkflows?.length || 0;
-  const warning = damaged ? `<span class="workflow-warning" aria-hidden="true">${icon("warning")}</span><span id="workflow-warning-description" hidden>${damaged === 1 ? "One workflow can’t open." : `${damaged} workflows can’t open.`} Open Workflows for recovery options.</span>` : "";
+  const missingPermissions = state.helper?.platform === "darwin" && state.helper.label === "helper available"
+    && (state.helper.accessibility === false || state.helper.screenCapture === false);
+  const warning = (label: string) => `<span class="place-warning" role="img" aria-label="${esc(label)}">${runStatusGlyph("warning")}</span>`;
+  const current = shellScreens[shellScreen(screen)].place;
+  const workflowWarning = damaged ? `<span class="workflow-warning" aria-hidden="true">${icon("warning")}</span><span id="workflow-warning-description" hidden>${damaged === 1 ? "One workflow can’t open." : `${damaged} workflows can’t open.`} Open Workflows for recovery options.</span>` : "";
   return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
-    <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
-    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} ${place.label}${place.id === "workflows" ? warning : ""}</button>`).join("")}</nav>
-    <div class="rail-foot">
-      <div id="attention-label">${waiting} waiting</div>
-      <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
-      <div class="channel" id="helper-status">${esc(helper)}</div>
-      <div class="channel" id="model-status">${esc(model)}</div>
-    </div>`;
+    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} <span>${place.label}</span>${place.id === "runs" ? `<span class="place-count" id="attention" data-count="${waiting}" aria-label="${waiting} need you">${waiting || ""}</span>` : place.id === "workflows" && damaged ? workflowWarning : place.id === "settings" && missingPermissions ? warning("Optional Mac permissions not granted") : ""}</button>`).join("")}</nav>
+    <button type="button" class="rail-foot"${attention[0] ? ` data-open-run="${esc(attention[0].run.id)}"` : ` data-screen="live"`}>${baoMark()}<span><strong>Bao</strong><span id="attention-label">${waiting ? `${waiting} run${waiting === 1 ? " is" : "s"} waiting for you` : "Nothing running"}</span></span></button>`;
 }
 
 export function shellList(screen: Screen, state: ShellState, selectedRun = "", available = true): string {
@@ -327,7 +320,8 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
   const heals = pendingHealCount(state.runs || []);
   return `<header class="pane-bar">
       <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>
-      <h1>${place.label}</h1>
+      <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${runAttention(state.runs || []).length} need you</p>` : ""}</div>
+      ${place.id === "runs" ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
     <nav aria-label="${place.label} screens" class="screen-list${place.id === "runs" ? " runs-screens" : ""}">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}${id === "heals" && heals > 0 ? ` <span id="heal-count">${heals}</span>` : ""}</span>
@@ -1741,7 +1735,7 @@ export function runAttention(runs: RunSummary[]): { run: RunSummary; label: stri
     for (const heal of run.heals || []) if (!decided.has(heal.id)) items.push({ run, label: "Heal to keep", kind: "healed" });
     if (["failed", "timed-out", "timeout"].includes(run.status)) items.push({ run, label: run.status === "failed" ? "Failed" : "Timed out", kind: "failed" });
     return items;
-  });
+  }).sort((a, b) => ["paused", "healed", "failed"].indexOf(a.kind) - ["paused", "healed", "failed"].indexOf(b.kind));
 }
 
 function runListKind(run: RunSummary): string {
@@ -1751,24 +1745,65 @@ function runListKind(run: RunSummary): string {
   return runKind(run);
 }
 
+function runStatusGlyph(kind: string): string {
+  const mark = kind === "paused" ? '<path d="M5.4 4.4v5.2M8.6 4.4v5.2"/>'
+    : kind === "healed" ? '<path d="M7 3.9v6.2M3.9 7h6.2"/>'
+    : ["failed", "timed-out"].includes(kind) ? '<path d="m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4"/>'
+    : kind === "passed" ? '<path d="m4 7.2 2 2 4-4.4"/>'
+    : '<path d="M7 3.8V7l2.2 1.4"/>';
+  if (kind === "warning") return `<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path class="run-glyph-mark" d="M7 5v3.2"/><circle cx="7" cy="10.4" r=".9" fill="var(--glyph-mark)"/></svg>`;
+  if (kind === "provisional") return `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 .8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/></svg>`;
+  return `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><g class="run-glyph-mark">${mark}</g></svg>`;
+}
+
+function runDuration(run: RunSummary): string {
+  const start = run.steps?.[0]?.startedAt;
+  const end = run.steps?.at(-1)?.endedAt;
+  if (typeof start !== "number" || !Number.isFinite(start) || typeof end !== "number" || !Number.isFinite(end)) return "";
+  const seconds = Math.round((end - start) / 1000);
+  if (seconds < 0) return "";
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} min${seconds % 60 ? ` ${seconds % 60} s` : ""}`;
+}
+
+export function runWaitLeft(deadline: string, now = Date.now()): string {
+  const remaining = Math.max(0, Math.ceil((Date.parse(deadline) - now) / 60000));
+  return Number.isFinite(remaining) ? `${remaining >= 60 ? `${Math.floor(remaining / 60)} h ` : ""}${remaining % 60} min left` : "";
+}
+
 export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now()): string {
   const attention = runAttention(runs);
   const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
-  const row = (run: RunSummary, label = statusLabel(runListKind(run)), kind = runListKind(run)) => {
+  let selectionShown = false;
+  const row = (run: RunSummary, attentionLabel?: string, kind = runListKind(run)) => {
+    const selected = selectedRun === run.id && !selectionShown;
+    if (selected) selectionShown = true;
     const at = runTime(run);
     const name = names.get(run.workflowId) || runWorkflowName(run, []);
-    const calls = countedModelCalls(run);
-    const when = at === undefined ? "Time unknown" : formatTime(at);
-    return `<li><button type="button" class="run-row${selectedRun === run.id ? " selected" : ""}" data-open-run="${esc(run.id)}" aria-label="${esc(name)}" aria-description="${esc(label)} · ${esc(when)}${calls === undefined ? "" : ` · ${calls} model calls`}"${selectedRun === run.id ? ` aria-current="true"` : ""}>
-      <span class="run-glyph ${esc(kind)}" aria-hidden="true">${["failed", "timeout", "timed-out"].includes(kind) ? "!" : kind === "paused" ? "Ⅱ" : kind === "healed" ? "↗" : kind === "passed" ? "✓" : "·"}</span>
-      <span class="run-name">${esc(name)}</span><time>${esc(when)}</time>
-      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${calls === undefined ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</span>
+    const word = statusLabel(kind);
+    const label = attentionLabel || word.charAt(0).toUpperCase() + word.slice(1);
+    const when = at === undefined ? "Time unknown" : new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(at).replace(/\u202f/g, " ");
+    const reason = run.envelope?.ask || run.envelope?.reason || run.failure?.reason;
+    const totalSteps = workflows.find((workflow) => workflow.id === run.workflowId)?.steps;
+    const stoppedAt = run.failure?.index === undefined ? "" : `Stopped at step ${run.failure.index + 1}${attentionLabel ? "." : totalSteps ? ` of ${totalSteps}` : ""}`;
+    const healStep = run.heals?.find((heal) => !run.decisions?.some((decision) => decision.healId === heal.id))?.failedStep;
+    const detail = kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && healStep ? `Review the repair${healStep.label ? ` to ${healStep.label}` : ""}.` : reason || runDuration(run);
+    const deadline = attentionLabel && kind === "paused" ? run.envelope?.deadline : undefined;
+    const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : deadline ? runWaitLeft(deadline, now) : "";
+    const description = `${label}${detail ? ` · ${ownerStopText(detail)}` : ""}`;
+    return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" data-open-run="${esc(run.id)}" aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
+      <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>
+      <span class="run-name" title="${esc(name)}">${esc(name)}</span><time${at === undefined ? "" : ` datetime="${new Date(at).toISOString()}" title="${esc(formatClock(at))}"`}>${esc(when)}</time>
+      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${detail ? ` · ${esc(ownerStopText(detail))}` : ""}</span>
+      ${extra ? `<span class="run-extra"${deadline ? ` data-run-deadline="${esc(deadline)}"` : ""}>${esc(ownerStopText(extra))}</span>` : ""}
     </button></li>`;
   };
   const day = (value: number) => new Date(value).toDateString();
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const groups = new Map<string, RunSummary[]>();
-  for (const run of [...runs].sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
+  const currentRuns = runs.filter(runWaiting).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
+  for (const run of [...runs].filter((item) => !runWaiting(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
     const at = runTime(run);
     const label = at === undefined ? "Date unknown" : day(at) === day(now) ? "Today" : day(at) === day(+yesterday) ? "Yesterday" : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric", ...(new Date(at).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(at);
     const entries = groups.get(label);
@@ -1778,7 +1813,8 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   return `<div id="runs" class="runs-list" tabindex="0" aria-label="Run history, newest first">
     <section aria-labelledby="needs-you-heading"><h2 id="needs-you-heading" class="run-group-heading">Needs you <span class="run-count" aria-label="${attention.length} items">${attention.length}</span></h2>
       ${attention.length ? `<ul aria-label="Needs you">${attention.map(({ run, label, kind }) => row(run, label, kind)).join("")}</ul>` : `<p class="run-list-note">Nothing needs you.</p>`}</section>
-    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>`}
+    ${currentRuns.length ? `<section aria-label="Now"><h2 class="run-group-heading">Now</h2><ul>${currentRuns.map((run) => row(run)).join("")}</ul></section>` : ""}
+    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : !runs.length ? `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>` : ""}
   </div>`;
 }
 

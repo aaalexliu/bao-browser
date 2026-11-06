@@ -42,6 +42,8 @@ import {
   runReceipt,
   receiptError,
   runWorkflowName,
+  runAttention,
+  runWaitLeft,
   runKind,
   reviewItems,
   runViewer,
@@ -193,6 +195,7 @@ async function loadState(): Promise<void> {
   const response = await fetch("/api/state");
   if (!response.ok) throw new Error(`state request failed: ${response.status}`);
   const recovering = initialConnectionError;
+  const firstLoad = !stateLoaded;
   state = await response.json();
   stateLoaded = true;
   initialConnectionError = false;
@@ -214,6 +217,11 @@ async function loadState(): Promise<void> {
       }
     }
   }
+  if (firstLoad && screen === "runs" && !opened) {
+    openRun = runAttention(state.runs || [])[0]?.run.id
+      || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id || "";
+    if (openRun) screen = "run";
+  }
   const key = JSON.stringify({
     recording: state.recording,
     pending: state.pendingImport,
@@ -226,7 +234,9 @@ async function loadState(): Promise<void> {
     runs: (state.runs || []).map((run) => ({
       id: run.id, workflowId: run.workflowId, status: run.status, envelopeStatus: run.envelope?.status,
       at: run.at, kind: run.kind, modelCalls: run.modelCalls,
-      heals: run.heals?.map((heal) => heal.id), decisions: run.decisions, promotionStatus: run.promotion?.status,
+      envelope: run.envelope, failure: run.failure,
+      timing: run.steps?.flatMap((step) => step.startedAt === undefined && step.endedAt === undefined ? [] : [[step.startedAt, step.endedAt]]),
+      heals: run.heals?.map((heal) => [heal.id, heal.failedStep]), decisions: run.decisions, promotionStatus: run.promotion?.status,
     })),
     day: new Date().toDateString(),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
@@ -257,12 +267,12 @@ async function loadState(): Promise<void> {
   paintGuide();
   if (key === renderKey) return;
   renderKey = key;
-  render();
+  render(!firstLoad);
   if (recovering) mainEl().focus({ preventScroll: true });
   paintGuide();
 }
 
-function render(): void {
+function render(focusDetail = true): void {
   const recoveryKey = screen === "library" ? JSON.stringify(state.damagedWorkflows || []) : null;
   const keepLibraryRecovery = libraryRecovery !== null && libraryRecovery.key === recoveryKey;
   if (!keepLibraryRecovery) libraryRecovery = recoveryKey === null ? null : { key: recoveryKey, visible: false, open: false, status: "" };
@@ -359,7 +369,7 @@ function render(): void {
   paintToasts();
   const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : "";
   if (detail && detail !== renderedDetail) {
-    mainEl().focus({ preventScroll: true });
+    if (focusDetail) mainEl().focus({ preventScroll: true });
     document.getElementById("content")!.scrollTop = 0;
   }
   renderedDetail = detail;
@@ -610,7 +620,7 @@ function bind(): void {
   };
   const close = document.getElementById("sidebar-close");
   if (close) close.onclick = () => sidebar.close();
-  document.querySelectorAll("#rail nav button, #screen-list nav button").forEach((btn) => {
+  document.querySelectorAll("#rail [data-screen], #screen-list [data-screen]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
@@ -1716,6 +1726,9 @@ function tickClock(): void {
   if (node?.dataset.deadline) {
     const deadline = Number(node.dataset.deadline);
     if (deadline) node.textContent = formatWait(Date.now(), deadline, node.dataset.effect || "run stops, nothing applied");
+  }
+  for (const node of document.querySelectorAll<HTMLElement>("[data-run-deadline]")) {
+    node.textContent = runWaitLeft(node.dataset.runDeadline || "");
   }
   const timer = document.getElementById("rec-timer");
   if (!timer?.dataset.since) return;

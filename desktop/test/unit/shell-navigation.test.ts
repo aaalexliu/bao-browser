@@ -136,7 +136,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       assert.ok((await title.boundingBox())!.height < 32);
       assert.equal(await page.locator("#library-search").evaluate((element) => getComputedStyle(element).borderTopColor), inputBorder);
       assert.equal(await page.locator("#content").evaluate((element) => getComputedStyle(element).backgroundColor), surfaceColor);
-      assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "10px");
+      assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "52px");
     }
     await page.evaluate(() => localStorage.setItem("bao-theme", "light"));
     await page.reload();
@@ -165,7 +165,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.locator("#edit-json").focus();
     pendingHeal = true;
     await page.locator('#attention[data-count="1"]').waitFor();
-    assert.equal(await page.locator("#attention-label").innerText(), "1 waiting");
+    assert.equal(await page.locator("#attention-label").innerText(), "1 run is waiting for you");
     assert.equal(await page.locator("#edit-json").evaluate((element) => element === document.activeElement), true);
     await checkTitle("Bao");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");

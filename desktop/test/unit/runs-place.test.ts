@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { runAttention } from "../../src/app/views";
+import { rail, runAttention, runsList } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
@@ -60,6 +60,70 @@ test("Runs counts waiting runs, undecided heals and failures without changing re
   assert.equal(JSON.stringify(runs), saved);
 });
 
+test("Runs rows use filled glyphs, stop reasons and elapsed time without invented metrics", () => {
+  const html = runsList([
+    { id: "pass", workflowId: "wf", status: "passed", steps: [{ id: "step", status: "passed", startedAt: 1000, endedAt: 42000 }] },
+    { id: "fail", workflowId: "wf", status: "failed", failure: { index: 4, reason: "The Download PDF button is gone." } },
+    { id: "unknown", workflowId: "wf", status: "passed" },
+  ], [{ id: "wf", name: "Download bill", steps: 7 }]);
+  assert.match(html, /<circle cx="7" cy="7" r="7"/);
+  assert.match(html, />Passed<\/span> · 41 s/);
+  assert.match(html, /Stopped at step 5\./);
+  assert.match(html, /Stopped at step 5 of 7/);
+  assert.match(html, /The Download PDF button is gone/);
+  assert.doesNotMatch(html, /model calls|0 s/);
+  const side = rail({ runs: [{ id: "fail", workflowId: "wf", status: "failed" }], damagedWorkflows: [{}], helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false } });
+  assert.match(side, /data-count="1"/);
+  assert.match(side, /1 run is waiting for you/);
+  assert.match(side, /1 workflow can’t open/);
+  assert.match(side, /Optional Mac permissions not granted/);
+});
+
+test("Runs first load opens the top Needs-you run, else newest, without replacing a chosen run", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-runs-first-load-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(8_000);
+  const url = `http://127.0.0.1:${app.port}`;
+  try {
+    app.library.saveRun({ id: "newest", workflowId: "agent-browser", status: "passed", at: 300, steps: [], heals: [] });
+    app.library.saveRun({ id: "waiting", workflowId: "agent-browser", status: "paused", at: 200, steps: [], heals: [], envelope: { status: "needs_human", ask: "Press Reserve yourself." } });
+    await page.goto(url);
+    await page.locator('#run-receipt').waitFor();
+    assert.equal(await page.locator('#runs [aria-current=true]').count(), 1, "only the pinned copy carries the selection");
+    assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName), "BODY", "first load does not draw a keyboard focus ring around the receipt");
+    assert.equal(await page.locator("#attention-label").innerText(), "1 run is waiting for you");
+    assert.equal(await page.locator(".pane-title p").innerText(), "1 need you");
+    await page.locator('[data-open-run=newest]').click();
+    app.library.saveRun({ id: "another", workflowId: "agent-browser", status: "paused", at: 400, steps: [], heals: [] });
+    await page.waitForFunction(() => document.querySelector('#attention')?.getAttribute('data-count') === '2');
+    assert.equal(await page.locator('#runs [aria-current=true]').first().getAttribute("data-open-run"), "newest");
+    await page.locator('.rail-foot').click();
+    assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "another");
+    await page.locator('.runs-record').click();
+    await page.locator('#start').waitFor();
+    assert.equal(await page.locator('#runs-welcome').count(), 0);
+    for (const id of ["waiting", "another"]) {
+      const run = app.library.readRun(id);
+      app.library.saveRun({ ...run, status: "passed", envelope: undefined });
+    }
+    await page.goto(url);
+    await page.locator('#run-receipt').waitFor();
+    assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "another");
+    await page.goto(url + '/?screen=live');
+    await page.locator('#live-session').waitFor();
+    assert.equal(await page.locator('#run-receipt').count(), 0, "explicit launch screen wins over the default run");
+  } finally {
+    await browser.close(); await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("Runs keeps current owner waits actionable and ended asks informational", { timeout: 30_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-runs-waits-"));
   const previousHome = process.env.HOME;
@@ -67,6 +131,7 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
   const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage();
+  page.setDefaultTimeout(8_000);
   const cases = [
     { id: "signin", status: "paused", envelopeStatus: "needs_signin", waiting: true, ask: "Sign in in the Bao window." },
     { id: "human", status: "needs_human", envelopeStatus: "needs_human", waiting: true, ask: "Press Reserve in the Bao window." },
@@ -144,12 +209,13 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     await page.locator("#rail [data-place=runs]").click();
     await page.locator("#needs-you-heading .run-count").filter({ hasText: "3" }).waitFor();
     const history = page.locator('#runs section[aria-label="Today"]');
-    assert.deepEqual(await history.locator("button").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run"))), ["raw-paused", "raw-failed", "raw-heal", "raw-browser"]);
+    assert.deepEqual(await history.locator("button").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run"))), ["raw-failed", "raw-heal", "raw-browser"]);
     assert.equal(await page.locator('#runs section[aria-label="Yesterday"]').count(), 1);
     assert.doesNotMatch(await page.locator("#runs").innerText(), /raw-/);
     assert.doesNotMatch(await history.locator("[data-open-run=raw-failed]").innerText(), /model calls/);
-    assert.match(await page.locator("[data-open-run=raw-old]").innerText(), /0 model calls/);
-    assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 3);
+    assert.equal(await page.locator('#runs section[aria-label="Now"] [data-open-run=raw-paused]').count(), 1);
+    assert.match(await page.locator("[data-open-run=raw-old]").innerText(), /Passed/);
+    assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 2);
     const row = history.locator("[data-open-run=raw-failed]");
     await row.focus();
     app.library.appendDecision("raw-heal", { ts: now, healId: "proposal", decision: "keep" });

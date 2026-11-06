@@ -119,7 +119,8 @@ test("only current optional native capabilities remain, independent of Chrome Au
       assert.equal(helper.capabilities[0].status, screenCapture ? "window capture ready" : "optional window capture needs Screen Recording (not needed for Chrome)");
       assert.equal(helper.capabilities[1].status, accessibility && screenCapture ? "MCP driver ready" : "optional native-app MCP driver needs Accessibility and Screen Recording (not needed for Chrome)");
       const html = rail({ helper });
-      assert.match(html, /id="helper-status">helper available/);
+      assert.equal(html.includes('aria-label="Optional Mac permissions not granted"'), !accessibility || !screenCapture);
+      assert.match(html, /Nothing running/);
       assert.doesNotMatch(html, /needs permission|AX press|live Chrome|perm-dot|Automation|Screen Recording|helper-jobs/);
     }
   }
@@ -129,7 +130,7 @@ test("helper off means absent or unsupported, not missing optional grants", () =
   for (const [platform, helperPresent] of [["linux", true], ["darwin", false]] as const) {
     const helper = capabilityReport({ platform, helperPresent, accessibility: true, screenCapture: true });
     assert.deepEqual(helper, { label: "helper off", platform, accessibility: false, screenCapture: false, capabilities: [] });
-    assert.match(rail({ helper }), /id="helper-status">helper off/);
+    assert.doesNotMatch(rail({ helper }), /place-warning|helper-status/);
   }
-  assert.match(rail({}), /id="helper-status">helper off/);
+  assert.match(rail({}), /Nothing running/);
 });
