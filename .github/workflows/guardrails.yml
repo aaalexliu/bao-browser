@@ -34,16 +34,73 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             web/package-lock.json
-      - run: npm ci
-      - run: npm --prefix web ci
-      - uses: actions/cache@v4
+      - name: Restore installed packages
+        uses: actions/cache@v4
+        id: packages
+        with:
+          path: |
+            node_modules
+            web/node_modules
+          key: packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.nvmrc', 'package.json', 'package-lock.json', 'web/package.json', 'web/package-lock.json') }}
+      - name: Install packages on a cache miss
+        if: steps.packages.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          npm ci & root=$!
+          npm --prefix web ci & web=$!
+          status=0
+          wait "$root" || status=1
+          wait "$web" || status=1
+          exit "$status"
+      - name: Read Playwright version
+        id: playwright
+        run: |
+          node -p '"version=" + require("playwright-core/package.json").version' >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
+      - name: Restore Chromium
+        uses: actions/cache@v4
         id: browser
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+          key: chromium-${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright.outputs.version }}
       - name: Allow sandboxed Chromium to create user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: npx playwright install --with-deps chromium
+      - name: Download Chromium on a cache miss
+        if: steps.browser.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+      - name: Restore system dependency downloads
+        uses: actions/cache@v4
+        id: system-packages
+        with:
+          # Exclude apt's root-only lock and partial-download directory.
+          path: /tmp/bao-apt-archives/*.deb
+          # Only the packages missing from this exact runner image need installing.
+          key: playwright-debs-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-v1
+      - name: Install Chromium system dependencies (3 minute limit)
+        timeout-minutes: 3
+        env:
+          APT_ARCHIVES: /tmp/bao-apt-archives
+          CACHE_HIT: ${{ steps.system-packages.outputs.cache-hit }}
+        shell: bash
+        run: |
+          install_deps() {
+            if [[ "$CACHE_HIT" == true ]]; then
+              # The image and Playwright version match, so these debs complete the same dependency set offline.
+              shopt -s nullglob
+              debs=("$APT_ARCHIVES"/*.deb)
+              if (( ${#debs[@]} )); then
+                sudo timeout --kill-after=10s 150s dpkg -i "${debs[@]}"
+              fi
+            else
+              mkdir -p "$APT_ARCHIVES/partial"
+              printf 'Dir::Cache::archives "%s";\nBinary::apt-get::APT::Keep-Downloaded-Packages "true";\nAcquire::Retries "0";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' "$APT_ARCHIVES" | sudo tee /etc/apt/apt.conf.d/99-bao-ci > /dev/null
+              timeout --kill-after=10s 150s npx playwright install-deps chromium
+            fi
+          }
+          if ! install_deps; then
+            echo '::error::Chromium system dependency setup failed or exceeded 150 seconds. Check the Ubuntu mirror or cached deb installation above.'
+            exit 1
+          fi
       - name: Set up the CDP video tools
         uses: ./.github/actions/setup-ffmpeg
       - run: npm run build:desktop -- --sourceMap
@@ -53,7 +110,8 @@ jobs:
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
-          export HOME="$(mktemp -d)"
+          HOME="$(mktemp -d)"
+          export HOME
           trap 'rm -rf "$HOME"' EXIT
           if [[ "$MEASURE_COVERAGE" == true ]]; then
             node scripts/measure-test-coverage.mjs "$RUNNER_TEMP/test-coverage"
@@ -65,7 +123,8 @@ jobs:
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
-          export HOME="$(mktemp -d)"
+          HOME="$(mktemp -d)"
+          export HOME
           trap 'rm -rf "$HOME"' EXIT
           npm --prefix web test
       - uses: actions/upload-artifact@v4
