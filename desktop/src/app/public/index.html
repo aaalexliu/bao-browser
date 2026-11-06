@@ -226,7 +226,6 @@
     .screen-description { color: var(--quiet); font-size: var(--text-sm); }
     .screen-list button.on { background: var(--accent-fill); color: var(--on-accent); }
     .screen-list button.on .screen-description { color: inherit; }
-    .screen-list button.on .screen-name::before { content: "› "; }
     .screen-list button:focus-visible { outline-offset: -2px; }
     .screen-list button.on:focus-visible { outline-color: var(--on-accent); }
     @media (hover: hover) {
@@ -416,6 +415,9 @@
     #run-outputs th, #run-outputs td { text-align: left; padding: 0.4rem 0.45rem; border-bottom: 1px solid var(--line); color: var(--ink); }
     #run-outputs th { color: var(--quiet); font-weight: 600; }
     #extract-picker { margin-top: 0.5rem; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 0.75rem; max-width: 520px; }
+    #float:has(#extract-picker) { position: fixed; inset: 12px 12px 20px; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; pointer-events: none; }
+    #float:has(#extract-picker) #record-bar { position: static; transform: none; width: max-content; max-width: 100%; flex-wrap: wrap; flex-shrink: 0; align-self: center; pointer-events: auto; }
+    #float #extract-picker { order: -1; align-self: center; width: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; margin: 0; pointer-events: auto; }
     #extract-picker table { width: 100%; border-collapse: collapse; }
     #extract-picker th, #extract-picker td { text-align: left; padding: 0.3rem 0.35rem; border-bottom: 1px solid var(--line); }
     #extract-picker input[type="text"], #extract-picker input:not([type]) { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }

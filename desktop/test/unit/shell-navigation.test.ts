@@ -88,6 +88,8 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
         await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), heading);
         await checkTitle("Bao");
         assert.equal(await page.locator("#screen-list [aria-current=page]").count(), 1);
+        const label = screen === "live" ? "Live" : screen === "replay" ? "Replay" : heading;
+        assert.equal(await page.locator("#screen-list").getByRole("button", { name: new RegExp(`^${label}(?: |$)`) }).getAttribute("aria-current"), "page");
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
         assert.ok(bounds.scroll <= bounds.width + 1, `${screen} at ${width}px overflows: ${JSON.stringify(bounds)}`);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -115,10 +117,11 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     const search = page.locator("#library-search");
     await search.fill("Read");
     const searchBeforePoll = await search.elementHandle();
+    let pendingHeal = false;
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
       const state = await response.json() as ShellState & { settings: Record<string, unknown> };
-      await route.fulfill({ json: { ...state, settings: { ...state.settings, promoteAfter: 99 } } });
+      await route.fulfill({ json: { ...state, settings: { ...state.settings, promoteAfter: 99 }, runs: (state.runs || []).map((run) => run.id === "run-shell" && pendingHeal ? { ...run, heals: [{ id: "heal-shell" }] } : run) } });
     });
     await page.waitForFunction((element) => !element?.isConnected, searchBeforePoll);
     assert.equal(await search.evaluate((element) => element === document.activeElement), true);
@@ -132,8 +135,9 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await checkDetailFocus("Workflow detail");
     await page.locator("#workflow-edit summary").click();
     await page.locator("#edit-json").focus();
-    await page.waitForRequest("**/api/state");
-    await page.waitForRequest("**/api/state");
+    pendingHeal = true;
+    await page.locator('#attention[data-count="1"]').waitFor();
+    assert.equal(await page.locator("#attention-label").innerText(), "1 waiting");
     assert.equal(await page.locator("#edit-json").evaluate((element) => element === document.activeElement), true);
     await checkTitle("Bao");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");

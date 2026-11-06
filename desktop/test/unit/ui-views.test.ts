@@ -212,7 +212,7 @@ test("attention count covers the ask, the import, and undecided heals", () => {
   assert.match(html, /data-screen="settings"/);
   assert.equal(html.includes("data-screen=\"trail\""), false);
   assert.match(html, /id="attention" data-count="3"/);
-  assert.match(html, /aria-label="3 waiting"/);
+  assert.match(html, /id="attention-label">3 waiting</);
   assert.match(html, /recording/);
   assert.match(html, /helper off/);
   assert.match(html, /no model/);

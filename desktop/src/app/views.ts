@@ -316,7 +316,7 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
   const perm = state.permDot ? permissionDot(state.helper) : "";
   const current = shellScreens[shellScreen(screen)].place;
   return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
-    <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}" aria-label="${waiting} waiting">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
+    <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
     <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}>${icon(place.icon)} ${place.label}</button>`).join("")}</nav>
     <div class="rail-foot">
       <div id="attention-label">${waiting} waiting</div>
@@ -336,7 +336,7 @@ export function shellList(screen: Screen, state: ShellState): string {
       <h1>${place.label}</h1>
     </header>
     <nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
-        <span class="screen-name">${item.label}${id === "heals" && heals > 0 ? ` <span id="heal-count">${heals}</span>` : ""}</span>
+        <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}${id === "heals" && heals > 0 ? ` <span id="heal-count">${heals}</span>` : ""}</span>
         <span class="screen-description">${item.description}</span>
       </button>`).join("")}</nav>`;
 }
