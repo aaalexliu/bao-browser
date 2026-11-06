@@ -131,6 +131,9 @@ let railHtmlKey = "";
 let listHtmlKey = "";
 let libraryQuery = "";
 let librarySearchOpen = false;
+let libraryRecoveryVisible = false;
+let libraryRecoveryOpen = false;
+let libraryRevealStatus = "";
 let paletteOpen = false;
 let paletteQuery = "";
 let paletteActive = 0;
@@ -320,7 +323,21 @@ function render(): void {
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
+    const recovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
+    const focusedRecovery = recovery?.querySelector("summary") === document.activeElement;
+    if (recovery) {
+      libraryRecoveryVisible = !recovery.hidden;
+      libraryRecoveryOpen = recovery.open;
+    }
     mainEl().innerHTML = body;
+    const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
+    if (nextRecovery) {
+      nextRecovery.hidden = !libraryRecoveryVisible;
+      nextRecovery.open = libraryRecoveryOpen;
+      if (focusedRecovery) nextRecovery.querySelector("summary")?.focus();
+    }
+    const revealStatus = document.getElementById("library-reveal-status");
+    if (revealStatus) revealStatus.textContent = libraryRevealStatus;
     const search = document.getElementById("library-search") as HTMLInputElement | null;
     if (search) search.value = libraryQuery;
     const tools = document.getElementById("library-tools");
@@ -563,17 +580,21 @@ function bind(): void {
   });
   const revealWorkflow = document.getElementById("library-reveal") as HTMLButtonElement | null;
   if (revealWorkflow) revealWorkflow.onclick = async () => {
-    const status = document.getElementById("library-reveal-status");
     revealWorkflow.disabled = true;
     try {
       const response = await fetch("/api/workflows/reveal", { method: "POST" });
       if (!response.ok) throw new Error("Could not open the workflow folder.");
-      if (status) status.textContent = "Workflow folder opened in Finder.";
+      libraryRevealStatus = "Workflow folder opened in Finder.";
     } catch {
+      libraryRecoveryVisible = true;
       const details = document.querySelector<HTMLDetailsElement>("#library-damaged details");
       if (details) details.hidden = false;
-      if (status) status.textContent = "Could not open the workflow folder. Open File details and recovery to find its path.";
-    } finally { revealWorkflow.disabled = false; }
+      libraryRevealStatus = "Could not open the workflow folder. Open File details and recovery to find its path.";
+    } finally {
+      const status = document.getElementById("library-reveal-status");
+      if (status) status.textContent = libraryRevealStatus;
+      revealWorkflow.disabled = false;
+    }
   };
   const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
   const toggle = document.getElementById("sidebar-toggle");

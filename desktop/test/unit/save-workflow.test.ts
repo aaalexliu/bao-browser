@@ -289,7 +289,7 @@ test("edited title and summary are what gets stored", () => {
   assert.equal(blocked.summary, "ok");
 });
 
-test("the save sheet and the card show the title, summary, and full-page poster", () => {
+test("the save sheet shows its poster and detail retains the title and summary", () => {
   const html = saveSheetView({
     id: "wf",
     name: "Book a table · restful-booker.herokuapp.com",
@@ -311,11 +311,9 @@ test("the save sheet and the card show the title, summary, and full-page poster"
     steps: 1,
     firstStep: { action: "click", label: "Book a table" },
   }], [{ id: "r1", workflowId: "wf", status: "passed", at: 2 }]);
-  assert.match(card, /\/api\/workflows\/wf\/poster/);
-  assert.equal(card.includes("/api/runs/"), false);
-  assert.match(card, /class="wf-summary"/);
-  assert.match(card, /Books a table\./);
-  assert.equal(card.includes("data-shot-fallback"), false);
+  assert.match(card, /data-open-workflow="wf"/);
+  assert.match(card, /Book a table · restful-booker\.herokuapp\.com/);
+  assert.doesNotMatch(card, /<img/);
   const detail = workflowDetail({
     id: "wf",
     name: "Book a table · restful-booker.herokuapp.com",
@@ -324,6 +322,7 @@ test("the save sheet and the card show the title, summary, and full-page poster"
     steps: [],
   });
   assert.match(detail, /id="workflow-summary"/);
+  assert.match(detail, /Books a table\./);
   assert.match(detail, /id="workflow-intent"/);
 });
 

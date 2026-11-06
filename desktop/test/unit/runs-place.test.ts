@@ -188,6 +188,7 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     assert.equal(await page.locator("#run-evidence").getAttribute("open"), "");
     await page.route("**/api/replay", (route) => route.fulfill({ json: { id: "raw-failed" } }));
     await page.locator("#rail [data-place=workflows]").click();
+    await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
     await page.locator(`#main [data-screen=replay][data-workflow="${workflow.id}"]`).click();
     await page.locator("#wf").selectOption(workflow.id);
     await page.locator("#run").click();
