@@ -75,7 +75,7 @@ test("viewer keeps the latest host view and user request when replies arrive out
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   const newer = (await calls(page, 5))[4]!;
   await deliver(page, { jsonrpc: "2.0", id: staleError.id, error: { message: "stale request failed" } });
-  assert.equal(await page.getByRole("alert").count(), 0);
+  assert.equal(await page.getByRole("alert").textContent(), "");
   await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: receipt("Late result after stale error") } } });
   assert.equal(await page.locator("h1").textContent(), "Refreshed receipt");
   await deliver(page, { jsonrpc: "2.0", id: newer.id, result: { _meta: { baoViewer: receipt("Latest receipt") } } });
