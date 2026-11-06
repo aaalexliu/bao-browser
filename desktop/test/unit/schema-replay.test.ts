@@ -23,7 +23,7 @@ function id(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-test("migrate drops a password literal and validates against the json schema", () => {
+test("migrate retains a password default and validates against the json schema", () => {
   const doc = migrate({
     id: "wf-login",
     name: "Login",
@@ -53,23 +53,21 @@ test("migrate drops a password literal and validates against the json schema", (
   });
   assert.deepEqual(validateWorkflow(doc), []);
   assert.equal(validate(doc), true);
-  assert.equal(JSON.stringify(doc).includes("SuperSecretPassword!"), false);
+  assert.equal(JSON.stringify(doc).includes("SuperSecretPassword!"), true);
   assert.equal(doc.inputs.find((item) => item.name === "password")?.type, "secret");
-  assert.equal(doc.inputs.find((item) => item.name === "password")?.default, undefined);
+  assert.equal(doc.inputs.find((item) => item.name === "password")?.default, "SuperSecretPassword!");
   assert.equal(doc.steps[1]?.value, "{{password}}");
 });
 
 test("redacted keys stay explicit and replay stops before dispatching a missing or placeholder key", async () => {
   const events: TrailEvent[] = [
-    { id: "redacted", ts: 1, kind: "act", op: "key", sensitive: true, key: "Shift+x", value: "x" },
+    { id: "redacted", ts: 1, kind: "act", op: "key", sensitive: true, key: STRIPPED_SECRET },
     { id: "enter", ts: 2, kind: "act", op: "key", key: "Enter" },
   ];
   const doc = interpret(events, { id: "redacted-keys", startUrl: "https://example.test/" });
   assert.deepEqual(doc.steps.map((step) => step.action), ["key", "key"]);
-  assert.equal(doc.steps[0]!.key, undefined);
-  assert.equal(doc.steps[0]!.value, undefined);
-  assert.equal(doc.steps[0]!.label, "Press [redacted]");
-  assert.deepEqual(doc.steps[0]!.unresolved, { reason: "redacted key" });
+  assert.equal(doc.steps[0]!.key, STRIPPED_SECRET);
+  assert.ok(doc.steps[0]!.unresolved);
   assert.equal(doc.steps[1]!.key, "Enter");
   assert.deepEqual(validateWorkflow(doc), []);
   assert.equal(validate(doc), true);
@@ -102,7 +100,7 @@ test("a refused confirm click does not keep the pre-click status as its postcond
   assert.notEqual(doc.steps[1]?.postcondition?.kind, "text");
 });
 
-test("interpret is deterministic and lifts a secret and a file without storing either", () => {
+test("interpret is deterministic and lifts a secret default and a file input", () => {
   const secret = "SuperSecretPassword!";
   const filePath = "/home/alex/secret-folder/taxes.pdf";
   const events: TrailEvent[] = [
@@ -136,7 +134,7 @@ test("interpret is deterministic and lifts a secret and a file without storing e
   const twice = interpret(events, meta);
   assert.equal(canonical(once), canonical(twice));
   const blob = canonical(once);
-  assert.equal(blob.includes(secret), false);
+  assert.equal(blob.includes(secret), true);
   assert.equal(blob.includes(filePath), false);
   assert.equal(blob.includes("taxes.pdf"), false);
   assert.equal(once.inputs.find((item) => item.type === "secret")?.name, "password");
@@ -168,7 +166,7 @@ test("interpret uses requested navigation targets while legacy navigation keeps 
   assert.equal(legacy.steps[0]?.expect?.match, "redirect.test");
 });
 
-test("sensitive generic fields omit defaults even when literal and preserve ordinary long text", () => {
+test("sensitive generic fields retain defaults beside ordinary long text", () => {
   const note = "Ordinary note. ".repeat(12);
   const events: TrailEvent[] = [
     { id: "password", ts: 1, kind: "act", op: "type", sensitive: true, literal: true, value: "demo-private-password", identity: id({ role: "textbox", name: "Secret", id: "entry" }) },
@@ -176,10 +174,10 @@ test("sensitive generic fields omit defaults even when literal and preserve ordi
     { id: "note", ts: 3, kind: "act", op: "type", value: note, identity: id({ role: "textbox", name: "Note", id: "note" }) },
   ];
   const workflow = interpret(events, { id: "wf-secret-fields", startUrl: "https://example.test/form" });
-  assert.deepEqual(workflow.inputs.map((input) => [input.type, input.default]), [["secret", undefined], ["secret", undefined], ["text", note]]);
+  assert.deepEqual(workflow.inputs.map((input) => [input.type, input.default]), [["secret", "demo-private-password"], ["secret", "654321"], ["text", note]]);
   assert.deepEqual(workflow.steps.map((step) => !!step.sensitive), [true, true, false]);
-  assert.equal(JSON.stringify(workflow).includes("demo-private-password"), false);
-  assert.equal(JSON.stringify(workflow).includes("654321"), false);
+  assert.equal(JSON.stringify(workflow).includes("demo-private-password"), true);
+  assert.equal(JSON.stringify(workflow).includes("654321"), true);
   assert.deepEqual(validateWorkflow(workflow), []);
 });
 
@@ -200,7 +198,7 @@ test("calculator clicks become number inputs and the equals check is the express
   assert.equal(JSON.stringify(doc).includes("\"7\""), true);
 });
 
-test("property: interpret drops secret input data and paths while preserving embedded free text", () => {
+test("property: interpret retains secret defaults while keeping paths in file inputs", () => {
   const secretArb = fc.stringMatching(/^[a-f0-9]{8}$/).map((s) => `ZZ${s}`);
   const pathArb = fc.stringMatching(/^\/tmp\/bao-[a-z0-9]{6}\.pdf$/);
   fc.assert(fc.property(secretArb, pathArb, fc.string({ minLength: 1, maxLength: 8 }).filter((s) => /^[a-z]+$/.test(s)), (secret, filePath, user) => {
@@ -221,10 +219,10 @@ test("property: interpret drops secret input data and paths while preserving emb
     ];
     const doc = interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] });
     const blob = canonical(doc);
-    assert.equal(doc.inputs.find((input) => input.type === "secret")!.default, undefined);
+    assert.equal(doc.inputs.find((input) => input.type === "secret")!.default, secret);
     assert.equal(doc.steps[0]!.value, "{{password}}");
     assert.equal(doc.steps[0]!.postcondition, undefined);
-    assert.equal(blob.includes(secret), false);
+    assert.equal(blob.includes(secret), true);
     const effects: [TrailEvent, string | undefined][] = [
       [events[0]!, undefined],
       [{ ...events[2]!, literal: true, afterText: `leaked ${secret}` }, `leaked ${secret}`],
@@ -355,7 +353,7 @@ test("the prompt text leaves the screenshot bytes on the audit snapshot", () => 
     intent: "Click login",
     reason: "below-threshold",
     snapshot: { screenshot: "AAAASECRETBYTES", screenshotRef: "png:16", dom: [{ testId: "login" }], ax: "button login" },
-  }, step, ["SuperSecretPassword!"]);
+  }, step);
   assert.equal(prompt.includes("AAAASECRETBYTES"), false);
   assert.equal(prompt.includes("png:16"), true);
   assert.equal(prompt.includes("login"), true);

@@ -5,7 +5,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
-import { scrubSaved } from "../../../shared/saved-secrets";
 
 export type VersionRole = "live" | "draft" | "past";
 export type VersionSource = "saved" | "heal" | "edit" | "restore" | "conflict";
@@ -92,7 +91,7 @@ function readBook(library: Library, id: string): WorkflowVersion[] {
 
 function writeBook(library: Library, id: string, versions: WorkflowVersion[]): void {
   mkdirSync(path.join(library.root, "versions"), { recursive: true });
-  writeFileSync(bookPath(library, id), JSON.stringify(scrubSaved(versions), null, 2));
+  writeFileSync(bookPath(library, id), JSON.stringify(versions, null, 2));
 }
 
 /** A missing or epoch timestamp is not a save. Wall times are milliseconds. */
@@ -314,7 +313,7 @@ export function versionDocument(library: Library, id: string, n: number): Workfl
 }
 
 export function draftVersion(library: Library, document: WorkflowV2, source: Exclude<VersionSource, "saved">): WorkflowVersion {
-  document = scrubSaved(document);
+  document = structuredClone(document);
   if (library.read(document.id).driver === "cdp-live") document.driver = "cdp-live";
   const errors = validateWorkflow(document);
   if (errors.length) throw new Error(errors.join(", "));
@@ -405,7 +404,7 @@ function cloudRows(history: CloudVersionRow[]): WorkflowVersion[] {
   const rows: WorkflowVersion[] = [];
   for (const item of history) {
     if (item.kind === "conflict" || item.document === undefined) continue;
-    const document = scrubSaved(migrate(item.document));
+    const document = migrate(item.document);
     if (validateWorkflow(document).length) continue;
     rows.push({
       n: item.version,

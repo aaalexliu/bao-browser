@@ -42,7 +42,7 @@ export function secretInputName(workflow: WorkflowV2, preferred?: string): strin
 export function secretArg(workflow: WorkflowV2, args: ReplayArgs, preferred?: string): string {
   const name = secretInputName(workflow, preferred);
   if (!name) return "";
-  const value = args[name];
+  const value = args[name] ?? workflow.inputs.find((input) => input.name === name)?.default;
   return typeof value === "string" ? value : "";
 }
 

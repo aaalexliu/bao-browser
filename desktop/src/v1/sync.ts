@@ -656,7 +656,7 @@ function stash(
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, toJson(local));
-  const theirs = scrubSaved(migrate(remote.document));
+  const theirs = migrate(remote.document);
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {

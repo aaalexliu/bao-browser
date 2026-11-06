@@ -3,7 +3,6 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { scrubSaved } from "../../../shared/saved-secrets";
 
 export function findDebugDir(): string | undefined {
   const dir = process.env.BAO_FIND_DEBUG;
@@ -33,6 +32,6 @@ export function queriesForLocators(locators: { kind: string; value?: string; rol
 export function writeFindDebug(dir: string, name: string, body: unknown, png?: Buffer): void {
   mkdirSync(dir, { recursive: true });
   const safe = name.replace(/[^\w.-]+/g, "_").slice(0, 80);
-  writeFileSync(path.join(dir, `${safe}.json`), `${JSON.stringify(scrubSaved(body), null, 2)}\n`);
+  writeFileSync(path.join(dir, `${safe}.json`), `${JSON.stringify(body, null, 2)}\n`);
   if (png && png.length) writeFileSync(path.join(dir, `${safe}.png`), png);
 }

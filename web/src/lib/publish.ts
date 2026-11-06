@@ -12,7 +12,7 @@ export interface ReleaseChange {
 
 export function redactForRelease(document: unknown): { document: unknown; changes: ReleaseChange[] } {
   const secrets = secretDefaults(document);
-  const cloned = stripUnsafe(document, secrets) as Record<string, unknown>;
+  const cloned = stripUnsafe(document) as Record<string, unknown>;
   const changes: ReleaseChange[] = [];
   if (secrets.length) {
     changes.push({ path: "inputs", before: "[secret]", after: "", reason: "secret" });

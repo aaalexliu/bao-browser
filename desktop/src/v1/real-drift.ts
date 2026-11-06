@@ -21,7 +21,6 @@ import { osNodes, osPress, type OsNode } from "../proxy/os";
 import { DEFAULT_PROMOTE_AFTER, noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
 import { replay, type LocatorMode } from "./replay";
 import type { WorkflowV2 } from "./schema";
-import { scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
 
 export interface CapturedWeb {
   id: string;
@@ -791,8 +790,8 @@ function displaySize(): string {
   return "1400x900";
 }
 
-export function appendDriftTrail(file: string, event: unknown, context: SavedContext): void {
-  appendFileSync(file, JSON.stringify(scrubSaved(event, context)) + "\n");
+export function appendDriftTrail(file: string, event: unknown): void {
+  appendFileSync(file, JSON.stringify(event) + "\n");
 }
 
 export async function runHeal(dir: string, trailPath: string, headed: boolean): Promise<string> {
@@ -822,7 +821,7 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
       repairs: result.repairs,
       reason: result.failure?.reason,
       brokenAttr: result.failure?.brokenAttr,
-    }, { workflow });
+    });
     if (result.status !== "passed" || !heal?.proposedPatch) {
       return `heal did not pass: ${result.failure?.reason || "no patch"}`;
     }
@@ -834,16 +833,16 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
       patch: heal.proposedPatch,
       before: heal.failedStep,
     });
-    appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()), { workflow });
+    appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()));
     const driftOk = await promotionPasses(page, saved);
     promotion = noteDrift(promotion, driftOk);
-    appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()), { workflow });
+    appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()));
     if (!driftOk) return "heal reverted on drift";
     for (let i = 0; i < DEFAULT_PROMOTE_AFTER; i++) {
       await page.goto(ADD, { waitUntil: "domcontentloaded", timeout: 45000 });
       const again = await replay(saved, {}, new BrowserDriver(page), { locators: "all", heal: unavailableHeal() });
       promotion = noteReplay(promotion, again.status === "passed");
-      appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()), { workflow });
+      appendDriftTrail(trailPath, promotionEvent(promotion, Date.now()));
       if (again.status !== "passed") return "heal reverted on replay";
     }
     saved = keepPatch(saved, heal.failedStep.id, heal.proposedPatch);
@@ -907,8 +906,8 @@ async function main(): Promise<void> {
   if (part === "web" || part === "all") {
     const { captured, stale, errors } = await captureWeb();
     mkdirSync(path.join(out, "workflows"), { recursive: true });
-    for (const item of captured) writeFileSync(path.join(out, "workflows", `${item.id}.json`), JSON.stringify(scrubSaved(item.workflow), null, 2));
-    if (stale) writeFileSync(path.join(out, "workflows", "internet-add.json"), JSON.stringify(scrubSaved(stale), null, 2));
+    for (const item of captured) writeFileSync(path.join(out, "workflows", `${item.id}.json`), JSON.stringify(item.workflow, null, 2));
+    if (stale) writeFileSync(path.join(out, "workflows", "internet-add.json"), JSON.stringify(stale, null, 2));
     const diffs: TrajectoryDiff[] = [];
     const primaryRows = [...errors, ...await replayWeb(captured, "primary", headed)];
     const multiRows = [...errors, ...await replayWeb(captured, "all", headed, diffs)];
@@ -920,7 +919,7 @@ async function main(): Promise<void> {
     const multi = driftReport(multiRows, generatedAt);
     writeFileSync(path.join(out, "drift-real-before.md"), `${driftMarkdown(primary)}\n${WEB_NOTES}`);
     writeFileSync(path.join(out, "drift-real.md"), `${driftMarkdown(multi)}\n${comparisonMarkdown(primary, multi)}\n${trajectoryMarkdown(diffs)}\n${WEB_NOTES}`);
-    writeFileSync(path.join(out, "drift-real.json"), JSON.stringify(scrubSaved({ primary, multi }), null, 2));
+    writeFileSync(path.join(out, "drift-real.json"), JSON.stringify({ primary, multi }, null, 2));
     console.log(comparisonMarkdown(primary, multi));
   }
   if (part === "desktop" || part === "all") {
@@ -930,9 +929,9 @@ async function main(): Promise<void> {
     const report = driftReport(desktop.rows, generatedAt);
     mkdirSync(path.join(out, "workflows"), { recursive: true });
     writeFileSync(path.join(out, "drift-real-desktop.md"), `${driftMarkdown(report)}\n${desktop.notes.join("\n")}\n${comparisonMarkdown(driftReport(primary.rows, generatedAt), report)}\n${trajectoryMarkdown(desktopDiffs)}\n${DESKTOP_NOTES}`);
-    writeFileSync(path.join(out, "drift-real-desktop.json"), JSON.stringify(scrubSaved({ multi: report, primary: driftReport(primary.rows, generatedAt), notes: desktop.notes }), null, 2));
+    writeFileSync(path.join(out, "drift-real-desktop.json"), JSON.stringify({ multi: report, primary: driftReport(primary.rows, generatedAt), notes: desktop.notes }, null, 2));
     for (const workflow of desktop.workflows) {
-      writeFileSync(path.join(out, "workflows", `${workflow.id}.json`), JSON.stringify(scrubSaved(workflow), null, 2));
+      writeFileSync(path.join(out, "workflows", `${workflow.id}.json`), JSON.stringify(workflow, null, 2));
     }
   }
   if (part === "heal") {

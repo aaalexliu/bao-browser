@@ -34,12 +34,10 @@ function tree(nodes: Identity[]): LiveTree {
   return { nodes, texts: [], values: [] };
 }
 
-test("a secret is asked again and is not written into the re-run field", () => {
-  const html = secretInput("password", "Password", true);
+test("the re-run field retains a saved secret value", () => {
+  const html = secretInput("password", "Password", "SuperSecretPassword!");
   assert.match(html, /type="password"/);
-  assert.match(html, /Last run used a secret/);
-  assert.equal(html.includes("value="), false);
-  assert.equal(html.includes("SuperSecretPassword!"), false);
+  assert.match(html, /value="SuperSecretPassword!"/);
   assert.equal(html.includes("••••"), false);
   const viewer = runViewer({
     id: "run-9",
@@ -57,7 +55,7 @@ test("a secret is asked again and is not written into the re-run field", () => {
   assert.match(viewer, /note: ada note/);
   assert.match(viewer, /password: ••••/);
   assert.equal(viewer.includes("note ada note"), false);
-  assert.match(viewer, /A secret is asked again and is not kept in the run/);
+  assert.doesNotMatch(viewer, /A secret is asked again and is not kept in the run/);
   assert.equal(viewer.includes("SuperSecretPassword!"), false);
   assert.equal(viewer.includes("BaoSecretFixture9kQ7m"), false);
 });

@@ -4,7 +4,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isSensitiveValue } from "../../../shared/mask";
-import { scrubSaved } from "../../../shared/saved-secrets";
 import { AuditTrail, type AuditSource } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { MacOsHelper, type AxNode } from "./os-macos";
@@ -64,15 +63,15 @@ function log(line: string): void {
   process.stderr.write(`${line}\n`);
   const trace = process.env.BAO_TRACE;
   if (!trace) return;
-  void import("node:fs").then((fs) => fs.appendFileSync(trace, `${scrubSaved(line)}\n`));
+  void import("node:fs").then((fs) => fs.appendFileSync(trace, `${line}\n`));
 }
 
 async function saveTrail(): Promise<void> {
   if (!trailPath) return;
-  await writeFile(trailPath, JSON.stringify(scrubSaved({
+  await writeFile(trailPath, JSON.stringify({
     source: { agent: source.agent, vendor: source.vendor, model: source.adapter },
     events: trail.events,
-  }), null, 2));
+  }, null, 2));
   if (ownedPath) await writeFile(ownedPath, JSON.stringify(owned));
 }
 
@@ -240,7 +239,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<{ 
     const bundle = await ensure(app);
     await guardTextEdit(app, bundle);
     const text = String(args.text ?? "");
-    const acted = await executor(bundle).act({ op: "type", text }, origin({ tool: name, app: args.app, text: isSensitiveValue(text) ? "[masked]" : text }));
+    const acted = await executor(bundle).act({ op: "type", text }, origin({ tool: name, app: args.app, text }));
     const image = await windowShot(bundle);
     remember(app, image);
     return { text: acted.unresolved ? `unresolved: ${acted.reason}` : "typed", png: image, error: acted.unresolved };

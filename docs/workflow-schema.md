@@ -17,7 +17,7 @@ Collected before replay starts. The CLI and MCP pass the same JSON object the fo
 | type | meaning |
 | --- | --- |
 | `text` | Any string. The form uses a multiline field. |
-| `secret` | Masked runtime input. No usable saved default; cleanup may leave a stripped-value marker. See [saved-file secret handling](permissions.md#secret-text-in-saved-files). |
+| `secret` | Password input with a saved default or a runtime override. Old stripped-value markers still mean missing data. See [saved-file secret handling](permissions.md#secret-text-in-saved-files). |
 | `number` | A number. Calculator digits use this. |
 | `choice` | One of `choices`. |
 | `file` | One file, or many when `multiple` is set. The workflow stores the input name, not a path. |
@@ -83,6 +83,6 @@ This is the login step from `examples/workflows/browser-form.json`, captured fro
 
 ## Interpret
 
-`desktop/src/v1/interpret.ts` is deterministic. The same trail produces byte-identical JSON (`canonical`). It drops screenshot reads, moves, waits, and unresolved no-ops, merges consecutive typing into one field, and lifts typed values into inputs unless marked literal. Target matching in interpretation, condensation, and model-revision validation requires the same `beforeUrl` as well as the same control, so identical element paths or ids on different pages stay separate. A type event with `valueMode: "full"` replaces the earlier merged value, including an empty string, instead of appending a typed chunk. `desktop/test/unit/recording-page-boundary.test.ts` covers page boundaries; `desktop/test/unit/live-oauth-regressions.test.ts` covers full-field corrections. A secret (password field, sensitive flag, or a known secret string) becomes a `secret` input with no default and no literal. A file event becomes a `file` input. A path on the trail is not copied. Consecutive digit presses on a calculator become one number input.
+`desktop/src/v1/interpret.ts` is deterministic. The same trail produces byte-identical JSON (`canonical`). It drops screenshot reads, moves, waits, and unresolved no-ops, merges consecutive typing into one field, and lifts typed values into inputs unless marked literal. Target matching in interpretation, condensation, and model-revision validation requires the same `beforeUrl` as well as the same control, so identical element paths or ids on different pages stay separate. A type event with `valueMode: "full"` replaces the earlier merged value, including an empty string, instead of appending a typed chunk. `desktop/test/unit/recording-page-boundary.test.ts` covers page boundaries; `desktop/test/unit/live-oauth-regressions.test.ts` covers full-field corrections. A secret (password field, sensitive flag, or a known secret string) becomes a `secret` input with the recorded value as its default. A file event becomes a `file` input. A path on the trail is not copied. Consecutive digit presses on a calculator become one number input.
 
 An optional model pass may later name the workflow and suggest selection rules. It is not required, and it is not implemented as a network call in the default path. The deterministic pass is the one the tests replay.

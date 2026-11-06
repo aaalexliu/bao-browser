@@ -16,6 +16,7 @@ import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
+import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { controlKey, visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
@@ -939,17 +940,15 @@ function skipMark(ms: number, left?: string): string {
   return `<span class="skip-marker" data-skipped="${ms}"${style}>${esc(skipLabel(ms))}</span>`;
 }
 
-/** The re-run form asks for a secret again. The stored mask is not a value. */
-export function secretInput(name: string, label: string, hadSecret: boolean): string {
-  const hint = hadSecret ? "Last run used a secret" : "";
-  return `<label>${esc(label)} <input name="${esc(name)}" type="password" autocomplete="off" placeholder="${esc(hint)}"></label>`;
+export function secretInput(name: string, label: string, value: string): string {
+  return `<label>${esc(label)} <input name="${esc(name)}" type="password" autocomplete="off" value="${esc(value)}"></label>`;
 }
 
 /** The run form. Defaults come from the same token fields the step text shows. */
 export function runField(input: TokenInput, previous?: string, now = new Date()): string {
   const shown = tokenFields(input);
   const label = esc(shown.label);
-  if (shown.masked) return secretInput(input.name, shown.label, Boolean(previous));
+  if (shown.masked) return secretInput(input.name, shown.label, previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default);
   if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || shown.default)}"></label>`;
   if (input.type === "choice") {
     const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
@@ -975,7 +974,7 @@ export function runField(input: TokenInput, previous?: string, now = new Date())
     }
     return `<label class="date-field">${label} <input name="${esc(input.name)}" type="text" value="${esc(expr)}" autocomplete="off" data-date="${esc(expr)}"> <span class="date-preview" data-resolved="${esc(preview)}">Resolves to ${esc(preview)}</span></label>`;
   }
-  const text = previous && previous !== "••••" ? previous : shown.default;
+  const text = previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default;
   return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;
 }
 
@@ -983,7 +982,7 @@ function storedInputsLine(inputs: Record<string, string> | undefined): string {
   const rows = Object.entries(inputs || {});
   if (!rows.length) return "";
   const bits = rows.map(([key, value]) => `${esc(key)}: ${esc(value)}`);
-  return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}. A secret is asked again and is not kept in the run.</p>`;
+  return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}.</p>`;
 }
 
 export function reviewItems(runs: RunSummary[] | undefined): StepReview[] {

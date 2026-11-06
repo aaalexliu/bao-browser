@@ -7,7 +7,7 @@
 // marked low-confidence. A browser error page is not an effect.
 
 import type { Expectation, Identity, Postcondition, WorkflowStep } from "./schema";
-import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { hasStrippedSecret } from "../../../shared/saved-secrets";
 
 export const SETTLED_EXPECT = "no error and the page settled";
 
@@ -53,16 +53,16 @@ export function inferExpect(
   }
   const errorPage = isBrowserError(event.afterUrl);
   if (!errorPage) {
-    const appeared = scrub(appearedText(event.subtreeBefore, event.subtreeAfter), secrets);
+    const appeared = savedText(appearedText(event.subtreeBefore, event.subtreeAfter));
     if (appeared) return textCheck(templateText(appeared, known));
-    const after = scrub(event.afterText, secrets);
+    const after = savedText(event.afterText);
     if (after && after !== ownLabel(event.identity)) return textCheck(templateText(after, known));
   }
   if (!opts.secret && isTypeOp(event.op) && event.value && !secrets.includes(event.value)) {
     return valueCheck(opts.input ? `{{${opts.input}}}` : event.value);
   }
   if (!opts.secret && event.valueBefore != null && event.valueAfter != null && event.valueBefore !== event.valueAfter) {
-    const next = scrub(event.valueAfter, secrets);
+    const next = savedText(event.valueAfter);
     if (next) return valueCheck(templateText(next, known));
   }
   if (typeof event.checked === "boolean" && event.identity) {
@@ -192,10 +192,8 @@ export function isBrowserError(url: string | undefined): boolean {
   return /^chrome-error:/i.test(url) || /chromewebdata/i.test(url) || /^about:neterror/i.test(url);
 }
 
-function scrub(value: string | undefined, secrets: readonly string[]): string | undefined {
-  if (!value) return undefined;
-  const saved = scrubSaved({ op: "type", value }, { secrets }).value;
-  return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
+function savedText(value: string | undefined): string | undefined {
+  return hasStrippedSecret(value) ? undefined : value;
 }
 
 function flat(value: string): string {

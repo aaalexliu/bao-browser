@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
-import { scrubSaved, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver, type ReplayOptions } from "../../src/v1/replay";
@@ -26,7 +26,7 @@ const entries: { name: string; identity?: Partial<Identity>; event?: Partial<Tra
   { name: "live field naming", event: { sensitive: true, source: { agent: "live-model", vendor: "bao", adapter: "cdp-live" } } },
 ];
 
-test("secret slots keep only field structure and replay beside an unchanged ordinary field", { timeout: 60_000 }, async (t) => {
+test("secret slots keep typed values and replay beside an unchanged ordinary field", { timeout: 60_000 }, async (t) => {
   const server = createServer((_req, res) => res.end(`<!doctype html><html><body>
     <label>Credential <input id="credential" name="credential" type="password" autocomplete="current-password"></label>
     <label>Display name <input id="display" name="display" oninput="document.querySelector('output').textContent='Saved display name'"></label>
@@ -54,7 +54,7 @@ test("secret slots keep only field structure and replay beside an unchanged ordi
       const original = structuredClone(events);
       const meta = { id: "slots", startUrl: url, secrets: entry.name === "listed secret" ? [secret] : undefined };
       const workflow = interpret(events, meta);
-      assert.equal(JSON.stringify(workflow).includes(secret), false, entry.name);
+      assert.equal(workflow.inputs[0]!.default, secret, entry.name);
       assert.deepEqual(events, original, entry.name);
       assert.deepEqual(validateWorkflow(workflow), [], entry.name);
       const slot = workflow.steps[0]!;
@@ -114,7 +114,7 @@ test("secret-entry locator echoes use the typed value without changing structura
         const meta = { id: "locator-echo", startUrl: "http://127.0.0.1/", preserveActions };
         const fallback = interpret([{ ...event, locators: undefined }], meta).steps[0]!.locators;
         for (const workflow of [interpret([event], meta), explain([event], meta).workflow]) {
-          assert.equal(JSON.stringify(workflow).includes(secret), false);
+          assert.equal(workflow.inputs[0]!.default, secret);
           assert.deepEqual(workflow.steps[0]!.identity, identity);
           assert.deepEqual(workflow.steps[0]!.locators, neighbors.length ? safe : fallback);
           assert.deepEqual(validateWorkflow(workflow), []);
@@ -127,7 +127,7 @@ test("secret-entry locator echoes use the typed value without changing structura
   }
 });
 
-test("every replay exit waits for capture before copying and strips only owned whole values", async () => {
+test("every replay exit waits for capture before copying without stripping values", async () => {
   const base: WorkflowStep = { id: "entry", index: 0, action: "click", label: secret, surface: "dom", timeoutMs: 0, identity: { ...field, role: "button", id: "missing" } };
   const cases: { name: string; step?: Partial<WorkflowStep>; opts?: ReplayOptions; expected: string; triage?: string }[] = [
     { name: "never", step: { heal: "never" }, expected: "failed", triage: "never" },
@@ -167,11 +167,10 @@ test("every replay exit waits for capture before copying and strips only owned w
     assert.equal(result.steps[0]?.triage, row.triage, row.name);
     assert.deepEqual(result.steps[0]?.snapshot, row.name === "capture failure" ? undefined : snapshot, row.name);
     assert.equal(result.modelCalls, 0, row.name);
-    assert.deepEqual(result.trail, [{ ...trail[0], value: STRIPPED_SECRET }], row.name);
+    assert.deepEqual(result.trail, trail, row.name);
     assert.equal(trail[0]!.value, secret, row.name);
     assert.equal(result.console?.[0]?.text, secret, row.name);
     assert.equal(result.network?.[0]?.url, `https://example.test/${secret}`, row.name);
-    assert.deepEqual(scrubSaved(result, { secrets: [secret] }), result, row.name);
-    if (result.failure) assert.deepEqual(result.failure.snapshot, { dom: { op: "type", value: STRIPPED_SECRET, label: secret }, ax: snapshot.ax }, row.name);
+    if (result.failure) assert.deepEqual(result.failure.snapshot, { dom: { op: "type", value: secret, label: secret }, ax: snapshot.ax }, row.name);
   }
 });

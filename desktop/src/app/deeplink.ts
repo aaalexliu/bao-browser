@@ -22,7 +22,7 @@ interface OpenedWorkflowView {
   importLink: string;
   questions: ImportQuestion[];
   saved: boolean;
-  /** Non-secret values from a run link. Secrets are never copied here. */
+  /** Input values from a run link. */
   inputs?: Record<string, string>;
 }
 
@@ -83,13 +83,9 @@ export function decideOpen(
   };
   if (parsed.kind === "run") {
     if (!local) return { error: "workflow not on this Mac" };
-    const secret = (local.inputs || []).find((input) => input.type === "secret" && parsed.inputs && Object.prototype.hasOwnProperty.call(parsed.inputs, input.name));
-    if (secret) {
-      return { error: `Secret inputs are re-asked on this device. Remove ${secret.label || secret.name} from the link.` };
-    }
     const inputs: Record<string, string> = {};
     for (const input of local.inputs || []) {
-      if (input.type === "secret" || input.type === "file") continue;
+      if (input.type === "file") continue;
       const value = parsed.inputs?.[input.name];
       if (typeof value === "string" || typeof value === "number") inputs[input.name] = String(value);
     }

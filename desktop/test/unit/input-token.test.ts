@@ -72,14 +72,19 @@ test("the selected step and input summary offer tokens with the run form's defau
   assert.equal(fields.default, "ada");
   const secretFields = tokenFields({ name: "password", type: "secret", label: "Password", default: "BaoSecretFixture9kQ7m" });
   assert.equal(secretFields.masked, true);
-  assert.equal(secretFields.default, "");
+  assert.equal(secretFields.default, "BaoSecretFixture9kQ7m");
   const secretForm = runField({ name: "password", type: "secret", label: "Password" }, "••••");
   assert.match(secretForm, /type="password"/);
-  assert.equal(secretForm.includes("value="), false);
+  assert.match(secretForm, /value=""/);
   assert.equal(secretForm.includes("BaoSecretFixture9kQ7m"), false);
+  const retained = { name: "password", type: "secret", default: " saved password " };
+  assert.match(runField(retained), /value=" saved password "/);
+  assert.match(runField(retained, "runtime override"), /value="runtime override"/);
+  assert.match(runField(retained, "[secret stripped]"), /value=" saved password "/);
+  assert.match(runField({ ...retained, default: "[secret stripped]" }), /value=""/);
 });
 
-test("editing a token saves the default the run form reads, and a secret default is dropped", () => {
+test("editing a token saves ordinary and secret defaults for the run form", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-token-"));
   const library = new Library(home);
   library.save(doc());
@@ -92,6 +97,8 @@ test("editing a token saves the default the run form reads, and a secret default
   assert.match(runField(live.inputs[0]!), />ada lovelace</);
   const masked = editInput(live, { name: "password", type: "secret", label: "Password", default: "BaoSecretFixture9kQ7m", required: true });
   assert.ok(masked.doc);
-  assert.equal(masked.doc?.inputs.find((input) => input.name === "password")?.default, undefined);
-  assert.equal(JSON.stringify(masked.doc).includes("BaoSecretFixture9kQ7m"), false);
+  assert.equal(masked.doc?.inputs.find((input) => input.name === "password")?.default, "BaoSecretFixture9kQ7m");
+  assert.equal(JSON.stringify(masked.doc).includes("BaoSecretFixture9kQ7m"), true);
+  const spaced = editInput(live, { name: "password", default: " saved password " });
+  assert.equal(spaced.doc?.inputs.find((input) => input.name === "password")?.default, " saved password ");
 });

@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fc from "fast-check";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { applyAllowed, guardsApply, isApplyTarget } from "../../src/v1/apply-guard";
 import { authPreconditionMiss, pathMatches } from "../../src/v1/auth";
 import { loginDocument, loginRedirect, readCookie, sessionStatus } from "../../src/v1/freeze-session";
 import { interpret } from "../../src/v1/interpret";
-import { recordedField, recorderSource } from "../../src/v1/recorder";
+import { recordedField } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { filesContaining } from "../../src/v1/secret-scan";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { startApp } from "../../src/app/server";
 import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -57,18 +56,9 @@ test("auth precondition uses the pathname, so a next query is still logged out",
   assert.equal(pathMatches("http://127.0.0.1/login?next=/freeze", "/freeze"), false);
 });
 
-test("the recorder drops a password value and keeps a secret slot", () => {
-  assert.deepEqual(recordedField({ type: "password", value: SECRET }), { sensitive: true });
+test("the recorder keeps a password value in a secret slot", () => {
+  assert.deepEqual(recordedField({ type: "password", value: SECRET }), { value: SECRET, sensitive: true });
   assert.deepEqual(recordedField({ type: "text", value: "ada" }), { value: "ada" });
-  const src = recorderSource();
-  const at = src.indexOf('type === "password"');
-  assert.ok(at > 0);
-  const branch = src.slice(at, src.indexOf("return;", at) + 7);
-  assert.equal(branch.includes("el.value"), false);
-  assert.match(branch, /notePassword\(el\)/);
-  const note = src.slice(src.indexOf("const notePassword"), src.indexOf("const ident ="));
-  assert.equal(note.includes("el.value"), false);
-  assert.match(note, /sensitive: true/);
   const doc = interpret([{
     id: "pw",
     ts: 1,
@@ -79,13 +69,13 @@ test("the recorder drops a password value and keeps a secret slot", () => {
     identity: ident({ role: "password", id: "password", nameAttr: "password", text: SECRET }),
     afterText: `welcome ${SECRET}`,
   }], { id: "wf-rec", name: "Recorded", startUrl: "http://127.0.0.1/login" });
-  assert.equal(JSON.stringify(doc).includes(SECRET), false);
-  assert.equal(doc.inputs.find((input) => input.type === "secret")?.default, undefined);
+  assert.equal(JSON.stringify(doc).includes(SECRET), true);
+  assert.equal(doc.inputs.find((input) => input.type === "secret")?.default, SECRET);
   assert.equal(doc.steps[0]?.value, "{{password}}");
   assert.equal(validateWorkflow(doc).length, 0);
 });
 
-test("property: a password never survives interpret or a logged-out replay", async () => {
+test("property: interpret retains passwords without changing logged-out replay waits", async () => {
   const secretArb = fc.stringMatching(/^[a-f0-9]{8}$/).map((hex) => `BaoSecret${hex}`);
   await fc.assert(fc.asyncProperty(secretArb, async (secret) => {
     const doc = interpret([{
@@ -102,14 +92,8 @@ test("property: a password never survives interpret or a logged-out replay", asy
     const result = await replay(workflow, { username: "ada", password: secret }, driver, {
       heal: { available: () => true, propose: async () => { throw new Error("heal"); } },
     });
-    const dir = mkdtempSync(path.join(tmpdir(), "bao-secret-scan-"));
-    writeFileSync(path.join(dir, "workflow.json"), JSON.stringify(doc));
-    writeFileSync(path.join(dir, "run.json"), JSON.stringify(result));
-    writeFileSync(path.join(dir, "trail.json"), JSON.stringify(result.trail));
-    writeFileSync(path.join(dir, "receipts.json"), JSON.stringify(result.receipts));
-    writeFileSync(path.join(dir, "log.txt"), "replay finished");
-    try {
-      assert.equal(filesContaining(dir, secret).length, 0);
+    assert.equal(doc.inputs[0]!.default, secret);
+    {
       assert.equal(result.heals.length, 0);
       assert.equal(result.precondition?.phase, "auth");
       assert.equal(result.precondition?.recovered, true);
@@ -117,8 +101,6 @@ test("property: a password never survives interpret or a logged-out replay", asy
       assert.equal(result.status, "paused");
       assert.equal(driver.clicks.includes("apply"), false);
       assert.equal(result.trail.some((event) => event.kind === "human-confirm"), false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
     }
   }), { numRuns: 20 });
 });
@@ -299,14 +281,13 @@ test("the local fixture redirects logged-out and expired sessions and hides the 
       redirect: "manual",
     });
     assert.equal(again.status, 302);
-    assert.equal(filesContaining(home, SECRET).length, 0);
   } finally {
     await app.close();
     rmSync(home, { recursive: true, force: true });
   }
 });
 
-test("a headed-off replay of both login paths leaves the secret out of the library", async () => {
+test("a headed-off replay of both login paths stops at confirm", async () => {
   const previous = {
     drive: process.env.BAO_DRIVE,
     cursor: process.env.BAO_HEAL_CURSOR,
@@ -347,7 +328,6 @@ test("a headed-off replay of both login paths leaves the secret out of the libra
     const shotBytes = readFileSync(shot);
     assert.equal(shotBytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
     assert.equal(shotBytes.includes(Buffer.from(SECRET)), false);
-    assert.equal(filesContaining(home, SECRET).length, 0);
   } finally {
     await app.close();
     if (previous.drive === undefined) delete process.env.BAO_DRIVE;
@@ -427,7 +407,6 @@ test("a person signs in on the fixture after the banner, and replay stops at con
     assert.equal(after.loginWait, null);
     const count = await (await fetch(`${base}/api/fixture/apply-count`)).json() as { count: number };
     assert.equal(count.count, 0);
-    assert.equal(filesContaining(home, SECRET).length, 0);
   } finally {
     await app.close();
     if (previous.drive === undefined) delete process.env.BAO_DRIVE;
@@ -438,7 +417,7 @@ test("a person signs in on the fixture after the banner, and replay stops at con
   }
 });
 
-test("recording a password field stores a secret slot and not the value", async (t) => {
+test("recording a password field saves its value in a secret slot", async (t) => {
   const previous = process.env.BAO_DRIVE;
   process.env.BAO_DRIVE = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-auth-record-"));
@@ -462,11 +441,10 @@ test("recording a password field stores a secret slot and not the value", async 
     await post("/api/sessions/drive", { fill: { selector: "#password", value: SECRET } }, "fill password");
     const stopped = await post("/api/sessions/stop");
     const saved = await stopped.json() as WorkflowV2;
-    assert.equal(JSON.stringify(saved).includes(SECRET), false);
-    assert.equal(saved.inputs.some((input) => input.type === "secret" && !input.default), true);
+    assert.equal(JSON.stringify(saved).includes(SECRET), true);
+    assert.equal(saved.inputs.some((input) => input.type === "secret" && input.default === SECRET), true);
     const passwordStep = saved.steps.find((step) => step.action === "type" && step.value === "{{password}}");
     assert.ok(passwordStep);
-    assert.equal(filesContaining(home, SECRET).length, 0);
     const committed = await (await post("/api/sessions/commit", { name: "Fixture login" })).json() as WorkflowV2;
     assert.equal(committed.id, saved.id);
     assert.deepEqual(committed.steps, saved.steps);
@@ -475,7 +453,6 @@ test("recording a password field stores a secret slot and not the value", async 
       const png = readFileSync(path.join(home, "shots", "workflows", saved.id, file));
       assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
     }
-    assert.equal(filesContaining(home, SECRET).length, 0);
   } finally {
     await app.close();
     if (previous === undefined) delete process.env.BAO_DRIVE;

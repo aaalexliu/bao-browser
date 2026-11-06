@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { isSealedArtifact, scrubSaved } from "../../../shared/saved-secrets";
+import { isSealedArtifact } from "../../../shared/saved-secrets";
 import type { HealSettings, HealSource } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
@@ -195,17 +195,8 @@ export class Library {
     return doc;
   }
 
-  scrub<T>(value: T, workflowId?: string, args?: Record<string, unknown>, secrets?: readonly string[]): T {
-    let workflow: WorkflowV2 | undefined;
-    if (workflowId) {
-      try { workflow = JSON.parse(readFileSync(this.file(workflowId), "utf8")) as WorkflowV2; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    }
-    return scrubSaved(value, { workflow, args, secrets });
-  }
-
   save(doc: WorkflowV2): void {
-    const saved = scrubSaved(doc);
+    const saved = structuredClone(doc);
     if (existsSync(this.file(saved.id)) && this.read(saved.id).driver === "cdp-live") saved.driver = "cdp-live";
     const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));
@@ -233,7 +224,7 @@ export class Library {
   }
 
   saveTrail(id: string, events: unknown): void {
-    writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(this.scrub(events, id), null, 2));
+    writeFileSync(path.join(this.root, "trails", `${id}.json`), JSON.stringify(events, null, 2));
   }
 
   appendTrail(id: string, event: unknown): unknown[] {
@@ -244,13 +235,13 @@ export class Library {
       events = Array.isArray(current) ? current : [current];
     } catch { /* first event */ }
     events.push(event);
-    writeFileSync(file, JSON.stringify(this.scrub(events, id), null, 2));
+    writeFileSync(file, JSON.stringify(events, null, 2));
     return events;
   }
 
   savePromotion(promotion: unknown & { workflowId: string }): void {
     mkdirSync(path.join(this.root, "promotions"), { recursive: true });
-    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(this.scrub(promotion, promotion.workflowId), null, 2));
+    writeFileSync(path.join(this.root, "promotions", `${promotion.workflowId}.json`), JSON.stringify(promotion, null, 2));
   }
 
   readPromotion(workflowId: string): { workflowId: string; status: string; drift: string; replays: number; healId: string; stepId: string; patch: unknown; before: unknown; reason?: string; version?: number } | undefined {
@@ -274,14 +265,14 @@ export class Library {
   saveIntentEval(id: string, pair: unknown): void {
     const dir = path.join(this.root, "evals", "intent");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(scrubSaved(pair), null, 2));
+    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(pair, null, 2));
   }
 
   saveTeachIntentCase(id: string, doc: unknown): void {
     const safe = id.replace(/[^A-Za-z0-9._-]/g, "_");
     const dir = path.join(this.root, "evals", "intent", "cases");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, `${safe}.json`), JSON.stringify(scrubSaved(doc), null, 2));
+    writeFileSync(path.join(dir, `${safe}.json`), JSON.stringify(doc, null, 2));
   }
 
   readIntentEval(id: string): unknown {
@@ -301,7 +292,7 @@ export class Library {
     const file = path.join(this.root, "runs", `${run.id}.json`);
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporary, JSON.stringify(this.scrub(run, run.workflowId), null, 2));
+      writeFileSync(temporary, JSON.stringify(run, null, 2));
       renameSync(temporary, file);
     } finally {
       rmSync(temporary, { force: true });
@@ -390,7 +381,7 @@ export class Library {
 
   savePublicInputs(id: string, inputs: Record<string, string | number>): void {
     mkdirSync(path.join(this.root, "inputs"), { recursive: true });
-    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(this.scrub(inputs, id, inputs), null, 2));
+    writeFileSync(path.join(this.root, "inputs", `${this.safe(id)}.json`), JSON.stringify(inputs, null, 2));
   }
 
   readPublicInputs(id: string): Record<string, string | number> {
@@ -404,7 +395,7 @@ export class Library {
   /** Kept heal for the next sync push. Separate from the promotion tracker. */
   noteHealPromotion(id: string, heal: unknown): void {
     mkdirSync(path.join(this.root, "promotions"), { recursive: true });
-    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(this.scrub(withoutShots(heal), id), null, 2));
+    writeFileSync(path.join(this.root, "promotions", `${this.safe(id)}.heal.json`), JSON.stringify(withoutShots(heal), null, 2));
   }
 
   readKeptHeal(id: string): unknown {

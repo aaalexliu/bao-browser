@@ -2,7 +2,6 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. Keeping a patch stores a draft. The live workflow changes when that draft is promoted.
 
-import { scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
 import { withHealVersion, withRevertVersion } from "./element-history";
@@ -83,7 +82,7 @@ export type HealAttempt = HealProposal | (Omit<HealProposal, "patch"> & { patch?
 
 export interface HealProvider {
   available(): boolean;
-  propose(failure: StepFailure, step: WorkflowStep, context?: SavedContext): Promise<HealAttempt | null>;
+  propose(failure: StepFailure, step: WorkflowStep): Promise<HealAttempt | null>;
 }
 
 export type HealSource =
@@ -130,10 +129,8 @@ export function promptSnapshot(snapshot: FailureSnapshot): FailureSnapshot {
   };
 }
 
-export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: string[], context: SavedContext = {}): string {
-  const saved = scrubSaved({ failure: { ...failure, snapshot: promptSnapshot(failure.snapshot) }, step }, {
-    ...context, secrets: [...secrets, ...(context.secrets ?? [])],
-  });
+export function buildPrompt(failure: StepFailure, step: WorkflowStep): string {
+  const saved = { failure: { ...failure, snapshot: promptSnapshot(failure.snapshot) }, step };
   return [
     "A replay step missed its target or its postcondition.",
     `Intent: ${saved.failure.intent}`,
@@ -150,7 +147,6 @@ export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: s
 export function llmHealFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   fetchImpl: typeof fetch = fetch,
-  secrets: string[] = [],
 ): HealProvider {
   const openai = env.OPENAI_API_KEY;
   const anthropic = env.ANTHROPIC_API_KEY;
@@ -158,9 +154,9 @@ export function llmHealFromEnv(
     available() {
       return !!(openai || anthropic);
     },
-    async propose(failure, step, context) {
+    async propose(failure, step) {
       if (!openai && !anthropic) return null;
-      const prompt = buildPrompt(failure, step, secrets, context);
+      const prompt = buildPrompt(failure, step);
       const provider = openai ? "openai" : "anthropic";
       const name = openai
         ? env.BAO_OPENAI_MODEL || "gpt-4.1-mini"
@@ -223,8 +219,8 @@ export function unavailableHeal(): HealProvider {
 export function cursorSessionHeal(readResponse: () => string): HealProvider {
   return {
     available: () => true,
-    async propose(failure, step, context) {
-      const prompt = buildPrompt(failure, step, [], context);
+    async propose(failure, step) {
+      const prompt = buildPrompt(failure, step);
       let raw = "";
       try {
         raw = readResponse();
@@ -247,25 +243,25 @@ export function cursorSessionHeal(readResponse: () => string): HealProvider {
  * This process does not invent the patch. The Cursor CLI path calls this
  * only when print mode cannot run.
  */
-export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env, secrets: string[] = []): HealProvider {
+export function cursorHeal(dir: string, env: NodeJS.ProcessEnv = process.env): HealProvider {
   return {
     available: () => true,
-    async propose(failure, step, context = {}) {
+    async propose(failure, step) {
       const { mkdirSync, readFileSync, unlinkSync, writeFileSync } = await import("node:fs");
       const path = await import("node:path");
       mkdirSync(dir, { recursive: true });
       if (failure.snapshot.screenshot) {
         writeFileSync(path.join(dir, "heal-shot.png"), Buffer.from(failure.snapshot.screenshot, "base64"));
       }
-      const prompt = buildPrompt(failure, step, secrets, context);
-      writeFileSync(path.join(dir, "heal-request.json"), JSON.stringify(scrubSaved({
+      const prompt = buildPrompt(failure, step);
+      writeFileSync(path.join(dir, "heal-request.json"), JSON.stringify({
         intent: failure.intent,
         phase: failure.phase,
         reason: failure.reason,
         step,
         dom: failure.snapshot.dom,
         prompt,
-      }, { ...context, secrets: [...secrets, ...(context.secrets ?? [])] }), null, 2));
+      }, null, 2));
       const responsePath = path.join(dir, "heal-response.json");
       try { unlinkSync(responsePath); } catch { /* first request */ }
       const deadline = Date.now() + Number(env.BAO_HEAL_WAIT_MS || 180000);

@@ -33,19 +33,6 @@ async function main(): Promise<void> {
     await importLogin(rest);
     return;
   }
-  if (cmd === "scrub-secrets") {
-    if (rest.includes("--help")) {
-      console.log("usage: bao scrub-secrets --home dir [--write]\nDry-run by default. Write mode backs up originals first.\nReplaces whole secret data values only; secrets embedded in free text remain.\nUnmarked dropdown, radio and checkbox values remain; secret-marked selected values strip, while option definitions stay unchanged.\nAppend-only receipt chains are listed as skipped and never rewritten; historical secrets may remain. New receipts are stripped before hashing.");
-      return;
-    }
-    const home = flag(rest, "--home");
-    if (!home || home.startsWith("--") || rest.some((arg) => arg.startsWith("--") && !["--home", "--write"].includes(arg))) {
-      throw new Error("usage: bao scrub-secrets --home dir [--write]");
-    }
-    const { scrubHome } = await import("../v1/scrub-home");
-    console.log(JSON.stringify(scrubHome(home, rest.includes("--write")), null, 2));
-    return;
-  }
   if (cmd === "status") {
     const notices: string[] = [];
     const home = resolveHome({ args: rest, warn: (line) => notices.push(line) });

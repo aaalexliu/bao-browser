@@ -83,9 +83,12 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   if (missing.length) throw new Error(`answer ${missing.join(", ")}`);
   const doc = structuredClone(document) as { inputs?: InputRow[] };
   for (const input of doc.inputs ?? []) {
-    if (input.type === "secret") continue;
+    if (input.type === "file") {
+      delete input.default;
+      continue;
+    }
     const answer = answers[input.name];
-    if (typeof answer === "string" && answer.trim()) input.default = answer.trim();
+    if (typeof answer === "string" && answer.trim()) input.default = input.type === "secret" ? answer : answer.trim();
   }
   return doc;
 }

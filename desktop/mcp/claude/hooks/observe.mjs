@@ -13,7 +13,6 @@ try { payload = JSON.parse(raw); } catch { payload = { raw }; }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const shared = path.join(here, "../../../src/library-home.cjs");
-const { scrubSaved } = createRequire(import.meta.url)(path.join(here, "../../../dist/shared/saved-secrets.js"));
 let resolveLibraryHome;
 try {
   ({ resolveLibraryHome } = createRequire(import.meta.url)(shared));
@@ -31,10 +30,10 @@ try {
 }
 
 mkdirSync(path.join(home, "observer"), { recursive: true });
-appendFileSync(path.join(home, "observer", "trail.jsonl"), JSON.stringify(scrubSaved({
+appendFileSync(path.join(home, "observer", "trail.jsonl"), JSON.stringify({
   ts: Date.now(),
   kind: "observe",
   op: payload.tool_name || payload.tool || "computer",
   args: payload.tool_input || payload.input || payload,
-})) + "\n");
+}) + "\n");
 process.exit(0);

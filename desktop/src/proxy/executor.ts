@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Page } from "playwright";
-import { isSensitiveField, isSensitiveValue, omitSecret, redactPayload } from "../../../shared/mask";
+import { isSensitiveField, isSensitiveValue, redactPayload } from "../../../shared/mask";
 import { installPageHelpers, type Described } from "../page-fns";
 import { AuditTrail, deriveWorkflow, trimTrail, type AuditEvent, type AuditOrigin, type AuditSnapshot } from "./audit";
 import { PAGE_KEYS, normalizeKey, readFocus, type TrackedFocus } from "./focus";
@@ -191,7 +191,7 @@ export class PageExecutor implements Executor {
   private async actType(text: string, origin: AuditOrigin, before: Captured): Promise<ActResult> {
     const focus = await readFocus(this.page);
     const secret = isSensitiveValue(text) || (!!focus.hint && isSensitiveField({ ...focus.hint, value: text }));
-    const raw = secret ? omitSecret(redactPayload(origin.raw).value, text) : redactPayload(origin.raw).value;
+    const raw = origin.raw;
     if (focus.scope !== "element" || !focus.editable || !focus.described) {
       const reason = "type has no focused editable";
       const after = await this.capture();
@@ -217,7 +217,6 @@ export class PageExecutor implements Executor {
     await this.page.locator("[data-bao-hit='1']").fill(text);
     if (secret) {
       this.secrets.push(text);
-      this.trail.redactSecret(text);
     }
     const afterFocus = await readFocus(this.page);
     const after = await this.capture();

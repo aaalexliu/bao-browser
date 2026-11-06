@@ -253,7 +253,7 @@ Interpret `helper` using [Which grant each job needs](permissions.md#which-grant
 
 The Capture field defaults to `/fixture`. The owned browser opens that page on this server. The product window does not show the listen address. Stop saves the page URL at stop time. The fixture's Log in button moves to `/secure`, and this server serves the fixture there too.
 
-A chooser and a Finder drop each add a `file` input. The secret string is absent. The absolute path of the file is absent. The trail says `Password values are not stored.` The drag has to be a real file drop. A scripted pointer move does not start an `NSDraggingSession`. Do not rebuild the helper to record one.
+A chooser and a Finder drop each add a `file` input. The password value stays in the local Library for replay. The absolute path of the file is absent. The trail says `Typed values are saved in the local Library for replay.` The drag has to be a real file drop. A scripted pointer move does not start an `NSDraggingSession`. Do not rebuild the helper to record one.
 
 Replay sets a file input with `DOM.setFileInputFiles`, and a drop zone with a synthetic `DataTransfer`. Run again after moving the replay window. The next run reuses that window. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with the replay pid. A size row can stay `n/a-harness` when `AXSize` is rejected (`-25200`). A step failure counts only after the requested bounds landed.
 

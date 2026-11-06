@@ -1,7 +1,4 @@
 // In-progress capture. Pause drops UI events. Notes and checks are annotations.
-// A sensitive note is refused and not stored.
-
-import { isSensitiveValue } from "../../../shared/mask";
 import type { TrailEvent } from "../v1/interpret";
 
 export interface CaptureStep {
@@ -128,7 +125,6 @@ export function actNotice(text: string): ActNotice {
 function cleanAnnotation(text: string): string {
   const clean = text.replace(/\s+/g, " ").trim();
   if (!clean || clean.length > 80) throw new Error("note");
-  if (isSensitiveValue(clean) || /\d{6,}/.test(clean)) throw new Error("note");
   return clean;
 }
 

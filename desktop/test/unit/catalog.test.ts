@@ -206,7 +206,7 @@ for (const driver of [undefined, "extension"] as const) {
   });
 }
 
-test("describe omits secret defaults and a missing secret does not launch a browser", async () => {
+test("describe retains secret defaults and a missing secret does not launch a browser", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
   const doc = workflow("sign-in", "Sign in");
   doc.inputs.push({ name: "password", type: "secret", label: "Password" });
@@ -223,6 +223,10 @@ test("describe omits secret defaults and a missing secret does not launch a brow
   assert.match(outcome.reason || "", /Password/);
   assert.match(outcome.resume || "", /^r_[a-f0-9]+$/);
   assert.equal(JSON.stringify(outcome).includes("SuperSecret"), false);
+  doc.inputs.find((input) => input.name === "password")!.default = "SuperSecretFixture";
+  library.save(doc);
+  const withDefault = await describeWorkflow(library, "sign-in");
+  assert.equal(withDefault.workflow.inputs.find((input) => input.name === "password")?.default, "SuperSecretFixture");
 });
 
 for (const [driver, reason] of [["cdp-live", CDP_LIVE_SERVER_REFUSAL], ["extension", EXTENSION_NOT_CONNECTED]] as const) {

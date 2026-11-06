@@ -15,7 +15,7 @@ import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
-import { expectedText, replay, type RunResult } from "../v1/replay";
+import { expectedText, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -186,7 +186,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   outputs?: WorkflowV2["outputs"];
 }> {
   const found = await locateWorkflow(library, id, auth);
-  const workflow = stripSecretDefaults(found.document);
+  const workflow = structuredClone(found.document);
   return {
     workflow,
     inputs: inputSchema(workflow),
@@ -259,7 +259,7 @@ export async function runWorkflow(
     ...(resumed?.publicInputs ?? {}),
     ...(request.inputs ?? {}),
   };
-  const inputs = given;
+  const inputs = withInputDefaults(workflow, given);
   const missing = missingHuman(workflow, inputs);
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs));
   const secrets = secretStrings(workflow, inputs);
@@ -498,13 +498,13 @@ async function replayInBrowser(
       runId,
       shotDir,
       settings: library.settings(),
-      heal: await healFromSource(library.settings().healSource, healProvider, secrets),
+      heal: await healFromSource(library.settings().healSource, healProvider),
       now: () => Date.now(),
       yieldHuman: true,
       trail,
       siteTrust: trustMode(library.settings(), originOf(workflow.startUrl)),
     });
-    const outcome = rememberRun(library, workflow, run, args, secrets);
+    const outcome = rememberRun(library, workflow, run, args);
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
       hold = true;
       const live: LiveRun = {
@@ -544,7 +544,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
     runId: live.runId,
     shotDir: live.shotDir,
     settings: library.settings(),
-    heal: await healFromSource(library.settings().healSource, healProvider, live.secrets),
+    heal: await healFromSource(library.settings().healSource, healProvider),
     now: () => Date.now(),
     fromStepId: live.stepId,
     yieldHuman: true,
@@ -558,7 +558,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
     live.ask = run.ask.instruction;
     live.trail = run.trail;
     live.steps = run.steps;
-    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, live.token);
+    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.token);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
     return outcome;
   }
@@ -566,10 +566,10 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   dropResume(library, live.token);
   await releaseBrowser(library, live);
   library.savePublicInputs(live.workflow.id, publicInputs(live.workflow, live.inputs));
-  const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
+  const outcome = rememberRun(library, live.workflow, run, live.inputs);
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-  return storeOutcome(library, outcome, live.secrets, live.inputs);
+  return storeOutcome(library, outcome);
 }
 
 async function cancelWorkflow(library: Library, token: string): Promise<WorkflowOutcome> {
@@ -619,7 +619,7 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
       deadline: result.deadline,
     },
   });
-  return storeOutcome(library, result, live.secrets, live.inputs);
+  return storeOutcome(library, result);
 }
 
 async function releaseBrowser(
@@ -644,7 +644,6 @@ function rememberRun(
   workflow: WorkflowV2,
   run: RunResult,
   inputs: ReplayArgs,
-  secrets: string[],
   resumeToken?: string,
 ): WorkflowOutcome {
   const failed = run.steps.find((step) => step.status === "failed" || step.status === "paused");
@@ -703,7 +702,7 @@ function rememberRun(
     });
     result.resume_token = result.resume;
   }
-  return storeOutcome(library, result, secrets, inputs);
+  return storeOutcome(library, result);
 }
 
 function saveWorkflowRun(
@@ -769,7 +768,7 @@ function remember(
   result.ask = reason;
   result.deadline = deadline ? formatClock(deadline) : "No timeout";
   result.resume_token = result.resume;
-  return storeOutcome(library, result, secretStrings(workflow, inputs), inputs);
+  return storeOutcome(library, result);
 }
 
 function baseOutcome(
@@ -831,18 +830,10 @@ function inputSchema(doc: { inputs?: WorkflowV2["inputs"] }): InputField[] {
   }));
 }
 
-function stripSecretDefaults(doc: WorkflowV2): WorkflowV2 {
-  const copy = structuredClone(doc);
-  for (const input of copy.inputs) {
-    if (input.type === "secret") delete input.default;
-  }
-  return copy;
-}
-
 function publicInputs(workflow: WorkflowV2, inputs: ReplayArgs): Record<string, string | number> {
   const out: Record<string, string | number> = {};
   for (const input of workflow.inputs) {
-    if (input.type === "secret" || input.type === "file") continue;
+    if (input.type === "file") continue;
     const value = inputs[input.name];
     if (typeof value === "string" || typeof value === "number") out[input.name] = value;
   }
@@ -859,17 +850,16 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
   return out;
 }
 
-function storeOutcome(library: Library, outcome: WorkflowOutcome, secrets: string[], inputs: ReplayArgs): WorkflowOutcome {
-  const parsed = library.scrub(outcome, outcome.workflowId, inputs, secrets);
-  writeReport(library, parsed);
-  return parsed;
+function storeOutcome(library: Library, outcome: WorkflowOutcome): WorkflowOutcome {
+  writeReport(library, outcome);
+  return outcome;
 }
 
 function writeReport(library: Library, outcome: WorkflowOutcome): void {
   if (!outcome.runId) return;
   const file = reportPath(library, outcome.runId);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(library.scrub(outcome, outcome.workflowId), null, 2));
+  writeFileSync(file, JSON.stringify(outcome, null, 2));
 }
 
 function reportPath(library: Library, runId: string): string {
@@ -897,7 +887,7 @@ function writeResume(
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };
-  writeFileSync(file, JSON.stringify(library.scrub(body, workflowId)));
+  writeFileSync(file, JSON.stringify(body));
   return token;
 }
 

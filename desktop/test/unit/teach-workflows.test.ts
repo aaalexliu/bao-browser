@@ -131,7 +131,7 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     const cases = loadTeachIntentCases(path.join(home, "evals", "intent", "cases"));
     assert.ok(cases.length >= 3, `cases ${cases.length}`);
     assert.ok(cases.every((item) => item.schema === "bao.intent-case/v1" && item.events.length > 0 && item.workflow.steps.length > 0));
-    assert.equal(JSON.stringify(cases).includes(secret), false);
+    assert.equal(JSON.stringify(cases).includes(secret), true);
     await post(app.port, "/api/sessions/mark");
 
     const review = await post(app.port, "/api/teach/stop") as { phase: string; review: { summary?: { line: string }; workflow: { steps: { action?: string; intent?: string; human?: boolean }[] } } };
@@ -157,7 +157,7 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
       steps: { action: string; intent?: string; human?: boolean; input?: string; postcondition?: { match?: string } }[];
     };
     const savedBlob = JSON.stringify(saved);
-    assert.equal(savedBlob.includes(secret), false);
+    assert.equal(savedBlob.includes(secret), true);
     assert.equal(savedBlob.includes(file), false);
     assert.equal(saved.steps.find((step) => step.input === "note")?.intent, "type the note");
     assert.equal(saved.steps.some((step) => step.action === "confirm" && step.human), true);
@@ -172,7 +172,7 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     assert.ok(pair.decisions.some((decision) => decision.detail === "note became intent"));
     assert.ok(pair.decisions.some((decision) => decision.kind === "drop"));
     assert.ok(pair.decisions.some((decision) => decision.kind === "human"));
-    assert.equal(JSON.stringify(pair).includes(secret), false);
+    assert.equal(JSON.stringify(pair).includes(secret), true);
     const trail = app.library.readTrail(saved.id) as { kind?: string; decision?: string }[];
     const firstDecision = trail.findIndex((event) => event.kind === "decision");
     assert.ok(firstDecision > 0);
