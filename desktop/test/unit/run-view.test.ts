@@ -9,7 +9,7 @@ import { callViewerTool, VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import { ReceiptLog } from "../../src/v1/receipt";
 import { getRun } from "../../src/mcp/catalog";
 import { shotFile } from "../../src/v1/shots";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";
 
 function fixture(t: test.TestContext) {
@@ -116,6 +116,58 @@ test("workflow edits cannot make historical secret read-back steps public", (t) 
     assert.doesNotMatch(JSON.stringify(detail), /private-value/);
     assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
   }
+});
+
+test("nested secret read-backs keep their parent reasons and pictures private", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const nested: WorkflowStep = { ...workflow.steps[0]!, id: "nested", readBack: { source: "text", match: "{{password}}", timeoutMs: 0 } };
+  const inner: WorkflowStep = { ...workflow.steps[0]!, id: "inner", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [nested] } };
+  library.save({ ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [{ ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [inner] } }] });
+  const reason = 'read-back expected "private-value", read "page private-value text"';
+  library.saveRun({ ...run, status: "failed", failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.doesNotMatch(JSON.stringify(detail), /private-value/);
+  assert.equal(detail.steps[0]?.picturesAllowed, false);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  assert.equal(getRun(library, run.id).reason, reason);
+});
+
+test("secret expect bindings keep step, summary, and handoff evidence private", (t) => {
+  const { library, run, workflow } = fixture(t);
+  library.save({ ...workflow, steps: [{ ...workflow.steps[0]!, expect: { kind: "text", match: "{{password}}", timeoutMs: 0 } }] });
+  const reason = "expected private-value";
+  library.saveRun({ ...run, status: "failed", failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.doesNotMatch(JSON.stringify(detail), /private-value/);
+  assert.equal(detail.steps[0]?.picturesAllowed, false);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  assert.equal(getRun(library, run.id).reason, reason);
+});
+
+test("secret row columns stay private in sibling loop values, read-backs, and expectations", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const entry: WorkflowStep = { ...workflow.steps[0]!, id: "entry", sensitive: true, value: "{{row.password}}" };
+  const secretLoop: WorkflowStep = { ...workflow.steps[0]!, id: "secret-loop", action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [entry] } };
+  for (const patch of [
+    { value: "{{row.password}}" },
+    { readBack: { source: "text" as const, match: "{{row.password}}", timeoutMs: 0 } },
+    { expect: { kind: "text" as const, match: "{{row.password}}", timeoutMs: 0 } },
+  ]) {
+    const child: WorkflowStep = { ...workflow.steps[0]!, id: "check", ...patch };
+    library.save({ ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [child] } }] });
+    const reason = "expected private-row-value";
+    library.saveRun({ ...run, status: "failed", receipts: [], failure: { stepId: "preview", reason }, steps: [{ id: "preview", status: "failed", reason }], envelope: { status: "failed", step: "preview", reason, ask: reason } });
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.doesNotMatch(JSON.stringify(detail), /private-row-value/);
+    assert.equal(detail.steps[0]?.picturesAllowed, false);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+    assert.equal(getRun(library, run.id).reason, reason);
+  }
+  const publicChild: WorkflowStep = { ...workflow.steps[0]!, id: "check", expect: { kind: "text", match: "{{row.public}}", timeoutMs: 0 } };
+  library.save({ ...workflow, version: 3, inputs: [...workflow.inputs, { name: "rows", type: "table" }], steps: [secretLoop, { ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [publicChild] } }] });
+  library.saveRun(run);
+  assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, true);
+  assert.equal(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures.length, 2);
 });
 
 test("public failure and stopped-step reasons remain available without an envelope", (t) => {
