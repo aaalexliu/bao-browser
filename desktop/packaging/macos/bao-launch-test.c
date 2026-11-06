@@ -701,15 +701,15 @@ static void test_instance(const char *home) {
   bao_instance_release();
   int other = 0;
   check(bao_instance_acquire(home, &other) == 0, "first instance owns the lock");
-  check(bao_instance_write_browser_pid(home, 4242) == 0, "browser pid stored");
-  check(bao_read_browser_pid(home) == 4242, "pid reads back");
+  check(bao_instance_write_ui_pid(home, 4242) == 0, "native UI pid stored");
+  check(bao_read_ui_pid(home) == 4242, "pid reads back");
   int second = bao_instance_acquire(home, &other);
   check(second == 1, "second launch does not own the lock");
   check(other == 4242, "second launch sees the window pid");
   bao_instance_release();
   check(bao_instance_acquire(home, &other) == 0, "lock frees when the owner exits");
   bao_instance_release();
-  check(bao_instance_write_browser_pid(home, 7) != 0, "pid write requires the lock");
+  check(bao_instance_write_ui_pid(home, 7) != 0, "pid write requires the lock");
 }
 
 static void test_port(void) {

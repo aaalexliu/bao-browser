@@ -597,7 +597,7 @@ static int pid_path(const char *home, char *out, size_t n) {
   return path_join(out, n, home, "ui.pid");
 }
 
-int bao_read_browser_pid(const char *home) {
+int bao_read_ui_pid(const char *home) {
   if (!home || !home[0]) return -1;
   char path[4096];
   if (pid_path(home, path, sizeof path) != 0) return -1;
@@ -627,7 +627,7 @@ int bao_instance_acquire(const char *home, int *other_pid) {
     }
     if (errno == EINTR) continue;
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
-      if (other_pid) *other_pid = bao_read_browser_pid(home);
+      if (other_pid) *other_pid = bao_read_ui_pid(home);
       close(fd);
       return 1;
     }
@@ -642,7 +642,7 @@ void bao_instance_release(void) {
   lock_fd = -1;
 }
 
-int bao_instance_write_browser_pid(const char *home, int pid) {
+int bao_instance_write_ui_pid(const char *home, int pid) {
   if (lock_fd < 0 || pid <= 0 || !home || !home[0]) return -1;
   char path[4096];
   if (pid_path(home, path, sizeof path) != 0) return -1;

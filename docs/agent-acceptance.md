@@ -10,7 +10,7 @@ Do not rebuild the helper, reset TCC, request Screen Recording, enable Apple Eve
 
 ## Open the installed app
 
-Open `/Applications/Bao.app` from Finder. Open it again and check that it does not start another app server. Use `bao status` to confirm the Library home. Do not start a checkout `bao serve` beside the installed app: its native-host write can replace the installed manifest.
+Open `/Applications/Bao.app` from Finder. The window title is **Bao**, with no address bar. The Dock shows one Bao app, not a second Chrome for Testing app. Opening Bao starts no Chrome or Chromium process; macOS WebKit renders the UI inside Bao's native window. Open it again and check that it focuses the same window without starting another app server. Close the window, then click Bao in the Dock: the same window reopens. Quit Bao: its local server stops. Use `bao status` to confirm the Library home. Do not start a checkout `bao serve` beside the installed app: its native-host write can replace the installed manifest.
 
 Check bundle identity and the running server's checkout:
 

@@ -54,7 +54,7 @@ Install Chrome from [https://www.google.com/chrome/](https://www.google.com/chro
 
 The command prints `/Applications/Google Chrome.app`. Use `/bin/ls`. A shell `ls` can be an alias.
 
-The product window uses the Chromium bundled at `Contents/Resources/Chromium.app`. Owned capture and replay choose their browser through `resolveNormalChrome` in `desktop/src/launch.ts`, as [Select the driver](extension.md#select-the-driver) describes. The [`agent_browser` pass-through](agent-browser-engine.md#pick-an-engine-and-profile) reads the Settings-selected Chrome profile into a private copy; it is separate from site-login import. The older daily live-driver attach path is retired.
+The product window uses macOS WebKit, not Chrome. The Chromium bundled at `Contents/Resources/Chromium.app` remains a fallback for tasks. Owned capture and replay choose their browser through `resolveNormalChrome` in `desktop/src/launch.ts`, as [Select the driver](extension.md#select-the-driver) describes. The [`agent_browser` pass-through](agent-browser-engine.md#pick-an-engine-and-profile) reads the Settings-selected Chrome profile into a private copy; it is separate from site-login import. The older daily live-driver attach path is retired.
 
 ### Xcode Command Line Tools
 

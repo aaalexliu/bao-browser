@@ -1,6 +1,6 @@
 /* Bao.app entry point. A real executable, not a shell script.
- * Starts the local Node server and the Chromium bundled in Resources.
- * Does not launch an installed Chrome.
+ * Starts the local Node server and shows the UI in a native WebKit window.
+ * Task browsers launch only when a session or run needs one.
  *
  * Node is the one already on this Mac. A runtime copied into Resources would
  * be a second binary to sign, and codesign --deep on this bundle would change
@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include "bao-launch.h"
 #include "bao-notify.h"
+#include "bao-window.h"
 
 static const char kNeedNodeTitle[] = "Bao needs Node.js";
 static const char kNeedNodeBody[] =
@@ -49,48 +50,6 @@ static void nap_ms(int ms) {
   ts.tv_sec = ms / 1000;
   ts.tv_nsec = (long)(ms % 1000) * 1000000L;
   nanosleep(&ts, NULL);
-}
-
-/* 0 and *out set when exec worked. The pipe is CLOEXEC, so a successful exec
- * closes it. A failed exec writes errno and exits. */
-static int spawn_browser(const char *browser, char *const argv[], pid_t *out) {
-  int pipefd[2];
-  if (pipe(pipefd) != 0) return -1;
-  int flags = fcntl(pipefd[1], F_GETFD);
-  if (flags >= 0) fcntl(pipefd[1], F_SETFD, flags | FD_CLOEXEC);
-  pid_t pid = fork();
-  if (pid < 0) {
-    close(pipefd[0]);
-    close(pipefd[1]);
-    return -1;
-  }
-  if (pid == 0) {
-    close(pipefd[0]);
-    execv(browser, argv);
-    int err = errno;
-    ssize_t wrote = write(pipefd[1], &err, sizeof err);
-    (void)wrote;
-    _exit(127);
-  }
-  close(pipefd[1]);
-  int err = 0;
-  size_t got = 0;
-  while (got < sizeof err) {
-    ssize_t n = read(pipefd[0], (char *)&err + got, sizeof err - got);
-    if (n < 0 && errno == EINTR) continue;
-    if (n <= 0) break;
-    got += (size_t)n;
-  }
-  close(pipefd[0]);
-  int status = 0;
-  if (got == 0) {
-    pid_t done = waitpid(pid, &status, WNOHANG);
-    if (done == pid) return -1;
-    *out = pid;
-    return 0;
-  }
-  waitpid(pid, &status, 0);
-  return -1;
 }
 
 static void stop_pid(pid_t pid) {
@@ -264,7 +223,7 @@ int main(void) {
   }
   if (inst == 1) {
     for (int i = 0; i < 80 && inst == 1; i++) {
-      int pid = bao_read_browser_pid(bao_home);
+      int pid = bao_read_ui_pid(bao_home);
       if (pid > 0) {
         bao_focus_pid(pid);
         return 0;
@@ -287,6 +246,11 @@ int main(void) {
     return 0;
   }
 
+  if (bao_instance_write_ui_pid(bao_home, (int)getpid()) != 0) {
+    bao_show_alert(kOpenTitle, kOpenBody);
+    return 1;
+  }
+
   if (bao_notify_prepare(notify_sock) == 0) setenv("BAO_NOTIFY_SOCK", notify_sock, 1);
   else fprintf(stderr, "bao notify socket was not created\n");
 
@@ -307,8 +271,7 @@ int main(void) {
     _exit(127);
   }
 
-  /* Open the window only after the server accepts a connection, so Chromium
-   * never paints its offline page (that page shows the listen address). */
+  /* Wait for the server before loading the native window. */
   if (bao_wait_for_port(port, (int)node, 15000) != 0) {
     stop_pid(node);
     bao_show_alert(kOpenTitle, kOpenBody);
@@ -316,33 +279,13 @@ int main(void) {
   }
 
   char url[160];
-  char profile[4096];
-  int url_wrote = snprintf(url, sizeof url, "--app=http://127.0.0.1:%s/", port);
-  int profile_wrote = snprintf(profile, sizeof profile, "--user-data-dir=%s/ui-profile", bao_home);
-  if (url_wrote < 0 || (size_t)url_wrote >= sizeof url || profile_wrote < 0 || (size_t)profile_wrote >= sizeof profile) {
+  int url_wrote = snprintf(url, sizeof url, "http://127.0.0.1:%s/", port);
+  if (url_wrote < 0 || (size_t)url_wrote >= sizeof url) {
     stop_pid(node);
     bao_show_alert(kOpenTitle, kOpenBody);
     return 1;
   }
-
-  char *browser_argv[] = {
-    browser,
-    url,
-    profile,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-sync",
-    "--force-renderer-accessibility",
-    /* App mode hides the toolbar. This switch hides the Chrome for Testing infobar. */
-    "--disable-infobars",
-    NULL,
-  };
-  pid_t browser_pid = -1;
-  if (spawn_browser(browser, browser_argv, &browser_pid) != 0) {
-    stop_pid(node);
-    bao_show_alert(kOpenTitle, kOpenBody);
-    return 1;
-  }
-  bao_instance_write_browser_pid(bao_home, (int)browser_pid);
-  return bao_notify_run((int)browser_pid, (int)node);
+  int status = bao_window_run(url, (int)node);
+  bao_instance_release();
+  return status;
 }
