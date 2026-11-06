@@ -4,6 +4,7 @@
 import { importErrorView } from "./import-error";
 import type { ImportLoginError } from "../v1/import-login-error";
 import type { AutomationReport } from "../cdp-live/automation";
+import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
@@ -525,6 +526,15 @@ export function stopHeadline(input: {
   return bits.join(" ");
 }
 
+function ownerCheckLimit(step: StepView | undefined): string | undefined {
+  if (step?.native?.command !== "wait_for_owner") return undefined;
+  let ms: number;
+  try { ms = ownerWaitTimeout(step.native.args[0] === undefined ? undefined : Number(step.native.args[0])); }
+  catch { return undefined; }
+  if (ms % 60_000 === 0) return `${ms / 60_000} min`;
+  return `${ms / 1000} s`;
+}
+
 function stepLabel(step: StepView, workflowSteps: { id: string; label?: string; action?: string }[]): string {
   const match = workflowSteps.find((item) => item.id === step.id);
   return step.label || match?.label || match?.action || step.id;
@@ -569,11 +579,17 @@ export function runViewer(
   selectedId?: string,
   context: ViewerContext = {},
 ): string {
-  const steps = (run.steps || []).map((step) => ({
-    ...step,
-    label: stepLabel(step, workflow.steps),
-    action: step.action || workflow.steps.find((item) => item.id === step.id)?.action,
-  }));
+  const steps = (run.steps || []).map((step) => {
+    const ownerWait = run.pageEngine === "agent-browser" && step.native?.command === "wait_for_owner";
+    const limit = ownerWait ? ownerCheckLimit(step) : undefined;
+    return {
+      ...step,
+      label: ownerWait
+        ? `Wait for you to sign in or clear a check${limit ? ` (up to ${limit} per check)` : ""}`
+        : stepLabel(step, workflow.steps),
+      action: step.action || workflow.steps.find((item) => item.id === step.id)?.action,
+    };
+  });
   const failed = steps.find((step) => step.status === "failed" || step.status === "paused");
   const selected = steps.find((step) => step.id === selectedId) || failed || steps[steps.length - 1];
   const selectedIndex = Math.max(0, selected ? steps.indexOf(selected) : 0);
@@ -589,6 +605,8 @@ export function runViewer(
     ? wallStopLine((failure?.index ?? steps.indexOf(failed)) + 1, failed.label || failure?.intent || failed.id, wall)
     : "";
   const agentBrowser = run.pageEngine === "agent-browser";
+  const ownerCheck = agentBrowser && steps.at(-1)?.native?.command === "wait_for_owner" ? steps.at(-1) : undefined;
+  const envelopeWait = failed ? ownerCheck || failed : undefined;
   const nativeRecording = agentBrowser && workflow.recordedOnly;
   const headline = failed && nativeRecording
     ? `Step ${stopped} ${failed.label || failed.id} failed${failed.reason ? `: ${failed.reason}` : "."}`
@@ -663,7 +681,7 @@ export function runViewer(
     const face = frameFace(run.id, step, failure);
     const marker = span.skippedMs > 0 ? skipMark(span.skippedMs) : "";
     const shotClass = face.src ? " has-shot" : "";
-    return `${marker}<button type="button" class="frame${shotClass} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" style="flex:${span.flex} 1 72px">${face.body}</button>`;
+    return `${marker}<button type="button" class="frame${shotClass} ${selected && step.id === selected.id ? "on" : ""}" data-select-step="${esc(step.id)}" data-at="${step.startedAt ?? ""}" data-skipped="${span.skippedMs}" aria-label="${esc(step.label || step.id)}" title="${esc(step.label || step.id)}" style="flex:${span.flex} 1 72px">${face.body}</button>`;
   }).join("");
   const idleNote = skipped > 0 ? `<p class="quiet" id="idle-note" data-idle-skipped="${skipped}">Idle longer than 3s is collapsed.</p>` : "";
   const recent = context.recent && context.recent.length ? context.recent : [run];
@@ -678,7 +696,7 @@ export function runViewer(
     ${outputsHtml(run.id, run.outputs)}
     ${video}
     ${pageClassPane(run)}
-    ${envelopePane(run.envelope, failed ? { stepNumber: stopped, label: failed.label || failed.id } : undefined)}
+    ${envelopePane(run.envelope, envelopeWait ? { stepNumber: steps.indexOf(envelopeWait) + 1, label: envelopeWait.label || envelopeWait.id } : undefined, ownerCheckLimit(ownerCheck))}
     ${handoffPane(run.trail)}
     ${workflow.recordedOnly ? "" : `<div class="row" id="run-actions">
       <button id="rerun-run" type="button">Re-run with this run's inputs</button>
@@ -704,7 +722,7 @@ export function runViewer(
       </div>
       ${panel}
     </div>
-    ${passGrid(recent, workflow.steps)}
+    ${passGrid(recent, nativeRecording ? steps : workflow.steps)}
     ${trajectoryPane(context.recorded, run.trajectory)}
     <div class="tabs" id="run-tabs">
       <button type="button" data-run-tab="trail">Trail</button>
@@ -757,6 +775,7 @@ function wallStopLine(stepNumber: number, label: string, item: { class: string; 
 function envelopePane(
   envelope: RunSummary["envelope"],
   wait?: { stepNumber: number; label: string },
+  checkLimit?: string,
 ): string {
   if (!envelope || (envelope.status !== "needs_human" && envelope.status !== "needs_signin" && envelope.status !== "timed-out" && envelope.status !== "stopped" && envelope.status !== "completed")) return "";
   const heading = envelope.status === "completed" ? "Completed" : envelope.status === "timed-out" ? "Stopped, timed out" : envelope.status === "stopped" ? "Stopped" : "Needs you";
@@ -768,7 +787,9 @@ function envelopePane(
         ? `waiting on step ${envelope.step}`
         : "waiting";
     const deadline = (envelope.deadline || "").trim();
-    const limit = !deadline || deadline === "No timeout" ? "no timeout" : deadline;
+    const limit = !deadline || deadline === "No timeout"
+      ? checkLimit ? `${wait ? "" : `up to ${checkLimit} per check; `}no overall timeout` : "no timeout"
+      : deadline;
     const bits = [
       `<p id="envelope-status"><strong>${esc(heading)}</strong></p>`,
       envelope.run_id ? `<p class="mono" id="envelope-run">${esc(envelope.run_id)}</p>` : "",
