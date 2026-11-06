@@ -67,26 +67,14 @@ function viewerMain(): void {
     if (!current) root.textContent = "Could not load the run viewer.";
   }
   function clearError(): void { alert.textContent = ""; recovery.textContent = ""; }
-  function focusContent(selector = "h1"): void {
-    const node = root.querySelector<HTMLElement>(selector);
-    if (node) {
-      if (!node.hasAttribute("tabindex") && node.tabIndex < 0) node.tabIndex = -1;
-      node.focus();
-    }
-  }
   function button(label: string, act: () => Promise<void>, className?: string): HTMLButtonElement {
     const node = el("button", label, className);
     node.type = "button";
     node.onclick = async () => {
-      const hadFocus = document.activeElement === node;
       node.disabled = true;
       clearError();
       try { await act(); } catch (err) { error(err); }
-      finally {
-        node.disabled = false;
-        const active = document.activeElement;
-        if (hadFocus && node.isConnected && (active === node || active === document.body || active === null)) node.focus();
-      }
+      finally { node.disabled = false; }
     };
     return node;
   }
@@ -96,7 +84,7 @@ function viewerMain(): void {
     if (reply.isError) throw new Error(reply.content?.[0]?.text || "Bao could not read this record.");
     return reply;
   }
-  async function show(name: string, args: Record<string, unknown>, automatic = false, focusTarget = "h1"): Promise<void> {
+  async function show(name: string, args: Record<string, unknown>, automatic = false): Promise<void> {
     const version = ++viewRequest;
     if (!automatic) userRequest = version;
     try {
@@ -105,7 +93,6 @@ function viewerMain(): void {
       if (!reply._meta?.baoViewer) throw new HostDataError("This host did not forward Bao's viewer data. Use the text receipt or the Bao desktop app.");
       current = reply._meta.baoViewer;
       clearError(); render();
-      if (!automatic) focusContent(focusTarget);
     } catch (err) {
       if (version === viewRequest) throw err;
     } finally {
@@ -113,8 +100,8 @@ function viewerMain(): void {
     }
   }
   const history = () => show("list_runs", {});
-  async function inspect(runId: string, stepOffset = 0, workflowOffset = 0, focusTarget = "h1"): Promise<void> {
-    await show("inspect_run", { run_id: runId, step_offset: stepOffset, workflow_offset: workflowOffset }, false, focusTarget);
+  async function inspect(runId: string, stepOffset = 0, workflowOffset = 0): Promise<void> {
+    await show("inspect_run", { run_id: runId, step_offset: stepOffset, workflow_offset: workflowOffset });
   }
   function applyContext(): void {
     document.documentElement.dataset.theme = context.theme === "dark" ? "dark" : "light";
@@ -169,29 +156,27 @@ function viewerMain(): void {
       }
       root.append(summary);
       if (!expanded && context.displayMode !== "fullscreen") {
-        const inspectReceipt = button("Inspect receipt", async () => {
+        root.append(button("Inspect receipt", async () => {
           expanded = true;
           if (context.availableDisplayModes?.includes("fullscreen")) {
             const result = await request("ui/request-display-mode", { mode: "fullscreen" }) as { mode?: string };
             context.displayMode = result.mode || context.displayMode;
           }
-          render(); focusContent("#step-results");
-        }, "primary");
-        inspectReceipt.id = "inspect-receipt"; root.append(inspectReceipt);
+          render();
+        }, "primary"));
       } else {
         if (context.displayMode === "fullscreen" && context.availableDisplayModes?.includes("inline")) root.append(button("Back to conversation", async () => {
           const result = await request("ui/request-display-mode", { mode: "inline" }) as { mode?: string };
-          context.displayMode = result.mode || context.displayMode; expanded = false; render(); focusContent("#inspect-receipt");
+          context.displayMode = result.mode || context.displayMode; expanded = false; render();
         }));
-        const stepHeading = el("h2", "Step results"); stepHeading.id = "step-results"; root.append(stepHeading);
+        root.append(el("h2", "Step results"));
         const missingReadBack = "No separate read-back recorded. Status does not prove a durable page change.";
         const allMissingReadBack = view.steps.length > 0 && view.steps.every((step) => !step.reason && !step.result);
         if (!view.steps.length) root.append(el("p", "No step results recorded.", "muted"));
         else if (allMissingReadBack && !view.detailsHidden) root.append(el("p", missingReadBack, "muted"));
         for (const step of view.steps) {
           const section = el("section", undefined, "step");
-          const heading = el("h3", `${step.index}. ${step.label || step.id || "Step"}`); heading.id = `step-${step.index}`;
-          section.append(heading, el("span", step.status, "status"));
+          section.append(el("h3", `${step.index}. ${step.label || step.id || "Step"}`), el("span", step.status, "status"));
           if (step.reason || step.result) section.append(el("p", step.reason || step.result));
           else if (!allMissingReadBack && !view.detailsHidden) section.append(el("p", missingReadBack, "muted"));
           const key = `${view.run.id}/${step.id}`;
@@ -213,25 +198,24 @@ function viewerMain(): void {
               catch (err) { if (!current || !("run" in current) || current.run.id !== view.run.id) return; throw err; }
               if (!current || !("run" in current) || current.run.id !== view.run.id) return;
               if (!reply._meta?.baoPictures) throw new HostDataError("This host did not forward the pictures.");
-              pictures.set(key, reply._meta.baoPictures); render(); focusContent(`#step-${step.index}`);
+              pictures.set(key, reply._meta.baoPictures); render();
             }));
           }
           root.append(section);
         }
         const pages = el("div", undefined, "actions");
-        if (view.stepOffset) pages.append(button("Previous steps", () => inspect(view.run.id, Math.max(0, view.stepOffset - 20), view.workflow?.offset, "#step-results")));
-        if (view.nextStepOffset !== null) pages.append(button("Next steps", () => inspect(view.run.id, view.nextStepOffset!, view.workflow?.offset, "#step-results")));
+        if (view.stepOffset) pages.append(button("Previous steps", () => inspect(view.run.id, Math.max(0, view.stepOffset - 20), view.workflow?.offset)));
+        if (view.nextStepOffset !== null) pages.append(button("Next steps", () => inspect(view.run.id, view.nextStepOffset!, view.workflow?.offset)));
         root.append(pages);
         const workflow = el("details"); workflow.open = true;
-        const workflowHeading = el("summary", "Workflow steps"); workflowHeading.id = "workflow-steps";
-        workflow.append(workflowHeading);
+        workflow.append(el("summary", "Workflow steps"));
         if (!view.workflow) workflow.append(el("p", "No saved workflow is available for this run. Browser captures do not create one.", "muted"));
         else {
           const list = el("ol"); list.start = view.workflow.offset + 1;
           for (const step of view.workflow.steps) list.append(el("li", `${step.label || "Step"} · ${step.action}`));
           workflow.append(list);
-          if (view.workflow.offset) workflow.append(button("Previous workflow steps", () => inspect(view.run.id, view.stepOffset, Math.max(0, view.workflow!.offset - 20), "#workflow-steps")));
-          if (view.workflow.nextOffset !== null) workflow.append(button("Next workflow steps", () => inspect(view.run.id, view.stepOffset, view.workflow!.nextOffset!, "#workflow-steps")));
+          if (view.workflow.offset) workflow.append(button("Previous workflow steps", () => inspect(view.run.id, view.stepOffset, Math.max(0, view.workflow!.offset - 20))));
+          if (view.workflow.nextOffset !== null) workflow.append(button("Next workflow steps", () => inspect(view.run.id, view.stepOffset, view.workflow!.nextOffset!)));
         }
         root.append(workflow);
       }

@@ -93,7 +93,6 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), error: { message: "Read failed" } });
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
-      assert.equal(await page.getByRole("button", { name: "Refresh", exact: true }).evaluate((node) => node === document.activeElement), true);
       await deliver(page, context({ containerDimensions: { width: 560 } }));
       assert.equal(await page.getByRole("alert").textContent(), "Read failed");
       await deliver(page, context({ locale: "en-GB" }));
@@ -119,7 +118,7 @@ test("viewer design survives long labels, host updates, errors and text resize",
     } finally { await page.close(); }
   });
 
-  await t.test("display-mode retries clear errors and preserve the return button's Tab order", async () => {
+  await t.test("display-mode retries clear errors and keep Inspect receipt in the Tab order", async () => {
     const page = await mount(browser, { displayMode: "inline", availableDisplayModes: ["inline", "fullscreen"] });
     try {
       await deliver(page, view(receipt));
@@ -129,14 +128,12 @@ test("viewer design survives long labels, host updates, errors and text resize",
       await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
       assert.equal(await page.getByRole("alert").textContent(), "");
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: { mode: "fullscreen" } });
-      assert.equal(await page.locator("#step-results").evaluate((node) => node === document.activeElement), true);
+      assert.equal(await page.getByRole("heading", { name: "Step results", exact: true }).count(), 1);
       await page.getByRole("button", { name: "Back to conversation", exact: true }).click();
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 3), result: { mode: "inline" } });
       await deliver(page, context({ displayMode: "inline" }));
       const inspect = page.getByRole("button", { name: "Inspect receipt", exact: true });
-      assert.equal(await inspect.evaluate((node) => node === document.activeElement), true);
-      await page.keyboard.press("Shift+Tab");
-      assert.equal(await page.getByRole("button", { name: "Refresh", exact: true }).evaluate((node) => node === document.activeElement), true);
+      await page.getByRole("button", { name: "Refresh", exact: true }).focus();
       await page.keyboard.press("Tab");
       assert.equal(await inspect.evaluate((node) => node === document.activeElement), true);
     } finally { await page.close(); }
@@ -223,56 +220,17 @@ test("viewer design survives long labels, host updates, errors and text resize",
     }
   });
 
-  await t.test("both paging directions focus and reveal the changed section of a long receipt", async () => {
-    const page = await mount(browser, { displayMode: "fullscreen" });
-    try {
-      const longReceipt = (stepOffset: number, workflowOffset: number) => ({
-        ...receipt,
-        reason: "Recorded context for this run. ".repeat(200),
-        stepOffset, nextStepOffset: stepOffset + 20,
-        steps: Array.from({ length: 20 }, (_, index) => ({
-          id: `step-${stepOffset + index}`, index: stepOffset + index + 1,
-          label: `Recorded step ${stepOffset + index + 1}`, status: "passed", picturesAllowed: false,
-        })),
-        workflow: {
-          offset: workflowOffset, nextOffset: workflowOffset + 20,
-          steps: Array.from({ length: 20 }, (_, index) => ({ label: `Workflow step ${workflowOffset + index + 1}`, action: "click" })),
-        },
-      });
-      let count = 0;
-      for (const [label, target, stepOffset, workflowOffset] of [
-        ["Next steps", "#step-results", 40, 20],
-        ["Previous steps", "#step-results", 0, 20],
-        ["Next workflow steps", "#workflow-steps", 20, 40],
-        ["Previous workflow steps", "#workflow-steps", 20, 0],
-      ] as const) {
-        await deliver(page, view(longReceipt(20, 20)));
-        await page.getByRole("button", { name: label, exact: true }).click();
-        await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, ++count), result: { _meta: { baoViewer: longReceipt(stepOffset, workflowOffset) } } });
-        await page.waitForFunction((selector) => document.querySelector(selector) === document.activeElement, target);
-        const position = await page.locator(target).evaluate((node) => {
-          const bounds = node.getBoundingClientRect();
-          return { top: bounds.top, bottom: bounds.bottom, height: innerHeight, scroll: scrollY };
-        });
-        assert.ok(position.top >= 0 && position.bottom <= position.height, `${label} must reveal its changed section`);
-        assert.ok(position.scroll > 0, `${label} must not jump to the run heading`);
-        assert.equal(await page.locator("h1").evaluate((node) => node.getBoundingClientRect().bottom < 0), true);
-      }
-    } finally { await page.close(); }
-  });
-
-  await t.test("navigation and picture reads leave focus at the changed content", async () => {
+  await t.test("navigation renders receipts and picture reads ignore stale views", async () => {
     const page = await mount(browser);
     try {
       await deliver(page, view(history));
       await page.getByRole("button", { name: "Inspect run", exact: true }).focus();
       await page.keyboard.press("Enter");
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page), result: { _meta: { baoViewer: receipt } } });
-      assert.equal(await page.locator("h1").evaluate((node) => node === document.activeElement), true);
+      assert.equal(await page.locator("h1").textContent(), run.name);
       await page.getByRole("button", { name: "Inspect receipt", exact: true }).click();
       await page.getByRole("button", { name: "Open step pictures", exact: true }).click();
       await deliver(page, { jsonrpc: "2.0", id: await lastCall(page, 2), result: { _meta: { baoPictures: { runId: run.id, stepId: "project", pictures: [] } } } });
-      assert.equal(await page.locator("h3").evaluate((node) => node === document.activeElement), true);
       assert.equal(await page.getByText(/No shareable pictures/).count(), 1);
       let count = 2;
       for (const reply of [{ result: { _meta: { baoPictures: { runId: "run-other", stepId: "project", pictures: [] } } } }, { error: { message: "Stale picture read failed" } }]) {
