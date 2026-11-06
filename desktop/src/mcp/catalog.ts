@@ -20,6 +20,7 @@ import { shotFile } from "../v1/shots";
 import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
+import { privateStep } from "./step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
@@ -308,10 +309,9 @@ export async function reviewWorkflow(
 
 function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string; redacted: true }[] {
   const dir = path.join(library.root, "shots", "runs", runId);
-  const secrets = new Set((workflow.inputs || []).filter((input) => input.type === "secret").map((input) => input.name));
   const shots: { stepId: string; png: string; redacted: true }[] = [];
   for (const step of workflow.steps) {
-    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
+    if (privateStep(workflow, step)) continue;
     const after = path.join(dir, shotFile(step.id, "after"));
     const before = path.join(dir, shotFile(step.id, "before"));
     const file = existsSync(after) ? after : before;

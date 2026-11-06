@@ -1,0 +1,119 @@
+import { scrubSaved } from "../../../shared/saved-secrets";
+import { readLibraryFile } from "../v1/library-read";
+import type { WorkflowV2 } from "../v1/schema";
+import { shotFile, shotFormat } from "../v1/shots";
+import { Library, type StoredRun } from "../v1/store";
+import { privateStep } from "./step-privacy";
+
+export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
+export const VIEW_PICTURE_BYTES = 512 * 1024;
+const PAGE_SIZE = 5;
+const STEP_PAGE_SIZE = 20;
+const bounded = { maxBytes: VIEW_RECORD_BYTES };
+
+export function viewerId(value: unknown): string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error("Invalid viewer id");
+  return value;
+}
+
+function offset(value: unknown): number {
+  if (value === undefined) return 0;
+  if (!Number.isSafeInteger(value) || typeof value !== "number" || value < 0 || value > 1_000_000) throw new Error("Invalid viewer page");
+  return value;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function text(value: unknown, limit = 500): string | undefined {
+  return typeof value === "string" ? value.slice(0, limit) : undefined;
+}
+
+function count(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function workflowFor(library: Library, run: StoredRun): WorkflowV2 | undefined {
+  try { return library.read(viewerId(run.workflowId), bounded); }
+  catch { return undefined; }
+}
+
+function summary(run: StoredRun, workflow?: WorkflowV2) {
+  return {
+    id: viewerId(run.id), workflowId: text(run.workflowId, 128),
+    name: text(workflow?.name, 120) || (run.kind === "capture" ? "Browser capture" : "Workflow unavailable"),
+    status: text(run.envelope?.status || run.status, 60),
+    at: Number.isFinite(run.at) ? run.at : null, kind: run.kind === "capture" ? "capture" : "replay",
+    stepCount: run.steps.length, modelCalls: count(run.modelCalls), healCount: run.heals.length,
+  };
+}
+
+export function listRunViews(library: Library, args: Record<string, unknown>) {
+  const page = offset(args.offset);
+  const { runs, nextOffset, skipped } = library.readRunPage(page, PAGE_SIZE, bounded);
+  return { view: "history", runs: runs.map((run) => summary(run, workflowFor(library, run))), offset: page, nextOffset, skipped, order: "recently updated" };
+}
+
+export function inspectRunView(library: Library, args: Record<string, unknown>) {
+  const run = library.readRun(viewerId(args.run_id), bounded);
+  const workflow = workflowFor(library, run);
+  const safe = scrubSaved(run, { workflow });
+  const stepOffset = offset(args.step_offset);
+  const workflowOffset = offset(args.workflow_offset);
+  const failure = record(safe.failure);
+  const stopped = safe.steps.map(record).find((step) => ["paused", "failed", "timeout", "timed-out"].includes(String(step.status)));
+  const results = (safe.receipts || []).map(record);
+  const steps = safe.steps.slice(stepOffset, stepOffset + STEP_PAGE_SIZE).map((item, index) => {
+    const step = record(item);
+    const definition = workflow?.steps.find((candidate) => candidate.id === step.id);
+    const hidden = definition ? privateStep(workflow!, definition) : true;
+    const native = record(step.native);
+    const receipt = results.find((result) => result.id === step.id || result.stepId === step.id);
+    const body = record(receipt?.body);
+    return {
+      id: text(step.id, 128), index: stepOffset + index + 1,
+      label: hidden ? (run.kind === "capture" ? text(native.command, 40) || "Captured command" : "Private or unavailable step") : text(definition?.label, 160) || text(step.id, 128),
+      action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
+      reason: hidden ? undefined : text(step.reason),
+      result: hidden ? "Detailed evidence stays in the Bao desktop app." : text(step.readBack) || text(receipt?.readBack) || text(body.actual),
+      durationMs: typeof step.startedAt === "number" && typeof step.endedAt === "number" ? Math.max(0, step.endedAt - step.startedAt) : null,
+      picturesAllowed: !hidden && typeof step.id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(step.id),
+    };
+  });
+  return {
+    view: "receipt", run: summary(run, workflow),
+    reason: text(safe.envelope?.reason) || text(failure.reason) || text(stopped?.reason),
+    handoff: safe.envelope ? { status: text(safe.envelope.status, 60), ask: text(safe.envelope.ask), reason: text(safe.envelope.reason), deadline: text(safe.envelope.deadline, 80) } : null,
+    steps, stepOffset, nextStepOffset: stepOffset + STEP_PAGE_SIZE < safe.steps.length ? stepOffset + STEP_PAGE_SIZE : null,
+    workflow: workflow ? {
+      id: viewerId(workflow.id), name: text(workflow.name, 120), stepCount: workflow.steps.length,
+      steps: workflow.steps.slice(workflowOffset, workflowOffset + STEP_PAGE_SIZE).map((step, index) => ({
+        index: workflowOffset + index + 1, action: text(step.action, 40),
+        label: privateStep(workflow, step) ? "Private step" : text(step.label, 160),
+      })),
+      offset: workflowOffset, nextOffset: workflowOffset + STEP_PAGE_SIZE < workflow.steps.length ? workflowOffset + STEP_PAGE_SIZE : null,
+    } : null,
+  };
+}
+
+export function openStepPictures(library: Library, args: Record<string, unknown>) {
+  const runId = viewerId(args.run_id);
+  const stepId = viewerId(args.step_id);
+  const run = library.readRun(runId, bounded);
+  const workflow = workflowFor(library, run);
+  const step = workflow?.steps.find((item) => item.id === stepId);
+  if (!workflow || !step || privateStep(workflow, step) || !run.steps.some((item) => record(item).id === stepId)) throw new Error("Pictures withheld for this step");
+  const pictures: { phase: string; mimeType: string; data: string }[] = [];
+  for (const phase of ["before", "after"] as const) {
+    for (const format of ["png", "jpg"] as const) {
+      try {
+        const bytes = readLibraryFile(library.root, ["shots", "runs", runId, shotFile(stepId, phase, format)], VIEW_PICTURE_BYTES);
+        if (shotFormat(bytes) !== format) continue;
+        pictures.push({ phase, mimeType: format === "png" ? "image/png" : "image/jpeg", data: bytes.toString("base64") });
+        break;
+      } catch { /* Missing, linked, malformed, or oversized evidence is never exported. */ }
+    }
+  }
+  return { runId, stepId, pictures };
+}

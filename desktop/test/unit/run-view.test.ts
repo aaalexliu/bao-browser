@@ -1,0 +1,153 @@
+import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { inspectRunView, listRunViews, openStepPictures, VIEW_PICTURE_BYTES, VIEW_RECORD_BYTES } from "../../src/mcp/run-view";
+import { callViewerTool } from "../../src/mcp/viewer-tools";
+import type { WorkflowV2 } from "../../src/v1/schema";
+import { Library, type StoredRun } from "../../src/v1/store";
+
+function fixture(t: test.TestContext) {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-run-view-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const library = new Library(path.join(root, "library"));
+  const workflow: WorkflowV2 = {
+    schema: "bao.workflow/v2", version: 2, id: "fixture", name: "Preview report", startUrl: "https://example.test/", createdAt: 1,
+    inputs: [{ name: "password", type: "secret" }],
+    steps: [{ id: "preview", index: 0, action: "click", label: "Preview report", surface: "dom", identity: { surface: "dom", role: "button", name: "Preview", path: [] }, timeoutMs: 1000 }],
+  };
+  const run: StoredRun = { id: "run-fixture", workflowId: workflow.id, at: 1, status: "passed", steps: [{ id: "preview", status: "passed", readBack: "Preview ready", snapshot: { ax: "raw private snapshot" }, beforeShot: "/private/raw.png" }], heals: [] };
+  library.save(workflow); library.saveRun(run);
+  const shots = path.join(library.root, "shots", "runs", run.id); mkdirSync(shots, { recursive: true });
+  const png = Buffer.alloc(32); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
+  for (const phase of ["before", "after"]) writeFileSync(path.join(shots, `preview-${phase}.png`), png);
+  return { root, library, run, workflow, shots, png };
+}
+
+test("history and receipt share Library data, keep unknown model counts, and exclude raw records", (t) => {
+  const { library, run } = fixture(t);
+  const history = listRunViews(library, {});
+  assert.equal(history.runs.length, 1);
+  assert.equal(history.runs[0]?.name, "Preview report");
+  assert.equal(history.runs[0]?.modelCalls, null);
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.run.modelCalls, null);
+  assert.equal(detail.steps[0]?.result, "Preview ready");
+  assert.equal(detail.workflow?.steps[0]?.label, "Preview report");
+  assert.equal(detail.steps[0]?.picturesAllowed, true);
+  assert.doesNotMatch(JSON.stringify(detail), /raw private|private\/raw|base64|png|resume_token/);
+  library.saveRun({ ...run, modelCalls: 0 });
+  assert.equal(inspectRunView(library, { run_id: run.id }).run.modelCalls, 0);
+  library.saveRun({ ...run, modelCalls: -1 });
+  assert.equal(listRunViews(library, {}).runs[0]?.modelCalls, null);
+});
+
+test("receipt explains a human stop without exposing the resume authority", (t) => {
+  const { library, run } = fixture(t);
+  library.saveRun({ ...run, status: "paused", failure: { reason: "confirm required", stepId: "preview" }, envelope: { status: "needs_human", ask: "Review the confirmation in Bao", reason: "confirm required", deadline: "2030-01-01", resume_token: "do-not-export" } });
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.run.status, "needs_human");
+  assert.equal(detail.reason, "confirm required");
+  assert.equal(detail.handoff?.ask, "Review the confirmation in Bao");
+  assert.doesNotMatch(JSON.stringify(detail), /do-not-export/);
+});
+
+test("capture runs work without a workflow, never export native args or pictures, and do not invent model counts", (t) => {
+  const { library, run } = fixture(t);
+  library.saveRun({ ...run, kind: "capture", workflowId: "agent-browser", steps: [{ id: "command-1", label: "fill password-value", status: "passed", native: { command: "fill", args: ["password-value"], results: [{ stdout: "raw-output" }] } }] });
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.run.name, "Browser capture");
+  assert.equal(detail.run.modelCalls, null);
+  assert.equal(detail.steps[0]?.label, "fill");
+  assert.equal(detail.steps[0]?.picturesAllowed, false);
+  assert.equal(detail.workflow, null);
+  assert.doesNotMatch(JSON.stringify(detail), /password-value|raw-output/);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "command-1" }), /withheld/);
+});
+
+test("history, run steps, and workflow steps page independently with bounded text", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const steps = Array.from({ length: 43 }, (_, index) => ({ ...workflow.steps[0]!, id: `step-${index}`, index, label: "x".repeat(1000) }));
+  library.save({ ...workflow, steps });
+  library.saveRun({ ...run, steps: steps.map((step) => ({ id: step.id, status: "passed", reason: "y".repeat(10_000) })) });
+  for (let index = 0; index < 11; index++) library.saveRun({ ...run, id: `run-page-${index}` });
+  let next: number | null = 0;
+  const ids: string[] = [];
+  while (next !== null) {
+    const page = listRunViews(library, { offset: next });
+    assert.ok(page.runs.length <= 5);
+    ids.push(...page.runs.map((item) => item.id)); next = page.nextOffset;
+  }
+  assert.equal(new Set(ids).size, 12);
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.steps.length, 20);
+  assert.equal(detail.steps[0]?.label?.length, 160);
+  assert.equal(detail.steps[0]?.reason?.length, 500);
+  assert.equal(detail.nextStepOffset, 20);
+  const last = inspectRunView(library, { run_id: run.id, step_offset: 40, workflow_offset: 20 });
+  assert.equal(last.steps.length, 3);
+  assert.equal(last.nextStepOffset, null);
+  assert.equal(last.workflow?.steps.length, 20);
+  assert.equal(last.workflow?.nextOffset, 40);
+});
+
+test("viewer rejects traversal, invalid IDs and invalid offsets before deriving paths", (t) => {
+  const { library, run } = fixture(t);
+  for (const id of ["../run-fixture", "/tmp/run", "x/y", "x\\y", "..", "%2e%2e", "a".repeat(129), 123, null]) {
+    assert.throws(() => inspectRunView(library, { run_id: id }), /Invalid viewer id/);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: id }), /Invalid viewer id/);
+  }
+  for (const offset of [-1, 0.5, "1", Infinity, 1_000_001, null]) {
+    assert.throws(() => listRunViews(library, { offset }), /Invalid viewer page/);
+    assert.throws(() => inspectRunView(library, { run_id: run.id, step_offset: offset }), /Invalid viewer page/);
+  }
+});
+
+test("oversized run records are skipped without ending history pagination", (t) => {
+  const { library, run } = fixture(t);
+  const file = path.join(library.root, "runs", `${run.id}.json`);
+  truncateSync(file, VIEW_RECORD_BYTES + 1);
+  assert.throws(() => inspectRunView(library, { run_id: run.id }), /too large/);
+  assert.equal(listRunViews(library, {}).skipped, 1);
+  assert.equal(listRunViews(library, {}).runs.length, 0);
+});
+
+test("linked run files, workflow files, picture files, and picture directories never leave the Library", (t) => {
+  const { root, library, run, workflow, shots, png } = fixture(t);
+  const outside = path.join(root, "outside.json"); writeFileSync(outside, JSON.stringify(run));
+  const runFile = path.join(library.root, "runs", `${run.id}.json`); rmSync(runFile); symlinkSync(outside, runFile);
+  assert.throws(() => inspectRunView(library, { run_id: run.id }), /links/);
+  assert.equal(listRunViews(library, {}).runs.length, 0);
+  rmSync(runFile); library.saveRun(run);
+  const workflowFile = path.join(library.root, "workflows", `${workflow.id}.json`); rmSync(workflowFile); symlinkSync(outside, workflowFile);
+  assert.equal(inspectRunView(library, { run_id: run.id }).workflow, null);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  rmSync(workflowFile); library.save(workflow);
+  const image = path.join(root, "outside.png"); writeFileSync(image, png);
+  for (const phase of ["before", "after"]) { const file = path.join(shots, `preview-${phase}.png`); rmSync(file); symlinkSync(image, file); }
+  assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
+  rmSync(shots, { recursive: true }); symlinkSync(root, shots);
+  assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
+  const linked = path.join(root, "linked-library"); symlinkSync(library.root, linked);
+  assert.throws(() => inspectRunView(new Library(linked), { run_id: run.id }), /links/);
+  assert.throws(() => listRunViews(new Library(linked), {}), /links/);
+});
+
+test("pictures use shared sensitive-step redaction, size caps, known steps, and UI-only metadata", (t) => {
+  const { library, run, workflow, shots, png } = fixture(t);
+  const reply = callViewerTool(library, "open_step_pictures", { run_id: run.id, step_id: "preview" });
+  assert.equal(reply._meta.baoPictures?.pictures.length, 2);
+  assert.doesNotMatch(JSON.stringify(reply.content), /image\/png|base64|iVBOR/);
+  assert.match(reply.content[0]!.text, /host app/);
+  truncateSync(path.join(shots, "preview-before.png"), VIEW_PICTURE_BYTES + 1);
+  writeFileSync(path.join(shots, "preview-after.png"), "not an image");
+  assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
+  assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "not-recorded" }), /withheld/);
+  for (const patch of [{ sensitive: true }, { input: "password" }, { value: "{{password}}" }]) {
+    library.save({ ...workflow, steps: [{ ...workflow.steps[0]!, ...patch }] });
+    writeFileSync(path.join(shots, "preview-before.png"), png);
+    assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, false);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  }
+});
