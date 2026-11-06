@@ -6,5 +6,7 @@ import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 export function privateStep(workflow: WorkflowV2, step: WorkflowStep): boolean {
   const secrets = new Set(workflow.inputs.filter((input) => input.type === "secret").map((input) => input.name));
   return step.sensitive === true || secretSavedField(step) || secretSavedField(step.identity)
-    || Boolean(step.input && secrets.has(step.input)) || bindingTokens(step.value, secrets).size > 0;
+    || Boolean(step.input && secrets.has(step.input)) || bindingTokens(step.value, secrets).size > 0
+    || bindingTokens(step.readBack?.match, secrets).size > 0
+    || (workflow.steps.at(-1)?.id === step.id && bindingTokens(workflow.readBack?.match, secrets).size > 0);
 }

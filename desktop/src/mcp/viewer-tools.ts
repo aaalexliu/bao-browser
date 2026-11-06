@@ -1,10 +1,10 @@
 import type { Library } from "../v1/store";
-import { inspectRunView, listRunViews, openStepPictures } from "./run-view";
+import { inspectRunView, listRunViews, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
 import { VIEWER_URI } from "./viewer";
 
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const page = { type: "integer", minimum: 0, maximum: 1_000_000 };
-const id = { type: "string", pattern: "^[A-Za-z0-9_-]{1,128}$", maxLength: 128 };
+const id = { type: "string", pattern: VIEWER_ID_PATTERN, maxLength: 128 };
 const appOnly = { ui: { resourceUri: VIEWER_URI, visibility: ["app"] } };
 
 export const VIEWER_TOOLS = [

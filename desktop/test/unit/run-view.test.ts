@@ -3,8 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSyn
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import Ajv from "ajv";
 import { inspectRunView, listRunViews, openStepPictures, VIEW_PICTURE_BYTES, VIEW_RECORD_BYTES } from "../../src/mcp/run-view";
-import { callViewerTool } from "../../src/mcp/viewer-tools";
+import { callViewerTool, VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
+import { ReceiptLog } from "../../src/v1/receipt";
+import { shotFile } from "../../src/v1/shots";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";
 
@@ -17,7 +20,9 @@ function fixture(t: test.TestContext) {
     inputs: [{ name: "password", type: "secret" }],
     steps: [{ id: "preview", index: 0, action: "click", label: "Preview report", surface: "dom", identity: { surface: "dom", role: "button", name: "Preview", path: [] }, timeoutMs: 1000 }],
   };
-  const run: StoredRun = { id: "run-fixture", workflowId: workflow.id, at: 1, status: "passed", steps: [{ id: "preview", status: "passed", readBack: "Preview ready", snapshot: { ax: "raw private snapshot" }, beforeShot: "/private/raw.png" }], heals: [] };
+  const receipts = new ReceiptLog();
+  receipts.append({ kind: "read-back", ts: 1, runId: "run-fixture", workflowId: workflow.id, stepId: "preview", source: "text", expected: "Preview ready", actual: "Preview ready", pass: true });
+  const run: StoredRun = { id: "run-fixture", workflowId: workflow.id, at: 1, status: "passed", steps: [{ id: "preview", status: "passed", snapshot: { ax: "raw private snapshot" }, beforeShot: "/private/raw.png" }], receipts: receipts.entries, heals: [] };
   library.save(workflow); library.saveRun(run);
   const shots = path.join(library.root, "shots", "runs", run.id); mkdirSync(shots, { recursive: true });
   const png = Buffer.alloc(32); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
@@ -33,7 +38,7 @@ test("history and receipt share Library data, keep unknown model counts, and exc
   assert.equal(history.runs[0]?.modelCalls, null);
   const detail = inspectRunView(library, { run_id: run.id });
   assert.equal(detail.run.modelCalls, null);
-  assert.equal(detail.steps[0]?.result, "Preview ready");
+  assert.equal(detail.steps[0]?.result, "Read back text: expected Preview ready, saw Preview ready. matches.");
   assert.equal(detail.workflow?.steps[0]?.label, "Preview report");
   assert.equal(detail.steps[0]?.picturesAllowed, true);
   assert.doesNotMatch(JSON.stringify(detail), /raw private|private\/raw|base64|png|resume_token/);
@@ -41,6 +46,36 @@ test("history and receipt share Library data, keep unknown model counts, and exc
   assert.equal(inspectRunView(library, { run_id: run.id }).run.modelCalls, 0);
   library.saveRun({ ...run, modelCalls: -1 });
   assert.equal(listRunViews(library, {}).runs[0]?.modelCalls, null);
+});
+
+test("receipt projects every persisted read-back with its expected value and outcome", (t) => {
+  const { library, run } = fixture(t);
+  const receipts = new ReceiptLog();
+  for (const body of [
+    { expected: "Status: none", actual: "Status: none", pass: true },
+    { expected: "Workflow done", actual: "Workflow pending", pass: false },
+  ]) receipts.append({ kind: "read-back", ts: 2, runId: run.id, workflowId: run.workflowId, stepId: "preview", source: "text", ...body });
+  receipts.append({ kind: "read-back", ts: 3, runId: run.id, workflowId: run.workflowId, stepId: "another-step", source: "text", expected: "unrelated", actual: "unrelated", pass: true });
+  library.saveRun({ ...run, receipts: receipts.entries });
+  const detail = inspectRunView(library, { run_id: run.id });
+  assert.equal(detail.steps[0]?.result, "Read back text: expected Status: none, saw Status: none. matches.\nRead back text: expected Workflow done, saw Workflow pending. does not match.");
+  library.saveRun({ ...run, receipts: [], steps: [{ id: "preview", status: "passed", readBack: "Preview ready" }] });
+  assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.result, "Preview ready");
+});
+
+test("sealed read-backs bound to secrets never leave the shared privacy boundary", (t) => {
+  const { library, run, workflow } = fixture(t);
+  const receipts = new ReceiptLog();
+  receipts.append({ kind: "read-back", ts: 1, runId: run.id, workflowId: workflow.id, stepId: "preview", source: "text", expected: "private-value", actual: "private-value", pass: true });
+  library.saveRun({ ...run, receipts: receipts.entries });
+  for (const scope of ["step", "workflow"]) {
+    const readBack = { source: "text" as const, match: "{{password}}", timeoutMs: 1000 };
+    library.save(scope === "step" ? { ...workflow, steps: [{ ...workflow.steps[0]!, readBack }] } : { ...workflow, readBack });
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.equal(detail.steps[0]?.picturesAllowed, false);
+    assert.doesNotMatch(JSON.stringify(detail), /private-value|password/);
+    assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "preview" }), /withheld/);
+  }
 });
 
 test("receipt explains a human stop without exposing the resume authority", (t) => {
@@ -94,13 +129,40 @@ test("history, run steps, and workflow steps page independently with bounded tex
 
 test("viewer rejects traversal, invalid IDs and invalid offsets before deriving paths", (t) => {
   const { library, run } = fixture(t);
-  for (const id of ["../run-fixture", "/tmp/run", "x/y", "x\\y", "..", "%2e%2e", "a".repeat(129), 123, null]) {
+  for (const id of ["", ".", "../run-fixture", "/tmp/run", "x/y", "x\\y", "..", "x..y", "x\u0000y", "a".repeat(129), 123, null]) {
     assert.throws(() => inspectRunView(library, { run_id: id }), /Invalid viewer id/);
     assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: id }), /Invalid viewer id/);
   }
   for (const offset of [-1, 0.5, "1", Infinity, 1_000_001, null]) {
     assert.throws(() => listRunViews(library, { offset }), /Invalid viewer page/);
     assert.throws(() => inspectRunView(library, { run_id: run.id, step_offset: offset }), /Invalid viewer page/);
+  }
+});
+
+test("stored dotted and other safe Library IDs work across history, tools, and pictures", (t) => {
+  const { library, run, workflow, png } = fixture(t);
+  const ajv = new Ajv();
+  const inspectSchema = ajv.compile(VIEWER_TOOLS.find((tool) => tool.name === "inspect_run")!.inputSchema);
+  const pictureSchema = ajv.compile(VIEWER_TOOLS.find((tool) => tool.name === "open_step_pictures")!.inputSchema);
+  for (const id of ["wf-my.flow", "saved report", "%2e%2e"]) {
+    const stepId = `${id}-step.1`;
+    library.save({ ...workflow, id, steps: [{ ...workflow.steps[0]!, id: stepId }] });
+    library.saveRun({ ...run, workflowId: id, steps: [{ id: stepId, status: "passed" }] });
+    const shots = path.join(library.root, "shots", "runs", run.id);
+    mkdirSync(shots, { recursive: true });
+    writeFileSync(path.join(shots, shotFile(stepId, "after")), png);
+    assert.equal(inspectSchema({ run_id: run.id }), true);
+    assert.equal(pictureSchema({ run_id: run.id, step_id: stepId }), true);
+    assert.ok(listRunViews(library, {}).runs.some((item) => item.workflowId === id && item.name === workflow.name));
+    const detail = inspectRunView(library, { run_id: run.id });
+    assert.equal(detail.workflow?.id, id);
+    assert.equal(detail.steps[0]?.label, "Preview report");
+    assert.equal(detail.steps[0]?.picturesAllowed, true);
+    assert.equal(openStepPictures(library, { run_id: run.id, step_id: stepId }).pictures.length, 1);
+  }
+  for (const id of ["", ".", "..", "a..b", "x/y", "x\\y", "x\u0000y", "x".repeat(129)]) {
+    assert.equal(inspectSchema({ run_id: id }), false);
+    assert.equal(pictureSchema({ run_id: run.id, step_id: id }), false);
   }
 });
 
@@ -134,6 +196,29 @@ test("linked run files, workflow files, picture files, and picture directories n
   assert.throws(() => listRunViews(new Library(linked), {}), /links/);
 });
 
+test("live picture names use the same run boundary and guards as replay names", (t) => {
+  const { root, library, run, shots, png } = fixture(t);
+  for (const phase of ["before", "after"]) rmSync(path.join(shots, `preview-${phase}.png`));
+  writeFileSync(path.join(shots, "0-before.png"), png);
+  writeFileSync(path.join(shots, "0-after.png"), png);
+  library.saveRun({ ...run, kind: "capture", steps: [{ id: "preview", status: "passed", beforeShot: "0-before.png", afterShot: "0-after.png" }] });
+  assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, [
+    { phase: "before", mimeType: "image/png", data: png.toString("base64") },
+    { phase: "after", mimeType: "image/png", data: png.toString("base64") },
+  ]);
+  const outside = path.join(root, "outside.png"); writeFileSync(outside, png);
+  symlinkSync(outside, path.join(shots, "linked.png"));
+  truncateSync(path.join(shots, "0-before.png"), VIEW_PICTURE_BYTES + 1);
+  writeFileSync(path.join(shots, "invalid.png"), "not an image");
+  for (const name of ["../0-after.png", outside, "nested/0-after.png", "nested\\0-after.png", "linked.png", "0-before.png", "invalid.png", ".", "..", ""]) {
+    library.saveRun({ ...run, steps: [{ id: "preview", status: "passed", beforeShot: name, afterShot: name }] });
+    assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
+  }
+  library.saveRun({ ...run, steps: [{ id: "preview", status: "passed", beforeShot: "missing.png", afterShot: "missing.png" }] });
+  writeFileSync(path.join(shots, "preview-after.png"), png);
+  assert.equal(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures.length, 1);
+});
+
 test("pictures use shared sensitive-step redaction, size caps, known steps, and UI-only metadata", (t) => {
   const { library, run, workflow, shots, png } = fixture(t);
   const reply = callViewerTool(library, "open_step_pictures", { run_id: run.id, step_id: "preview" });
@@ -144,7 +229,7 @@ test("pictures use shared sensitive-step redaction, size caps, known steps, and 
   writeFileSync(path.join(shots, "preview-after.png"), "not an image");
   assert.deepEqual(openStepPictures(library, { run_id: run.id, step_id: "preview" }).pictures, []);
   assert.throws(() => openStepPictures(library, { run_id: run.id, step_id: "not-recorded" }), /withheld/);
-  for (const patch of [{ sensitive: true }, { input: "password" }, { value: "{{password}}" }]) {
+  for (const patch of [{ sensitive: true }, { input: "password" }, { value: "{{password}}" }, { readBack: { source: "text" as const, match: "{{password}}", timeoutMs: 1000 } }]) {
     library.save({ ...workflow, steps: [{ ...workflow.steps[0]!, ...patch }] });
     writeFileSync(path.join(shots, "preview-before.png"), png);
     assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.picturesAllowed, false);

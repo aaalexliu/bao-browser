@@ -11,8 +11,15 @@ const PAGE_SIZE = 5;
 const STEP_PAGE_SIZE = 20;
 const bounded = { maxBytes: VIEW_RECORD_BYTES };
 
+export const VIEWER_ID_PATTERN = "^(?![\\s\\S]*\\.\\.)(?!\\.$)[^/\\\\\\u0000]{1,128}$";
+const idPattern = new RegExp(VIEWER_ID_PATTERN);
+
+function isViewerId(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 128 && idPattern.test(value);
+}
+
 export function viewerId(value: unknown): string {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error("Invalid viewer id");
+  if (!isViewerId(value)) throw new Error("Invalid viewer id");
   return value;
 }
 
@@ -69,16 +76,16 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
     const definition = workflow?.steps.find((candidate) => candidate.id === step.id);
     const hidden = definition ? privateStep(workflow!, definition) : true;
     const native = record(step.native);
-    const receipt = results.find((result) => result.id === step.id || result.stepId === step.id);
-    const body = record(receipt?.body);
+    const readBacks = hidden ? [] : results.filter((result) => result.stepId === step.id).map((receipt) =>
+      `Read back ${text(receipt.source, 60) || "value"}: expected ${text(receipt.expected) || ""}, saw ${text(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
     return {
       id: text(step.id, 128), index: stepOffset + index + 1,
       label: hidden ? (run.kind === "capture" ? text(native.command, 40) || "Captured command" : "Private or unavailable step") : text(definition?.label, 160) || text(step.id, 128),
       action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
       reason: hidden ? undefined : text(step.reason),
-      result: hidden ? "Detailed evidence stays in the Bao desktop app." : text(step.readBack) || text(receipt?.readBack) || text(body.actual),
+      result: hidden ? "Detailed evidence stays in the Bao desktop app." : readBacks.length ? readBacks.join("\n") : text(step.readBack),
       durationMs: typeof step.startedAt === "number" && typeof step.endedAt === "number" ? Math.max(0, step.endedAt - step.startedAt) : null,
-      picturesAllowed: !hidden && typeof step.id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(step.id),
+      picturesAllowed: !hidden && isViewerId(step.id),
     };
   });
   return {
@@ -103,13 +110,17 @@ export function openStepPictures(library: Library, args: Record<string, unknown>
   const run = library.readRun(runId, bounded);
   const workflow = workflowFor(library, run);
   const step = workflow?.steps.find((item) => item.id === stepId);
-  if (!workflow || !step || privateStep(workflow, step) || !run.steps.some((item) => record(item).id === stepId)) throw new Error("Pictures withheld for this step");
+  const recorded = run.steps.map(record).find((item) => item.id === stepId);
+  if (!workflow || !step || privateStep(workflow, step) || !recorded) throw new Error("Pictures withheld for this step");
   const pictures: { phase: string; mimeType: string; data: string }[] = [];
   for (const phase of ["before", "after"] as const) {
-    for (const format of ["png", "jpg"] as const) {
+    const names = [recorded[`${phase}Shot`], shotFile(stepId, phase, "png"), shotFile(stepId, phase, "jpg")];
+    for (const name of names) {
+      if (typeof name !== "string") continue;
       try {
-        const bytes = readLibraryFile(library.root, ["shots", "runs", runId, shotFile(stepId, phase, format)], VIEW_PICTURE_BYTES);
-        if (shotFormat(bytes) !== format) continue;
+        const bytes = readLibraryFile(library.root, ["shots", "runs", runId, name], VIEW_PICTURE_BYTES);
+        const format = shotFormat(bytes);
+        if (!format) continue;
         pictures.push({ phase, mimeType: format === "png" ? "image/png" : "image/jpeg", data: bytes.toString("base64") });
         break;
       } catch { /* Missing, linked, malformed, or oversized evidence is never exported. */ }
