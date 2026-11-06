@@ -59,9 +59,11 @@ Do not use a daily Chrome profile or the installed Library for tests.
 
 ## MCP
 
-Agents run `/Applications/Bao.app/Contents/MacOS/bao-mcp`. After building the
+For Claude Desktop and ChatGPT, see [Add Bao to a desktop app](docs/desktop-mcp-install.md).
+
+CLI agents run `/Applications/Bao.app/Contents/MacOS/bao-mcp`. After building the
 desktop, `node desktop/dist/desktop/src/app/cli.js agent config claude --write`
-(or `codex`) adds that entry and pre-approves Bao's tools in that agent.
+(or `codex`) adds that entry and pre-approves Bao's tools in that CLI agent.
 [Agent quickstart](docs/agent-quickstart.md#mcp) has the entries and checkout form.
 [Agent-browser pass-through](docs/agent-browser-engine.md) explains profile selection, copy limits, owner handoff, and evidence.
 [Read-only MCP viewer](docs/mcp-viewer.md) covers embedded run history and

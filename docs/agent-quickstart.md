@@ -26,7 +26,9 @@ The Mac launcher runs `desktop/src/print-home.cjs` before the server starts. [Bu
 
 Agents start it through `bao-mcp`, a launcher inside the Mac app: `/Applications/Bao.app/Contents/MacOS/bao-mcp`. It finds Node 24 or newer the way the app does ([Build Bao on a Mac](mac-build.md#launch)), then runs the app's own `bao mcp` from `Contents/Resources/bao`. So the agent config names no checkout, `node` need not be on PATH, and the agent's working directory does not pick the library. `bao-mcp` passes any arguments you add after it on to `bao mcp`. The source is `desktop/packaging/macos/bao-mcp.c`.
 
-One command sets up each agent. `bao agent config claude` and `bao agent config codex` print the entry. `--write` puts it in that agent's own config and pre-approves Bao's tools there, so the agent runs them without asking first. Only the `bao` server is pre-approved. Other servers, the agent's global approval policy, and its permission mode stay as they were. Without `--write`, nothing is written.
+For Claude Desktop and ChatGPT, use the preview-and-confirm buttons in Bao Settings. [Add Bao to a desktop app](desktop-mcp-install.md) covers their config paths, backups, and the Claude Desktop `bao.mcpb` extension. Those paths do not grant broad tool approval.
+
+One command sets up each CLI agent. `bao agent config claude` and `bao agent config codex` print the entry. `--write` puts it in that agent's own config and pre-approves Bao's tools there, so the agent runs them without asking first. Only the `bao` server is pre-approved. Other servers, the agent's global approval policy, and its permission mode stay as they were. Without `--write`, nothing is written.
 
 Pre-approval skips only the agent's own prompt. Without pre-approval, Codex asks before each Bao call, and `codex exec` with `approval_policy = "never"` refuses every Bao call with `MCP tool call requires approval, but approval policy is never`.
 
