@@ -203,12 +203,13 @@ export async function startApp(opts: {
   /** Resolver notices for this launch. Each shows in the window once per library. */
   libraryNotices?: string[];
   evalVideoNoBlur?: true;
+  desktopMcpLauncher?: string;
 }): Promise<App> {
   opts = { ...opts, home: path.resolve(opts.home) };
   process.env.BAO_HOME = opts.home;
   await readCursorAccount().catch(() => undefined);
   const library = new Library(opts.home);
-  const desktopMcp = new DesktopMcpInstaller(baoUserHome(), mcpLauncher(appBundleOf(__filename) || DEFAULT_APP));
+  const desktopMcp = new DesktopMcpInstaller(baoUserHome(), opts.desktopMcpLauncher ?? mcpLauncher(appBundleOf(__filename) || DEFAULT_APP));
   const librarySplits = showOnce(opts.home, opts.libraryNotices || []);
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();

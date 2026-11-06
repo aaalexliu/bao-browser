@@ -21,20 +21,23 @@ test("official MCPB tooling validates and packs the install artifact", { timeout
     assert.equal(manifestResult.status, 0, manifestResult.stderr);
     const manifest = JSON.parse(manifestResult.stdout) as {
       server: { type: string; entry_point: string; mcp_config: { command: string; args: string[] } };
-      compatibility: { platforms: string[]; runtimes: { node: string } };
+      compatibility: { platforms: string[]; runtimes?: unknown };
+      user_config?: Record<string, unknown>;
     };
     assert.equal(manifest.server.type, "node");
     assert.deepEqual(manifest.compatibility.platforms, ["darwin"]);
-    assert.equal(manifest.compatibility.runtimes.node, ">=24");
-    assert.deepEqual(manifest.server.mcp_config, { command: "node", args: ["${__dirname}/server.cjs", "${user_config.bao_app}"] });
+    assert.equal(manifest.compatibility.runtimes, undefined);
+    assert.deepEqual(manifest.server.mcp_config, { command: "node", args: ["${__dirname}/server.cjs"] });
     const entry = spawnSync("/usr/bin/unzip", ["-p", output, manifest.server.entry_point], { encoding: "utf8" });
     assert.equal(entry.status, 0, entry.stderr);
     assert.equal(entry.stdout, readFileSync(source, "utf8"));
-    assert.doesNotMatch(manifestResult.stdout, /alwaysAllow|auto.?approv|default_tools_approval_mode/i);
+    const allowedKeys = new Set(["manifest_version", "name", "display_name", "version", "description", "author", "server", "tools_generated", "compatibility"]);
+    for (const key of Object.keys(manifest)) assert.ok(allowedKeys.has(key), key);
+    assert.equal(manifest.user_config, undefined);
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-test("MCPB forwards stdio, passes Node 24 to the app launcher and reports missing apps", () => {
+test("MCPB forwards stdio, hints the relay runtime and reports missing apps", () => {
   const home = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-mcpb-relay-")));
   try {
     const app = path.join(home, "Bao fixture.app");
@@ -44,16 +47,22 @@ test("MCPB forwards stdio, passes Node 24 to the app launcher and reports missin
     chmodSync(launcher, 0o700);
     const input = '{"jsonrpc":"2.0","id":1,"method":"initialize"}\n';
     const env = { ...process.env, HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" };
-    const relayed = spawnSync(process.execPath, [source, app], { cwd: home, env, input, encoding: "utf8", timeout: 10_000 });
+    const preload = path.join(home, "spawn.cjs");
+    writeFileSync(preload, `const cp = require("node:child_process");
+const assert = require("node:assert/strict");
+const spawn = cp.spawn;
+cp.spawn = (command, args, options) => {
+  assert.equal(command, "/Applications/Bao.app/Contents/MacOS/bao-mcp");
+  return spawn(${JSON.stringify(launcher)}, args, options);
+};\n`);
+    const relayed = spawnSync(process.execPath, ["--require", preload, source], { cwd: home, env, input, encoding: "utf8", timeout: 10_000 });
     assert.equal(relayed.status, 0, relayed.stderr);
     assert.equal(relayed.stdout, input);
     assert.equal(relayed.stderr, 'launcher fixture\n');
-    const missing = spawnSync(process.execPath, [source, path.join(home, "Missing.app")], { cwd: home, env, encoding: "utf8", timeout: 10_000 });
+    rmSync(launcher);
+    const missing = spawnSync(process.execPath, ["--require", preload, source], { cwd: home, env, encoding: "utf8", timeout: 10_000 });
     assert.equal(missing.status, 1);
     assert.equal(missing.stdout, "");
-    assert.match(missing.stderr, /Install Bao.app.*choose its directory/);
-    const invalid = spawnSync(process.execPath, [source, "relative.app"], { cwd: home, env, encoding: "utf8", timeout: 10_000 });
-    assert.equal(invalid.status, 1);
-    assert.match(invalid.stderr, /Choose the installed Bao.app/);
+    assert.equal(missing.stderr, "Cannot start Bao. Install Bao.app.\n");
   } finally { rmSync(home, { recursive: true, force: true }); }
 });

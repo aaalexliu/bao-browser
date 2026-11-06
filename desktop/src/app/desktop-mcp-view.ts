@@ -1,5 +1,5 @@
 import type { DesktopMcpClient, DesktopMcpPreview } from "./desktop-mcp-config";
-import { esc } from "./views";
+import { htmlEsc } from "./views";
 
 const CLIENT_NAMES: Record<DesktopMcpClient, string> = { claude: "Claude Desktop", chatgpt: "ChatGPT" };
 let previewPending = false;
@@ -36,7 +36,7 @@ export function bindDesktopMcp(): void {
         showPreview(preview);
       } catch (err) {
         feedback.textContent = "";
-        error.textContent = `${message(err)} Try Add again after fixing the file.`;
+        error.textContent = message(err);
       } finally {
         previewPending = false;
         document.querySelectorAll<HTMLButtonElement>("[data-desktop-mcp]").forEach((choice) => { choice.disabled = false; });
@@ -54,14 +54,14 @@ function showPreview(preview: DesktopMcpPreview): void {
   const changed = preview.action !== "unchanged";
   const verb = preview.action === "update" ? "Update" : "Add";
   dialog.innerHTML = `<h2 id="desktop-mcp-title" tabindex="-1">${changed ? `${verb} Bao ${preview.action === "update" ? "in" : "to"} ${name}?` : `Bao is already set up in ${name}`}</h2>
-    <p class="desktop-mcp-path">${esc(preview.file)}</p>
+    <p class="desktop-mcp-path">${htmlEsc(preview.file)}</p>
     <p>${preview.action === "update" ? "An existing Bao entry will change. Other settings and explicit per-tool rules stay as they are." : changed ? "Bao will add one local server entry. Other settings stay as they are." : "This config already has the proposed Bao settings. Nothing will be written."}</p>
     ${preview.client === "chatgpt" ? `<p>This is the shared Codex config. The change also applies to the Codex CLI and IDE extension.</p>` : ""}
     ${changed ? `<p>Tool approval stays with you. No blanket approval is added.</p>
       <h3>Exact config diff</h3>
       <p class="quiet">Lines starting with - are removed. Lines starting with + are added.</p>
-      <pre aria-label="Exact config diff">${esc(preview.diff)}</pre>
-      <p class="desktop-mcp-path">${preview.backup ? `Before replacing the file, Bao saves a backup at ${esc(preview.backup)}. Restore that file to undo this change.` : "This creates a new config file with private permissions. There is no earlier file to back up."}</p>` : ""}
+      <pre aria-label="Exact config diff">${htmlEsc(preview.diff)}</pre>
+      <p class="desktop-mcp-path">${preview.backup ? `Before replacing the file, Bao saves a backup at ${htmlEsc(preview.backup)}. Restore that file to undo this change.` : "This creates a new config file with private permissions. There is no earlier file to back up."}</p>` : ""}
     <p id="desktop-mcp-write-status" role="status"></p>
     <p id="desktop-mcp-write-error" role="alert"></p>
     <div class="desktop-mcp-actions">
@@ -90,7 +90,7 @@ function showPreview(preview: DesktopMcpPreview): void {
       if (feedback) feedback.textContent = `Bao is set up in ${name}. Restart ${name} to load it. ${result.backup ? `Backup saved at ${result.backup}. Restore that file to undo the change.` : `Created ${result.file}.`}`;
     } catch (err) {
       dialog.querySelector("#desktop-mcp-write-status")!.textContent = "";
-      dialog.querySelector("#desktop-mcp-write-error")!.textContent = `${message(err)} Close this dialog and select Add again for a fresh preview.`;
+      dialog.querySelector("#desktop-mcp-write-error")!.textContent = message(err);
     } finally {
       writing = false;
       cancel.disabled = false;

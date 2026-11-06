@@ -91,7 +91,6 @@ codesign --force --sign "$IDENTITY" "$CHROME"
 # library, before it and Bao.app are signed.
 bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"
 node "$ROOT/desktop/packaging/build-mcpb.mjs" "$DIST/bao.mcpb"
-cp "$DIST/bao.mcpb" "$APP/Contents/Resources/bao.mcpb"
 # codesign on Bao.app signs only the main executable, so the launcher is signed on its own.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.

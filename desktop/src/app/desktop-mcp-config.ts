@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fchmodSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, closeSync, constants, fchmodSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createTwoFilesPatch } from "diff";
 import { findNodeAtLocation, parseTree, type Node as JsonNode, type ParseError } from "jsonc-parser";
 import { parseTOML, getStaticTOMLValue, type AST } from "toml-eslint-parser";
+
+import { codexOwnedSettings } from "./codex-config";
 
 export type DesktopMcpClient = "claude" | "chatgpt";
 
@@ -35,7 +37,7 @@ interface TextEdit {
   text: string;
 }
 
-const RECOVER = "Nothing was written. Fix the file or its permissions, then preview again.";
+const RECOVER = "Fix the file or its permissions, then preview again.";
 
 export function desktopMcpFile(home: string, client: DesktopMcpClient): string {
   return client === "claude"
@@ -55,6 +57,12 @@ export class DesktopMcpInstaller {
   preview(client: DesktopMcpClient): DesktopMcpPreview {
     const file = desktopMcpFile(this.home, client);
     try {
+      try {
+        if (!lstatSync(this.launcher).isFile()) throw new Error();
+        accessSync(this.launcher, constants.X_OK);
+      } catch {
+        throw new Error("Cannot start Bao. Install Bao.app.");
+      }
       const before = snapshot(file);
       const edited = client === "claude" ? editClaude(before.text, this.launcher) : editChatgpt(before.text, this.launcher);
       const changed = before.text !== edited.text;
@@ -70,7 +78,7 @@ export class DesktopMcpInstaller {
       if (token) this.plans.set(token, { preview, before, after: edited.text, expires: Date.now() + 10 * 60_000 });
       return preview;
     } catch (err) {
-      throw new Error(`Cannot preview ${file}. ${detail(err)} ${RECOVER}`);
+      throw new Error(`Cannot preview ${file}. ${recovery(err)}`);
     }
   }
 
@@ -80,27 +88,33 @@ export class DesktopMcpInstaller {
     if (!plan || plan.expires < Date.now()) throw new Error("This preview expired or was already used. Preview the change again.");
     const { file, backup, client } = plan.preview;
     let temp = "";
+    let backupCreated = false;
     try {
       assertCurrent(file, plan.before);
       mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       temp = `${file}.bao-${randomUUID()}.tmp`;
       writeDurable(temp, plan.after, plan.before.mode);
       assertCurrent(file, plan.before);
-      if (backup) writeDurable(backup, plan.before.text, plan.before.mode);
+      if (backup) writeDurable(backup, plan.before.text, plan.before.mode, () => { backupCreated = true; });
       assertCurrent(file, plan.before);
       renameSync(temp, file);
       temp = "";
       return { file, backup, client };
     } catch (err) {
-      throw new Error(`Cannot install Bao. ${detail(err)} ${RECOVER}`);
+      if (backupCreated && backup) rmSync(backup, { force: true });
+      throw new Error(`Cannot install Bao. ${recovery(err)}`);
     } finally {
       if (temp) rmSync(temp, { force: true });
     }
   }
 }
 
-function detail(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+function recovery(err: unknown): string {
+  if (err instanceof Error && !(err as NodeJS.ErrnoException).code) {
+    if (/manually|first\.|[Pp]review|Install Bao/.test(err.message)) return err.message;
+    return `${err.message} ${RECOVER}`;
+  }
+  return `Nothing was written. ${RECOVER}`;
 }
 
 function assertNoLinks(file: string): void {
@@ -136,9 +150,10 @@ function assertCurrent(file: string, before: FileSnapshot): void {
   }
 }
 
-function writeDurable(file: string, text: string, mode: number): void {
+function writeDurable(file: string, text: string, mode: number, created?: () => void): void {
   const fd = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, mode);
   try {
+    created?.();
     fchmodSync(fd, mode);
     writeFileSync(fd, text, "utf8");
     fsyncSync(fd);
@@ -200,6 +215,15 @@ export function editClaude(input: string, launcher: string): { text: string; exi
   const bao = findNodeAtLocation(tree, ["mcpServers", "bao"]);
   if (bao && bao.type !== "object") throw new Error("mcpServers.bao must be an object.");
   if (bao && findNodeAtLocation(bao, ["url"])) throw new Error("The existing Bao entry uses a URL. Convert it to a local stdio entry manually first.");
+  const env = bao && findNodeAtLocation(bao, ["env"]);
+  if (env) {
+    const props = bao!.children!;
+    const index = props.findIndex((prop) => prop.children?.[1] === env);
+    const prop = props[index]!;
+    const next = props[index + 1];
+    const previous = props[index - 1];
+    text = applyEdits(text, [{ start: next || !previous ? prop.offset : previous.offset + previous.length, end: next ? next.offset : prop.offset + prop.length, text: "" }]);
+  }
   text = setJson(text, ["mcpServers", "bao", "command"], launcher);
   text = setJson(text, ["mcpServers", "bao", "args"], []);
   jsonObject(text);
@@ -214,7 +238,44 @@ function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function withoutCodexEnv(text: string): string {
+  const ast = parseTOML(text, { tomlVersion: "1.0" });
+  const edits: TextEdit[] = [];
+  const isEnv = (keys: string[]): boolean => keys.length >= 3 && keys[0] === "mcp_servers" && keys[1] === "bao" && keys[2] === "env";
+  const collect = (items: AST.TOMLKeyValue[], prefix: string[], inline: boolean): void => {
+    const removed = items.map((item) => isEnv([...prefix, ...keyParts(item.key)]));
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      if (removed[i]) {
+        let end = i;
+        while (removed[end + 1]) end++;
+        const last = items[end]!;
+        edits.push({
+          start: inline && end === items.length - 1 && i > 0 ? items[i - 1]!.range[1] : item.range[0],
+          end: inline && end < items.length - 1 ? items[end + 1]!.range[0] : last.range[1],
+          text: "",
+        });
+        i = end;
+      } else if (item.value.type === "TOMLInlineTable") {
+        collect(item.value.body, [...prefix, ...keyParts(item.key)], true);
+      }
+    }
+  };
+  const items = ast.body[0].body;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
+    if (item.type === "TOMLKeyValue") collect([item], [], false);
+    else if (isEnv(item.resolvedKey as string[])) {
+      edits.push({ start: item.range[0], end: item.range[1], text: "" });
+    } else collect(item.body, item.resolvedKey as string[], false);
+  }
+  return applyEdits(text, edits);
+}
+
 export function editChatgpt(text: string, launcher: string): { text: string; existing: boolean } {
+  const original = getStaticTOMLValue(parseTOML(text, { tomlVersion: "1.0" }));
+  const existing = object(original) && object(original.mcp_servers) && original.mcp_servers.bao !== undefined;
+  text = withoutCodexEnv(text);
   const ast = parseTOML(text, { tomlVersion: "1.0" });
   const data = getStaticTOMLValue(ast);
   if (!object(data) || (data.mcp_servers !== undefined && !object(data.mcp_servers))) throw new Error("mcp_servers must be a TOML table.");
@@ -244,15 +305,16 @@ export function editChatgpt(text: string, launcher: string): { text: string; exi
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   if (bao === undefined && containers.get(pathKey(["mcp_servers"]))?.type !== "TOMLInlineTable") {
     const gap = !text || text.endsWith(eol + eol) ? "" : text.endsWith(eol) ? eol : eol + eol;
-    const block = `[mcp_servers.bao]${eol}command = ${JSON.stringify(launcher)}${eol}args = []${eol}default_tools_approval_mode = "prompt"${eol}`;
+    const block = `[mcp_servers.bao]${eol}${Object.entries(codexOwnedSettings(launcher, "prompt")).filter(([, value]) => value !== undefined).map(([key, value]) => `${key} = ${JSON.stringify(value)}`).join(eol)}${eol}`;
     const out = text + gap + block;
     parseTOML(out, { tomlVersion: "1.0" });
-    return { text: out, existing: false };
+    return { text: out, existing };
   }
   const edits: TextEdit[] = [];
   const inserts = new Map<string, { container?: AST.TOMLInlineTable | AST.TOMLTable; entries: string[] }>();
-  const settings: Record<string, unknown> = { command: launcher, args: [], default_tools_approval_mode: "prompt" };
+  const settings = codexOwnedSettings(launcher, "prompt");
   for (const [key, value] of Object.entries(settings)) {
+    if (value === undefined) continue;
     const keys = ["mcp_servers", "bao", key];
     const found = values.get(pathKey(keys));
     if (found) {
@@ -283,5 +345,5 @@ export function editChatgpt(text: string, launcher: string): { text: string; exi
   }
   const out = applyEdits(text, edits);
   parseTOML(out, { tomlVersion: "1.0" });
-  return { text: out, existing: bao !== undefined };
+  return { text: out, existing };
 }

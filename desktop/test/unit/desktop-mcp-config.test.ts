@@ -3,6 +3,7 @@ import { chmodSync, existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import fs = require("node:fs");
 import { getStaticTOMLValue, parseTOML } from "toml-eslint-parser";
 import { DesktopMcpInstaller, desktopMcpFile, editChatgpt, editClaude, type DesktopMcpClient } from "../../src/app/desktop-mcp-config";
 
@@ -10,7 +11,7 @@ const launcher = "/Applications/Bao.app/Contents/MacOS/bao-mcp";
 
 function fixture() {
   const home = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-desktop-install-")));
-  return { home, installer: new DesktopMcpInstaller(home, launcher), close: () => rmSync(home, { recursive: true, force: true }) };
+  return { home, installer: new DesktopMcpInstaller(home, process.execPath), close: () => rmSync(home, { recursive: true, force: true }) };
 }
 
 function plant(home: string, client: DesktopMcpClient, text: string, mode = 0o640): string {
@@ -25,7 +26,7 @@ test("Claude updates only owned values, keeping every other byte and JSON key", 
   const before = '{\r\n\t"mcpServers" : {"other": {"command":"keep"}, "bao" : {"command" : "old", "args" : ["old"], "env":{"KEEP":"same"}}},\r\n\t"preferences" : { "theme" : "dark" }\r\n}\r\n';
   const result = editClaude(before, launcher);
   assert.equal(result.existing, true);
-  assert.equal(result.text, before.replace('"old"', JSON.stringify(launcher)).replace('["old"]', '[]'));
+  assert.equal(result.text, before.replace('"old"', JSON.stringify(launcher)).replace('["old"]', '[]').replace(', "env":{"KEEP":"same"}', ''));
   assert.equal(editClaude(result.text, launcher).text, result.text);
   for (const text of ['', '{}', '{"mcpServers":{}}', '{"mcpServers":{"other":{"command":"keep"}}}']) {
     const out = JSON.parse(editClaude(text, launcher).text) as { mcpServers: { bao: { command: string; args: unknown[] } } };
@@ -60,13 +61,19 @@ test("ChatGPT edits inline, dotted, quoted and implicit tables without duplicate
     '[mcp_servers.bao]\ncommand="old"',
     '"mcp_servers"."bao" = { command="old" }',
     'mcp_servers.bao.command = """old\n[mcp_servers.fake]\n"""\n',
+    'mcp_servers = { bao={env={BAO_HOME="/old"}, command="old"}, other={command="keep"} }',
+    'mcp_servers = { bao={command="old", env={BAO_HOME="/old"}} }',
+    'mcp_servers.bao.env.BAO_HOME="/old"\n',
+    '[mcp_servers.bao.env.nested]\nOLD="value"\n[mcp_servers.other]\ncommand="keep"',
   ];
   for (const before of inputs) {
     const out = editChatgpt(before, launcher).text;
-    const parsed = getStaticTOMLValue(parseTOML(out, { tomlVersion: "1.0" })) as { mcp_servers: { bao: { command: string; args: unknown[]; default_tools_approval_mode: string } } };
+    const parsed = getStaticTOMLValue(parseTOML(out, { tomlVersion: "1.0" })) as { mcp_servers: { bao: { command: string; args: unknown[]; default_tools_approval_mode: string; tool_timeout_sec: number; env?: unknown } } };
     assert.equal(parsed.mcp_servers.bao.command, launcher, before);
     assert.deepEqual(parsed.mcp_servers.bao.args, [], before);
     assert.equal(parsed.mcp_servers.bao.default_tools_approval_mode, "prompt", before);
+    assert.equal(parsed.mcp_servers.bao.tool_timeout_sec, 180, before);
+    assert.equal(parsed.mcp_servers.bao.env, undefined, before);
     assert.equal(editChatgpt(out, launcher).text, out, before);
     if (before.includes('other={command="keep"}')) assert.ok(out.includes('other={command="keep"}'));
   }
@@ -79,6 +86,32 @@ test("ChatGPT rejects malformed TOML, duplicate entries and incompatible types",
 });
 
 for (const client of ["claude", "chatgpt"] as const) {
+  test(`${client} refuses missing, directory and non-executable launchers without writing`, () => {
+    const f = fixture();
+    try {
+      const unavailable = path.join(f.home, "launcher");
+      for (const state of ["missing", "directory", "file"] as const) {
+        if (state === "directory") mkdirSync(unavailable);
+        if (state === "file") { rmSync(unavailable, { recursive: true }); writeFileSync(unavailable, "not executable", { mode: 0o600 }); }
+        const installer = new DesktopMcpInstaller(f.home, unavailable);
+        assert.throws(() => installer.preview(client), /Install Bao.app/);
+        assert.equal(existsSync(desktopMcpFile(f.home, client)), false);
+      }
+    } finally { f.close(); }
+  });
+
+  test(`${client} removes its backup when replacement fails`, (t) => {
+    const f = fixture();
+    try {
+      const before = client === "claude" ? "{}" : "# keep\n";
+      const file = plant(f.home, client, before);
+      const preview = f.installer.preview(client);
+      t.mock.method(fs, "renameSync", () => { throw Object.assign(new Error("denied"), { code: "EACCES" }); });
+      assert.throws(() => f.installer.confirm(preview.token!), /Nothing was written/);
+      assert.equal(readFileSync(file, "utf8"), before);
+      assert.deepEqual(readdirSync(path.dirname(file)), [path.basename(file)]);
+    } finally { t.mock.restoreAll(); f.close(); }
+  });
   test(`${client} previews without writes, backs up exact bytes, preserves mode and applies once`, () => {
     const f = fixture();
     try {
@@ -97,7 +130,7 @@ for (const client of ["claude", "chatgpt"] as const) {
       assert.equal(readFileSync(result.backup!, "utf8"), before);
       assert.equal(statSync(file).mode & 0o777, 0o640);
       assert.equal(statSync(result.backup!).mode & 0o777, 0o640);
-      assert.match(readFileSync(file, "utf8"), /bao-mcp/);
+      assert.ok(readFileSync(file, "utf8").includes(process.execPath));
       assert.throws(() => f.installer.confirm(preview.token!), /expired|already used/);
       const noop = f.installer.preview(client);
       assert.equal(noop.action, "unchanged");

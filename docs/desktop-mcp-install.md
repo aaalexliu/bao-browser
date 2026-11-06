@@ -34,8 +34,8 @@ npm run package:mcpb -- /tmp/bao.mcpb
 
 The build runs the official `mcpb validate`, `mcpb pack`, and `mcpb info` commands. See Anthropic's [MCPB CLI docs](https://github.com/anthropics/mcpb/blob/main/CLI.md) and [manifest specification](https://github.com/anthropics/mcpb/blob/main/MANIFEST.md).
 
-`npm run package:mac` also writes `bao.mcpb` beside `Bao.dmg` and includes a copy in `Bao.app/Contents/Resources/bao.mcpb`. The extension starts the installed app's `Contents/MacOS/bao-mcp` launcher. It relays stdio without a shell and gives the launcher Claude's Node executable through `BAO_NODE`.
+`npm run package:mac` also writes `bao.mcpb` beside `Bao.dmg`. The extension starts the installed app's `Contents/MacOS/bao-mcp` launcher. It relays stdio without a shell and gives the launcher Claude's Node executable through `BAO_NODE`.
 
-The manifest requires macOS and Node 24 or newer. If Claude Desktop's bundled Node is too old, use the Settings button instead. Bao's native launcher can find an installed Node 24 without relying on Claude's runtime.
+The manifest requires macOS. Bao's native launcher finds an installed Node 24 or newer without relying on Claude's runtime.
 
-Open the bundle in Claude Desktop only when you intend to install it. Choose the installed Bao.app directory if it is not `/Applications/Bao.app`. Use either the bundle or the Settings config entry for Claude, not both, to avoid two connections to Bao. This local build does not sign or notarize the extension and does not publish it to a directory.
+Open the bundle in Claude Desktop only when you intend to install it. The extension uses `/Applications/Bao.app/Contents/MacOS/bao-mcp`. Use either the bundle or the Settings config entry for Claude, not both, to avoid two connections to Bao. This local build does not sign or notarize the extension and does not publish it to a directory.

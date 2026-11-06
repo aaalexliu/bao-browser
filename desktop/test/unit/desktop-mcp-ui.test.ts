@@ -13,7 +13,7 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
   const previousHome = process.env.HOME;
   const previousBao = process.env.BAO_HOME;
   process.env.HOME = home;
-  const app = await startApp({ home: path.join(home, "bao"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const app = await startApp({ home: path.join(home, "bao"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles"), desktopMcpLauncher: process.execPath });
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   const origin = `http://127.0.0.1:${app.port}`;
   try {
@@ -40,7 +40,7 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     await page.waitForSelector('#desktop-mcp-confirm[open]');
     await page.unroute('**/api/desktop-mcp/preview');
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /Add Bao to Claude Desktop\?/);
-    assert.match(await page.locator('pre[aria-label="Exact config diff"]').innerText(), /bao-mcp/);
+    assert.ok((await page.locator('pre[aria-label="Exact config diff"]').innerText()).includes(process.execPath));
     const contrast = await page.evaluate(() => {
       const original = document.documentElement.dataset.theme;
       document.documentElement.dataset.theme = 'dark';
@@ -71,7 +71,7 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     await page.waitForSelector('#desktop-mcp-confirm', { state: 'detached' });
     assert.match(await page.locator('#desktop-mcp-feedback').innerText(), /Restart Claude Desktop/);
     const claudeText = readFileSync(claude, 'utf8');
-    assert.match(claudeText, /bao-mcp/);
+    assert.equal(JSON.parse(claudeText).mcpServers.bao.command, process.execPath);
     await page.getByRole('button', { name: 'Add to Claude', exact: true }).click();
     await page.waitForSelector('#desktop-mcp-confirm[open]');
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /already set up/);
@@ -81,12 +81,13 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     assert.equal(readdirSync(path.dirname(claude)).length, 1);
 
     mkdirSync(path.dirname(chatgpt), { recursive: true });
-    const before = '# fixture only\nmodel="keep"\n[mcp_servers.bao]\ncommand="old"\ndefault_tools_approval_mode="approve"\n';
+    const before = '# fixture only\nmodel="keep"\n[mcp_servers.bao]\ncommand="old"\ndefault_tools_approval_mode="approve"\n[mcp_servers.other]\nurl="http://127.0.0.1:3845/mcp"\n';
     writeFileSync(chatgpt, before);
     await page.getByRole('button', { name: 'Add to ChatGPT', exact: true }).click();
     await page.waitForSelector('#desktop-mcp-confirm[open]');
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /Update Bao in ChatGPT\?/);
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /shared Codex config/);
+    assert.ok((await page.locator('pre[aria-label="Exact config diff"]').innerText()).includes('http://127.0.0.1:3845/mcp'));
     await page.getByRole('button', { name: 'Leave unchanged' }).click();
     await page.waitForSelector('#desktop-mcp-confirm', { state: 'detached' });
     assert.equal(readFileSync(chatgpt, 'utf8'), before);
@@ -129,7 +130,7 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     writeFileSync(chatgpt, 'bad = [');
     await page.getByRole('button', { name: 'Add to ChatGPT', exact: true }).click();
     await page.waitForFunction(() => !!document.getElementById('desktop-mcp-error')?.textContent);
-    assert.match(await page.locator('#desktop-mcp-error').innerText(), /Nothing was written.*preview again/s);
+    assert.match(await page.locator('#desktop-mcp-error').innerText(), /Cannot preview/);
     assert.equal(readFileSync(chatgpt, 'utf8'), 'bad = [');
   } finally {
     await browser?.close();
