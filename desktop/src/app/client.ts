@@ -387,7 +387,7 @@ function settings(): string {
       </select></label>
       <label class="extensions-choice"><input id="chrome-profile-extensions" type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
-      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. No remote-debugging switch, Accessibility, or Automation is needed.</p>
+      <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. No remote-debugging switch, Accessibility, or Automation is needed.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
       <button id="save-engine" type="button">Save engine choice</button>
       <p id="engine-feedback" role="status"></p>
@@ -395,7 +395,7 @@ function settings(): string {
     <div class="card" id="agent-window-settings">
       <h3>Agent window</h3>
       <label><input id="keep-agent-browser-open" type="checkbox" aria-describedby="agent-browser-lifetime-help" ${state.settings?.keepAgentBrowserOpen === true ? "checked" : ""}> Keep window open after agent finishes</label>
-      <p class="quiet" id="agent-browser-lifetime-help">Off by default. Bao closes the marked Chrome window and deletes its private profile copy when the agent disconnects or Bao MCP stops. Turn this on to finish a task by hand. The next agent session closes the kept window and deletes its copy before opening a fresh one. The agent's close command always closes it. Your original Chrome stays untouched.</p>
+      <p class="quiet" id="agent-browser-lifetime-help">Off by default. Bao closes the marked Chrome window and deletes its private profile copy when the agent disconnects or Bao MCP stops. Turn this on to finish a task by hand. The next agent session closes the kept window and deletes its copy before opening a fresh one. The agent's close command, or closing the window by hand during a live session, still closes Chrome and deletes its copy. Kept Chrome has no Bao owner and keeps a local debugging port open, even after you close its window, until you quit that Chrome or the next agent session reclaims its copy. Other local processes can use that port to read the copy's cookies or control its signed-in pages. Your original Chrome stays untouched.</p>
       <button id="save-agent-browser-lifetime" type="button">Save window choice</button>
       <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
