@@ -235,9 +235,9 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 ## Permissions
 
-Bao's status checks read Accessibility without prompting. They do not check Automation or Screen Recording. Chrome agents need none of these grants. See [What Bao asks permission for](permissions.md) for the separate optional native-app driver and remote-debugging CLI requirements.
+[What Bao asks permission for](permissions.md) owns the optional feature requirements and status-check policy.
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With the helper present, the footer shows **helper available**; missing optional grants do not create a warning or onboarding card. Do not grant permissions to make this check pass. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for optional feature requirements; the API capability rows do not read the Screen Recording grant.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With the helper present, the footer shows **helper available**; missing optional grants do not create a warning or onboarding card. Do not grant permissions to make this check pass. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for the helper label and API capability contract.
 
 An agent can check the local server. This is not a page to open:
 
@@ -245,7 +245,7 @@ An agent can check the local server. This is not a page to open:
 curl -s "http://127.0.0.1:4787/api/state"
 ```
 
-`helper.accessibility` reports the current grant without asking for it. `helper.capabilities` contains only optional `window-capture` and `mcp-ax` rows. These rows do not read the Screen Recording grant and cannot report whether it is on. `helper.label` reports presence, not readiness. See [Which grant each job needs](permissions.md#which-grant-each-job-needs). `helper.screenCapture` stays false because app status does not check Screen Recording. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
+Interpret `helper` using [Which grant each job needs](permissions.md#which-grant-each-job-needs), not as a native-feature readiness check. `curl -s "http://127.0.0.1:4787/api/pids"` prints JSON whose `helper` path ends in `Bao.app/Contents/Resources/BaoOSHelper.app`.
 
 ## Behavior a rebuild must keep
 

@@ -10,6 +10,8 @@ This is the checkbox **Allow remote debugging for this browser instance** at `ch
 
 The optional native-app MCP driver uses the helper's Accessibility access to read and press controls in Calculator and TextEdit. The separate `bao remote-debugging on|off` CLI uses it to read and set Chrome's debugging checkbox by pid. Owned-browser replay window placement also tries the helper after CDP as a best-effort step; missing access does not block replay. Chrome agents need none of these helper paths. macOS grants Accessibility to BaoOSHelper, not to `node` or the product window.
 
+If you choose a feature that needs Accessibility, enable BaoOSHelper in System Settings > Privacy & Security > Accessibility. If its row is missing, use the + button to add `Bao.app/Contents/Resources/BaoOSHelper.app`. Keep the signed helper identity described in [Rebuild with an existing grant](mac-build.md#rebuild-with-an-existing-grant).
+
 ## Automation for Google Chrome
 
 Only the separate `bao remote-debugging on|off` command uses this grant. Its helper opens `chrome://inspect/#remote-debugging`, checks the URL, and restores the selected tab through Apple Events to one Chrome pid. It never runs JavaScript through Apple Events. A toggle that already matches the requested state does not ask. Running the CLI can ask for Automation when the toggle must change; Chrome agents and app status never ask or open Chrome for it.
