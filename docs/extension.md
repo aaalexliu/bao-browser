@@ -27,7 +27,7 @@ The extension is not in the Chrome Web Store. Load the unpacked build.
 
 6. In Chrome, open `chrome://extensions`, turn on Developer mode, and Load unpacked `~/.bao-browser/extension`.
 7. Open the site, click the Bao icon, choose Allow this site, then Record. Stop saves the workflow.
-8. On the run form, Driver chooses Extension or Playwright. A workflow a live session saved shows Live, and its driver cannot change, because it replays only in the live Chrome. An old workflow with no driver stays on Playwright.
+8. On the run form, Driver chooses Extension or Playwright. See [Select the driver](#select-the-driver) for defaults and historical workflows.
 
 ## Reload and the native host
 
@@ -69,4 +69,4 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 
 `driver` on a workflow is `playwright`, `extension`, or historical `cdp-live`. Any other string fails validation in `validateWorkflow` (`desktop/src/v1/schema.ts`). The retired `cdp-live` driver stays valid for reading old records, but replay refuses it before opening a browser. With the current engine selected, omitting `driver` uses Playwright. The [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile) has separate workflow limits; it is a Settings choice, not a workflow `driver` value.
 
-`playwright` launches installed Google Chrome when that binary is present, then `BAO_BROWSER`, then Playwright's Chromium. That order is `resolveNormalChrome` in `desktop/src/launch.ts`. `extension` uses this native-messaging extension. `cdp-live` is retired and cannot replay; [cdp-live.md](cdp-live.md) describes the supported pass-through and historical records.
+`playwright` launches installed Google Chrome when that binary is present, then `BAO_BROWSER`, then Playwright's Chromium. That order is `resolveNormalChrome` in `desktop/src/launch.ts`. `extension` uses this native-messaging extension. See [cdp-live.md](cdp-live.md) for the supported pass-through and historical records.
