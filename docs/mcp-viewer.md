@@ -10,7 +10,7 @@ The host must advertise `io.modelcontextprotocol/ui` with `text/html;profile=mcp
 - `get_run` keeps its existing text receipt and adds a compact viewer in capable hosts.
 - `list_runs` adds the viewer to the [catalog history result](bao.md#mcp) and lets the app page through history.
 - `inspect_run` reads one run's receipt and workflow steps, twenty steps per page. The host exposes this reader to the app, not the model.
-- `open_browser_picture` fetches the card's picture after mount, with a 2 MiB cap and loading and unavailable states. It reads the picture by run, step, and phase without parsing the capture record. The host exposes this reader to the app, not the model.
+- `open_browser_picture` fetches the card's picture after mount, with loading and unavailable states. It reads the picture by run, step, and phase without parsing the capture record. The host exposes this reader to the app, not the model. [Run evidence](#run-evidence) defines picture limits.
 - `open_step_pictures` reads pictures only after the owner clicks **Open step pictures**. The host exposes this reader to the app, not the model.
 
 Clients that do not negotiate the UI MIME type get the [standard MCP tools and Library identity](bao.md#mcp). These clients get plain text results without viewer metadata or resources and do not need an HTML renderer. This feature does not install or configure Claude Desktop, Codex Desktop, or ChatGPT, and it does not change tool approval settings. Support depends on the host and release; an MCP connection alone does not prove embedded UI support.
@@ -39,9 +39,9 @@ The projection omits the run's input fields, raw snapshots, native command argum
 
 The stored run supplies step reasons, read-back receipts, and owner requests. The current workflow supplies optional labels, not evidence permissions. Editing or deleting a workflow does not hide a past run's evidence. Secret, file, sensitive, and unclassified steps use the same local evidence path as every other recorded step. Marketplace review uploads keep their existing step-crop exclusions. Bao cannot restore values or pictures that an older capture or save discarded.
 
-Pictures load when the owner opens them, not with the initial receipt or history. Image bytes appear in tool-result `_meta`, which the host app renders. Picture reads require a step recorded in that run, not a current workflow definition. Bao reads stored or derived filenames within the run's picture directory and caps each picture at 512 KiB. A request returns at most two PNG/JPEG pictures. Missing, invalid, linked, or oversized pictures remain unavailable.
+Receipt pictures load when the owner opens them, not with the initial receipt or history. `open_step_pictures` requires a step recorded in that run, not a current workflow definition. It reads stored or derived filenames within the run's picture directory and returns at most two PNG/JPEG pictures, each capped at 512 KiB for replays or 2 MiB for captures. Browser cards load their picture after mount through `open_browser_picture`, which returns at most one picture capped at 2 MiB without reading the run record. Both readers send image bytes in tool-result `_meta` for the host app to render. Missing, invalid, linked, or oversized pictures remain unavailable.
 
-The viewer offers no run, resume, edit, approve, or browser-control action. In UI-capable connections, `list_runs`, `inspect_run`, and `open_step_pictures` are callable by the iframe; other tools are model-only. The host enforces tool visibility. This is not a new authorization scheme or a change to the model's existing tool permissions.
+The viewer offers no run, resume, edit, approve, or browser-control action. In UI-capable connections, `list_runs`, `inspect_run`, `open_browser_picture`, and `open_step_pictures` are callable by the iframe; other tools are model-only. The host enforces tool visibility. This is not a new authorization scheme or a change to the model's existing tool permissions.
 
 ## Known gaps
 
