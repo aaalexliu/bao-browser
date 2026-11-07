@@ -283,7 +283,7 @@ Step-picture formats, framing, and missing-picture behavior are in [Bao desktop 
 
 ### 2026-10-22 — Try a step, input tokens, and per-site trust
 
-Try, on a workflow step, looks that step up on the live window and outlines the match. It does not click, type, or call a model. Run from step N opens the same run form and starts replay at that step. An input in the step text is a token: label, type, default, and required. Clicking it edits that input, and a secret token stays masked. The run form fills the same default. Settings lists each site as Always ask or Allow for ordinary actions. That map is separate from the confirm policy. A confirm step still waits for the person when the site is Allow.
+Workflow step controls and input editing are described in [Bao desktop v1](v1.md#install-and-run). Settings lists each site as Always ask or Allow for ordinary actions. That map is separate from the confirm policy. A confirm step still waits for the person when the site is Allow.
 
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
