@@ -66,8 +66,8 @@ desktop, `node desktop/dist/desktop/src/app/cli.js agent config claude --write`
 (or `codex`) adds that entry and pre-approves Bao's tools in that CLI agent.
 [Agent quickstart](docs/agent-quickstart.md#mcp) has the entries and checkout form.
 [Agent-browser pass-through](docs/agent-browser-engine.md) explains profile selection, copy limits, owner handoff, and evidence.
-[Read-only MCP viewer](docs/mcp-viewer.md) covers embedded run history and
-receipts in MCP Apps hosts.
+[Read-only MCP viewer](docs/mcp-viewer.md) covers annotated browser cards,
+run history, and receipts in MCP Apps hosts.
 
 ## Development guides
 
