@@ -988,6 +988,7 @@
     .live-split { display: grid; grid-template-columns: minmax(0,.9fr) minmax(0,1.1fr); gap: 24px; align-items: start; margin-top: 24px; }
     #live-run .live-progress { list-style: none; padding: 0; display: flex; flex-direction: column; }
     .live-progress li { display: grid; grid-template-columns: 16px 18px minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 28px; padding: 3px 8px; border-radius: 6px; }
+    .live-progress li.live-loading { display: block; }
     .live-progress li[data-status="paused"] { background: var(--need-bg); }
     .live-progress li[data-status="failed"] { background: var(--bad-bg); }
     .live-progress li:is([data-status="passed"], [data-status="skipped"]) .live-label { color: var(--quiet); }
