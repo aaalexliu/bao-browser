@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
 import * as sockets from "../../src/cdp-live/socket";
-import { launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { closeRetainedChrome, launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { laneChildEnv } from "../runtime";
 
@@ -102,19 +102,12 @@ test("startup keeps its original error when graceful cleanup times out", { timeo
   try {
     await assert.rejects(launchOwnedChromeEndpoint({ userDataDir, headless: true }), (error) => error === startupError);
     assert.ok(signals.includes("SIGTERM"));
-    assert.ok(!signals.includes("SIGKILL"), "cleanup must not force-kill a live browser");
-    assert.ok(pidsForDataDir(userDataDir).length > 0, "the shutdown fault must leave Chrome alive");
+    assert.ok(signals.includes("SIGKILL"), "cleanup must escalate when graceful shutdown stalls");
+    assert.ok(pidsForDataDir(userDataDir).length > 0, "the mocked signals must leave Chrome alive");
   } finally {
     killMock.mock.restore();
     childKillMock.mock.restore();
-    if (pidsForDataDir(userDataDir).length) {
-      const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
-      const cdp = await connect(endpoint.port, endpoint.browserPath);
-      try { await cdp.send("Browser.close", {}, undefined, 3000).catch(() => undefined); }
-      finally { cdp.close(); }
-    }
-    const deadline = Date.now() + 5000;
-    while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    await closeRetainedChrome(userDataDir);
     assert.deepEqual(pidsForDataDir(userDataDir), []);
     await rm(userDataDir, { recursive: true, force: true });
   }

@@ -465,10 +465,13 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     console.error('injected tab failure'); process.exitCode = 1; return;
   }
   if (command === 'close') fs.writeFileSync(${JSON.stringify(marker)}, 'closed');
-  if (command === 'tab' && args.includes('new')) await fetch('http://' + endpoint.host + '/json/new?about:blank', { method: 'PUT' });
+  if (command === 'tab' && args.includes('new')) {
+    const target = await (await fetch('http://' + endpoint.host + '/json/new?about:blank', { method: 'PUT' })).json();
+    fs.writeFileSync('active-target', target.id);
+  }
   if (command === 'open') {
     const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    const target = targets.find(t => t.type === 'page');
+    const target = targets.find(t => t.id === fs.readFileSync('active-target', 'utf8'));
     await new Promise((resolve, reject) => {
       const socket = new WebSocket(target.webSocketDebuggerUrl);
       socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Page.navigate', params: { url: 'data:text/html,<h1>Task</h1>' } }));
@@ -478,7 +481,8 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
   }
   if (command === 'tab' && args.includes('--json')) {
     const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map((t, i) => ({ targetId: t.id, active: i === 0 })) } }));
+    const active = fs.readFileSync('active-target', 'utf8');
+    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, active: t.id === active })) } }));
   } else console.log('native output');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 `, { mode: 0o700 });

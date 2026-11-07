@@ -243,9 +243,9 @@ export class AgentBrowserProxy {
     try {
       await this.remove(session, this.options.keepOpen?.() === true);
       session.recording.finish(outcome);
+      if (this.session === session) this.session = undefined;
       return runId;
     } finally {
-      if (this.session === session) this.session = undefined;
       this.currentEnded = false;
     }
   }
@@ -537,10 +537,10 @@ export class AgentBrowserProxy {
       session.outcome = { outcome: "failed", reason: "Session ended without finish_task after 10 minutes of inactivity." };
       session.workflow.unavailable(session.outcome.reason);
       void this.remove(session, this.options.keepOpen?.() === true, false)
-        .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
-        .finally(() => {
+        .then(() => {
           if (this.session === session) this.session = undefined;
-        });
+        })
+        .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
     }, SESSION_IDLE_MS);
     session.idleTimer.unref();
   }
@@ -598,9 +598,8 @@ export class AgentBrowserProxy {
         await session.chrome.close();
       }
       if (this.session === session && session.chrome.isClosed()) this.session = undefined;
-    } catch (error) {
-      if (this.session === session) this.session = undefined;
-      throw error;
+    } finally {
+      if (this.session === session && session.kind === "current" && session.chrome.isClosed()) this.session = undefined;
     }
   }
 }

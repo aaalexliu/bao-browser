@@ -358,7 +358,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
       if (guiArgs) {
         const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
         if (pid) await releaseProfileProcesses({ kind: "gui", launcher: child, pid, executable: exe, userDataDir }, false);
-      }
+      } else await releaseProfileProcesses({ kind: "direct", child, userDataDir }, false);
     } catch {}
     try {
       if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
@@ -703,31 +703,48 @@ export function formatShutdown(trace: ShutdownTrace): string {
 async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSent: boolean): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const { userDataDir } = owner;
   const child = owner.kind === "direct" ? owner.child : owner.launcher;
+  const ownedPids = new Set(pidsForDataDir(userDataDir));
+  const remaining = () => {
+    const pids = pidsForDataDir(userDataDir);
+    if (ownedChromeRunning(owner)) for (const pid of pids) ownedPids.add(pid);
+    return pids.filter((pid) => ownedPids.has(pid));
+  };
   const deadline = Date.now() + (browserCloseSent ? 4000 : 0);
   while (Date.now() < deadline && ownedChromeRunning(owner)) {
+    remaining();
     await delay(50);
   }
-  if (ownedChromeRunning(owner)) stopOwnedChrome(owner);
+  if (ownedChromeRunning(owner)) {
+    remaining();
+    stopOwnedChrome(owner);
+  }
   const killAt = Date.now() + 1500;
   while (Date.now() < killAt && ownedChromeRunning(owner)) {
+    remaining();
     await delay(50);
   }
   const killedPids: number[] = [];
-  for (const pid of pidsForDataDir(userDataDir)) {
+  for (const pid of remaining()) {
     try {
       process.kill(pid, "SIGKILL");
       killedPids.push(pid);
     } catch {}
   }
   const orphansExitAt = Date.now() + 1500;
-  while (pidsForDataDir(userDataDir).length && Date.now() < orphansExitAt) await delay(50);
-  if (pidsForDataDir(userDataDir).length) throw new Error(`bao shutdown processes still shutting down profile=${userDataDir}`);
+  while (remaining().length && Date.now() < orphansExitAt) await delay(50);
+  if (remaining().length) throw new Error(`bao shutdown processes still shutting down profile=${userDataDir}`);
   return { childExit: child.exitCode, signal: child.signalCode, killedPids };
 }
 
 export async function closeRetainedChrome(userDataDir: string): Promise<void> {
+  const ownedPids = new Set(pidsForDataDir(userDataDir));
   const exe = resolveNormalChrome();
   const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
+  const remaining = () => {
+    const pids = pidsForDataDir(userDataDir);
+    if (pid && ownedChromeBrowserCommand(exe, userDataDir, pid)) for (const pid of pids) ownedPids.add(pid);
+    return pids.filter((pid) => ownedPids.has(pid));
+  };
   if (pid) {
     let cdp: CdpSocket | undefined;
     try {
@@ -744,19 +761,22 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
     }
     const deadline = Date.now() + 4000;
-    while (ownedChromeBrowserCommand(exe, userDataDir, pid) && Date.now() < deadline) await delay(50);
+    while (ownedChromeBrowserCommand(exe, userDataDir, pid) && Date.now() < deadline) {
+      remaining();
+      await delay(50);
+    }
     if (ownedChromeBrowserCommand(exe, userDataDir, pid)) {
       console.error(`bao reclaim browser still shutting down pid=${pid} profile=${userDataDir}`);
     }
   }
-  const killedPids = pidsForDataDir(userDataDir);
+  const killedPids = remaining();
   for (const pid of killedPids) {
     try { process.kill(pid, "SIGKILL"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
   }
   const deadline = Date.now() + 1500;
-  while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await delay(50);
-  const remainingPids = pidsForDataDir(userDataDir);
+  while (remaining().length && Date.now() < deadline) await delay(50);
+  const remainingPids = remaining();
   if (remainingPids.length) console.error(`bao reclaim processes still shutting down pids=${remainingPids.join(",")} killedPids=${killedPids.join(",")} profile=${userDataDir}`);
 }
 
