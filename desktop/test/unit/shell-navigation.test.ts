@@ -32,6 +32,58 @@ test("three places keep all nine screens and their detail routes reachable", () 
   assert.match(shellList("heals", { runs: [{ id: "run", workflowId: "wf", status: "passed", heals: [{ id: "heal" }] }] }), /id="heal-count">1/);
 });
 
+test("native narrow headers reserve one clearance and keep controls clickable", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-native-shell-layout-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    app.library.saveRun({ id: "native-wait", workflowId: "agent-browser", status: "paused", at: 1, steps: [], heals: [] });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(8_000);
+    for (const native of [false, true]) {
+      for (const width of [720, 1060, 1061]) {
+        await page.setViewportSize({ width, height: 820 });
+        await page.goto(`http://127.0.0.1:${app.port}`);
+        await page.locator("#run-receipt").waitFor();
+        await page.evaluate((enabled) => {
+          if (enabled) document.documentElement.dataset.baoNative = "true";
+          else delete document.documentElement.dataset.baoNative;
+        }, native);
+        for (const screen of ["runs", "library", "settings"] as const) {
+          if (screen !== "runs") {
+            if (width <= 1060) await page.locator("#sidebar-toggle").click();
+            await page.locator(`#rail [data-screen=${screen}]`).click();
+          }
+          const geometry = await page.locator("#screen-list").evaluate((list) => {
+            const header = list.querySelector(".pane-bar")!;
+            const rect = header.getBoundingClientRect();
+            const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
+            return {
+              top: rect.top, height: rect.height,
+              navTop: list.querySelector("nav")!.getBoundingClientRect().top,
+              contained: controls.every((node) => { const box = node.getBoundingClientRect(); return box.top >= rect.top && box.bottom <= rect.bottom; }),
+            };
+          });
+          assert.deepEqual(geometry, { top: native && width <= 1060 ? 52 : 0, height: 52, navTop: native && width <= 1060 ? 104 : 52, contained: true }, `${screen} ${width}px native=${native}`);
+          for (const button of await page.locator("#screen-list > .pane-bar button, #screen-list > nav button").all()) {
+            if (await button.isVisible()) await button.click({ trial: true });
+          }
+        }
+        if (width <= 1060) await page.locator("#sidebar-toggle").click();
+        await page.locator("#rail [data-place=runs]").click();
+        await page.locator(".runs-record").click();
+        await page.locator("#start-url").waitFor();
+      }
+    }
+  } finally {
+    await browser.close(); await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("the running app keeps navigation, details, keyboard focus and narrow layouts working", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-shell-nav-"));
   const oldHome = process.env.HOME;
