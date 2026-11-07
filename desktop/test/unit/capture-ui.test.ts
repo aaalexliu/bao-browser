@@ -5,7 +5,13 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { captureStream, captureView, recordBar } from "../../src/app/views";
+import type { ShellState, TeachView } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
+
+type CaptureTestState = ShellState & {
+  capture: NonNullable<ShellState["capture"]>;
+  teach: TeachView & { review: NonNullable<TeachView["review"]> };
+};
 
 test("capture renders the recording name, ordered stream, controls and paused state", () => {
   const state = { recording: true, capture: { recording: true, paused: false, url: "https://example.com", steps: ["Open https://example.com", 'Click <Next>'], stream: [{ label: "Open https://example.com", op: "navigate" }, { label: 'Click <Next>', op: "click" }] } };
@@ -35,7 +41,7 @@ test("capture routes a pending Teach review back to Teach without changing its s
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(10_000);
   const url = `http://127.0.0.1:${app.port}`;
-  const getState = async () => (await page.request.get(`${url}/api/state`)).json();
+  const getState = async () => (await page.request.get(`${url}/api/state`)).json() as Promise<CaptureTestState>;
   try {
     await page.goto(url);
     await page.locator(".runs-record").click();
@@ -82,7 +88,7 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(10_000);
   const url = `http://127.0.0.1:${app.port}`;
-  const getState = async () => (await page.request.get(`${url}/api/state`)).json();
+  const getState = async () => (await page.request.get(`${url}/api/state`)).json() as Promise<CaptureTestState>;
   try {
     await page.goto(url);
     await page.locator(".runs-record").click();
@@ -148,7 +154,7 @@ test("the running capture saves its name and steps, pauses, recovers errors and 
   const url = `http://127.0.0.1:${app.port}`;
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  const getState = async () => (await page.request.get(`${url}/api/state`)).json();
+  const getState = async () => (await page.request.get(`${url}/api/state`)).json() as Promise<CaptureTestState>;
   try {
     await page.goto(url);
     await page.locator(".runs-record").click();
