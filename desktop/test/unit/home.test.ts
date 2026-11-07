@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { frameRpc } from "../../src/mcp/frame";
 import { startApp } from "../../src/app/server";
-import { resolveHome } from "../../src/home";
+import { resolveHome, resolveLibraryIdentity } from "../../src/home";
 import { testChromium } from "../../src/test-browser.js";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
@@ -109,12 +109,10 @@ function mcpCall(
     send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "home", version: "0" } } });
     send({ jsonrpc: "2.0", method: "notifications/initialized" });
     send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: toolArgs } });
-    const start = Date.now();
-    const timer = setInterval(() => {
+    const timer = setTimeout(() => { child.kill(); }, 5000);
+    child.on("close", () => {
+      clearTimeout(timer);
       const hit = messages.find((msg) => msg.id === 2);
-      if (!hit && Date.now() - start < 5000) return;
-      clearInterval(timer);
-      child.kill();
       if (!hit) {
         reject(new Error(`no tool reply\n${stderr}`));
         return;
@@ -125,7 +123,8 @@ function mcpCall(
         return;
       }
       resolve({ payload: JSON.parse(text) as Record<string, unknown>, stderr });
-    }, 20);
+    });
+    child.stdin.end();
   });
 }
 
@@ -228,6 +227,7 @@ test("an explicit --home or BAO_HOME wins over legacy libraries that hold data",
     const called = await mcpCall(dirs.cwdA, ["--home", dirs.flagged], childEnv(dirs.user), "search_workflows", { query: "keep" }, platform);
     assert.deepEqual(called.payload.hits, []);
     assert.equal("libraries" in called.payload, false);
+    assert.deepEqual(called.payload.library, { active: { path: dirs.flagged }, inactive: [] });
     assert.equal(called.stderr, "");
     assert.equal(existsSync(path.join(dirs.flagged, "workflows")), true);
     assert.equal(readFileSync(path.join(old, "workflows", "keep.json"), "utf8"), workflowJson("keep"));
@@ -478,7 +478,7 @@ test("darwin mcp search reads the legacy workflow and does not create the new li
   }
 });
 
-test("darwin tool results name both libraries with a tilde when each holds workflows", async () => {
+test("darwin catalog replies identify the active Library and do not search inactive workflows", async () => {
   const dirs = layout();
   const legacy = path.join(dirs.user, ".local", "share", "bao");
   const fresh = path.join(dirs.user, "Library", "Application Support", "bao");
@@ -494,19 +494,100 @@ test("darwin tool results name both libraries with a tilde when each holds workf
     stops: [],
     link: "bao://workflow/fresh",
   })}\n`);
+  const updated = new Date("2026-10-28T12:00:00.000Z");
+  utimesSync(path.join(legacy, "workflows", "keep.json"), updated, updated);
   const env = childEnv(dirs.user);
-  const search = await mcpCall(dirs.cwdA, [], env, "search_workflows", { query: "fresh" }, true);
+  const search = await mcpCall(dirs.cwdA, [], env, "search_workflows", { query: "" }, true);
+  const described = await mcpCall(dirs.cwdA, [], env, "describe_workflow", { id: "fresh" }, true);
   const run = await mcpCall(dirs.cwdA, [], env, "run_workflow", {}, true);
   const got = await mcpCall(dirs.cwdA, [], env, "get_run", { run_id: "run-1" }, true);
-  const expected = ["~/Library/Application Support/bao", "~/.local/share/bao"];
-  for (const called of [search, run, got]) {
+  const expected = {
+    active: { path: "~/Library/Application Support/bao" },
+    inactive: [{ path: "~/.local/share/bao", state: "not_used_or_searched", contents: { workflows: 1 }, lastUpdated: updated.toISOString() }],
+  };
+  for (const called of [search, described, run, got]) {
     assert.equal("home" in called.payload, false);
-    assert.deepEqual(called.payload.libraries, expected);
+    assert.equal("libraries" in called.payload, false);
+    assert.deepEqual(called.payload.library, expected);
     assert.equal(JSON.stringify(called.payload).includes(dirs.user), false);
   }
   const hits = search.payload.hits as { id: string }[];
   assert.ok(hits.some((hit) => hit.id === "fresh"));
   assert.equal(hits.some((hit) => hit.id === "keep"), false);
+});
+
+test("stdio MCP distinguishes today's active run from an inactive October live session", async (t) => {
+  const dirs = layout();
+  t.after(() => rmSync(dirs.root, { recursive: true, force: true }));
+  const active = platformDefault(dirs.user, "darwin");
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  plantWorkflow(active, "today");
+  mkdirSync(path.join(active, "reports"));
+  writeFileSync(path.join(active, "reports", "today-run.json"), JSON.stringify({ runId: "today-run", status: "ok" }));
+  mkdirSync(path.join(legacy, "live-session"), { recursive: true });
+  const session = path.join(legacy, "live-session", "session.json");
+  const oldSession = JSON.stringify({ id: "october-live", status: "passed" });
+  writeFileSync(session, oldSession);
+  const updated = new Date("2026-10-28T12:00:00.000Z");
+  utimesSync(session, updated, updated);
+  const expected = {
+    active: { path: "~/Library/Application Support/bao" },
+    inactive: [{ path: "~/.local/share/bao", state: "not_used_or_searched", contents: { "live-session": 1 }, lastUpdated: updated.toISOString() }],
+  };
+  const search = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "search_workflows", { query: "today" }, "darwin");
+  const got = await mcpCall(dirs.cwdA, [], childEnv(dirs.user), "get_run", { run_id: "today-run" }, "darwin");
+  assert.deepEqual(search.payload.library, expected);
+  assert.deepEqual(got.payload.library, expected);
+  assert.equal((search.payload.hits as { id: string }[])[0]?.id, "today");
+  assert.equal(got.payload.runId, "today-run");
+  assert.equal(readFileSync(session, "utf8"), oldSession);
+  assert.equal(existsSync(path.join(legacy, "runs")), false);
+  assert.equal(existsSync(path.join(active, "live-session")), false);
+});
+
+test("Library identity follows resolver precedence and summarizes every inactive data root", (t) => {
+  const dirs = layout();
+  t.after(() => rmSync(dirs.root, { recursive: true, force: true }));
+  const platform = platformDefault(dirs.user, "darwin");
+  const legacy = path.join(dirs.user, ".local", "share", "bao");
+  const cwdLegacy = path.join(dirs.cwdA, ".bao-mcp");
+  plantWorkflow(legacy, "selected");
+  mkdirSync(path.join(platform, "runs"), { recursive: true });
+  writeFileSync(path.join(platform, "runs", "run-1.json"), "{}");
+  mkdirSync(path.join(cwdLegacy, "observer"), { recursive: true });
+  writeFileSync(path.join(cwdLegacy, "observer", "trail.jsonl"), "{}\n");
+  writeFileSync(path.join(cwdLegacy, "settings.json"), "{}");
+  const older = new Date("2026-10-27T12:00:00.000Z");
+  const newer = new Date("2026-10-28T12:00:00.000Z");
+  utimesSync(path.join(platform, "runs", "run-1.json"), newer, newer);
+  utimesSync(path.join(cwdLegacy, "observer", "trail.jsonl"), older, older);
+  utimesSync(path.join(cwdLegacy, "settings.json"), newer, newer);
+  const options = { env: {}, platform: "darwin" as const, userHome: dirs.user, cwd: dirs.cwdA, warn: () => {} };
+  assert.deepEqual(resolveLibraryIdentity(options), {
+    active: { path: resolveHome(options) },
+    inactive: [
+      { path: platform, state: "not_used_or_searched", contents: { runs: 1 }, lastUpdated: newer.toISOString() },
+      { path: cwdLegacy, state: "not_used_or_searched", contents: { "settings.json": 1, observer: 1 }, lastUpdated: newer.toISOString() },
+    ],
+  });
+  assert.equal(resolveHome(options), legacy);
+  assert.equal(readFileSync(path.join(platform, "runs", "run-1.json"), "utf8"), "{}");
+  for (const explicit of [{ args: ["--home", dirs.flagged] }, { env: { BAO_HOME: dirs.flagged } }]) {
+    assert.deepEqual(resolveLibraryIdentity({ ...options, ...explicit }), { active: { path: dirs.flagged }, inactive: [] });
+  }
+  assert.equal(existsSync(path.join(dirs.flagged, "workflows")), false);
+});
+
+test("Library identity excludes empty roots and does not create an empty active root", (t) => {
+  const dirs = layout();
+  t.after(() => rmSync(dirs.root, { recursive: true, force: true }));
+  const cwdLegacy = path.join(dirs.cwdA, ".bao-mcp");
+  mkdirSync(cwdLegacy);
+  writeFileSync(path.join(cwdLegacy, ".DS_Store"), "junk");
+  const options = { env: {}, platform: "darwin" as const, userHome: dirs.user, cwd: dirs.cwdA, warn: () => {} };
+  const identity = resolveLibraryIdentity(options);
+  assert.deepEqual(identity, { active: { path: resolveHome(options) }, inactive: [] });
+  assert.equal(existsSync(identity.active.path), false);
 });
 
 test("the window lists a workflow kept from the legacy library", async () => {
