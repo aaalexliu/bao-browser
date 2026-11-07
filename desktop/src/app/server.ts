@@ -2580,7 +2580,6 @@ async function runWorkflow(
   browser?: RunBrowser,
 ) {
   if (browser && browser.choice !== "bao") {
-    await gate?.closeSignIn();
     return runRecorded(library, workflow, args, notices, replays, runId, prompts, undefined, fromStep, undefined, browser);
   }
   if (gate) {

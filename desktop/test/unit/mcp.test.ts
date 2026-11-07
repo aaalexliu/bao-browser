@@ -259,10 +259,13 @@ function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: stri
     ? path.join(user, ...(process.platform === "darwin" ? ["Library", "Application Support", "bao"] : [".local", "share", "bao"]))
     : path.join(root, "library");
   mkdirSync(user);
+  const sourceRoot = path.join(root, "chrome-source");
+  mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
+  writeFileSync(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
   setup?.(user, home);
   const child = spawn(process.execPath, bootstrap ? ["-e", bootstrap] : [cli, cmd], {
     cwd: root,
-    env: { ...process.env, HOME: user, BAO_HOME: automatic ? undefined : home, BAO_HEAL_CURSOR_ACCOUNT: "0" },
+    env: { ...process.env, HOME: user, BAO_HOME: automatic ? undefined : home, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot, BAO_HEAL_CURSOR_ACCOUNT: "0" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const messages: Reply[] = [];
@@ -681,7 +684,7 @@ test("a held replay blocks update stops and supports resume and cancel after rep
     if (token && mcp.child.exitCode === null && mcp.child.signalCode === null) {
       await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token, cancel: true } }, 15_000).catch(() => undefined);
     }
-    const pids = pidsForDataDir(path.join(mcp.home, "chrome-profile"));
+    const pids = pidsForDataDir(path.join(mcp.home, "agent-browser-profile"));
     if (mcp.child.exitCode === null && mcp.child.signalCode === null) {
       const exited = once(mcp.child, "exit");
       mcp.child.kill();

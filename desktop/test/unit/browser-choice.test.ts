@@ -190,6 +190,73 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   await rm(root, { recursive: true, force: true });
 });
 
+test("copy and current runs leave the app Sign in window open", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-choice-signin-"));
+  const home = path.join(root, "bao");
+  const sourceRoot = path.join(root, "source");
+  await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
+  await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
+  const priorHome = process.env.HOME;
+  const priorHeadless = process.env.BAO_SIGNIN_HEADLESS;
+  process.env.HOME = root;
+  process.env.BAO_SIGNIN_HEADLESS = "1";
+  const fixture = createServer((_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.end("<title>Sign in fixture</title><h1>Ready</h1>");
+  });
+  let app: Awaited<ReturnType<typeof startApp>> | undefined;
+  let owner: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let signIn: Awaited<ReturnType<typeof connectCdp>> | undefined;
+  let current: Awaited<ReturnType<typeof connectCdp>> | undefined;
+  t.after(async () => {
+    try {
+      await app?.close();
+      signIn?.close();
+      current?.close();
+      await owner?.close();
+      await new Promise<void>((resolve) => fixture.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    } finally {
+      if (priorHome === undefined) delete process.env.HOME; else process.env.HOME = priorHome;
+      if (priorHeadless === undefined) delete process.env.BAO_SIGNIN_HEADLESS; else process.env.BAO_SIGNIN_HEADLESS = priorHeadless;
+    }
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const address = fixture.address();
+  assert.ok(address && typeof address !== "string");
+  const site = `http://127.0.0.1:${address.port}/`;
+  app = await startApp({ home, port: 0, extensionHost: false, chromeProfilesRoot: sourceRoot });
+  const post = async (route: string, body: unknown) => {
+    const response = await fetch(`http://127.0.0.1:${app!.port}${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+    assert.equal(response.status, 200);
+    return response.json() as Promise<{ opened?: boolean; status?: string }>;
+  };
+  assert.equal((await post("/api/login-import/sign-in", { site, consent: true })).opened, true);
+  const signInEndpoint = await readDevToolsActivePort(path.join(home, "chrome-profile", "DevToolsActivePort"));
+  signIn = await connectCdp(signInEndpoint.port, signInEndpoint.browserPath);
+  const before = await signIn.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
+  const target = before.targetInfos.find((target) => target.url === site);
+  assert.ok(target, "the app's Sign in window is open before either run");
+  owner = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "current"), headless: true });
+  const endpoint = await readDevToolsActivePort(owner.portFile);
+  current = await connectCdp(endpoint.port, endpoint.browserPath);
+  const connection = current;
+  t.mock.method(profiles, "chromeProfilesRoot", () => sourceRoot);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 1, endpoint, cdp: connection,
+    closed: connection.disconnected, isClosed: () => !connection.isOpen,
+    detach: () => {}, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
+  }));
+  const doc = workflow(site, "signin-independent");
+  doc.steps[0]!.postcondition = { kind: "text", match: "Ready", timeoutMs: 1000 };
+  app.library.save(doc);
+  for (const browser of ["copy", "current"]) {
+    assert.equal((await post("/api/replay", { id: doc.id, browser, args: {} })).status, "passed");
+    assert.equal(signIn.isOpen, true, `${browser} must not close the independent Sign in browser`);
+    const after = await signIn.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
+    assert.ok(after.targetInfos.some((entry) => entry.targetId === target.targetId && entry.url === site), `${browser} leaves the original Sign in page in place`);
+  }
+});
+
 test("current workflow replay disconnects without closing the attached Chrome or its tabs", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-current-"));
   const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true });

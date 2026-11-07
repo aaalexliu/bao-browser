@@ -403,8 +403,11 @@ async function agentExchange(home: string, origin: string, ownerCookie: string) 
     library.save(extra);
   }
   await pairDevice(library, { code: await pairCode(origin, ownerCookie), server: origin, name: "Agent Mac" });
+  const sourceRoot = path.join(home, "chrome-source");
+  mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
+  writeFileSync(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
   const child = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
-    env: { ...process.env, BAO_HOME: home, BAO_CHROME_NO_SANDBOX: "1" },
+    env: { ...process.env, HOME: home, BAO_HOME: home, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot, BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_CHROME_NO_SANDBOX: "1" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const messages: { id?: number; result?: { tools?: { name: string }[]; content?: { text: string }[] } }[] = [];
