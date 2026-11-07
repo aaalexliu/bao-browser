@@ -138,6 +138,54 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
   } finally { await browser.close(); await app.close(); rmSync(dirs.home, { recursive: true, force: true }); }
 });
 
+test("leaving a live run cannot attach its ask or Stop to the next replay", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("live-run-identity");
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  try {
+    const wf = workflow(`${base}/fixture`);
+    app.library.save(wf);
+    app.library.saveRun({ id: "run-detail", workflowId: wf.id, status: "paused", at: Date.now(), heals: [], steps: [{ id: "reserve", status: "paused" }] });
+    writePendingPrompt(dirs.home, { ask: ask(), runId: "run-detail" });
+    let snapshot = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    snapshot.replaying = true;
+    await page.route("**/api/state", (route) => route.fulfill({ json: snapshot }));
+    const cancellations: string[] = [];
+    page.on("request", (request) => { if (request.url() === `${base}/api/replay/cancel`) cancellations.push(request.method()); });
+    await page.goto(base);
+    await page.getByRole("button", { name: "I pressed Reserve" }).waitFor();
+    await page.getByRole("button", { name: "Open workflow", exact: true }).click();
+    await page.waitForSelector("#workflow-detail");
+    snapshot = { ...snapshot, activeAsk: null, runs: [{ id: "run-detail", workflowId: wf.id, status: "passed", at: Date.now(), steps: [] }] };
+    await page.waitForFunction(() => document.getElementById("attention-label")?.textContent === "Running");
+    await page.locator("#rail .rail-foot").click();
+    await page.waitForSelector("#live-session");
+    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
+    assert.equal(await page.locator("#live-run, #live-stop, #run-receipt").count(), 0, "R2 without an ask must not inherit R1's view or Stop");
+    assert.deepEqual(cancellations, []);
+    app.library.saveRun({ id: "run-next", workflowId: wf.id, status: "paused", at: Date.now(), heals: [], steps: [{ id: "reserve", status: "paused" }] });
+    snapshot = { ...snapshot, activeAsk: { ...ask(), runId: "run-next" }, runs: app.library.listRuns() as RunSummary[] };
+    await page.waitForFunction(() => document.getElementById("live-run")?.dataset.run === "run-next");
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    const cancelled = page.waitForResponse((response) => response.url() === `${base}/api/replay/cancel`);
+    await page.getByRole("button", { name: "Stop run", exact: true }).click();
+    await cancelled;
+    assert.deepEqual(cancellations, ["POST"]);
+    snapshot = { ...snapshot, activeAsk: null, replaying: false, runs: snapshot.runs?.map((run) => ({ ...run, status: "passed" })) };
+    await page.waitForSelector("#run-receipt");
+    await page.waitForFunction(() => document.getElementById("attention-label")?.textContent === "Nothing running");
+    await page.locator("#rail .rail-foot").click();
+    await page.waitForSelector("#live-session");
+    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
+    assert.equal(await page.locator("#run-receipt, #live-stop").count(), 0, "idle footer navigation must not reopen a completed run");
+  } finally {
+    await browser.close(); await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("live detail stays on its run between asks and until the final receipt", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-continuation");
   process.env.BAO_DRIVE = "1";
@@ -168,6 +216,11 @@ test("live detail stays on its run between asks and until the final receipt", { 
     await post(`${base}/api/replay/press`, { name: "Apply" });
     await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent === "Bao is continuing this run");
     assert.equal(await mounted!.evaluate((el) => el === document.getElementById("live-run")), true);
+    assert.equal(await page.locator('#live-steps [aria-current="step"], #live-steps [data-status="paused"], #live-film [data-status="paused"]').count(), 0);
+    assert.doesNotMatch(await page.locator("#live-steps").innerText(), /Needs you|Wait for you/);
+    assert.equal(await page.locator(".live-state.paused").count(), 0);
+    assert.equal(await page.locator(".live-state svg").count(), 1);
+    assert.equal(await page.locator(".live-deadline").isVisible(), false);
     assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
     assert.equal(await page.getByText("Historical unrelated task").count(), 0);
     assert.equal(await page.locator("#live-session, #act-bar").count(), 0);

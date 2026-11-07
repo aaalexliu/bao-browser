@@ -38,14 +38,18 @@ const openIcon = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" str
 const chevron = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5"/></svg>`;
 
 /** Current handoff: the ask identifies the exact run and workflow, not a historical live-session file. */
-export function liveRunView(ask: HumanAsk, run?: RunSummary | null, workflow?: WorkflowV2 | null, now = Date.now()): string {
+export function liveRunView(ask: HumanAsk, run?: RunSummary | null, workflow?: WorkflowV2 | null, now = Date.now(), continuing = false): string {
   const steps = workflow?.steps || [];
   const results = new Map((run?.steps || []).map((step) => [step.id, step]));
+  const stepStatus = (id: string): string => {
+    const status = results.get(id)?.status || "pending";
+    return continuing ? status === "paused" ? "continuing" : status : id === ask.stepId ? "paused" : status;
+  };
   const progress = steps.map((step, i) => {
     const result = results.get(step.id);
-    const current = step.id === ask.stepId;
-    const status = current ? "paused" : result?.status || "pending";
-    const word = status === "passed" ? "Done" : current ? "Needs you" : status === "pending" ? "Not yet" : status;
+    const current = !continuing && step.id === ask.stepId;
+    const status = stepStatus(step.id);
+    const word = status === "passed" ? "Done" : current ? "Needs you" : status === "pending" ? "Not yet" : status === "continuing" ? "Handoff ended" : status;
     const label = current && ask.kind === "confirm" ? `Wait for you: press ${ask.button || "the button"}` : step.label;
     const input = step.input ? run?.inputs?.[step.input] : undefined;
     const ms = result?.startedAt != null && result.endedAt != null ? result.endedAt - result.startedAt : undefined;
@@ -56,7 +60,7 @@ export function liveRunView(ask: HumanAsk, run?: RunSummary | null, workflow?: W
   const shots = steps.flatMap((step, index) => {
     const result = results.get(step.id);
     const src = imageRef(run?.id || "", result?.afterShot || result?.beforeShot);
-    return src ? [{ src, index, label: step.label, status: step.id === ask.stepId ? "paused" : result?.status || "pending" }] : [];
+    return src ? [{ src, index, label: step.label, status: stepStatus(step.id) }] : [];
   });
   const latest = shots.at(-1);
   const startedAt = run?.steps?.find((step) => step.startedAt != null)?.startedAt ?? run?.at;
@@ -64,15 +68,15 @@ export function liveRunView(ask: HumanAsk, run?: RunSummary | null, workflow?: W
   let location = ask.site;
   try { if (workflow?.startUrl) { const url = new URL(workflow.startUrl); location = url.host + url.pathname; } } catch { /* Keep the ask's site if the workflow has no web URL. */ }
   const deadline = ask.deadline ? `<span>Bao waits until ${esc(formatTime(ask.deadline))} · <b id="live-wait-left">${esc(runWaitLeft(ask.deadline, now))}</b></span><span class="live-meter" aria-hidden="true"><i style="width:${ask.timeoutMs > 0 ? Math.min(100, Math.max(0, (ask.deadline - now) / ask.timeoutMs * 100)) : 0}%"></i></span>` : `<span>Bao waits for you · no timeout</span>`;
-  const lead = ask.kind === "confirm" ? `Waiting for you to press ${ask.button || "the button"}.` : ownerStopText(ask.instruction);
+  const lead = continuing ? "Bao is working through the remaining steps." : ask.kind === "confirm" ? `Waiting for you to press ${ask.button || "the button"}.` : ownerStopText(ask.instruction);
   const continueLabel = ask.kind === "confirm" ? `I pressed ${ask.button || "the button"}` : ask.kind === "login" ? "I’m signed in, continue" : "Continue";
   const currentShot = latest ? `<img src="${esc(latest.src)}" alt="Latest screen from Bao’s Chrome: ${esc(latest.label)}">` : `<p class="live-no-shot">No screen captured yet.</p>`;
   return `<section id="live-run" data-run="${esc(ask.runId)}" data-step="${esc(`${ask.runId}:${ask.stepId}:${ask.startedAt}`)}" aria-label="Run: ${esc(ask.workflowName)}">
-    <p class="live-kicker"><span class="live-state run-glyph paused">${runStatusGlyph("paused")} Needs you</span>${startedAt != null ? `<span class="live-dot"></span><span>Started ${esc(formatTime(startedAt))}</span>` : ""}<span class="live-dot"></span><span>Paused at ${esc(formatTime(ask.startedAt))}</span></p>
+    <p class="live-kicker"><span class="live-state run-glyph ${continuing ? "continuing" : "paused"}">${runStatusGlyph(continuing ? "continuing" : "paused")} ${continuing ? "Running" : "Needs you"}</span>${startedAt != null ? `<span class="live-dot"></span><span>Started ${esc(formatTime(startedAt))}</span>` : ""}<span class="live-dot"></span><span>${continuing ? "Last paused at" : "Paused at"} ${esc(formatTime(ask.startedAt))}</span></p>
     <h1>${esc(ask.workflowName)}</h1><p class="live-lead">${esc(lead)}</p>
-    <div class="live-deadline" role="timer" aria-live="off" data-deadline="${ask.deadline || ""}" data-timeout="${ask.timeoutMs}">${clockIcon}${deadline}</div>
-    <div class="live-actions"><button id="act-show" class="primary" type="button">${openIcon}Show Bao’s Chrome</button><button id="act-continue" type="button">${esc(continueLabel)}</button><button id="live-stop" type="button">Stop run…</button></div>
-    <p id="live-action-status" role="status"></p>
+    <div class="live-deadline"${continuing ? " hidden" : ""} role="timer" aria-live="off" data-deadline="${ask.deadline || ""}" data-timeout="${ask.timeoutMs}">${clockIcon}${deadline}</div>
+    <div class="live-actions"><button id="act-show" class="primary" type="button">${openIcon}Show Bao’s Chrome</button><button id="act-continue" type="button"${continuing ? " disabled" : ""}>${continuing ? "Continuing" : esc(continueLabel)}</button><button id="live-stop" type="button">Stop run…</button></div>
+    <p id="live-action-status" role="status">${continuing ? "Bao is continuing this run" : ""}</p>
     <div class="live-split"><div><h3>Steps</h3><ol id="live-steps" class="live-progress" aria-label="Step progress">${progress || `<li class="live-loading">Steps are unavailable.</li>`}</ol></div>
       <figure class="live-preview"><div class="live-shot">${currentShot}</div><figcaption><span class="live-badge"><i aria-hidden="true"></i>Live</span><span>${esc(location)}</span></figcaption></figure></div>
     <div class="live-screens"><h3>Screens so far</h3><ol id="live-film" style="--n:${Math.max(1, shots.length)}" aria-label="Screens captured during this run">${shots.map((shot) => `<li data-status="${shot.status}"><div class="live-shot"><img src="${esc(shot.src)}" alt="Step ${shot.index + 1}: ${esc(shot.label)}"></div><span class="live-cap"><span class="run-glyph ${shot.status}">${runStatusGlyph(shot.status)}</span>${shot.index + 1}</span></li>`).join("")}</ol>${shots.length ? "" : `<p class="live-empty">No screens captured yet.</p>`}</div>
