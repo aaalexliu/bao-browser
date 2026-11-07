@@ -72,6 +72,17 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
         await page.keyboard.press(key);
         await checkMain(false);
       }
+      for (const key of ["Alt+Tab", "Shift+Alt+Tab"]) {
+        await settings.click();
+        await settings.evaluate((button, backwards) => {
+          const start = backwards ? document.querySelector<HTMLElement>("#rail .rail-foot") : button.previousElementSibling as HTMLElement;
+          start!.focus();
+        }, key.startsWith("Shift"));
+        await page.keyboard.press(key);
+        assert.equal(await settings.evaluate((button) => document.activeElement === button), true, `${theme}: ${key} reaches Settings`);
+        await page.keyboard.press("Enter");
+        await checkMain(true);
+      }
       await page.keyboard.press("Shift+Tab");
       assert.equal(await page.evaluate(() => document.activeElement?.matches(":focus-visible")), true);
       await settings.click();
