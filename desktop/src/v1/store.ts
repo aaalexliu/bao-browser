@@ -74,7 +74,7 @@ export interface StoredRun {
   steps: unknown[];
   /** Heal proposals that named a model. */
   modelCalls?: number;
-  /** Secrets are masked. File values are names, not paths. */
+  /** File values are names, not paths. */
   inputs?: Record<string, string>;
   video?: string;
   videoStartedAt?: number;
