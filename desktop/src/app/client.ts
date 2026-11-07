@@ -44,7 +44,6 @@ import {
   runAttention,
   shellAttentionCount,
   runWaitLeft,
-  runKind,
   reviewItems,
   runViewer,
   runField,

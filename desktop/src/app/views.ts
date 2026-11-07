@@ -288,6 +288,7 @@ function icon(name: string): string {
   if (name === "more") return `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor"/></svg>`;
   if (name === "search") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/></svg>`;
   const strokes: Record<string, string> = {
+    play: '<path d="m5 2.5 9 5.5-9 5.5Z" fill="currentColor" stroke="none"/>',
     library: '<rect x="2.25" y="2.25" width="11.5" height="4.5" rx="1.25"/><rect x="2.25" y="9.25" width="11.5" height="4.5" rx="1.25"/><path d="M5 4.5h3.5M5 11.5h5"/>',
     runs: '<circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/>',
     record: '<circle cx="8" cy="8" r="6.25"/><circle cx="8" cy="8" r="3.6" fill="currentColor" stroke="none"/>',
