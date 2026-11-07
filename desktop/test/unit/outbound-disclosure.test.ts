@@ -8,8 +8,7 @@ import test from "node:test";
 import { describeWorkflow, getRun, runWorkflow, type WorkflowOutcome } from "../../src/mcp/catalog";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { buildPushBody as desktopPush, stripUnsafe as desktopStrip } from "../../src/v1/sync-guard";
-import { buildPushBody as webPush, stripUnsafe as webStrip } from "../../../web/src/lib/guard";
+import { buildPushBody as push, stripUnsafe as strip } from "../../../web/src/lib/guard";
 import { applyImportAnswers, applyRegistryImportAnswers } from "../../../web/src/lib/import-sheet";
 import { redactForRelease } from "../../../web/src/lib/publish";
 
@@ -30,42 +29,40 @@ function workflow(): WorkflowV2 {
   };
 }
 
-for (const [name, strip, push] of [["desktop", desktopStrip, desktopPush], ["web", webStrip, webPush]] as const) {
-  test(`${name} outbound guard scrubs whole user values without rewriting metadata or local input`, () => {
-    const doc = workflow();
-    doc.steps.push({
-      id: "copy", index: 1, action: "type", label: secret, surface: "dom", timeoutMs: 0, value: secret,
-    });
-    doc.steps.push({
-      id: "card", index: 2, action: "type", label: "Card", surface: "dom", timeoutMs: 0, value: "4111111111111111",
-    });
-    doc.steps.push({
-      id: "prose", index: 3, action: "type", label: "Prose", surface: "dom", timeoutMs: 0, value: `prefix ${secret} suffix`,
-    });
-    const original = structuredClone(doc);
-    const cleaned = strip(doc, [secret]) as WorkflowV2;
-    assert.equal(cleaned.inputs[0]?.default, undefined);
-    assert.equal(cleaned.steps[0]?.value, "{{password}}");
-    assert.equal(cleaned.steps[1]?.value, stripped);
-    assert.equal(cleaned.steps[1]?.label, secret);
-    assert.equal(cleaned.steps[2]?.value, stripped);
-    assert.equal(cleaned.steps[3]?.value, `prefix ${secret} suffix`);
-    const projected = push(doc, { baseVersion: 0 }).document as WorkflowV2;
-    assert.equal(projected.inputs[0]?.default, undefined);
-    assert.equal(projected.steps[0]?.value, "{{password}}");
-    assert.equal(projected.steps[1]?.value, stripped);
-    assert.equal(projected.steps[1]?.label, secret);
-    assert.equal(projected.steps[2]?.value, stripped);
-    assert.equal(projected.steps[3]?.value, `prefix ${secret} suffix`);
-    const pushDoc = structuredClone(doc);
-    pushDoc.steps[1]!.label = "Copy";
-    pushDoc.steps.pop();
-    const pushed = push(pushDoc, { baseVersion: 0 }).document as WorkflowV2;
-    assert.equal(pushed.steps[1]?.value, stripped);
-    assert.equal(pushed.steps[2]?.value, stripped);
-    assert.deepEqual(doc, original);
+test("outbound guard scrubs whole user values without rewriting metadata or local input", () => {
+  const doc = workflow();
+  doc.steps.push({
+    id: "copy", index: 1, action: "type", label: secret, surface: "dom", timeoutMs: 0, value: secret,
   });
-}
+  doc.steps.push({
+    id: "card", index: 2, action: "type", label: "Card", surface: "dom", timeoutMs: 0, value: "4111111111111111",
+  });
+  doc.steps.push({
+    id: "prose", index: 3, action: "type", label: "Prose", surface: "dom", timeoutMs: 0, value: `prefix ${secret} suffix`,
+  });
+  const original = structuredClone(doc);
+  const cleaned = strip(doc, [secret]) as WorkflowV2;
+  assert.equal(cleaned.inputs[0]?.default, undefined);
+  assert.equal(cleaned.steps[0]?.value, "{{password}}");
+  assert.equal(cleaned.steps[1]?.value, stripped);
+  assert.equal(cleaned.steps[1]?.label, secret);
+  assert.equal(cleaned.steps[2]?.value, stripped);
+  assert.equal(cleaned.steps[3]?.value, `prefix ${secret} suffix`);
+  const projected = push(doc, { baseVersion: 0 }).document as WorkflowV2;
+  assert.equal(projected.inputs[0]?.default, undefined);
+  assert.equal(projected.steps[0]?.value, "{{password}}");
+  assert.equal(projected.steps[1]?.value, stripped);
+  assert.equal(projected.steps[1]?.label, secret);
+  assert.equal(projected.steps[2]?.value, stripped);
+  assert.equal(projected.steps[3]?.value, `prefix ${secret} suffix`);
+  const pushDoc = structuredClone(doc);
+  pushDoc.steps[1]!.label = "Copy";
+  pushDoc.steps.pop();
+  const pushed = push(pushDoc, { baseVersion: 0 }).document as WorkflowV2;
+  assert.equal(pushed.steps[1]?.value, stripped);
+  assert.equal(pushed.steps[2]?.value, stripped);
+  assert.deepEqual(doc, original);
+});
 
 test("publishing scrubs copied secret and token values without changing the local document", () => {
   const doc = workflow();

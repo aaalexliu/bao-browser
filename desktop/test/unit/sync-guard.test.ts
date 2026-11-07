@@ -45,58 +45,56 @@ test("a push retains owner data and screenshots while stripping credentials", ()
   assert.equal((body.heal as { snapshot?: { dom?: string } }).snapshot?.dom, "button");
 });
 
-for (const build of [buildPushBody]) {
-  test("workflow pushes omit typed token, card and SSN crops only", () => {
-    const values = ["sk-FixtureCropToken123", "4111111111111111", "123-45-6789", "ordinary text"];
-    const doc: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "crop-values", name: "Crop values", createdAt: 1,
-      startUrl: "https://example.test/", inputs: values.map((value, index) => ({ name: `text${index}`, type: "text" as const, default: value })),
-      steps: values.flatMap((value, index) => [
-        { id: `bound${index}`, index: index * 2, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000,
-          input: `text${index}`, value: `{{text${index}}}` },
-        { id: `literal${index}`, index: index * 2 + 1, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000, value },
-      ]),
-    };
-    const original = structuredClone(doc);
-    const png = tinyPng(32, 24);
-    const body = build(doc, { baseVersion: 0, crops: doc.steps.map((step) => ({ stepId: step.id, png })) });
-    assert.deepEqual(body.shots.map((shot) => shot.stepId), ["bound3", "literal3"]);
-    assert.deepEqual(doc, original);
-    assert.ok(doc.inputs.every((input) => input.type === "text"));
-    assert.ok(doc.steps.every((step) => !step.sensitive));
-  });
+test("workflow pushes omit typed token, card and SSN crops only", () => {
+  const values = ["sk-FixtureCropToken123", "4111111111111111", "123-45-6789", "ordinary text"];
+  const doc: WorkflowV2 = {
+    schema: "bao.workflow/v2", version: 2, id: "crop-values", name: "Crop values", createdAt: 1,
+    startUrl: "https://example.test/", inputs: values.map((value, index) => ({ name: `text${index}`, type: "text" as const, default: value })),
+    steps: values.flatMap((value, index) => [
+      { id: `bound${index}`, index: index * 2, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000,
+        input: `text${index}`, value: `{{text${index}}}` },
+      { id: `literal${index}`, index: index * 2 + 1, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000, value },
+    ]),
+  };
+  const original = structuredClone(doc);
+  const png = tinyPng(32, 24);
+  const body = buildPushBody(doc, { baseVersion: 0, crops: doc.steps.map((step) => ({ stepId: step.id, png })) });
+  assert.deepEqual(body.shots.map((shot) => shot.stepId), ["bound3", "literal3"]);
+  assert.deepEqual(doc, original);
+  assert.ok(doc.inputs.every((input) => input.type === "text"));
+  assert.ok(doc.steps.every((step) => !step.sensitive));
+});
 
-  test("push accepts saved passwords that also occur in metadata", () => {
-    for (const password of ["password", "secret", "test", "pass", "admin", "8000", "5000"]) {
-      const doc: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id: "sync-password", name: "Password test", createdAt: 1,
-        startUrl: "https://example.test/admin",
-        inputs: [{ name: "password", type: "secret", default: password }],
-        steps: [
-          { id: "pass", index: 0, action: "type", label: "Type password", surface: "dom", timeoutMs: 8000,
-            input: "password", value: "{{password}}", identity: { surface: "dom", role: "textbox", testId: "password", path: [] } },
-          { id: "echo", index: 1, action: "type", label: "Echo", surface: "dom", timeoutMs: 5000, value: password },
-        ],
-      };
-      const pushed = build(doc, { baseVersion: 0 }).document as WorkflowV2;
-      assert.equal(pushed.inputs[0]!.default, undefined);
-      assert.equal(pushed.inputs[0]!.name, "password");
-      assert.equal(pushed.inputs[0]!.type, "secret");
-      assert.equal(pushed.steps[0]!.value, "{{password}}");
-      assert.equal(pushed.steps[0]!.identity!.testId, "password");
-      assert.equal(pushed.steps[0]!.timeoutMs, 8000);
-      assert.equal(pushed.steps[1]!.timeoutMs, 5000);
-      assert.equal(pushed.steps[1]!.value, "[secret stripped]");
-      assert.equal(pushed.startUrl, doc.startUrl);
-      assert.equal(doc.inputs[0]!.default, password);
-    }
-    const document = { inputs: [{ name: "password", type: "secret" }] };
-    const heal = { args: { password: "still-refused" } };
-    const projected = build(document, { baseVersion: 0, heal });
-    assert.deepEqual(projected.heal, {});
-    assert.deepEqual(projected.document, document);
-  });
-}
+test("push accepts saved passwords that also occur in metadata", () => {
+  for (const password of ["password", "secret", "test", "pass", "admin", "8000", "5000"]) {
+    const doc: WorkflowV2 = {
+      schema: "bao.workflow/v2", version: 2, id: "sync-password", name: "Password test", createdAt: 1,
+      startUrl: "https://example.test/admin",
+      inputs: [{ name: "password", type: "secret", default: password }],
+      steps: [
+        { id: "pass", index: 0, action: "type", label: "Type password", surface: "dom", timeoutMs: 8000,
+          input: "password", value: "{{password}}", identity: { surface: "dom", role: "textbox", testId: "password", path: [] } },
+        { id: "echo", index: 1, action: "type", label: "Echo", surface: "dom", timeoutMs: 5000, value: password },
+      ],
+    };
+    const pushed = buildPushBody(doc, { baseVersion: 0 }).document as WorkflowV2;
+    assert.equal(pushed.inputs[0]!.default, undefined);
+    assert.equal(pushed.inputs[0]!.name, "password");
+    assert.equal(pushed.inputs[0]!.type, "secret");
+    assert.equal(pushed.steps[0]!.value, "{{password}}");
+    assert.equal(pushed.steps[0]!.identity!.testId, "password");
+    assert.equal(pushed.steps[0]!.timeoutMs, 8000);
+    assert.equal(pushed.steps[1]!.timeoutMs, 5000);
+    assert.equal(pushed.steps[1]!.value, "[secret stripped]");
+    assert.equal(pushed.startUrl, doc.startUrl);
+    assert.equal(doc.inputs[0]!.default, password);
+  }
+  const document = { inputs: [{ name: "password", type: "secret" }] };
+  const heal = { args: { password: "still-refused" } };
+  const projected = buildPushBody(document, { baseVersion: 0, heal });
+  assert.deepEqual(projected.heal, {});
+  assert.deepEqual(projected.document, document);
+});
 
 test("workflow pictures skip private steps and retain control crops without markers", () => {
   const crop = tinyPng(320, 180);

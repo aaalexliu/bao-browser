@@ -1,6 +1,6 @@
 import { INPUT_BINDING } from "../../../shared/bindings";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
-import { stripUnsafe } from "./sync-guard";
+import { stripUnsafe } from "../../../web/src/lib/guard";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 
 export function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {

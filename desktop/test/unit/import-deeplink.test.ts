@@ -202,7 +202,7 @@ test("bao open round trip fills non-secret inputs", { timeout: 30_000 }, async (
   }
 });
 
-test("a secret key in a run link is refused", { timeout: 30_000 }, async () => {
+test("a secret input in a run link prefills the local form", { timeout: 30_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-open-secret-"));
   const app = await startApp({ home, port: 0 });
   try {
@@ -211,11 +211,10 @@ test("a secret key in a run link is refused", { timeout: 30_000 }, async () => {
     const link = `bao://run/local-one?inputs=${inputs}`;
     const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
     const opened = await runCli(cli, ["open", link], home);
-    assert.notEqual(opened.status, 0);
-    assert.match(`${opened.stdout}\n${opened.stderr}`, /Secret inputs are re-asked on this device\. Remove Password from the link\./);
+    assert.equal(opened.status, 0, opened.stderr);
     const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { opened: { inputs?: Record<string, string> } | null };
-    assert.equal(state.opened, null);
-    assert.equal(`${opened.stdout}\n${opened.stderr}`.includes("nope"), false);
+    assert.equal(state.opened?.inputs?.password, "nope");
+    assert.equal(`${opened.stdout}\n${opened.stderr}`.includes("nope"), true);
   } finally {
     await app.close();
   }
