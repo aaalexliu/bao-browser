@@ -45,6 +45,100 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
   });
 });
 
+test("MCP search and describe require only inputs without usable saved defaults", async () => {
+  await fixture(async (client, library) => {
+    const inputs: WorkflowV2["inputs"] = [
+      { name: "password", type: "secret", label: "Password", required: true, default: "fixture-password" },
+      { name: "display", type: "text", default: "Ada" },
+      { name: "count", type: "number", default: "0" },
+      { name: "missing", type: "secret" },
+      { name: "empty", type: "secret", default: "" },
+      { name: "stripped", type: "secret", default: "[secret stripped]" },
+      { name: "invalid", type: "number", default: "not a number" },
+      { name: "attachment", type: "file" },
+      { name: "optional", type: "text", required: false },
+      { name: "code", type: "secret", label: "Verification code", required: true, default: "123456" },
+    ];
+    const saved: WorkflowV2 = { ...workflow, inputs, steps: [{
+      id: "code", index: 0, action: "type", label: "Code", input: "code", value: "{{code}}", surface: "dom", timeoutMs: 1000,
+      identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login ONE-TIME-CODE", path: [] },
+    }] };
+    library.save(saved);
+    await client.handshake();
+    const result = await client.call("describe_workflow", { id: saved.id });
+    assert.equal(result.isError, false);
+    const described = JSON.parse(result.text) as { workflow: WorkflowV2; inputs: { name: string; type: string; label: string; required: boolean }[] };
+    const required = [false, false, false, true, true, true, true, true, false, true];
+    assert.deepEqual(described.inputs, inputs.map((input, index) => ({
+      name: input.name, type: input.type, label: input.label || input.name, required: required[index],
+    })));
+    assert.deepEqual(described.workflow.inputs.map((input) => input.required !== false), required);
+    assert.equal(described.workflow.inputs[0]?.default, undefined);
+    assert.equal(result.text.includes("fixture-password"), false);
+    assert.equal(library.read(saved.id).inputs[0]?.required, true);
+    assert.equal(library.read(saved.id).inputs[0]?.default, "fixture-password");
+    const search = await client.call("search_workflows", { query: "Saved" });
+    assert.equal(search.isError, false);
+    const hits = JSON.parse(search.text) as { hits: { inputs: typeof described.inputs }[] };
+    assert.deepEqual(hits.hits[0]?.inputs, described.inputs);
+  });
+});
+
+test("MCP run omits a saved password but still requires a fresh OTP", { timeout: 60_000 }, async () => {
+  const submissions: Record<string, string>[] = [];
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    res.setHeader("content-type", "text/html");
+    if (url.pathname === "/submit") {
+      submissions.push(Object.fromEntries(url.searchParams));
+      res.end("<!doctype html><p>Submitted</p>");
+      return;
+    }
+    res.end(`<!doctype html><form action="/submit">
+      <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+      <label>Code <input id="code" name="code" autocomplete="one-time-code"></label>
+      <button type="submit">Submit</button></form>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    await fixture(async (client, library) => {
+      const saved: WorkflowV2 = {
+        ...workflow, startUrl: `http://127.0.0.1:${address.port}/`,
+        inputs: [
+          { name: "password", type: "secret", label: "Password", required: true, default: "fixture-password" },
+          { name: "code", type: "secret", label: "Verification code", required: true, default: "123456" },
+        ],
+        steps: [
+          ...["password", "code"].map((name, index): WorkflowV2["steps"][number] => ({
+            id: name, index, action: "type", label: name, surface: "dom", timeoutMs: 5000, heal: "never",
+            input: name, value: `{{${name}}}`,
+            identity: { surface: "dom", role: "textbox", id: name, path: [], ...(name === "code" ? { autocomplete: "one-time-code" } : {}) },
+          })),
+          { id: "submit", index: 2, action: "click", label: "Submit", surface: "dom", timeoutMs: 5000, heal: "never",
+            identity: { surface: "dom", role: "button", name: "Submit", path: [] },
+            postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 } },
+        ],
+      };
+      library.save(saved);
+      await client.handshake();
+      const missing = await client.call("run_workflow", { id: saved.id });
+      assert.equal(missing.isError, false);
+      const handoff = JSON.parse(missing.text) as { outcome: string; reason: string };
+      assert.equal(handoff.outcome, "needs_human");
+      assert.equal(handoff.reason, "Enter Verification code on this device");
+      assert.deepEqual(submissions, []);
+      const result = await client.call("run_workflow", { id: saved.id, inputs: { code: "654321" } });
+      assert.equal(result.isError, false);
+      const outcome = JSON.parse(result.text) as { outcome: string; reason?: string; runId: string };
+      assert.equal(outcome.outcome, "ok", outcome.reason);
+      assert.deepEqual(submissions, [{ password: "fixture-password", code: "654321" }]);
+      assert.equal(library.readRun(outcome.runId).modelCalls, 0);
+    });
+  } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
 test("retired tools fail without contacting an app or starting Chrome", async () => {
   await fixture(async (client, library) => {
     await client.handshake();

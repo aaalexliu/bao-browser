@@ -9,7 +9,7 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
-import { reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { hasStrippedSecret, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
@@ -157,7 +157,7 @@ export async function searchWorkflows(
     category: categoryFor(doc),
     steps: doc.steps.map((step) => step.label),
     source: "mine" as const,
-    inputs: inputSchema(doc),
+    inputs: inputSchema(doc, withInputDefaults(doc, {})),
     link: linkFor(doc.id),
     local: true,
   }));
@@ -204,12 +204,14 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   checks.forEach(({ step, field, value }, index) => {
     if (projected[index]?.value === STRIPPED_SECRET && value !== STRIPPED_SECRET) delete step[field];
   });
-  for (const input of workflow.inputs) {
+  const inputs = inputSchema(workflow, found.local ? withInputDefaults(found.document, {}) : {});
+  workflow.inputs.forEach((input, index) => {
+    if (!inputs[index]!.required) input.required = false;
     if (input.type === "secret") delete input.default;
-  }
+  });
   return {
     workflow,
-    inputs: inputSchema(workflow),
+    inputs,
     link: linkFor(id),
     importLink: `bao://import/${id}`,
     source: originLabel(found),
@@ -837,14 +839,19 @@ function signInStep(step: WorkflowStep | undefined): boolean {
   return SIGN_IN.test(`${step.id} ${step.label} ${step.input || ""}`) || step.sensitive === true;
 }
 
-function inputSchema(doc: { inputs?: WorkflowV2["inputs"] }): InputField[] {
-  return (doc.inputs ?? []).map((input) => ({
-    name: input.name,
-    type: input.type,
-    label: input.label || input.name,
-    required: input.required !== false,
-    choices: input.choices,
-  }));
+function inputSchema(doc: { inputs?: WorkflowV2["inputs"] }, defaults: ReplayArgs): InputField[] {
+  return (doc.inputs ?? []).map((input) => {
+    const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
+    const saved = value !== undefined && value !== "" && !hasStrippedSecret(value)
+      && (typeof value !== "number" || Number.isFinite(value));
+    return {
+      name: input.name,
+      type: input.type,
+      label: input.label || input.name,
+      required: input.required !== false && !saved,
+      choices: input.choices,
+    };
+  });
 }
 
 function publicInputs(workflow: WorkflowV2, inputs: ReplayArgs): Record<string, string | number> {
