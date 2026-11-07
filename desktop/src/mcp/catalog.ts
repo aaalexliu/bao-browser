@@ -2,7 +2,7 @@
 // and does not add a tool per workflow.
 
 import { createHash, randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
@@ -435,7 +435,10 @@ async function replayInBrowser(
   secrets: string[],
   control?: RunControl,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
-  const profile = path.join(library.root, "chrome-profile");
+  const persistentProfile = path.join(library.root, "chrome-profile");
+  const profile = [...liveRuns.values()].some((live) => live.profile === persistentProfile)
+    ? mkdtempSync(path.join(library.root, "chrome-replay-"))
+    : persistentProfile;
   mkdirSync(profile, { recursive: true });
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
