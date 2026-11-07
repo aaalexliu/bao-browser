@@ -7,6 +7,7 @@ import { startApp } from "../../src/app/server";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { makeAsk } from "../../src/v1/human-ask";
 
 interface StateFixture extends Record<string, unknown> {
   sync?: Record<string, unknown>;
@@ -19,6 +20,152 @@ async function eventually(check: () => boolean): Promise<void> {
   }
   assert.ok(check(), "saved setting did not reach the Library");
 }
+
+test("main-pane navigation shows a focus ring only for keyboard input", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-focus-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: false, accessibility: false }));
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    const url = `http://127.0.0.1:${app.port}`;
+    const workflow: WorkflowV2 = {
+      schema: "bao.workflow/v2", version: 2, id: "focus-fixture", name: "Focus fixture", createdAt: 1,
+      startUrl: "/fixture", inputs: [], steps: [],
+    };
+    app.library.save(workflow);
+    app.library.saveRun({ id: "focus-run", workflowId: workflow.id, status: "passed", at: 1, steps: [], heals: [] });
+    app.library.saveRun({ id: "default-run", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [] });
+    let live = false;
+    let runFailure = "";
+    await page.route("**/api/runs/focus-run**", async (route) => {
+      const receipt = new URL(route.request().url()).pathname.endsWith("/receipt");
+      if (runFailure === (receipt ? "receipt" : "run")) await route.fulfill({ status: 503, json: { error: "Fixture unavailable" } });
+      else await route.continue();
+    });
+    await page.route("**/api/state", async (route) => {
+      const response = await route.fetch();
+      const state = await response.json() as StateFixture;
+      await route.fulfill({ json: { ...state, activeAsk: live ? {
+        ...makeAsk({ kind: "confirm", workflowId: workflow.id, workflowName: workflow.name, stepId: "s", stepIndex: 1, stepCount: 1, label: "Continue", timeoutMs: 120_000 }), runId: "focus-run",
+      } : null } });
+    });
+    async function checkMain(keyboard: boolean): Promise<void> {
+      await page.waitForFunction(() => document.activeElement?.id === "main");
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), keyboard ? "solid" : "none");
+    }
+    for (const theme of ["light", "dark"]) {
+      await page.goto(url);
+      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.reload();
+      const settings = page.locator('#rail [data-place="settings"]');
+      await settings.evaluate((button) => (button as HTMLButtonElement).click());
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none", `${theme}: programmatic opening has no focus box`);
+      await page.reload();
+      await settings.click();
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none", `${theme}: pointer opening has no focus box`);
+      for (const key of ["Escape", "Enter", "Space", "Shift", "Meta", "Control", "Alt", "CapsLock", "Meta+Tab", "Meta+c", "Meta+h", "Meta+Shift+4", "Control+c", "Alt+c", "a"]) {
+        await page.keyboard.press(key);
+        await checkMain(false);
+      }
+      for (const key of ["Alt+Tab", "Shift+Alt+Tab"]) {
+        await settings.click();
+        await settings.evaluate((button, backwards) => {
+          const start = backwards ? document.querySelector<HTMLElement>("#rail .rail-foot") : button.previousElementSibling as HTMLElement;
+          start!.focus();
+        }, key.startsWith("Shift"));
+        await page.keyboard.press(key);
+        await settings.focus();
+        await page.keyboard.press("Enter");
+        await checkMain(true);
+      }
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await page.evaluate(() => document.activeElement?.matches(":focus-visible")), true);
+      await settings.click();
+      await page.keyboard.press("ArrowDown");
+      await checkMain(true);
+      await page.reload();
+      await page.keyboard.press("Tab");
+      await settings.focus();
+      await page.keyboard.press("Enter");
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "main");
+      assert.equal(await page.locator("#main").evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle === "solid"), true, `${theme}: keyboard opening keeps a visible focus ring`);
+      await page.keyboard.press("Tab");
+      assert.equal(await page.locator("#heal-auto").evaluate((node) => document.activeElement === node && node.matches(":focus-visible")), true);
+      assert.equal(await page.locator('label[for="heal-auto"]').evaluate((node) => getComputedStyle(node).outlineStyle), "solid");
+      await page.keyboard.press("Meta+k");
+      await page.locator("#palette-input").fill("Settings");
+      await page.keyboard.press("Enter");
+      assert.equal(await page.locator("#main").evaluate((node) => document.activeElement === node && getComputedStyle(node).outlineStyle === "solid"), true);
+      await page.keyboard.press("Meta+k");
+      await page.locator("#palette-input").fill("Settings");
+      await page.locator('#palette-list [data-command="settings"]').click();
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none");
+      await page.setViewportSize({ width: 720, height: 860 });
+      await page.locator("#sidebar-toggle").click();
+      await settings.click();
+      await page.waitForFunction(() => !(document.querySelector("#sidebar-dialog") as HTMLDialogElement).open);
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none");
+      await page.keyboard.press("Tab");
+      await page.locator("#sidebar-toggle").focus();
+      await page.keyboard.press("Enter");
+      await settings.focus();
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.activeElement?.id === "main");
+      assert.equal(await page.locator("#main").evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle === "solid"), true);
+      await page.setViewportSize({ width: 1280, height: 860 });
+      for (const keyboard of [false, true]) {
+        await page.keyboard.press("Meta+k");
+        await page.locator("#palette-input").fill("Open Focus fixture");
+        if (keyboard) { await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter"); }
+        else await page.locator("#palette-list [data-command]").first().click();
+        await page.locator("#workflow-detail").waitFor();
+        await checkMain(keyboard);
+        await page.goto(`${url}/?screen=runs`);
+        const receipt = page.locator('[data-open-run="focus-run"]').first();
+        if (keyboard) { await page.keyboard.press("Tab"); await receipt.focus(); await page.keyboard.press("Enter"); }
+        else await receipt.click();
+        await page.locator("#run-receipt").waitFor();
+        await checkMain(keyboard);
+        for (const failure of ["run", "receipt"]) {
+          runFailure = failure;
+          await page.goto(`${url}/?screen=runs`);
+          await page.locator('[data-open-run="focus-run"]').first().click();
+          const retry = page.locator("#retry-run");
+          await retry.waitFor();
+          await page.waitForResponse("**/api/state");
+          await page.waitForRequest("**/api/state");
+          await retry.waitFor();
+          runFailure = "";
+          if (keyboard) { await page.keyboard.press("Tab"); await retry.focus(); await page.keyboard.press("Enter"); }
+          else await retry.click();
+          await page.locator("#run-receipt").waitFor();
+          await checkMain(keyboard);
+        }
+        live = true;
+        await page.goto(`${url}/?screen=live`);
+        const openWorkflow = page.locator('#detail-bar [data-open-workflow="focus-fixture"]');
+        await openWorkflow.waitFor();
+        if (keyboard) { await page.keyboard.press("Tab"); await openWorkflow.focus(); await page.keyboard.press("Enter"); }
+        else await openWorkflow.click();
+        await page.locator("#workflow-detail").waitFor();
+        await checkMain(keyboard);
+        live = false;
+        await settings.click();
+      }
+    }
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
 
 test("AI help saves each source and keeps API drafts across refreshes", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-ai-"));
@@ -202,6 +349,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.waitForFunction(() => document.getElementById("engine-feedback")?.textContent === "Engine choice saved. It applies to the next run.");
     await page.locator("#save-agent-browser-lifetime").click();
     await eventually(() => app.library.settings().keepAgentBrowserOpen === true);
+    await page.waitForFunction(() => document.getElementById("agent-browser-lifetime-feedback")?.textContent === "Window choice saved.");
     assert.equal(await page.locator("#settings-advanced").evaluate((el) => (el as HTMLDetailsElement).open), true);
     for (const [id, value] of drafts) assert.equal(await page.locator(`#${id}`).inputValue(), value);
     await Promise.all([
@@ -242,8 +390,10 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     assert.equal(await page.locator("#keep-agent-browser-open").isChecked(), false);
     await page.locator("#save-engine").click();
     await eventually(() => app.library.settings().pageEngine === "old" && app.library.settings().chromeProfileExtensions?.["Profile 1"] === false);
+    await page.waitForFunction(() => document.getElementById("engine-feedback")?.textContent === "Engine choice saved. It applies to the next run.");
     await page.locator("#save-agent-browser-lifetime").click();
     await eventually(() => app.library.settings().keepAgentBrowserOpen === false);
+    await page.waitForFunction(() => document.getElementById("agent-browser-lifetime-feedback")?.textContent === "Window choice saved.");
     await page.locator("#act-minutes").selectOption("custom");
     await page.locator("#act-custom").fill("1");
     await page.locator("#act-custom").press("Tab");

@@ -462,7 +462,8 @@
     #act:empty { display: none; }
     #main { padding: var(--space-3) var(--space-5) 4rem; }
     #main:focus { scroll-margin-block-start: 64px; }
-    #main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    #main:focus-visible { outline: none; }
+    #main[data-keyboard-focus="true"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     .card, .why, #heal-detail, #run-viewer, #run-envelope, .step-card {
       background: var(--card);
       border: 1px solid var(--line);
