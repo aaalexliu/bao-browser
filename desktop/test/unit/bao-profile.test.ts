@@ -382,6 +382,7 @@ test("browser choice is explicit on open and rejects unknown values", async () =
   await assert.rejects(proxy.execute("open", [], "other"), /must be copy or bao/);
   await assert.rejects(proxy.execute("snapshot", [], "bao"), /only accepted on open/);
   const tool = TOOLS.find((item) => item.name === "agent_browser")!;
+  assert.ok("browser" in tool.inputSchema.properties);
   assert.deepEqual(tool.inputSchema.properties.browser.enum, ["copy", "bao"]);
 });
 
