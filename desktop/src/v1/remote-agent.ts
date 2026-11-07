@@ -8,8 +8,8 @@ import { redactAudit } from "../../../web/src/lib/audit-redact";
 import { devicePermission, policyAllowsRemoteRun, type RemotePolicy } from "../../../web/src/lib/remote-policy";
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
-import { EXTENSION_NOT_CONNECTED } from "../cdp-live/launch-guard";
-import { describeWorkflow, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type WorkflowOutcome } from "../mcp/catalog";
+import { EXTENSION_NOT_CONNECTED, replayRefusal } from "../cdp-live/launch-guard";
+import { describeWorkflow, runWorkflow, searchWorkflows, withHeldPage, type WorkflowOutcome } from "../mcp/catalog";
 import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
@@ -330,7 +330,7 @@ export function createRemoteAgent(opts: {
   async function execute(job: AssignedJob): Promise<Record<string, unknown>> {
     switch (job.tool) {
       case "search_workflows": {
-        const hits = await searchWorkflows(opts.library, stringArg(job.args.query), {}, opts.extensionLinked?.() ?? false);
+        const hits = await searchWorkflows(opts.library, stringArg(job.args.query), {}, { extensionLinked: opts.extensionLinked?.() ?? false, relay: true });
         return { outcome: "ok", hits };
       }
       case "describe_workflow": {
@@ -374,7 +374,7 @@ export function createRemoteAgent(opts: {
     } catch (err) {
       return { outcome: "failed", workflowId: id, reason: err instanceof Error ? err.message : "workflow" };
     }
-    const refusal = workflowReplayRefusal(opts.library, workflow, opts.extensionLinked?.() ?? false);
+    const refusal = replayRefusal(workflow.driver, { extensionLinked: opts.extensionLinked?.() ?? false });
     if (refusal) return { outcome: "failed", workflowId: id, reason: refusal };
     const inputs = job.args.inputs && typeof job.args.inputs === "object"
       ? job.args.inputs as Record<string, string | number>

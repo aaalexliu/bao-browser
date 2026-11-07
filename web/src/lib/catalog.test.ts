@@ -5,6 +5,31 @@ import path from "node:path";
 import test from "node:test";
 import { query } from "./db";
 import { catalog } from "./registry";
+import { catalogContext, workflowSearchEligible } from "./catalog-eligibility";
+import { workflowSearchEligible as desktopSearchEligible } from "../../../desktop/src/cdp-live/launch-guard";
+
+test("web and desktop search eligibility agree with the caller contract", () => {
+  const contexts = [
+    "", "extensionLinked=true", "pageEngine=agent-browser", "pageEngine=agent-browser&extensionLinked=true",
+    "relay=true", "relay=true&extensionLinked=true", "relay=true&pageEngine=agent-browser", "relay=true&pageEngine=agent-browser&extensionLinked=true",
+  ].map((query) => catalogContext(new URLSearchParams(query)));
+  const cases = [
+    { workflow: {}, expected: [true, true, false, false, true, true, false, false] },
+    { workflow: { driver: null }, expected: [true, true, false, false, true, true, false, false] },
+    { workflow: { driver: "playwright" }, expected: [true, true, false, false, true, true, false, false] },
+    { workflow: { driver: "extension" }, expected: [false, true, false, false, false, true, false, true] },
+    { workflow: { driver: "cdp-live" }, expected: [false, false, false, false, false, false, false, false] },
+    { workflow: { provenance: "fixture" }, expected: [false, false, false, false, false, false, false, false] },
+    { workflow: { driver: "extension", provenance: "fixture" }, expected: [false, false, false, false, false, false, false, false] },
+  ];
+  for (const { workflow, expected } of cases) {
+    for (const [index, context] of contexts.entries()) {
+      assert.equal(workflowSearchEligible(workflow, context), expected[index]);
+      assert.equal(desktopSearchEligible(workflow, context), expected[index]);
+    }
+  }
+  assert.deepEqual(catalogContext(new URLSearchParams("extensionLinked=TRUE&relay=1&pageEngine=unknown")), { extensionLinked: false, relay: false, pageEngine: "old" });
+});
 
 test("catalog filters every source before limiting and respects caller replay support", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-registry-catalog-"));
@@ -32,11 +57,14 @@ test("catalog filters every source before limiting and respects caller replay su
         if (source === "team") await query("INSERT INTO grants (workflow_id, user_id, permission) VALUES ($1, 'owner', 'read')", [id]);
       }
       const principal = { userId: "owner" };
-      const unlinked = await catalog(principal, "Blueberries", { source });
+      const unlinked = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams()));
       assert.deepEqual(unlinked.map((hit) => hit.id), [`${source}-normal`]);
-      const linked = await catalog(principal, "Blueberries", { source }, { extensionLinked: true });
+      const linked = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true")));
       assert.deepEqual(linked.map((hit) => hit.id).sort(), [`${source}-extension`, `${source}-normal`]);
-      assert.deepEqual(await catalog(principal, "Blueberries", { source }, { extensionLinked: true, pageEngine: "agent-browser" }), []);
+      assert.deepEqual(await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true&pageEngine=agent-browser"))), []);
+      const relay = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true&pageEngine=agent-browser&relay=true")));
+      assert.deepEqual(relay.map((hit) => hit.id), [`${source}-extension`]);
+      assert.deepEqual(await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("pageEngine=agent-browser&relay=true"))), []);
     }
   } finally {
     if (previousDir === undefined) delete process.env.BAO_PG_DIR;

@@ -322,6 +322,7 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       await asked.stop();
     }
 
+    library.updateSettings({ pageEngine: "agent-browser" });
     let extensionLinked = true;
     const auto = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, extensionLinked: () => extensionLinked, autoAllow: true });
     auto.start();
@@ -337,7 +338,10 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       assert.equal((hidden.json.hits as { id: string }[]).some((hit) => hit.id === "ext"), false);
       const fixture = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(fixture.json.via, "extension");
+      library.save({ ...library.read("ext"), provenance: undefined });
       extensionLinked = false;
+      const unlinked = await tool(server.origin, agent.token, "search_workflows", { query: "" });
+      assert.equal((unlinked.json.hits as { id: string }[]).some((hit) => hit.id === "ext"), false);
       const disconnected = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(disconnected.json.reason, "extension is not connected");
       assert.equal(calls.extension, 2);

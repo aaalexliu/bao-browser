@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import Ajv from "ajv/dist/2020";
+import Ajv from "ajv/dist/2020.js";
 import { getPng, putPng } from "./blobstore";
 import { isElementCrop } from "./png";
 import { query } from "./db";
@@ -12,7 +12,7 @@ import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
 import schema from "./workflow-v2.schema.json";
 import { assertInviteSecret, assertOwnerEmail, assertOwnerSignIn, assertProductionAuth, magicLinkVisible } from "./owner";
 import { SEED_WORKFLOWS } from "./seeds";
-import { workflowSearchEligible, type ReplayContext } from "../../../desktop/src/cdp-live/launch-guard";
+import { workflowSearchEligible, type WorkflowSearchContext } from "./catalog-eligibility";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateWorkflow = ajv.compile(schema);
@@ -745,7 +745,7 @@ export async function reportWorkflow(principal: Principal, id: string, reason: s
   return { ok: true };
 }
 
-export async function catalog(principal: Principal | null, q: string, filters: { source?: string; site?: string; category?: string }, context: ReplayContext = { extensionLinked: false }) {
+export async function catalog(principal: Principal | null, q: string, filters: { source?: string; site?: string; category?: string }, context: WorkflowSearchContext = { extensionLinked: false }) {
   const hits: Awaited<ReturnType<typeof toHit>>[] = [];
   if (principal && filters.source !== "public") {
     const mine = await ownedRows(principal.userId);

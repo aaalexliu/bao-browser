@@ -15,8 +15,13 @@ export interface ReplayContext {
   pageEngine?: "old" | "agent-browser";
 }
 
-export function workflowSearchEligible(workflow: { driver?: string | null; provenance?: string }, context: ReplayContext): boolean {
-  return workflow.provenance !== "fixture" && !replayRefusal(workflow.driver, context);
+export interface WorkflowSearchContext extends ReplayContext {
+  relay?: boolean;
+}
+
+export function workflowSearchEligible(workflow: { driver?: string | null; provenance?: string }, context: WorkflowSearchContext): boolean {
+  const pageEngine = context.relay && workflow.driver === "extension" ? undefined : context.pageEngine;
+  return workflow.provenance !== "fixture" && !replayRefusal(workflow.driver, { extensionLinked: context.extensionLinked, pageEngine });
 }
 
 export function replayRefusal(driver: string | null | undefined, opts: ReplayContext): string | null {

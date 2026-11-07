@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { startApp } from "../../src/app/server";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
@@ -78,9 +79,10 @@ test("remote search preserves local exclusions without document fetches", async 
     library.save({ ...documents[2]!, provenance: "fixture" });
     const { port } = server.address() as AddressInfo;
     saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
-    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, true)).map((item) => item.id), ["remote-owner"]);
+    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, { extensionLinked: true, relay: true })).map((item) => item.id), ["remote-owner"]);
     assert.equal(requests.length, 1);
     assert.equal(new URL(requests[0]!, "http://localhost").searchParams.get("extensionLinked"), "true");
+    assert.equal(new URL(requests[0]!, "http://localhost").searchParams.get("relay"), "true");
     library.updateSettings({ pageEngine: "agent-browser" });
     await searchWorkflows(library, "Blueberries");
     assert.equal(requests.length, 2);
@@ -98,13 +100,35 @@ test("search uses the caller's extension connection and selected engine", async 
     const extension = { ...workflow("extension", "Blueberries extension"), driver: "extension" as const };
     library.save(extension);
     assert.deepEqual(await searchWorkflows(library, "Blueberries"), []);
-    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, true)).map((hit) => hit.id), [extension.id]);
+    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, { extensionLinked: true })).map((hit) => hit.id), [extension.id]);
     assert.equal(workflowReplayRefusal(library, extension), EXTENSION_NOT_CONNECTED);
-    assert.equal(workflowReplayRefusal(library, extension, true), null);
     library.updateSettings({ pageEngine: "agent-browser" });
-    assert.deepEqual(await searchWorkflows(library, "Blueberries", {}, true), []);
-    assert.match(workflowReplayRefusal(library, extension, true)!, /pass-through/);
+    assert.deepEqual(await searchWorkflows(library, "Blueberries", {}, { extensionLinked: true }), []);
+    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, { extensionLinked: true, relay: true })).map((hit) => hit.id), [extension.id]);
+    assert.match(workflowReplayRefusal(library, extension)!, /pass-through/);
   } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("desktop replay keeps its engine refusal for extension workflows", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-app-"));
+  const library = new Library(home);
+  library.save({ ...workflow("extension", "Extension replay"), driver: "extension" });
+  library.updateSettings({ pageEngine: "agent-browser" });
+  const app = await startApp({ home, port: 0, extensionHost: false });
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "extension" }),
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: "pass-through sessions do not support saved workflow replay" });
+    assert.deepEqual(library.listRuns(), []);
+    assert.equal(existsSync(path.join(home, "chrome-profile")), false);
+  } finally {
+    await app.close();
     rmSync(home, { recursive: true, force: true });
   }
 });
