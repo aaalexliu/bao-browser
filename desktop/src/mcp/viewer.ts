@@ -37,6 +37,9 @@ function viewerMain(): void {
   const root = document.querySelector<HTMLElement>("#root")!;
   let current: View | undefined;
   let browserCall: BrowserToolCard | undefined;
+  let browserPicture: Pictures["pictures"][number] | undefined;
+  let pictureLoading = false;
+  let pictureError = "";
   let context: HostContext = {};
   let canRead = false;
   let nextId = 0;
@@ -126,17 +129,35 @@ function viewerMain(): void {
     catch { return new Date(value).toISOString(); }
   }
   function calls(value: number | null): string { return value === null ? "Model calls unknown (not tracked)" : `${value} Bao model calls`; }
+  async function loadBrowserPicture(card: BrowserToolCard): Promise<void> {
+    const picture = card.picture;
+    if (picture.kind !== "captured" || !card.runId || !card.stepId) return;
+    pictureLoading = true; render();
+    try {
+      const reply = await tool("open_browser_picture", { run_id: card.runId, step_id: card.stepId, phase: picture.phase });
+      if (browserCall !== card) return;
+      const data = reply._meta?.baoPictures;
+      if (!data || data.runId !== card.runId || data.stepId !== card.stepId) throw new HostDataError("This host did not forward the page picture.");
+      browserPicture = data.pictures.find((candidate) => candidate.phase === picture.phase);
+      if (!browserPicture) pictureError = "The page picture is missing, invalid, or over the size limit.";
+    } catch (cause) {
+      if (browserCall !== card) return;
+      pictureError = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      if (browserCall === card) { pictureLoading = false; render(); }
+    }
+  }
   function renderBrowserCall(card: BrowserToolCard): void {
     applyContext(); root.replaceChildren();
     const header = el("header");
     header.append(el("strong", "BAO", "brand"), el("span", "Browser action", "muted"), el("span", card.status === "failed" ? "Failed" : card.status === "waiting" ? "Waiting for you" : "Completed", `status browser-status ${card.status}`));
     root.append(header);
     const picture = card.picture;
-    if (picture.kind === "captured") {
+    if (picture.kind === "captured" && browserPicture) {
       const figure = el("figure", undefined, `browser-picture${expanded ? " expanded" : ""}`);
       const image = el("img");
-      const phase = picture.phase === "previous" ? "Last page, before this call" : picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
-      image.src = `data:${picture.mimeType};base64,${picture.data}`; image.alt = `${phase}: ${card.caption}`;
+      const phase = picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
+      image.src = `data:${browserPicture.mimeType};base64,${browserPicture.data}`; image.alt = `${phase}: ${card.caption}`;
       const frame = el("div", undefined, "browser-frame"); frame.append(image);
       if (picture.target) {
         const { rect, viewport } = picture.target;
@@ -145,7 +166,7 @@ function viewerMain(): void {
         Object.assign(mark.style, { left: `${rect.x / viewport.width * 100}%`, top: `${rect.y / viewport.height * 100}%`, width: `${rect.width / viewport.width * 100}%`, height: `${rect.height / viewport.height * 100}%` });
         mark.append(el("span", card.command === "fill" ? "Typed here" : "Clicked here")); frame.append(mark);
       } else {
-        const label = card.status === "failed" ? "Command failed" : picture.phase === "previous" ? "Previous picture" : card.command === "snapshot" ? "Read this page" : card.command === "open" ? "Opened page" : card.command === "tab" ? "Browser tab" : "Page captured";
+        const label = card.status === "failed" ? "Command failed" : card.command === "snapshot" ? "Read this page" : card.command === "open" ? "Opened page" : card.command === "tab" ? "Browser tab" : "Page captured";
         frame.append(el("span", label, "browser-page-label"));
       }
       figure.append(frame, el("figcaption", phase)); root.append(figure);
@@ -163,7 +184,8 @@ function viewerMain(): void {
     } else {
       const empty = el("div", undefined, "browser-empty");
       const outline = el("div", undefined, "browser-outline"); outline.setAttribute("aria-hidden", "true");
-      empty.append(outline, el("strong", "Page picture unavailable"), el("p", picture.reason, "muted")); root.append(empty);
+      const reason = picture.kind === "unavailable" ? picture.reason : pictureLoading ? "Reading the recorded page picture." : pictureError || "This host cannot read the page picture.";
+      empty.append(outline, el("strong", pictureLoading ? "Loading page picture" : "Page picture unavailable"), el("p", reason, "muted")); root.append(empty);
     }
     root.append(el("p", card.caption, "browser-caption"));
     if ((card.command === "click" || card.command === "fill") && picture.kind === "captured" && !picture.target && card.status === "complete") {
@@ -294,7 +316,8 @@ function viewerMain(): void {
       const data = reply?._meta?.baoViewer;
       const card = reply?._meta?.baoToolCard;
       if ((data || card) && userRequest === undefined) {
-        ++viewRequest; browserCall = card; current = data; expanded = false; clearError(); render();
+        ++viewRequest; browserCall = card; current = data; browserPicture = undefined; pictureLoading = false; pictureError = ""; expanded = false; clearError(); render();
+        if (card && canRead) void loadBrowserPicture(card);
       }
     } else if (message.method === "ui/notifications/host-context-changed") {
       const changes = message.params as HostContext;
@@ -309,6 +332,7 @@ function viewerMain(): void {
     const init = await request("ui/initialize", { protocolVersion: "2026-01-26", appInfo: { name: "Bao run viewer", version: "1.0.0" }, appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] } }) as { hostContext?: HostContext; hostCapabilities?: { serverTools?: unknown } };
     context = init.hostContext || {}; canRead = Boolean(init.hostCapabilities?.serverTools); applyContext();
     notify("ui/notifications/initialized", {});
+    if (browserCall) void loadBrowserPicture(browserCall);
     new ResizeObserver(() => { notify("ui/notifications/size-changed", { height: Math.ceil(document.documentElement.getBoundingClientRect().height) }); }).observe(root.parentElement!);
     setTimeout(() => { if (!current && viewRequest === 0) void show("list_runs", {}, true).catch((err: Error) => error(err)); }, 500);
   })().catch((err: Error) => error(err));

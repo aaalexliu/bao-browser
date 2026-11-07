@@ -40,6 +40,7 @@ function count(value: unknown): number | null {
 }
 
 function workflowFor(library: Library, run: StoredRun): WorkflowV2 | undefined {
+  if (run.kind === "capture") return undefined;
   try { return library.readWorkflowSnapshot(viewerId(run.workflowId), bounded).workflow; }
   catch { return undefined; }
 }
@@ -100,14 +101,14 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
   };
 }
 
-export function openStepPictures(library: Library, args: Record<string, unknown>) {
+export function openStepPictures(library: Library, args: Record<string, unknown>, phases: readonly ("before" | "after")[] = ["before", "after"]) {
   const runId = viewerId(args.run_id);
   const stepId = viewerId(args.step_id);
   const run = library.readRun(runId, bounded);
   const recorded = run.steps.map(record).find((item) => item.id === stepId);
   if (!recorded) throw new Error("Step not found in this run");
   const pictures: { phase: string; mimeType: string; data: string }[] = [];
-  for (const phase of ["before", "after"] as const) {
+  for (const phase of phases) {
     const names = [recorded[`${phase}Shot`], shotFile(stepId, phase, "png"), shotFile(stepId, phase, "jpg")];
     for (const name of names) {
       if (typeof name !== "string") continue;

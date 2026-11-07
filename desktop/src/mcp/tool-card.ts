@@ -1,8 +1,5 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import type { AgentBrowserCommandResult, AgentBrowserProxy } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
-import { shotFormat } from "../v1/shots";
 
 export interface BrowserToolCard {
   command: string;
@@ -10,7 +7,7 @@ export interface BrowserToolCard {
   caption: string;
   runId: string | null;
   stepId: string | null;
-  picture: { kind: "captured"; data: string; mimeType: string; phase: "before" | "after" | "previous"; target?: RecordedAgentBrowserCommand["target"] }
+  picture: { kind: "captured"; phase: "before" | "after"; target?: RecordedAgentBrowserCommand["target"] }
     | { kind: "unavailable"; reason: string };
 }
 
@@ -52,31 +49,26 @@ function caption(command: string, failed: boolean, outcome?: string): string {
   }
 }
 
-export async function browserToolResult(home: string, command: string, results: AgentBrowserCommandResult[],
-  evidence: AgentBrowserProxy["lastCommand"], previous?: BrowserToolCard, error?: string) {
+export function browserToolResult(command: string, results: AgentBrowserCommandResult[],
+  evidence: AgentBrowserProxy["lastCommand"], activeRunId?: string, error?: string) {
   const failed = error !== undefined || results.some((result) => result.exitCode !== 0);
   const outcome = ownerOutcome(results);
   const status = outcome === "halted" || outcome === "waiting" ? "waiting" : failed ? "failed" : "complete";
-  const runId = evidence?.runId ?? ((outcome || command === "close") ? previous?.runId : null) ?? null;
+  const runId = evidence?.runId ?? activeRunId ?? null;
   const step = evidence?.step;
   let picture: BrowserToolCard["picture"] = { kind: "unavailable", reason: outcome ? "No new picture was taken during the owner handoff." : step?.afterShotError || "No page picture is available for this call." };
   if (!outcome && command !== "close" && evidence && step) {
     const before = !failed && step.beforeShot && step.target;
     const file = before ? step.beforeShot : step.afterShot;
-    if (file) {
-      try {
-        const bytes = await readFile(path.join(home, "shots", "runs", evidence.runId, file));
-        const format = shotFormat(bytes);
-        if (format) picture = { kind: "captured", data: bytes.toString("base64"), mimeType: format === "png" ? "image/png" : "image/jpeg", phase: before ? "before" : "after", ...(before ? { target: step.target } : {}) };
-      } catch { /* The command result does not depend on its picture. */ }
-    }
-  }
-  if (picture.kind === "unavailable" && previous?.picture.kind === "captured" && runId === previous.runId) {
-    picture = { kind: "captured", data: previous.picture.data, mimeType: previous.picture.mimeType, phase: "previous" };
+    if (file) picture = { kind: "captured", phase: before ? "before" : "after", ...(before ? { target: step.target } : {}) };
   }
   const card: BrowserToolCard = { command, status, caption: caption(command, failed, outcome), runId, stepId: step?.id ?? null, picture };
   return {
-    content: [{ type: "text", text: card.caption }],
+    content: [
+      { type: "text", text: card.caption },
+      ...results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))),
+      ...(error === undefined ? [] : [{ type: "text", text: error }]),
+    ],
     structuredContent: { command, status, results, run_id: runId, step_id: card.stepId, ...(error === undefined ? {} : { error }) },
     _meta: { baoToolCard: card },
     isError: failed,

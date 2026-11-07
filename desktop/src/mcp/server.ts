@@ -6,7 +6,7 @@ import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, type AgentBrowserCommandResu
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
 import { inspectRunView, listRunViews } from "./run-view";
-import { BROWSER_RESULT_SCHEMA, browserToolResult, type BrowserToolCard } from "./tool-card";
+import { BROWSER_RESULT_SCHEMA, browserToolResult } from "./tool-card";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -51,7 +51,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "get_run",
-    description: "Read one replay outcome by run id, including declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
+    description: "Read one replay outcome or browser capture by run id, including its current status and declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
     inputSchema: { type: "object", properties: { run_id: { type: "string" } }, required: ["run_id"] },
   },
   LIST_RUNS_TOOL,
@@ -59,7 +59,7 @@ const CATALOG_TOOLS = [
 
 const AGENT_BROWSER_TOOL = {
   name: "agent_browser",
-  description: "Run an agent-browser command with its native arguments. Ordinary commands return native output; owner handoffs return Bao's wait status. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, wait_for_owner, close. When sign-in or a human check halts a command, keep this session open and call command=wait_for_owner args=[\"60000\"]. Repeat waiting replies without ending your turn; on ready take a fresh snapshot and continue in this same window. The optional timeout is 1-120000 milliseconds, below a 180-second MCP limit. On closed, report that the owner closed the window. While waiting Bao reads only URL and title, not snapshots, text, fields, or screenshots. A page with unchanged URL/title stays waiting. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. Agent exit also closes it unless Keep window open after agent finishes is on in Bao Settings. A new session closes any kept window first. This route needs no running Bao app. Sign-in/check pages show an owner-wait banner and omit screenshots. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact or save a workflow. Bao does not block final clicks.",
+  description: "Run an agent-browser command with its native arguments. Ordinary commands return exact native stdout/stderr in content; owner handoffs return Bao's wait status. In MCP Apps hosts, the primary human view is an annotated page card, with native output and errors in text blocks after its caption. Commands: open, snapshot, click, fill, press, scroll, tab, screenshot, wait_for_owner, close. When sign-in or a human check halts a command, keep this session open and call command=wait_for_owner args=[\"60000\"]. Repeat waiting replies without ending your turn; on ready take a fresh snapshot and continue in this same window. The optional timeout is 1-120000 milliseconds, below a 180-second MCP limit. On closed, report that the owner closed the window. While waiting Bao reads only URL and title, not snapshots, text, fields, or screenshots. A page with unchanged URL/title stays waiting. Use args as an argv array, for example command=fill args=[\"@e1\",\"hello\"] or command=tab args=[\"t2\"]. Bao fixes one session, installed Google Chrome, a visible window, and a marked copy of the Chrome profile selected in Settings (Default when unset). Start with open. After open, native tab list output includes every restored tab on the site's host; pick the signed-in tab with tab <id>. close ends the session and deletes the copy. Agent exit also closes it unless Keep window open after agent finishes is on in Bao Settings. A new session closes any kept window first. This route needs no running Bao app. Sign-in/check pages show an owner-wait banner and omit screenshots. Each session records commands, native results, and screenshots in Bao's Library Runs. It does not redact or save a workflow. Bao does not block final clicks.",
   inputSchema: {
     type: "object", properties: {
       command: { type: "string", enum: AGENT_BROWSER_COMMANDS },
@@ -74,8 +74,8 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
   "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report that the owner closed the window. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact or save a workflow. It needs no running Bao app. Bao does not block final clicks.",
-  "In MCP Apps hosts, agent_browser shows a page picture and caption. Exact native stdout/stderr and snapshot refs are in structuredContent.results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. Captured commands do not create a replayable workflow.",
-  "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
+  "In MCP Apps hosts, agent_browser shows a page picture and caption. Exact native stdout/stderr, snapshot refs, and thrown errors remain in content blocks after the caption, with results also in structuredContent.results. Picture bytes are fetched separately by the app and never included in ordinary agent_browser results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. Captured commands do not create a replayable workflow.",
+  "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. get_run also reads browser capture sessions. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
 ].join("\n");
 
 interface Context {
@@ -83,7 +83,6 @@ interface Context {
   identity: LibraryIdentity;
   proxy: AgentBrowserProxy;
   ui: boolean;
-  lastBrowserCard?: BrowserToolCard;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
@@ -226,6 +225,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
 }
 
 async function proxyTool(args: Record<string, unknown>, ctx: Context) {
+  const activeRunId = ctx.proxy.activeRunId;
   let results: AgentBrowserCommandResult[] = [];
   let error: string | undefined;
   try { results = await ctx.proxy.execute(args.command, args.args, ctx.ui); }
@@ -238,9 +238,7 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
     content: results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))),
     isError: results.some((result) => result.exitCode !== 0),
   };
-  const result = await browserToolResult(ctx.library.root, String(args.command || ""), results, ctx.proxy.lastCommand, ctx.lastBrowserCard, error);
-  ctx.lastBrowserCard = result._meta.baoToolCard;
-  return result;
+  return browserToolResult(String(args.command || ""), results, ctx.proxy.lastCommand, ctx.proxy.activeRunId ?? activeRunId, error);
 }
 
 async function callTool(library: Library, identity: LibraryIdentity, name: string, args: Record<string, unknown>): Promise<unknown> {

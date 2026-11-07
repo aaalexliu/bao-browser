@@ -331,13 +331,13 @@ function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string
   return shots;
 }
 
-export function getRun(library: Library, runId: string): WorkflowOutcome {
+export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "outcome" | "link" | "status"> & { outcome: OutcomeName | "recording"; link?: string; status?: WorkflowOutcome["status"] | "recording" } {
   const file = reportPath(library, runId);
   if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
   const stored = library.readRun(runId);
   const envelope = stored.envelope;
   const status = envelope?.status || stored.status;
-  const outcome: OutcomeName = status === "passed" || status === "ok" || status === "completed" ? "ok"
+  const outcome = stored.kind === "capture" && status === "recording" ? "recording" : status === "passed" || status === "ok" || status === "completed" ? "ok"
     : status === "needs-sign-in" ? "needs_signin"
     : status === "needs_signin" || status === "needs_approval" || status === "needs_human" ? status
     : status === "paused" || status === "running" || status === "idle" ? "needs_human" : "failed";
@@ -358,11 +358,11 @@ export function getRun(library: Library, runId: string): WorkflowOutcome {
     run_id: stored.id,
     workflowId: stored.workflowId,
     receipts,
-    stops: outcome !== "ok" && step ? [{ stepId: step, outcome, reason: reason || "" }] : [],
-    link: linkFor(stored.workflowId),
+    stops: outcome !== "ok" && outcome !== "recording" && step ? [{ stepId: step, outcome, reason: reason || "" }] : [],
+    ...(stored.kind === "capture" ? {} : { link: linkFor(stored.workflowId) }),
     outputs: stored.outputs,
     pageLeftOpen: stored.pageLeftOpen,
-    status: status as WorkflowOutcome["status"],
+    status: status as WorkflowOutcome["status"] | "recording",
     step,
     ask: envelope?.ask || (outcome !== "ok" ? reason : undefined),
     deadline: envelope?.deadline,

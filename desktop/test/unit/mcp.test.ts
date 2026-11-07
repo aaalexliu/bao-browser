@@ -258,6 +258,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     for (const name of TOOL_NAMES) assert.deepEqual(tools.find((tool) => tool.name === name)?._meta?.ui?.visibility, name === "list_runs" ? ["model", "app"] : ["model"]);
     assert.equal(tools.find((tool) => tool.name === "list_runs")?._meta?.ui?.resourceUri, VIEWER_URI);
     assert.deepEqual(tools.find((tool) => tool.name === "open_step_pictures")?._meta?.ui?.visibility, ["app"]);
+    assert.deepEqual(tools.find((tool) => tool.name === "open_browser_picture")?._meta?.ui?.visibility, ["app"]);
     assert.equal(tools.find((tool) => tool.name === "agent_browser")?._meta?.ui?.resourceUri, VIEWER_URI);
     const browserError = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot" } });
     assert.equal(browserError.result?.isError, true);
@@ -265,6 +266,10 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     assert.equal(browserError.result?._meta?.baoToolCard?.picture.kind, "unavailable");
     assert.equal(browserError.result?.structuredContent?.run_id, null);
     assert.notEqual(browserError.result?.content?.[0]?.text, browserError.result?.structuredContent?.error);
+    assert.equal(browserError.result?.content?.[1]?.text, "start agent-browser with open before sending commands");
+    const invalidCommand = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "retired" } });
+    assert.equal(invalidCommand.result?.isError, true);
+    assert.equal(invalidCommand.result?.content?.[1]?.text, invalidCommand.result?.structuredContent?.error);
     const resources = await mcp.request("resources/list");
     assert.equal(resources.result?.resources?.length, 1);
     assert.equal(resources.result?.resources?.[0]?.uri, VIEWER_URI);
