@@ -53,25 +53,45 @@ test("native narrow headers reserve one clearance and keep controls clickable", 
         }, native);
         for (const screen of ["runs", "library", "settings"] as const) {
           if (screen !== "runs") {
-            if (width <= 1060) await page.locator("#sidebar-toggle").click();
+            if (width <= 1060) await page.locator("#sidebar-toggle:visible").click();
             await page.locator(`#rail [data-screen=${screen}]`).click();
           }
-          const geometry = await page.locator("#screen-list").evaluate((list) => {
-            const header = list.querySelector(".pane-bar")!;
-            const rect = header.getBoundingClientRect();
-            const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
-            return {
-              top: rect.top, height: rect.height,
-              navTop: list.querySelector("nav")!.getBoundingClientRect().top,
-              contained: controls.every((node) => { const box = node.getBoundingClientRect(); return box.top >= rect.top && box.bottom <= rect.bottom; }),
-            };
-          });
-          assert.deepEqual(geometry, { top: native && width <= 1060 ? 52 : 0, height: 52, navTop: native && width <= 1060 ? 104 : 52, contained: true }, `${screen} ${width}px native=${native}`);
-          for (const button of await page.locator("#screen-list > .pane-bar button, #screen-list > nav button").all()) {
-            if (await button.isVisible()) await button.click({ trial: true });
+          if (screen === "library") {
+            await page.locator("#main .library-heading").waitFor();
+            assert.equal(await page.locator("#screen-list").isVisible(), false);
+            const geometry = await page.locator("#content").evaluate((content) => {
+              const header = content.querySelector(".library-heading")!;
+              const rect = header.getBoundingClientRect();
+              const box = content.getBoundingClientRect();
+              const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
+              return {
+                contentTop: box.top, contentLeft: box.left, contentRight: box.right,
+                headerTop: rect.top, headerHeight: rect.height,
+                contained: controls.every((node) => { const control = node.getBoundingClientRect(); return control.top >= rect.top && control.bottom <= rect.bottom && control.left >= rect.left && control.right <= rect.right; }),
+              };
+            });
+            assert.deepEqual(geometry, { contentTop: native && width <= 1060 ? 52 : 0, contentLeft: width <= 1060 ? 0 : 212, contentRight: width, headerTop: native && width <= 1060 ? 52 : 0, headerHeight: 52, contained: true }, `Library ${width}px native=${native}`);
+            for (const button of await page.locator("#main .library-heading button").all()) {
+              if (await button.isVisible()) await button.click({ trial: true });
+            }
+          } else {
+            const geometry = await page.locator("#screen-list").evaluate((list) => {
+              const header = list.querySelector(".pane-bar")!;
+              const rect = header.getBoundingClientRect();
+              const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
+              return {
+                top: rect.top, height: rect.height,
+                navTop: list.querySelector("nav")!.getBoundingClientRect().top,
+                contained: controls.every((node) => { const box = node.getBoundingClientRect(); return box.top >= rect.top && box.bottom <= rect.bottom; }),
+              };
+            });
+            assert.deepEqual(geometry, { top: native && width <= 1060 ? 52 : 0, height: 52, navTop: native && width <= 1060 ? 104 : 52, contained: true }, `${screen} ${width}px native=${native}`);
+            for (const button of await page.locator("#screen-list > .pane-bar button, #screen-list > nav button").all()) {
+              if (await button.isVisible()) await button.click({ trial: true });
+            }
           }
         }
-        if (width <= 1060) await page.locator("#sidebar-toggle").click();
+        if (width <= 1060) await page.locator("#sidebar-toggle:visible").click();
         await page.locator("#rail [data-place=runs]").click();
         await page.locator(".runs-record").click();
         await page.locator("#start-url").waitFor();
