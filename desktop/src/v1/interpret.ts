@@ -575,16 +575,6 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
-  if (event.op === "click" && purchaseButton(event) && purchaseConfirm(name)) {
-    return {
-      ...step,
-      action: "confirm",
-      human: true,
-      confirm: true,
-      gate: "confirm",
-      label: `Confirm "${(name || "").replace(/\s+/g, " ").trim()}"`,
-    };
-  }
   let promptInput: string | undefined;
   if (event.dialogType === "prompt" && event.dialogValue) {
     const input = addInput(inputs, "text", "prompt");
@@ -641,27 +631,12 @@ function scrub(value: string | undefined, secrets: string[]): string | undefined
   return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
 }
 
-/** Place Order, Buy, Pay, Submit order, Reserve. Bare Submit and JS Confirm stay clicks. */
-export function purchaseConfirm(name: string | undefined): boolean {
-  const text = (name || "").replace(/\s+/g, " ").trim();
-  return /^(?:place order|buy now|buy|pay now|pay|submit order|reserve now|reserve)$/i.test(text);
-}
-
-/** A tab or link named Pay is navigation. The purchase control is a button. */
-function purchaseButton(event: TrailEvent): boolean {
-  const role = (event.identity?.role || "").toLowerCase();
-  const tag = (event.identity?.tag || "").toLowerCase();
-  if (role === "tab" || role === "link" || tag === "a") return false;
-  return role === "button" || tag === "button" || tag === "input";
-}
-
 function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | undefined {
   if (event.gate === "login" || event.gate === "confirm") return event.gate;
   if (isSecret(event, secrets)) return "login";
   const name = [event.identity?.name, event.identity?.text, event.identity?.label, event.identity?.nameAttr]
     .filter(Boolean)
     .join(" ");
-  if (/\bconfirm\b/i.test(name)) return "confirm";
   if (/\b(log in|sign in)\b/i.test(name)) return "login";
   return undefined;
 }
