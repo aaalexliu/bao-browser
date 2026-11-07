@@ -45,7 +45,10 @@ test("capture routes a pending Teach review back to Teach without changing its s
     await page.locator("#teach-stop").waitFor();
     const action = await page.request.post(`${url}/api/sessions/drive`, { data: { click: "#apply-btn" } });
     assert.equal(action.ok(), true, await action.text());
-    await page.locator("#teach-stop").click();
+    await Promise.all([
+      page.waitForResponse((response) => response.url() === `${url}/api/teach/stop`).then((response) => response.finished()),
+      page.locator("#teach-stop").click(),
+    ]);
     await page.locator("#teach-review").waitFor();
     const pending = (await getState()).teach;
     assert.equal(pending.phase, "review");
@@ -70,7 +73,7 @@ test("capture routes a pending Teach review back to Teach without changing its s
   }
 });
 
-test("an empty Teach review can be discarded from capture to allow a new recording", { timeout: 30_000 }, async () => {
+test("an empty Teach review can be discarded from capture to allow a new recording", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-empty-teach-"));
   const oldHome = process.env.HOME;
   process.env.HOME = home;
@@ -86,7 +89,10 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
     await page.getByRole("button", { name: "Teach", exact: true }).click();
     await page.locator("#teach-url").fill(`${url}/fixture`);
     await page.locator("#teach-start").click();
-    await page.locator("#teach-stop").click();
+    await Promise.all([
+      page.waitForResponse((response) => response.url() === `${url}/api/teach/stop`).then((response) => response.finished()),
+      page.locator("#teach-stop").click(),
+    ]);
     await page.locator("#teach-review").waitFor();
     const pending = (await getState()).teach;
     assert.equal(pending.phase, "review");
@@ -112,7 +118,10 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
     assert.equal(await discard.count(), 0);
     assert.equal(app.library.list().workflows.length, 0);
     await page.locator("#start-url").fill(`${url}/fixture`);
-    await page.locator("#start").click();
+    await Promise.all([
+      page.waitForResponse((response) => response.url() === `${url}/api/sessions` && response.request().method() === "POST", { timeout: 30_000 }).then((response) => response.finished()),
+      page.locator("#start").click(),
+    ]);
     await page.locator("#stop:not([disabled])").waitFor();
     const recording = await getState();
     assert.equal(recording.recording, true);

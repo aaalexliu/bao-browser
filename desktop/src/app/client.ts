@@ -425,7 +425,7 @@ async function captureAction(action: "start" | "save" | "discard"): Promise<void
   try {
     const endpoint = action === "start" ? "/api/sessions" : action === "save" ? "/api/sessions/stop" : "/api/sessions/discard";
     const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: action === "start" ? JSON.stringify({ url: captureUrl }) : "{}" });
-    if (!response.ok) throw new Error((await response.json()).error || "Could not update the recording. Try again.");
+    if (!response.ok) throw new Error((await response.json() as { error?: string }).error || "Could not update the recording. Try again.");
     if (action === "save") {
       const saved = await fetch("/api/sessions/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: captureName.trim() || undefined }) });
       const doc = await saved.json() as { id?: string; error?: string };
@@ -453,7 +453,7 @@ async function discardTeachReview(): Promise<void> {
   render();
   try {
     const response = await fetch("/api/teach/discard", { method: "POST" });
-    if (!response.ok) throw new Error((await response.json()).error || "Could not discard the Teach review. Try again.");
+    if (!response.ok) throw new Error((await response.json() as { error?: string }).error || "Could not discard the Teach review. Try again.");
   } catch (error) {
     captureError = error instanceof Error ? error.message : "Could not discard the Teach review. Try again.";
   } finally {
