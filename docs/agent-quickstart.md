@@ -77,6 +77,8 @@ Codex stops a tool call after 60 s by default. The 180-second server timeout giv
 
 The catalog tools and `agent_browser` run in the MCP process. Open Bao.app to inspect their saved Library and Runs records.
 
+The MCP process checks its loaded server entry file every two seconds and before tool lists and calls. A changed file identity must stay stable for at least two seconds before Bao treats it as an update. Missing files defer the check. Once no request is queued or running, no `agent_browser` session is open or starting, and no replay is held for a human step, the old process exits so the agent app can start the updated one. An eligible tool request instead receives a `Bao was updated` error before the process stops; `agent_browser close` stays available. Active sessions and held replays keep serving calls until those guards clear. This checks the installed MCP entry, not the running app's version, and cannot add update handling to an older process that lacks it. If tools do not return, restart the Bao connection in the agent app.
+
 ### MCP from a checkout
 
 To try an MCP change before packaging, run the compiled file with `BAO_HOME` set to the home `bao serve` printed:
