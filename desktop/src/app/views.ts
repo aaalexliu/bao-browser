@@ -190,6 +190,7 @@ export interface ShellState {
     url?: string;
     stream?: { label: string; op?: string; field?: string; sensitive?: boolean; ts?: number }[];
   };
+  trails?: string[];
   liveTrail?: { id?: string; ts?: number; op?: string; kind?: string }[];
   helper?: {
     label: string;
@@ -2177,18 +2178,36 @@ export function saveSheetView(sheet: SaveSheet): string {
 }
 
 export function captureView(state: ShellState, draft: { name: string; startUrl: string; error: string; busy: boolean; picking: boolean }): string {
-  const recording = Boolean(state.recording);
+  const teachLive = state.teach?.phase === "live";
+  const recording = Boolean(state.recording) && !teachLive;
+  const teachButton = `<button type="button" id="open-teach"${draft.busy ? " disabled" : ""}>Teach</button>`;
+  const ids = (state.trails || []).map((id) => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
   const opening = state.capture?.url || draft.startUrl;
   let host = "";
   try { host = new URL(opening).hostname; } catch { /* Relative fixture URLs have no site name. */ }
   return `<section id="capture-panel" aria-label="Bao, ${recording ? "recording" : "capture setup"}" aria-busy="${draft.busy}">
-    <header class="cap-bar">${!recording ? `<button type="button" class="cap-back" data-screen="library" aria-label="Back to Workflows">${icon("back")}</button>` : ""}<div><h2>${recording ? "Recording" : "Capture"}</h2><p>${recording ? state.capturePaused ? "Paused. Nothing you do now is recorded." : "Steps appear as you go" : "Record a task in Bao’s Chrome"}</p></div></header>
+    <header class="cap-bar">${!recording ? `<button type="button" class="cap-back" data-screen="library" aria-label="Back to Workflows">${icon("back")}</button>` : ""}<div><h2>${recording ? "Recording" : "Capture"}</h2><p>${recording ? state.capturePaused ? "Paused. Nothing you do now is recorded." : "Steps appear as you go" : "Record a task in Bao’s Chrome"}</p></div>${teachLive ? teachButton : ""}</header>
     <div class="cap-body">
       <div class="namefield"><label for="cap-name">Name</label><input id="cap-name" value="${esc(draft.name)}" placeholder="Name this workflow"${draft.busy ? " disabled" : ""}></div>
       ${recording ? `<p class="cap-where">${icon("globe")}<span>${state.capturePaused ? "Paused" : "Recording"} in Bao’s Chrome${host ? ` · ${esc(host)}` : ""}</span></p><div id="live-steps">${captureStream(state, draft.picking)}</div>` : `<div class="namefield"><label for="start-url">Start URL</label><input id="start-url" value="${esc(draft.startUrl)}"${draft.busy ? " disabled" : ""}></div><p class="cap-setup-note">Nothing is recorded until you start. Bao opens its own Chrome window.</p>`}
+      ${!recording ? `<div class="card">
+        <h3>Mac app</h3>
+        <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Agent and MCP</h3>
+        <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Supported single-page tasks save replayable workflows when the session ends. Other sessions stay in Runs with a reason.</p>
+      </div>
+      <div class="card" id="trail-tab">
+        <h3>Trail</h3>
+        <p class="quiet">Trail is the evidence for a capture, not a place in the sidebar.</p>
+        <label>Trail <select id="trail-id">${ids}</select></label>
+        <button id="load-trail" type="button">Load</button>
+        <div id="trail-view">Password values are not stored.</div>
+      </div>` : ""}
       <p id="capture-error" role="alert"${draft.error ? "" : " hidden"}>${esc(draft.error)}</p>
     </div>
-    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : `<button type="button" id="open-teach"${draft.busy ? " disabled" : ""}>Teach</button><button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>`}</footer>
+    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachLive ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : ""}</footer>
   </section>`;
 }
 
@@ -2208,7 +2227,7 @@ export function captureStream(state: ShellState, picking = false): string {
 }
 
 export function recordBar(state: ShellState, capture = false, picking = false): string {
-  if (!state.recording) return "";
+  if (!state.recording || state.teach?.phase === "live") return "";
   const paused = state.capturePaused ? "Resume" : "Pause";
   if (capture) return `<div id="record-bar" class="capture-controls" role="toolbar" aria-label="Recording controls" data-paused="${Boolean(state.capturePaused)}"><span class="rec"><i class="rec-dot" aria-hidden="true"></i><span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span><span id="rec-steps">${state.capture?.steps.length || 0} steps</span></span><span class="cap-divider" aria-hidden="true"></span><button type="button" id="rec-pause">${icon(state.capturePaused ? "play" : "pause")}${paused}</button><button type="button" id="rec-extract" aria-pressed="${picking}">${icon("table")}Pick list</button><span class="cap-divider" aria-hidden="true"></span><button type="button" class="stop" id="rec-stop">${icon("stop")}Stop and save</button></div>`;
   return `<div id="record-bar" data-paused="${state.capturePaused ? "true" : "false"}">

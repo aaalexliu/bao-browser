@@ -417,7 +417,7 @@ function capture(): string {
 }
 
 async function captureAction(action: "start" | "save" | "discard"): Promise<void> {
-  if (captureBusy) return;
+  if (captureBusy || state.teach?.phase === "live") return;
   if (action === "discard" && !confirm("Discard this recording? The steps you recorded are deleted. You can’t undo this.")) return;
   captureBusy = true;
   captureError = "";
@@ -790,6 +790,8 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  const load = document.getElementById("load-trail");
+  if (load) load.onclick = () => void loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "trail-view");
   const openTeach = document.getElementById("open-teach");
   if (openTeach) openTeach.onclick = () => {
     screen = "teach";
@@ -1099,6 +1101,7 @@ function bind(): void {
   };
   const recStop = document.getElementById("rec-stop");
   if (recStop) recStop.onclick = async () => {
+    if (state.teach?.phase === "live") return;
     if (screen === "capture") return captureAction("save");
     await fetch("/api/sessions/stop", { method: "POST" });
     renderKey = "";
