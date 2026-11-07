@@ -367,6 +367,16 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
     await page.locator("#promote-after").waitFor();
+    let hold: { arrive: () => void; released: Promise<void> } | undefined;
+    await page.route("**/api/settings", async (route) => {
+      const current = hold;
+      hold = undefined;
+      if (!current) return route.continue();
+      const response = await route.fetch();
+      current.arrive();
+      await current.released;
+      await route.fulfill({ response });
+    });
     for (const pollBeforeEdit of [false, true]) for (const [policy, selector, key, value] of [
       ["approve", "#promote-after", "promoteAfter", "5"], ["auto", "#promote-after", "promoteAfter", ""],
       ["approve", "#act-custom", "actTimeoutMin", "75"], ["auto", "#act-custom", "actTimeoutMin", ""],
@@ -375,12 +385,7 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
       let release: (() => void) | undefined;
       const held = new Promise<void>((resolve) => { arrive = resolve; });
       const released = new Promise<void>((resolve) => { release = resolve; });
-      await page.route("**/api/settings", async (route) => {
-        const response = await route.fetch();
-        arrive?.();
-        await released;
-        await route.fulfill({ response });
-      }, { times: 1 });
+      hold = { arrive: () => arrive?.(), released };
       try {
         await page.locator(`label[for="heal-${policy}"]`).click();
         await held;
