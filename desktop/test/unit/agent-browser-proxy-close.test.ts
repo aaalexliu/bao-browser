@@ -1,17 +1,112 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import fs, { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as launch from "../../src/launch";
 import { Library } from "../../src/v1/store";
 
 launch.pinTestBrowser();
 
-test("window close and proxy cleanup await the owned shutdown before reopening", { timeout: 30_000 }, async (t) => {
+for (const { mode, force, deny } of [
+  { mode: "close", force: false, deny: false },
+  { mode: "disconnect", force: false, deny: false },
+  { mode: "stop", force: false, deny: false },
+  { mode: "close", force: true, deny: false },
+  { mode: "close", force: false, deny: true },
+] as const) test(deny ? "current close preserves native state when shutdown fails" : `current ${mode} waits for native daemon exit after ${force ? "SIGKILL" : "a second SIGTERM"}`, { timeout: 30_000 }, async (t) => {
+  let daemon: ReturnType<typeof spawn> | undefined;
+  let exited: Promise<unknown> | undefined;
+  let proxy: AgentBrowserProxy | undefined;
+  let stateDir: string | undefined;
+  const root = await mkdtemp(path.join(tmpdir(), "bao-daemon-close-"));
+  t.after(async () => {
+    try {
+      if (daemon?.exitCode === null && daemon.signalCode === null) daemon.kill("SIGKILL");
+      await exited;
+    } finally {
+      try { await proxy?.end().catch(() => undefined); }
+      finally {
+        try { if (stateDir) await rm(stateDir, { recursive: true, force: true }); }
+        finally { await rm(root, { recursive: true, force: true }); }
+      }
+    }
+  });
+  let detached = false;
+  let resolveClosed!: () => void;
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, endpoint: { port: 9222, browserPath: "/fixture" },
+    closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
+    isClosed: () => detached,
+    detach: () => { detached = true; resolveClosed(); },
+    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
+  } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
+  const signals = path.join(root, "signals");
+  daemon = spawn(process.execPath, ["-e", `
+    const fs = require('node:fs');
+    let terms = 0;
+    process.on('SIGTERM', () => {
+      fs.appendFileSync(${JSON.stringify(signals)}, 'SIGTERM\\n');
+      if (++terms > 1 && ${!force}) setTimeout(() => process.exit(0), 75);
+    });
+    setInterval(() => {}, 1000);
+    console.log('ready');
+  `], { stdio: ["ignore", "pipe", "pipe"] });
+  exited = once(daemon, "exit");
+  await Promise.race([
+    once(daemon.stdout!, "data"),
+    exited.then(() => { throw new Error("fake daemon exited before readiness"); }),
+  ]);
+  const executable = path.join(root, "native");
+  const stateMarker = path.join(root, "state");
+  await writeFile(executable, `#!${process.execPath}
+    const fs = require('node:fs');
+    fs.writeFileSync('bao.pid', ${JSON.stringify(String(daemon.pid))});
+    fs.writeFileSync(${JSON.stringify(stateMarker)}, process.env.AGENT_BROWSER_SOCKET_DIR);
+    process.exitCode = 1;
+  `, { mode: 0o700 });
+  proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "source"), executable });
+  assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+  stateDir = await fs.readFile(stateMarker, "utf8");
+  const remove = fs.rm;
+  t.mock.method(fs, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
+    if (file === stateDir) assert.ok(daemon!.exitCode !== null || daemon!.signalCode !== null, "daemon must exit before its state is removed");
+    return remove(file, options);
+  });
+  if (deny) {
+    const kill = process.kill;
+    t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+      if (pid === daemon!.pid && signal !== 0) throw Object.assign(new Error("fixture signal denied"), { code: "EPERM" });
+      return kill(pid, signal);
+    });
+    await assert.rejects(proxy.execute("close"), { code: "EPERM" });
+    await access(stateDir);
+    assert.equal(daemon.exitCode, null);
+    assert.equal(daemon.signalCode, null);
+    assert.equal(detached, true);
+    return;
+  }
+  if (mode === "close") await proxy.execute("close");
+  else {
+    proxy.disconnect();
+    await proxy.end(mode === "stop");
+  }
+  assert.equal(daemon.exitCode, force ? null : 0);
+  assert.equal(daemon.signalCode, force ? "SIGKILL" : null);
+  assert.equal(await fs.readFile(signals, "utf8"), "SIGTERM\nSIGTERM\n");
+  await assert.rejects(access(stateDir), /ENOENT/);
+  assert.equal(detached, true);
+});
+
+test("window close awaits owned cleanup before browser choice and reopening", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-close-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -38,9 +133,32 @@ if (command === 'tab' && args.includes('--json')) {
     copies.push(options.userDataDir);
     return chrome;
   });
+  let releaseDelete!: () => void;
+  let notifyDelete!: () => void;
+  const deleting = new Promise<void>(resolve => { notifyDelete = resolve; });
+  const deletionAllowed = new Promise<void>(resolve => { releaseDelete = resolve; });
+  const remove = fs.rm;
+  let held = false;
+  t.mock.method(fs, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
+    if (file === copies[0] && !held) {
+      held = true;
+      notifyDelete();
+      await deletionAllowed;
+    }
+    return remove(file, options);
+  });
+  let currentStarts = 0;
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    currentStarts++;
+    await assert.rejects(access(copies[0]!), /ENOENT/);
+    throw new Error("current startup reached");
+  });
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   try {
     await proxy.execute("open");
+    assert.equal((await proxy.execute("open", [], "copy"))[0]!.stdout, "native success\n");
+    await assert.rejects(proxy.execute("open", [], "current"), /close the current session before choosing a different browser/);
     const chrome = chromes[0]!;
     const endpoint = await readDevToolsActivePort(chrome.portFile);
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -51,9 +169,24 @@ if (command === 'tab' && args.includes('--json')) {
       await cdp.send("Target.closeTarget", { targetId: pages[0]!.targetId });
       await chrome.closed;
     } finally { cdp.close(); }
+    await deleting;
+    assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
+    await assert.rejects(proxy.execute("open", [], "invalid"), /must be copy, bao, or current/);
+    let settled = false;
+    const switching = proxy.execute("open", [], "current").then(
+      () => { settled = true; return undefined; },
+      (error: unknown) => { settled = true; return error; },
+    );
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(settled, false, "browser choice waits for profile deletion");
+    assert.equal(currentStarts, 0);
+    releaseDelete();
+    const startupError = await switching;
+    assert.ok(startupError instanceof Error);
+    assert.equal(startupError.message, "current startup reached");
+    assert.equal(currentStarts, 1);
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "close after manual window close succeeds");
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "repeated close succeeds");
-    assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
     const reopened = await proxy.execute("open");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
@@ -67,6 +200,7 @@ if (command === 'tab' && args.includes('--json')) {
       assert.equal(targetInfos.filter(target => target.type === "page").length, 1);
     } finally { cdp2.close(); }
   } finally {
+    releaseDelete();
     await proxy.close().catch(() => undefined);
     for (const chrome of chromes) await chrome.close().catch(() => undefined);
     for (const copy of copies) {

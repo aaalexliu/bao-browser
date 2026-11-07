@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ChildProcess, spawn } from "node:child_process";
+import childProcess, { ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -124,6 +124,13 @@ for (const mode of ["close", "retained-close", "failed-close", "disconnect", "pr
   test(`endpoint-only launch releases its owned Chrome after ${mode}`, { timeout: 20_000 }, async (t) => {
     const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-endpoint-"));
     const connect = sockets.connectCdp;
+    const spawn = childProcess.spawn;
+    let ownedChild: ChildProcess | undefined;
+    t.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
+      const child = spawn(...args);
+      if (args[1].includes(`--user-data-dir=${userDataDir}`)) ownedChild = child;
+      return child;
+    });
     let cdp: sockets.CdpSocket | undefined;
     const methods: string[] = [];
     t.mock.method(chromium, "connectOverCDP", () => { throw new Error("must not initialize Playwright"); });
@@ -150,10 +157,8 @@ for (const mode of ["close", "retained-close", "failed-close", "disconnect", "pr
         assert.ok(pidsForDataDir(userDataDir).length > 0);
         if (mode === "disconnect") cdp.close();
         else if (mode === "process-exit") {
-          for (const pid of pidsForDataDir(userDataDir)) {
-            try { process.kill(pid, "SIGTERM"); }
-            catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-          }
+          assert.ok(ownedChild);
+          ownedChild.kill("SIGTERM");
         } else {
           if (mode === "retained-close") {
             chrome.keepOpen();
