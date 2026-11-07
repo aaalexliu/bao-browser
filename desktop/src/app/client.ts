@@ -60,6 +60,8 @@ import {
   imageRef,
   versionsPanel,
   workflowDetail,
+  workflowConflicts,
+  workflowSidebarToggle,
   runDriverField,
   runHealField,
   type CommandItem,
@@ -326,7 +328,7 @@ function render(focusDetail = true): void {
       : screen === "logins" ? loginsScreen(login)
       : screen === "replay" ? replayForm()
       : screen === "import" ? importSheet()
-      : screen === "workflow" ? `<section id="workflow-host"><p class="meta">Loading workflow…</p></section>`
+      : screen === "workflow" ? `<section id="workflow-host"><div class="wf-toolbar">${workflowSidebarToggle()}</div><p class="meta">Loading workflow…</p></section>`
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
@@ -609,12 +611,7 @@ function bind(): void {
     }
   };
   const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
-  const toggle = document.getElementById("sidebar-toggle");
-  if (toggle) toggle.onclick = () => {
-    sidebar.returnValue = "";
-    sidebar.append(railEl());
-    sidebar.showModal();
-  };
+  bindSidebarToggle();
   const close = document.getElementById("sidebar-close");
   if (close) close.onclick = () => sidebar.close();
   document.querySelectorAll("#rail [data-screen], #screen-list [data-screen]").forEach((btn) => {
@@ -1356,6 +1353,16 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
   if (pre) pre.outerHTML = html;
 }
 
+function bindSidebarToggle(): void {
+  const toggle = document.getElementById("sidebar-toggle");
+  if (toggle) toggle.onclick = () => {
+    const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+    sidebar.returnValue = "";
+    sidebar.append(railEl());
+    sidebar.showModal();
+  };
+}
+
 async function openEditor(id: string): Promise<void> {
   const host = document.getElementById("workflow-host");
   if (!host) return;
@@ -1366,7 +1373,8 @@ async function openEditor(id: string): Promise<void> {
     doc = await response.json() as WorkflowV2;
   } catch {
     if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
-    host.innerHTML = `<section class="wf-load-error"><h2>This workflow can’t open</h2><p>Try again, or open Workflows to check its file.</p><button type="button" id="workflow-retry">Try again</button><button type="button" id="workflow-back">Open Workflows</button></section>`;
+    host.innerHTML = `<div class="wf-toolbar">${workflowSidebarToggle()}</div><section class="wf-load-error"><h2>This workflow can’t open</h2><p>Try again, or open Workflows to check its file.</p><button type="button" id="workflow-retry">Try again</button><button type="button" id="workflow-back">Open Workflows</button></section>`;
+    bindSidebarToggle();
     document.getElementById("workflow-retry")!.onclick = () => void openEditor(id);
     document.getElementById("workflow-back")!.onclick = () => navigate("library");
     return;
@@ -1383,9 +1391,9 @@ async function openEditor(id: string): Promise<void> {
   const shots = last?.id ? await stepCrops(last.id) : {};
   if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
   const selectedStep = host.querySelector<HTMLElement>("[data-workflow-step][aria-pressed=true]")?.dataset.workflowStep;
-  const sidebarToggle = document.getElementById("sidebar-toggle");
   host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, shots, share: shareRes, runs, selectedStep });
-  if (sidebarToggle) host.querySelector(".wf-toolbar")!.prepend(sidebarToggle);
+  bindSidebarToggle();
+  host.querySelector("#workflow-conflicts")!.innerHTML = workflowConflicts(listed.versions || []);
   host.querySelector("#workflow-tools")!.innerHTML = versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>

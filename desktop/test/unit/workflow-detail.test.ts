@@ -5,6 +5,8 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
 import { applyHermeticApp } from "../runtime";
+import { workflowDetail, libraryTable, type StepCard, type RunSummary } from "../../src/app/views";
+import { clearConflict, noteConflict } from "../../src/v1/versions";
 
 test("Inbox workflow detail keeps selection, inputs, history, and existing actions reachable", { timeout: 60_000 }, async () => {
   const dirs = applyHermeticApp("workflow-detail");
@@ -85,6 +87,7 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
       await page.close();
     }
     const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+    page.setDefaultTimeout(15_000);
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.locator("#rail [data-place=workflows]").click();
     await page.route("**/api/workflows/detail", (route) => route.fulfill({ status: 404, body: "{}" }));
@@ -104,6 +107,59 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
     await page.locator("#workflow-list").waitFor();
     await page.setViewportSize({ width: 720, height: 860 });
     await page.evaluate(() => { document.documentElement.dataset.baoNative = "true"; });
+    for (const action of ["keep-mine", "keep-theirs", "keep-both"]) {
+      const mine = { ...app.library.read("detail"), id: "conflicted", name: "Conflicted workflow" };
+      app.library.save(mine);
+      noteConflict(app.library, { mine, theirs: { ...mine, name: "Remote workflow" }, mineDevice: "This Mac", theirsDevice: "Other Mac", remoteVersion: 2 });
+      await page.reload();
+      await page.locator("#sidebar-toggle").click();
+      await page.locator("#rail [data-place=workflows]").click();
+      await page.locator('[data-open-workflow="conflicted"]').click();
+      await page.getByTestId("conflict-banner").waitFor();
+      assert.equal(await page.locator("#workflow-options").evaluate((element) => (element as HTMLDetailsElement).open), false);
+      assert.equal(await page.getByTestId("conflict-diff").isVisible(), true);
+      for (const button of ["keep-mine", "keep-theirs", "keep-both"]) assert.equal(await page.getByTestId(button).isVisible(), true);
+      assert.equal(await page.locator("#versions").isVisible(), false);
+      let resolved = false;
+      await page.route("**/api/sync/conflict", async (route) => {
+        assert.deepEqual(route.request().postDataJSON(), { id: "conflicted", action });
+        clearConflict(app.library, "conflicted");
+        resolved = true;
+        await route.fulfill({ json: {} });
+      });
+      await page.getByTestId(action).click();
+      await page.getByTestId("conflict-banner").waitFor({ state: "detached" });
+      assert.equal(resolved, true);
+      await page.unroute("**/api/sync/conflict");
+      await page.getByRole("button", { name: "Back to all workflows" }).click();
+    }
+    await page.locator('[data-open-workflow="empty-detail"]').click();
+    for (const id of ["detail", "empty-detail", "detail"]) {
+      await page.locator("#workflow-search").click();
+      await page.locator("#palette-input").fill(id === "detail" ? "Open Set up" : "Open Empty");
+      await page.locator(`[data-command="open-${id}"]`).click();
+      await page.locator(`#workflow-detail[data-workflow="${id}"]`).waitFor();
+      assert.equal(await page.locator("#sidebar-toggle").count(), 1);
+      await page.locator("#sidebar-toggle").click();
+      await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Back to all workflows" }).click();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/workflows/detail", async (route) => { await pending; await route.fulfill({ status: 404, body: "{}" }); });
+    await page.locator('[data-open-workflow="detail"]').click();
+    await page.getByText("Loading workflow…", { exact: true }).waitFor();
+    await page.locator("#sidebar-toggle").click();
+    await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
+    release();
+    await page.getByRole("heading", { name: "This workflow can’t open" }).waitFor();
+    await page.locator("#sidebar-toggle").click();
+    await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
+    await page.unroute("**/api/workflows/detail");
+    await page.locator("#workflow-retry").click();
+    await page.locator("#workflow-detail").waitFor();
+    await page.locator("#sidebar-toggle").click();
+    await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
     for (const theme of ["light", "dark"]) {
       await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; }, theme);
       assert.equal(await page.locator("#app").evaluate((el) => getComputedStyle(el).backgroundColor), await page.locator("#content").evaluate((el) => getComputedStyle(el).backgroundColor));
@@ -112,5 +168,47 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
     await browser?.close();
     await app.close();
     rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+  }
+});
+
+test("step facts reflect replay checks, destinations, and action-specific input use", async () => {
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    const inputs = [{ name: "file", label: "Report file", type: "text" as const }];
+    const cases: { step: StepCard; checks: string[] }[] = [
+      { step: { id: "settled", expect: { kind: "settled", match: "no error and the page settled" } }, checks: ["The page finishes loading"] },
+      { step: { id: "url", postcondition: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address shows “https://example.test/Report file”"] },
+      { step: { id: "text", postcondition: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page shows “Saved Report file”"] },
+      { step: { id: "value", postcondition: { kind: "value", match: "{{file}}" } }, checks: ["The value shows “Report file”"] },
+      { step: { id: "element", postcondition: { kind: "element", identity: { name: "{{file}}" } } }, checks: ["The “Report file” is on the page"] },
+      { step: { id: "absent", postcondition: { kind: "absent", identity: { name: "Login" } } }, checks: ["The “Login” is gone"] },
+      { step: { id: "combined", expect: { kind: "text", match: "Saved {{file}}" }, postcondition: { kind: "value", match: "{{file}}" }, readBack: { source: "value", match: "{{file}}" } }, checks: ["The page shows “Saved Report file”", "The value shows “Report file”", "Reads value: Report file"] },
+    ];
+    for (const { step, checks } of cases) {
+      await page.setContent(workflowDetail({ id: "facts", name: "Facts", inputs, steps: [{ ...step, action: "type", label: "Use {{file}}" }] }));
+      const facts = await page.locator(".wf-facts").innerText();
+      for (const check of checks) assert.ok(facts.includes(check), facts);
+      assert.equal(facts.includes("{{file}}"), false);
+      assert.equal(facts.includes("Nothing extra"), false);
+      assert.equal(await page.locator("td.wf-check > span").count(), 1);
+      assert.equal(await page.locator(".wf-picture").getAttribute("data-shot-alt"), "Saved page for step 1: Use Report file");
+    }
+    for (const [action, verb] of Object.entries({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens", click: "Uses" })) {
+      await page.setContent(workflowDetail({ id: "verbs", name: "Verbs", inputs, startUrl: "https://example.test/start", steps: [{ id: "one", action, input: "file", value: "https://example.test/next" }] }));
+      assert.ok((await page.locator(".wf-facts dt").allTextContents()).includes(verb));
+      if (action === "navigate") assert.equal(await page.locator(".wf-facts dd").first().innerText(), "https://example.test/next");
+    }
+    await page.setContent(workflowDetail({ id: "fallback", name: "Fallback", startUrl: "https://example.test/start", steps: [{ id: "one", action: "navigate" }] }));
+    assert.equal(await page.locator(".wf-facts dd").first().innerText(), "https://example.test/start");
+    for (const status of ["passed", "failed", "paused", "timed-out", "healed", "provisional"]) {
+      const run: RunSummary = { id: "run", workflowId: "glyph", status: status === "healed" || status === "provisional" ? "passed" : status, ...(status === "healed" ? { heals: [{ id: "heal" }] } : {}), ...(status === "provisional" ? { promotion: { status: "provisional" } } : {}) };
+      const doc = { id: "glyph", name: "Glyph", steps: [] };
+      await page.setContent(libraryTable([{ ...doc, steps: 0 }], [run]) + workflowDetail(doc, { runs: [run] }));
+      const listGlyph = await page.locator("#workflow-list .workflow-status-icon").innerHTML();
+      for (const glyph of await page.locator("#workflow-detail .workflow-status-icon").all()) assert.equal(await glyph.innerHTML(), listGlyph, status);
+    }
+  } finally {
+    await browser.close();
   }
 });

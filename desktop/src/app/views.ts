@@ -335,7 +335,7 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
 }
 
 export function shellList(screen: Screen, state: ShellState, selectedRun = "", available = true): string {
-  if (screen === "library") return "";
+  if (screen === "library" || screen === "workflow") return "";
   const current = shellScreen(screen);
   const place = shellPlaces.find((item) => item.id === shellScreens[current].place)!;
   const heals = pendingHealCount(state.runs || []);
@@ -1188,14 +1188,13 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
     const run = latest.get(workflow.id);
     const kind = run ? runKind(run, promotions.find((item) => item.workflowId === workflow.id)) : "";
     const label = run ? statusLabel(kind) : "Not run yet";
-    const mark = kind === "passed" ? "m4 7.2 2 2 4-4.4" : kind === "failed" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.2 4v6M8.8 4v6" : "M7 3.8V7l2.2 1.4";
     const at = run && runTime(run);
     const when = at !== undefined
       ? `<time datetime="${new Date(at).toISOString()}">${esc(formatClock(at))}</time>`
       : run ? "Time not saved" : "";
     return `<tr class="workflow-row" data-workflow="${esc(workflow.id)}" role="row">
       <td role="cell"><button type="button" class="link workflow-name" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button>${workflow.driver === "cdp-live" ? `<p class="workflow-note">This workflow used the retired live driver.</p>` : ""}</td>
-      <td role="cell"><span class="status ${esc(kind)}"><svg class="workflow-status-icon" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="${kind === "failed" ? "1.7" : kind === "healed" ? "1.8" : "1.6"}" stroke-linecap="round" stroke-linejoin="round"/></svg>${esc(label.charAt(0).toUpperCase() + label.slice(1))}</span></td>
+      <td role="cell"><span class="status ${esc(kind)}">${workflowStatusGlyph(kind)}${esc(label.charAt(0).toUpperCase() + label.slice(1))}</span></td>
       <td role="cell" class="workflow-when">${when}</td>
     </tr>`;
   }).join("");
@@ -1376,6 +1375,7 @@ export interface StepCard {
   input?: string;
   value?: string;
   expect?: { kind?: string; match?: string; state?: string };
+  postcondition?: { kind: "url" | "text" | "value" | "element" | "absent"; match?: string; identity?: { name?: string; text?: string; role?: string } };
   readBack?: { source?: string; match?: string };
   identity?: { role?: string; name?: string; text?: string; testId?: string; id?: string };
   heal?: string;
@@ -1461,19 +1461,28 @@ function workflowStepKind(step: StepCard): { label: string; glyph: string } {
 }
 
 function workflowStepTitle(step: StepCard, inputs: TokenInput[]): string {
-  return (step.label || step.action || step.id).replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, name: string) => {
+  return workflowInputLabels(step.label || step.action || step.id, inputs);
+}
+
+function workflowInputLabels(text: string, inputs: TokenInput[]): string {
+  return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, name: string) => {
     const input = inputs.find((item) => item.name === name);
     return input?.label || input?.name || match;
   });
 }
 
+function workflowStatusGlyph(kind: string): string {
+  const mark = kind === "passed" ? "m4 7.2 2 2 4-4.4" : kind === "failed" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.2 4v6M8.8 4v6" : "M7 3.8V7l2.2 1.4";
+  return `<svg class="workflow-status-icon" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="${kind === "failed" ? "1.7" : kind === "healed" ? "1.8" : "1.6"}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
 function workflowRunStatus(run: RunSummary): string {
   const kind = runKind(run);
-  const mark = kind === "failed" || kind === "timed-out" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4"
-    : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.4 4.4v5.2M8.6 4.4v5.2" : "m4 7.2 2 2 4-4.4";
-  const shape = kind === "provisional" ? `<circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 .8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/>`
-    : `<circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<span class="wf-run-status ${esc(kind)}"><svg viewBox="0 0 14 14" aria-hidden="true">${shape}</svg>${esc(statusLabel(kind))}</span>`;
+  return `<span class="wf-run-status ${esc(kind)}">${workflowStatusGlyph(kind)}${esc(statusLabel(kind))}</span>`;
+}
+
+export function workflowSidebarToggle(): string {
+  return `<button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>`;
 }
 
 export function workflowDetail(
@@ -1495,7 +1504,7 @@ export function workflowDetail(
       <td class="wf-number">${index + 1}</td><td class="wf-kind" title="${esc(kind.label)}">${kind.glyph}<span class="sr-only">${esc(kind.label)}</span></td>
       <td><button type="button" class="wf-step-pick" data-workflow-step="${esc(step.id)}" data-step-input="${esc(input)}" aria-pressed="${step === selected}" aria-controls="workflow-inspector">${esc(workflowStepTitle(step, inputs))}</button></td>
       <td class="wf-uses">${input ? `<span class="wf-token">${esc(inputs.find((item) => item.name === input)?.label || input)}</span>` : ""}</td>
-      <td class="wf-check">${step.expect || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
+      <td class="wf-check">${step.expect || step.postcondition || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
     </tr>`;
   }).join("");
   const panels = doc.steps.map((step, index) => {
@@ -1508,18 +1517,24 @@ export function workflowDetail(
     const targetKind = step.identity?.role === "textbox" ? "box" : step.identity?.role === "combobox" ? "menu" : step.identity?.role || "control";
     const target = targetName ? `The “${targetName}” ${targetKind}` : "";
     const branch = step.when?.present ? `Only when “${step.when.present}” is on the page.` : step.when?.value ? `Only for “${step.when.value}”.` : "";
-    const check = step.expect?.match ? `The ${step.expect.kind === "url" ? "address" : "page"} shows “${step.expect.match}”`
-      : step.expect?.state ? `The control is ${step.expect.state}`
-      : step.expect?.kind === "settled" ? "The page finishes loading"
-      : step.readBack ? `Reads ${step.readBack.source || "the value"}${step.readBack.match ? `: ${step.readBack.match}` : ""}`
-      : step.action === "verify" || step.expect ? "The saved check" : "Nothing extra";
+    const checks: string[] = [];
+    if (step.expect) checks.push(step.expect.kind === "settled" ? "The page finishes loading"
+      : step.expect.match ? `The ${step.expect.kind === "url" ? "address" : "page"} shows “${step.expect.match}”`
+      : step.expect.state ? `The control is ${step.expect.state}` : "The saved check");
+    const post = step.postcondition;
+    if (post) checks.push(post.kind === "element" || post.kind === "absent"
+      ? `The “${post.identity?.name || post.identity?.text || post.identity?.role || "saved control"}” ${post.kind === "absent" ? "is gone" : "is on the page"}`
+      : `The ${post.kind === "url" ? "address" : post.kind === "value" ? "value" : "page"} shows “${post.match || ""}”`);
+    if (step.readBack) checks.push(`Reads ${step.readBack.source || "the value"}${step.readBack.match ? `: ${step.readBack.match}` : ""}`);
+    const check = workflowInputLabels([...new Set(checks)].join(". ") || (step.action === "verify" ? "The saved check" : "Nothing extra"), inputs);
+    const inputVerb = ({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens" } as Record<string, string>)[step.action || ""] || "Uses";
     return `<section data-step-panel="${esc(step.id)}"${step !== selected ? " hidden" : ""}>
       <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
       <h2>${esc(workflowStepTitle(step, inputs))}</h2>
-      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(step.label || step.action || step.id)}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}></div>
+      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}></div>
       ${step.intent ? `<p>${esc(step.intent)}</p>` : ""}${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
-      <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" ? doc.startUrl || "The saved page" : "No saved target"))}</dd>
-        ${input ? `<dt>${step.action === "select" ? "Picks" : "Types"}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : step.value ? `<dt>Value</dt><dd>${esc(step.value)}</dd>` : ""}
+      <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" ? step.value || doc.startUrl || "The saved page" : "No saved target"))}</dd>
+        ${input ? `<dt>${inputVerb}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : step.value ? `<dt>Value</dt><dd>${esc(step.value)}</dd>` : ""}
         <dt>Then checks</dt><dd>${esc(check)}</dd>
         <dt><label for="wf-miss-${index}">If it misses</label></dt><dd><select id="wf-miss-${index}" data-step-heal="${esc(step.id)}">
           <option value="" ${step.heal ? "" : "selected"}>Use workflow setting</option><option value="auto" ${step.heal === "auto" ? "selected" : ""}>Heal it</option><option value="ask" ${step.heal === "ask" ? "selected" : ""}>Ask me</option><option value="never" ${step.heal === "never" ? "selected" : ""}>Stop the run</option>
@@ -1543,11 +1558,12 @@ export function workflowDetail(
   let site = "";
   try { site = doc.startUrl ? new URL(doc.startUrl).hostname : ""; } catch { /* Relative addresses have no hostname. */ }
   return `<section id="workflow-detail" data-workflow="${esc(doc.id)}">
-    <div class="workflow-overview"><div class="wf-toolbar"><button type="button" class="link" data-screen="library" aria-label="Back to all workflows">${icon("back")}</button><span>Workflows</span><span class="wf-toolbar-spacer"></span><details id="workflow-options"><summary aria-label="More actions for this workflow">${icon("more")}</summary><div class="wf-options-panel">${shareMenu(doc, meta.share)}<div id="workflow-tools"></div></div></details><button type="button" data-screen="capture">${icon("record")}Record</button></div>
+    <div class="workflow-overview"><div class="wf-toolbar">${workflowSidebarToggle()}<button type="button" class="link" data-screen="library" aria-label="Back to all workflows">${icon("back")}</button><span>Workflows</span><span class="wf-toolbar-spacer"></span><details id="workflow-options"><summary aria-label="More actions for this workflow">${icon("more")}</summary><div class="wf-options-panel">${shareMenu(doc, meta.share)}<div id="workflow-tools"></div></div></details><button type="button" data-screen="capture">${icon("record")}Record</button></div>
     <div class="wf-body"><header class="wf-head"><h2>${esc(doc.name)}</h2>${doc.summary ? `<p id="workflow-summary">${esc(doc.summary)}</p>` : ""}${doc.intent ? `<p id="workflow-intent">${esc(doc.intent)}</p>` : ""}
       <p class="wf-metadata">${site ? `${workflowStepKind({ action: "navigate", id: "" }).glyph}<span>${esc(site)}</span><span>·</span>` : ""}<span>${doc.steps.length} steps</span><span>·</span>${runs[0] ? `<span>Last run ${workflowRunStatus(runs[0])}</span><span>${esc(typeof runs[0].at === "number" ? formatWhen(runs[0].at) : "Time not recorded")}</span>` : `<span>Not run yet</span>`}</p>
       <div class="wf-actions"><button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">${icon("play")}Run…</button><button type="button" id="workflow-edit-inputs"${inputs.length ? "" : " disabled"}>Edit inputs…</button><button type="button" data-guide="${esc(doc.id)}">Guide me</button></div>${paths}
     </header>
+    <div id="workflow-conflicts"></div>
     <div id="workflow-steps">${rows ? `<table class="wf-steps" aria-label="Steps. Select a step to see it in the inspector."><thead><tr><th class="wf-number" scope="col">#</th><th class="wf-kind" scope="col"><span class="sr-only">Kind</span></th><th scope="col">Step</th><th class="wf-uses" scope="col">Uses input</th><th class="wf-check" scope="col"><span class="sr-only">Checks</span></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><strong>No steps yet</strong><p>Record a task to add steps.</p><button type="button" data-screen="capture">Record a task</button></div>`}</div>
     <section class="wf-recent"><h3>Recent runs</h3>${history ? `<ul>${history}</ul>` : `<p class="quiet">No runs yet. Run this workflow to see what happened.</p>`}</section>
     </div></div>
@@ -1659,6 +1675,10 @@ function locatorHeld(version: VersionRow): string {
   </table>`;
 }
 
+export function workflowConflicts(versions: VersionRow[]): string {
+  return versions.filter((version) => version.conflict).map((version) => `<section class="card">${conflictView(version)}</section>`).join("");
+}
+
 function conflictView(version: VersionRow): string {
   const conflict = version.conflict;
   if (!conflict) return "";
@@ -1704,7 +1724,7 @@ export function versionsPanel(versions: VersionRow[]): string {
         <time data-testid="version-time">${esc(formatClock(version.createdAt))}</time>
       </div>
       ${locatorHeld(version)}
-      ${version.conflict ? conflictView(version) : versionChange(version)}
+      ${version.conflict ? "" : versionChange(version)}
       ${actions}
     </li>`;
   }).join("");

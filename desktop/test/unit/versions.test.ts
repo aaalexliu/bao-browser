@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { versionsPanel } from "../../src/app/views";
+import { versionsPanel, workflowConflicts } from "../../src/app/views";
 import { keepPatch, unavailableHeal } from "../../src/v1/heal";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
@@ -136,7 +136,8 @@ test("a conflict draft names both Macs and leaves the live file alone", () => {
     remoteVersion: 2,
   });
   assert.equal(library.read("wf-conflict").steps[0]?.label, "Click mine");
-  const html = versionsPanel(listVersions(library, "wf-conflict"));
+  const listed = listVersions(library, "wf-conflict");
+  const html = workflowConflicts(listed) + versionsPanel(listed);
   assert.match(html, /Changed on Ada&#39;s Mac and Home Mac/);
   assert.match(html, /data-testid="conflict-diff"/);
   assert.match(html, /data-testid="keep-mine"/);
@@ -170,7 +171,8 @@ test("a conflict draft counts only the steps that differ and leaves a matching s
     theirsDevice: "Ada's Mac",
     remoteVersion: 2,
   });
-  const html = versionsPanel(listVersions(library, "wf-conflict-count"));
+  const listed = listVersions(library, "wf-conflict-count");
+  const html = workflowConflicts(listed) + versionsPanel(listed);
   assert.match(html, /data-testid="version-changed">1 step</);
   assert.equal(html.includes(">2 steps<"), false);
   assert.match(html, /data-changed="true"><strong>Open Ada</);

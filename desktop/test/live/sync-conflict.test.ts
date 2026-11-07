@@ -79,11 +79,11 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
     const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
     await page.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded" });
     await openConflict(page);
-    await page.locator("#versions").screenshot({ path: path.join(shots, "conflict-light.png") });
+    await page.locator("#workflow-conflicts").screenshot({ path: path.join(shots, "conflict-light.png") });
     await page.evaluate(() => localStorage.setItem("bao-theme", "dark"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await openConflict(page);
-    await page.locator("#versions").screenshot({ path: path.join(shots, "conflict-dark.png") });
+    await page.locator("#workflow-conflicts").screenshot({ path: path.join(shots, "conflict-dark.png") });
     const webContext = await browser.newContext({ viewport: { width: 1100, height: 900 }, timezoneId: "America/New_York" });
     await webContext.addCookies([{ name: "bao_session", value: cookie.split("=")[1] || "", url: origin }]);
     const webPage = await webContext.newPage();
@@ -179,6 +179,11 @@ async function openConflict(page: Page): Promise<void> {
   assert.match(await page.getByTestId("conflict-banner").innerText(), /Changed on Ada's Mac and Home Mac/);
   assert.match(await page.getByTestId("conflict-diff").innerText(), /Open Ada/);
   assert.match(await page.getByTestId("conflict-diff").innerText(), /Save at home/);
+  assert.equal(await page.locator("#workflow-options").evaluate((element) => (element as HTMLDetailsElement).open), false);
+  assert.equal(await page.getByTestId("keep-mine").isVisible(), true);
+  assert.equal(await page.getByTestId("keep-theirs").isVisible(), true);
+  assert.equal(await page.getByTestId("keep-both").isVisible(), true);
+  await page.locator("#workflow-options > summary").click();
   assert.match(await page.locator("#versions").innerText(), /2 steps/);
   const numbers = await page.locator('[data-testid="version"]').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-version")));
   assert.deepEqual(numbers, ["1", "2", "3"]);
@@ -186,6 +191,7 @@ async function openConflict(page: Page): Promise<void> {
   assert.match(await page.locator('[data-version="2"]').innerText(), /Ada's Mac/);
   assert.match(await page.locator('[data-version="3"]').innerText(), /Conflict/);
   assert.match(await page.locator('[data-version="3"]').innerText(), /Home Mac/);
+  await page.locator("#workflow-options > summary").click();
   const sides = page.locator('[data-testid="conflict-diff"] li');
   assert.equal(await sides.count(), 4);
   for (const side of await sides.all()) assert.equal(await side.getAttribute("data-changed"), "true");
