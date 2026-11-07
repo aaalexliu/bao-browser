@@ -4,7 +4,7 @@ use core_foundation::string::CFString;
 
 use serde_json::{json, Value};
 
-use crate::element::{copy_attr, element_list, parent, raw_frame, role_of, set_ax_point, set_ax_size, set_bool, set_string, string_attr, El};
+use crate::element::{copy_attr, element_attr, element_list, parent, raw_frame, role_of, same_element, set_ax_point, set_ax_size, set_bool, set_string, string_attr, El};
 use crate::model::{Frame, Node, Seg};
 use crate::walk::{app_element, detect_geom, harvest};
 
@@ -94,17 +94,58 @@ fn named(el: &El) -> String {
     string_attr(el, "AXValue")
 }
 
-fn find_named(el: &El, role: &str, name: &str, depth: i32) -> Option<El> {
-    if depth > 30 { return None; }
+fn find_named(el: &El, role: &str, name: &str, depth: i32, native: bool) -> Option<El> {
+    if depth > 30 || (native && role_of(el) == "AXWebArea") { return None; }
     if role_of(el) == role && named(el) == name {
         return El::retain(el.0);
     }
     for child in child_list(el) {
-        if let Some(found) = find_named(&child, role, name, depth + 1) {
+        if let Some(found) = find_named(&child, role, name, depth + 1, native) {
             return Some(found);
         }
     }
     None
+}
+
+pub fn remote_debugging_allow(pid: i32, press: bool) -> Result<Value, String> {
+    fn sheets(el: &El, depth: usize, seen: &mut Vec<El>, out: &mut Vec<El>) {
+        if depth > 12 || seen.iter().any(|other| same_element(el, other)) { return; }
+        if let Some(element) = El::retain(el.0) { seen.push(element); }
+        let role = role_of(el);
+        if role == "AXWebArea" || role == "AXMenuBar" { return; }
+        if (matches!(role.as_str(), "AXSheet" | "AXDialog")
+            || (role == "AXWindow" && string_attr(el, "AXSubrole") == "AXDialog"))
+            && named(el) == "Allow remote debugging?" {
+            if let Some(sheet) = El::retain(el.0) { out.push(sheet); }
+            return;
+        }
+        for child in child_list(el) { sheets(&child, depth + 1, seen, out); }
+    }
+    let (_, app) = crate::walk::app_from_pid(pid, true)?;
+    let mut roots = Vec::new();
+    if let Some(window) = element_attr(&app, "AXFocusedWindow") { roots.push(window); }
+    roots.extend(copy_attr(&app, "AXWindows").map(|v| element_list(&v)).unwrap_or_default());
+    let mut found = Vec::new();
+    let mut seen = Vec::new();
+    for root in roots { sheets(&root, 0, &mut seen, &mut found); }
+    if found.is_empty() { return Ok(json!({"ok": true, "found": false, "pressed": false})); }
+    if found.len() != 1 { return Err("more than one Allow remote debugging sheet".into()); }
+    let button = find_named(&found[0], "AXButton", "Allow", 0, true).ok_or("Allow remote debugging sheet has no Allow button")?;
+    if press {
+        let was_frontmost = crate::apps::frontmost_pid()? == pid;
+        if !was_frontmost { crate::apps::activate_pid(pid)?; }
+        raise_window(&button);
+        if !was_frontmost { std::thread::sleep(std::time::Duration::from_millis(150)); }
+        if crate::apps::frontmost_pid()? != pid {
+            return Err("Chrome did not become frontmost; Allow was not pressed".into());
+        }
+        if matches!(string_attr(&button, "AXEnabled").as_str(), "false" | "0") {
+            return Ok(json!({"ok": true, "found": true, "pressed": false, "pid": pid}));
+        }
+        let action = CFString::new(kAXPressAction);
+        crate::element::ax_ok(unsafe { AXUIElementPerformAction(button.0, action.as_concrete_TypeRef()) }, "AXPress")?;
+    }
+    Ok(json!({"ok": true, "found": true, "pressed": press, "pid": pid}))
 }
 
 fn window_candidates(windows: &[El]) -> Vec<Value> {
@@ -135,7 +176,7 @@ fn pick_windows(pid: i32, frame: Option<(f64, f64, f64, f64)>) -> Result<Vec<El>
     if frame.is_some() {
         return Err(format!("no accessibility window matches the inspect frame {frame:?}; candidates {}", serde_json::to_string(&window_candidates(&windows)).unwrap_or_default()));
     }
-    Ok(windows)
+    Ok(Vec::new())
 }
 
 fn web_areas(window: &El) -> Vec<El> {
@@ -160,7 +201,7 @@ fn inspect_checkbox(pid: i32, name: &str, frame: Option<(f64, f64, f64, f64)>) -
         let areas = web_areas(window);
         let roots: Vec<&El> = if areas.is_empty() { vec![window] } else { areas.iter().collect() };
         for root in roots {
-            if let Some(found) = find_named(root, "AXCheckBox", name, 0) {
+            if let Some(found) = find_named(root, "AXCheckBox", name, 0, false) {
                 return Ok(found);
             }
         }

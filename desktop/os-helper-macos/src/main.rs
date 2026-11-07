@@ -150,12 +150,12 @@ fn run(args: &[String]) -> Result<Value, String> {
             Ok(json!({"ok": true, "strategy": "ax-type"}))
         }
         "cg-key" => {
-            keys::post_cg_combo(&need(args, "--bundle")?, &need(args, "--combo")?)?;
+            keys::post_cg_combo(&need(args, "--bundle")?, None, &need(args, "--combo")?)?;
             eprintln!("STRATEGY=cg-key");
             Ok(json!({"ok": true, "strategy": "cg-key"}))
         }
         "cg-type" => {
-            keys::post_cg_text(&need(args, "--bundle")?, &need(args, "--text")?)?;
+            keys::post_cg_text(&need(args, "--bundle")?, None, &need(args, "--text")?)?;
             eprintln!("STRATEGY=cg-type");
             Ok(json!({"ok": true, "strategy": "cg-type"}))
         }
@@ -185,6 +185,18 @@ fn run(args: &[String]) -> Result<Value, String> {
             let id = need(args, "--id")?;
             let restore = flag(args, "--restore").and_then(|raw| raw.parse::<i32>().ok());
             ae::close_tab_id(pid, &id, restore, flag(args, "--window-id").as_deref())
+        }
+        "inspect-open-ax" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            // Keep typing and Return in one helper process so focus cannot drop between them.
+            keys::post_cg_combo("", Some(pid), "cmd+t")?;
+            keys::post_cg_text("", Some(pid), "chrome://inspect/#remote-debugging")?;
+            keys::post_cg_combo("", Some(pid), "Return")?;
+            Ok(json!({"ok": true, "strategy": "inspect-open-ax", "pid": pid}))
+        }
+        "debug-allow" => {
+            let pid = pid_flag(args)?.ok_or("--pid is required")?;
+            act::remote_debugging_allow(pid, args.iter().any(|arg| arg == "--press"))
         }
         "checkbox-read" => {
             let pid = pid_flag(args)?.ok_or("--pid is required")?;
@@ -273,8 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn cg_and_raise_commands_require_a_bundle_even_with_a_pid() {
-        for command in ["cg-key", "cg-type", "raise-window"] {
+    fn key_and_raise_commands_require_a_bundle_even_with_a_pid() {
+        for command in ["key", "type-keys", "cg-key", "cg-type", "raise-window"] {
             assert_eq!(run(&args(&[command, "--pid", "4242"])).unwrap_err(), "--bundle is required");
         }
     }
@@ -286,7 +298,7 @@ mod tests {
 
     #[test]
     fn remote_debug_commands_require_a_pid() {
-        for command in ["ae-permission", "ae-url", "ae-open", "ae-close", "checkbox-read", "checkbox-set"] {
+        for command in ["ae-permission", "ae-url", "ae-open", "ae-close", "checkbox-read", "checkbox-set", "debug-allow", "inspect-open-ax"] {
             assert_eq!(run(&args(&[command])).unwrap_err(), "--pid is required");
         }
     }

@@ -769,10 +769,9 @@ async function launchOwnedChromeForVideo(opts: {
   return ctx;
 }
 
-export interface OwnedVerdict {
-  ok: boolean;
-  reason?: string;
-}
+export type OwnedVerdict =
+  | { ok: true; reason?: never }
+  | { ok: false; reason: string };
 
 export interface ProcessRow {
   pid: number;

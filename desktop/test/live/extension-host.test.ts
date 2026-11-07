@@ -104,10 +104,6 @@ test("extension replay asks for one origin and does not error with no host permi
   let fixture: { server: Server; port: number } | undefined;
   const hostsSeen = new Set<string>();
 
-  const quitChrome = () => {
-    spawnSync("pkill", ["-f", `user-data-dir=${profile}`]);
-  };
-
   try {
     const before = link.helloSerial;
     const args = [
@@ -319,14 +315,14 @@ test("extension replay asks for one origin and does not error with no host permi
     throw new Error(`${message}\n--- chrome log ---\n${tail}`);
   } finally {
     await browser?.close().catch(() => undefined);
-    quitChrome();
-    const start = Date.now();
-    while (Date.now() - start < 5000) {
-      const left = spawnSync("pgrep", ["-af", `user-data-dir=${profile}`], { encoding: "utf8" }).stdout || "";
-      if (!left.trim()) break;
-      await sleep(200);
+    if (chrome && chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise<void>(resolve => chrome!.once("exit", () => resolve()));
+      chrome.kill("SIGTERM");
+      const start = Date.now();
+      while (chrome.exitCode === null && chrome.signalCode === null && Date.now() - start < 5000) await sleep(200);
+      if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill("SIGKILL");
+      await exited;
     }
-    spawnSync("pkill", ["-9", "-f", `user-data-dir=${profile}`]);
     log.end();
     fixture?.server.close();
     await app.close();
