@@ -515,11 +515,11 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 
 test("browser choice is explicit on open and rejects unknown values", async () => {
   const proxy = new AgentBrowserProxy({ home: "/unused" });
-  await assert.rejects(proxy.execute("open", [], "other"), /must be copy or bao/);
+  await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
   await assert.rejects(proxy.execute("snapshot", [], "bao"), /only accepted on open/);
   const tool = TOOLS.find((item) => item.name === "agent_browser")!;
   assert.ok("browser" in tool.inputSchema.properties);
-  assert.deepEqual(tool.inputSchema.properties.browser.enum, ["copy", "bao"]);
+  assert.deepEqual(tool.inputSchema.properties.browser.enum, ["copy", "bao", "current"]);
 });
 
 test("only an explicit mock-keychain launch permits mock flags outside a test lane", () => {

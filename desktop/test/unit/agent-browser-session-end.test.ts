@@ -346,7 +346,7 @@ test("keep-open finishes the run and the next session reclaims only that home's 
   const f = await fixture();
   t.after(async () => {
     const results = await Promise.allSettled([f.close(), other?.close()]);
-    const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+    const errors = results.flatMap(result => result.status === "rejected" ? [result.reason as unknown] : []);
     if (errors.length) throw new AggregateError(errors, "Session fixture cleanup failed");
   });
   other = await fixture();

@@ -25,6 +25,7 @@ for (const { mode, force, deny } of [
   let daemon: ReturnType<typeof spawn> | undefined;
   let exited: Promise<unknown> | undefined;
   let proxy: AgentBrowserProxy | undefined;
+  let stateDir: string | undefined;
   const root = await mkdtemp(path.join(tmpdir(), "bao-daemon-close-"));
   t.after(async () => {
     try {
@@ -32,7 +33,10 @@ for (const { mode, force, deny } of [
       await exited;
     } finally {
       try { await proxy?.end().catch(() => undefined); }
-      finally { await rm(root, { recursive: true, force: true }); }
+      finally {
+        try { if (stateDir) await rm(stateDir, { recursive: true, force: true }); }
+        finally { await rm(root, { recursive: true, force: true }); }
+      }
     }
   });
   let detached = false;
@@ -71,7 +75,7 @@ for (const { mode, force, deny } of [
   `, { mode: 0o700 });
   proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "source"), executable });
   assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
-  const stateDir = await fs.readFile(stateMarker, "utf8");
+  stateDir = await fs.readFile(stateMarker, "utf8");
   const remove = fs.rm;
   t.mock.method(fs, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
     if (file === stateDir) assert.ok(daemon!.exitCode !== null || daemon!.signalCode !== null, "daemon must exit before its state is removed");
@@ -153,9 +157,8 @@ if (command === 'tab' && args.includes('--json')) {
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   try {
     await proxy.execute("open");
-    for (const browser of ["copy", "current"]) {
-      await assert.rejects(proxy.execute("open", [], browser), /choose the browser only on the first open/);
-    }
+    assert.equal((await proxy.execute("open", [], "copy"))[0]!.stdout, "native success\n");
+    await assert.rejects(proxy.execute("open", [], "current"), /close the current session before choosing a different browser/);
     const chrome = chromes[0]!;
     const endpoint = await readDevToolsActivePort(chrome.portFile);
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -168,7 +171,7 @@ if (command === 'tab' && args.includes('--json')) {
     } finally { cdp.close(); }
     await deleting;
     assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
-    await assert.rejects(proxy.execute("open", [], "invalid"), /browser must be copy or current/);
+    await assert.rejects(proxy.execute("open", [], "invalid"), /must be copy, bao, or current/);
     let settled = false;
     const switching = proxy.execute("open", [], "current").then(
       () => { settled = true; return undefined; },

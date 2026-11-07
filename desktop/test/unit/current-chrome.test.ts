@@ -139,7 +139,7 @@ test("current Chrome reports a missing checkbox and audits only actual presses",
         await assert.rejects(access(f.options.axLog), /ENOENT/);
       } else {
         const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-        const audit = (await readFile(f.options.axLog, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+        const audit = (await readFile(f.options.axLog, "utf8")).trim().split("\n").map(line => JSON.parse(line) as { role?: string });
         assert.equal(audit.filter(hit => hit.role === "AXCheckBox").length, mode === "pressed" ? 1 : 0);
         chrome.detach();
       }
@@ -491,8 +491,8 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     } }));
   const proxy = new AgentBrowserProxy({ home, sourceRoot: path.join(root, "chrome"), executable, keepOpen: () => true });
   try {
-    await assert.rejects(proxy.execute("open", [], "other"), /browser must/);
-    await assert.rejects(proxy.execute("snapshot", [], "current"), /first open/);
+    await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
+    await assert.rejects(proxy.execute("snapshot", [], "current"), /only accepted on open/);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
     throwConsent = true;
     await assert.rejects(proxy.execute("open"), /injected consent failure/);
