@@ -295,7 +295,7 @@ test("copy and current runs leave the app Sign in window open", { timeout: 60_00
 
 test("current workflow replay disconnects without closing the attached Chrome or its tabs", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-current-"));
-  const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true });
+  const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: ["--no-startup-window"] });
   t.after(async () => { await owner.close(); await rm(root, { recursive: true, force: true }); });
   const endpoint = await readDevToolsActivePort(owner.portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
