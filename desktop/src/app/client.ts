@@ -12,7 +12,7 @@ import type { WorkflowV2 } from "../v1/schema";
 import { oneTimeCodeInput } from "../../../shared/saved-secrets";
 import type { inspectRunView } from "../mcp/run-view";
 import type { DamagedWorkflow, Settings } from "../v1/store";
-import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
+import { captureTrailOwnsSteps, livePageFromQuery, liveRunView, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
@@ -122,6 +122,10 @@ let receiptOffset = 0;
 let evidenceOpen = false;
 let runRequest = 0;
 let renderedDetail = "";
+let liveRequest = 0;
+let liveAsk: ShellState["activeAsk"] = null;
+let liveViewElement: HTMLElement | null = null;
+let liveViewKey = "";
 let railHtmlKey = "";
 let listHtmlKey = "";
 let libraryQuery = "";
@@ -216,12 +220,17 @@ async function loadState(): Promise<void> {
       }
     }
   }
+  if (!state.activeAsk && !state.replaying) {
+    if (screen === "live" && liveAsk?.runId) selectRun(liveAsk.runId);
+    liveAsk = null;
+  }
   if (screen === "runs" && !opened) selectDefaultRun();
   const key = JSON.stringify({
     recording: state.recording,
     replaying: state.replaying,
     pending: state.pendingImport,
     ask: state.activeAsk,
+    liveSteps: screen === "live" ? state.runs?.find((run) => run.id === state.activeAsk?.runId)?.steps : undefined,
     notices: state.notices,
     workflows: state.workflows,
     damagedWorkflows: state.damagedWorkflows,
@@ -273,6 +282,9 @@ function render(focusDetail = true): void {
   const keepLibraryRecovery = libraryRecovery !== null && libraryRecovery.key === recoveryKey;
   if (!keepLibraryRecovery) libraryRecovery = recoveryKey === null ? null : { key: recoveryKey, visible: false, open: false, status: "" };
   applyTheme();
+  if (screen !== "live") liveAsk = null;
+  else if (state.activeAsk) liveAsk = state.activeAsk;
+  const live = currentLiveAsk();
   if (screen === "logins") readLoginForm();
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
@@ -309,7 +321,7 @@ function render(focusDetail = true): void {
     railHtmlKey = railHtml;
   }
   const list = document.getElementById("screen-list")!;
-  const listHtml = screen === "settings" ? settingsIndex({ ...state, sites: login.saved }) : shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError, screen === "heals" ? openHeal : null);
+  const listHtml = screen === "settings" ? settingsIndex({ ...state, sites: login.saved }) : shellList(screen, state, screen === "live" ? live?.runId || "" : screen === "run" ? openRun : "", !initialConnectionError, screen === "heals" ? openHeal : null);
   if (listHtmlKey !== listHtml) {
     list.innerHTML = listHtml;
     listHtmlKey = listHtml;
@@ -324,9 +336,13 @@ function render(focusDetail = true): void {
     }
   }
   if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
-  document.getElementById("screen-title")!.textContent = shellScreens[shellScreen(screen)].label;
+  document.getElementById("app")!.dataset.liveDetail = screen === "live" && Boolean(live) ? "true" : "false";
+  const title = document.getElementById("screen-title")!;
+  if (screen === "live" && live) {
+    title.innerHTML = `<button type="button" data-open-workflow="${esc(live.workflowId)}">Open workflow</button><button type="button" id="palette-open" aria-label="Search workflows and runs"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4"/><path d="m10 10 3.5 3.5"/></svg></button>`;
+  } else title.textContent = shellScreens[shellScreen(screen)].label;
   const importAsk = screen === "logins" ? loginAct(login) : "";
-  actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
+  actEl().innerHTML = remoteBanner(state.remote) + (screen === "live" && live ? "" : importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const float = document.getElementById("float");
   if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state, screen === "capture", capturePicking) + (state.extractPicker || "");
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
@@ -334,12 +350,13 @@ function render(focusDetail = true): void {
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
   const keepWorkflow = screen === "workflow" && document.getElementById("workflow-host")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
-  if (!keepReplay && !keepWorkflow && !keepImport) {
+  const keepLive = screen === "live" && live && document.getElementById("live-run")?.dataset.step === `${live.runId}:${live.stepId}:${live.startedAt}`;
+  if (!keepReplay && !keepWorkflow && !keepImport && !keepLive) {
     const body = initialConnectionError ? connectionError()
       : screen === "capture" ? capture()
       : screen === "teach" ? teachScreen()
       : screen === "runs" ? runsWelcome(Boolean(state.runs?.length))
-      : screen === "live" ? liveSessionView(state.liveSession, livePageFromQuery(location.search))
+      : screen === "live" ? live ? liveRunView(live, undefined, undefined, Date.now(), !state.activeAsk) : liveSessionView(state.liveSession, livePageFromQuery(location.search))
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
       : screen === "heals" ? openHeal ? `<div id="heal-detail"><p class="quiet">Loading target review…</p></div>` : healInbox(state.runs || [], state.workflows || [], healFilter)
       : screen === "settings" ? settings()
@@ -406,9 +423,54 @@ function render(focusDetail = true): void {
     document.getElementById("content")!.scrollTop = 0;
   }
   renderedDetail = detail;
+  if (screen === "live" && live) void showLiveRun();
   if (screen === "workflow" && openWorkflow && !keepWorkflow) void openEditor(openWorkflow);
   if (!initialConnectionError && screen === "run" && openRun) void showRun(openRun);
   if (screen === "heals" && openHeal) void showHeal(openHeal.runId, openHeal.healId);
+}
+
+function currentLiveAsk(): ShellState["activeAsk"] {
+  return state.activeAsk || (screen === "live" && state.replaying ? liveAsk : null);
+}
+
+async function showLiveRun(): Promise<void> {
+  const ask = currentLiveAsk();
+  if (!ask) return;
+  const request = ++liveRequest;
+  const read = async <T,>(url: string): Promise<T | null> => {
+    try {
+      const response = await fetch(url);
+      return response.ok ? await response.json() as T : null;
+    } catch { return null; }
+  };
+  const [workflow, run] = await Promise.all([
+    read<WorkflowV2>(`/api/workflows/${encodeURIComponent(ask.workflowId)}`),
+    ask.runId ? read<RunSummary>(`/api/runs/${encodeURIComponent(ask.runId)}`) : null,
+  ]);
+  const currentAsk = currentLiveAsk();
+  if (request !== liveRequest || screen !== "live" || currentAsk?.runId !== ask.runId || currentAsk?.stepId !== ask.stepId || currentAsk?.startedAt !== ask.startedAt) return;
+  const current = document.getElementById("live-run");
+  const continuing = !state.activeAsk;
+  const key = JSON.stringify({ ask, run, workflow, continuing });
+  if (current === liveViewElement && key === liveViewKey) return;
+  const expanded = document.querySelector<HTMLDetailsElement>("#live-run-details")?.open;
+  const modal = document.querySelector<HTMLDialogElement>("#live-stop-dialog")?.open;
+  const focused = document.activeElement as HTMLElement | null;
+  const focusId = current?.contains(focused) ? focused?.id : "";
+  const message = current?.dataset.step === `${ask.runId}:${ask.stepId}:${ask.startedAt}` && current.querySelector<HTMLButtonElement>("#act-continue")?.disabled !== true ? document.getElementById("live-action-status")?.textContent || "" : "";
+  const view = liveRunView(ask, run, workflow, Date.now(), continuing);
+  if (current?.dataset.step === `${ask.runId}:${ask.stepId}:${ask.startedAt}`) {
+    const template = document.createElement("template");
+    template.innerHTML = view;
+    current.replaceChildren(...template.content.firstElementChild!.childNodes);
+  } else mainEl().innerHTML = view;
+  liveViewElement = document.getElementById("live-run");
+  liveViewKey = key;
+  if (expanded) document.getElementById("live-run-details")?.setAttribute("open", "");
+  if (modal) document.querySelector<HTMLDialogElement>("#live-stop-dialog")?.showModal();
+  if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
+  if (!continuing) document.getElementById("live-action-status")!.textContent = message;
+  bindAsk();
 }
 
 function capture(): string {
@@ -1214,7 +1276,24 @@ function bindAsk(): void {
   const cancel = document.getElementById("act-cancel");
   if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" }).then(() => refresh());
   const cont = document.getElementById("act-continue");
-  if (cont) cont.onclick = () => void fetch("/api/prompt/continue", { method: "POST" });
+  const ask = state.activeAsk;
+  if (cont) cont.onclick = async () => {
+    if (!ask || state.activeAsk?.runId !== ask.runId || state.activeAsk?.stepId !== ask.stepId || state.activeAsk?.startedAt !== ask.startedAt) return;
+    const response = ask.kind === "confirm" ? null : await fetch("/api/prompt/continue", { method: "POST" });
+    const status = document.getElementById("live-action-status");
+    if (status) status.textContent = (!response || response.ok) ? "Bao is checking the page. The run waits until its check passes." : "Bao could not check the page. Try again.";
+    await refresh();
+  };
+  const stop = document.getElementById("live-stop");
+  const dialog = document.getElementById("live-stop-dialog") as HTMLDialogElement | null;
+  if (stop && dialog) {
+    const runId = document.getElementById("live-run")?.dataset.run;
+    stop.onclick = () => dialog.showModal();
+    dialog.onclose = () => {
+      if (dialog.returnValue === "stop" && screen === "live" && runId && currentLiveAsk()?.runId === runId && document.getElementById("live-run")?.dataset.run === runId) void fetch("/api/replay/cancel", { method: "POST" }).then(() => refresh());
+      else stop.focus();
+    };
+  }
   const yes = document.getElementById("import-yes");
   if (yes) yes.onclick = () => void answerImport({ accept: true });
   const no = document.getElementById("import-no");
@@ -1895,6 +1974,10 @@ function selectHeal(runId: string, healId: string): void {
 }
 
 function selectRun(id: string, stepId = ""): void {
+  if (state.activeAsk?.runId === id && !stepId) {
+    screen = "live";
+    return;
+  }
   openRun = id;
   selectedStep = stepId;
   receiptOffset = 0;
@@ -1922,6 +2005,14 @@ function tickClock(): void {
   }
   for (const node of document.querySelectorAll<HTMLElement>("[data-run-deadline]")) {
     node.textContent = runWaitLeft(Number(node.dataset.runDeadline));
+  }
+  const liveDeadline = document.querySelector<HTMLElement>(".live-deadline[data-deadline]");
+  const liveWait = document.getElementById("live-wait-left");
+  if (liveDeadline?.dataset.deadline && liveWait) {
+    const deadline = Number(liveDeadline.dataset.deadline);
+    liveWait.textContent = runWaitLeft(deadline);
+    const meter = liveDeadline.querySelector<HTMLElement>(".live-meter i");
+    if (meter) meter.style.width = `${Math.min(100, Math.max(0, (deadline - Date.now()) / Number(liveDeadline.dataset.timeout) * 100))}%`;
   }
   const timer = document.getElementById("rec-timer");
   if (!timer?.dataset.since) return;

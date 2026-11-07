@@ -1,4 +1,4 @@
-// The failed run still opens on the failed step. The act bar is the login ask.
+// Finished runs open their failed step; a separate active login opens its live detail.
 
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -11,7 +11,7 @@ import { makeAsk } from "../../src/v1/human-ask";
 import { writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-test("the runs list opens the failed step, and the act bar is the login ask", { timeout: 60000 }, async () => {
+test("the runs list opens failed receipts while an active login owns its live detail", { timeout: 60000 }, async () => {
   process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete process.env.BAO_HEAL_FIXTURE;
   const home = mkdtempSync(path.join(tmpdir(), "bao-links-"));
@@ -80,8 +80,16 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
       runId: "run-fail",
       stepId: "save",
     });
+    app.library.saveRun({
+      id: "run-login",
+      workflowId: "wf-note",
+      status: "paused",
+      at: origin - 1_000,
+      heals: [],
+      steps: [{ id: "login", status: "paused", label: "Sign in" }],
+    });
     writePendingPrompt(home, {
-      runId: "run-fail",
+      runId: "run-login",
       ask: makeAsk({
         kind: "login",
         workflowId: "wf-note",
@@ -93,22 +101,21 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
         site: "127.0.0.1",
         timeoutMs: 0,
         now: origin,
-        runId: "run-fail",
+        runId: "run-login",
       }),
     });
     await page.addInitScript(() => {
       localStorage.setItem("bao-theme", "light");
     });
     await page.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#act-bar[data-ask=login]");
-    const bar = page.locator("#act-bar");
-    assert.equal(await bar.getAttribute("data-step"), "login");
-    assert.match(await bar.locator(".kicker").innerText(), /upload note/);
-    assert.match(await bar.locator(".kicker").innerText(), /step 1 of 3/);
-    assert.match(await bar.locator(".instruction").innerText(), /Sign in to the fixture in the Bao window/);
-    assert.equal(await page.locator("#act-show").innerText(), "Show window");
-    assert.equal(await page.locator("#act-continue").innerText(), "I'm signed in, continue");
-    assert.equal(await page.locator("#act-cancel").innerText(), "Cancel run");
+    await page.waitForSelector('#live-run[data-run="run-login"] #live-steps [aria-current="step"]');
+    assert.equal(await page.locator("#live-run h1").innerText(), "upload note");
+    assert.match(await page.locator(".live-lead").innerText(), /Sign in to the fixture in the Bao window/);
+    assert.match(await page.locator('#live-steps [aria-current="step"]').innerText(), /Sign in/);
+    assert.equal(await page.locator("#act-show").innerText(), "Show Bao’s Chrome");
+    assert.equal(await page.locator("#act-continue").innerText(), "I’m signed in, continue");
+    assert.equal(await page.locator("#live-stop").innerText(), "Stop run…");
+    assert.equal(await page.locator("#act-bar").count(), 0);
     assert.equal(await page.locator("#act-open-step").count(), 0);
     await page.waitForSelector("#toasts .toast");
     const toast = await page.locator("#toasts").innerText();

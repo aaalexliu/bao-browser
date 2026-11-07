@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
-import type { ApplyGate, RunTrailEvent } from "./apply-guard";
+import type { ApplyGate as BaseApplyGate, RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
@@ -142,7 +142,7 @@ export interface Driver {
   clearConfirm?(): void | Promise<void>;
   showLoginWait?(label: string): void | Promise<void>;
   clearLoginWait?(): void | Promise<void>;
-  /** The product window's act bar. Replay still does not press the site button. */
+  /** The product window's handoff prompt. Replay still does not press the site button. */
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
@@ -279,6 +279,8 @@ export interface ReplayOptions {
   openExec?: (argv: string[]) => Promise<void>;
 }
 
+type ApplyGate = BaseApplyGate & { onPause?: (ask: HumanAsk) => void };
+
 let seq = 0;
 
 export function withInputDefaults(workflow: WorkflowV2, args: ReplayArgs): ReplayArgs {
@@ -331,7 +333,7 @@ export async function replay(
 
   const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls" | "pageClasses"> & Partial<RunResult>): RunResult => {
     const trace = driver.trace?.();
-    const downloaded = endFilesRun(runId);
+    const downloaded = Object.fromEntries(prepared.outputs);
     const outputs = materializeOutputs(workflow, tables);
     return {
       heals,
@@ -400,6 +402,11 @@ export async function replay(
     const beforeShot = before.ref;
     const stamp = (patch: RunResult["steps"][number]) => {
       steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error };
+    };
+    gate.onPause = (ask) => {
+      stamp({ id: step.id, status: "paused", reason: ask.kind === "login" ? "sign in" : "confirm" });
+      const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: ask.kind === "login" ? "signin" : "confirm", ask });
+      opts.onPause?.(structuredClone(paused));
     };
     try {
     if (skipReason) {
@@ -766,7 +773,11 @@ export async function replay(
   return finish({ runId, status: "passed", steps });
   };
   // Per-step finally fills snapshots and shot refs before this copy detaches the result.
-  return structuredClone(await execute());
+  try {
+    return structuredClone(await execute());
+  } finally {
+    endFilesRun(runId);
+  }
 }
 
 /** A run with nothing executed, or a failed final check, is not a pass. */
@@ -1267,9 +1278,10 @@ async function runConfirm(
     return { ok: false, paused: "confirm", repairs: [], ask: personAsk(gate, step, "confirm") };
   }
   const ask = personAsk(gate, step, "confirm");
+  beginHandoff(driver, gate, step.id);
+  gate.onPause?.(ask);
   await driver.showAsk?.(ask);
   await driver.showConfirm?.(step.label);
-  beginHandoff(driver, gate, step.id);
   if (gate.yieldHuman || !step.postcondition) {
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
@@ -1362,9 +1374,11 @@ async function settleLogin(
       return false;
     }
   } else {
-    await driver.showAsk?.(personAsk(gate, step, "login"));
-    await driver.showLoginWait?.(step.label || "Sign in on the site window");
+    const ask = personAsk(gate, step, "login");
     beginHandoff(driver, gate, step.id);
+    gate.onPause?.(ask);
+    await driver.showAsk?.(ask);
+    await driver.showLoginWait?.(step.label || "Sign in on the site window");
   }
   let finished = false;
   try {

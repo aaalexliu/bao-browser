@@ -1807,7 +1807,7 @@ function runListKind(run: RunSummary): string {
   return runKind(run);
 }
 
-function runStatusGlyph(kind: string): string {
+export function runStatusGlyph(kind: string): string {
   const mark = kind === "paused" ? '<path d="M5.4 4.4v5.2M8.6 4.4v5.2"/>'
     : kind === "healed" ? '<path d="M7 3.9v6.2M3.9 7h6.2"/>'
     : ["failed", "timed-out"].includes(kind) ? '<path d="m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4"/>'

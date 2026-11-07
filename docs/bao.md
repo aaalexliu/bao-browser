@@ -273,7 +273,7 @@ The desktop window and the web app share one formatter (`web/src/lib/time.ts`). 
 
 ### 2026-10-22 — Act prompts survive a restart
 
-A login or confirm wait is stored in the app home as `pending-prompt.json`. Closing the window and opening it again restores the bar and the badge. When the deadline passes and no replay is still in that wait, the file is removed and the run is marked stopped, timed out. A wait that finishes inside a running replay still stops with `nothing applied` or `waiting for you to log in`.
+[Bao desktop v1](v1.md#you-need-to-act) owns handoff controls, prompt persistence, and timeout behavior.
 
 ### 2026-10-22 — Locator history and a banner that stays off the workflow
 
@@ -296,7 +296,7 @@ A past run can be started again from the run viewer. Re-run with this run's inpu
 The integration branch (pull request 58) is the tree a Mac build should use. It already contains the desktop window, and this pass landed the rest of the open desktop work on that same branch:
 
 - Step-picture behavior is in [Bao desktop v1](v1.md#install-and-run).
-- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. The act bar says "Sign in to the site in the Bao window."
+- Recent runs are a grid: steps down the side, the last runs across, newest on the right. Each column header is the machine-local clock with its zone (`Oct 22, 12:50 AM EDT`). Hover a cell for the run id, and for a run from the last day, how long ago. [Bao desktop v1](v1.md#you-need-to-act) describes the current login handoff.
 - The current optional Mac helper behavior is in [Bao desktop v1](v1.md#install-and-run); grant requirements are in [permissions](permissions.md).
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. See [MCP](#mcp) for the current local tool catalog. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
