@@ -7,7 +7,7 @@ export interface BrowserToolCard {
   caption: string;
   runId: string | null;
   stepId: string | null;
-  picture: { kind: "captured"; phase: "before" | "after"; target?: RecordedAgentBrowserCommand["target"] }
+  picture: { kind: "captured"; stepId?: string; phase: "before" | "after"; target?: RecordedAgentBrowserCommand["target"] }
     | { kind: "unavailable"; reason: string };
 }
 
@@ -58,6 +58,8 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
     const before = !failed && step.beforeShot && step.target;
     const file = before ? step.beforeShot : step.afterShot;
     if (file) picture = { kind: "captured", phase: before ? "before" : "after", ...(before ? { target: step.target } : {}) };
+  } else if (!outcome && command === "close" && evidence?.lastPicture) {
+    picture = { kind: "captured", ...evidence.lastPicture };
   }
   const card: BrowserToolCard = { command, status, caption: caption(command, failed, outcome), runId, stepId: step?.id ?? null, picture };
   return {

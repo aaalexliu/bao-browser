@@ -132,7 +132,7 @@ test("missing pictures never replace the native command result", async () => {
   } finally { await f.close(); }
 });
 
-test("owner waits and close keep live run identity without borrowing a picture", async () => {
+test("owner waits and calls without picture evidence keep run identity without borrowing another run's picture", async () => {
   const f = await recorded();
   try {
     await f.recording.actionPicture(f.step, png, target);
@@ -147,6 +147,64 @@ test("owner waits and close keep live run identity without borrowing a picture",
     }
     const other = browserToolResult("open", [], { ...f.evidence, runId: "different-session", step: { ...f.step, beforeShot: undefined, afterShot: undefined } }, undefined, "startup failed");
     assert.equal(other._meta.baoToolCard.picture.kind, "unavailable");
+  } finally { await f.close(); }
+});
+
+test("close cards keep the last same-run picture and the closing command's identity", async () => {
+  const f = await recorded("open");
+  try {
+    const readLastPicture = () => f.recording.lastPicture;
+    assert.equal(readLastPicture(), undefined);
+    await f.recording.complete(f.step, native, f.home, async () => png);
+    const latest = f.recording.begin("snapshot", []);
+    await f.recording.complete(latest, native, f.home, async () => png);
+    const close = f.recording.begin("close", []);
+    await f.recording.complete(close, [], f.home, async () => { throw new Error("closed"); });
+    f.recording.finish();
+    const lastPicture = readLastPicture();
+    assert.ok(lastPicture);
+    assert.deepEqual(lastPicture, { stepId: latest.id, phase: "after" });
+    const result = browserToolResult("close", [], { runId: f.recording.id, step: close, lastPicture });
+    assert.deepEqual(result.structuredContent, { command: "close", status: "complete", run_id: f.recording.id, step_id: close.id });
+    assert.deepEqual(result._meta.baoToolCard.picture, { kind: "captured", stepId: latest.id, phase: "after" });
+    const pictures = callViewerTool(new Library(f.home), "open_browser_picture", { run_id: f.recording.id, step_id: lastPicture.stepId, phase: lastPicture.phase });
+    assert.ok(pictures._meta.baoPictures);
+    assert.deepEqual(Buffer.from(pictures._meta.baoPictures.pictures[0]!.data, "base64"), png);
+    assert.doesNotMatch(JSON.stringify(result), /base64|mimeType/);
+    const other = new AgentBrowserRun(f.home);
+    const otherClose = other.begin("close", []);
+    await other.complete(otherClose, [], f.home, async () => { throw new Error("no page"); });
+    assert.equal(browserToolResult("close", [], { runId: other.id, step: otherClose, lastPicture: other.lastPicture })._meta.baoToolCard.picture.kind, "unavailable");
+  } finally { await f.close(); }
+});
+
+test("close ignores native screenshot copies when the automatic page capture fails", async () => {
+  const f = await recorded("open");
+  try {
+    await f.recording.complete(f.step, native, f.home, async () => png);
+    const screenshot = f.recording.begin("screenshot", []);
+    await writeFile(path.join(f.home, "page.png"), png);
+    await f.recording.complete(screenshot, [{ stdout: "Screenshot saved to page.png", stderr: "", exitCode: 0 }], f.home, async () => { throw new Error("capture failed"); });
+    assert.equal(screenshot.native.screenshots.length, 1);
+    const close = f.recording.begin("close", []);
+    await f.recording.complete(close, [], f.home, async () => { throw new Error("closed"); });
+    const result = browserToolResult("close", [], { runId: f.recording.id, step: close, lastPicture: f.recording.lastPicture });
+    assert.deepEqual(result._meta.baoToolCard.picture, { kind: "captured", stepId: f.step.id, phase: "after" });
+    assert.throws(() => callViewerTool(new Library(f.home), "open_browser_picture", { run_id: f.recording.id, step_id: screenshot.id, phase: "requested" }), /Invalid picture phase/);
+  } finally { await f.close(); }
+});
+
+test("close can use an earlier step picture when later captures fail without carrying its target mark", async () => {
+  const f = await recorded();
+  try {
+    await f.recording.actionPicture(f.step, png, target);
+    await f.recording.complete(f.step, native, f.home, async () => { throw new Error("capture failed"); });
+    const latest = f.recording.begin("snapshot", []);
+    await f.recording.complete(latest, native, f.home, async () => { throw new Error("capture failed"); });
+    const close = f.recording.begin("close", []);
+    await f.recording.complete(close, [], f.home, async () => { throw new Error("closed"); });
+    const result = browserToolResult("close", [], { runId: f.recording.id, step: close, lastPicture: f.recording.lastPicture });
+    assert.deepEqual(result._meta.baoToolCard.picture, { kind: "captured", stepId: f.step.id, phase: "before" });
   } finally { await f.close(); }
 });
 
@@ -421,4 +479,15 @@ test("the host resource renders an annotated card, keeps it on a failed run read
   await deliver({ jsonrpc: "2.0", id: unavailable.id, result: { _meta: { baoPictures: { runId: "run-exact", stepId: "command-5", pictures: [] } } } });
   await page.getByText("Page picture unavailable", { exact: true }).waitFor();
   assert.equal(await page.locator("img").count(), 0);
+  await page.evaluate(() => { delete document.body.dataset.request; });
+  const closedCard: BrowserToolCard = { command: "close", status: "complete", caption: "Closed the Bao browser session.", runId: "run-exact", stepId: "command-6", picture: { kind: "captured", stepId: "command-5", phase: "before" } };
+  await deliver({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: closedCard } } });
+  await page.waitForFunction(() => Boolean(document.body.dataset.request));
+  const closedRequest = JSON.parse(await page.locator("body").getAttribute("data-request") || "null") as { id: number; params: { arguments: unknown } };
+  assert.deepEqual(closedRequest.params.arguments, { run_id: "run-exact", step_id: "command-5", phase: "before" });
+  await deliver({ jsonrpc: "2.0", id: closedRequest.id, result: { _meta: { baoPictures: { runId: "run-exact", stepId: "command-5", pictures: [{ phase: "before", mimeType: "image/png", data: png.toString("base64") }] } } } });
+  await page.getByAltText("Last recorded page: Closed the Bao browser session.").waitFor();
+  assert.equal(await page.locator(".browser-mark").count(), 0);
+  assert.equal(await page.getByRole("button", { name: "View run", exact: true }).count(), 1);
+  assert.equal(await page.getByText("Page picture unavailable", { exact: true }).count(), 0);
 });

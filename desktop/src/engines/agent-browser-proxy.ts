@@ -70,7 +70,7 @@ export class AgentBrowserProxy {
   private starting: Promise<Session> | undefined;
   private startAbort: AbortController | undefined;
   private pendingCloses = 0;
-  private latest: { runId: string; step: RecordedAgentBrowserCommand } | undefined;
+  private latest: { runId: string; step: RecordedAgentBrowserCommand; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
   private workflowOutcome: string | undefined;
 
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
@@ -195,7 +195,10 @@ export class AgentBrowserProxy {
       throw error;
     } finally {
       try {
-        if (step) await session.recording.complete(step, results, session.stateDir, async () => (await this.screenshot(session, command as string, visual)).bytes, failure, !!session.ownerWait || command === "wait_for_owner");
+        if (step) {
+          await session.recording.complete(step, results, session.stateDir, async () => (await this.screenshot(session, command as string, visual)).bytes, failure, !!session.ownerWait || command === "wait_for_owner");
+          if (command === "close") this.latest = { runId: recording.id, step, lastPicture: recording.lastPicture };
+        }
       } finally {
         commandDone();
         if (command === "close") await this.remove(session);

@@ -20,7 +20,7 @@ export const VIEWER_TOOLS = [
     annotations, _meta: appOnly,
   },
   {
-    name: "open_browser_picture", description: "Read the current browser card's before or after picture after the app mounts. At most one picture of at most 2 MiB, in app-only metadata.",
+    name: "open_browser_picture", description: "Read the browser card's stored before or after picture after the app mounts. At most one picture of at most 2 MiB, in app-only metadata.",
     inputSchema: { type: "object", properties: { run_id: id, step_id: id, phase: { type: "string", enum: ["before", "after"] } }, required: ["run_id", "step_id", "phase"], additionalProperties: false },
     annotations, _meta: appOnly,
   },
