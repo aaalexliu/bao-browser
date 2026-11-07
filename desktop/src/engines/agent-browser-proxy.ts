@@ -6,6 +6,7 @@ import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "./agent-browser-record";
 import { agentBrowserExecutable } from "./agent-browser";
+import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { openBaoChromeForProxy } from "./bao-profile";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
@@ -49,6 +50,7 @@ interface Session {
   env: NodeJS.ProcessEnv;
   abort: AbortController;
   recording: AgentBrowserRun;
+  workflow: AgentBrowserWorkflow;
   ownerWait?: { targetId: string; page: OwnerPage } | "pending";
   commandDone?: Promise<void>;
   closing?: boolean;
@@ -61,7 +63,9 @@ export class AgentBrowserProxy {
   private starting: Promise<Session> | undefined;
   private pendingCloses = 0;
   private latest: { runId: string; step: RecordedAgentBrowserCommand } | undefined;
+  private workflowOutcome: string | undefined;
 
+  get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
 
@@ -75,6 +79,7 @@ export class AgentBrowserProxy {
 
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false): Promise<AgentBrowserCommandResult[]> {
     this.latest = undefined;
+    this.workflowOutcome = undefined;
     validateAgentBrowserCommand(command, args);
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
       throw new Error("browser is only accepted on open and must be copy or bao");
@@ -103,7 +108,10 @@ export class AgentBrowserProxy {
     }
     if (this.session && command !== "close" && command !== "wait_for_owner") {
       await this.detectOwnerWall(this.session);
-      if (this.session.ownerWait) return this.ownerResult("halted");
+      if (this.session.ownerWait) {
+        this.session.workflow.unavailable("it needed owner input");
+        return this.ownerResult("halted");
+      }
     }
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     const step = recording.begin(command as string, args);
@@ -134,6 +142,7 @@ export class AgentBrowserProxy {
         if (!starting && site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
       }
       if (command === "wait_for_owner") {
+        session.workflow.unavailable("it needed owner input");
         results.push(...await this.waitForOwner(session, args));
         return results;
       }
@@ -141,15 +150,16 @@ export class AgentBrowserProxy {
         await this.captureTarget(session, step, args[0]);
         if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
       }
-      results.push(command === "close" && session.chrome.isClosed()
-        ? { stdout: "", stderr: "", exitCode: 0 }
-        : await this.run(session, command as string, args));
-      if (command !== "close" && results[0]!.exitCode === 0) {
-        await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
-        if (session.ownerWait) {
-          results.splice(0, results.length, ...this.ownerResult("halted"));
-          return results;
-        }
+      results.push(await session.workflow.record(command as string, args, step.id, async () => {
+        const result = command === "close" && session.chrome.isClosed()
+          ? { stdout: "", stderr: "", exitCode: 0 }
+          : await this.run(session, command as string, args);
+        if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
+        return result;
+      }, () => !!session.ownerWait));
+      if (session.ownerWait) {
+        results.splice(0, results.length, ...this.ownerResult("halted"));
+        return results;
       }
       if (command === "open" && results[0]!.exitCode === 0) {
         // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
@@ -213,8 +223,13 @@ export class AgentBrowserProxy {
       const config = path.join(stateDir, "config.json");
       await writeFile(config, "{}", { mode: 0o600 });
       const endpoint = await readDevToolsActivePort(chrome.target.portFile);
-      return {
+      const session: Session = {
         chrome, browser, stateDir, executable, abort: new AbortController(), recording,
+        workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
+          const active = await this.activePage(session);
+          if (!active) throw new Error("no active Bao page metadata");
+          return { ...await readDevToolsActivePort(chrome.target.portFile), targetId: active.targetId, targetIds: active.targetIds };
+        }),
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
           "--idle-timeout", "0"],
         env: {
@@ -223,6 +238,7 @@ export class AgentBrowserProxy {
           ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
         },
       };
+      return session;
     } catch (error) {
       if (stateDir) await rm(stateDir, { recursive: true, force: true });
       await chrome.close();
@@ -234,7 +250,7 @@ export class AgentBrowserProxy {
     return [{ stdout: JSON.stringify({ outcome: kind, instruction: kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication." : kind === "closed" ? "The owner closed the Bao window. Report that this session cannot continue." : OWNER_WAIT_INSTRUCTION }), stderr: "", exitCode: 0 }];
   }
 
-  private async activePage(session: Session): Promise<{ targetId: string; page: OwnerPage } | undefined> {
+  private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
     const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(5000)]);
     const tabs = await this.run(session, "tab", ["list", "--json"], signal);
     const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
@@ -245,7 +261,7 @@ export class AgentBrowserProxy {
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 2000, signal });
     try {
       const { targetInfo } = await cdp.send<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, 2000);
-      return { targetId: active.targetId, page: { url: targetInfo.url, title: targetInfo.title } };
+      return { targetId: active.targetId, targetIds: parsed.data?.tabs?.flatMap((tab) => tab.targetId ? [tab.targetId] : []) ?? [], page: { url: targetInfo.url, title: targetInfo.title } };
     } finally { cdp.close(); }
   }
 
@@ -410,6 +426,7 @@ export class AgentBrowserProxy {
       session.abort.abort();
       await session.commandDone;
       session.recording.finish();
+      this.workflowOutcome = session.workflow.finish(session.recording.status);
       try {
         const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
         if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) process.kill(pid, "SIGTERM");

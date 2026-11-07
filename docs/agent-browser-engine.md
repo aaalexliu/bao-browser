@@ -21,7 +21,15 @@ Pass-through startup connects only to Chrome's browser-level CDP endpoint and di
 
 `desktop/test/unit/agent-browser-startup.test.ts` covers startup with a stalled restored renderer. `desktop/test/unit/chrome-startup.test.ts` covers launch flags, a stale endpoint file, a port-bind race, browser-only startup commands, and headed `navigator.webdriver` before and after a Runtime-domain attach.
 
-Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign-in and human-check handoffs return Bao's wait status instead. [Browser tool cards](mcp-viewer.md#browser-tool-cards) describes the visual result and receipt handoff in MCP Apps hosts. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. It does not save a replayable workflow. Workflows from the retired live driver fail with `this workflow used the retired live driver`; replay on the pass-through is a later layer.
+Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign-in and human-check handoffs return Bao's wait status instead. [Browser tool cards](mcp-viewer.md#browser-tool-cards) describes the visual result and receipt handoff in MCP Apps hosts. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. Closing a successful, representable single-document task saves a replayable workflow. The closing result gives its workflow id or one line explaining why it was not saved. Workflows from the retired live driver still fail with `this workflow used the retired live driver`.
+
+### Workflow reuse
+
+Successful tasks using `open`, `click`, `fill`, and `press` save a `WorkflowV2` in Workflows when the session finishes. Bao observes the actual DOM control during each action, saves its identity and locators, and records observed effects through the existing v1 trail contract. Snapshot refs such as `@e280` remain only in the raw capture. Field values become the existing workflow inputs. Snapshots and screenshots remain evidence, not replay actions. A settling-only check is low-confidence, not proof of the task's business result.
+
+A second tab, popup, stateful scroll, unsupported command options, an unaddressable target, owner input, or a failed or unfinished task leaves a capture only. Bao does not silently remove unsupported actions to save a partial workflow. The final tool result says `Saved workflow` with its id or `Not saved as a workflow` with the reason. Do not claim a workflow exists without that saved result.
+
+Saved workflows run through the current replay engine using app Replay or MCP `run_workflow`, not through native pass-through replay. Capture receipts, raw commands, and pictures stay in their original capture run; saving does not mark that capture as a replay or establish a green replay.
 
 ### Lasting Bao profile
 
@@ -73,7 +81,7 @@ The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuse
 
 ## Evidence
 
-Each session creates one `kind: "capture"` run in the Library home Bao.app reads. See [Runs and Detailed evidence](v1.md#install-and-run) for the desktop controls that expose commands, screenshots, and native output. A recording-only run has no workflow, replay, or teaching actions. It omits Identity and Snapshot inspectors because it does not collect those records. Capture runs do not claim to count the outside agent's model calls or establish replay green status.
+Each session creates one `kind: "capture"` run in the Library home Bao.app reads. See [Runs and Detailed evidence](v1.md#install-and-run) for the desktop controls that expose commands, screenshots, and native output. The capture receipt remains recording-only, with no replay or teaching actions; a separately saved workflow appears in Workflows. The capture omits Identity and Snapshot inspectors. Durable replay identities and observed effects live in the saved workflow's trail. Capture runs do not claim to count the outside agent's model calls or establish replay green status.
 
 Each step stores its exact command and argv, native stdout/stderr and exit codes, error flag, and start/end times. Bao saves a pending `open` before startup and updates the run atomically as results arrive. Startup failure produces a failed run with its original error and no invented picture. Uncatchable process termination can leave readable partial runs marked `recording`; handled stops finish the run as described in [Session end](#session-end).
 

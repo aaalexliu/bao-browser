@@ -96,6 +96,7 @@
       "desktop/test/unit/mcp-viewer-design.test.ts",
       "desktop/test/unit/retired-live-driver.test.ts",
       "desktop/test/unit/agent-browser-proxy.test.ts",
+      "desktop/test/unit/agent-browser-workflow.test.ts",
       "desktop/test/unit/driver-fixes.test.ts",
       "desktop/test/unit/capture.test.ts",
       "desktop/test/unit/human-envelope.test.ts"
