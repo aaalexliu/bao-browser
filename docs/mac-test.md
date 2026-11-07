@@ -2,6 +2,8 @@
 
 Bao is already installed. For a rebuild, see [Build Bao on a Mac](mac-build.md).
 
+For desktop clients, see [Desktop client checks](desktop-clients-test.md).
+
 ## Open
 
 Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
@@ -29,12 +31,6 @@ Library shows the new workflow. The password is not in it. The file path is not 
 4. Run it again with another username and another file.
 
 Both runs pass. The fixture greets the username from that run. The file name is the one from that run. The second run stays in the window you just moved.
-
-## Desktop clients
-
-With Bao open and ChatGPT in **Codex** mode, run `node scripts/test-desktop-clients.mjs --output /absolute/local/evidence` using a new local output directory. It needs `chrome-devtools-axi` on PATH and Bao registered at its installed launcher. It reads X, GitHub, Gmail and LinkedIn with both `copy` and `bao`; add `--site x.com` for a focused pass. It uses your sign-ins, creates chats and Library runs, restarts ChatGPT with localhost CDP, then restores a normal launch. It leaves your running Chrome alone and requests no Mac grants.
-
-Keep the output on this Mac. Open the conversation/tool-card, site and Bao receipt pictures, then read each `result.json`; a captured run does not prove a working sign-in. A nonzero exit needs review. Claude Desktop **4.23118.0** rejects CDP launch flags, so this runner does not cover it.
 
 ## Optional
 
