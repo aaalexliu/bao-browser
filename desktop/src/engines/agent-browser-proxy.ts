@@ -464,7 +464,9 @@ export class AgentBrowserProxy {
         session.taskTabPid = await readFile(pidFile, "utf8");
       }
       return execute(command, args, readTimeoutMs);
-    }, session.abort.signal);
+    }, session.abort.signal, (result, context) => result.exitCode === 0 ? result : {
+      ...result, stderr: `${result.stderr}${result.stderr && !result.stderr.endsWith("\n") ? "\n" : ""}${context}`,
+    });
   }
 
   private async remove(session: Session, keepOpen = false): Promise<void> {

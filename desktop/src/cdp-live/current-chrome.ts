@@ -21,11 +21,13 @@ export interface CurrentChrome {
   closed: Promise<void>;
   isClosed(): boolean;
   detach(): void;
-  withConsent<T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
+  withConsent<T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal,
+    failureContext?: (result: T, context: string) => T): Promise<T>;
 }
 
 async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, axLog: string,
-  operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
+  operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal,
+  failureContext?: (result: T, context: string) => T): Promise<T> {
   const signal = parent ?? new AbortController().signal;
   signal.throwIfAborted();
   let finished = false;
@@ -38,12 +40,18 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
       try {
         const hit = await helper.exec(["debug-allow", "--pid", String(pid), "--press"], 5000);
         if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+        pollError = undefined;
       } catch (error) { pollError = error; }
       if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    return await pending;
+    const result = await pending;
+    return pollError !== undefined && failureContext
+      ? failureContext(result, `BaoOSHelper: ${pollError instanceof Error ? pollError.message : String(pollError)}`)
+      : result;
   } catch (error) {
-    if (error instanceof Error && pollError !== undefined) error.cause ??= pollError;
+    if (pollError !== undefined) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)} (BaoOSHelper: ${pollError instanceof Error ? pollError.message : String(pollError)})`, { cause: error });
+    }
     throw error;
   }
 }
@@ -102,8 +110,9 @@ export async function openCurrentChrome(options: {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
-  const consent = <T>(operation: (signal: AbortSignal) => Promise<T>, signal = options.signal) =>
-    withConsent(deps.helper, pid, options.axLog, operation, signal);
+  const consent = <T>(operation: (signal: AbortSignal) => Promise<T>, signal = options.signal,
+    failureContext?: (result: T, context: string) => T) =>
+    withConsent(deps.helper, pid, options.axLog, operation, signal, failureContext);
   const cdp = await consent(async (parent) => {
     const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
     const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });

@@ -17,7 +17,7 @@ Bao fixes one session in a private socket directory, installed Google Chrome, an
 
 Bao picks a nonzero debugging port. Port zero makes headed Chrome set `navigator.webdriver` to true. Bao accepts only the WebSocket endpoint its own Chrome child prints to stderr, then writes that endpoint to the copy's `DevToolsActivePort` file. A port-bind race stops startup rather than attaching to another browser.
 
-Pass-through startup connects only to Chrome's browser-level CDP endpoint and discovers targets without attaching Playwright to restored tabs. An unrelated unresponsive renderer does not block startup. Bao leaves those tabs in place without waiting for page readiness or parking startup pages. Successful `open` adds native `tab list` output. The agent selects the signed-in tab with `tab <id>`; Bao does not guess its login state. `tab list --json` exposes CDP target ids.
+Pass-through startup connects only to Chrome's browser-level CDP endpoint and discovers targets without attaching Playwright to restored tabs. An unrelated unresponsive renderer does not block startup. Bao leaves those tabs in place without waiting for page readiness or parking startup pages. Successful `open` adds native `tab list` output. For `browser: "copy"`, the agent selects the signed-in copied tab with `tab <id>`; Bao does not guess its login state. `tab list --json` exposes CDP target ids.
 
 `desktop/test/unit/agent-browser-startup.test.ts` covers startup with a stalled restored renderer. `desktop/test/unit/chrome-startup.test.ts` covers launch flags, a stale endpoint file, a port-bind race, browser-only startup commands, and headed `navigator.webdriver` before and after a Runtime-domain attach.
 
@@ -49,7 +49,7 @@ Set `browser` on the first `open` to choose the route. `"copy"` is the default. 
 
 This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper opens a new inspect tab, enables Chrome's debugging checkbox if needed, and presses Chrome's native debugging Allow sheets while current-Chrome commands connect, including reconnects. Sheets already present when polling starts may also be approved; Bao does not attribute each sheet to a particular connection. It does not request Automation or Screen Recording. A locked screen, missing Accessibility access, or ambiguous browser process stops startup without asking for a new grant.
 
-Bao creates a new task tab before the first navigation. A native daemon restart also opens a new task tab and loses prior tab selection and refs; navigate or select a tab again, then take a fresh snapshot. It keeps one browser-level CDP connection for metadata and page pictures. The selected copied-profile setting does not choose the active tab in this route; use native `tab list` and `tab <id>` to select a tab. Both routes record commands and page screenshots in Runs.
+Bao creates a new task tab before the first navigation. A native daemon restart also opens a new task tab and loses prior tab selection and refs; navigate that task tab again, then take a fresh snapshot. It keeps one browser-level CDP connection for metadata and page pictures. Stay in the current session's task tab, which shares the owner's sign-ins; use another tab only when the owner asks. The copied-profile setting does not affect this route. Both routes record commands and page screenshots in Runs.
 
 `close`, MCP disconnect, and handled stop signals detach from current Chrome. They do not quit it, remove its profile, or close its tabs. Keep-open applies only to copied windows. Bao leaves the debugging checkbox enabled; this route does not restore the old preference or revive retired live-driver workflows.
 
@@ -88,6 +88,8 @@ The copy keeps cookies, saved tabs, session-restore files, Session Storage, and 
 The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuses links and active copies. [Session end](#session-end) defines window and copy cleanup. A released keep-open copy or a copy whose Bao process has exited can be reclaimed: Bao stops only Chrome processes using that exact marked directory before deleting it, never the source profile. No idle timeout closes an active session.
 
 ## Known gaps
+
+Current-Chrome startup assumes a U.S. keyboard layout when the helper opens `chrome://inspect/#remote-debugging`. Other layouts can type the wrong omnibox text and perform a search in the owner's signed-in profile. The owner's Mac uses U.S. layout; the native fix is deferred. The remedy is `CGEventKeyboardSetUnicodeString` for text plus layout-resolved `cmd+t`. Firstmate owns that follow-up.
 
 The Settings Mac card still says "Chrome agents need no Accessibility, Automation, or Screen Recording permission." That blanket sentence is stale. It fits the copied and Bao-owned profile routes, but `browser: "current"` requires BaoOSHelper's existing Accessibility grant. A separate browser-choice UI follow-up owns the correction; this route does not change Settings.
 

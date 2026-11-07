@@ -284,7 +284,7 @@ test("startup waits for loading controls and delayed LaunchServices result files
   }
 });
 
-test("a failed handshake closes the pending CDP connection without closing Chrome", async () => {
+test("a failed handshake exposes the helper reason in the public error and run record", async (t) => {
   const f = await fixture(true);
   try {
     const exec = f.deps.helper!.exec;
@@ -295,14 +295,118 @@ test("a failed handshake closes the pending CDP connection without closing Chrom
       }
       return exec(args, timeout);
     };
-    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), (error: Error) => {
-      assert.match(error.message, /cdp disconnected/);
-      assert.match((error.cause as Error).message, /Allow failed/);
-      return true;
-    });
+    const realOpen = currentChrome.openCurrentChrome;
+    t.mock.method(currentChrome, "openCurrentChrome", () => realOpen(f.options, f.deps));
+    const executable = path.join(f.root, "native");
+    await writeFile(executable, `#!${process.execPath}\nprocess.exitCode = 99;\n`, { mode: 0o700 });
+    const home = path.join(f.root, "library");
+    const proxy = new AgentBrowserProxy({ home, sourceRoot: f.root, executable });
+    try {
+      await assert.rejects(proxy.execute("open", [], "current"), (error: Error) => {
+        assert.match(error.message, /cdp disconnected.*BaoOSHelper: Allow failed/);
+        assert.equal((error.cause as Error).message, "cdp disconnected");
+        return true;
+      });
+      const library = new Library(home);
+      const runs = library.listRuns();
+      assert.equal(runs.length, 1);
+      assert.equal(runs[0]!.status, "failed");
+      const step = library.readRun(runs[0]!.id).steps[0] as unknown as RecordedAgentBrowserCommand;
+      assert.match(step.reason!, /cdp disconnected.*BaoOSHelper: Allow failed/);
+      assert.equal(step.native.error, step.reason);
+    } finally { await proxy.end(); }
     assert.equal(f.state.closed, true);
     assert.ok(!f.state.cdpCalls.some(call => call.method === "Browser.close"));
   } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a recovered consent poll does not taint a later operation failure", async () => {
+  const f = await fixture(true);
+  try {
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+    let recovered!: () => void;
+    const recovery = new Promise<void>(resolve => { recovered = resolve; });
+    let polls = 0;
+    f.deps.helper!.exec = async () => {
+      if (++polls === 1) throw new Error("transient helper error");
+      recovered();
+      return { ok: true, found: false, pressed: false };
+    };
+    const failure = new Error("unrelated operation failure");
+    await assert.rejects(chrome.withConsent(async () => {
+      await recovery;
+      throw failure;
+    }), (error: Error) => {
+      assert.equal(error, failure);
+      assert.equal(error.message, "unrelated operation failure");
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+    assert.ok(polls >= 2);
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("native failures expose helper context without changing success or native outcome fields", async (t) => {
+  const realOpen = currentChrome.openCurrentChrome;
+  let borrowed!: Awaited<ReturnType<typeof realOpen>>;
+  t.mock.method(currentChrome, "openCurrentChrome", async () => borrowed);
+  const stdout = "native partial output";
+  const stderr = "outcome_unknown: verify the action before retrying";
+  const helperReason = "BaoOSHelper is older than this Bao; rebuild it";
+  for (const exitCode of [0, 9]) {
+    const f = await fixture(true);
+    const home = path.join(f.root, "library");
+    const effect = path.join(f.root, "effect");
+    const executable = path.join(f.root, "native");
+    await writeFile(executable, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const command = args[args.indexOf('--idle-timeout') + 2];
+if (command === 'tab' && args.includes('new')) {
+  fs.writeFileSync('bao.pid', ${JSON.stringify(String(process.pid))});
+} else if (command === 'open') {
+  fs.appendFileSync(${JSON.stringify(effect)}, '1');
+  setTimeout(() => {
+    process.stdout.write(${JSON.stringify(stdout)});
+    process.stderr.write(${JSON.stringify(stderr)});
+    process.exitCode = ${exitCode};
+  }, 300);
+} else {
+  console.log(JSON.stringify({ data: { tabs: [{ active: true, targetId: 'task' }] } }));
+}
+`, { mode: 0o700 });
+    borrowed = await realOpen(f.options, f.deps);
+    t.mock.method(f.socket, "send", async (method: string) => {
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/task", title: "Task" } };
+      if (method === "Target.attachToTarget") return { sessionId: "shot" };
+      if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB/kAAAAASUVORK5CYII=" };
+      return {};
+    });
+    let polls = 0;
+    f.deps.helper!.exec = async () => { polls++; throw new Error(helperReason); };
+    const proxy = new AgentBrowserProxy({ home, sourceRoot: f.root, executable });
+    try {
+      const [result] = await proxy.execute("open", [], "current");
+      const expected = { stdout, stderr: exitCode ? `${stderr}\nBaoOSHelper: ${helperReason}` : stderr, exitCode };
+      assert.deepEqual(result, expected);
+      assert.ok(polls >= 2);
+      assert.equal(await readFile(effect, "utf8"), "1");
+      await proxy.execute("close");
+      const library = new Library(home);
+      const runs = library.listRuns();
+      assert.equal(runs.length, 1);
+      assert.equal(runs[0]!.status, exitCode ? "failed" : "passed");
+      const step = library.readRun(runs[0]!.id).steps[0] as unknown as RecordedAgentBrowserCommand;
+      assert.equal(step.status, exitCode ? "failed" : "passed");
+      assert.deepEqual(step.native.results[0], expected);
+      assert.equal(step.native.isError, exitCode !== 0);
+    } finally {
+      await proxy.end();
+      borrowed.detach();
+      await rm(f.root, { recursive: true, force: true });
+    }
+  }
 });
 
 test("current proxy retries task-tab setup, handles daemon resets, and detaches on close", { timeout: 30_000 }, async (t) => {
