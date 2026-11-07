@@ -125,12 +125,21 @@ async function seedLogin(portFile: string, login: LoginState): Promise<boolean> 
     const origins = [...new Set(login.storage.map((item) => item.origin))];
     const existing = targetInfos.find((target) => target.type === "page" &&
       (!origins.length || origins.length === 1 && target.url.startsWith(`${origins[0]}/`)));
-    let pageId = existing?.targetId;
-    if (!pageId) {
-      ({ targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true, hidden: true }));
-      pageId = targetId;
+    let sessionId: string | undefined;
+    if (existing) {
+      let candidateSession: string | undefined;
+      try {
+        ({ sessionId: candidateSession } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: existing.targetId, flatten: true }));
+        const origin = origins.length ? (await cdp.send<{ frameTree: { frame: { securityOrigin: string } } }>("Page.getFrameTree", {}, candidateSession, 2000)).frameTree.frame.securityOrigin : undefined;
+        if (!origins.length || origin === origins[0]) sessionId = candidateSession;
+      } catch {} finally {
+        if (candidateSession && !sessionId) await cdp.send("Target.detachFromTarget", { sessionId: candidateSession }).catch(() => undefined);
+      }
     }
-    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: pageId, flatten: true });
+    if (!sessionId) {
+      ({ targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true, hidden: true }));
+      ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }));
+    }
     const send = (method: string, params: Record<string, unknown> = {}) => cdp.send(method, params, sessionId);
     const outcomes = await setCookiesOneAtATime({ setOne: (cookie) => cdp.send("Network.setCookie", { ...cookie }, sessionId) }, login.cookies);
     let stored = 0;
@@ -255,17 +264,22 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
     };
     await liveCookies(true);
     const mergeLogin = async (login: LoginState, preferSource = false): Promise<boolean> => {
-      if (!login.cookies.length && !login.storage.length) return false;
-      const live = await liveCookies();
-      const cookies = login.cookies.filter((cookie) => {
-        const key = cookieKey({ ...cookie, domain: cookie.hostKey });
-        const current = live.get(key);
-        return !current || (preferSource ? cookie.signature !== cookieSignature(current) : cookie.updated > observed.get(key)!.updated);
-      });
-      if (!cookies.length && !login.storage.length) return false;
-      const changed = await seedLogin(browser.portFile, { cookies, storage: login.storage });
-      await liveCookies();
-      return changed;
+      try {
+        if (!login.cookies.length && !login.storage.length) return false;
+        const live = await liveCookies();
+        const cookies = login.cookies.filter((cookie) => {
+          const key = cookieKey({ ...cookie, domain: cookie.hostKey });
+          const current = live.get(key);
+          return !current || (preferSource ? cookie.signature !== cookieSignature(current) : cookie.updated > observed.get(key)!.updated);
+        });
+        if (!cookies.length && !login.storage.length) return false;
+        const changed = await seedLogin(browser.portFile, { cookies, storage: login.storage });
+        await liveCookies();
+        return changed;
+      } catch {
+        console.error("Bao sign-in seed unavailable; continuing without import.");
+        return false;
+      }
     };
     if (login) await mergeLogin(login);
     return {

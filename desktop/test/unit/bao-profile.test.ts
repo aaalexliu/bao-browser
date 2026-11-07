@@ -8,6 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
+import * as sockets from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
@@ -105,6 +106,141 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
     await chrome?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Bao open skips error frames for storage and survives seed failures", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-error-frame-"));
+  const sourceRoot = path.join(root, "source");
+  const server = createServer((request, response) => {
+    response.setHeader("Content-Type", "text/html");
+    response.end(`<!doctype html><title>${request.url === "/login" ? "Sign in" : "Fixture"}</title><h1>Ready</h1>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const site = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const activeTarget = path.join(root, "active-target");
+  const log = path.join(root, "native.jsonl");
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const fs=require('node:fs');
+const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
+const args=process.argv.slice(2),command=args[args.indexOf('--idle-timeout')+2];
+const endpoint=new URL(args[args.indexOf('--cdp')+1]);
+(async()=>{
+ if(command==='close'){console.log('Closed');return;}
+ const targetId=fs.readFileSync(${JSON.stringify(activeTarget)},'utf8');
+ if(command==='tab'){console.log(JSON.stringify({data:{tabs:[{targetId,active:true}]}}));return;}
+ const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
+ try{
+  const {sessionId}=await cdp.send('Target.attachToTarget',{targetId,flatten:true});
+  await cdp.send('Page.enable',{},sessionId);
+  const loaded=new Set();cdp.on('Page.lifecycleEvent',sessionId,e=>{if(e.name==='load')loaded.add(e.loaderId);});
+  await cdp.send('Page.setLifecycleEventsEnabled',{enabled:true},sessionId);
+  const {loaderId}=await cdp.send('Page.navigate',{url:args.at(-1)},sessionId);
+  const deadline=Date.now()+5000;
+  while(loaderId&&!loaded.has(loaderId)){if(Date.now()>=deadline)throw new Error('fixture navigation timed out');await new Promise(r=>setTimeout(r,20));}
+  fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command})+'\\n');console.log('Opened');
+ }finally{cdp.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
+`, { mode: 0o700 });
+  const connect = sockets.connectCdp;
+  const pageIds = new Set<string>();
+  let unverifiable = false;
+  let failSeeding = false;
+  let hiddenTabs = 0;
+  let reusedStorage = 0;
+  let seedAttempts = 0;
+  const labels: unknown[][] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => { labels.push(args); });
+  t.mock.method(sockets, "connectCdp", async (...args: Parameters<typeof connect>) => {
+    const cdp = await connect(...args);
+    const send = cdp.send.bind(cdp);
+    const sessions = new Map<string, string>();
+    t.mock.method(cdp, "send", async <T>(method: string, params: Record<string, unknown> = {}, sessionId?: string, timeoutMs?: number): Promise<T> => {
+      const reused = pageIds.has(sessions.get(sessionId ?? "") ?? "");
+      if (reused && unverifiable && method === "Page.getFrameTree") throw new Error("fixture frame unavailable");
+      if (method.startsWith("DOMStorage.")) {
+        if (reused) reusedStorage++;
+        seedAttempts++;
+        if (failSeeding) throw new Error("fixture-private-storage-value");
+      }
+      if (method === "Target.createTarget" && params.hidden === true) hiddenTabs++;
+      const result = await send<T>(method, params, sessionId, timeoutMs);
+      if (method === "Target.attachToTarget") sessions.set((result as { sessionId: string }).sessionId, String(params.targetId));
+      if (method === "Target.getTargets") {
+        for (const target of (result as { targetInfos: { targetId: string; url: string }[] }).targetInfos) {
+          if (pageIds.has(target.targetId)) target.url = `${site}/error`;
+        }
+      }
+      return result;
+    });
+    return cdp;
+  });
+  const launch = launches.launchOwnedChromeEndpoint;
+  const browsers: Awaited<ReturnType<typeof launch>>[] = [];
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async (options: Parameters<typeof launch>[0]) => {
+    const browser = await launch({ ...options, headless: true });
+    browsers.push(browser);
+    const endpoint = await readDevToolsActivePort(browser.portFile);
+    const cdp = await connect(endpoint.port, endpoint.browserPath);
+    try {
+      const { targetInfos } = await cdp.send<{ targetInfos: { type: string; targetId: string }[] }>("Target.getTargets");
+      const targetId = targetInfos.find((target) => target.type === "page")!.targetId;
+      const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+      const { frameTree } = await cdp.send<{ frameTree: { frame: { securityOrigin: string } } }>("Page.getFrameTree", {}, sessionId);
+      assert.notEqual(frameTree.frame.securityOrigin, site, "the fake error target has a nonmatching committed origin");
+      pageIds.add(targetId);
+      await writeFile(activeTarget, targetId);
+    } finally { cdp.close(); }
+    return browser;
+  });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable });
+  const startup = new AgentBrowserProxy({ home: path.join(root, "startup"), sourceRoot, executable });
+  try {
+    const source = await launches.launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
+    try {
+      const page = source.pages()[0]!;
+      await page.goto(site);
+      await page.evaluate(() => localStorage.setItem("identity", "fixture-source-value"));
+    } finally { await source.close(); }
+    assert.equal((await proxy.execute("open", [site], "bao"))[0]!.stdout, "Opened\n");
+    assert.equal(reusedStorage, 0, "a URL match cannot seed storage into an opaque error frame");
+    assert.equal(hiddenTabs, 1, "the error frame uses the hidden fulfilled tab instead");
+    const endpoint = await readDevToolsActivePort(browsers[0]!.portFile);
+    const inspector = await connect(endpoint.port, endpoint.browserPath);
+    try {
+      const { sessionId } = await inspector.send<{ sessionId: string }>("Target.attachToTarget", { targetId: await readFile(activeTarget, "utf8"), flatten: true });
+      const { entries } = await inspector.send<{ entries: [string, string][] }>("DOMStorage.getDOMStorageItems", { storageId: { securityOrigin: site, isLocalStorage: true } }, sessionId);
+      assert.deepEqual(entries, [["identity", "fixture-source-value"]], "hidden-tab seeding restores storage for the requested origin");
+    } finally { inspector.close(); }
+    await proxy.execute("open", [site]);
+    assert.ok(reusedStorage > 0, "an ordinary page with the correct committed origin still gets reused");
+    assert.equal(hiddenTabs, 1);
+    const beforeReuse = reusedStorage;
+    unverifiable = true;
+    assert.equal((await proxy.execute("open", [site]))[0]!.stdout, "Opened\n");
+    assert.equal(reusedStorage, beforeReuse, "unverifiable frames never receive storage operations");
+    assert.equal(hiddenTabs, 2);
+    unverifiable = false;
+    failSeeding = true;
+    const beforeFailure = seedAttempts;
+    assert.equal((await proxy.execute("open", [site]))[0]!.stdout, "Opened\n", "a failed later seed cannot prevent native navigation");
+    assert.ok(seedAttempts > beforeFailure);
+    const wall = await proxy.execute("open", [`${site}/login`]);
+    assert.equal((JSON.parse(wall[0]!.stdout) as { outcome: string }).outcome, "halted", "a failed wall seed reaches normal owner wait");
+    await proxy.close();
+    assert.equal((await startup.execute("open", [site], "bao"))[0]!.stdout, "Opened\n", "a failed startup seed cannot prevent native navigation");
+    const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string });
+    assert.equal(commands.filter((entry) => entry.command === "open").length, 6);
+    assert.ok(labels.some(([label]) => label === "Bao sign-in seed unavailable; continuing without import."));
+    assert.doesNotMatch(JSON.stringify(labels), /fixture-private-storage-value|fixture-source-value/);
+  } finally {
+    try { await proxy.close(); await startup.close(); }
+    finally {
+      for (const browser of browsers) await browser.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
   }
 });
 
