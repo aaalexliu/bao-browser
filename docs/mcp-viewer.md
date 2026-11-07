@@ -7,11 +7,11 @@ Bao's local stdio MCP server can show run history and receipts in an MCP Apps ho
 The host must advertise `io.modelcontextprotocol/ui` with `text/html;profile=mcp-app` in its initialize capabilities. Bao then lists and serves `ui://bao/runs/v1.html` through `resources/list` and `resources/read`.
 
 - `get_run` keeps its existing text receipt and adds a compact viewer in capable hosts.
-- `list_runs` shows five recently updated runs per page, with a useful text result.
+- `list_runs` adds the viewer to the [catalog history result](bao.md#mcp) and lets the app page through history.
 - `inspect_run` reads one run's receipt and workflow steps, twenty steps per page. The host exposes this reader to the app, not the model.
 - `open_step_pictures` reads pictures only after the owner clicks **Open step pictures**. The host exposes this reader to the app, not the model.
 
-Clients that do not negotiate the UI MIME type get the five catalog tools, including `list_runs`, plus `agent_browser`. Catalog success and error replies identify the active Library and summarize inactive roots Bao does not search. These clients get plain text results without viewer metadata or resources and do not need an HTML renderer. This feature does not install or configure Claude Desktop, Codex Desktop, or ChatGPT, and it does not change tool approval settings. Support depends on the host and release; an MCP connection alone does not prove embedded UI support.
+Clients that do not negotiate the UI MIME type get the [standard MCP tools and Library identity](bao.md#mcp). These clients get plain text results without viewer metadata or resources and do not need an HTML renderer. This feature does not install or configure Claude Desktop, Codex Desktop, or ChatGPT, and it does not change tool approval settings. Support depends on the host and release; an MCP connection alone does not prove embedded UI support.
 
 The viewer checks host capabilities for further reads, theme, locale, and full-screen mode. **Inspect receipt** requests full-screen mode only when the host offers it. Otherwise the receipt expands inline. The HTML bundles its code and styles and requests no external connections or resources.
 

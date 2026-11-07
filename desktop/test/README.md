@@ -14,7 +14,7 @@ Artifacts use `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifact
 
 ## Pass-through fixtures
 
-[Native executable and tests](../../docs/agent-browser-engine.md#native-executable-and-tests) lists the focused pass-through suites, including session-end coverage. `agent-browser-owner-wait.test.ts` covers metadata-only private waiting, same-session resumption, and owner-window close. `mcp.test.ts` checks the exact six-tool surface and refuses removed tools. `retired-live-driver.test.ts` checks historical workflow display and replay refusal before Chrome starts.
+[Native executable and tests](../../docs/agent-browser-engine.md#native-executable-and-tests) lists the focused pass-through suites, including session-end coverage. `agent-browser-owner-wait.test.ts` covers metadata-only private waiting, same-session resumption, and owner-window close. `mcp.test.ts` checks the exact [standard MCP tool surface](../../docs/bao.md#mcp) and refuses removed tools. `retired-live-driver.test.ts` checks historical workflow display and replay refusal before Chrome starts.
 
 `desktop/test/unit/experian-proxy.test.ts` uses real native `agent-browser`, a synthetic source profile, test Chromium, and a loopback Experian-shaped site. It covers sign-in handoff, Imperva/hCaptcha halt, resumption after owner action, and redirects. Set `AGENT_BROWSER_PROXY_BINARY` to a staged native executable to run it. Without that explicit binary it skips locally; the required `experian` CI group stages and checksum-checks the pinned executable, so that group runs the case. The test never downloads a binary itself, touches Experian, or rebuilds final-click guards.
 

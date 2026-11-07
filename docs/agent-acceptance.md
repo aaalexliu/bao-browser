@@ -65,7 +65,7 @@ For the existing extension host's separate grant check, use [extension.md](exten
 
 ## Drive Chrome through MCP
 
-Follow [Agent quickstart](agent-quickstart.md#mcp). The advertised tools are `search_workflows`, `describe_workflow`, `run_workflow`, `get_run`, `list_runs`, and `agent_browser`. The MCP process needs no running Bao.app for those tools.
+Follow [Agent quickstart](agent-quickstart.md#mcp) using the [standard MCP tools](bao.md#mcp).
 
 Against a local fixture and synthetic source profile, call `agent_browser` with `open`, inspect the native tab list, select the task tab, and use `snapshot`, `fill`, `click`, `press`, or `scroll`. Check each response before continuing. On a sign-in or human-check `halted` response, call `wait_for_owner` in the same session. Repeat `waiting`; on `ready`, take a fresh snapshot. A `closed` result ends that session. End normal work with `close`.
 
