@@ -510,6 +510,7 @@ const AUTOMATION_SWITCHES = [
  */
 export async function launchOwnedChrome(opts: {
   userDataDir: string;
+  keychain?: "mock";
   videoDir?: string;
   headless?: boolean;
   args?: string[];
@@ -673,7 +674,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     if (!context) throw new Error("Chrome opened without a profile context");
     if (opts.deviceScaleFactor && opts.deviceScaleFactor !== 1) await applyDeviceScale(context, opts.deviceScaleFactor);
     const pid = owner.kind === "direct" ? owner.child.pid : owner.pid;
-    const verdict = assessOwnedCommand(readOwnedCommand(pid, owner.userDataDir, process.platform), owner.userDataDir);
+    const verdict = assessOwnedCommand(readOwnedCommand(pid, owner.userDataDir, process.platform), owner.userDataDir, process.env, opts.keychain);
     if (!verdict.ok) throw new Error(verdict.reason);
     if (opts.preserveRestoredTabs) {
       while (context.pages().every((page) => page.isClosed())) {
@@ -828,6 +829,7 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
 /** Playwright video only. The pipe and default switches come back with it. */
 async function launchOwnedChromeForVideo(opts: {
   userDataDir: string;
+  keychain?: "mock";
   childHome?: string;
   loadExtensions?: boolean;
   videoDir?: string;
@@ -850,10 +852,10 @@ async function launchOwnedChromeForVideo(opts: {
     chromiumSandbox: true,
     ignoreDefaultArgs: testLaneBrowser() ? AUTOMATION_SWITCHES.filter((arg) => !isKeychainFlag(arg)) : AUTOMATION_SWITCHES,
     recordVideo: opts.videoDir ? { dir: opts.videoDir, size: { width: 1280, height: 720 } } : undefined,
-    args: [...ownedLaunchArgs(opts.args, opts.appendArgs), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
+    args: [...ownedLaunchArgs(opts.args, opts.appendArgs, opts.keychain), ...(opts.loadExtensions === false ? ["--disable-extensions"] : [])],
   });
   try {
-    assertOwnedProcess(ctx, opts.userDataDir);
+    assertOwnedProcess(ctx, opts.userDataDir, opts.keychain);
     await parkOnBlank(ctx);
   } catch (err) {
     await ctx.close().catch(() => undefined);
@@ -883,11 +885,11 @@ export function assertChromeProfileAvailable(userDataDir: string): void {
 }
 
 /** The child we spawned. The binary path is not the profile. */
-export function assertOwnedProcess(ctx: BrowserContext, userDataDir: string): void {
+export function assertOwnedProcess(ctx: BrowserContext, userDataDir: string, keychain?: "mock"): void {
   void ctx;
   const pid = browserPidFromLauncher(userDataDir, process.pid, listProcesses());
   const cmd = readOwnedCommand(pid, userDataDir, process.platform);
-  const verdict = assessOwnedCommand(cmd, userDataDir);
+  const verdict = assessOwnedCommand(cmd, userDataDir, process.env, keychain);
   if (!verdict.ok) throw new Error(verdict.reason);
 }
 

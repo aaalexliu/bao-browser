@@ -1,5 +1,5 @@
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
@@ -37,8 +37,10 @@ interface ChromeCookie {
 }
 
 export function baoAgentProfileDir(home: string): string {
-  // Keep mock-keychain cookies separate from the older replay profile's OS-keychain cookies.
-  return path.join(home, "agent-browser-profile");
+  const profile = path.join(home, "agent-browser-profile");
+  const legacy = path.join(home, "chrome-profile");
+  if (!existsSync(profile) && existsSync(legacy)) renameSync(legacy, profile);
+  return profile;
 }
 
 function cookieKey(cookie: { name: string; domain: string; path: string; partitionKey?: ChromeCookie["partitionKey"] }): string {

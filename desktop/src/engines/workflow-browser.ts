@@ -15,7 +15,7 @@ interface BrowserPage {
 }
 
 export type WorkflowBrowser = BrowserPage & (
-  | { kind: "owned"; choice: "bao" | "copy" | "owned"; profile: string; persistent: boolean; importLogin?: (site: string, preferSource?: boolean) => Promise<boolean> }
+  | { kind: "owned"; choice: "bao" | "copy" | "owned"; profile: string; persistent: boolean; keepOpen?: () => Promise<void>; importLogin?: (site: string, preferSource?: boolean) => Promise<boolean> }
   | { kind: "current"; choice: "current" }
 );
 
@@ -54,9 +54,12 @@ export async function openWorkflowBrowser(options: {
       const page = context.pages()[0] || await context.newPage();
       let closing: Promise<void> | undefined;
       const close = () => closing ??= (async () => { try { await browser.close(); } finally { await chrome.close(); } })();
+      void chrome.closed.then(close).catch(() => undefined);
+      browser.on("disconnected", () => { void close().catch(() => undefined); });
       return { kind: "owned", choice: options.browser, context, page,
         profile: options.browser === "bao" ? baoAgentProfileDir(options.home) : path.dirname(chrome.target.portFile), persistent: options.browser === "bao",
-        importLogin: "importLogin" in chrome ? chrome.importLogin : undefined, close };
+        importLogin: "importLogin" in chrome ? chrome.importLogin : undefined,
+        keepOpen: async () => { if (!closing && !page.isClosed()) await chrome.keepOpen(); }, close };
     } catch (error) { await browser.close(); throw error; }
   } catch (error) { await chrome.close(); throw error; }
 }

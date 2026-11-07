@@ -14,6 +14,7 @@ import { launchOwnedChromeEndpoint } from "../../src/launch";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
+import { baoAgentProfileDir } from "../../src/engines/bao-profile";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const workflow = (startUrl: string, id = "choice"): WorkflowV2 => ({ schema: "bao.workflow/v2", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
@@ -35,6 +36,22 @@ test("agent and workflow tools offer the same named browser choices and Bao defa
       assert.ok(schema.properties.browser.description.includes(value.description));
     }
   }
+});
+
+test("Bao carries over only a lone legacy profile", async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-choice-migrate-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const legacy = path.join(home, "chrome-profile");
+  await mkdir(legacy);
+  await writeFile(path.join(legacy, "account"), "legacy sign-in");
+  const profile = baoAgentProfileDir(home);
+  assert.equal(await readFile(path.join(profile, "account"), "utf8"), "legacy sign-in");
+  await assert.rejects(readFile(path.join(legacy, "account")), { code: "ENOENT" });
+  await mkdir(legacy);
+  await writeFile(path.join(legacy, "account"), "leave untouched");
+  assert.equal(baoAgentProfileDir(home), profile);
+  assert.equal(await readFile(path.join(profile, "account"), "utf8"), "legacy sign-in");
+  assert.equal(await readFile(path.join(legacy, "account"), "utf8"), "leave untouched");
 });
 
 test("replay copies drop only saved tabs in the selected profile; agent copies keep them", async (t) => {
@@ -77,6 +94,7 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   t.after(() => { if (priorHome === undefined) delete process.env.HOME; else process.env.HOME = priorHome; });
   const fixture = createServer((req, res) => {
     res.setHeader("Content-Type", "text/html");
+    if (req.url === "/signin") res.setHeader("Set-Cookie", "session=fixture; Path=/; Max-Age=3600");
     const account = req.headers.cookie?.includes("session=fixture") ? "Signed in as fixture" : "Signed out";
     const heading = req.url?.startsWith("/fresh") ? "Fresh fixture ready" : account;
     res.end(`<title>Account fixture</title><h1>${heading}</h1><p id="visits"></p><script>const n = Number(localStorage.visits || 0) + 1; localStorage.visits = n; document.getElementById('visits').textContent = 'Visit ' + n;</script>`);
@@ -87,9 +105,6 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   assert.ok(address && typeof address !== "string");
   const site = `http://127.0.0.1:${address.port}/`;
   const home = path.join(root, "bao");
-  const seed = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
-  await seed.context.addCookies([{ name: "session", value: "fixture", url: site }]);
-  await seed.close();
   const app = await startApp({ home, port: 0, extensionHost: false, chromeProfilesRoot: sourceRoot });
   let appClosed = false;
   t.after(async () => {
@@ -97,6 +112,14 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
     await fetch(`http://127.0.0.1:${app.port}/api/replay/cancel`, { method: "POST", signal: AbortSignal.timeout(2000) }).catch(() => undefined);
     await app.close();
   });
+  const post = async (route: string, body: unknown, method = "POST") => {
+    const response = await fetch(`http://127.0.0.1:${app.port}${route}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+    assert.equal(response.status, 200);
+    return response.json() as Promise<{ status?: string; opened?: boolean; site?: { signedIn: boolean } }>;
+  };
+  assert.equal((await post("/api/login-import/sign-in", { site, consent: true, probeUrl: `${site}signin`, signedInText: "Signed in as fixture" })).opened, true);
+  await post("/api/login-sites", { origin: site, probeUrl: site, signedInText: "Signed in as fixture" }, "PUT");
+  assert.equal((await post("/api/login-sites/recheck", { origin: site })).site?.signedIn, true);
   app.library.save(workflow(site));
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   t.after(() => browser.close());
@@ -129,14 +152,32 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
     assert.match(await mac.innerText(), /Bao profiles and Chrome copies do not need it/);
     assert.match(await mac.innerText(), /No Chrome option needs Automation or Screen Recording/);
   }
-  const fresh = workflow(`${site}fresh`, "fresh-copy");
-  fresh.steps[0]!.postcondition = { kind: "text", match: "Visit 1", timeoutMs: 1000 };
-  app.library.save(fresh);
+  const agent = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
+  try {
+    await navigateWorkflowBrowser(agent, site);
+    assert.equal(await agent.page.locator("h1").innerText(), "Signed in as fixture", "an agent can reclaim the completed app run without quitting the app");
+  } finally { await agent.close(); }
+  for (const id of ["before-window-close", "after-window-close"]) {
+    app.library.save(workflow(site, id));
+    assert.equal((await post("/api/replay", { id, browser: "bao", args: {} })).status, "passed");
+    const endpoint = await readDevToolsActivePort(path.join(baoAgentProfileDir(home), "DevToolsActivePort"));
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    try { await cdp.send("Browser.close").catch(() => undefined); } finally { cdp.close(); }
+  }
   for (let run = 0; run < 2; run++) {
+    const fresh = workflow(`${site}fresh`, `fresh-copy-${run}`);
+    fresh.steps[0]!.postcondition = { kind: "text", match: "Visit 1", timeoutMs: 1000 };
+    app.library.save(fresh);
     const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: fresh.id, browser: "copy", args: {} }), signal: AbortSignal.timeout(20_000) });
     const result = await response.json() as { status: string };
     assert.equal(result.status, "passed", "each copy run starts from source state, not the last replay's localStorage");
   }
+  const signedOut = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
+  await signedOut.context.clearCookies();
+  await signedOut.close();
+  assert.equal((await post("/api/replay", { id: "choice", browser: "bao", args: {} })).status, "needs-sign-in", "Bao app runs still honor the saved-login gate");
+  await post("/api/login-import/sign-in", { site, consent: true, probeUrl: `${site}signin` });
+  await post("/api/login-sites/recheck", { origin: site });
   await app.close();
   appClosed = true;
   const reopened = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });

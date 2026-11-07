@@ -9,6 +9,7 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
 import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
+import { baoAgentProfileDir } from "../engines/bao-profile";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -508,8 +509,6 @@ async function replayInBrowser(
   control?: RunControl,
   choice?: BrowserChoice,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
-  const profile = path.join(library.root, "chrome-profile");
-  mkdirSync(profile, { recursive: true });
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const windowVideo = process.platform === "darwin" && process.env.BAO_HEADED === "1";
@@ -520,7 +519,8 @@ async function replayInBrowser(
   if (choice) {
     browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile });
   } else {
-    const context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless(), videoDir });
+    const profile = baoAgentProfileDir(library.root);
+    const context = await launchOwnedChrome({ userDataDir: profile, keychain: "mock", headless: productHeadless(), videoDir });
     const page = context.pages()[0] || await context.newPage();
     browser = { kind: "owned", choice: "owned", context, page, profile, persistent: true, close: () => context.close() };
   }
