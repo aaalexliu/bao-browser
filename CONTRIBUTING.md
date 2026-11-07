@@ -26,6 +26,18 @@ For a packaging change, build desktop and extension, then build Bao.app using
 change permissions to make a test pass. Verify the extension inside the built
 app, not just the checkout bundle.
 
+## No-mistakes dependency setup
+
+On this Mac, Review and its fix rounds get dependencies from a home-local Bao
+gate post-checkout hook. No-mistakes prepares only before Test, Lint, and Format,
+not before Review. A new gate, a re-init, or another machine needs that hook
+reinstalled. Keep the hook script outside the Bao repository. The upstream fix
+is a no-mistakes feature to run preparation before Review.
+
+The repository prepare config takes effect only from the trusted default branch,
+so it cannot prove its own setup before merge. Firstmate will verify preparation
+on the first post-merge run.
+
 ## PR checks
 
 Every PR gets the essential tests and static gates. Decide whether the
