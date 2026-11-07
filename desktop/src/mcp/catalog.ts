@@ -7,11 +7,13 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import type { BrowserChoice } from "../browser-choice";
+import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { hasPrivatePictureInput, scrubSaved } from "../../../shared/outbound-secrets";
-import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
+import { launchOwnedChrome, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
@@ -229,7 +231,7 @@ export interface RunControl {
 
 export async function runWorkflow(
   library: Library,
-  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2 },
+  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2; browser?: BrowserChoice },
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
@@ -280,7 +282,7 @@ export async function runWorkflow(
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs));
   const secrets = secretStrings(workflow, inputs);
   try {
-    const played = await replayInBrowser(library, workflow, inputs, secrets, control);
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control, request.browser);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
@@ -471,9 +473,8 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
 
 interface LiveRun {
   token: string;
-  context: BrowserContext;
+  browser: WorkflowBrowser;
   page: Page;
-  profile: string;
   video: { path(): Promise<string> } | null;
   runId: string;
   shotDir: string;
@@ -505,6 +506,7 @@ async function replayInBrowser(
   args: ReplayArgs,
   secrets: string[],
   control?: RunControl,
+  choice?: BrowserChoice,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
   const profile = path.join(library.root, "chrome-profile");
   mkdirSync(profile, { recursive: true });
@@ -514,17 +516,20 @@ async function replayInBrowser(
   const record = !windowVideo && process.env.BAO_RUN_VIDEO === "1";
   const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
   if (videoDir) mkdirSync(videoDir, { recursive: true });
-  const context = await launchOwnedChrome({
-    userDataDir: profile,
-    headless: productHeadless(),
-    videoDir,
-  });
+  let browser: WorkflowBrowser;
+  if (choice) {
+    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile });
+  } else {
+    const context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless(), videoDir });
+    const page = context.pages()[0] || await context.newPage();
+    browser = { kind: "owned", choice: "owned", context, page, profile, persistent: true, close: () => context.close() };
+  }
+  const { context, page } = browser;
   control?.onContext?.(context);
-  const page = context.pages()[0] || await context.newPage();
   const video = record ? page.video() : null;
   const videoStartedAt = Date.now();
-  const owned = windowVideo
-    ? await openReplayVideo(pidsForDataDir(profile), path.join(library.root, "videos", `${runId}.webm`))
+  const owned = windowVideo && browser.kind === "owned"
+    ? await openReplayVideo(pidsForDataDir(browser.profile), path.join(library.root, "videos", `${runId}.webm`))
     : undefined;
   let clip: { video: string; videoStartedAt: number } | undefined;
   let videoDone = false;
@@ -539,7 +544,7 @@ async function replayInBrowser(
     page.setDefaultNavigationTimeout(20000);
     page.setDefaultTimeout(15000);
     if (workflow.startUrl.startsWith("http")) {
-      await navigateOwned(page, workflow.startUrl, { waitUntil: "domcontentloaded" });
+      await navigateWorkflowBrowser(browser, workflow.startUrl);
     }
     const trail: RunTrailEvent[] = [];
     const driver = new BrowserDriver(page, undefined, control?.prompts);
@@ -557,9 +562,8 @@ async function replayInBrowser(
       hold = true;
       const live: LiveRun = {
         token: outcome.resume,
-        context,
+        browser,
         page,
-        profile,
         video,
         runId,
         shotDir,
@@ -584,7 +588,7 @@ async function replayInBrowser(
     return { run, outcome, held: false, clip };
   } finally {
     await finishVideo();
-    if (!hold) await releaseBrowser(library, { context, video, profile, runId });
+    if (!hold) await releaseBrowser(library, { browser, video, runId });
   }
 }
 
@@ -697,9 +701,9 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
 
 async function releaseBrowser(
   library: Library,
-  open: { context: BrowserContext; video: { path(): Promise<string> } | null; profile: string; runId: string },
+  open: { browser: WorkflowBrowser; video: { path(): Promise<string> } | null; runId: string },
 ): Promise<void> {
-  await open.context.close().catch(() => undefined);
+  await open.browser.close().catch(() => undefined);
   if (open.video) {
     const src = await open.video.path().catch(() => "");
     if (src && existsSync(src)) {
@@ -708,8 +712,7 @@ async function releaseBrowser(
       copyFileSync(src, dest);
     }
   }
-  const persistent = path.resolve(open.profile) === path.resolve(path.join(library.root, "chrome-profile"));
-  if (!persistent) await rm(open.profile, { recursive: true, force: true }).catch(() => undefined);
+  if (open.browser.kind === "owned" && !open.browser.persistent) await rm(open.browser.profile, { recursive: true, force: true }).catch(() => undefined);
 }
 
 function rememberRun(

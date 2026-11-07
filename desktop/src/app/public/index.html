@@ -6,6 +6,12 @@
   <title>Bao</title>
   <style>
     [hidden] { display: none !important; }
+    .browser-choice { margin: 16px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); }
+    .browser-choice legend { padding: 0 4px; font-weight: 600; }
+    .browser-choice .browser-option { display: flex; gap: 10px; align-items: start; padding: 10px 0; cursor: pointer; }
+    .browser-option input[type=radio] { width: 18px; height: 18px; flex: 0 0 auto; margin: 2px 0 0; }
+    .browser-option strong, .browser-option .quiet { display: block; }
+    .browser-option .quiet { margin-top: 4px; line-height: 1.5; }
     :root {
       color-scheme: light;
       --bg: #f5f5f7;

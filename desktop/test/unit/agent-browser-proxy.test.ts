@@ -89,7 +89,7 @@ else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\
 for (const ending of ["no-active", "missing-target", "disconnect", "abort-send", "dead-socket", "delayed-shutdown", "explicit-close"]) test(`owner wait handles ${ending} without leaving an active prompt`, { timeout: 4000 }, async (t) => {
   const f = await fixture(t);
   try {
-    await f.proxy.execute("open", ["http://127.0.0.1/"]);
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     if (ending === "no-active") await writeFile(path.join(f.root, "no-active"), "");
     else {
       t.mock.method(sockets, "connectCdp", async () => {
@@ -146,7 +146,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
 for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps its handoff through a live ${failure} error until the deadline`, { timeout: 4000 }, async (t) => {
   const f = await fixture(t);
   try {
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     t.mock.method(sockets, "connectCdp", async () => {
       if (failure === "connect") throw new Error("temporary connection failure");
       const cdp = new sockets.CdpSocket(new Socket());
@@ -184,7 +184,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
 for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes in the same run after a temporary ${failure} error`, { timeout: 4000 }, async (t) => {
   const f = await fixture(t);
   try {
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     let polls = 0;
     let failed = false;
     t.mock.method(sockets, "connectCdp", async () => {
@@ -223,7 +223,7 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
   const f = await fixture(t);
   try {
     const source = await readFile(path.join(f.sourceRoot, "Profile 2", "Preferences"), "utf8");
-    assert.deepEqual(await f.proxy.execute("open", ["http://127.0.0.1/"]), [
+    assert.deepEqual(await f.proxy.execute("open", ["http://127.0.0.1/"], "copy"), [
       { stdout: "open unchanged\n", stderr: "", exitCode: 0 },
       { stdout: "t1 Synthetic - http://127.0.0.1/\n", stderr: "", exitCode: 0 },
     ]);
@@ -251,7 +251,7 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     await assert.rejects(access(copy), /ENOENT/);
     await assert.rejects(access(records[0]!.env.AGENT_BROWSER_SOCKET_DIR!), /ENOENT/);
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     assert.notEqual(f.copy(), copy);
   } finally { await f.close(); }
 });
@@ -269,7 +269,7 @@ test("session end during startup waits for ownership and removes the new window 
     return openChrome(options);
   });
   try {
-    const opening = f.proxy.execute("open");
+    const opening = f.proxy.execute("open", [], "copy");
     const rejected = assert.rejects(opening, /client disconnected/);
     await entered;
     const ending = f.proxy.end();
@@ -296,7 +296,7 @@ test("queued close during startup overrides an end already keeping the window", 
   });
   let releaseClose = () => {};
   try {
-    const rejected = assert.rejects(f.proxy.execute("open"), /client disconnected/);
+    const rejected = assert.rejects(f.proxy.execute("open", [], "copy"), /client disconnected/);
     await entered;
     const ending = f.proxy.end();
     releaseClose = f.proxy.queueClose();
@@ -327,7 +327,7 @@ for (const timing of ["stop", "release", "retained"] as const) {
     });
     let releaseClose = () => {};
     try {
-      await f.proxy.execute("open");
+      await f.proxy.execute("open", [], "copy");
       const copy = f.copy();
       const ending = f.proxy.end();
       if (timing === "stop") {
@@ -349,7 +349,7 @@ for (const timing of ["stop", "release", "retained"] as const) {
 test("proxy reports native errors unchanged and leaves the session usable", async (t) => {
   const f = await fixture(t);
   try {
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     assert.deepEqual(await f.proxy.execute("click", ["fail"]), [{ stdout: "native failure output\n", stderr: "native error\n", exitCode: 1 }]);
     assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.exitCode, 0);
     assert.equal((await f.calls()).filter((call) => call.args.at(-2) === "click").length, 1);
@@ -360,7 +360,7 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
   test(`proxy closes its Chrome and removes the copy after ${mode} during close`, async (t) => {
     const f = await fixture(t);
     try {
-      await f.proxy.execute("open");
+      await f.proxy.execute("open", [], "copy");
       const copy = f.copy();
       const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
       if (mode === "missing-native") {
@@ -390,7 +390,7 @@ for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle
   });
   try {
     if (ending === "idle") t.mock.timers.enable({ apis: ["setTimeout"] });
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
     if (ending === "close") await assert.rejects(f.proxy.close(), failure);
     else if (ending === "finish_task") await assert.rejects(f.proxy.finishTask({ outcome: "passed", reason: "task complete" }), failure);
@@ -406,7 +406,7 @@ for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle
     await access(f.copy());
     await access(stateDir);
     const calls = await f.calls();
-    await assert.rejects(f.proxy.execute("open"), failure);
+    await assert.rejects(f.proxy.execute("open", [], "copy"), failure);
     assert.deepEqual(await f.calls(), calls);
   } finally {
     await cleanup?.();
@@ -434,8 +434,8 @@ for (const command of ["open", "click", "close"]) {
   test(`disconnect aborts a hung ${command} and removes only its session`, async (t) => {
     const f = await fixture(t);
     try {
-      if (command !== "open") await f.proxy.execute("open");
-      const outcome = f.proxy.execute(command, ["hang"]).then(() => undefined, (error: unknown) => error);
+      if (command !== "open") await f.proxy.execute("open", [], "copy");
+      const outcome = f.proxy.execute(command, ["hang"], command === "open" ? "copy" : undefined).then(() => undefined, (error: unknown) => error);
       await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
       const copy = f.copy();
       const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
@@ -448,7 +448,7 @@ for (const command of ["open", "click", "close"]) {
       await assert.rejects(access(copy), /ENOENT/);
       await assert.rejects(access(stateDir), /ENOENT/);
       assert.equal(f.closeCount(), 1);
-      await assert.rejects(f.proxy.execute("open"), /disconnected/);
+      await assert.rejects(f.proxy.execute("open", [], "copy"), /disconnected/);
       assert.equal(await readFile(path.join(f.sourceRoot, "Profile 2", "Preferences"), "utf8"), "{}");
     } finally { await f.close(); }
   });
@@ -457,7 +457,7 @@ for (const command of ["open", "click", "close"]) {
 test("Chrome closing during native close preserves its result and cleans up once", async (t) => {
   const f = await fixture(t);
   try {
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     const copy = f.copy();
     const outcome = f.proxy.execute("close", ["wait"]);
     await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
@@ -466,7 +466,7 @@ test("Chrome closing during native close preserves its result and cleans up once
     assert.deepEqual(await outcome, [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
     assert.equal(f.closeCount(), 1);
     await assert.rejects(access(copy), /ENOENT/);
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     assert.notEqual(f.copy(), copy);
   } finally { await f.close(); }
 });
@@ -475,7 +475,7 @@ for (const duringCommand of [false, true]) {
   test(`closed window releases the copy and allows reopen${duringCommand ? " during a command" : ""}`, async (t) => {
     const f = await fixture(t);
     try {
-      await f.proxy.execute("open");
+      await f.proxy.execute("open", [], "copy");
       const copy = f.copy();
       const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
       const outcome = duringCommand ? f.proxy.execute("click", ["hang"]).catch((error: unknown) => error) : undefined;
@@ -485,7 +485,7 @@ for (const duringCommand of [false, true]) {
       if (outcome) assert.equal((await outcome as Error).name, "AbortError");
       await assert.rejects(access(copy), /ENOENT/);
       assert.equal(f.closeCount(), 1);
-      await f.proxy.execute("open");
+      await f.proxy.execute("open", [], "copy");
       assert.notEqual(f.copy(), copy);
       assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, "snapshot unchanged\n");
       await f.proxy.close();
@@ -511,7 +511,7 @@ test("startup persists a pending open before copying and keeps its failure in on
     throw failure;
   });
   try {
-    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"]), (error) => error === failure);
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy"), (error) => error === failure);
     const runs = library.listRuns();
     assert.equal(runs.length, 1);
     const saved = library.readRun(runs[0]!.id);
@@ -532,7 +532,7 @@ test("startup persists a pending open before copying and keeps its failure in on
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
     assert.equal(library.listRuns().length, 1, "rejected commands do not create runs");
     t.mock.method(profiles, "openCopiedChromeForProxy", openChrome);
-    assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");
+    assert.equal((await f.proxy.execute("open", [], "copy"))[0]!.stdout, "open unchanged\n");
     await f.proxy.close();
     assert.equal(library.listRuns().length, 2, "a fresh attempt has its own run");
     assert.deepEqual(library.readRun(saved.id), saved, "retry does not overwrite startup failure");
@@ -543,7 +543,7 @@ test("a missing native executable is recorded before Chrome startup", async (t) 
   const f = await fixture(t);
   try {
     await rm(path.join(f.root, "native"));
-    await assert.rejects(f.proxy.execute("open"), /pinned native agent-browser is missing/);
+    await assert.rejects(f.proxy.execute("open", [], "copy"), /pinned native agent-browser is missing/);
     const [run] = new Library(path.join(f.root, "home")).listRuns();
     assert.equal(run!.status, "failed");
     const [step] = run!.steps as RecordedAgentBrowserCommand[];
@@ -561,7 +561,7 @@ test("recording write failures preserve the original startup error", async (t) =
   const warnings: string[] = [];
   t.mock.method(process.stderr, "write", (text: string) => { warnings.push(text); return true; });
   try {
-    await assert.rejects(f.proxy.execute("open"), (error) => error === failure);
+    await assert.rejects(f.proxy.execute("open", [], "copy"), (error) => error === failure);
     assert.ok(warnings.some((text) => text.includes("run write")));
     assert.equal(f.copy(), "");
   } finally { await f.close(); }
@@ -571,7 +571,7 @@ test("proxy saves raw commands, native errors, timing, screenshots, partial runs
   const f = await fixture(t);
   try {
     const library = new Library(path.join(f.root, "home"));
-    const opened = await f.proxy.execute("open", ["http://127.0.0.1/"]);
+    const opened = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     const partial = library.listRuns()[0]!;
     assert.equal(partial.status, "recording");
     assert.equal(partial.kind, "capture");
@@ -594,7 +594,7 @@ test("proxy saves raw commands, native errors, timing, screenshots, partial runs
       else assert.deepEqual(await readFile(path.join(library.root, "shots", "runs", saved.id, step.afterShot!)), png);
     }
     assert.equal(library.list().workflows.length, 0, "recording does not create a workflow");
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     f.proxy.disconnect();
     await f.proxy.close();
     assert.equal(library.listRuns().length, 2);
@@ -616,7 +616,7 @@ test("recording write and screenshot failures do not change native command resul
     return cdp;
   });
   try {
-    assert.deepEqual(await f.proxy.execute("open"), [
+    assert.deepEqual(await f.proxy.execute("open", [], "copy"), [
       { stdout: "open unchanged\n", stderr: "", exitCode: 0 },
       { stdout: "t1 Synthetic - http://127.0.0.1/\n", stderr: "", exitCode: 0 },
     ]);
@@ -631,7 +631,7 @@ test("recording write and screenshot failures do not change native command resul
 test("missing privacy metadata refuses page input before recording its arguments", async (t) => {
   const f = await fixture(t);
   try {
-    await f.proxy.execute("open");
+    await f.proxy.execute("open", [], "copy");
     t.mock.method(sockets, "connectCdp", async () => { throw new Error("privacy metadata unavailable"); });
     await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"]), /privacy metadata unavailable/);
     const calls = await f.calls();
@@ -652,7 +652,7 @@ test("a stalled recording CDP connection times out without failing the forwarded
     return cdp;
   });
   try {
-    assert.equal((await f.proxy.execute("open"))[0]!.stdout, "open unchanged\n");
+    assert.equal((await f.proxy.execute("open", [], "copy"))[0]!.stdout, "open unchanged\n");
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.equal((run.steps as RecordedAgentBrowserCommand[])[0]!.afterShotError, "Page screenshot unavailable.");
     assert.equal((await f.proxy.execute("close"))[0]!.stdout, "close unchanged\n");

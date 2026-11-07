@@ -6,6 +6,7 @@ import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { OpenedView } from "./deeplink";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { settingsIndex, settingsScreen } from "./settings-view";
+import { BROWSER_CHOICES, BROWSER_OPTIONS, DEFAULT_BROWSER, browserChoice, type BrowserChoice } from "../browser-choice";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -105,6 +106,7 @@ let settingsSection = "runs";
 let settingsFeedback = "";
 let screen: Screen = screenFromQuery(location.search) || "runs";
 let lastWf = "";
+let runBrowser: BrowserChoice = DEFAULT_BROWSER;
 let deeplinkInputs: Record<string, string> = {};
 let deeplinkPending = false;
 let argsWorkflow = "";
@@ -562,6 +564,9 @@ function replayForm(): string {
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
     ${runDriverField(current?.driver)}
+    ${current?.driver === "extension" ? "" : `<fieldset class="browser-choice"><legend>Browser for this run</legend>
+      ${BROWSER_CHOICES.map((choice) => `<label class="browser-option"><input type="radio" name="run-browser" value="${choice}"${runBrowser === choice ? " checked" : ""} aria-labelledby="browser-${choice}-label" aria-describedby="browser-${choice}-help"><span><strong id="browser-${choice}-label">${BROWSER_OPTIONS[choice].label}${choice === DEFAULT_BROWSER ? " (default)" : ""}</strong><span class="quiet" id="browser-${choice}-help">${BROWSER_OPTIONS[choice].description}</span></span></label>`).join("")}
+    </fieldset>`}
     ${runHealField(current?.driver, mode, globalHeal)}
     <form id="args"></form>
     <p class="mono" data-testid="deeplink">bao://workflow/${esc(selected)}</p>
@@ -620,7 +625,7 @@ function settings(): string {
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Chrome agents need no Accessibility, Automation, or Screen Recording permission.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
+    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles and Chrome copies need no Accessibility, Automation, or Screen Recording permission. Running Chrome needs the helper's Accessibility permission, not Automation or Screen Recording.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
 }
 
 function importSheet(): string {
@@ -978,6 +983,9 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  document.querySelectorAll<HTMLInputElement>('input[name="run-browser"]').forEach((input) => {
+    input.onchange = () => { if (input.checked) runBrowser = browserChoice(input.value); };
+  });
   const run = document.getElementById("run");
   if (run) run.onclick = () => void runReplay();
   const rerun = document.getElementById("rerun");
@@ -1956,7 +1964,7 @@ async function runReplay(): Promise<void> {
   const res = await statePoller.track(fetch("/api/replay", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id, args, fromStep: fromStep || undefined }),
+    body: JSON.stringify({ id, args, fromStep: fromStep || undefined, browser: document.querySelector('input[name="run-browser"]') ? runBrowser : undefined }),
   }));
   const run = await res.json() as RunSummary & { runId?: string; error?: string; message?: string; signInUrl?: string };
   if (run.status === "needs-sign-in") {

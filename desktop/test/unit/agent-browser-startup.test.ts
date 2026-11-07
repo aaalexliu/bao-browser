@@ -58,7 +58,7 @@ if (command === 'tab') {
   const proxy = new AgentBrowserProxy({ sourceRoot, home: path.join(root, "home"),
     executable: process.env.AGENT_BROWSER_PROXY_BINARY || executable });
   try {
-    const result = await proxy.execute("open", [`${base}/ready`]);
+    const result = await proxy.execute("open", [`${base}/ready`], "copy");
     assert.equal(result[0]!.exitCode, 0, result[0]!.stderr);
     assert.equal(result[1]!.exitCode, 0, result[1]!.stderr);
     assert.ok(result[1]!.stdout.includes(`${base}/blocked`), "open returns the unrelated restored tab too");

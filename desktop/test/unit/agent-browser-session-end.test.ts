@@ -121,7 +121,7 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
   });
   return {
     request, send, pid: child.pid, diagnostics: () => stderr,
-    call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } }),
+    call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}) } }),
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
     async interruptGroup(signal: "SIGINT" | "SIGTERM" | "SIGHUP", repeat: boolean) {

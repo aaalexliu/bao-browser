@@ -1,0 +1,173 @@
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import test from "node:test";
+import { BROWSER_CHOICES, BROWSER_OPTIONS, DEFAULT_BROWSER, browserChoice } from "../../src/browser-choice";
+import { startApp } from "../../src/app/server";
+import { TOOLS } from "../../src/mcp/server";
+import { openWorkflowBrowser, navigateWorkflowBrowser } from "../../src/engines/workflow-browser";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
+import * as profiles from "../../src/engines/chrome-profile-copy";
+import { launchOwnedChromeEndpoint } from "../../src/launch";
+import { connectCdp } from "../../src/cdp-live/socket";
+import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { testChromium } from "../../src/test-browser";
+import type { WorkflowV2 } from "../../src/v1/schema";
+
+const workflow = (startUrl: string, id = "choice"): WorkflowV2 => ({ schema: "bao.workflow/v2", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
+  steps: [{ id: "account", index: 0, action: "verify", label: "Check the signed-in account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in as fixture", timeoutMs: 1000 } }],
+});
+
+test("agent and workflow tools offer the same named browser choices and Bao default", () => {
+  assert.equal(browserChoice(undefined), "bao");
+  assert.equal(DEFAULT_BROWSER, "bao");
+  for (const choice of BROWSER_CHOICES) assert.equal(browserChoice(choice), choice);
+  assert.throws(() => browserChoice("other"), /browser=bao.*browser=copy.*browser=current/);
+  for (const name of ["agent_browser", "run_workflow"]) {
+    const tool = TOOLS.find((entry) => entry.name === name)!;
+    const schema = tool.inputSchema as { properties: { browser: { enum: readonly string[]; default: string; description: string } } };
+    assert.deepEqual(schema.properties.browser.enum, BROWSER_CHOICES);
+    assert.equal(schema.properties.browser.default, "bao");
+    for (const value of Object.values(BROWSER_OPTIONS)) {
+      assert.ok(tool.description.includes(value.description));
+      assert.ok(schema.properties.browser.description.includes(value.description));
+    }
+  }
+});
+
+test("replay copies drop only saved tabs in the selected profile; agent copies keep them", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-choice-copy-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const directory of ["Default", "Profile 1"]) {
+    const sourceRoot = path.join(root, directory);
+    const profile = path.join(sourceRoot, directory);
+    const home = path.join(root, `home-${directory}`);
+    await mkdir(path.join(profile, "Sessions"), { recursive: true });
+    await mkdir(path.join(profile, "Local Storage"), { recursive: true });
+    await mkdir(path.join(profile, "Session Storage"), { recursive: true });
+    await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { [directory]: { name: "Fixture" } } } }));
+    await writeFile(path.join(profile, "Preferences"), JSON.stringify({ session: { restore_on_startup: 5 } }));
+    const saved = ["Sessions/Session_1", "Current Session", "Current Tabs", "Last Session", "Last Tabs"];
+    const kept = ["Cookies", "Local Storage/account", "Session Storage/token"];
+    for (const file of [...saved, ...kept]) await writeFile(path.join(profile, file), file);
+    const agent = await profiles.copyChromeProfile({ sourceRoot, directory, home });
+    try {
+      for (const file of [...saved, ...kept]) assert.equal(await readFile(path.join(agent.userDataDir, directory, file), "utf8"), file);
+    } finally { await agent.close(); }
+    const replay = await profiles.copyChromeProfile({ sourceRoot, directory, home, restoreTabs: false });
+    try {
+      for (const file of saved) await assert.rejects(readFile(path.join(replay.userDataDir, directory, file)), { code: "ENOENT" });
+      for (const file of kept) assert.equal(await readFile(path.join(replay.userDataDir, directory, file), "utf8"), file);
+      const prefs = JSON.parse(await readFile(path.join(replay.userDataDir, directory, "Preferences"), "utf8")) as { session: { restore_on_startup: number } };
+      assert.equal(prefs.session.restore_on_startup, 1, "the startup preference still keeps session cookies");
+      for (const file of saved) assert.equal(await readFile(path.join(profile, file), "utf8"), file, "the owner's source stays unchanged");
+    } finally { await replay.close(); }
+  }
+});
+
+test("the running app marks Bao default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: 90_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-choice-ui-"));
+  const sourceRoot = path.join(root, "source");
+  await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
+  await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
+  const priorHome = process.env.HOME;
+  process.env.HOME = root;
+  t.after(() => { if (priorHome === undefined) delete process.env.HOME; else process.env.HOME = priorHome; });
+  const fixture = createServer((req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    const account = req.headers.cookie?.includes("session=fixture") ? "Signed in as fixture" : "Signed out";
+    const heading = req.url?.startsWith("/fresh") ? "Fresh fixture ready" : account;
+    res.end(`<title>Account fixture</title><h1>${heading}</h1><p id="visits"></p><script>const n = Number(localStorage.visits || 0) + 1; localStorage.visits = n; document.getElementById('visits').textContent = 'Visit ' + n;</script>`);
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => fixture.close(() => resolve())));
+  const address = fixture.address();
+  assert.ok(address && typeof address !== "string");
+  const site = `http://127.0.0.1:${address.port}/`;
+  const home = path.join(root, "bao");
+  const seed = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
+  await seed.context.addCookies([{ name: "session", value: "fixture", url: site }]);
+  await seed.close();
+  const app = await startApp({ home, port: 0, extensionHost: false, chromeProfilesRoot: sourceRoot });
+  let appClosed = false;
+  t.after(async () => {
+    if (appClosed) return;
+    await fetch(`http://127.0.0.1:${app.port}/api/replay/cancel`, { method: "POST", signal: AbortSignal.timeout(2000) }).catch(() => undefined);
+    await app.close();
+  });
+  app.library.save(workflow(site));
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  await page.goto(`http://127.0.0.1:${app.port}`);
+  await page.locator('#rail [data-place="workflows"]').click();
+  await page.getByRole("button", { name: "Read account", exact: true }).click();
+  await page.getByRole("button", { name: "Run…", exact: true }).click();
+  const choices = page.getByRole("group", { name: "Browser for this run" });
+  assert.equal(await choices.getByRole("radio").count(), 3);
+  assert.equal(await choices.getByRole("radio", { name: "Bao profile (default)" }).isChecked(), true);
+  await choices.getByRole("radio", { name: "Fresh Chrome copy" }).check();
+  await page.waitForTimeout(1100);
+  assert.equal(await choices.getByRole("radio", { name: "Fresh Chrome copy" }).isChecked(), true);
+  await choices.getByRole("radio", { name: "Bao profile (default)" }).check();
+  const request = page.waitForRequest((request) => request.url().endsWith("/api/replay") && request.method() === "POST");
+  const response = page.waitForResponse((response) => response.url().endsWith("/api/replay") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  assert.equal(((await request).postDataJSON() as { browser: string }).browser, "bao");
+  assert.equal((await (await response).json() as { status: string }).status, "passed");
+  const replay = await openWorkflowBrowser({ browser: "copy", home: path.join(root, "copy-home"), site, sourceRoot });
+  try {
+    await navigateWorkflowBrowser(replay, site);
+    assert.equal(await replay.page.locator("h1").innerText(), "Signed out", "a fresh source copy must not inherit the Bao-only login");
+  } finally { await replay.close(); }
+  await page.locator('#rail [data-place="settings"]').click();
+  const mac = page.locator("#set-perm + .settings-group");
+  if (process.platform === "darwin") {
+    assert.match(await mac.innerText(), /Running Chrome.*Accessibility/);
+    assert.match(await mac.innerText(), /Bao profiles and Chrome copies do not need it/);
+    assert.match(await mac.innerText(), /No Chrome option needs Automation or Screen Recording/);
+  }
+  const fresh = workflow(`${site}fresh`, "fresh-copy");
+  fresh.steps[0]!.postcondition = { kind: "text", match: "Visit 1", timeoutMs: 1000 };
+  app.library.save(fresh);
+  for (let run = 0; run < 2; run++) {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: fresh.id, browser: "copy", args: {} }), signal: AbortSignal.timeout(20_000) });
+    const result = await response.json() as { status: string };
+    assert.equal(result.status, "passed", "each copy run starts from source state, not the last replay's localStorage");
+  }
+  await app.close();
+  appClosed = true;
+  const reopened = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
+  try {
+    await navigateWorkflowBrowser(reopened, site);
+    assert.equal(await reopened.page.locator("h1").innerText(), "Signed in as fixture", "app replay and a later session use the same lasting sign-in");
+  } finally { await reopened.close(); }
+  await browser.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test("current workflow replay disconnects without closing the attached Chrome or its tabs", { timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-choice-current-"));
+  const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true });
+  t.after(async () => { await owner.close(); await rm(root, { recursive: true, force: true }); });
+  const endpoint = await readDevToolsActivePort(owner.portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.after(() => cdp.close());
+  const original = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
+  let detached = 0;
+  t.mock.method(profiles, "chromeProfilesRoot", () => root);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 1, endpoint, cdp,
+    closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
+    detach: () => { detached++; }, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
+  }));
+  const session = await openWorkflowBrowser({ browser: "current", home: root, site: "about:blank", sourceRoot: root });
+  assert.equal(session.kind, "current");
+  assert.equal("profile" in session, false, "attached sessions never expose an owned profile to cleanup");
+  await session.close();
+  const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets");
+  assert.ok(targetInfos.some((target) => target.targetId === original.targetId), "the pre-existing tab stays open");
+  assert.ok(targetInfos.length >= 2, "the task tab also stays open");
+  assert.equal(detached, 1);
+});

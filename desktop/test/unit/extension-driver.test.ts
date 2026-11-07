@@ -216,7 +216,7 @@ test("an all-sites grant skips prompts and revoke returns to per-site needs_huma
 test("the run form shows Playwright unless the workflow asks for the extension", () => {
   const playwright = runDriverField(undefined);
   assert.match(playwright, /data-testid="run-driver"/);
-  assert.match(playwright, /Playwright — Bao's Chrome/);
+  assert.match(playwright, /Playwright - selected Chrome/);
   assert.match(playwright, /value="playwright"[^>]*selected/);
   const extension = runDriverField("extension");
   assert.match(extension, /value="extension"[^>]*selected/);
