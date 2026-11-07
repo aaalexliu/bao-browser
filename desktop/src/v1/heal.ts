@@ -159,59 +159,52 @@ export function llmHealFromEnv(
     async propose(failure, step, context) {
       if (!openai && !anthropic) return null;
       const prompt = buildPrompt(failure, step, secrets, context);
-      if (openai) {
-        const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+      try {
+        const provider = openai ? "openai" : "anthropic";
+        const name = openai
+          ? env.BAO_OPENAI_MODEL || "gpt-4.1-mini"
+          : env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
+        const res = await fetchImpl(openai
+          ? "https://api.openai.com/v1/chat/completions"
+          : "https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { authorization: `Bearer ${openai}`, "content-type": "application/json" },
+          headers: openai
+            ? { authorization: `Bearer ${openai}`, "content-type": "application/json" }
+            : { "x-api-key": anthropic || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({
-            model: env.BAO_OPENAI_MODEL || "gpt-4.1-mini",
+            model: name,
+            ...(!openai ? { max_tokens: 800 } : {}),
             messages: [{ role: "user", content: prompt }],
           }),
         });
+        if (!res.ok) return null;
         const raw = await res.text();
-        let body: { choices?: { message?: { content?: string } }[] };
-        try {
-          body = JSON.parse(raw);
-        } catch {
-          return null;
+        const body = JSON.parse(raw) as {
+          choices?: { message?: { content?: string } }[];
+          content?: { type: string; text?: string }[];
+        };
+        let text: unknown;
+        if (openai) {
+          if (!Array.isArray(body?.choices)) return null;
+          text = body.choices[0]?.message?.content;
+        } else {
+          if (!Array.isArray(body?.content)) return null;
+          const blocks = body.content.filter((block) => block?.type === "text");
+          if (blocks.some((block) => typeof block.text !== "string")) return null;
+          text = blocks.map((block) => block.text).join("\n");
         }
-        if (!body) return null;
-        const name = env.BAO_OPENAI_MODEL || "gpt-4.1-mini";
+        if (typeof text !== "string") return null;
+        const patch = patchFromText(text);
+        if (!patch.identity) return null;
         return {
-          patch: patchFromText(body.choices?.[0]?.message?.content || ""),
-          model: { provider: "openai", name, version: name },
+          patch,
+          model: { provider, name, version: name },
           prompt,
           rawResponse: raw,
         };
-      }
-      const res = await fetchImpl("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": anthropic || "",
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5",
-          max_tokens: 800,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const raw = await res.text();
-      let body: { content?: { type: string; text?: string }[] };
-      try {
-        body = JSON.parse(raw);
       } catch {
         return null;
       }
-      if (!body) return null;
-      const name = env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
-      return {
-        patch: patchFromText(body.content?.filter((block) => block.type === "text").map((block) => block.text || "").join("\n") || ""),
-        model: { provider: "anthropic", name, version: name },
-        prompt,
-        rawResponse: raw,
-      };
     },
   };
 }

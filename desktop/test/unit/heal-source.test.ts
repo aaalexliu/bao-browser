@@ -12,7 +12,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 
 const patch = { identity: { surface: "dom", role: "button", testId: "login", path: [] } };
 
-test("saved None, Cursor account and API keys drive real replay heals after restart", { timeout: 120_000 }, async (t) => {
+test("saved None, Cursor account and API keys drive real replay heals after restart", { timeout: 240_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-source-"));
   const previous = { HOME: process.env.HOME, BAO_CURSOR_AGENT: process.env.BAO_CURSOR_AGENT, BAO_HEAL_CURSOR_ACCOUNT: process.env.BAO_HEAL_CURSOR_ACCOUNT, OPENAI_API_KEY: process.env.OPENAI_API_KEY };
   process.env.OPENAI_API_KEY = "fixture-env-key";
@@ -38,7 +38,9 @@ if (process.argv[2] === 'status') {
   resetCursorAccountCache();
   t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
   const vendorCalls: { url: string; auth: string | null }[] = [];
-  let malformedReply = false;
+  const failures = ["invalid-json", "http-error", "fetch-rejection", "body-rejection", "invalid-envelope", "missing-identity"] as const;
+  type VendorFailure = typeof failures[number];
+  let vendorFailure: VendorFailure | undefined;
   const realFetch = globalThis.fetch;
   t.mock.method(globalThis, "fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = String(input);
@@ -47,7 +49,18 @@ if (process.argv[2] === 'status') {
       vendorCalls.push({ url, auth: headers.get("authorization") || headers.get("x-api-key") });
       const body = JSON.parse(String(init?.body)) as { messages: { content: string }[] };
       assert.match(body.messages[0].content, /missing-login/);
-      if (malformedReply) return new Response("<html>Bad gateway</html>", { status: 502 });
+      if (vendorFailure === "invalid-json") return new Response("<html>Bad gateway</html>", { status: 200 });
+      if (vendorFailure === "http-error") return new Response(JSON.stringify({ error: { message: "Invalid API key" } }), { status: 401 });
+      if (vendorFailure === "fetch-rejection") throw new TypeError("Fixture network failure");
+      if (vendorFailure === "body-rejection") {
+        return new Response(new ReadableStream({ start(controller) { controller.error(new Error("Fixture body read failure")); } }));
+      }
+      if (vendorFailure === "invalid-envelope") return new Response(JSON.stringify({ choices: {}, content: {} }));
+      if (vendorFailure === "missing-identity") {
+        return new Response(JSON.stringify(url.includes("openai")
+          ? { choices: [{ message: { content: "{}" } }] }
+          : { content: [{ type: "text", text: "{}" }] }));
+      }
       return new Response(JSON.stringify(url.includes("openai")
         ? { choices: [{ message: { content: JSON.stringify(patch) } }] }
         : { content: [{ type: "text", text: JSON.stringify(patch) }] }), { status: 200 });
@@ -67,11 +80,11 @@ if (process.argv[2] === 'status') {
   ];
   try {
     const cases = [
-      ...choices.map((choice) => ({ choice, malformed: false })),
-      ...choices.filter((choice) => choice.kind === "api-key").map((choice) => ({ choice, malformed: true })),
+      ...choices.map((choice) => ({ choice, failure: undefined })),
+      ...choices.filter((choice) => choice.kind === "api-key").flatMap((choice) => failures.map((failure) => ({ choice, failure }))),
     ];
-    for (const [index, { choice, malformed }] of cases.entries()) {
-      malformedReply = malformed;
+    for (const [index, { choice, failure }] of cases.entries()) {
+      vendorFailure = failure;
       const response = await realFetch(`http://127.0.0.1:${app.port}/api/settings`, {
         method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ healSource: choice }),
       });
@@ -81,7 +94,7 @@ if (process.argv[2] === 'status') {
       const state = await (await realFetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { settings: { healSource: HealSource } };
       assert.deepEqual(state.settings.healSource, choice);
       const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, createdAt: 1, id: `wf-source-${index}`, name: "Fixture heal source", startUrl: `http://127.0.0.1:${app.port}/fixture`,
+        schema: "bao.workflow/v2", version: 2, createdAt: 1, id: `wf-source-${index}`, name: "Fixture heal source", heal: failure ? "approve" : "auto", startUrl: `http://127.0.0.1:${app.port}/fixture`,
         inputs: [], steps: [{ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 }],
       };
       app.library.save(workflow);
@@ -96,13 +109,16 @@ if (process.argv[2] === 'status') {
         } else {
           run = await runWorkflow(app.library, { id: workflow.id });
         }
-        const failed = choice.kind === "none" || malformed;
+        const failed = choice.kind === "none" || !!failure;
         assert.equal(run.status, failed ? "failed" : route === "app" ? "passed" : "ok", JSON.stringify(run));
         assert.ok(run.runId, JSON.stringify(run));
         const stored = app.library.readRun(run.runId);
         assert.equal(stored.status, failed ? "failed" : "passed");
         assert.equal(stored.heals.length, choice.kind === "none" ? 0 : 1);
-        if (malformed) assert.equal((stored.heals[0] as HealRecord).proposedPatch, undefined);
+        if (failure) {
+          assert.equal((stored.heals[0] as HealRecord).proposedPatch, undefined, `${route}: ${choice.kind}: ${failure}`);
+          assert.equal((stored.heals[0] as HealRecord).model, undefined);
+        }
         assert.equal((await cursorCalls()).length - beforeCursor, choice.kind === "cursor-account" ? 1 : 0);
         assert.equal(vendorCalls.length - beforeVendor, choice.kind === "api-key" ? 1 : 0);
         if (choice.kind === "api-key") {
