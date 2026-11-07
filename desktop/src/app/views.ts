@@ -178,6 +178,12 @@ export interface ImportPending {
   audit?: { domain?: string; count?: number; at?: number };
 }
 
+export type ActiveRun = {
+  id: string;
+  workflowId: string;
+  startedAt: number;
+} & ({ phase: "running"; ask: HumanAsk | null } | { phase: "waiting"; ask: HumanAsk });
+
 export interface ShellState {
   recording?: boolean;
   replaying?: boolean;
@@ -205,6 +211,7 @@ export interface ShellState {
   damagedWorkflows?: import("../v1/store").DamagedWorkflow[];
   runs?: RunSummary[];
   promotions?: PromotionView[];
+  activeRun?: ActiveRun | null;
   activeAsk?: HumanAsk | null;
   pendingImport?: ImportPending | null;
   teach?: TeachView;
@@ -322,7 +329,7 @@ function baoMark(id = "bao-mark"): string {
 
 export function shellAttentionCount(state: ShellState): number {
   return attentionCount({
-    pendingHeals: runAttention(state.runs || [], state.activeAsk).length,
+    pendingHeals: runAttention(state.runs || [], state.activeAsk, state.activeRun).length,
     importPhase: state.pendingImport?.phase,
     reviews: reviewItems(state.runs).length,
   });
@@ -333,7 +340,7 @@ function needsYouText(count: number, hasRuns: boolean): string {
 }
 
 export function rail(state: ShellState, screen: Screen = "runs"): string {
-  const attention = runAttention(state.runs || [], state.activeAsk);
+  const attention = runAttention(state.runs || [], state.activeAsk, state.activeRun);
   const waits = attention.filter((item) => item.kind === "paused");
   const waiting = new Set(waits.map((item) => item.run.id)).size;
   const count = shellAttentionCount(state);
@@ -362,7 +369,7 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
       <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${available ? needsYouText(shellAttentionCount(state), Boolean(state.runs?.length)) : "Run history unavailable"}</p>` : ""}</div>
       ${place.id === "runs" ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
-    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
+    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, activeRun: state.activeRun }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}</span>
         <span class="screen-description">${item.description}</span>
       </button>`).join("")}</nav>`}`;
@@ -1780,10 +1787,10 @@ type RunAttentionItem =
   | { run: RunSummary; label: string; kind: "healed"; healId: string; live?: never }
   | { run: RunSummary; label: string; kind: "failed"; live?: never };
 
-export function runAttention(runs: RunSummary[], ask?: HumanAsk | null): RunAttentionItem[] {
+export function runAttention(runs: RunSummary[], ask?: HumanAsk | null, activeRun?: ActiveRun | null): RunAttentionItem[] {
   const attention = [...runs].sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity)).flatMap((run) => {
     const items: RunAttentionItem[] = [];
-    if (runWaiting(run)) items.push({ run, label: "Needs you", kind: "paused" });
+    if (run.id === activeRun?.id ? activeRun.phase === "waiting" : runWaiting(run)) items.push({ run, label: "Needs you", kind: "paused" });
     const decided = new Set((run.decisions || []).map((decision) => decision.healId));
     for (const heal of run.heals || []) if (!decided.has(heal.id)) items.push({ run, label: "Heal to keep", kind: "healed", healId: heal.id });
     if (["failed", "timed-out", "timeout"].includes(run.status)) items.push({ run, label: run.status === "failed" ? "Failed" : "Timed out", kind: "failed" });
@@ -1832,14 +1839,15 @@ export function runWaitLeft(deadline: number, now = Date.now()): string {
   return Number.isFinite(remaining) ? `${remaining >= 60 ? `${Math.floor(remaining / 60)} h ` : ""}${remaining % 60} min left` : "";
 }
 
-export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[] } = {}): string {
-  const attention = runAttention(runs, ask);
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; activeRun?: ActiveRun | null } = {}): string {
+  const active = selection.activeRun;
+  const attention = runAttention(runs, ask, active);
   const imports = attentionCount({ pendingHeals: 0, importPhase });
   const reviews = reviewItems(runs);
-  const count = shellAttentionCount({ runs, activeAsk: ask, pendingImport: { phase: importPhase } });
+  const count = shellAttentionCount({ runs, activeAsk: ask, activeRun: active, pendingImport: { phase: importPhase } });
   const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
   let selectionShown = false;
-  const row = (run: RunSummary, attentionLabel?: string, kind = runListKind(run), live = false, healId?: string) => {
+  const row = (run: RunSummary, attentionLabel?: string, kind = run.id === active?.id ? active.phase === "waiting" ? "paused" : "running" : runListKind(run), live = false, healId?: string) => {
     const selected = !selectionShown && (healId ? selection.selectedHeal?.runId === run.id && selection.selectedHeal.healId === healId : live ? selection.liveSelected : selectedRun === run.id);
     if (selected) selectionShown = true;
     const at = runTime(run);
@@ -1847,7 +1855,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const word = statusLabel(kind);
     const label = attentionLabel || word.charAt(0).toUpperCase() + word.slice(1);
     const when = at === undefined ? "Time unknown" : formatTime(at);
-    const reason = (runWaiting(run) ? run.envelope?.ask : undefined) || run.envelope?.reason || run.failure?.reason;
+    const reason = run.id === active?.id && active.phase === "running" ? undefined : (runWaiting(run) ? run.envelope?.ask : undefined) || run.envelope?.reason || run.failure?.reason;
     const totalSteps = workflows.find((workflow) => workflow.id === run.workflowId)?.steps;
     const stoppedAt = run.failure?.index === undefined ? "" : `Stopped at step ${run.failure.index + 1}${attentionLabel ? "." : totalSteps ? ` of ${totalSteps}` : ""}`;
     const heal = run.heals?.find((item) => healId ? item.id === healId : !run.decisions?.some((decision) => decision.healId === item.id));
@@ -1857,7 +1865,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;
     const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : remaining ? `Kept after ${remaining} more clean run${remaining === 1 ? "" : "s"}` : "";
     const description = `${label}${detail ? ` · ${ownerStopText(detail)}` : ""}`;
-    return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : live ? 'data-screen="live"' : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
+    return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : live ? `data-open-run="${esc(run.id)}" data-screen="live"` : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>
       <span class="run-name" title="${esc(name)}">${esc(name)}</span><time${at === undefined ? "" : ` title="${esc(formatClock(at))}"`}>${esc(when)}</time>
       <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${detail ? ` · ${esc(ownerStopText(detail))}` : ""}</span>
@@ -1867,8 +1875,9 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   const day = (value: number) => new Date(value).toDateString();
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const groups = new Map<string, RunSummary[]>();
-  const currentRuns = runs.filter(runWaiting).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
-  for (const run of [...runs].filter((item) => !runWaiting(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
+  const isCurrent = (run: RunSummary) => run.id === active?.id || runWaiting(run);
+  const currentRuns = runs.filter(isCurrent).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
+  for (const run of [...runs].filter((item) => !isCurrent(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
     const at = runTime(run);
     const label = at === undefined ? "Date unknown" : day(at) === day(now) ? "Today" : day(at) === day(+yesterday) ? "Yesterday" : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric", ...(new Date(at).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(at);
     const entries = groups.get(label);

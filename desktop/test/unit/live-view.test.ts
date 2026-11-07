@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import type { Route } from "playwright";
 import { liveRunView } from "../../src/app/live-view";
 import { startApp } from "../../src/app/server";
-import type { RunSummary, ShellState } from "../../src/app/views";
+import type { ActiveRun, RunSummary, ShellState } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import { makeAsk } from "../../src/v1/human-ask";
-import { writePendingPrompt } from "../../src/v1/pending-prompt";
+import { readPendingPrompt, writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { blankPng } from "../../src/v1/redacted-png";
+import { saveRelay } from "../../src/v1/relay-link";
+import { MemoryJobStore } from "../../../web/src/lib/relay-job";
+import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 import { applyHermeticApp } from "../runtime";
 
 function workflow(startUrl: string): WorkflowV2 {
@@ -22,6 +26,15 @@ function workflow(startUrl: string): WorkflowV2 {
       { id: "check", index: 2, label: "Check the booking", action: "verify", surface: "dom", expect: { kind: "text", match: "Booked", timeoutMs: 1000 }, timeoutMs: 1000 },
     ],
   };
+}
+
+function waiting(prompt: ReturnType<typeof makeAsk>): ActiveRun {
+  return { id: prompt.runId!, workflowId: prompt.workflowId, startedAt: prompt.startedAt, phase: "waiting", ask: prompt };
+}
+
+async function stop(base: string): Promise<void> {
+  const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+  if (state.activeRun) await post(`${base}/api/replay/cancel`, { runId: state.activeRun.id });
 }
 
 function ask(now = Date.now()) {
@@ -45,7 +58,7 @@ test("live-run output shows recorded progress, local screens and an honest missi
       { id: "open", status: "passed", startedAt: 500, endedAt: 1300, afterShot: "open.png" },
       { id: "reserve", status: "paused", beforeShot: "reserve.png" },
     ] };
-    await page.setContent(liveRunView(prompt, run, wf, 1000));
+    await page.setContent(liveRunView(waiting(prompt), run, wf, 1000));
     assert.equal(await page.getByRole("heading", { name: "Book a class" }).count(), 1);
     assert.equal(await page.locator("#live-steps li").count(), 3);
     assert.equal(await page.locator('#live-steps [data-status="passed"]').count(), 1);
@@ -56,14 +69,14 @@ test("live-run output shows recorded progress, local screens and an honest missi
     assert.equal(await page.locator("#live-run-details").getAttribute("open"), null);
     assert.equal(await page.getByRole("button", { name: "I pressed Reserve" }).count(), 1);
     assert.equal(await page.locator("#live-wait-left").innerText(), "2 h 0 min left");
-    await page.setContent(liveRunView({ ...prompt, kind: "login", deadline: null }, { ...run, steps: [] }, wf, 1000));
+    await page.setContent(liveRunView(waiting({ ...prompt, kind: "login", deadline: null }), { ...run, steps: [] }, wf, 1000));
     assert.equal(await page.locator(".live-preview img").count(), 0);
     assert.equal(await page.locator(".live-no-shot").innerText(), "No screen captured yet.");
     assert.equal(await page.locator("#live-film li").count(), 0);
     assert.equal(await page.getByRole("button", { name: "I’m signed in, continue" }).count(), 1);
     assert.match(await page.getByRole("timer").innerText(), /no timeout/);
     assert.equal(await page.locator('#live-steps [data-status="passed"]').count(), 0, "missing earlier results must not claim success");
-    await page.setContent(liveRunView({ ...prompt, kind: "wall" }, null, null));
+    await page.setContent(liveRunView(waiting({ ...prompt, kind: "wall" }), null, null));
     assert.equal(await page.getByRole("button", { name: "Continue", exact: true }).count(), 1);
     assert.match(await page.locator("#live-steps").innerText(), /unavailable/);
   } finally { await browser.close(); }
@@ -91,6 +104,7 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     writeFileSync(path.join(dirs.home, "live-session/session.json"), JSON.stringify({ id: "past", intent: "Historical unrelated task", status: "passed", host: "past.test", updatedAt: 1, audit: [], steps: [], note: "" }));
     await page.goto(base);
     await page.waitForSelector("#live-film img");
+    assert.equal(await page.locator("#live-run").getAttribute("aria-label"), "Run: Book a class");
     await page.getByRole("button", { name: "Open workflow", exact: true }).click();
     await page.waitForSelector("#workflow-detail");
     await page.locator('#rail button[data-place="runs"]').click();
@@ -109,7 +123,8 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     page.on("request", (request) => { if (request.url() === `${base}/api/prompt/continue`) continuationRequests.push(request.method()); });
     await page.getByRole("button", { name: "I pressed Reserve" }).click();
     await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent?.includes("checking"));
-    assert.deepEqual(continuationRequests, [], "a confirmation check must not authorize a login");
+    assert.deepEqual(continuationRequests, ["POST"], "a confirmation check carries the server run id");
+    assert.equal((await (await fetch(`${base}/api/state`)).json() as ShellState).activeAsk?.kind, "confirm");
     await page.locator("#live-run-details summary").click();
     await page.locator("#live-run-details summary").focus();
     await page.waitForResponse((response) => response.url() === `${base}/api/state`);
@@ -138,55 +153,205 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
   } finally { await browser.close(); await app.close(); rmSync(dirs.home, { recursive: true, force: true }); }
 });
 
-test("leaving a live run cannot attach its ask or Stop to the next replay", { timeout: 60000 }, async () => {
-  const dirs = applyHermeticApp("live-run-identity");
+test("a returned-paused confirm does not block the next Run", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("paused-rerun");
   const app = await startApp({ home: dirs.home, port: 0 });
-  const browser = await testChromium.launch();
-  const page = await browser.newPage();
   const base = `http://127.0.0.1:${app.port}`;
   try {
     const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "reserve", index: 0, action: "confirm", human: true, label: "Press Reserve", surface: "dom", timeoutMs: 60000 },
+    ];
     app.library.save(wf);
-    app.library.saveRun({ id: "run-detail", workflowId: wf.id, status: "paused", at: Date.now(), heals: [], steps: [{ id: "reserve", status: "paused" }] });
-    writePendingPrompt(dirs.home, { ask: ask(), runId: "run-detail" });
-    let snapshot = await (await fetch(`${base}/api/state`)).json() as ShellState;
-    snapshot.replaying = true;
-    await page.route("**/api/state", (route) => route.fulfill({ json: snapshot }));
-    const cancellations: string[] = [];
-    page.on("request", (request) => { if (request.url() === `${base}/api/replay/cancel`) cancellations.push(request.method()); });
-    await page.goto(base);
-    await page.getByRole("button", { name: "I pressed Reserve" }).waitFor();
-    await page.getByRole("button", { name: "Open workflow", exact: true }).click();
-    await page.waitForSelector("#workflow-detail");
-    snapshot = { ...snapshot, activeAsk: null, runs: [{ id: "run-detail", workflowId: wf.id, status: "passed", at: Date.now(), steps: [] }] };
-    await page.waitForFunction(() => document.getElementById("attention-label")?.textContent === "Running");
-    await page.locator("#rail .rail-foot").click();
-    await page.waitForSelector("#live-session");
-    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
-    assert.equal(await page.locator("#live-run, #live-stop, #run-receipt").count(), 0, "R2 without an ask must not inherit R1's view or Stop");
-    assert.deepEqual(cancellations, []);
-    app.library.saveRun({ id: "run-next", workflowId: wf.id, status: "paused", at: Date.now(), heals: [], steps: [{ id: "reserve", status: "paused" }] });
-    snapshot = { ...snapshot, activeAsk: { ...ask(), runId: "run-next" }, runs: app.library.listRuns() as RunSummary[] };
-    await page.waitForFunction(() => document.getElementById("live-run")?.dataset.run === "run-next");
-    await page.getByRole("button", { name: "Stop run…" }).click();
-    const cancelled = page.waitForResponse((response) => response.url() === `${base}/api/replay/cancel`);
-    await page.getByRole("button", { name: "Stop run", exact: true }).click();
-    await cancelled;
-    assert.deepEqual(cancellations, ["POST"]);
-    snapshot = { ...snapshot, activeAsk: null, replaying: false, runs: snapshot.runs?.map((run) => ({ ...run, status: "passed" })) };
-    await page.waitForSelector("#run-receipt");
-    await page.waitForFunction(() => document.getElementById("attention-label")?.textContent === "Nothing running");
-    await page.locator("#rail .rail-foot").click();
-    await page.waitForSelector("#live-session");
-    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
-    assert.equal(await page.locator("#run-receipt, #live-stop").count(), 0, "idle footer navigation must not reopen a completed run");
+    const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(first.status, "paused");
+    const ended = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(ended.replaying, false);
+    assert.equal(ended.activeRun?.phase, "waiting");
+    assert.equal(ended.activeRun?.id, first.runId);
+    assert.equal(readPendingPrompt(dirs.home)?.runId, first.runId, "returning paused must keep its pending prompt");
+    const second = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(second.status, "paused");
+    assert.notEqual(second.runId, first.runId, "Run again must start a new replay, not refuse the ended handoff");
+    assert.equal(app.library.readRun(first.runId).status, "needs_human");
+    assert.equal(readPendingPrompt(dirs.home)?.runId, second.runId);
   } finally {
-    await browser.close(); await app.close();
+    await stop(base).catch(() => undefined);
+    await app.close();
     rmSync(dirs.home, { recursive: true, force: true });
   }
 });
 
-test("live detail stays on its run between asks and until the final receipt", { timeout: 60000 }, async () => {
+test("a relay extension run leaves a waiting local run controllable", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("overlap");
+  const directory = new MemoryDirectory();
+  directory.addDevice("overlap-device", "overlap-user");
+  const app = await startApp({ home: dirs.home, port: 0, extensionHost: true, extensionConfigHome: path.join(dirs.home, "host-config") });
+  const relay = await listenRelay(createRelay({ store: new MemoryJobStore(), directory, enabled: () => true }), { principal: () => ({ userId: "overlap-user" }) });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  let relayRun: Promise<Record<string, unknown>> | undefined;
+  let releaseOpen!: () => void;
+  const openGate = new Promise<void>((resolve) => { releaseOpen = resolve; });
+  let opened!: () => void;
+  const opening = new Promise<void>((resolve) => { opened = resolve; });
+  async function relayPost(route: string, body: unknown, token?: string): Promise<Record<string, unknown>> {
+    const response = await fetch(`${relay.origin}${route}`, { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    const result = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 200, JSON.stringify(result));
+    return result;
+  }
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async (op) => {
+      if (op === "open") { opened(); await openGate; }
+      return {};
+    };
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "login-first", index: 0, action: "login", human: true, label: "Sign in first", surface: "dom", timeoutMs: 60000 },
+      { id: "login-next", index: 1, action: "login", human: true, label: "Sign in next", surface: "dom", timeoutMs: 60000 },
+    ];
+    app.library.save(wf);
+    app.library.save({ ...wf, id: "relay-note", name: "Relay overlap", driver: "extension", steps: [
+      { id: "note", index: 0, action: "note", label: "Relay overlap", surface: "dom", timeoutMs: 1000 },
+    ] });
+    const issued = await relayPost("/api/agent/pair", {});
+    const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Overlap Mac", deviceId: "overlap-device" });
+    const agent = await directory.mintAgent("overlap-user", "overlap-device");
+    assert.ok(agent);
+    saveRelay(dirs.home, { server: relay.origin, token: String(paired.token), tokenId: String(paired.tokenId), deviceId: String(paired.deviceId) });
+    app.library.updateSettings({ remoteMcp: true });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await relayPost("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const result = body.result as { content?: { type: string; text?: string }[] };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      if ((await tool("search_workflows", { query: "Relay overlap" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor();
+    const before = (await (await fetch(`${base}/api/state`)).json() as ShellState).activeRun!;
+    relayRun = tool("run_workflow", { id: "relay-note" });
+    await opening;
+    const during = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.deepEqual(during.activeRun, before, "relay start must preserve the local handoff identity");
+    assert.equal(during.replaying, true);
+    releaseOpen();
+    const relayResult = await relayRun;
+    assert.equal(relayResult.outcome, "ok", JSON.stringify(relayResult));
+    await page.getByRole("button", { name: "Open workflow", exact: true }).click();
+    await page.locator(`#workflow-detail [data-screen="replay"][data-workflow="${wf.id}"]`).click();
+    await page.locator("#wf").selectOption(wf.id);
+    await page.locator("#run").click();
+    await page.waitForFunction(() => document.getElementById("live")?.textContent === "Another run is waiting for you. Finish or stop it first.");
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor();
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), before.id);
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    await page.getByRole("button", { name: "Keep waiting" }).click();
+    await page.getByRole("button", { name: "I’m signed in, continue" }).click();
+    await page.waitForFunction(() => document.getElementById("live-run")?.dataset.step?.includes(":login-next:"));
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    await page.getByRole("button", { name: "Stop run", exact: true }).click();
+    assert.notEqual((await replay).status, "passed", "Stop must still stop the waiting local run");
+  } finally {
+    releaseOpen();
+    await relayRun?.catch(() => undefined);
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close();
+    await app.close();
+    await relay.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("live-run-identity");
+  process.env.BAO_DRIVE = "1";
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: Promise<{ status: string; runId: string }> | undefined;
+  try {
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Owner signed in", timeoutMs: 60000 } },
+      { id: "finish", index: 1, action: "verify", label: "Check the final note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Finish the run", timeoutMs: 60000 } },
+    ];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor();
+    const r1 = (await (await fetch(`${base}/api/state`)).json() as ShellState).activeRun!;
+    const heldPolls: Route[] = [];
+    await page.route("**/api/state", (route) => { heldPolls.push(route); });
+    let holdStop!: (route: Route) => void;
+    let holdContinue!: (route: Route) => void;
+    const heldStop = new Promise<Route>((resolve) => { holdStop = resolve; });
+    const heldContinue = new Promise<Route>((resolve) => { holdContinue = resolve; });
+    await page.route("**/api/replay/cancel", (route) => holdStop(route));
+    await page.route("**/api/prompt/continue", (route) => holdContinue(route));
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    await page.getByRole("button", { name: "Stop run", exact: true }).click();
+    const staleStop = await heldStop;
+    await page.getByRole("button", { name: "I’m signed in, continue" }).click();
+    const staleContinue = await heldContinue;
+    const r1Action = { runId: r1.id, stepId: r1.ask!.stepId, startedAt: r1.ask!.startedAt };
+    assert.deepEqual(staleStop.request().postDataJSON(), { runId: r1.id });
+    assert.deepEqual(staleContinue.request().postDataJSON(), r1Action);
+    await post(`${base}/api/prompt/continue`, r1Action);
+    await post(`${base}/api/replay/press`, { fill: { selector: "#note-input", value: "Finish the run" }, name: "Save note" });
+    assert.equal((await replay).status, "passed");
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let r2: ActiveRun | null | undefined;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      r2 = (await (await fetch(`${base}/api/state`)).json() as ShellState).activeRun;
+      if (r2?.id !== r1.id && r2?.phase === "waiting") break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(r2);
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), r1.id, "the client has not polled R2");
+    assert.notEqual(r2.id, r1.id);
+    assert.equal(r2.phase, "waiting");
+    await Promise.all([staleStop.continue(), staleContinue.continue()]);
+    assert.equal((await staleStop.request().response())?.status(), 409);
+    assert.equal((await staleContinue.request().response())?.status(), 409);
+    for (const endpoint of ["/api/replay/cancel", "/api/prompt/continue"]) {
+      assert.equal((await fetch(`${base}${endpoint}`, { method: "POST" })).status, 409, "an unscoped action cannot affect R2 either");
+    }
+    await page.unroute("**/api/state");
+    await Promise.all(heldPolls.map((route) => route.continue()));
+    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
+    const unchanged = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(unchanged.activeRun?.id, r2.id);
+    assert.equal(unchanged.activeRun?.phase, "waiting");
+    assert.equal(unchanged.activeAsk?.kind, "login");
+    assert.equal(unchanged.replaying, true);
+    await stop(base);
+    assert.equal((await replay).status, "failed");
+  } finally {
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close(); await app.close();
+    delete process.env.BAO_DRIVE;
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("a continuing run row opens live detail after navigation and reload, until its final receipt", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-continuation");
   process.env.BAO_DRIVE = "1";
   const app = await startApp({ home: dirs.home, port: 0 });
@@ -227,6 +392,19 @@ test("live detail stays on its run between asks and until the final receipt", { 
     assert.equal(await page.locator("#app").getAttribute("data-live-detail"), "true");
     assert.equal(await page.getByRole("button", { name: "Open workflow", exact: true }).isVisible(), true);
     assert.equal(await page.locator(`#runs [data-open-run="${runId}"][aria-current="true"]`).count(), 1);
+    await page.locator(`#runs [data-open-run="${runId}"][aria-current="true"]`).click();
+    await page.waitForSelector("#live-run");
+    assert.equal(await page.locator("#run-receipt").count(), 0);
+    await page.getByRole("button", { name: "Open workflow", exact: true }).click();
+    await page.waitForSelector("#workflow-detail");
+    await page.locator('#rail button[data-place="runs"]').click();
+    await page.locator(`#runs [data-open-run="${runId}"]`).click();
+    await page.waitForSelector("#live-run");
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent === "Bao is continuing this run");
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
+    assert.equal(await page.locator("#live-session, #run-receipt").count(), 0);
+    assert.equal(await page.getByText("Historical unrelated task").count(), 0);
     assert.equal(await page.locator("#act-continue").isDisabled(), true);
     await page.locator("#act-continue").dispatchEvent("click");
     await page.waitForResponse((response) => response.url() === `${base}/api/state`);
@@ -246,7 +424,48 @@ test("live detail stays on its run between asks and until the final receipt", { 
     await page.waitForSelector("#run-receipt");
     assert.equal(result.runId, runId);
   } finally {
-    await post(`${base}/api/replay/cancel`).catch(() => undefined);
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close(); await app.close();
+    delete process.env.BAO_DRIVE;
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("the Needs-you row becomes Running as soon as its server run continues", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("live-row-phase");
+  process.env.BAO_DRIVE = "1";
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: Promise<{ status: string; runId: string }> | undefined;
+  try {
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "reserve", index: 0, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } },
+      { id: "finish", index: 1, action: "verify", label: "Check the final note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Finish the run", timeoutMs: 60000 } },
+    ];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    await page.goto(base);
+    await page.getByRole("button", { name: "I pressed Apply" }).waitFor();
+    const runId = (await (await fetch(`${base}/api/state`)).json() as ShellState).activeRun!.id;
+    assert.equal(await page.locator(`#runs ul[aria-label="Needs you"] [data-open-run="${runId}"]`).count(), 1);
+    await post(`${base}/api/replay/press`, { name: "Apply" });
+    await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent === "Bao is continuing this run");
+    const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(state.activeRun?.id, runId);
+    assert.equal(state.activeRun?.phase, "running");
+    assert.equal(app.library.readRun(runId).status, "needs_human", "the saved pause snapshot is not the live row's source of truth");
+    assert.equal(await page.locator(`#runs ul[aria-label="Needs you"] [data-open-run="${runId}"]`).count(), 0);
+    assert.equal(await page.locator(`#runs section[aria-label="Now"] [data-open-run="${runId}"] .run-state`).innerText(), "Running");
+    assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "0");
+    assert.equal(await page.locator('#rail [data-count]').getAttribute("data-count"), "0");
+    await post(`${base}/api/replay/press`, { fill: { selector: "#note-input", value: "Finish the run" }, name: "Save note" });
+    assert.equal((await replay).status, "passed");
+  } finally {
+    await stop(base).catch(() => undefined);
     await replay?.catch(() => undefined);
     await browser.close(); await app.close();
     delete process.env.BAO_DRIVE;
@@ -256,6 +475,8 @@ test("live detail stays on its run between asks and until the final receipt", { 
 
 test("live confirmation checks the site without pressing its final action", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-handoff");
+  let releaseDetails!: () => void;
+  const detailsGate = new Promise<void>((resolve) => { releaseDetails = resolve; });
   process.env.BAO_DRIVE = "1";
   const app = await startApp({ home: dirs.home, port: 0 });
   const browser = await testChromium.launch();
@@ -294,8 +515,16 @@ test("live confirmation checks the site without pressing its final action", { ti
     const waiting = await (await fetch(`${base}/api/state`)).json() as ShellState;
     assert.equal(waiting.activeAsk?.kind, "confirm");
     assert.equal(waiting.replaying, true, "checking must not perform the final click or complete the run");
+    await page.route(/\/api\/(workflows|runs)\/[^/]+$/, async (route) => {
+      await detailsGate;
+      await route.continue();
+    });
     await post(`${base}/api/replay/press`, { name: "Apply" });
     await page.waitForResponse(async (response) => response.url() === `${base}/api/state` && ((await response.json()) as ShellState).activeAsk?.kind === "login");
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor({ timeout: 5000 });
+    assert.equal(await page.getByRole("button", { name: "I pressed Apply" }).count(), 0, "the old confirmation control must disappear before delayed detail reads finish");
+    releaseDetails();
+    await page.unrouteAll({ behavior: "wait" });
     const loginState = await (await fetch(`${base}/api/state`)).json() as ShellState;
     assert.equal(loginState.activeAsk?.stepId, "login", JSON.stringify(loginState.activeAsk));
     const loginRun = app.library.readRun(loginState.activeAsk!.runId!) as RunSummary;
@@ -314,8 +543,10 @@ test("live confirmation checks the site without pressing its final action", { ti
     await page.waitForSelector("#run-receipt");
     assert.equal(app.library.readRun(result.runId).status, "passed");
   } finally {
-    await post(`${base}/api/replay/cancel`).catch(() => undefined);
+    await stop(base).catch(() => undefined);
     await replay?.catch(() => undefined);
+    releaseDetails();
+    await page.unrouteAll({ behavior: "wait" });
     await browser.close(); await app.close();
     delete process.env.BAO_DRIVE;
     rmSync(dirs.home, { recursive: true, force: true });

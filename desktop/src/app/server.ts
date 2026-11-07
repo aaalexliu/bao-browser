@@ -247,7 +247,21 @@ export async function startApp(opts: {
   let importing = false;
   let loginWait: { message: string; detail?: string } | null = null;
   let humanConfirm: { message: string; detail?: string } | null = null;
-  let activeAsk: HumanAsk | null = null;
+  let activeRun: import("./views").ActiveRun | null = null;
+  const currentAsk = () => activeRun?.phase === "waiting" ? activeRun.ask : null;
+  let ownedRunId: string | null = null;
+  function beginRun(workflowId: string, id: string): void {
+    ownedRunId = id;
+    activeRun = { id, workflowId, startedAt: Date.now(), phase: "running", ask: null };
+    stopRun = false;
+    loginContinued = false;
+    replaying = true;
+  }
+  function finishRun(id: string): void {
+    replaying = false;
+    if (activeRun?.phase === "running" && activeRun.id === id) activeRun = null;
+    if (ownedRunId === id) ownedRunId = null;
+  }
   let stopRun = false;
   let loginContinued = false;
   let replaying = false;
@@ -306,7 +320,7 @@ export async function startApp(opts: {
     void notifyOs(notice.title, notice.body, notice.tooltip);
   }
   function clearAct(): void {
-    if (bar.running && !activeAsk && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
+    if (bar.running && !currentAsk() && !loginWait && !humanConfirm) bar.send({ cmd: "clear-badge" });
     void clearOsNotify();
   }
   const prompts: PersonPrompts = {
@@ -315,8 +329,8 @@ export async function startApp(opts: {
     },
     clearConfirm() {
       humanConfirm = null;
-      if (activeAsk?.kind === "confirm") {
-        activeAsk = null;
+      if (activeRun?.phase === "waiting" && activeRun.ask.kind === "confirm") {
+        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
         clearPendingPrompt(library.root);
       }
       clearAct();
@@ -328,14 +342,15 @@ export async function startApp(opts: {
     clearLoginWait() {
       loginWait = null;
       loginContinued = false;
-      if (activeAsk?.kind === "login" || activeAsk?.kind === "wall") {
-        activeAsk = null;
+      if (activeRun?.phase === "waiting" && (activeRun.ask.kind === "login" || activeRun.ask.kind === "wall")) {
+        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
         clearPendingPrompt(library.root);
       }
       clearAct();
     },
     showAsk(ask) {
-      activeAsk = ask;
+      if (!ask.runId) return;
+      activeRun = { id: ask.runId, workflowId: ask.workflowId, startedAt: activeRun?.id === ask.runId ? activeRun.startedAt : ask.startedAt, phase: "waiting", ask };
       rememberPending(ask);
       raiseAct(ask);
     },
@@ -360,7 +375,8 @@ export async function startApp(opts: {
       extension: async (id, inputs) => {
         if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
         const workflow = library.read(id);
-        const result = await runExtension(library, workflow, inputs, notices, prompts, extensionLink) as {
+        const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const result = await runExtension(library, workflow, inputs, notices, runId, prompts, extensionLink) as {
           status?: string;
           runId?: string;
           outputs?: unknown;
@@ -517,7 +533,8 @@ export async function startApp(opts: {
           pendingImport: pending ? publicPending(pending) : null,
           loginWait,
           humanConfirm,
-          activeAsk,
+          activeRun,
+          activeAsk: currentAsk(),
           capturePaused: capture.paused,
           recordingSince: capture.recording ? recordingSince : 0,
           liveTrail: capture.events.slice(-40).map((event) => ({ id: event.id, ts: event.ts, op: event.op, kind: event.kind })),
@@ -1186,17 +1203,23 @@ export async function startApp(opts: {
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
-        if (body.fresh) {
-          const existing = replays.get(saved.id);
-          if (existing) {
-            await existing.context.close().catch(() => undefined);
-            replays.delete(saved.id);
-          }
+        if (!body.guide && activeRun?.phase === "waiting" && activeRun.id === ownedRunId) {
+          return json(res, { error: "Another run is waiting for you. Finish or stop it first." }, 409);
         }
-        stopRun = false;
-        loginContinued = false;
-        replaying = true;
+        const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        if (body.guide) {
+          stopRun = false;
+          loginContinued = false;
+          replaying = true;
+        } else beginRun(workflow.id, runId);
         try {
+          if (body.fresh) {
+            const existing = replays.get(saved.id);
+            if (existing) {
+              await existing.context.close().catch(() => undefined);
+              replays.delete(saved.id);
+            }
+          }
           await releaseSharedProfile({ keepReplays: true });
           if (body.guide) {
             const run = await runGuide(library, workflow, args, replays, prompts);
@@ -1205,11 +1228,11 @@ export async function startApp(opts: {
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
           if (workflowDriver(workflow) === "extension") {
             if (!extensionLink?.connected()) return json(res, { error: EXTENSION_NOT_CONNECTED }, 409);
-            const run = await runRecorded(library, workflow, args, notices, replays, prompts, undefined, fromStep, extensionLink);
+            const run = await runRecorded(library, workflow, args, notices, replays, runId, prompts, undefined, fromStep, extensionLink);
             library.savePublicInputs(workflow.id, keptInputs(workflow, args));
             return json(res, run);
           }
-          const run = await runWorkflow(library, workflow, args, notices, replays, prompts, {
+          const run = await runWorkflow(library, workflow, args, notices, replays, runId, prompts, {
             baoProfile,
             sites,
             closeSignIn: async () => {
@@ -1220,7 +1243,8 @@ export async function startApp(opts: {
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
         } finally {
-          replaying = false;
+          if (body.guide) replaying = false;
+          else finishRun(runId);
         }
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
@@ -1243,7 +1267,13 @@ export async function startApp(opts: {
         return json(res, { open: true, ...view });
       }
       if (req.method === "POST" && url.pathname === "/api/prompt/continue") {
-        loginContinued = true;
+        const body = await readBody(req) as { runId?: string; stepId?: string; startedAt?: number };
+        syncPending();
+        const ask = currentAsk();
+        if (!activeRun || body.runId !== activeRun.id || !ask || body.stepId !== ask.stepId || body.startedAt !== ask.startedAt) {
+          return json(res, { error: "This run is no longer waiting for that action." }, 409);
+        }
+        if (ask.kind !== "confirm") loginContinued = true;
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/pair") {
@@ -1296,10 +1326,13 @@ export async function startApp(opts: {
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
+        const body = await readBody(req) as { runId?: string };
+        syncPending();
+        if (!activeRun || body.runId !== activeRun.id) return json(res, { error: "This run is no longer active." }, 409);
         stopRun = true;
         if (!replaying) {
           clearPendingPrompt(library.root);
-          activeAsk = null;
+          activeRun = null;
           loginWait = null;
           humanConfirm = null;
           loginContinued = false;
@@ -1683,7 +1716,7 @@ export async function startApp(opts: {
       if (replaying) return;
       markPromptTimedOut(library, prompt, now);
       clearPendingPrompt(library.root);
-      activeAsk = null;
+      activeRun = null;
       if (prompt.ask.kind === "login") {
         loginWait = null;
         loginContinued = false;
@@ -1693,7 +1726,7 @@ export async function startApp(opts: {
       clearAct();
       return;
     }
-    if (!activeAsk) activeAsk = prompt.ask;
+    if (!activeRun) activeRun = { id: prompt.runId, workflowId: prompt.ask.workflowId, startedAt: prompt.ask.startedAt, phase: "waiting", ask: prompt.ask };
   }
 
   syncPending();
@@ -2533,15 +2566,16 @@ async function runWorkflow(
   args: ReplayArgs,
   notices: Notice[],
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  runId: string,
   prompts?: PersonPrompts,
   gate?: LoginGate,
   fromStep?: string,
 ) {
   if (gate) {
-    const gated = await gateSavedLogin(library, workflow, args, notices, replays, prompts, gate, fromStep);
+    const gated = await gateSavedLogin(library, workflow, args, notices, replays, runId, prompts, gate, fromStep);
     if (gated) return gated;
   }
-  return runRecorded(library, workflow, args, notices, replays, prompts, gate?.baoProfile, fromStep);
+  return runRecorded(library, workflow, args, notices, replays, runId, prompts, gate?.baoProfile, fromStep);
 }
 
 async function gateSavedLogin(
@@ -2550,6 +2584,7 @@ async function gateSavedLogin(
   args: ReplayArgs,
   notices: Notice[],
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  runId: string,
   prompts: PersonPrompts | undefined,
   gate: LoginGate,
   fromStep?: string,
@@ -2558,7 +2593,6 @@ async function gateSavedLogin(
   const origin = httpOrigin(workflow.startUrl);
   if (!origin || !gate.sites.has(origin)) return null;
   const config = gate.sites.get(origin);
-  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const headless = process.env.BAO_HEADED !== "1";
   await releaseProfile(replays, gate.baoProfile);
   const outcome = await runIfSignedIn({
@@ -2575,7 +2609,7 @@ async function gateSavedLogin(
         throw err;
       }
     },
-    run: () => runRecorded(library, workflow, args, notices, replays, prompts, gate.baoProfile, fromStep),
+    run: () => runRecorded(library, workflow, args, notices, replays, runId, prompts, gate.baoProfile, fromStep),
   });
   if (isNeedsSignIn(outcome)) {
     library.saveRun({
@@ -2728,6 +2762,7 @@ async function runExtension(
   workflow: WorkflowV2,
   args: ReplayArgs,
   notices: Notice[],
+  runId: string,
   prompts: PersonPrompts | undefined,
   link: ExtensionLink,
   fromStep?: string,
@@ -2740,7 +2775,6 @@ async function runExtension(
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
-  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   try {
     if (workflow.startUrl.startsWith("http")) await driver.open(workflow.startUrl);
   } catch (err) {
@@ -2802,6 +2836,7 @@ async function runRecorded(
   args: ReplayArgs,
   notices: Notice[],
   replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  runId: string,
   prompts?: PersonPrompts,
   profileDir?: string,
   fromStep?: string,
@@ -2810,10 +2845,9 @@ async function runRecorded(
   const engineName = pageEngineName(library.settings().pageEngine);
   const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link), pageEngine: engineName });
   if (refusal) throw new Error(refusal);
-  if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, prompts, link, fromStep);
+  if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, runId, prompts, link, fromStep);
   const session = await openReplay(library, workflow.id, replays, profileDir);
   const page = session.page;
-  const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const onNotify = (notice: HealNotice) => {
     notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });

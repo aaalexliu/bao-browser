@@ -92,8 +92,7 @@ test("active asks share attention counts, open Live and use numeric deadlines on
   assert.equal(runAttention(runs, ask).length, 2);
   assert.match(rail({ runs, activeAsk: ask }), /data-count="2"/);
   const projected = runsList(runs, [], "", now, ask);
-  assert.match(projected, /data-screen="live" aria-label="Reserve"/);
-  assert.doesNotMatch(projected, /data-open-run="active"/);
+  assert.match(projected, /data-open-run="active" data-screen="live" aria-label="Reserve"/);
   assert.match(projected, /2 min left/);
   assert.match(rail({ replaying: true }), />Running</);
   assert.match(rail({ recording: true }), />Recording</);
