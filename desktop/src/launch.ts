@@ -559,6 +559,13 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = fal
   return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome, detached);
 }
 
+type OwnedEndpointState =
+  | { phase: "starting" }
+  | { phase: "running" }
+  | { phase: "retained" }
+  | { phase: "closing"; completion: Promise<void> }
+  | { phase: "settled"; completion: Promise<void> };
+
 /** Own the process and browser endpoint without attaching to page renderers. */
 export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions & { detached?: boolean }): Promise<{
   portFile: string;
@@ -571,30 +578,46 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
   const portFile = path.join(opts.userDataDir, "DevToolsActivePort");
   const ownedPids = new Set(pidsForDataDir(opts.userDataDir));
   let cdp: CdpSocket | undefined;
-  let closing: Promise<void> | undefined;
+  let state: OwnedEndpointState = { phase: "starting" };
   let resolveClosed!: () => void;
   const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
   const pages = new Set<string>();
-  let released = false;
-  const close = (): Promise<void> => closing ??= (async () => {
-    const openPages = pages.size;
-    if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
-    let browserClose: ShutdownTrace["browserClose"] = "skipped";
-    try {
-      if (cdp?.isOpen) {
-        try {
-          await cdp.send("Browser.close", {}, undefined, 3000);
-          browserClose = "sent";
-        } catch { browserClose = "failed"; }
+  const close = (): Promise<void> => {
+    if (state.phase === "closing" || state.phase === "settled") return state.completion;
+    const completion = Promise.resolve().then(async () => {
+      const openPages = pages.size;
+      if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
+      let browserClose: ShutdownTrace["browserClose"] = "skipped";
+      try {
+        if (cdp?.isOpen) {
+          try {
+            await cdp.send("Browser.close", {}, undefined, 3000);
+            browserClose = "sent";
+          } catch { browserClose = "failed"; }
+        }
+        const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
+        console.error(formatShutdown({ browserClose, openPages, ...released, profile: opts.userDataDir }));
+      } finally {
+        cdp?.close();
+        state = { phase: "settled", completion };
+        resolveClosed();
       }
-      const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
-      console.error(formatShutdown({ browserClose, openPages, ...released, profile: opts.userDataDir }));
-    } finally {
-      cdp?.close();
-      resolveClosed();
+    });
+    state = { phase: "closing", completion };
+    return completion;
+  };
+  const onClosed = (): void => {
+    switch (state.phase) {
+      case "starting":
+      case "running":
+        void close().catch(() => undefined);
+        return;
+      case "retained":
+      case "closing":
+      case "settled":
+        return;
     }
-  })();
-  const onClosed = () => { if (!released) void close().catch(() => undefined); };
+  };
   if (owner.kind === "direct") owner.child.once("exit", onClosed);
   try {
     const pid = owner.kind === "direct" ? owner.child.pid : owner.pid;
@@ -612,13 +635,28 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     });
     // Discovery reports existing and future targets without attaching to them.
     await cdp.send("Target.setDiscoverTargets", { discover: true });
-    if (closing || !ownedChromeRunning(owner)) throw new Error("Chrome closed during startup");
-    return { portFile, closed, close, isClosed: () => !!closing, keepOpen() {
-      released = true;
-      cdp?.close();
-      if (owner.kind === "direct") owner.child.unref();
-      else owner.launcher.unref();
-    } };
+    if (state.phase !== "starting" || !ownedChromeRunning(owner)) throw new Error("Chrome closed during startup");
+    state = { phase: "running" };
+    return {
+      portFile, closed, close, keepOpen() {
+        if (state.phase !== "running") return;
+        state = { phase: "retained" };
+        cdp?.close();
+        if (owner.kind === "direct") owner.child.unref();
+        else owner.launcher.unref();
+      },
+      isClosed() {
+        switch (state.phase) {
+          case "starting":
+          case "running":
+          case "retained":
+            return false;
+          case "closing":
+          case "settled":
+            return true;
+        }
+      },
+    };
   } catch (error) {
     await close().catch(() => undefined);
     throw error;
