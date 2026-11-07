@@ -111,7 +111,7 @@ test("active asks share attention counts, open Live and use numeric deadlines on
   for (const status of ["timed-out", "stopped", "failed"]) {
     const ended = runsList([{ ...waiting, status, envelope: { ...waiting.envelope, status, reason: "Owner wait ended." } }], [], "", now);
     assert.match(ended, /Owner wait ended\./);
-    assert.doesNotMatch(ended, /Press Reserve|Nov 6/);
+    assert.doesNotMatch(ended, /Press Reserve|Nov 6, 12:30 PM UTC|data-run-deadline/);
   }
 });
 
@@ -382,17 +382,23 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     assert.equal(await page.locator("#run-evidence").getAttribute("data-retained"), "yes", "command evidence does not rebuild the open viewer");
     assert.equal(await page.locator("#run-evidence").getAttribute("open"), "");
     await page.locator(".runs-record").click();
+    await page.waitForResponse((response) => response.url() === `${url}/api/state`);
+    await page.waitForResponse((response) => response.url() === `${url}/api/state`);
     await page.locator("#start-url").fill("/fixture?draft=keep");
+    const draftInput = await page.locator("#start-url").elementHandle();
+    assert.ok(draftInput);
     const inProgress = app.library.readRun("raw-browser");
     const command = { id: "command-22", label: "Read fixture", status: "pending", startedAt: now + 2000 };
     app.library.saveRun({ ...inProgress, steps: [...inProgress.steps, command] });
     await page.waitForResponse((response) => response.url() === `${url}/api/state`);
     await page.waitForResponse((response) => response.url() === `${url}/api/state`);
     assert.equal(await page.locator("#start-url").inputValue(), "/fixture?draft=keep", "command start preserves the Capture draft");
+    assert.equal(await page.locator("#start-url").evaluate((node, original) => node === original, draftInput), true, "command start retains the input element");
     app.library.saveRun({ ...inProgress, steps: [...inProgress.steps, { ...command, status: "passed", endedAt: now + 2100 }] });
     await page.waitForResponse((response) => response.url() === `${url}/api/state`);
     await page.waitForResponse((response) => response.url() === `${url}/api/state`);
     assert.equal(await page.locator("#start-url").inputValue(), "/fixture?draft=keep", "command completion preserves the Capture draft");
+    assert.equal(await page.locator("#start-url").evaluate((node, original) => node === original, draftInput), true, "command completion retains the input element");
     await page.route("**/api/replay", (route) => route.fulfill({ json: { id: "raw-failed" } }));
     await page.locator("#rail [data-place=workflows]").click();
     await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
