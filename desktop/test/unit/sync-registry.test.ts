@@ -9,7 +9,7 @@ import { buildPushBody } from "../../../web/src/lib/guard";
 import sharp from "sharp";
 import { createRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
-import { createShare, getShare, installShare, listLibrary, listRuns, previewPublication, pull, pushRun, pushVersion, recordReview } from "../../../web/src/lib/registry";
+import { createShare, getShare, installShare, listLibrary, listRuns, previewPublication, pull, pushRun, pushVersion, recordReview, saveAccountSettings, syncSnapshot } from "../../../web/src/lib/registry";
 
 test("audit pages newest 50 rows without losing timestamp precision or owner scope", async () => {
   for (let i = 0; i < 55; i++) {
@@ -62,6 +62,17 @@ const source = {
     { id: "go", index: 1, action: "key", key: "Enter", label: "Continue", surface: "dom", timeoutMs: 1000 },
   ],
 };
+
+test("settings sync preserves Stop beside the existing global heal modes", async () => {
+  const principal = { userId: "stop-settings-owner" };
+  await query("INSERT INTO users (id, email, name) VALUES ($1, 'stop@fixture.test', 'Stop settings')", [principal.userId]);
+  for (const heal of ["never", "auto", "approve"]) {
+    await saveAccountSettings(principal, { heal, promoteAfter: 3 });
+    const snapshot = await syncSnapshot(principal);
+    assert.deepEqual(snapshot.settings, { heal, promoteAfter: 3 });
+    assert.equal(snapshot.counts.settings, 1);
+  }
+});
 
 function checkDocument(document: unknown): void {
   const text = JSON.stringify(document);

@@ -70,7 +70,7 @@ export function runHealField(driver: string | undefined, mode: string, globalHea
     </select></label>`;
   }
   return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal">
-      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${globalHeal === "approve" ? "Ask me" : "Heal it"})</option>
+      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${globalHeal === "never" ? "Stop" : globalHeal === "approve" ? "Ask me" : "Heal it"})</option>
       <option value="auto" ${mode === "auto" ? "selected" : ""}>Heal it</option>
       <option value="approve" ${mode === "approve" ? "selected" : ""}>Ask me</option>
     </select></label>`;
@@ -930,7 +930,7 @@ function triageWord(value: string): string {
   if (value === "outage") return "an outage";
   if (value === "circuit") return "a circuit break";
   if (value === "review") return "needs review";
-  if (value === "never") return "a step set to never heal";
+  if (value === "never") return "healing turned off (Stop)";
   return value;
 }
 

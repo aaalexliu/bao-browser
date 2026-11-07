@@ -5,7 +5,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser.js";
 import { applyHermeticApp } from "../runtime";
-import { workflowDetail, libraryTable, type StepCard, type RunSummary } from "../../src/app/views";
+import { workflowDetail, libraryTable, type StepCard, type RunSummary, type ShellState } from "../../src/app/views";
 import { clearConflict, noteConflict } from "../../src/v1/versions";
 
 test("Inbox workflow detail keeps selection, inputs, history, and existing actions reachable", { timeout: 60_000 }, async () => {
@@ -172,6 +172,67 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
       assert.equal(colors.app, colors.content);
     }
   } finally {
+    await browser?.close();
+    await app.close();
+    rmSync(path.dirname(dirs.home), { recursive: true, force: true });
+  }
+});
+
+test("workflow loading and retry stay in the current visit across state polls", { timeout: 30_000 }, async () => {
+  const dirs = applyHermeticApp("workflow-detail-polls");
+  const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
+  app.library.save({ schema: "bao.workflow/v2", version: 2, id: "poll-detail", name: "Poll detail", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] });
+  let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+    const page = await browser.newPage();
+    let revision = 0;
+    await page.route("**/api/state", async (route) => {
+      const response = await route.fetch();
+      const state = await response.json() as ShellState;
+      await route.fulfill({ json: { ...state, remote: { phase: "approval", workflowName: `Background request ${revision}` } } });
+    });
+    let requests = 0;
+    await page.route("**/api/workflows/poll-detail", async (route) => {
+      requests += 1;
+      await pending;
+      await route.fulfill({ status: 404, body: "{}" });
+    });
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.locator("#rail [data-place=workflows]").click();
+    await page.locator('[data-open-workflow="poll-detail"]').click();
+    await page.getByText("Loading workflow…", { exact: true }).waitFor();
+    const host = await page.locator("#workflow-host").elementHandle();
+    const poll = async () => {
+      revision += 1;
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await page.getByTestId("remote-approval").filter({ hasText: `Background request ${revision}` }).waitFor();
+    };
+    await poll();
+    // The remote banner proves a changed state rendered without a second workflow request.
+    assert.equal(await host!.evaluate((node) => node.isConnected), true);
+    assert.equal(requests, 1);
+    release();
+    await page.getByRole("heading", { name: "This workflow can’t open" }).waitFor();
+    const retry = page.locator("#workflow-retry");
+    await retry.focus();
+    await poll();
+    assert.equal(await retry.evaluate((node) => node === document.activeElement), true);
+    assert.equal(requests, 1, "polling must not retry a failed workflow on the user's behalf");
+    await page.unroute("**/api/workflows/poll-detail");
+    await poll();
+    await retry.click();
+    await page.locator('#workflow-detail[data-workflow="poll-detail"]').waitFor();
+    await poll();
+    assert.equal(await page.locator('#workflow-detail[data-workflow="poll-detail"]').count(), 1);
+    await page.getByRole("button", { name: "Back to all workflows" }).click();
+    await page.locator("#workflow-list").waitFor();
+    await page.locator('[data-open-workflow="poll-detail"]').click();
+    await page.locator('#workflow-detail[data-workflow="poll-detail"]').waitFor();
+  } finally {
+    release();
     await browser?.close();
     await app.close();
     rmSync(path.dirname(dirs.home), { recursive: true, force: true });

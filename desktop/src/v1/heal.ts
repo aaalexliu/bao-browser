@@ -91,9 +91,11 @@ export type HealSource =
   | { kind: "cursor-account" }
   | { kind: "api-key"; provider: "openai" | "anthropic"; key: string };
 
+export type GlobalHealMode = HealMode | "never";
+
 export interface HealSettings {
-  /** Global default. Absent means auto. */
-  heal?: HealMode;
+  /** Global default. Absent means auto. `never` stops without a heal. */
+  heal?: GlobalHealMode;
   /** How long a person has to act. Absent keeps the step timeout. */
   actTimeoutMs?: number;
   /** Passing real runs required before a provisional heal is kept. */
@@ -105,7 +107,7 @@ export interface HealSettings {
 
 export type StepHeal = "auto" | "ask" | "never";
 
-export function effectiveMode(workflow: WorkflowV2, settings: HealSettings): HealMode {
+export function effectiveMode(workflow: WorkflowV2, settings: HealSettings): GlobalHealMode {
   return workflow.heal ?? settings.heal ?? "auto";
 }
 
