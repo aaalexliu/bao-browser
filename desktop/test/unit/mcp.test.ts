@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync } from "node:fs";
+import { once } from "node:events";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
-import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
+import { MCP_VERSION, TOOL_NAMES, TOOLS } from "../../src/mcp/server";
+import { createMcpVersionCheck, McpVersionError, mcpVersion } from "../../src/mcp/version";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
 import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import type { BrowserToolCard } from "../../src/mcp/tool-card";
@@ -351,6 +354,82 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       assert.deepEqual(JSON.parse(inspected.result?.content?.[0]?.text || "null"), metadata);
     }
   } finally { mcp.child.kill(); legacy.child.kill(); }
+});
+
+test("MCP version checks preserve standalone use and detect app and installed-code changes", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
+  const entry = path.join(home, "server.js");
+  writeFileSync(entry, "original");
+  let status = 200;
+  let body: unknown = { version: MCP_VERSION };
+  const app = createServer((_req, res) => {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  });
+  const check = createMcpVersionCheck(MCP_VERSION, entry, ["--home", home], process.env);
+  try {
+    await check();
+    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+    const address = app.address();
+    assert.ok(address && typeof address !== "string");
+    writeFileSync(path.join(home, "server.json"), JSON.stringify({ port: address.port }));
+    await check();
+    assert.notEqual(mcpVersion({ tools: TOOLS }), mcpVersion({ tools: [...TOOLS, { name: "new_tool" }] }));
+    body = { version: "another-contract" };
+    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && error.restart && /versions differ/.test(error.message));
+    status = 404;
+    body = { error: "not found" };
+    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && !error.restart && /predates MCP version checks/.test(error.message));
+    status = 200;
+    await assert.rejects(check, /returned no MCP version/);
+    await new Promise<void>((resolve) => app.close(() => resolve()));
+    await check();
+    writeFileSync(entry, "updated");
+    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && error.restart && /Bao was updated/.test(error.message));
+    rmSync(entry);
+    await assert.rejects(check, /Bao was updated/);
+  } finally {
+    if (app.listening) await new Promise<void>((resolve) => app.close(() => resolve()));
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a mismatched MCP cannot list or call tools, and an idle MCP exits after an app update", async () => {
+  let version = MCP_VERSION;
+  const app = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ version }));
+  });
+  await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+  const address = app.address();
+  assert.ok(address && typeof address !== "string");
+  try {
+    for (const method of ["tools/list", "tools/call", "idle"]) {
+      version = MCP_VERSION;
+      const mcp = startMcp("bao-mcp-update-");
+      try {
+        mkdirSync(mcp.home, { recursive: true });
+        writeFileSync(path.join(mcp.home, "server.json"), JSON.stringify({ port: address.port }));
+        await initialize(mcp);
+        assert.deepEqual((await mcp.request("tools/list")).result?.tools, TOOLS);
+        const exited = once(mcp.child, "exit", { signal: AbortSignal.timeout(6000) });
+        version = "updated-app-contract";
+        if (method !== "idle") {
+          const reply = await mcp.request(method, { name: "search_workflows", arguments: { query: "missing" } });
+          assert.equal(reply.error?.code, -32000);
+          assert.match(reply.error?.message || "", /versions differ/);
+          assert.equal(reply.result, undefined);
+        }
+        assert.equal((await exited)[0], 0);
+      } finally {
+        if (mcp.child.exitCode === null) {
+          const exited = once(mcp.child, "exit");
+          mcp.child.kill();
+          await exited;
+        }
+      }
+    }
+  } finally { await new Promise<void>((resolve) => app.close(() => resolve())); }
 });
 
 const shelfWorkflow = `{
