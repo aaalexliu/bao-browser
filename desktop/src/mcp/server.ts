@@ -1,5 +1,5 @@
 import { baoUserHome, resolveLibraryIdentity, tildePath, type LibraryIdentity } from "../home";
-import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
+import { describeWorkflow, getRun, hasHeldRuns, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
@@ -159,7 +159,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   };
   const versionPoll = setInterval(() => {
     void ctx.checkVersion().catch((error: unknown) => {
-      if (error instanceof McpVersionError && pending === 0 && !ctx.proxy.hasSession()) {
+      if (error instanceof McpVersionError && pending === 0 && !ctx.proxy.hasSession() && !hasHeldRuns()) {
         process.stderr.write(`${error.message}\n`);
         stop();
       }
@@ -190,7 +190,10 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   }
   if (msg.method === "notifications/initialized") return;
   if ((msg.method === "tools/list" || msg.method === "tools/call") &&
-      !(msg.method === "tools/call" && msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close")) {
+      !(msg.method === "tools/call" && (
+        (msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close") ||
+        (msg.params?.name === "run_workflow" && msg.params.arguments?.cancel === true)
+      ))) {
     try { await ctx.checkVersion(); }
     catch (error) {
       send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });

@@ -403,6 +403,10 @@ interface LiveRun {
 
 const liveRuns = new Map<string, LiveRun>();
 
+export function hasHeldRuns(): boolean {
+  return liveRuns.size > 0;
+}
+
 async function replayInBrowser(
   library: Library,
   workflow: WorkflowV2,
