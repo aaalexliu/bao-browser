@@ -1,5 +1,5 @@
 import { baoUserHome, resolveLibraryIdentity, tildePath, type LibraryIdentity } from "../home";
-import { describeWorkflow, getRun, hasHeldRuns, runWorkflow, searchWorkflows } from "./catalog";
+import { describeWorkflow, getRun, hasHeldRuns, peekResume, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
@@ -323,7 +323,9 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
-      browser: args.browser === undefined ? undefined : browserChoice(args.browser),
+      browser: args.browser === undefined
+        ? (args.resume ? peekResume(library, String(args.resume))?.browser : undefined) ?? DEFAULT_BROWSER
+        : browserChoice(args.browser),
     });
     return withLibrary(result, identity);
   }

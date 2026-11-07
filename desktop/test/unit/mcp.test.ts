@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
+import { runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
 import { launchOwnedChrome, pidsForDataDir } from "../../src/launch";
@@ -680,6 +681,72 @@ test("input resumes preserve the browser choice and allow explicit overrides", {
       try { process.kill(pid, "SIGTERM"); } catch {}
     }
     await new Promise<void>((resolve) => fixture.close(() => resolve()));
+  }
+});
+
+test("replay failure and continued held-run tokens preserve a named browser", { timeout: 90_000 }, async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-resume-writers-"));
+  const sourceRoot = path.join(root, "source");
+  mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
+  writeFileSync(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
+  const priorSource = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+  process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = sourceRoot;
+  const seen: string[] = [];
+  const fixture = createServer((req, res) => {
+    if (req.url === "/account") seen.push(req.headers.cookie?.includes("route=other") ? "other" : "copy");
+    res.setHeader("content-type", "text/html");
+    res.end('<!doctype html><h1>Ready</h1><p id="auth">Waiting</p><button onclick="document.getElementById(\'auth\').textContent = \'Signed in\'">Sign in</button>');
+  });
+  let token = "";
+  const library = new Library(path.join(root, "library"));
+  t.after(async () => {
+    try {
+      if (token) await runWorkflow(library, { resume: token, cancel: true });
+      await new Promise<void>((resolve) => fixture.close(() => resolve()));
+      rmSync(root, { recursive: true, force: true });
+    } finally {
+      if (priorSource === undefined) delete process.env.BAO_AGENT_BROWSER_PROFILE_ROOT; else process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = priorSource;
+    }
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const address = fixture.address();
+  assert.ok(address && typeof address !== "string");
+  const site = `http://127.0.0.1:${address.port}/account`;
+  for (const profile of ["chrome-profile", "agent-browser-profile"]) {
+    const seed = await launchOwnedChrome({ userDataDir: path.join(library.root, profile), headless: true });
+    try { await seed.addCookies([{ name: "route", value: "other", url: site, expires: Date.now() / 1000 + 3600 }]); }
+    finally { await seed.close(); }
+  }
+  const check = { id: "check", index: 0, action: "verify" as const, label: "Check account", surface: "dom" as const, timeoutMs: 100, postcondition: { kind: "text" as const, match: "Not ready", timeoutMs: 100 } };
+  const doc: WorkflowV2 = { ...workflow, id: "resume-writers", startUrl: site, steps: [check] };
+  for (const held of [false, true]) {
+    library.save({ ...doc, steps: held ? [
+      { id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in", timeoutMs: 1000 } },
+      { ...check, index: 1 },
+    ] : [check] });
+    let outcome = await runWorkflow(library, { id: doc.id, browser: "copy" });
+    token = outcome.resume_token || "";
+    assert.ok(token);
+    if (held) {
+      assert.equal(outcome.status, "needs_signin");
+      const waiting = await runWorkflow(library, { resume: token });
+      assert.equal(waiting.status, "needs_signin");
+      assert.equal(waiting.resume_token, token, "the held session rewrites its existing token");
+      await withHeldPage(token, (page) => page.getByRole("button", { name: "Sign in", exact: true }).click());
+      outcome = await runWorkflow(library, { resume: token });
+      assert.equal(outcome.outcome, "failed");
+      assert.ok(outcome.resume_token);
+      assert.notEqual(outcome.resume_token, token, "a finished held session issues a fresh retry token");
+      token = outcome.resume_token!;
+    } else {
+      assert.equal(outcome.outcome, "failed");
+    }
+    library.save({ ...doc, steps: [{ ...check, postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } }] });
+    seen.length = 0;
+    const resumed = await runWorkflow(library, { resume: token });
+    assert.equal(resumed.outcome, "ok", resumed.reason);
+    assert.equal(seen.at(-1), "copy", "retry keeps the source-copy account instead of either lasting profile");
+    token = "";
   }
 });
 
