@@ -180,6 +180,7 @@ export class AgentBrowserProxy {
       return results;
     } catch (error) {
       step ??= recording.begin(command as string, args);
+      this.latest = { runId: recording.id, step };
       failure = error;
       throw error;
     } finally {
@@ -387,8 +388,7 @@ export class AgentBrowserProxy {
 
   private async captureTarget(session: Session, step: RecordedAgentBrowserCommand, target: string): Promise<void> {
     try {
-      const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(3000)]);
-      const result = await this.run(session, "get", ["box", target, "--json"], signal);
+      const result = await this.run(session, "get", ["box", target, "--json"], 3000);
       if (result.exitCode !== 0) return;
       const { data } = JSON.parse(result.stdout) as { data?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } };
       if (!data) return;
@@ -427,9 +427,9 @@ export class AgentBrowserProxy {
       if (signal.aborted) throw new Error("screenshot timed out");
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, remaining());
       attached = sessionId;
-      const metrics = visual ? await cdp.send<{ cssLayoutViewport: { pageX: number; pageY: number; clientWidth: number; clientHeight: number } }>("Page.getLayoutMetrics", {}, sessionId, 3000) : undefined;
-      const pixelRatio = metrics ? await cdp.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "window.devicePixelRatio", returnByValue: true }, sessionId, 3000) : undefined;
-      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", metrics ? { format: "jpeg", quality: 65, clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight, scale: 1 / pixelRatio!.result.value } } : { format: "png" }, sessionId, 3000);
+      const metrics = visual ? await cdp.send<{ cssLayoutViewport: { pageX: number; pageY: number; clientWidth: number; clientHeight: number } }>("Page.getLayoutMetrics", {}, sessionId, remaining()) : undefined;
+      const pixelRatio = metrics ? await cdp.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "window.devicePixelRatio", returnByValue: true }, sessionId, remaining()) : undefined;
+      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", metrics ? { format: "jpeg", quality: 65, clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight, scale: 1 / pixelRatio!.result.value } } : { format: "png" }, sessionId, remaining());
       return { bytes: Buffer.from(data, "base64"), viewport: metrics ? { width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight } : undefined };
     } finally {
       signal.removeEventListener("abort", close);
@@ -478,15 +478,30 @@ export class AgentBrowserProxy {
       session.recording.finish();
       try {
         const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
-        if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) process.kill(pid, "SIGTERM");
+        if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) {
+          const running = () => {
+            try { process.kill(pid, 0); return true; }
+            catch (error) {
+              if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+              throw error;
+            }
+          };
+          for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
+            process.kill(pid, signal);
+            const deadline = performance.now() + 1000;
+            while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+            if (!running()) break;
+          }
+          if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
+        }
       } catch (error) {
         if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       } finally {
         if (session.kind === "current") session.chrome.detach();
         else if (keepOpen && !session.closing && this.pendingCloses === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
         else await session.chrome.close();
-        await rm(session.stateDir, { recursive: true, force: true });
       }
+      await rm(session.stateDir, { recursive: true, force: true });
     })());
     if (session.kind === "copy" && (session.closing || this.pendingCloses > 0) && !session.chrome.isClosed()) {
       session.closing = true;

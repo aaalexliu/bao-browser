@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs, { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,6 +14,93 @@ import * as launch from "../../src/launch";
 import { Library } from "../../src/v1/store";
 
 launch.pinTestBrowser();
+
+for (const { mode, force, deny } of [
+  { mode: "close", force: false, deny: false },
+  { mode: "disconnect", force: false, deny: false },
+  { mode: "stop", force: false, deny: false },
+  { mode: "close", force: true, deny: false },
+  { mode: "close", force: false, deny: true },
+] as const) test(deny ? "current close preserves native state when shutdown fails" : `current ${mode} waits for native daemon exit after ${force ? "SIGKILL" : "a second SIGTERM"}`, { timeout: 30_000 }, async (t) => {
+  let daemon: ReturnType<typeof spawn> | undefined;
+  let exited: Promise<unknown> | undefined;
+  let proxy: AgentBrowserProxy | undefined;
+  const root = await mkdtemp(path.join(tmpdir(), "bao-daemon-close-"));
+  t.after(async () => {
+    try {
+      if (daemon?.exitCode === null && daemon.signalCode === null) daemon.kill("SIGKILL");
+      await exited;
+    } finally {
+      try { await proxy?.end().catch(() => undefined); }
+      finally { await rm(root, { recursive: true, force: true }); }
+    }
+  });
+  let detached = false;
+  let resolveClosed!: () => void;
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, endpoint: { port: 9222, browserPath: "/fixture" },
+    closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
+    isClosed: () => detached,
+    detach: () => { detached = true; resolveClosed(); },
+    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
+  } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
+  const signals = path.join(root, "signals");
+  daemon = spawn(process.execPath, ["-e", `
+    const fs = require('node:fs');
+    let terms = 0;
+    process.on('SIGTERM', () => {
+      fs.appendFileSync(${JSON.stringify(signals)}, 'SIGTERM\\n');
+      if (++terms > 1 && ${!force}) setTimeout(() => process.exit(0), 75);
+    });
+    setInterval(() => {}, 1000);
+    console.log('ready');
+  `], { stdio: ["ignore", "pipe", "pipe"] });
+  exited = once(daemon, "exit");
+  await Promise.race([
+    once(daemon.stdout!, "data"),
+    exited.then(() => { throw new Error("fake daemon exited before readiness"); }),
+  ]);
+  const executable = path.join(root, "native");
+  const stateMarker = path.join(root, "state");
+  await writeFile(executable, `#!${process.execPath}
+    const fs = require('node:fs');
+    fs.writeFileSync('bao.pid', ${JSON.stringify(String(daemon.pid))});
+    fs.writeFileSync(${JSON.stringify(stateMarker)}, process.env.AGENT_BROWSER_SOCKET_DIR);
+    process.exitCode = 1;
+  `, { mode: 0o700 });
+  proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "source"), executable });
+  assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+  const stateDir = await fs.readFile(stateMarker, "utf8");
+  const remove = fs.rm;
+  t.mock.method(fs, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
+    if (file === stateDir) assert.ok(daemon!.exitCode !== null || daemon!.signalCode !== null, "daemon must exit before its state is removed");
+    return remove(file, options);
+  });
+  if (deny) {
+    const kill = process.kill;
+    t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+      if (pid === daemon!.pid && signal !== 0) throw Object.assign(new Error("fixture signal denied"), { code: "EPERM" });
+      return kill(pid, signal);
+    });
+    await assert.rejects(proxy.execute("close"), { code: "EPERM" });
+    await access(stateDir);
+    assert.equal(daemon.exitCode, null);
+    assert.equal(daemon.signalCode, null);
+    assert.equal(detached, true);
+    return;
+  }
+  if (mode === "close") await proxy.execute("close");
+  else {
+    proxy.disconnect();
+    await proxy.end(mode === "stop");
+  }
+  assert.equal(daemon.exitCode, force ? null : 0);
+  assert.equal(daemon.signalCode, force ? "SIGKILL" : null);
+  assert.equal(await fs.readFile(signals, "utf8"), "SIGTERM\nSIGTERM\n");
+  await assert.rejects(access(stateDir), /ENOENT/);
+  assert.equal(detached, true);
+});
 
 test("window close awaits owned cleanup before browser choice and reopening", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-close-"));
