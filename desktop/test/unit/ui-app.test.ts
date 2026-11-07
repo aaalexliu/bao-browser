@@ -84,8 +84,11 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(await page.getByRole("button", { name: "Record", exact: true }).isVisible(), true);
     assert.equal(await page.locator("#rail button[data-screen=trail]").count(), 0);
     await page.click("#rail button[data-place=settings]");
-    assert.match(await page.locator("#settings-helper").innerText(), /helper off|helper available/);
-    assert.match(await page.locator("#settings-model").innerText(), /no model|fixture model|model ready|cursor account/);
+    await page.locator("#settings-advanced > summary").click();
+    await page.locator("#settings-helper").waitFor();
+    await page.waitForFunction(() => Boolean(document.getElementById("settings-helper")?.innerText.trim()));
+    assert.match(await page.locator("#settings-helper").innerText(), /^(?:Mac helper (?:un)?available|The Mac helper is only available on macOS)\./);
+    assert.match(await page.locator("#settings-model").innerText(), /^(None|Test model|Connected|Cursor account)$/);
     await page.click("#rail button[data-place=workflows]");
 
     // Open the replay window before exercising the handoffs.
