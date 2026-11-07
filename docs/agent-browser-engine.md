@@ -47,7 +47,7 @@ Kept Chrome has no Bao owner and keeps a local debugging port open, even after y
 
 ### Wait for owner input in the same session
 
-When the active tab's URL or title signals sign-in, a verification code, Imperva, or hCaptcha, Bao returns `outcome: "halted"`. It keeps that tab, profile copy, MCP process, and Library run. The page shows a **Bao is waiting for you** banner, and the Library run says **needs you**. The owner signs in or clears the check in that tab.
+When the active tab's URL or title signals sign-in, a verification code, Imperva, or hCaptcha, Bao returns `outcome: "halted"`. It keeps that tab, browser profile, MCP process, and Library run. The page shows a **Bao is waiting for you** banner, and the Library run says **needs you**. The owner signs in or clears the check in that tab.
 
 ```json
 {"command":"wait_for_owner","args":["60000"]}
