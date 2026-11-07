@@ -349,6 +349,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.waitForFunction(() => document.getElementById("engine-feedback")?.textContent === "Engine choice saved. It applies to the next run.");
     await page.locator("#save-agent-browser-lifetime").click();
     await eventually(() => app.library.settings().keepAgentBrowserOpen === true);
+    await page.waitForFunction(() => document.getElementById("agent-browser-lifetime-feedback")?.textContent === "Window choice saved.");
     assert.equal(await page.locator("#settings-advanced").evaluate((el) => (el as HTMLDetailsElement).open), true);
     for (const [id, value] of drafts) assert.equal(await page.locator(`#${id}`).inputValue(), value);
     await Promise.all([
@@ -389,8 +390,10 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     assert.equal(await page.locator("#keep-agent-browser-open").isChecked(), false);
     await page.locator("#save-engine").click();
     await eventually(() => app.library.settings().pageEngine === "old" && app.library.settings().chromeProfileExtensions?.["Profile 1"] === false);
+    await page.waitForFunction(() => document.getElementById("engine-feedback")?.textContent === "Engine choice saved. It applies to the next run.");
     await page.locator("#save-agent-browser-lifetime").click();
     await eventually(() => app.library.settings().keepAgentBrowserOpen === false);
+    await page.waitForFunction(() => document.getElementById("agent-browser-lifetime-feedback")?.textContent === "Window choice saved.");
     await page.locator("#act-minutes").selectOption("custom");
     await page.locator("#act-custom").fill("1");
     await page.locator("#act-custom").press("Tab");
