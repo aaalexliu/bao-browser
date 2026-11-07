@@ -121,7 +121,7 @@ test("a logged-in CLI print is the heal and the prompt stays off the command lin
   assert.equal(proposal.model.provider, "cursor");
   assert.equal(proposal.model.name, "Composer");
   assert.equal(proposal.model.version, "login");
-  assert.equal(proposal.patch.identity?.testId, "login");
+  assert.equal(proposal.patch?.identity?.testId, "login");
   assert.ok(proposal.prompt.includes(`Intent: ${failure.intent}`));
   assert.equal(JSON.parse(proposal.prompt.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)).dom.note, SECRET);
   assert.equal(proposal.rawResponse.includes(SECRET), false);
@@ -163,7 +163,7 @@ test("a logged-out CLI falls back to the response file", async () => {
   assert.ok(proposal);
   assert.equal(proposal.model.name, "cursor");
   assert.equal(proposal.model.version, "live");
-  assert.equal(proposal.patch.identity?.testId, "login");
+  assert.equal(proposal.patch?.identity?.testId, "login");
   const request = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8"));
   assert.equal(request.intent, failure.intent);
   assert.equal(request.dom.note, SECRET);

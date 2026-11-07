@@ -502,7 +502,7 @@ function settings(): string {
       <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
-    <p class="quiet">AI help uses the connected Cursor account or a model key set when Bao starts. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
+    <p class="quiet">AI help uses the source chosen above. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     ${syncPanel(state.sync, conflictCopy)}
@@ -597,6 +597,38 @@ function bindSettings(): void {
   const wait = document.getElementById("act-minutes") as HTMLSelectElement | null;
   if (custom && wait) custom.hidden = wait.value !== "custom";
   paintSettingsValidation();
+  const saveSetting = async (patch: Record<string, unknown>) => {
+    settingsFeedback = "Saving…";
+    const status = document.getElementById("settings-feedback");
+    if (status) status.textContent = settingsFeedback;
+    try {
+      const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+      const body = await response.json() as { error?: string };
+      settingsFeedback = response.ok ? "Saved." : body.error || "Could not save. Try again.";
+      if (response.ok) await refresh();
+    } catch {
+      settingsFeedback = "Could not save. Check that Bao is running, then try again.";
+    } finally {
+      const status = document.getElementById("settings-feedback");
+      if (status) status.textContent = settingsFeedback;
+    }
+  };
+  const source = document.getElementById("ai-source") as HTMLSelectElement | null;
+  const keyForm = document.getElementById("ai-key-form") as HTMLFormElement | null;
+  if (source && keyForm) {
+    keyForm.hidden = source.value !== "api-key";
+    source.onchange = () => {
+      keyForm.hidden = source.value !== "api-key";
+      if (source.value === "api-key") document.getElementById("ai-key")?.focus();
+      else void saveSetting({ healSource: { kind: source.value } });
+    };
+    keyForm.onsubmit = (event) => {
+      event.preventDefault();
+      const key = (document.getElementById("ai-key") as HTMLInputElement).value.trim();
+      const provider = (document.getElementById("ai-provider") as HTMLSelectElement).value;
+      if (key) void saveSetting({ healSource: { kind: "api-key", provider, key } });
+    };
+  }
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-setting]").forEach((input) => {
     const save = async () => {
       if (input.value === "custom") {
@@ -613,20 +645,7 @@ function bindSettings(): void {
       delete input.dataset.settingsEdited;
       const key = input.dataset.setting!;
       const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
-      settingsFeedback = "Saving…";
-      const status = document.getElementById("settings-feedback");
-      if (status) status.textContent = settingsFeedback;
-      try {
-        const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ [key]: value }) });
-        const body = await response.json() as { error?: string };
-        settingsFeedback = response.ok ? "Saved." : body.error || "Could not save. Try again.";
-        if (response.ok) await refresh();
-      } catch {
-        settingsFeedback = "Could not save. Check that Bao is running, then try again.";
-      } finally {
-        const status = document.getElementById("settings-feedback");
-        if (status) status.textContent = settingsFeedback;
-      }
+      await saveSetting({ [key]: value });
     };
     if (input instanceof HTMLInputElement && input.type === "number") {
       input.oninput = () => {
