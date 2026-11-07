@@ -178,18 +178,34 @@ test("step facts reflect replay checks, destinations, and action-specific input 
     const inputs = [{ name: "file", label: "Report file", type: "text" as const }];
     const cases: { step: StepCard; checks: string[] }[] = [
       { step: { id: "settled", expect: { kind: "settled", match: "no error and the page settled" } }, checks: ["The page finishes loading"] },
-      { step: { id: "url", postcondition: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address shows “https://example.test/Report file”"] },
-      { step: { id: "text", postcondition: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page shows “Saved Report file”"] },
-      { step: { id: "value", postcondition: { kind: "value", match: "{{file}}" } }, checks: ["The value shows “Report file”"] },
-      { step: { id: "element", postcondition: { kind: "element", identity: { name: "{{file}}" } } }, checks: ["The “Report file” is on the page"] },
+      { step: { id: "url", postcondition: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address matches “https://example.test/” followed by the Report file input"] },
+      { step: { id: "url-exact", postcondition: { kind: "url", match: "{{file}}" } }, checks: ["The address matches the Report file input"] },
+      { step: { id: "text", postcondition: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input"] },
+      { step: { id: "text-exact", postcondition: { kind: "text", match: "{{file}}" } }, checks: ["The page matches the Report file input"] },
+      { step: { id: "value", postcondition: { kind: "value", match: "{{file}}" } }, checks: ["The value matches the Report file input"] },
+      { step: { id: "value-embedded", postcondition: { kind: "value", match: "File: {{file}}!" } }, checks: ["The value matches “File: ” followed by the Report file input followed by “!”"] },
+      { step: { id: "literal-label", postcondition: { kind: "value", match: "Report file" } }, checks: ["The value shows “Report file”"] },
+      { step: { id: "expect-text", expect: { kind: "text", match: "{{file}}" } }, checks: ["The page matches the Report file input"] },
+      { step: { id: "expect-text-embedded", expect: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input"] },
+      { step: { id: "expect-url", expect: { kind: "url", match: "{{file}}" } }, checks: ["The address matches the Report file input"] },
+      { step: { id: "expect-url-embedded", expect: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address matches “https://example.test/” followed by the Report file input"] },
+      { step: { id: "element", postcondition: { kind: "element", identity: { name: "{{file}}" } } }, checks: ["The control matching the Report file input is on the page"] },
+      { step: { id: "element-embedded", postcondition: { kind: "element", identity: { text: "Open {{file}}" } } }, checks: ["The control matching “Open ” followed by the Report file input is on the page"] },
       { step: { id: "absent", postcondition: { kind: "absent", identity: { name: "Login" } } }, checks: ["The “Login” is gone"] },
-      { step: { id: "combined", expect: { kind: "text", match: "Saved {{file}}" }, postcondition: { kind: "value", match: "{{file}}" }, readBack: { source: "value", match: "{{file}}" } }, checks: ["The page shows “Saved Report file”", "The value shows “Report file”", "Reads value: Report file"] },
+      { step: { id: "absent-exact", postcondition: { kind: "absent", identity: { text: "{{file}}" } } }, checks: ["The control matching the Report file input is gone"] },
+      { step: { id: "absent-embedded", postcondition: { kind: "absent", identity: { name: "Open {{file}}" } } }, checks: ["The control matching “Open ” followed by the Report file input is gone"] },
+      { step: { id: "read-exact", readBack: { source: "value", match: "{{file}}" } }, checks: ["Reads value matching the Report file input"] },
+      { step: { id: "read-embedded", readBack: { source: "text", match: "Saved {{file}}" } }, checks: ["Reads text matching “Saved ” followed by the Report file input"] },
+      { step: { id: "read-literal", readBack: { source: "url", match: "https://example.test/" } }, checks: ["Reads url matching “https://example.test/”"] },
+      { step: { id: "multiple", expect: { kind: "text", match: "{{file}} / {{file}}" } }, checks: ["The page matches the Report file input followed by “ / ” followed by the Report file input"] },
+      { step: { id: "unknown", postcondition: { kind: "value", match: "{{missing}}" } }, checks: ["The value matches the saved input"] },
+      { step: { id: "combined", expect: { kind: "text", match: "Saved {{file}}" }, postcondition: { kind: "value", match: "{{file}}" }, readBack: { source: "value", match: "{{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input", "The value matches the Report file input", "Reads value matching the Report file input"] },
     ];
     for (const { step, checks } of cases) {
       await page.setContent(workflowDetail({ id: "facts", name: "Facts", inputs, steps: [{ ...step, action: "type", label: "Use {{file}}" }] }));
       const facts = await page.locator(".wf-facts").innerText();
       for (const check of checks) assert.ok(facts.includes(check), facts);
-      assert.equal(facts.includes("{{file}}"), false);
+      assert.equal(facts.includes("{{"), false);
       assert.equal(facts.includes("Nothing extra"), false);
       assert.equal(await page.locator("td.wf-check > span").count(), 1);
       assert.equal(await page.locator(".wf-picture").getAttribute("data-shot-alt"), "Saved page for step 1: Use Report file");

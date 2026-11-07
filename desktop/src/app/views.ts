@@ -1472,6 +1472,14 @@ function workflowInputLabels(text: string, inputs: TokenInput[]): string {
   });
 }
 
+function workflowCheckText(text: string, inputs: TokenInput[]): string {
+  return text.split(/\{\{\s*([\w.-]+)\s*\}\}/g).map((part, index) => {
+    if (index % 2 === 0) return part ? `“${part}”` : "";
+    const input = inputs.find((item) => item.name === part);
+    return `the ${input?.label || input?.name || "saved"} input`;
+  }).filter(Boolean).join(" followed by ");
+}
+
 function workflowStatusGlyph(kind: string): string {
   const mark = kind === "passed" ? "m4 7.2 2 2 4-4.4" : kind === "failed" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.2 4v6M8.8 4v6" : "M7 3.8V7l2.2 1.4";
   return `<svg class="workflow-status-icon" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="${kind === "failed" ? "1.7" : kind === "healed" ? "1.8" : "1.6"}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -1520,14 +1528,15 @@ export function workflowDetail(
     const branch = step.when?.present ? `Only when “${step.when.present}” is on the page.` : step.when?.value ? `Only for “${step.when.value}”.` : "";
     const checks: string[] = [];
     if (step.expect) checks.push(step.expect.kind === "settled" ? "The page finishes loading"
-      : step.expect.match ? `The ${step.expect.kind === "url" ? "address" : "page"} shows “${step.expect.match}”`
+      : step.expect.match ? `The ${step.expect.kind === "url" ? "address" : "page"} ${mustacheName(step.expect.match) ? "matches" : "shows"} ${workflowCheckText(step.expect.match, inputs)}`
       : step.expect.state ? `The control is ${step.expect.state}` : "The saved check");
     const post = step.postcondition;
+    const postTarget = post?.identity?.name || post?.identity?.text || post?.identity?.role || "saved control";
     if (post) checks.push(post.kind === "element" || post.kind === "absent"
-      ? `The “${post.identity?.name || post.identity?.text || post.identity?.role || "saved control"}” ${post.kind === "absent" ? "is gone" : "is on the page"}`
-      : `The ${post.kind === "url" ? "address" : post.kind === "value" ? "value" : "page"} shows “${post.match || ""}”`);
-    if (step.readBack) checks.push(`Reads ${step.readBack.source || "the value"}${step.readBack.match ? `: ${step.readBack.match}` : ""}`);
-    const check = workflowInputLabels([...new Set(checks)].join(". ") || (step.action === "verify" ? "The saved check" : "Nothing extra"), inputs);
+      ? `The ${mustacheName(postTarget) ? "control matching " : ""}${workflowCheckText(postTarget, inputs)} ${post.kind === "absent" ? "is gone" : "is on the page"}`
+      : `The ${post.kind === "url" ? "address" : post.kind === "value" ? "value" : "page"} ${mustacheName(post.match) ? "matches" : "shows"} ${workflowCheckText(post.match || "", inputs)}`);
+    if (step.readBack) checks.push(`Reads ${step.readBack.source || "the value"}${step.readBack.match ? ` matching ${workflowCheckText(step.readBack.match, inputs)}` : ""}`);
+    const check = [...new Set(checks)].join(". ") || (step.action === "verify" ? "The saved check" : "Nothing extra");
     const inputVerb = ({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens" } as Record<string, string>)[step.action || ""] || "Uses";
     return `<section data-step-panel="${esc(step.id)}"${step !== selected ? " hidden" : ""}>
       <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
