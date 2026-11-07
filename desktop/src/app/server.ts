@@ -126,7 +126,7 @@ import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolve
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
-import { decideOpen, parseBaoLink, type OpenedView } from "./deeplink";
+import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
 
 export interface Notice extends HealNotice {
@@ -276,6 +276,7 @@ export async function startApp(opts: {
   let guideLive: (GuideProgress & { workflowId: string; runId: string }) | null = null;
   const notifications: { title: string; body: string; tooltip: string }[] = [];
   let opened: OpenedView | null = null;
+  let receiptRequest = 0;
   let extractProposal: PageProposal | undefined;
   let pendingDoc: WorkflowV2 | null = null;
   let site: { context: BrowserContext; page: Page; profile: string } | undefined;
@@ -528,6 +529,14 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
         const body = await readBody(req) as { link?: string; document?: unknown };
+        const link = parseBaoLink(String(body.link || ""));
+        if (link?.kind === "receipt") {
+          try { library.readRun(link.id); }
+          catch { return json(res, { ok: false, error: "run not on this Mac" }, 404); }
+          opened = { kind: "receipt", id: link.id, link: receiptLink(link.id), request: ++receiptRequest };
+          pendingDoc = null;
+          return json(res, { ok: true, opened });
+        }
         const parsed = decideOpen(String(body.link || ""), localWorkflow(String(body.link || "")), body.document);
         if ("error" in parsed) return json(res, { ok: false, error: parsed.error }, 404);
         opened = parsed.opened;

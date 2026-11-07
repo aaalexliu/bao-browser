@@ -9,6 +9,11 @@
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleExecutable</key><string>bao</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>dev.bao.desktop</string>
+    <key>CFBundleURLSchemes</key><array><string>bao</string></array>
+  </dict></array>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSMultipleInstancesProhibited</key><true/>
   <key>NSHighResolutionCapable</key><true/>
