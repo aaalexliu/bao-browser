@@ -34,7 +34,7 @@ Pre-approval skips only the agent's own prompt. Without pre-approval, Codex asks
 
 Agents drive Chrome through `agent_browser`. It accepts native commands and an argv array, launches a marked copy of the selected Chrome profile by default, and records commands and screenshots in Library Runs. See [Direct MCP commands](agent-browser-engine.md#direct-mcp-commands) for all browser choices. The default needs no running Bao app and no Screen Recording, Accessibility, or Automation grant. Explicit `browser: "current"` on the first `open` drives the owner's running Chrome with BaoOSHelper's existing Accessibility grant. It needs neither Automation nor Screen Recording. Bao does not block final clicks. Raw command arguments, native results, and screenshots can contain credentials; this route does not redact them.
 
-The older live tool surface and its workflow replay driver are retired. Saved workflows with `driver: "cdp-live"` remain readable in Library, but Replay and `run_workflow` fail with `this workflow used the retired live driver` before opening Chrome. Pass-through workflow replay is a later layer.
+The older live tool surface and its workflow replay driver are retired. Saved workflows with `driver: "cdp-live"` remain readable in Library, but Replay and `run_workflow` fail with `this workflow used the retired live driver` before opening Chrome. See [Workflow reuse](agent-browser-engine.md#workflow-reuse) for saving and replaying supported pass-through tasks.
 
 ```sh
 npm run build:desktop

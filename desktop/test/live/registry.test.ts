@@ -346,7 +346,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         assert.match(await page.getByTestId("my-copy").innerText(), /Edited on the second Mac/);
         assert.match(await page.getByTestId("sync-result").innerText(), /conflicts 1/);
         assert.equal(await page.locator("#theme-toggle").count(), 0);
-        await page.locator("#settings-model").waitFor();
+        await page.getByRole("combobox", { name: "Use AI to suggest heals" }).waitFor();
         await page.locator("#settings-helper").waitFor();
         assert.equal(await page.getByText("Two permissions on the Mac").count(), 0);
         const deviceTime = await page.getByTestId("device-row").first().innerText();

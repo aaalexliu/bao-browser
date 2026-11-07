@@ -6,4 +6,4 @@ For historical workflows with `driver: "cdp-live"`, a planted schema-valid fixtu
 
 Use a fresh `chrome-devtools-axi snapshot` or stable sidebar selector, then save and open the running app's screenshot. A component preview is not Library proof. Check search with matching, nonmatching, and cleared text when that path changes.
 
-Pass-through sessions appear in Runs, not as new workflow rows. No `agent_browser` replay layer exists yet.
+For pass-through workflow creation and replay checks, follow [Workflow replay](replay.md). The [Workflow reuse contract](../../../../docs/agent-browser-engine.md#workflow-reuse) defines the recording limits.

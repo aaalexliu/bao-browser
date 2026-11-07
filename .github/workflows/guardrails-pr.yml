@@ -111,7 +111,7 @@ jobs:
       - name: Emit desktop JavaScript
         if: steps.compiled.outputs.cache-hit != 'true'
         run: npm run build:desktop -- --noCheck
-      - name: Stage pinned agent-browser for the Experian pass-through fixture
+      - name: Stage pinned agent-browser for pass-through fixtures
         if: matrix.group == 'experian'
         run: |
           node desktop/packaging/stage-agent-browser.mjs "$RUNNER_TEMP/bao-agent-browser"

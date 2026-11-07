@@ -100,7 +100,8 @@ async function readSourceLogin(options: { sourceRoot: string; directory: string 
       await copyFile(db.file + suffix, target + suffix).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
     }
     const updates = cookieUpdates(path.join(temporary, "Default"));
-    source = await launchOwnedChromeEndpoint({ userDataDir: temporary, childHome: userInfo().homedir, headless: false, loadExtensions: false });
+    source = await launchOwnedChromeEndpoint({ userDataDir: temporary, childHome: userInfo().homedir, headless: false,
+      loadExtensions: false, appendArgs: ["--no-startup-window"] });
     cdp = await connect(source.portFile);
     const { cookies } = await cdp.send<{ cookies: ChromeCookie[] }>("Storage.getCookies");
     const wanted = cookies.filter((cookie) => cookie.session || cookie.expires > Date.now() / 1000);
