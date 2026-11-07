@@ -17,27 +17,33 @@ export interface ActNotice {
 }
 
 export class Capture {
-  recording = false;
-  paused = false;
+  private phase: "idle" | "recording" | "paused" = "idle";
   events: TrailEvent[] = [];
   steps: CaptureStep[] = [];
   /** A note typed before the first step, waiting for that step. */
   private pendingNote = "";
 
+  get recording(): boolean {
+    return this.phase !== "idle";
+  }
+
+  get paused(): boolean {
+    return this.phase === "paused";
+  }
+
   start(): void {
-    this.recording = true;
-    this.paused = false;
+    this.phase = "recording";
     this.events = [];
     this.steps = [];
     this.pendingNote = "";
   }
 
   pause(): void {
-    if (this.recording) this.paused = true;
+    if (this.phase === "recording") this.phase = "paused";
   }
 
   resume(): void {
-    if (this.recording) this.paused = false;
+    if (this.phase === "paused") this.phase = "recording";
   }
 
   /** A handoff line is the record of the pause. It is kept while UI events are dropped. */
@@ -50,7 +56,7 @@ export class Capture {
 
   /** False while idle or paused, so the UI event is not stored. */
   push(event: Omit<TrailEvent, "id" | "ts"> & { id?: string; ts?: number }): boolean {
-    if (!this.recording || this.paused) return false;
+    if (this.phase !== "recording") return false;
     const stored = this.stamp(event);
     this.events.push(stored);
     const label = stepLabel(stored);
@@ -81,8 +87,7 @@ export class Capture {
   }
 
   discard(): void {
-    this.recording = false;
-    this.paused = false;
+    this.phase = "idle";
     this.events = [];
     this.steps = [];
     this.pendingNote = "";
@@ -90,8 +95,7 @@ export class Capture {
 
   stop(): TrailEvent[] {
     const events = this.events;
-    this.recording = false;
-    this.paused = false;
+    this.phase = "idle";
     return events;
   }
 
