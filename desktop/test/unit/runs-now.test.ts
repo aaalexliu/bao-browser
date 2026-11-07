@@ -152,9 +152,12 @@ test("a returned paused run stays out of Now and opens live", { timeout: 90_000 
     const runId = result.runId || "";
     await until(async () => {
       const state = await stateOf(base);
-      return state.activeRun?.id === runId && state.activeRun.phase === "waiting" && state.runExecuting === false && state.replaying === false;
-    }, "returned pause still looked executing");
-    await page.locator(`#runs ul[aria-label="Needs you"] [data-open-run="${runId}"]`).waitFor();
+      if (!(state.activeRun?.id === runId && state.activeRun.phase === "waiting" && state.runExecuting === false && state.replaying === false)) return false;
+      // The list follows /api/state on the next poll. Needs you is already true while the replay is still in this process, so it does not prove Now has dropped.
+      return await page.locator('#runs section[aria-label="Now"]').count() === 0
+        && await page.locator(`#runs section[aria-label="Today"] [data-open-run="${runId}"]`).count() === 1
+        && await page.locator(`#runs ul[aria-label="Needs you"] [data-open-run="${runId}"]`).count() === 1;
+    }, "returned pause still listed under Now");
     assert.equal(await page.locator('#runs section[aria-label="Now"]').count(), 0);
     assert.equal(await page.locator(`#runs section[aria-label="Today"] [data-open-run="${runId}"]`).count(), 1);
     await page.locator(`#runs section[aria-label="Today"] [data-open-run="${runId}"]`).click();
