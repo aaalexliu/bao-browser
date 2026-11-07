@@ -3,6 +3,7 @@
 import { formatWait } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
 import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
+import type { OpenedView } from "./deeplink";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { settingsIndex, settingsScreen } from "./settings-view";
 import { sitesForTrust } from "../v1/site-trust";
@@ -72,17 +73,6 @@ import {
   type WorkflowSummary,
 } from "./views";
 
-interface OpenedState {
-  kind: "workflow" | "import" | "run";
-  id: string;
-  name: string;
-  link: string;
-  importLink: string;
-  saved: boolean;
-  inputs?: Record<string, string>;
-  questions: { name: string; type: string; label: string; required: boolean; choices?: string[]; prompt: string; hint?: string; example?: string; cleared?: string }[];
-}
-
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
   settings?: Partial<Settings>;
@@ -103,7 +93,7 @@ let state: ShellState & {
   trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
-  opened?: OpenedState | null;
+  opened?: OpenedView | null;
   liveTargetOverride?: string;
   liveSession?: LiveSessionRecord | null;
   damagedWorkflows?: DamagedWorkflow[];
@@ -204,10 +194,11 @@ async function loadState(): Promise<void> {
   initialConnectionError = false;
   const opened = state.opened;
   if (opened) {
-    const token = `${opened.kind}:${opened.id}:${opened.saved}:${JSON.stringify(opened.inputs || {})}`;
+    const token = opened.kind === "receipt" ? `receipt:${opened.id}:${opened.request}` : `${opened.kind}:${opened.id}:${opened.saved}:${JSON.stringify(opened.inputs || {})}`;
     if (token !== seenOpen) {
       seenOpen = token;
       if (opened.kind === "import") screen = "import";
+      else if (opened.kind === "receipt") selectRun(opened.id);
       else if (opened.kind === "run") {
         openWorkflow = opened.id;
         lastWf = opened.id;
@@ -521,7 +512,7 @@ function settings(): string {
 
 function importSheet(): string {
   const opened = state.opened;
-  if (!opened) return `<section id="import-sheet" data-testid="import-sheet"><h2>Import</h2><p>Nothing is waiting.</p></section>`;
+  if (!opened || opened.kind !== "import") return `<section id="import-sheet" data-testid="import-sheet"><h2>Import</h2><p>Nothing is waiting.</p></section>`;
   const fields = opened.questions.map((question) => {
     const hint = question.hint ? `<span class="meta">${esc(question.hint)}</span>` : "";
     if (question.type === "file") {

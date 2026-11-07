@@ -124,6 +124,33 @@
     return NO;
 }
 
+- (void)application:(NSApplication *)app openURLs:(NSArray<NSURL *> *)urls {
+    (void)app;
+    for (NSURL *url in urls) {
+        if (![url.scheme.lowercaseString isEqualToString:@"bao"]) continue;
+        if ([url.host.lowercaseString isEqualToString:@"import"]) {
+            [self showWindow:nil];
+            continue;
+        }
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"/api/open" relativeToURL:self.serverURL]];
+        request.HTTPMethod = @"POST";
+        request.timeoutInterval = 10;
+        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+        request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@{@"link": url.absoluteString} options:0 error:NULL];
+        [[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            NSDictionary *result = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+            BOOL ok = !error && [(NSHTTPURLResponse *)response statusCode] == 200 && [result[@"ok"] boolValue];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self showWindow:nil];
+                if (!ok) {
+                    NSString *message = error.localizedDescription ?: result[@"error"] ?: @"Try the link again.";
+                    bao_show_alert("Bao could not open the link", message.UTF8String);
+                }
+            });
+        }] resume];
+    }
+}
+
 - (void)applicationWillTerminate:(NSNotification *)notification {
     (void)notification;
     [self stopServer];

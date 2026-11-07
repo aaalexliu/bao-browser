@@ -265,7 +265,7 @@ test("capture receipts preserve recording, owner handoff, and finished outcomes 
     const read = () => getRun(library, f.recording.id);
     assert.equal(read().outcome, "recording");
     assert.equal(read().status, "recording");
-    assert.equal(read().link, undefined);
+    assert.equal(read().link, `bao://receipt/${f.recording.id}`);
     assert.deepEqual(read().stops, []);
     const view = inspectRunView(library, { run_id: f.recording.id });
     assert.equal(view.run.status, "recording");
@@ -289,7 +289,7 @@ test("capture receipts preserve recording, owner handoff, and finished outcomes 
     const outcome = getRun(new Library(failed.home), failed.recording.id);
     assert.equal(outcome.outcome, "failed");
     assert.equal(outcome.reason, "Native command failed");
-    assert.equal(outcome.link, undefined);
+    assert.equal(outcome.link, `bao://receipt/${failed.recording.id}`);
   } finally { await failed.close(); }
 });
 

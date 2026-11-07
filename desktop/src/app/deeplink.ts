@@ -1,17 +1,20 @@
 // bao://workflow/<id> opens that workflow. bao://import/<id> shows the import
 // sheet and does not save until the questions are answered.
 // bao://run/<id>?inputs=<json> opens the run form. Secret keys are refused.
+// bao://receipt/<runId> opens a saved run's receipt in Runs.
 
 import { migrate, type WorkflowV2 } from "../v1/schema";
 import { importQuestions, type ImportQuestion } from "../../../web/src/lib/import-sheet";
 
 export interface BaoLink {
-  kind: "workflow" | "import" | "run";
+  kind: "workflow" | "import" | "run" | "receipt";
   id: string;
   inputs?: Record<string, string | number>;
 }
 
-export interface OpenedView {
+export type OpenedView = OpenedWorkflowView | { kind: "receipt"; id: string; link: string; request: number };
+
+interface OpenedWorkflowView {
   kind: "workflow" | "import" | "run";
   id: string;
   name: string;
@@ -24,7 +27,7 @@ export interface OpenedView {
 }
 
 export function parseBaoLink(link: string): BaoLink | null {
-  const match = link.trim().match(/^bao:\/\/(workflow|import|run)\/([A-Za-z0-9_-]+)(\?[^#]*)?$/);
+  const match = link.trim().match(/^bao:\/\/(workflow|import|run|receipt)\/([A-Za-z0-9_-]+)(\?[^#]*)?$/);
   if (!match?.[1] || !match[2]) return null;
   const kind = match[1] as BaoLink["kind"];
   const id = match[2];
@@ -53,13 +56,18 @@ export function importLink(id: string): string {
   return `bao://import/${id}`;
 }
 
+export function receiptLink(id: string): string {
+  return `bao://receipt/${id}`;
+}
+
 export function decideOpen(
   link: string,
   local: WorkflowV2 | null,
   attached: unknown,
-): { opened: OpenedView; pending: WorkflowV2 | null } | { error: string } {
+): { opened: OpenedWorkflowView; pending: WorkflowV2 | null } | { error: string } {
   const parsed = parseBaoLink(link);
   if (!parsed) return { error: "usage: bao open bao://workflow/<id>" };
+  if (parsed.kind === "receipt") return { error: "receipt requires a stored run" };
   const extra = attached ? safeDoc(attached) : null;
   if (extra && extra.id !== parsed.id) return { error: "id" };
   const doc = local ?? extra;

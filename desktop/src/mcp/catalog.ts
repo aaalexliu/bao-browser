@@ -6,6 +6,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
+import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
@@ -334,16 +336,34 @@ function stepShots(library: Library, workflow: WorkflowV2, runId: string): { ste
   return shots;
 }
 
-export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "outcome" | "link" | "status"> & { outcome: OutcomeName | "recording"; link?: string; status?: WorkflowOutcome["status"] | "recording" } {
+const runOutcomes = {
+  recording: "recording",
+  passed: "ok", ok: "ok", completed: "ok",
+  "needs-sign-in": "needs_signin", needs_signin: "needs_signin",
+  needs_approval: "needs_approval", needs_human: "needs_human",
+  paused: "needs_human", running: "needs_human", idle: "needs_human",
+  failed: "failed", "timed-out": "failed", timeout: "failed", stopped: "failed",
+} as const satisfies Record<NonNullable<WorkflowOutcome["status"]> | "recording", OutcomeName | "recording">;
+
+export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "outcome" | "status" | "receipts" | "stops"> & {
+  outcome: OutcomeName | "recording" | "unknown";
+  status?: string;
+  stops: { stepId: string; outcome: OutcomeName | "unknown"; reason: string }[];
+  nativeOutputNote?: string;
+  receipts: (WorkflowReceipt & Partial<Pick<RecordedAgentBrowserCommand, "label" | "target">> & {
+    native?: Omit<RecordedAgentBrowserCommand["native"], "results"> & {
+      results: (RecordedAgentBrowserCommand["native"]["results"][number] & {
+        stdoutTruncated: boolean; stdoutLength: number; stderrTruncated: boolean; stderrLength: number;
+      })[];
+    };
+  })[];
+} {
   const file = reportPath(library, runId);
   if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
   const stored = library.readRun(runId);
   const envelope = stored.envelope;
-  const status = envelope?.status || stored.status;
-  const outcome = stored.kind === "capture" && status === "recording" ? "recording" : status === "passed" || status === "ok" || status === "completed" ? "ok"
-    : status === "needs-sign-in" ? "needs_signin"
-    : status === "needs_signin" || status === "needs_approval" || status === "needs_human" ? status
-    : status === "paused" || status === "running" || status === "idle" ? "needs_human" : "failed";
+  const status = envelope?.status ?? stored.status;
+  const outcome = Object.hasOwn(runOutcomes, status) ? runOutcomes[status as keyof typeof runOutcomes] : "unknown";
   const recording = stored.kind === "capture" && status === "recording";
   const failure = recording ? undefined : stored.failure as RunResult["failure"];
   const stoppedStep = recording ? undefined : (stored.steps as { id?: string; status?: string; reason?: string }[])
@@ -352,8 +372,26 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   const step = recording ? undefined : envelope?.step || failure?.stepId || stoppedStep?.id;
   const lastClass = stored.pageClasses?.[stored.pageClasses.length - 1];
   const receipts = stored.steps.flatMap((item) => {
-    const receipt = item as { id?: string; status?: string };
-    return receipt?.id && receipt.status ? [{ id: receipt.id, status: receipt.status, readBack: "" }] : [];
+    const receipt = item as Partial<RecordedAgentBrowserCommand>;
+    return receipt?.id && receipt.status ? [{
+      id: receipt.id, status: receipt.status, readBack: "",
+      ...(stored.kind === "capture" ? {
+        ...(receipt.label !== undefined ? { label: receipt.label } : {}),
+        ...(receipt.target !== undefined ? { target: receipt.target } : {}),
+        ...(receipt.native !== undefined ? { native: {
+          ...receipt.native,
+          results: receipt.native.results.map((result) => ({
+            ...result,
+            stdout: result.stdout.slice(0, 1000),
+            stderr: result.stderr.slice(0, 1000),
+            stdoutTruncated: result.stdout.length > 1000,
+            stdoutLength: result.stdout.length,
+            stderrTruncated: result.stderr.length > 1000,
+            stderrLength: result.stderr.length,
+          })),
+        } } : {}),
+      } : {}),
+    }] : [];
   });
   return {
     outcome,
@@ -363,10 +401,11 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     workflowId: stored.workflowId,
     receipts,
     stops: outcome !== "ok" && outcome !== "recording" && step ? [{ stepId: step, outcome, reason: reason || "" }] : [],
-    ...(stored.kind === "capture" ? {} : { link: linkFor(stored.workflowId) }),
+    link: stored.kind === "capture" ? receiptLink(stored.id) : linkFor(stored.workflowId),
     outputs: stored.outputs,
     pageLeftOpen: stored.pageLeftOpen,
-    status: status as WorkflowOutcome["status"] | "recording",
+    status,
+    ...(stored.kind === "capture" ? { nativeOutputNote: `For full native output, open ${receiptLink(stored.id)}.` } : {}),
     step,
     ask: recording ? undefined : envelope?.ask || (outcome !== "ok" ? reason : undefined),
     deadline: envelope?.deadline,
