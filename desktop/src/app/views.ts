@@ -930,7 +930,7 @@ function triageWord(value: string): string {
   if (value === "outage") return "an outage";
   if (value === "circuit") return "a circuit break";
   if (value === "review") return "needs review";
-  if (value === "never") return "a step set to never heal";
+  if (value === "never") return "healing turned off (Stop)";
   return value;
 }
 

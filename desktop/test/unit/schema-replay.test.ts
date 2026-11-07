@@ -5,6 +5,7 @@ import path from "node:path";
 import Ajv from "ajv/dist/2020";
 import fc from "fast-check";
 import { canonical } from "../../src/v1/canonical";
+import { runViewer } from "../../src/app/views";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildPrompt, effectiveMode, keepPatch, revertPatch, scriptedHeal, stepPolicy, unavailableHeal, type GlobalHealMode, type HealProposal } from "../../src/v1/heal";
 import { Library } from "../../src/v1/store";
@@ -340,6 +341,7 @@ for (const mode of ["never", "auto", "approve"] satisfies GlobalHealMode[]) {
     if (mode === "never") {
       assert.equal(result.failure?.stepId, "s0");
       assert.equal(result.steps[0]?.triage, "never");
+      assert.match(runViewer({ id: result.runId, workflowId: doc.id, status: result.status, steps: result.steps.map(({ id, status, triage }) => ({ id, status, triage })) }, doc), /Sorted as healing turned off \(Stop\)\. Bao did not call a model\./);
       assert.deepEqual(d.notices, []);
     }
   });
