@@ -133,13 +133,19 @@ export function compareSearchHits(a: SearchHit, b: SearchHit): number {
   return b.score - a.score || sourceRank(a.source) - sourceRank(b.source) || a.title.localeCompare(b.title);
 }
 
+export function workflowReplayRefusal(library: Library, workflow: WorkflowV2): string | null {
+  if (workflow.provenance === "fixture") return "this workflow is test fixture content";
+  return replayRefusal(workflow.driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
+}
+
 export async function searchWorkflows(
   library: Library,
   query: string,
   filters: { source?: string; site?: string; category?: string } = {},
 ): Promise<SearchHit[]> {
   const thisDevice = loadState(library.root).deviceName || "";
-  const local = library.list().workflows.map((doc) => ({
+  const workflows = library.list().workflows;
+  const local = workflows.filter((doc) => !workflowReplayRefusal(library, doc)).map((doc) => ({
     id: doc.id,
     title: doc.name,
     summary: summaryOf(doc),
@@ -152,9 +158,13 @@ export async function searchWorkflows(
     local: true,
   }));
   const rankedLocal = rankHits(local, query, filters);
-  const remote = await remoteHits(library, query, filters);
+  const remote = await Promise.all((await remoteHits(library, query, filters)).map(async (hit) => {
+    const document = workflows.find((doc) => doc.id === hit.id) ?? (await remoteWorkflow(library, hit.id))?.document;
+    return document && !workflowReplayRefusal(library, migrate(document)) ? hit : undefined;
+  }));
   const byId = new Map<string, DraftHit>();
   for (const hit of [...rankedLocal.map((item) => draftFromLocal(item)), ...remote]) {
+    if (!hit) continue;
     const prev = byId.get(hit.id);
     byId.set(hit.id, prev ? mergeDraft(prev, hit) : hit);
   }
@@ -213,8 +223,7 @@ export async function runWorkflow(
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
-  const driver = (request.document ?? placed!.document).driver;
-  const refusal = replayRefusal(driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
+  const refusal = workflowReplayRefusal(library, request.document ?? placed!.document);
   if (refusal) return emptyOutcome(id, "failed", refusal);
   if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
     const listingId = placed.forkedFrom || placed.document.id;

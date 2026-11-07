@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
-import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, type SearchHit } from "../../src/mcp/catalog";
+import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
+import { loadState, saveState } from "../../src/v1/sync";
 
 test("search returns at most five hits and each hit has an input schema", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
@@ -22,6 +23,67 @@ test("search returns at most five hits and each hit has an input schema", async 
     assert.equal(hit.link.startsWith("bao://workflow/"), true);
     assert.equal(hit.source, "this Mac");
     assert.equal(hit.lastGreen, "Not replayed yet");
+  }
+});
+
+test("search excludes retired and fixture workflows while preserving readable records and replay eligibility", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-"));
+  try {
+    const library = new Library(home);
+    const normal = workflow("owner", "Blueberries owner workflow (fixture notes)");
+    const retired = { ...workflow("retired", "Blueberries retired workflow"), driver: "cdp-live" as const };
+    const fixture = { ...workflow("fixture", "Blueberries sample"), provenance: "fixture" as const };
+    for (const doc of [normal, retired, fixture]) library.save(doc);
+
+    assert.deepEqual((await searchWorkflows(library, "Blueberries")).map((hit) => hit.id), [normal.id]);
+    assert.equal(library.list().workflows.length, 3);
+    assert.equal((await describeWorkflow(library, retired.id)).workflow.driver, "cdp-live");
+    assert.equal((await describeWorkflow(library, fixture.id)).workflow.provenance, "fixture");
+    assert.deepEqual(validateWorkflow(library.read(fixture.id)), []);
+    assert.equal(workflowReplayRefusal(library, normal), null);
+    assert.equal(workflowReplayRefusal(library, retired), CDP_LIVE_SERVER_REFUSAL);
+    assert.equal(workflowReplayRefusal(library, fixture), "this workflow is test fixture content");
+    for (const doc of [retired, fixture]) {
+      const outcome = await runWorkflow(library, { id: doc.id });
+      assert.equal(outcome.outcome, "failed");
+      assert.equal(outcome.reason, workflowReplayRefusal(library, doc));
+    }
+    assert.equal(existsSync(path.join(home, "chrome-profile")), false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("remote search excludes ineligible documents and cannot reintroduce an excluded local workflow", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-"));
+  const documents = [
+    workflow("remote-owner", "Blueberries owner"),
+    { ...workflow("remote-retired", "Blueberries retired"), driver: "cdp-live" as const },
+    { ...workflow("remote-fixture", "Blueberries sample"), provenance: "fixture" as const },
+    workflow("local-retired", "Blueberries synced owner"),
+    workflow("local-fixture", "Blueberries synced sample"),
+  ];
+  const server = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url?.startsWith("/api/catalog?")) {
+      res.end(JSON.stringify({ hits: documents.map((doc) => ({ ...hit(doc.id, "mine", 10, doc.name), source: "mine" })) }));
+      return;
+    }
+    const doc = documents.find((item) => req.url === `/api/workflows/${item.id}`);
+    if (!doc) { res.statusCode = 404; res.end("{}"); return; }
+    res.end(JSON.stringify({ document: doc }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const library = new Library(home);
+    library.save({ ...documents[3]!, driver: "cdp-live" });
+    library.save({ ...documents[4]!, provenance: "fixture" });
+    const { port } = server.address() as AddressInfo;
+    saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
+    assert.deepEqual((await searchWorkflows(library, "Blueberries")).map((item) => item.id), ["remote-owner"]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(home, { recursive: true, force: true });
   }
 });
 
@@ -79,7 +141,7 @@ test("a capture-only workflow is not green in search, describe, or run_workflow"
   library.save(doc);
   library.saveRun({ id: "recording", kind: "capture", workflowId: doc.id, status: "passed", at: Date.now(), heals: [], steps: [] });
   assert.equal((await describeWorkflow(library, doc.id)).lastGreen, "Not replayed yet");
-  assert.equal((await searchWorkflows(library, "Recorded"))[0]?.lastGreen, "Not replayed yet");
+  assert.deepEqual(await searchWorkflows(library, "Recorded"), []);
   const outcome = await runWorkflow(library, { id: doc.id });
   assert.equal(outcome.reason, CDP_LIVE_SERVER_REFUSAL);
   assert.equal(library.readRun("recording").kind, "capture");
@@ -93,6 +155,7 @@ for (const driver of ["playwright", "extension"] as const) {
     const outcome = await runWorkflow(library, { id: "wf-native", inputs: { query: "ada" } });
     assert.equal(outcome.outcome, "failed");
     assert.equal(outcome.reason, "pass-through sessions do not support saved workflow replay");
+    assert.deepEqual(await searchWorkflows(library, "Native"), []);
     assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
   });
 }
@@ -123,6 +186,7 @@ for (const [driver, reason] of [["cdp-live", CDP_LIVE_SERVER_REFUSAL], ["extensi
     const outcome = await runWorkflow(library, { id: "wf-driver", inputs: { query: "ada" } });
     assert.equal(outcome.outcome, "failed");
     assert.equal(outcome.reason, reason);
+    assert.deepEqual(await searchWorkflows(library, "Driver"), []);
     assert.equal(outcome.runId, undefined);
     assert.equal(outcome.resume, undefined);
     assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
