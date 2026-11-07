@@ -1770,12 +1770,8 @@ export function versionsPanel(versions: VersionRow[]): string {
   </section>`;
 }
 
-const AGENT_SESSION_WORDS: Record<string, string> = {
-  session_closed: "The Bao session ended before the owner wait completed. This session cannot continue.",
-};
-
-function isAgentBrowserSession(run: { workflowId?: string; pageEngine?: string; kind?: string }): boolean {
-  return run.pageEngine === "agent-browser" || (run.workflowId === "agent-browser" && run.kind === "capture");
+function isAgentBrowserSession(run: { workflowId?: string; kind?: string }): boolean {
+  return run.kind === "capture" && run.workflowId === "agent-browser";
 }
 
 function sentence(value: string | undefined): string | undefined {
@@ -1811,16 +1807,12 @@ function agentSessionTitle(run: RunSummary): string {
 
 function agentOwnerWait(run: RunSummary): boolean {
   const status = run.envelope?.status || run.status;
-  if (status === "needs_human" || status === "needs_signin") return true;
-  if (["passed", "ok", "completed", "failed", "timed-out", "timeout", "stopped", "cancelled"].includes(run.status)) return false;
-  return (run.steps || []).some((step) => step.native?.command === "wait_for_owner" && step.status !== "passed" && step.status !== "failed");
+  return status === "needs_human" || status === "needs_signin";
 }
 
 function agentSessionBlocked(run: RunSummary): boolean {
   if (!isAgentBrowserSession(run) || agentOwnerWait(run)) return false;
-  const status = run.envelope?.status || run.status;
-  return ["failed", "timed-out", "timeout", "stopped", "cancelled"].includes(run.status)
-    || ["failed", "timed-out", "timeout", "stopped", "cancelled"].includes(status);
+  return (run.envelope?.status || run.status) === "failed";
 }
 
 function plainAgentReason(run: RunSummary): string | undefined {
@@ -1830,7 +1822,6 @@ function plainAgentReason(run: RunSummary): string | undefined {
   const failure = run.failure?.reason?.trim();
   const step = (run.steps || []).find((item) => item.status === "failed" && item.reason)?.reason?.trim();
   return sentence(reason) || sentence(ask) || sentence(failure) || sentence(step)
-    || (reason ? AGENT_SESSION_WORDS[reason] : undefined)
     || (reason ? ownerStopText(reason) : undefined)
     || (failure ? ownerStopText(failure) : undefined);
 }
