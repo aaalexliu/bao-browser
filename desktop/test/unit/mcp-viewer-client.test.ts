@@ -113,4 +113,19 @@ test("viewer keeps the latest host view and user request when replies arrive out
   await deliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoViewer: { ...pictureView, steps: [] } } } });
   assert.equal(await page.locator("img").count(), 0);
   assert.equal(await page.getByText("No step results recorded.", { exact: true }).count(), 1);
+
+  const message = "Bao viewer data unavailable: invalid request, missing, linked, or oversized record. Open Bao desktop for local details.";
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  const failedHistory = (await calls(page, 10))[9]!;
+  assert.equal(failedHistory.params.name, "list_runs");
+  await deliver(page, { jsonrpc: "2.0", id: failedHistory.id, result: { isError: true, content: [{ type: "text", text: JSON.stringify({ error: message, library: { active: { path: "/synthetic/library" }, inactive: [] } }) }] } });
+  assert.equal(await page.getByRole("alert").textContent(), message);
+  assert.equal(await page.locator("h1").textContent(), "Picture receipt");
+
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  const failedReceipt = (await calls(page, 11))[10]!;
+  assert.equal(failedReceipt.params.name, "inspect_run");
+  await deliver(page, { jsonrpc: "2.0", id: failedReceipt.id, result: { isError: true, content: [{ type: "text", text: message }] } });
+  assert.equal(await page.getByRole("alert").textContent(), message);
+  assert.equal(await page.locator("h1").textContent(), "Picture receipt");
 });

@@ -81,7 +81,14 @@ function viewerMain(): void {
   async function tool(name: string, args: Record<string, unknown>): Promise<ToolReply> {
     if (!canRead) throw new HostDataError("This host cannot read more Bao data. The text receipt is still available in the conversation.");
     const reply = await request("tools/call", { name, arguments: args }) as ToolReply;
-    if (reply.isError) throw new Error(reply.content?.[0]?.text || "Bao could not read this record.");
+    if (reply.isError) {
+      let message = reply.content?.[0]?.text || "Bao could not read this record.";
+      try {
+        const data = JSON.parse(message) as { error?: unknown } | null;
+        if (typeof data?.error === "string") message = data.error;
+      } catch {}
+      throw new Error(message);
+    }
     return reply;
   }
   async function show(name: string, args: Record<string, unknown>, automatic = false): Promise<void> {

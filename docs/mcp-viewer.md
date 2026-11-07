@@ -11,7 +11,7 @@ The host must advertise `io.modelcontextprotocol/ui` with `text/html;profile=mcp
 - `inspect_run` reads one run's receipt and workflow steps, twenty steps per page. The host exposes this reader to the app, not the model.
 - `open_step_pictures` reads pictures only after the owner clicks **Open step pictures**. The host exposes this reader to the app, not the model.
 
-Clients that do not negotiate the UI MIME type see exactly the previous tools and results. They do not need an HTML renderer. This feature does not install or configure Claude Desktop, Codex Desktop, or ChatGPT, and it does not change tool approval settings. Support depends on the host and release; an MCP connection alone does not prove embedded UI support.
+Clients that do not negotiate the UI MIME type get the five catalog tools, including `list_runs`, plus `agent_browser`. Catalog success and error replies identify the active Library and summarize inactive roots Bao does not search. These clients get plain text results without viewer metadata or resources and do not need an HTML renderer. This feature does not install or configure Claude Desktop, Codex Desktop, or ChatGPT, and it does not change tool approval settings. Support depends on the host and release; an MCP connection alone does not prove embedded UI support.
 
 The viewer checks host capabilities for further reads, theme, locale, and full-screen mode. **Inspect receipt** requests full-screen mode only when the host offers it. Otherwise the receipt expands inline. The HTML bundles its code and styles and requests no external connections or resources.
 
@@ -27,7 +27,7 @@ The stored run supplies step reasons, read-back receipts, and owner requests. Th
 
 Pictures load when the owner opens them, not with the initial receipt or history. Image bytes appear in tool-result `_meta`, which the host app renders. Picture reads require a step recorded in that run, not a current workflow definition. Bao reads stored or derived filenames within the run's picture directory and caps each picture at 512 KiB. A request returns at most two PNG/JPEG pictures. Missing, invalid, linked, or oversized pictures remain unavailable.
 
-The viewer offers no run, resume, edit, approve, or browser-control action. In UI-capable connections, existing tools are model-only; only the new reader tools are callable by the iframe. The host enforces tool visibility. This is not a new authorization scheme or a change to the model's existing tool permissions.
+The viewer offers no run, resume, edit, approve, or browser-control action. In UI-capable connections, `list_runs`, `inspect_run`, and `open_step_pictures` are callable by the iframe; other tools are model-only. The host enforces tool visibility. This is not a new authorization scheme or a change to the model's existing tool permissions.
 
 ## Known gaps
 
