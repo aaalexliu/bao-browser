@@ -26,7 +26,7 @@ import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
 
-export type OutcomeName = "ok" | "recording" | "needs_human" | "needs_signin" | "needs_approval" | "failed";
+export type OutcomeName = "ok" | "needs_human" | "needs_signin" | "needs_approval" | "failed";
 
 export interface InputField {
   name: string;
@@ -331,7 +331,6 @@ export function getRun(library: Library, runId: string): WorkflowOutcome {
   const envelope = stored.envelope;
   const status = envelope?.status || stored.status;
   const outcome: OutcomeName = status === "passed" || status === "ok" || status === "completed" ? "ok"
-    : status === "recording" ? "recording"
     : status === "needs-sign-in" ? "needs_signin"
     : status === "needs_signin" || status === "needs_approval" || status === "needs_human" ? status
     : status === "paused" || status === "running" || status === "idle" ? "needs_human" : "failed";

@@ -4,7 +4,6 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 import { McpClient } from "../../src/eval/mcp-client";
 import { frameRpc } from "../../src/mcp/frame";
 import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
@@ -32,34 +31,6 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
     const result = await client.call("search_workflows", { query: "Saved" });
     assert.equal(result.isError, false);
     assert.equal((JSON.parse(result.text) as { hits: { id: string }[] }).hits[0]?.id, workflow.id);
-  });
-});
-
-test("a listed open capture stays recording until it waits for the owner or finishes", async () => {
-  await fixture(async (client, library) => {
-    await client.handshake();
-    const capture = new AgentBrowserRun(library.root);
-    const history = await client.call("list_runs", {});
-    assert.equal(history.isError, false);
-    const runs = JSON.parse(history.text).runs as { id: string; status: string }[];
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0]!.status, "recording");
-    const run_id = runs[0]!.id;
-    const read = async (expected: string, status = expected) => {
-      const reply = await client.call("get_run", { run_id });
-      assert.equal(reply.isError, false);
-      const outcome = JSON.parse(reply.text);
-      assert.equal(outcome.run_id, run_id);
-      assert.equal(outcome.outcome, expected);
-      assert.equal(outcome.status, status);
-    };
-    await read("recording");
-    capture.ownerWaiting(true);
-    await read("needs_human");
-    capture.ownerWaiting(false);
-    await read("recording");
-    capture.finish();
-    await read("ok", "passed");
   });
 });
 
