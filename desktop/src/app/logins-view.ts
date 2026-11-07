@@ -211,11 +211,11 @@ export function syncPanel(sync: {
   return `<div class="card" id="sync-panel" data-testid="sync">
     <h3>Sync</h3>
     <p>Sync carries saved workflows and pictures. Passwords and credential values stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
-    <label>Server <input id="sync-server" data-setting="syncServer" value="${htmlEsc(row.server || "")}" placeholder="Pairing server"></label>
-    <label>Pairing code <input id="pair-code" autocomplete="off"></label>
-    <label>Invite secret <input id="invite-secret" type="password" autocomplete="off" placeholder="${row.inviteSaved ? "Saved on this Mac" : "Paste once"}"></label>
+    <label>Server <input id="sync-server" data-settings-draft value="${htmlEsc(row.server || "")}" placeholder="Pairing server"></label>
+    <label>Pairing code <input id="pair-code" data-settings-draft autocomplete="off"></label>
+    <label>Invite secret <input id="invite-secret" data-settings-draft type="password" autocomplete="off" placeholder="${row.inviteSaved ? "Saved on this Mac" : "Paste once"}"></label>
     <p class="quiet">Paste the invite secret once, next to the pairing code. It stays in this Mac's sync file and is not sent on later syncs.</p>
-    <label>Device name <input id="device-name" value="${esc(row.deviceName || "")}"></label>
+    <label>Device name <input id="device-name" data-settings-draft value="${esc(row.deviceName || "")}"></label>
     <div class="row">
       <button id="pair" type="button">Pair</button>
       <button class="primary" id="sync-now" type="button">Sync</button>

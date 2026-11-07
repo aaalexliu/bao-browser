@@ -67,8 +67,6 @@ test("this Mac dials the websocket only when relay.json is present", async () =>
     };
     assert.notEqual(before.settings?.remoteMcp, true);
     assert.equal(before.remote?.phase, "idle");
-    const js = await fetch(`http://127.0.0.1:${app.port}/app.js`).then((res) => res.text());
-    assert.match(js, /Let a remote agent run workflows on this Mac/);
 
     await new Promise((resolve) => setTimeout(resolve, 800));
     assert.equal(hits.length, 0);

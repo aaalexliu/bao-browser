@@ -4,7 +4,7 @@ Use Bao Settings on this Mac to connect Claude Desktop or ChatGPT to Bao's local
 
 ## Review and confirm the config change
 
-1. Open **Settings** in Bao.
+1. Open **Settings → Technical details** in Bao.
 2. Select **Add to Claude** or **Add to ChatGPT** under **Connect desktop apps**.
 3. Read the file path and exact config diff. Nothing changes during preview.
 4. Select **Add Bao** or **Update Bao** to apply that diff. To keep an existing entry, select **Leave unchanged** or press Escape.

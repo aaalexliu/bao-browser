@@ -37,12 +37,16 @@ function modelLabel(model: SettingsView["model"]): string {
   return !label || label === "no model" ? "None" : label === "cursor account" ? "Cursor account" : label === "model ready" ? "Connected" : label === "fixture model" ? "Test model" : label;
 }
 
+function remoteLabel(view: SettingsView): string {
+  return view.settings?.remoteMcp ? view.relay?.paired ? "On, paired" : "On, not paired" : "Off";
+}
+
 export function settingsIndex(view: SettingsView): string {
   const mac = view.helper?.platform === "darwin";
   const summaries = [
     "Heal policy, waits",
     mac ? view.helper?.accessibility ? "Accessibility allowed" : "Optional for native apps" : "Mac only",
-    view.settings?.remoteMcp ? view.relay?.paired ? "On, paired" : "On, not paired" : "Off",
+    remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     modelLabel(view.model),
   ];
@@ -81,11 +85,11 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
         `<span class="settings-permission">${mac ? "Not checked" : "Mac only"}</span>${mac ? '<a class="button" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open System Settings</a>' : ""}`, "eye"))}
     ${group("remote", "Remote access", row(
       `<label id="remote-label" for="remote-mcp">Let AI agents run my workflows</label><p id="remote-help">An agent on another device can ask to run a workflow on this ${mac ? "Mac" : "computer"}. Off until you turn it on.</p>`,
-      `<span id="remote-state">${settings.remoteMcp ? view.relay?.paired ? "On, paired" : "On, not paired" : "Off"}</span><input class="settings-switch" id="remote-mcp" type="checkbox" role="switch" data-setting="remoteMcp" aria-describedby="remote-help remote-state"${settings.remoteMcp ? " checked" : ""}>`)
-      + row(`<b>Connect another device</b><p id="relay-status">${view.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not paired. Enter a pairing code from your other device."}</p>`, `<div class="settings-pairing"><label>Pairing code <input id="relay-code" type="text" autocomplete="off" spellcheck="false"></label><div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${view.relay?.paired ? "" : " disabled"}>Revoke</button></div></div>`))}
+      `<span id="remote-state">${remoteLabel(view)}</span><input class="settings-switch" id="remote-mcp" type="checkbox" role="switch" data-setting="remoteMcp" aria-describedby="remote-help remote-state"${settings.remoteMcp ? " checked" : ""}>`)
+      + row(`<b>Connect another device</b><p id="relay-status">${view.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not paired. Enter a pairing code from your other device."}</p>`, `<div class="settings-pairing"><label>Pairing code <input id="relay-code" data-settings-draft type="text" autocomplete="off" spellcheck="false"></label><div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${view.relay?.paired ? "" : " disabled"}>Revoke</button></div></div>`))}
     ${group("logins", "Logins", sites + row(`<p>Bring in one site's login from your Chrome, so runs start signed in.</p>`, `<button type="button" data-screen="logins">Import a login…</button>`))}
     ${group("ai", "AI help", row(`<b>Use AI to suggest heals</b><p>Only when a page changes. Saved steps run without AI.</p>`, `<span id="settings-model">${esc(modelLabel(view.model))}</span>`))}
     <p id="settings-feedback" role="status"></p>
-    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below. Other settings save as you change them.</p>${advanced}</details>
+    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below. Sync and remote pairing details save when you press Pair. Other settings save as you change them.</p>${advanced}</details>
   </section>`;
 }

@@ -57,7 +57,7 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 
 ## What it does not touch
 
-- No `<all_urls>` at install, and no install-time host permission. `optional_host_permissions` stays `http://*/*` and `https://*/*`. Allow all sites requests those from a click. Only this site requests one origin. Settings shows all sites, per site, or none, and Revoke calls `chrome.permissions.remove`.
+- No `<all_urls>` at install, and no install-time host permission. `optional_host_permissions` stays `http://*/*` and `https://*/*`. Allow all sites requests those from a click. Only this site requests one origin. Settings → Technical details → Chrome sites shows all sites, per site, or none, and Revoke calls `chrome.permissions.remove`.
 - Allow all sites lets Bao read and act on any site in this Chrome profile, only while a run or a recording is active. Content scripts are registered for the page the run is on. An all-sites grant does not inject them on every site. Network listeners attach after the grant and still drop events for tabs the run does not own.
 - Tabs the person did not pick are not read. Network and cookie listeners drop events for any other tab.
 - `navigator` is not patched. The extension does not invent a user agent, client hints, or a TLS fingerprint.

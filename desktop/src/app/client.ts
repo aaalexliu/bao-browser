@@ -281,6 +281,7 @@ function render(focusDetail = true): void {
   const focused = document.activeElement as HTMLElement | null;
   const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
   const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
+  const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement>("#settings input[data-settings-draft]")].filter((input) => input.value !== input.defaultValue).map((input) => [input.id, input.value] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
@@ -364,6 +365,10 @@ function render(focusDetail = true): void {
     if (screen === "replay") void fillArgs(replayId);
   }
   for (const id of settingsDetails) document.getElementById(id)?.setAttribute("open", "");
+  for (const [id, value] of settingsDrafts) {
+    const input = document.getElementById(id) as HTMLInputElement | null;
+    if (input) input.value = value;
+  }
   if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
   bind();
   applySearch();
@@ -1098,7 +1103,7 @@ function bindAsk(): void {
   if (yes) yes.onclick = () => void answerImport({ accept: true });
   const no = document.getElementById("import-no");
   if (no) no.onclick = () => void answerImport({ accept: false });
-  document.querySelectorAll("[data-import-profile]").forEach((btn) => {
+  document.querySelectorAll("#act #import-pick [data-import-profile]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => void answerImport({ accept: true, profile: (btn as HTMLButtonElement).dataset.importProfile });
   });
 }
@@ -1882,7 +1887,7 @@ function bindLogins(): void {
     login.selected = profiles.some((profile) => profile.directory === body.preferred) ? (body.preferred || "") : preferredDirectory(profiles);
     await loadSaved();
   };
-  document.querySelectorAll<HTMLButtonElement>("[data-import-profile]").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#main [data-import-profile]").forEach((btn) => {
     btn.onclick = () => {
       readLoginForm();
       login.selected = btn.dataset.importProfile || "";
@@ -1920,7 +1925,7 @@ function bindLogins(): void {
     renderKey = "";
     render();
   };
-  document.querySelectorAll<HTMLButtonElement>("[data-recheck]").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#main [data-recheck]").forEach((btn) => {
     btn.onclick = async () => {
       readLoginForm();
       btn.disabled = true;
@@ -1935,7 +1940,7 @@ function bindLogins(): void {
       await loadSaved();
     };
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#main [data-remove]").forEach((btn) => {
     btn.onclick = async () => {
       const origin = expandControlKey(btn.dataset.remove || "");
       if (!window.confirm(`Remove the saved login for ${origin}?`)) return;
