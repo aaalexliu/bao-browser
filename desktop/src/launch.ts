@@ -444,14 +444,16 @@ export async function launchAccountChrome(opts: {
     let closing: Promise<void> | undefined;
     browser.on("disconnected", () => { if (!closing) void stop().catch(() => undefined); });
     context.close = () => closing ??= (async () => {
+      const openPages = context.pages().filter((page) => !page.isClosed()).length;
       let browserCloseSent = false;
       try {
         const session = await browser.newBrowserCDPSession();
         await session.send("Browser.close");
         browserCloseSent = true;
       } catch {}
-      await releaseProfileProcesses(opts.userDataDir, child, pid, browserCloseSent);
+      const released = await releaseProfileProcesses(opts.userDataDir, child, pid, browserCloseSent);
       await browser.close().catch(() => undefined);
+      console.error(formatShutdown({ browserClose: browserCloseSent ? "sent" : "failed", openPages, ...released, profile: opts.userDataDir }));
     })();
     return context;
   } catch (err) {
@@ -682,7 +684,10 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess,
   while (Date.now() < killAt && ownedChromeRunning(child, pid)) {
     await delay(50);
   }
-  if (ownedChromeRunning(child, pid)) throw new Error(`Chrome did not exit after graceful shutdown: ${userDataDir}`);
+  if (ownedChromeRunning(child, pid)) {
+    console.error(`bao shutdown browser still shutting down profile=${userDataDir}`);
+    return { childExit: child.exitCode, signal: child.signalCode, killedPids: [] };
+  }
   const killedPids: number[] = [];
   for (const pid of pidsForDataDir(userDataDir)) {
     try {

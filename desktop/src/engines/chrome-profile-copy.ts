@@ -84,17 +84,7 @@ export async function copyChromeProfile(options: {
     let active = false;
     try { process.kill(lease.pid, 0); active = true; } catch (error) { active = (error as NodeJS.ErrnoException).code !== "ESRCH"; }
     if (active && lease.retained !== true) throw new Error("a Chrome profile copy is still open; end that run before refreshing it");
-    // Only a released or abandoned lease in this Bao home's private namespace may be reclaimed.
-    for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-      for (const pid of pidsForDataDir(dir)) {
-        try { process.kill(pid, signal); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-      }
-      const deadline = Date.now() + 3000;
-      while (pidsForDataDir(dir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 80));
-      if (!pidsForDataDir(dir).length) break;
-    }
-    if (pidsForDataDir(dir).length) throw new Error("Chrome still uses the private copy; Bao could not close the previous window");
+    if (pidsForDataDir(dir).length) continue;
     await rm(dir, { recursive: true, force: true });
   }
   const userDataDir = path.join(root, `run-${randomUUID()}`);
@@ -102,10 +92,15 @@ export async function copyChromeProfile(options: {
   await writeFile(path.join(userDataDir, "lease.json"), JSON.stringify({ magic: MAGIC, namespace, pid: process.pid }), { mode: 0o600 });
   const started = Date.now();
   let bytes = 0;
+  const keepOpen = () => writeFile(path.join(userDataDir, "lease.json"), JSON.stringify({ magic: MAGIC, namespace, pid: process.pid, retained: true }), { mode: 0o600 });
   const close = async () => {
     const deadline = Date.now() + 3000;
     while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 80));
-    if (pidsForDataDir(userDataDir).length) throw new Error("Chrome still uses the private copy; Bao refused to delete an open profile");
+    if (pidsForDataDir(userDataDir).length) {
+      await keepOpen();
+      console.error(`bao profile copy browser still shutting down profile=${userDataDir}`);
+      return;
+    }
     await rm(userDataDir, { recursive: true, force: true });
   };
   try {
@@ -184,8 +179,7 @@ export async function copyChromeProfile(options: {
     await writeFile(path.join(userDataDir, "Local State"), encodedState, { mode: 0o600 });
     return { userDataDir, profileDirectory: choice.directory, displayName,
       launchArgs: [`--profile-directory=${choice.directory}`, "--disable-sync", "--restore-last-session"],
-      bytes, copyMs: Date.now() - started, close,
-      keepOpen: () => writeFile(path.join(userDataDir, "lease.json"), JSON.stringify({ magic: MAGIC, namespace, pid: process.pid, retained: true }), { mode: 0o600 }),
+      bytes, copyMs: Date.now() - started, close, keepOpen,
     };
   } catch (error) {
     await close();
