@@ -316,7 +316,7 @@ function viewerMain(): void {
       const data = reply?._meta?.baoViewer;
       const card = reply?._meta?.baoToolCard;
       if ((data || card) && userRequest === undefined) {
-        ++viewRequest; browserCall = card; current = data; browserPicture = undefined; pictureLoading = false; pictureError = ""; expanded = false; clearError(); render();
+        ++viewRequest; browserCall = card; current = data; browserPicture = undefined; pictureLoading = false; pictureError = ""; if (card) expanded = false; clearError(); render();
         if (card && canRead) void loadBrowserPicture(card);
       }
     } else if (message.method === "ui/notifications/host-context-changed") {

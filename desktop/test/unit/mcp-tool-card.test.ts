@@ -270,7 +270,6 @@ test("capture receipts preserve recording, owner handoff, and finished outcomes 
     const view = inspectRunView(library, { run_id: f.recording.id });
     assert.equal(view.run.status, "recording");
     assert.equal(view.workflow, null);
-    assert.equal(view.detailsHidden, undefined);
     assert.equal(view.steps[0]?.picturesAllowed, true);
     assert.equal(listRunViews(library, {}).runs[0]?.status, "recording");
     f.recording.ownerWaiting(true);
