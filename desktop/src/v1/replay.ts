@@ -261,8 +261,8 @@ export interface ReplayOptions {
   fromStepId?: string;
   /** Return as soon as a person must sign in or confirm. The page is not clicked. */
   yieldHuman?: boolean;
-  /** The person already acted on this page. Confirm is observed and never pressed. */
-  humanReady?: boolean;
+  /** Observe the resumed human step, or accept the owner's local completion signal. Never press it. */
+  humanReady?: boolean | "confirmed";
   /** Trail lines already recorded for this run. Resume appends the handoff end. */
   trail?: RunTrailEvent[];
   /** Desktop waits on Continue. MCP and unit tests return as soon as the wall is raised. */
@@ -361,7 +361,7 @@ export async function replay(
   let guard: PageGuard | undefined;
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
-    gate.humanReady = opts.humanReady === true && i === startAt;
+    gate.humanReady = i === startAt ? opts.humanReady : false;
     if (driver.shouldStop?.()) {
       steps[i] = { id: step.id, status: "failed", reason: "cancelled" };
       return finish({
@@ -1264,8 +1264,7 @@ async function runConfirm(
   gate: ApplyGate,
 ): Promise<StepOutcome> {
   if (gate.humanReady) {
-    const seen = await driver.tree();
-    if (!step.postcondition || holds(step.postcondition, seen, args)) {
+    if (gate.humanReady === "confirmed" || !step.postcondition || holds(step.postcondition, await driver.tree(), args)) {
       gate.trail.push({ kind: "human-confirm", stepId: step.id });
       endHandoff(driver, gate, step.id);
       await driver.clearConfirm?.();

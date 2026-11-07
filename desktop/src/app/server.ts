@@ -1292,6 +1292,11 @@ export async function startApp(opts: {
         clearRelay(library.root);
         return json(res, { ok: true });
       }
+      if (req.method === "POST" && url.pathname === "/api/remote/continue") {
+        const body = await readBody(req) as { resume?: string };
+        if (typeof body.resume === "string") remote.continue(body.resume);
+        return json(res, { ok: true });
+      }
       if (req.method === "POST" && url.pathname === "/api/remote/kill") {
         remote.kill();
         return json(res, { ok: true });

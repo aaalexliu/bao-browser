@@ -20,8 +20,8 @@ export interface ApplyGate {
   runId?: string;
   /** Return as soon as a person must sign in or confirm. Replay does not click. */
   yieldHuman?: boolean;
-  /** The person already acted. Confirm is observed and never pressed. */
-  humanReady?: boolean;
+  /** Observe the human step, or accept local completion. Never press its target. */
+  humanReady?: boolean | "confirmed";
   /** Step screenshots stay off while the person has the page. */
   shotsPaused?: boolean;
 }

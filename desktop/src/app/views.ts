@@ -228,6 +228,7 @@ export interface RemoteView {
   workflowId?: string;
   workflowName?: string;
   jobId?: string;
+  resumeToken?: string;
 }
 
 export interface CommandItem {
@@ -383,8 +384,8 @@ export function remoteBanner(remote: RemoteView | undefined): string {
   }
   return `<section id="remote-agent" data-testid="remote-waiting" data-phase="waiting">
     <p class="kicker">Workflow waiting</p>
-    <p class="instruction">${esc(name)} is waiting for a site interaction or a step assigned to you. Complete it in the Bao window. The agent then continues the run.</p>
-    <div class="row"><button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
+    <p class="instruction">${esc(name)} is waiting for a site interaction or a step assigned to you. Complete it in the Bao window. Bao continues when it detects completion. If it stays here, choose Continue after you finish.</p>
+    <div class="row">${remote.resumeToken ? `<button id="remote-continue" data-resume="${esc(remote.resumeToken)}" type="button">Continue</button>` : ""}<button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
   </section>`;
 }
 

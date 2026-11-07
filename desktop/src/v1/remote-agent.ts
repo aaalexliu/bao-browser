@@ -9,7 +9,7 @@ import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets"
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
 import { EXTENSION_NOT_CONNECTED, replayRefusal } from "../cdp-live/launch-guard";
-import { describeWorkflow, runWorkflow, searchWorkflows, type WorkflowOutcome } from "../mcp/catalog";
+import { describeWorkflow, heldConfirmReady, runWorkflow, searchWorkflows, type WorkflowOutcome } from "../mcp/catalog";
 import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
@@ -27,6 +27,7 @@ export interface RemoteView {
   workflowId?: string;
   workflowName?: string;
   jobId?: string;
+  resumeToken?: string;
 }
 
 export interface RemoteRunners {
@@ -37,7 +38,7 @@ export interface RemoteRunners {
 
 type Slot =
   | { phase: "idle" }
-  | { phase: "running"; jobId: string; workflowId: string; workflowName: string }
+  | { phase: "running"; jobId: string; workflowId: string; workflowName: string; local?: true }
   | { phase: "waiting"; jobId: string; workflowId: string; workflowName: string; resume: string };
 
 type AssignedJob = {
@@ -52,13 +53,15 @@ type SlotEvent =
   | { type: "job"; job: AssignedJob; saved: Record<string, unknown> | null }
   | { type: "kill" }
   | { type: "expired"; resume: string }
-  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; waiting: { resume: string } | null }
+  | { type: "continue-held"; resume: string; completion: "observed" | "owner" }
+  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; waiting: { resume: string } | null; local?: true }
   | { type: "settled"; jobId: string; reason: string | null };
 
 type SlotEffect =
   | { type: "send-result"; jobId: string; result: Record<string, unknown> }
   | { type: "send-ready" }
   | { type: "start-run"; job: AssignedJob }
+  | { type: "continue-held"; resume: string; jobId: string; completion: "observed" | "owner" }
   | { type: "abort-run" }
   | { type: "release-held"; resume: string; expired: boolean }
   | { type: "forget-result"; jobId: string };
@@ -73,6 +76,7 @@ export function createRemoteAgent(opts: {
 }): {
   view(): RemoteView;
   kill(): void;
+  continue(resume: string): void;
   start(): void;
   stop(): Promise<void>;
 } {
@@ -85,10 +89,13 @@ export function createRemoteAgent(opts: {
   let generation = 0;
   let heldResume: string | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
 
   function view(): RemoteView {
     if (slot.phase === "idle") return { phase: "idle" };
-    return { phase: slot.phase, workflowId: slot.workflowId, workflowName: slot.workflowName, jobId: slot.jobId };
+    return { phase: slot.phase, workflowId: slot.workflowId, workflowName: slot.workflowName, jobId: slot.jobId,
+      ...(slot.phase === "waiting" ? { resumeToken: slot.resume } : {}),
+    };
   }
 
   function kill(): void {
@@ -105,12 +112,17 @@ export function createRemoteAgent(opts: {
     socket?.close();
     wake?.();
     clearTimeout(deadlineTimer);
+    clearTimeout(confirmTimer);
     if (heldResume) await runWorkflow(opts.library, { resume: heldResume, cancel: true });
     heldResume = undefined;
     await releaseContext();
   }
 
-  return { view, kill, start, stop: stopLoop };
+  return { view, kill, continue: continueHeld, start, stop: stopLoop };
+
+  function continueHeld(resume: string, completion: "observed" | "owner" = "owner"): void {
+    enqueue(() => transition({ type: "continue-held", resume, completion }));
+  }
 
   function enqueue(work: () => void): void {
     chain = chain.then(work).then(() => undefined, () => undefined);
@@ -120,6 +132,26 @@ export function createRemoteAgent(opts: {
     const next = apply(slot, event);
     slot = next.slot;
     perform(next.effects, event.type === "job" ? event.job : request);
+    if (slot.phase !== "waiting") {
+      clearTimeout(confirmTimer);
+      confirmTimer = undefined;
+    } else {
+      watchConfirm(slot.resume);
+    }
+  }
+
+  function watchConfirm(token: string): void {
+    if (stopped || confirmTimer) return;
+    const timer = setTimeout(() => {
+      void heldConfirmReady(token).then((ready) => {
+        if (ready) continueHeld(token, "observed");
+      }).catch(() => undefined).finally(() => {
+        if (confirmTimer === timer) confirmTimer = undefined;
+        if (slot.phase === "waiting") watchConfirm(slot.resume);
+      });
+    }, 300);
+    confirmTimer = timer;
+    timer.unref();
   }
 
   async function loop(): Promise<void> {
@@ -231,24 +263,25 @@ export function createRemoteAgent(opts: {
         setTimeout(() => { void open?.close().catch(() => undefined); }, 400);
         continue;
       }
+      if (effect.type === "continue-held") {
+        clearTimeout(deadlineTimer);
+        const gen = generation;
+        void runWorkflow(opts.library, { resume: effect.resume }, undefined, { prompts: opts.prompts, confirmCompleted: effect.completion === "owner" })
+          .then((result) => finish(effect.jobId, publicOutcome(result), gen, true))
+          .catch(async (err) => {
+            if (gen !== generation) return;
+            await runWorkflow(opts.library, { resume: effect.resume, cancel: true }).catch(() => undefined);
+            finish(effect.jobId, { outcome: "failed", reason: err instanceof Error ? err.message : String(err) }, gen, true);
+          });
+        continue;
+      }
       if (effect.type === "start-run") {
         clearTimeout(deadlineTimer);
         const gen = generation;
         const job = effect.job;
         void execute(job).then((result) => {
           if (gen !== generation) return;
-          enqueue(() => {
-            if (gen !== generation) return;
-            const resume = typeof result.resume === "string" ? result.resume : "";
-            const info = resumeInfo(resume);
-            const waiting = resume && info?.kind === "confirm" ? { resume } : null;
-            clearTimeout(deadlineTimer);
-            heldResume = waiting?.resume;
-            if (heldResume && typeof info?.deadline === "number") {
-              armDeadline(heldResume, info.deadline);
-            }
-            transition({ type: "run-finished", jobId: job.id, result, waiting }, job);
-          });
+          finish(job.id, result, gen, undefined, job);
         }).catch((err) => {
           if (gen !== generation) return;
           enqueue(() => {
@@ -285,6 +318,19 @@ export function createRemoteAgent(opts: {
       ...(inputs && typeof inputs === "object" && !Array.isArray(inputs) ? [inputs as Record<string, unknown>] : []),
     ];
     return { workflow, args };
+  }
+
+  function finish(jobId: string, result: Record<string, unknown>, gen: number, local?: true, request?: AssignedJob): void {
+    enqueue(() => {
+      if (gen !== generation) return;
+      const resume = typeof result.resume === "string" ? result.resume : "";
+      const info = resumeInfo(resume);
+      const waiting = resume && info?.kind === "confirm" ? { resume } : null;
+      clearTimeout(deadlineTimer);
+      heldResume = waiting?.resume;
+      if (heldResume && typeof info?.deadline === "number") armDeadline(heldResume, info.deadline);
+      transition({ type: "run-finished", jobId, result, waiting, local }, request);
+    });
   }
 
   function armDeadline(token: string, deadline: number): void {
@@ -474,6 +520,13 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
       effects: [{ type: "start-run", job: event.job }],
     };
   }
+  if (event.type === "continue-held") {
+    if (slot.phase !== "waiting" || slot.resume !== event.resume) return { slot, effects: [] };
+    return {
+      slot: { phase: "running", jobId: slot.jobId, workflowId: slot.workflowId, workflowName: slot.workflowName, local: true },
+      effects: [{ type: "continue-held", resume: slot.resume, jobId: slot.jobId, completion: event.completion }],
+    };
+  }
   if (event.type === "expired") {
     if (slot.phase !== "waiting" || slot.resume !== event.resume) return { slot, effects: [] };
     return { slot: { phase: "idle" }, effects: [{ type: "release-held", resume: slot.resume, expired: true }, { type: "send-ready" }] };
@@ -484,7 +537,7 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
       slot: { phase: "idle" },
       effects: [
         slot.phase === "waiting" ? { type: "release-held", resume: slot.resume, expired: false } : { type: "abort-run" },
-        ...(slot.phase === "running" ? [{ type: "send-result", jobId: slot.jobId, result: { outcome: "cancelled", workflowId: slot.workflowId } } as const] : []),
+        ...(slot.phase === "running" && !slot.local ? [{ type: "send-result", jobId: slot.jobId, result: { outcome: "cancelled", workflowId: slot.workflowId } } as const] : []),
         { type: "send-ready" },
       ],
     };
@@ -494,19 +547,19 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
     if (event.waiting) {
       return {
         slot: { ...slot, phase: "waiting", resume: event.waiting.resume },
-        effects: [{ type: "send-result", jobId: event.jobId, result: event.result }],
+        effects: event.local ? [] : [{ type: "send-result", jobId: event.jobId, result: event.result }],
       };
     }
     return {
       slot: { phase: "idle" },
       effects: [
-        { type: "send-result", jobId: event.jobId, result: event.result },
+        ...(!event.local ? [{ type: "send-result", jobId: event.jobId, result: event.result } as const] : []),
         { type: "send-ready" },
       ],
     };
   }
   const effects: SlotEffect[] = [{ type: "forget-result", jobId: event.jobId }];
-  if (event.reason === "timed out" && slot.phase === "running" && slot.jobId === event.jobId) {
+  if (event.reason === "timed out" && slot.phase === "running" && !slot.local && slot.jobId === event.jobId) {
     return { slot: { phase: "idle" }, effects: [...effects, { type: "abort-run" }, { type: "send-ready" }] };
   }
   return { slot, effects };

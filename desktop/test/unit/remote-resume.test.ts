@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -11,12 +12,19 @@ import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 
-test("production remote resume never repeats a completed order from a non-held run", { timeout: 60_000 }, async () => {
+test("production remote confirms continue locally once and reject non-held order resumes", { timeout: 60_000 }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-remote-resume-"));
   const library = new Library(home);
   let orders = 0;
+  let followups = 0;
   const site = createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/followup") {
+      followups += 1;
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (req.method === "POST" && req.url === "/order") {
       orders += 1;
       res.writeHead(204);
@@ -24,7 +32,7 @@ test("production remote resume never repeats a completed order from a non-held r
       return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(`<button id="place" onclick="fetch('/order',{method:'POST'}).then(()=>document.getElementById('status').textContent='Placed')">Place order</button><p id="status"></p>`);
+    res.end(`<body style="padding:80px"><button id="place" onclick="fetch('/order',{method:'POST'}).then(()=>document.getElementById('status').textContent='Placed')">Place order</button><p id="status"></p><button id="finish" onclick="fetch('/followup',{method:'POST'}).then(()=>document.getElementById('done').textContent='Finished')">Finish</button><p id="done"></p>`);
   });
   const directory = new MemoryDirectory();
   directory.addDevice("dev-resume", "user-resume");
@@ -112,9 +120,88 @@ test("production remote resume never repeats a completed order from a non-held r
     const resumed = await tool("resume_workflow", { resume: held.resume || held.resume_token });
     assert.equal(resumed.outcome, "ok", JSON.stringify(resumed));
     assert.equal(orders, 2, "held resume restarted its completed first step");
+
+    const confirm: WorkflowV2["steps"][number] = {
+      id: "owner-order", index: 0, action: "confirm", human: true, label: "Place order on the site", surface: "dom", timeoutMs: 5000,
+      postcondition: { kind: "text", match: "Placed", timeoutMs: 3000 },
+    };
+    const finish: WorkflowV2["steps"][number] = {
+      id: "finish", index: 1, action: "click", label: "Finish", surface: "dom", timeoutMs: 1000, heal: "never",
+      identity: { surface: "dom", role: "button", id: "finish", name: "Finish", path: [] },
+      postcondition: { kind: "text", match: "Finished", timeoutMs: 3000 },
+    };
+    library.save({ ...workflow, id: "auto-order", steps: [confirm, finish] });
+    const automatic = await tool("run_workflow", { id: "auto-order" });
+    assert.equal(automatic.outcome, "needs_human");
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    assert.equal(followups, 0, "the run continued before the owner acted");
+    await withHeldPage(String(automatic.resume), async (page) => {
+      await page.locator("#place").click();
+      await page.getByText("Placed", { exact: true }).waitFor();
+    });
+    await waitFor(() => library.readRun(String(automatic.runId)).status === "passed");
+    await waitFor(() => remote.view().phase === "idle");
+    assert.equal(orders, 3);
+    assert.equal(followups, 1, "the held run did not finish without an agent resume");
+    assert.equal(library.readRun(String(automatic.runId)).modelCalls, 0);
+    const stale = await tool("resume_workflow", { resume: automatic.resume });
+    assert.equal(stale.outcome, "failed");
+    assert.equal(followups, 1);
+
+    library.save({ ...workflow, id: "manual-order", steps: [{ ...confirm, postcondition: undefined }, finish] });
+    const manual = await tool("run_workflow", { id: "manual-order" });
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    assert.equal(followups, 1, "a confirm without evidence must wait for local Continue");
+    remote.continue(String(manual.resume));
+    remote.continue(String(manual.resume));
+    await waitFor(() => library.readRun(String(manual.runId)).status === "passed");
+    await waitFor(() => remote.view().phase === "idle");
+    assert.equal(followups, 2, "double local Continue repeated the next step");
+
+    library.save({ ...workflow, id: "changed-postcondition", steps: [
+      { ...confirm, postcondition: { kind: "text", match: "Old receipt text", timeoutMs: 1000 } }, finish,
+    ] });
+    const changed = await tool("run_workflow", { id: "changed-postcondition" });
+    const notReady = await tool("resume_workflow", { resume: changed.resume });
+    assert.equal(notReady.outcome, "needs_human", "agent resume must still check the postcondition");
+    remote.continue(String(changed.resume));
+    await waitFor(() => library.readRun(String(changed.runId)).status === "passed");
+    await waitFor(() => remote.view().phase === "idle");
+    assert.equal(followups, 3, "owner Continue could not acknowledge a changed postcondition");
+
+    library.save({ ...workflow, id: "two-confirms", steps: [
+      { ...confirm, postcondition: undefined },
+      { ...confirm, id: "second-confirm", index: 1, postcondition: undefined },
+      { ...finish, index: 2 },
+    ] });
+    const two = await tool("run_workflow", { id: "two-confirms" });
+    remote.continue(String(two.resume));
+    await waitFor(() => (library.readRun(String(two.runId)).steps as { id: string; status: string }[]).some((step) => step.id === "second-confirm" && step.status === "paused"));
+    await waitFor(() => remote.view().phase === "waiting");
+    assert.equal(followups, 3, "local Continue skipped a later human step");
+    remote.continue(String(two.resume));
+    await waitFor(() => library.readRun(String(two.runId)).status === "passed");
+    await waitFor(() => remote.view().phase === "idle");
+    assert.equal(followups, 4);
+
+    const racing = await tool("run_workflow", { id: "manual-order" });
+    const results = await Promise.all([
+      runWorkflow(library, { resume: String(racing.resume) }),
+      runWorkflow(library, { resume: String(racing.resume) }),
+    ]);
+    assert.ok(results.every((result) => result.outcome === "ok"));
+    assert.equal(followups, 5, "competing resumes repeated the next step");
   } finally {
     await remote.stop();
     await server.close();
     await new Promise<void>((resolve) => site.close(() => resolve()));
   }
 });
+
+async function waitFor(ready: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!ready()) {
+    assert.ok(Date.now() < deadline, "held run did not settle");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+}
