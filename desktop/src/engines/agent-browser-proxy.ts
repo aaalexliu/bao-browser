@@ -152,13 +152,14 @@ export class AgentBrowserProxy {
         await this.captureTarget(session, step, args[0]);
         if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
       }
-      results.push(await session.workflow.record(command as string, args, step.id, async () => {
+      await session.workflow.record(command as string, args, step.id, async () => {
         const result = command === "close" && session.chrome.isClosed()
           ? { stdout: "", stderr: "", exitCode: 0 }
           : await this.run(session, command as string, args);
+        results.push(result);
         if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
-      }, () => !!session.ownerWait));
+      }, () => !!session.ownerWait);
       if (session.ownerWait) {
         results.splice(0, results.length, ...this.ownerResult("halted"));
         return results;

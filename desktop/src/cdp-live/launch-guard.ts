@@ -26,7 +26,7 @@ export function workflowSearchEligible(workflow: { driver?: string | null; prove
 
 export function replayRefusal(driver: string | null | undefined, opts: ReplayContext): string | null {
   if (refusesOwnedBrowser(driver)) return CDP_LIVE_SERVER_REFUSAL;
-  if (opts.pageEngine === "agent-browser") return "pass-through sessions do not support saved workflow replay";
+  if (opts.pageEngine === "agent-browser" && driver !== "playwright") return "pass-through sessions do not support saved workflow replay";
   if (driver === "extension" && !opts.extensionLinked) return EXTENSION_NOT_CONNECTED;
   return null;
 }

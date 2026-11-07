@@ -14,6 +14,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { launchOwnedChrome } from "../../src/launch";
 import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
+import { replayRefusal, CDP_LIVE_SERVER_REFUSAL } from "../../src/cdp-live/launch-guard";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 interface Result { content: { type: string; text?: string }[]; isError: boolean; structuredContent?: { command: string; run_id: string; step_id: string } }
@@ -32,6 +33,14 @@ async function fixture(ui = false) {
   let ownerReady = false;
   const server = createServer((req, res) => {
     const url = new URL(req.url!, "http://fixture");
+    if (url.pathname === "/stores") {
+      const content = url.searchParams.has("interactive")
+        ? '<button data-testid="store-button" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'"><span id="store-b">Store B</span></button>'
+        : '<div onclick="document.querySelector(\'#selected\').textContent=\'Selected A\'">Store A</div><div id="store-b" onclick="document.querySelector(\'#selected\').textContent=\'Selected B\'">Store B</div>';
+      const container = url.searchParams.has("testid") ? 'data-testid="stores"' : 'role="dialog" aria-label="Choose a store"';
+      res.end(`<!doctype html><title>Stores</title><div ${container}>${content}</div><p id="selected">No store selected</p>`);
+      return;
+    }
     if (url.pathname === "/owner-ready") { res.end(JSON.stringify(ownerReady)); return; }
     if (url.pathname === "/signin") {
       res.end(`<!doctype html><title>Sign in</title><p>Synthetic owner handoff</p><script>setInterval(async()=>{if(await(await fetch('/owner-ready')).json())location.replace('/')},100)</script>`);
@@ -45,7 +54,8 @@ async function fixture(ui = false) {
     const button = (target: string) => missing && target === "chosen" ? "" : `<button data-testid="${target}" onclick="document.querySelector('#result').textContent='Added '+document.querySelector('#name').value;fetch('/action?target=${target}&name='+encodeURIComponent(document.querySelector('#name').value))">${target === "chosen" && reordered ? "Add this item" : "Add blueberries"}</button>`;
     res.end(`<!doctype html><title>Grocery fixture</title>
       ${reordered ? '<button>Unrelated new control</button>' : ''}
-      <label>Name <input id="name" onkeydown="if(event.key==='Enter')document.querySelector('#result').textContent='Ready '+this.value"></label>
+      <label>Name <input id="name" oninput="document.querySelector('#count').textContent=this.value.length+' results'" onkeydown="if(event.key==='Enter')document.querySelector('#result').textContent='Ready '+this.value"></label>
+      <p id="count">0 results</p>
       ${reordered ? button("chosen") + button("wrong") : button("wrong") + button("chosen")}
       <p id="result">Not added</p><button id="popup" onclick="window.open('/other')">Open popup</button><div id="plain" onclick="this.textContent='Clicked plain'">Plain action</div><div style="height:3000px">Page end</div>`);
   });
@@ -209,6 +219,62 @@ test("native ref capture saves a discoverable workflow that replays with new inp
     assert.deepEqual(f.actions, [{ target: "chosen", name: "Ada" }, { target: "chosen", name: "Grace" }], "a missing recorded target must not click the remaining namesake");
     await passed(f, "close");
     assert.equal(f.library.list().workflows.length, 1, "repeated close does not save another workflow");
+  } finally { await f.close(); }
+});
+
+test("native clicks never substitute a structural ancestor for an unaddressable target", { skip: !binary, timeout: 60_000 }, async () => {
+  const f = await fixture();
+  try {
+    for (const suffix of ["stores", "stores?testid"]) {
+      await passed(f, "open", [f.url + suffix]);
+      await passed(f, "click", ["#store-b"]);
+      assert.match(await passed(f, "snapshot"), /Selected B/);
+      assert.match(await passed(f, "close"), /an action had no durable target/);
+      assert.equal(f.library.list().workflows.length, 0);
+    }
+    await passed(f, "open", [f.url + "stores?interactive"]);
+    await passed(f, "click", ["#store-b"]);
+    assert.match(await passed(f, "close"), /Saved workflow:/);
+    const workflow = f.library.list().workflows[0]!;
+    assert.equal(workflow.steps[0]!.identity?.testId, "store-button");
+    const replay = await f.request("tools/call", { name: "run_workflow", arguments: { id: workflow.id } });
+    assert.equal((JSON.parse(text(replay)) as { status: string }).status, "ok", text(replay));
+  } finally { await f.close(); }
+});
+
+test("trial replay accepts only an explicit playwright driver and still refuses retired drivers", () => {
+  for (const extensionLinked of [false, true]) {
+    const context = { extensionLinked, pageEngine: "agent-browser" as const };
+    assert.equal(replayRefusal("playwright", context), null);
+    for (const driver of [undefined, null, "extension"]) {
+      assert.equal(replayRefusal(driver, context), "pass-through sessions do not support saved workflow replay");
+    }
+    assert.equal(replayRefusal("cdp-live", context), CDP_LIVE_SERVER_REFUSAL);
+  }
+});
+
+test("trial engine finds and replays a saved search fill with a different result count", { skip: !binary, timeout: 60_000 }, async () => {
+  const f = await fixture();
+  try {
+    f.library.updateSettings({ pageEngine: "agent-browser", chromeProfile: "Default" });
+    await passed(f, "open", [f.url]);
+    await passed(f, "fill", ["#name", "Ada"]);
+    assert.match(await passed(f, "snapshot"), /3 results/);
+    assert.match(await passed(f, "close"), /Saved workflow:/);
+    const workflow = f.library.list().workflows[0]!;
+    assert.equal(workflow.driver, "playwright");
+    const input = workflow.inputs[0]!;
+    const condition = workflow.steps[0]!.postcondition;
+    assert.ok(condition?.kind === "value");
+    assert.equal(condition.match, `{{${input.name}}}`);
+    const search = await f.request("tools/call", { name: "search_workflows", arguments: { query: "Browser task" } });
+    assert.match(text(search), new RegExp(workflow.id));
+    const replay = await f.request("tools/call", { name: "run_workflow", arguments: { id: workflow.id, inputs: { [input.name]: "Grace" } } });
+    assert.equal((JSON.parse(text(replay)) as { status: string }).status, "ok", text(replay));
+    const run = f.library.listRuns().find((run) => run.kind !== "capture")!;
+    assert.equal(run.status, "passed");
+    assert.equal(run.inputs?.[input.name], "Grace");
+    assert.equal(f.library.settings().pageEngine, "agent-browser");
   } finally { await f.close(); }
 });
 

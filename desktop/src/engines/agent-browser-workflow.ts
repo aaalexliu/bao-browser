@@ -38,7 +38,8 @@ function armCommand(command: string, binding: string, dump: typeof dumpPage, lea
     || /^(A|BUTTON|INPUT|TEXTAREA|SELECT|SUMMARY)$/.test(element.tagName) || (element as HTMLElement).isContentEditable;
   const targetOf = (elements: EventTarget[]): DomDump | undefined => {
     const candidates = elements.filter((element): element is Element => element instanceof Element);
-    const element = candidates.find(control) || candidates.find((item) => item.hasAttribute("data-bao-i"));
+    const ownTarget = elements[0];
+    const element = candidates.find(control) || (ownTarget instanceof Element && ownTarget.hasAttribute("data-bao-i") ? ownTarget : undefined);
     const handle = element?.getAttribute("data-bao-i");
     return before.page.nodes.find((node) => node.handle === handle);
   };
@@ -245,7 +246,7 @@ export class AgentBrowserWorkflow {
     if (!this.pending) return;
     const { event, before } = this.pending;
     event.afterUrl = after.page.url;
-    event.afterText = smallestChange(before.leaves, after.leaves)?.after;
+    if (event.op !== "type") event.afterText = smallestChange(before.leaves, after.leaves)?.after;
     const hit = event.locators?.map((locator) => matchLocator(locator, after.page.nodes)).find((item) => item !== undefined);
     const node = hit && after.page.nodes[hit.index];
     event.subtreeAfter = node?.text;
