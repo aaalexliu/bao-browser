@@ -78,7 +78,9 @@ for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"]
       const fetchImpl: typeof fetch = async (_url, init) => {
         const request = JSON.parse(String(init?.body)) as ModelRequest;
         sent = request.messages[0]!.content;
-        return new Response(reply);
+        return new Response(JSON.stringify(provider === "openai"
+          ? { choices: [{ message: { content: reply } }] }
+          : { content: [{ type: "text", text: reply }] }));
       };
       const agent: CursorAgentRun = {
         status: async () => ({ code: 0, stdout: JSON.stringify({ status: "authenticated", isAuthenticated: true }), stderr: "", args: [] }),
@@ -96,6 +98,7 @@ for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"]
       try {
         const proposal = await heal.propose(data.failure, data.step, data.context);
         assert.ok(proposal);
+        assert.deepEqual(proposal.patch, JSON.parse(reply));
         assertPrompt(proposal.prompt, secret);
         if (provider !== "cursor-session") assert.equal(sent, proposal.prompt);
         assert.deepEqual(data, original);
@@ -142,7 +145,7 @@ test("replay threads default and runtime secrets to the model while returning ra
     const heal = llmHealFromEnv({ OPENAI_API_KEY: "fixture" }, async (_url, init) => {
       const request = JSON.parse(String(init?.body)) as ModelRequest;
       sent = request.messages[0]!.content;
-      return new Response(reply);
+      return new Response(JSON.stringify({ choices: [{ message: { content: reply } }] }));
     });
     const driver: Driver = {
       tree: async () => ({ nodes: [], texts: [], values: [] }),
