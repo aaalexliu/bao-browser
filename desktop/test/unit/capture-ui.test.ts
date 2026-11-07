@@ -147,6 +147,57 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
   }
 });
 
+test("offscreen capture saves keep the typed name and clear drafts after save or discard", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-capture-offscreen-save-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.setDefaultTimeout(10_000);
+  const url = `http://127.0.0.1:${app.port}`;
+  const openScreen = async (screen: "capture" | "runs") => {
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.locator("#palette-input").fill(screen);
+    await page.locator(`#palette-list [data-command="${screen}"]`).click();
+  };
+  try {
+    await page.goto(url);
+    for (const outcome of ["save", "discard"] as const) {
+      await openScreen("capture");
+      assert.equal(await page.locator("#cap-name").inputValue(), "");
+      const name = outcome === "save" ? "Pay bill" : "Do not save this task";
+      await page.locator("#cap-name").fill(name);
+      await page.locator("#start-url").fill(`${url}/fixture`);
+      await page.locator("#start").click();
+      await page.locator("#stop:not([disabled])").waitFor();
+      await openScreen("runs");
+      assert.equal(await page.locator("#capture-panel").count(), 0);
+      await page.locator("#rec-stop").click();
+      await page.locator("#save-title").waitFor();
+      assert.equal(await page.locator("#save-title").inputValue(), name);
+      if (outcome === "save") {
+        await page.locator("#save-title").fill("Pay bill edited");
+        await page.locator("#save-commit").click();
+        await page.locator("#workflow-detail").waitFor();
+        assert.deepEqual(app.library.list().workflows.map((workflow) => workflow.name), ["Pay bill edited"]);
+      } else {
+        await page.locator("#save-discard").click();
+        await page.locator("#save-sheet").waitFor({ state: "hidden" });
+        assert.deepEqual(app.library.list().workflows.map((workflow) => workflow.name), ["Pay bill edited"]);
+      }
+      await openScreen("capture");
+      assert.equal(await page.locator("#cap-name").inputValue(), "");
+      assert.equal(await page.locator("#capture-error").isHidden(), true);
+    }
+  } finally {
+    await browser.close();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("the running capture saves its name and steps, pauses, recovers errors and discards", { timeout: 90_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-ui-"));
   const oldHome = process.env.HOME;

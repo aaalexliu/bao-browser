@@ -1140,7 +1140,7 @@ function paintSaveSheet(): void {
   }
   const existing = host.querySelector("#save-sheet");
   if (existing && existing.getAttribute("data-id") === sheet.id) return;
-  host.innerHTML = saveSheetView(screen === "capture" && captureName.trim() ? { ...sheet, name: captureName } : sheet);
+  host.innerHTML = saveSheetView(captureName.trim() ? { ...sheet, name: captureName } : sheet);
   const form = host.querySelector("#save-sheet-form") as HTMLFormElement | null;
   if (form) form.onsubmit = (ev) => {
     ev.preventDefault();
@@ -1169,10 +1169,8 @@ async function commitSaveSheet(): Promise<void> {
     return;
   }
   openWorkflow = doc.id;
-  if (screen === "capture") {
-    captureName = "";
-    captureError = "";
-  }
+  captureName = "";
+  captureError = "";
   screen = "workflow";
   renderKey = "";
   await refresh();
@@ -1180,10 +1178,8 @@ async function commitSaveSheet(): Promise<void> {
 
 async function discardSaveSheet(): Promise<void> {
   await fetch("/api/sessions/save/discard", { method: "POST" });
-  if (screen === "capture") {
-    captureName = "";
-    captureError = "";
-  }
+  captureName = "";
+  captureError = "";
   renderKey = "";
   await refresh();
 }
