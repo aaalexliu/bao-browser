@@ -341,7 +341,9 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
     await page.screenshot({ path: path.join(shotDir, "needs-human-run-dark.png") });
     await page.locator("#act-bar").screenshot({ path: path.join(shotDir, "needs-human-act-dark.png") });
     await page.waitForTimeout(700);
-    await page.click("#screen-list button[data-screen=heals]");
+    await page.keyboard.press("Meta+k");
+    await page.locator("#palette-input").fill("Heals");
+    await page.locator('#palette-list [data-command="heals"]').click();
     await page.waitForSelector("[data-page-class=bot_wall]");
     await page.waitForTimeout(900);
     assert.match(await page.locator("[data-page-class=bot_wall]").innerText(), /bot check/);

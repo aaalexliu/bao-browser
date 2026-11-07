@@ -118,7 +118,6 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
     await page.locator("#rail button[data-place=workflows]").click();
     assert.match(await page.locator(".workflow-row .status").innerText(), /failed/i);
     await page.locator("#rail button[data-place=runs]").click();
-    await page.locator("#screen-list button[data-screen=runs]").click();
     await page.locator("[data-open-run=run-fail]").first().click();
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#run-viewer .step.on[data-select-step=save]");
@@ -130,7 +129,6 @@ test("the runs list opens the failed step, and the act bar is the login ask", { 
     assert.equal(await page.locator("#act-bar").getAttribute("data-ask"), "login");
     assert.equal(await page.locator("#act-show").count(), 1);
     await page.locator("#rail button[data-place=runs]").click();
-    await page.locator("#screen-list button[data-screen=runs]").click();
     await page.locator("[data-open-run=run-ok]").first().click();
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#rerun-run");

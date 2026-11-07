@@ -1827,7 +1827,7 @@ async function runReplay(): Promise<void> {
 }
 
 function selectDefaultRun(): void {
-  const first = runAttention(state.runs || [], state.activeAsk, state.liveSession)[0];
+  const first = runAttention(state.runs || [], state.activeAsk)[0];
   if (first?.live) screen = "live";
   else if (first?.kind === "healed") selectHeal(first.run.id, first.healId);
   else {
