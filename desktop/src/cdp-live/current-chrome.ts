@@ -26,16 +26,15 @@ export interface CurrentChrome {
 
 async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, axLog: string,
   operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
-  const before = await helper.exec(["debug-allow", "--pid", String(pid)], 5000);
-  if (before.found) throw new Error("Chrome already has a pending debugging connection; this session has not connected");
   const abort = new AbortController();
-  const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(25_000), ...(parent ? [parent] : [])]);
+  const signal = AbortSignal.any([abort.signal, ...(parent ? [parent] : [])]);
+  const deadline = Date.now() + 25_000;
   signal.throwIfAborted();
   let finished = false;
   const pending = operation(signal).finally(() => { finished = true; });
   void pending.catch(() => undefined);
   try {
-    while (!finished) {
+    while (!finished && Date.now() < deadline) {
       signal.throwIfAborted();
       const hit = await helper.exec(["debug-allow", "--pid", String(pid), "--press"], 5000);
       if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
@@ -90,8 +89,9 @@ export async function openCurrentChrome(options: {
       if (Date.now() >= deadline) throw new Error("Chrome's remote-debugging checkbox did not appear");
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 5000);
-    await logAx(options.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
+    const checkbox = await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 5000);
+    if (!checkbox.found) throw new Error("Chrome's remote-debugging checkbox was not found");
+    if (checkbox.pressed) await logAx(options.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
     for (;;) {
       options.signal?.throwIfAborted();
       endpoint = await endpointForChrome();
@@ -102,7 +102,8 @@ export async function openCurrentChrome(options: {
   }
   const consent = <T>(operation: (signal: AbortSignal) => Promise<T>, signal = options.signal) =>
     withConsent(deps.helper, pid, options.axLog, operation, signal);
-  const cdp = await consent(async (signal) => {
+  const cdp = await consent(async (parent) => {
+    const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
     const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });
     const cancel = () => socket.close();
     signal.addEventListener("abort", cancel, { once: true });

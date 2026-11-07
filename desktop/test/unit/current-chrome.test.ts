@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,6 +18,7 @@ pinTestBrowser();
 async function fixture(on = false) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-chrome-"));
   const state = { on, accessibility: true, locked: false, pids: [7], pending: false, connected: false, closed: false,
+    checkboxFound: true, checkboxPressed: true,
     helperCalls: [] as string[][], cdpCalls: [] as { method: string; params: Record<string, unknown> }[] };
   let approved!: () => void;
   let rejected: ((error: Error) => void) | undefined;
@@ -44,7 +45,10 @@ async function fixture(on = false) {
       assert.ok(!args[0]!.startsWith("ae-") && !["shot", "windows", "permissions"].includes(args[0]!), "no Automation, Screen Recording, or grant prompt");
       assert.equal(args[args.indexOf("--pid") + 1], "7");
       if (args[0] === "checkbox-read") return { ok: true, found: true, value: state.on ? "1" : "0" };
-      if (args[0] === "checkbox-set") state.on = true;
+      if (args[0] === "checkbox-set") {
+        if (state.checkboxFound) state.on = true;
+        return { ok: true, found: state.checkboxFound, pressed: state.checkboxFound && state.checkboxPressed };
+      }
       if (args[0] === "debug-allow") {
         if (args.includes("--press") && state.pending) {
           state.pending = false;
@@ -109,13 +113,47 @@ test("current Chrome stops without input when Accessibility is absent, the scree
   }
 });
 
-test("current Chrome does not accept a pre-existing connection prompt", async () => {
+test("current Chrome approves native connection prompts already present when polling starts", async () => {
   const f = await fixture(true);
   try {
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
     f.state.pending = true;
-    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /already has a pending/);
-    assert.equal(f.state.connected, false);
-    assert.ok(f.state.helperCalls.every(call => !call.includes("--press")));
+    assert.equal(await chrome.withConsent(async () => "reconnected"), "reconnected");
+    assert.equal(f.state.pending, false);
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("current Chrome reports a missing checkbox and audits only actual presses", async () => {
+  for (const mode of ["missing", "unchanged", "pressed"] as const) {
+    const f = await fixture();
+    try {
+      f.state.checkboxFound = mode !== "missing";
+      f.state.checkboxPressed = mode === "pressed";
+      if (mode === "missing") {
+        await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /checkbox was not found/);
+        assert.equal(f.state.connected, false);
+        await assert.rejects(access(f.options.axLog), /ENOENT/);
+      } else {
+        const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+        const audit = (await readFile(f.options.axLog, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+        assert.equal(audit.filter(hit => hit.role === "AXCheckBox").length, mode === "pressed" ? 1 : 0);
+        chrome.detach();
+      }
+    } finally { await rm(f.root, { recursive: true, force: true }); }
+  }
+});
+
+test("native commands outlive the consent polling deadline", { timeout: 35_000 }, async () => {
+  const f = await fixture(true);
+  try {
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+    assert.equal(await chrome.withConsent(async (signal) => {
+      await new Promise(resolve => setTimeout(resolve, 26_000));
+      signal.throwIfAborted();
+      return "slow native output";
+    }), "slow native output");
+    chrome.detach();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
@@ -133,7 +171,7 @@ test("failed consent closes the pending CDP connection without closing Chrome", 
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test("current proxy starts in a new tab and close detaches even when keep-open is selected", { timeout: 30_000 }, async (t) => {
+test("current proxy retries task-tab setup, handles daemon resets, and detaches on close", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-proxy-"));
   const home = path.join(root, "home");
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true });
@@ -141,6 +179,8 @@ test("current proxy starts in a new tab and close detaches even when keep-open i
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
   const before = await cdp.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
   const marker = path.join(root, "native-close-called");
+  const firstTab = path.join(root, "first-tab");
+  const stateMarker = path.join(root, "native-state");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
 const fs = require('node:fs');
@@ -148,6 +188,12 @@ const args = process.argv.slice(2);
 const command = args[args.indexOf('--idle-timeout') + 2];
 const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
 (async () => {
+  fs.writeFileSync('bao.pid', ${JSON.stringify(String(process.pid))});
+  fs.writeFileSync(${JSON.stringify(stateMarker)}, process.cwd());
+  if (command === 'tab' && args.includes('new') && !fs.existsSync(${JSON.stringify(firstTab)})) {
+    fs.writeFileSync(${JSON.stringify(firstTab)}, 'attempted');
+    console.error('injected tab failure'); process.exitCode = 1; return;
+  }
   if (command === 'close') fs.writeFileSync(${JSON.stringify(marker)}, 'closed');
   if (command === 'tab' && args.includes('new')) await fetch('http://' + endpoint.host + '/json/new?about:blank', { method: 'PUT' });
   if (command === 'tab' && args.includes('--json')) {
@@ -157,28 +203,43 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
 })().catch(e => { console.error(e); process.exitCode = 1; });
 `, { mode: 0o700 });
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
+  let throwConsent = false;
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, endpoint, cdp, closed: cdp.disconnected,
     isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
+    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => {
+      if (throwConsent) { throwConsent = false; throw new Error("injected consent failure"); }
+      return operation(signal ?? new AbortController().signal);
+    } }));
   const proxy = new AgentBrowserProxy({ home, sourceRoot: path.join(root, "chrome"), executable, keepOpen: () => true });
   try {
     await assert.rejects(proxy.execute("open", [], "other"), /browser must/);
     await assert.rejects(proxy.execute("snapshot", [], "current"), /first open/);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 0);
+    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+    throwConsent = true;
+    await assert.rejects(proxy.execute("open"), /injected consent failure/);
+    const afterFailure = await cdp.send<typeof before>("Target.getTargets");
+    assert.equal(afterFailure.targetInfos.filter(target => target.type === "page").length,
+      before.targetInfos.filter(target => target.type === "page").length);
+    assert.equal((await proxy.execute("open"))[0]!.exitCode, 0);
     await assert.rejects(proxy.execute("open", [], "copy"), /first open/);
     const afterOpen = await cdp.send<{ targetInfos: { targetId: string; type: string; attached?: boolean }[] }>("Target.getTargets");
     const pageIds = (targets: typeof afterOpen) => targets.targetInfos.filter(target => target.type === "page").map(target => target.targetId).sort();
     assert.equal(pageIds(afterOpen).length, pageIds(before).length + 1);
     assert.ok(afterOpen.targetInfos.filter(target => target.type === "page").every(target => target.attached === false), "recording detaches its per-page CDP sessions");
+    const stateDir = await readFile(stateMarker, "utf8");
+    await rm(path.join(stateDir, "bao.pid"));
+    assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
+    const afterReset = await cdp.send<typeof afterOpen>("Target.getTargets");
+    assert.equal(pageIds(afterReset).length, pageIds(afterOpen).length + 1);
     await proxy.execute("close");
     assert.equal(chrome.isClosed(), false);
     await assert.rejects(access(marker), /ENOENT/);
     const probe = await connectCdp(endpoint.port, endpoint.browserPath);
     try {
       const afterClose = await probe.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
-      assert.deepEqual(pageIds(afterClose), pageIds(afterOpen));
+      assert.deepEqual(pageIds(afterClose), pageIds(afterReset));
     } finally { probe.close(); }
-    assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
+    assert.ok(new Library(home).listRuns().some(run => run.status === "failed"));
   } finally {
     await proxy.end();
     cdp.close();

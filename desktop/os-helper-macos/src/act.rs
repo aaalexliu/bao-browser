@@ -94,13 +94,13 @@ fn named(el: &El) -> String {
     string_attr(el, "AXValue")
 }
 
-fn find_named(el: &El, role: &str, name: &str, depth: i32) -> Option<El> {
-    if depth > 30 { return None; }
+fn find_named(el: &El, role: &str, name: &str, depth: i32, native: bool) -> Option<El> {
+    if depth > 30 || (native && role_of(el) == "AXWebArea") { return None; }
     if role_of(el) == role && named(el) == name {
         return El::retain(el.0);
     }
     for child in child_list(el) {
-        if let Some(found) = find_named(&child, role, name, depth + 1) {
+        if let Some(found) = find_named(&child, role, name, depth + 1, native) {
             return Some(found);
         }
     }
@@ -113,7 +113,9 @@ pub fn remote_debugging_allow(pid: i32, press: bool) -> Result<Value, String> {
         if let Some(element) = El::retain(el.0) { seen.push(element); }
         let role = role_of(el);
         if role == "AXWebArea" || role == "AXMenuBar" { return; }
-        if matches!(role.as_str(), "AXSheet" | "AXDialog" | "AXWindow") && named(el) == "Allow remote debugging?" {
+        if (matches!(role.as_str(), "AXSheet" | "AXDialog")
+            || (role == "AXWindow" && string_attr(el, "AXSubrole") == "AXDialog"))
+            && named(el) == "Allow remote debugging?" {
             if let Some(sheet) = El::retain(el.0) { out.push(sheet); }
             return;
         }
@@ -128,7 +130,7 @@ pub fn remote_debugging_allow(pid: i32, press: bool) -> Result<Value, String> {
     for root in roots { sheets(&root, 0, &mut seen, &mut found); }
     if found.is_empty() { return Ok(json!({"ok": true, "found": false, "pressed": false})); }
     if found.len() != 1 { return Err("more than one Allow remote debugging sheet".into()); }
-    let button = find_named(&found[0], "AXButton", "Allow", 0).ok_or("Allow remote debugging sheet has no Allow button")?;
+    let button = find_named(&found[0], "AXButton", "Allow", 0, true).ok_or("Allow remote debugging sheet has no Allow button")?;
     if press {
         let was_frontmost = crate::apps::frontmost_pid()? == pid;
         if !was_frontmost { crate::apps::activate_pid(pid)?; }
@@ -199,7 +201,7 @@ fn inspect_checkbox(pid: i32, name: &str, frame: Option<(f64, f64, f64, f64)>) -
         let areas = web_areas(window);
         let roots: Vec<&El> = if areas.is_empty() { vec![window] } else { areas.iter().collect() };
         for root in roots {
-            if let Some(found) = find_named(root, "AXCheckBox", name, 0) {
+            if let Some(found) = find_named(root, "AXCheckBox", name, 0, false) {
                 return Ok(found);
             }
         }

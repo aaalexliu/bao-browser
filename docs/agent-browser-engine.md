@@ -47,7 +47,7 @@ Set `browser` on the first `open` to choose the route. `"copy"` is the default. 
 {"command":"close","args":[]}
 ```
 
-This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper opens a new inspect tab, enables Chrome's debugging checkbox if needed, and presses Allow for Bao's own debugging connections. It does not request Automation or Screen Recording. A locked screen, missing Accessibility access, or ambiguous browser process stops startup without asking for a new grant.
+This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper opens a new inspect tab, enables Chrome's debugging checkbox if needed, and presses Chrome's native debugging Allow sheets while current-Chrome commands connect, including reconnects. Sheets already present when polling starts may also be approved; Bao does not attribute each sheet to a particular connection. It does not request Automation or Screen Recording. A locked screen, missing Accessibility access, or ambiguous browser process stops startup without asking for a new grant.
 
 Bao creates a new task tab before the first navigation. It keeps one browser-level CDP connection for metadata and page pictures. The selected copied-profile setting does not choose the active tab in this route; use native `tab list` and `tab <id>` to select a tab. Both routes record commands and page screenshots in Runs.
 

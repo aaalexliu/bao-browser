@@ -57,7 +57,7 @@ interface SessionData {
 
 type Session = SessionData & (
   | { kind: "copy"; chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>> }
-  | { kind: "current"; chrome: CurrentChrome }
+  | { kind: "current"; chrome: CurrentChrome; taskTabPid?: string }
 );
 
 export class AgentBrowserProxy {
@@ -112,7 +112,6 @@ export class AgentBrowserProxy {
       await this.detectOwnerWall(this.session);
       if (this.session.ownerWait) return this.ownerResult("halted");
     }
-    const fresh = !this.session;
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     const step = recording.begin(command as string, args);
     this.latest = { runId: recording.id, step };
@@ -145,10 +144,6 @@ export class AgentBrowserProxy {
       if (command === "wait_for_owner") {
         results.push(...await this.waitForOwner(session, args));
         return results;
-      }
-      if (fresh && session.kind === "current") {
-        const tab = await this.run(session, "tab", ["new"]);
-        if (tab.exitCode !== 0) { results.push(tab); return results; }
       }
       if (visual && (command === "click" || command === "fill") && args[0]) {
         await this.captureTarget(session, step, args[0]);
@@ -394,7 +389,8 @@ export class AgentBrowserProxy {
   }
 
   private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
-    if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
+    if (command === "close" || this.disconnected || session.abort.signal.aborted
+      || session.kind === "current" && !session.taskTabPid) throw new Error("page closed");
     await this.detectOwnerWall(session);
     if (session.ownerWait) throw new Error("owner input is private");
     const deadline = Date.now() + 3000;
@@ -424,9 +420,9 @@ export class AgentBrowserProxy {
     }
   }
 
-  private run(session: Session, command: string, args: string[], signal = session.abort.signal): Promise<AgentBrowserCommandResult> {
-    if (this.disconnected) return Promise.reject(new Error("agent-browser client disconnected"));
-    const execute = (childSignal: AbortSignal) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
+  private async run(session: Session, command: string, args: string[], signal = session.abort.signal): Promise<AgentBrowserCommandResult> {
+    if (this.disconnected) throw new Error("agent-browser client disconnected");
+    const execute = (command: string, args: string[], childSignal: AbortSignal) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
       execFile(session.executable, [...session.flags, command, ...args], {
         cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: childSignal,
       }, (error, stdout, stderr) => {
@@ -434,7 +430,23 @@ export class AgentBrowserProxy {
         resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
       });
     });
-    return session.kind === "current" ? session.chrome.withConsent(execute, signal) : execute(signal);
+    if (session.kind === "copy") return execute(command, args, signal);
+    return session.chrome.withConsent(async (childSignal) => {
+      const pidFile = path.join(session.stateDir, "bao.pid");
+      const pid = await readFile(pidFile, "utf8").catch(() => undefined);
+      let running = false;
+      if (pid && Number.isSafeInteger(Number(pid)) && Number(pid) > 1) {
+        try { process.kill(Number(pid), 0); running = true; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+      }
+      if (!running || pid !== session.taskTabPid) {
+        session.taskTabPid = undefined;
+        const tab = await execute("tab", ["new"], childSignal);
+        if (tab.exitCode !== 0) return tab;
+        session.taskTabPid = await readFile(pidFile, "utf8");
+      }
+      return execute(command, args, childSignal);
+    }, signal);
   }
 
   private async remove(session: Session, keepOpen = false): Promise<void> {
