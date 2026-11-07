@@ -325,9 +325,8 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         const page = await desk.newPage();
         await page.goto(`http://127.0.0.1:${app.port}/`);
         await page.locator("#rail button[data-place=workflows]").click();
-        await page.locator("#screen-list button[data-screen=library]").click();
-        await page.getByText("Edited on the second Mac").waitFor();
-        await page.locator("article.wf-card", { hasText: "Edited on the second Mac" }).getByRole("button", { name: "Run" }).click();
+        await page.getByRole("button", { name: "Edited on the second Mac", exact: true }).click();
+        await page.locator("#main [data-screen=replay][data-workflow=cross-mac]").click();
         await page.getByText("bao://workflow/cross-mac").waitFor();
         await page.getByRole("button", { name: "Re-run with past inputs" }).waitFor();
         await page.locator("#rail button[data-place=settings]").click();

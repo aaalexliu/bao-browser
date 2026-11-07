@@ -130,6 +130,8 @@ let renderedDetail = "";
 let railHtmlKey = "";
 let listHtmlKey = "";
 let libraryQuery = "";
+let librarySearchOpen = false;
+let libraryRecovery: { key: string; visible: boolean; open: boolean; status: string } | null = null;
 let paletteOpen = false;
 let paletteQuery = "";
 let paletteActive = 0;
@@ -261,6 +263,9 @@ async function loadState(): Promise<void> {
 }
 
 function render(): void {
+  const recoveryKey = screen === "library" ? JSON.stringify(state.damagedWorkflows || []) : null;
+  const keepLibraryRecovery = libraryRecovery !== null && libraryRecovery.key === recoveryKey;
+  if (!keepLibraryRecovery) libraryRecovery = recoveryKey === null ? null : { key: recoveryKey, visible: false, open: false, status: "" };
   applyTheme();
   if (screen === "logins") readLoginForm();
   const railHtml = rail(state, screen);
@@ -272,7 +277,9 @@ function render(): void {
   const runsScroll = document.getElementById("runs")?.scrollTop || 0;
   const runsPlace = shellScreens[shellScreen(screen)].place === "runs";
   document.getElementById("app")!.dataset.runsDetail = screen === "run" ? "true" : "false";
+  document.getElementById("app")!.dataset.workflowsList = screen === "library" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
+  document.getElementById("content")!.classList.toggle("workflows-content", screen === "library");
   if (railHtmlKey !== railHtml) {
     railEl().innerHTML = railHtml;
     railHtmlKey = railHtml;
@@ -317,9 +324,26 @@ function render(): void {
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
+    const recovery = keepLibraryRecovery ? document.querySelector<HTMLDetailsElement>("#library-damaged details") : null;
+    const focusedRecovery = recovery?.querySelector("summary") === document.activeElement;
+    if (recovery && libraryRecovery) {
+      libraryRecovery.visible = !recovery.hidden;
+      libraryRecovery.open = recovery.open;
+    }
     mainEl().innerHTML = body;
+    const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
+    if (nextRecovery && libraryRecovery) {
+      nextRecovery.hidden = !libraryRecovery.visible;
+      nextRecovery.open = libraryRecovery.open;
+      if (focusedRecovery) nextRecovery.querySelector("summary")?.focus();
+    }
+    const revealStatus = document.getElementById("library-reveal-status");
+    if (revealStatus && libraryRecovery) revealStatus.textContent = libraryRecovery.status;
     const search = document.getElementById("library-search") as HTMLInputElement | null;
     if (search) search.value = libraryQuery;
+    const tools = document.getElementById("library-tools");
+    if (tools) tools.hidden = !librarySearchOpen;
+    document.getElementById("library-search-open")?.setAttribute("aria-expanded", String(librarySearchOpen));
     if (typingSearch && search) {
       search.focus();
       if (caret != null) search.setSelectionRange(caret, caret);
@@ -540,12 +564,42 @@ function bind(): void {
   document.querySelectorAll<HTMLElement>("#runs-welcome [data-screen]").forEach((button) => {
     button.onclick = () => navigate(button.dataset.screen as Screen);
   });
-  const recordAgain = document.getElementById("library-record-again");
-  if (recordAgain) recordAgain.onclick = () => {
-    screen = "capture";
-    renderKey = "";
-    render();
-    document.getElementById("start-url")?.focus();
+  document.querySelectorAll<HTMLElement>("#library [data-screen=capture]").forEach((button) => {
+    button.onclick = () => {
+      navigate("capture");
+    };
+  });
+  document.querySelectorAll<HTMLElement>("[data-damaged-file]").forEach((button) => {
+    button.onclick = () => {
+      const details = document.querySelector<HTMLDetailsElement>("#library-damaged details");
+      if (details) {
+        details.hidden = false;
+        details.open = true;
+        details.querySelector("summary")?.focus();
+      }
+    };
+  });
+  const revealWorkflow = document.getElementById("library-reveal") as HTMLButtonElement | null;
+  if (revealWorkflow) revealWorkflow.onclick = async () => {
+    const recovery = libraryRecovery;
+    if (!recovery) return;
+    revealWorkflow.disabled = true;
+    try {
+      const response = await fetch("/api/workflows/reveal", { method: "POST" });
+      if (libraryRecovery !== recovery) return;
+      if (!response.ok) throw new Error("Could not open the workflow folder.");
+      recovery.status = "Workflow folder opened in Finder.";
+    } catch {
+      if (libraryRecovery !== recovery) return;
+      recovery.visible = true;
+      const details = document.querySelector<HTMLDetailsElement>("#library-damaged details");
+      if (details) details.hidden = false;
+      recovery.status = "Could not open the workflow folder. Open File details and recovery to find its path.";
+    } finally {
+      const status = document.getElementById("library-reveal-status");
+      if (status && libraryRecovery === recovery) status.textContent = recovery.status;
+      revealWorkflow.disabled = false;
+    }
   };
   const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
   const toggle = document.getElementById("sidebar-toggle");
@@ -853,6 +907,15 @@ function bind(): void {
   if (search) search.oninput = () => {
     libraryQuery = search.value;
     applySearch();
+  };
+  const searchOpen = document.getElementById("library-search-open");
+  if (searchOpen) searchOpen.onclick = showLibrarySearch;
+  const clearSearch = document.getElementById("library-clear-search");
+  if (clearSearch && search) clearSearch.onclick = () => {
+    libraryQuery = "";
+    search.value = "";
+    applySearch();
+    search.focus();
   };
   const paletteBtn = document.getElementById("palette-open");
   if (paletteBtn) paletteBtn.onclick = openPalette;
@@ -1859,12 +1922,29 @@ async function signInOnce(url?: string): Promise<void> {
   }
 }
 
+function showLibrarySearch(): void {
+  librarySearchOpen = true;
+  const tools = document.getElementById("library-tools");
+  if (tools) tools.hidden = false;
+  document.getElementById("library-search-open")?.setAttribute("aria-expanded", "true");
+  document.getElementById("library-search")?.focus();
+}
+
 function applySearch(): void {
   const q = libraryQuery.trim().toLowerCase();
-  document.querySelectorAll<HTMLElement>(".wf-card").forEach((card) => {
-    const name = (card.querySelector("h3")?.textContent || "").toLowerCase();
-    card.hidden = !!q && !name.includes(q);
+  const rows = [...document.querySelectorAll<HTMLElement>(".workflow-row")];
+  let matches = 0;
+  rows.forEach((row) => {
+    const name = (row.querySelector(".workflow-name")?.textContent || "").toLowerCase();
+    row.hidden = !!q && !name.includes(q);
+    if (!row.hidden) matches += 1;
   });
+  const empty = document.getElementById("library-no-results");
+  if (empty) empty.hidden = matches > 0;
+  const table = document.getElementById("workflow-list");
+  if (table) table.hidden = matches === 0;
+  const status = document.getElementById("library-search-status");
+  if (status) status.textContent = q ? `${matches} matching ${matches === 1 ? "workflow" : "workflows"}` : "";
 }
 
 function teachFieldKey(el: HTMLInputElement): string {
@@ -2390,10 +2470,9 @@ document.addEventListener("keydown", (event) => {
   if (!paletteOpen) {
     const tag = document.activeElement?.tagName;
     if (event.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
-      const search = document.getElementById("library-search");
-      if (search) {
+      if (document.getElementById("library-search")) {
         event.preventDefault();
-        search.focus();
+        showLibrarySearch();
       }
     }
     return;

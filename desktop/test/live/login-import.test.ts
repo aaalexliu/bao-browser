@@ -293,6 +293,7 @@ test("import a public demo login, then block the run after the cookie is cleared
     };
     app.library.save(workflow);
     await ui.click("#rail button[data-place=workflows]");
+    await ui.getByRole("button", { name: "Record", exact: true }).click();
     await ui.click("#screen-list button[data-screen=replay]");
     await ui.waitForSelector("#wf");
     await ui.selectOption("#wf", workflow.id);

@@ -12,7 +12,7 @@ Check the footer against [Which grant each job needs](permissions.md#which-grant
 
 ## Record
 
-1. Click **Workflows**, then **Capture**.
+1. Click **Workflows**, then **Record**.
 2. Click **Start capture**. A second window opens on the fixture.
 3. Type a made-up username, such as `ada`.
 4. Type a made-up password. Click **Log in**.
@@ -23,7 +23,7 @@ Library shows the new workflow. The password is not in it. The file path is not 
 
 ## Replay
 
-1. On the card, click **Run**.
+1. Open it, then click **Run**.
 2. Type a different username and choose a different file. Click **Run**.
 3. Move and resize the replay window.
 4. Run it again with another username and another file.

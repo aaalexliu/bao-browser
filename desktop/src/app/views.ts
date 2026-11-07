@@ -189,6 +189,7 @@ export interface ShellState {
   };
   model?: { label: string };
   workflows?: WorkflowSummary[];
+  damagedWorkflows?: import("../v1/store").DamagedWorkflow[];
   runs?: RunSummary[];
   promotions?: PromotionView[];
   activeAsk?: HumanAsk | null;
@@ -282,6 +283,8 @@ export function maskSecrets(text: string, secrets: string[]): string {
 }
 
 function icon(name: string): string {
+  if (name === "warning") return `<svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path d="M7 5v3.2" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="10.4" r=".9" fill="var(--bg)"/></svg>`;
+  if (name === "search") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/></svg>`;
   const paths: Record<string, string> = {
     library: "M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z",
     sidebar: "M3 4h18v16H3V4zm2 2v12h4V6H5zm6 0v12h8V6h-8z",
@@ -304,9 +307,11 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
   const helper = state.helper?.label || "helper off";
   const model = state.model?.label || "no model";
   const current = shellScreens[shellScreen(screen)].place;
+  const damaged = state.damagedWorkflows?.length || 0;
+  const warning = damaged ? `<span class="workflow-warning" aria-hidden="true">${icon("warning")}</span><span id="workflow-warning-description" hidden>${damaged === 1 ? "One workflow can’t open." : `${damaged} workflows can’t open.`} Open Workflows for recovery options.</span>` : "";
   return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
     <div class="brand"><strong>Bao</strong>${waiting > 0 ? `<span class="count" id="attention" data-count="${waiting}">${waiting}</span>` : `<span id="attention" data-count="0"></span>`}</div>
-    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}>${icon(place.icon)} ${place.label}</button>`).join("")}</nav>
+    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} ${place.label}${place.id === "workflows" ? warning : ""}</button>`).join("")}</nav>
     <div class="rail-foot">
       <div id="attention-label">${waiting} waiting</div>
       <div class="channel"><span class="dot ${rec}" id="dot"></span><span id="rec-label">${state.recording ? "recording" : "idle"}</span></div>
@@ -316,6 +321,7 @@ export function rail(state: ShellState, screen: Screen = "runs"): string {
 }
 
 export function shellList(screen: Screen, state: ShellState, selectedRun = "", available = true): string {
+  if (screen === "library") return "";
   const current = shellScreen(screen);
   const place = shellPlaces.find((item) => item.id === shellScreens[current].place)!;
   const heals = pendingHealCount(state.runs || []);
@@ -1158,65 +1164,63 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
 }
 
 export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = [], splits: string[] = [], home = "", damagedWorkflows: import("../v1/store").DamagedWorkflow[] = []): string {
-  const byWorkflow = new Map<string, RunSummary[]>();
+  const latest = new Map<string, RunSummary>();
   for (const run of runs) {
-    const list = byWorkflow.get(run.workflowId) || [];
-    list.push(run);
-    byWorkflow.set(run.workflowId, list);
+    const previous = latest.get(run.workflowId);
+    if (!previous || (run.at || 0) > (previous.at || 0)) latest.set(run.workflowId, run);
   }
-  const cards = workflows.map((workflow) => {
-    const history = (byWorkflow.get(workflow.id) || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
-    const run = history[0];
+  const rows = workflows.slice().sort((a, b) => (latest.get(b.id)?.at || 0) - (latest.get(a.id)?.at || 0)).map((workflow) => {
+    const run = latest.get(workflow.id);
     const kind = run ? runKind(run, promotions.find((item) => item.workflowId === workflow.id)) : "";
-    const label = run ? statusLabel(kind) : "never run";
-    const inputs = (workflow.inputs || []).map((input) => {
-      if (input.type === "secret") return `<span class="chip secret">secret</span>`;
-      if (input.type === "file") return `<span class="chip">file</span>`;
-      return `<span class="chip">{{${esc(input.name)}}}</span>`;
-    }).join("");
-    const waits = workflow.waits ? `<span class="chip">you · ${workflow.waits}</span>` : "";
-    const expects = workflow.expects ? `<span class="badge expect">expect</span>` : "";
-    const poster = `/api/workflows/${encodeURIComponent(workflow.id)}/poster`;
-    const thumbLabel = workflow.firstStep?.label || workflow.name;
-    const line = workflow.driver === "cdp-live"
-      ? `<p class="wf-summary" role="status">This workflow used the retired live driver.</p>`
-      : workflow.summary ? `<p class="wf-summary">${esc(workflow.summary)}</p>` : "";
-    return `<article class="wf-card" data-workflow="${esc(workflow.id)}">
-      <h3 class="wf-title"><button type="button" class="link" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></h3>
-      <div class="thumb" data-shot="${esc(poster)}">${placeholder(workflow.firstStep?.action, thumbLabel)}</div>
-      <div class="wf-mid">
-        ${line}
-        <div class="chips">${inputs}${waits}${expects}</div>
-      </div>
-      <div class="wf-foot">
-        <span class="status ${esc(kind)}">${esc(label)}</span>
-        ${sparkline(history)}
-        <button type="button" data-screen="replay" data-workflow="${esc(workflow.id)}">Run</button>
-      </div>
-    </article>`;
+    const label = run ? statusLabel(kind) : "Not run yet";
+    const mark = kind === "passed" ? "m4 7.2 2 2 4-4.4" : kind === "failed" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.2 4v6M8.8 4v6" : "M7 3.8V7l2.2 1.4";
+    const at = run && runTime(run);
+    const when = at !== undefined
+      ? `<time datetime="${new Date(at).toISOString()}">${esc(formatClock(at))}</time>`
+      : run ? "Time not saved" : "";
+    return `<tr class="workflow-row" data-workflow="${esc(workflow.id)}" role="row">
+      <td role="cell"><button type="button" class="link workflow-name" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button>${workflow.driver === "cdp-live" ? `<p class="workflow-note">This workflow used the retired live driver.</p>` : ""}</td>
+      <td role="cell"><span class="status ${esc(kind)}"><svg class="workflow-status-icon" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="${kind === "failed" ? "1.7" : kind === "healed" ? "1.8" : "1.6"}" stroke-linecap="round" stroke-linejoin="round"/></svg>${esc(label.charAt(0).toUpperCase() + label.slice(1))}</span></td>
+      <td role="cell" class="workflow-when">${when}</td>
+    </tr>`;
   }).join("");
   const empty = damagedWorkflows.length
     ? `<div class="empty" id="library-empty"><strong>No workflows can open</strong>Restore a saved copy, or record a task again.</div>`
-    : `<div class="empty" id="library-empty"><strong>No workflows yet</strong>Capture a task, or import a workflow JSON file.</div>`;
+    : `<div class="empty" id="library-empty"><strong>No workflows yet</strong>Record a task to run it again.<p><button type="button" data-screen="capture">Record a task</button></p></div>`;
   const damaged = damagedWorkflows.length ? `<aside id="library-damaged" aria-labelledby="library-damaged-title" role="note">
-    <h3 id="library-damaged-title">${damagedWorkflows.length === 1 ? "Bao can’t open one workflow" : `Bao can’t open ${damagedWorkflows.length} workflows`}</h3>
-    <p>${workflows.length ? "Your other workflows are fine. " : ""}The files below need attention. Bao has not changed them.</p>
-    <ul>${damagedWorkflows.map(({ file, reason }) => `<li><strong>${esc(file)}</strong><p>${esc(reason)}</p><p class="damaged-path">${esc(home ? `${home}/workflows/${file}` : `workflows/${file}`)}</p></li>`).join("")}</ul>
-    <p>In Finder, choose Go &gt; Go to Folder to find the file above. Restore a backup, fix the file, or remove it from the workflows folder. You can also record the task again.</p>
-    <button type="button" id="library-record-again" data-screen="capture">Record again</button>
+    <h3 id="library-damaged-title">${icon("warning")}${damagedWorkflows.length === 1 ? `Bao can’t open “${esc(damagedWorkflows[0]!.file)}”.` : `Bao can’t open ${damagedWorkflows.length} workflows.`}</h3>
+    <p>${damagedWorkflows.length === 1 ? "Its file is damaged." : "Their files are damaged."} ${workflows.length ? "Your other workflows are fine. " : ""}Record it again, or restore a saved copy.</p>
+    <div class="library-damaged-actions"><button type="button" id="library-record-again" data-screen="capture">Record again</button><button type="button" id="library-reveal">Show in Finder</button></div>
+    <p id="library-reveal-status" role="status"></p>
+    <details hidden><summary>File details and recovery</summary>
+      <ul>${damagedWorkflows.map(({ file, reason }) => `<li><strong>${esc(file)}</strong><p>${esc(reason)}</p><p class="damaged-path">${esc(home ? `${home}/workflows/${file}` : `workflows/${file}`)}</p></li>`).join("")}</ul>
+      <p>In Finder, choose Go &gt; Go to Folder to find the file above. Restore a backup, fix the file, or move it out of the workflows folder.</p>
+    </details>
   </aside>` : "";
   const split = splits.length ? `<p id="library-split">${splits.map((line) => esc(line)).join("<br>")}</p>` : "";
-  const homeLine = home ? `<p class="meta" id="library-home">${esc(home)}</p>` : "";
+  const damagedRows = damagedWorkflows.map(({ file }) => `<tr class="workflow-row damaged-workflow-row" role="row">
+    <td role="cell"><button type="button" class="link workflow-name" data-damaged-file>${esc(file)}</button></td>
+    <td role="cell"><span class="status failed">${icon("warning")}Can’t open</span></td><td role="cell"></td>
+  </tr>`).join("");
+  const count = workflows.length + damagedWorkflows.length;
   return `<section id="library">
-    <header><h2>Library</h2><p class="lede">Workflows you can run again.</p>${homeLine}</header>
+    <header class="library-heading">
+      <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 2.75v10.5"/></svg></button>
+      <div><h2>Workflows</h2><p class="lede">${count === 1 ? "1 workflow" : `${count} workflows`}</p></div>
+      <button type="button" class="library-record" data-screen="capture"><svg class="record-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3.6" fill="currentColor"/></svg>Record</button>
+      <button type="button" id="library-search-open" aria-label="Search workflows" aria-expanded="false" aria-controls="library-tools">${icon("search")}</button>
+    </header>
     ${split}
     ${damaged}
-    <div class="tools">
+    <div class="tools" id="library-tools" hidden>
       <input id="library-search" type="search" placeholder="Search workflows" aria-label="Search workflows">
-      <button type="button" id="palette-open" class="kbd">⌘K</button>
+      <button type="button" id="palette-open" class="kbd" aria-label="Open commands">⌘K</button>
     </div>
-    ${workflows.length ? statusLegend() : ""}
-    <div class="wf-grid">${cards || empty}</div>
+    ${rows || damagedRows ? `<table id="workflow-list" role="table" aria-label="Workflows, newest run first">
+      <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Name</th><th scope="col" role="columnheader">Last run</th><th scope="col" role="columnheader">When</th></tr></thead>
+      <tbody role="rowgroup">${rows}${damagedRows}</tbody>
+    </table><p id="library-search-status" role="status"></p><div class="empty" id="library-no-results" hidden><strong>No matching workflows</strong><p>Try another name, or clear the search.</p><button type="button" id="library-clear-search">Clear search</button></div>` : ""}
+    ${!rows ? empty : ""}
   </section>`;
 }
 
@@ -1259,15 +1263,6 @@ export function statusLabel(kind: string): string {
   if (kind === "provisional") return "provisional";
   if (kind === "passed") return "passed";
   return kind || "never run";
-}
-
-function sparkline(runs: RunSummary[]): string {
-  const recent = runs.slice().sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
-  if (!recent.length) return `<p class="meta">No runs yet</p>`;
-  return `<div class="spark" aria-label="${recent.length} recent runs">${recent.map((run) => {
-    const kind = runKind(run);
-    return `<i class="swatch ${esc(kind)}" title="${esc(statusLabel(kind))}"></i>`;
-  }).join("")}</div>`;
 }
 
 export function plainFailure(input: {

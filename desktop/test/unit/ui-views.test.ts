@@ -81,7 +81,7 @@ test("every stop code stays out of every owner renderer without changing the rec
           assert.equal(raw, false, `${name} must not show the timeout code as a reason`);
         } else assert.equal(text.includes(code), false, `${code}: ${name}: ${text}`);
         assert.doesNotMatch(text, /allowCommit|--allow-commit/);
-        if (name === "library" || name === "runs") assert.match(text, /needs you/);
+        if (name === "library" || name === "runs") assert.match(text, /needs you/i);
       }
       assert.equal(JSON.stringify({ run, session, ask }), original, "rendering must retain the protocol tokens");
       assert.equal(run.steps![0]!.reason, code);
@@ -370,7 +370,7 @@ test("a heal shows its own workflow, never a sibling name", () => {
   ), "Click login");
 });
 
-test("library cards show a sparkline, inputs, and search", () => {
+test("Workflows list shows the latest run without input chips or placeholder pictures", () => {
   const html = libraryTable([
     {
       id: "wf",
@@ -385,25 +385,37 @@ test("library cards show a sparkline, inputs, and search", () => {
     { id: "r1", workflowId: "wf", status: "passed", at: 1 },
     { id: "r2", workflowId: "wf", status: "failed", at: 2 },
   ]);
-  assert.match(html, /data-screen="replay"/);
-  assert.match(html, /class="spark"/);
-  assert.equal((html.match(/class="swatch /g) || []).length, 7);
-  assert.match(html, /class="legend"/);
+  assert.doesNotMatch(html, /data-screen="replay"/);
+  assert.match(html, /<table id="workflow-list"/);
+  assert.match(html, /Workflows, newest run first/);
+  assert.doesNotMatch(html, /class="spark"|class="legend"|class="chip|data-shot/);
   assert.equal(html.includes("<img"), false);
   assert.equal(imageRef("run-1", "not-a-png"), "");
   assert.equal(imageRef("run-1", "AAAASECRETBYTES"), "");
   assert.match(imageRef("run-1", "step-after.png"), /\/api\/runs\/run-1\/shots\/step-after\.png/);
-  assert.match(html, /\{\{note\}\}/);
-  assert.match(html, /secret/);
-  assert.match(html, />file</);
+  assert.doesNotMatch(html, /\{\{note\}\}|>secret<|>file</);
   assert.match(html, /id="library-search"/);
   assert.match(html, /⌘K/);
   assert.match(html, /class="status failed"/);
-  assert.match(html, /class="wf-title"/);
-  assert.match(html, /class="wf-foot"/);
-  const titleAt = html.indexOf("wf-title");
-  const footAt = html.indexOf("wf-foot");
-  assert.ok(titleAt > 0 && titleAt < footAt);
+  assert.match(html, /data-open-workflow="wf">fixture apply<\/button>/);
+  assert.match(html, /aria-label="Search workflows"/);
+  assert.match(html, /class="library-record" data-screen="capture"/);
+  assert.match(html, /<time datetime="1970-01-01T00:00:00.002Z">/);
+  const sorted = libraryTable([
+    { id: "none", name: "Not run", steps: 0 },
+    { id: "older", name: "Older run", steps: 0 },
+    { id: "newer", name: "Newer run", steps: 0 },
+  ], [
+    { id: "latest", workflowId: "newer", status: "failed", at: 20 },
+    { id: "old", workflowId: "newer", status: "passed", at: 1 },
+    { id: "other", workflowId: "older", status: "passed", at: 10 },
+  ]);
+  assert.ok(sorted.indexOf('data-open-workflow="newer"') < sorted.indexOf('data-open-workflow="older"'));
+  assert.ok(sorted.indexOf('data-open-workflow="older"') < sorted.indexOf('data-open-workflow="none"'));
+  assert.match(sorted, /Not run yet/);
+  for (const at of [undefined, Number.MAX_VALUE]) {
+    assert.match(libraryTable([{ id: "unknown", name: "Unknown time", steps: 0 }], [{ id: "r", workflowId: "unknown", status: "passed", at }]), /Time not saved/);
+  }
   assert.match(libraryTable([], []), /No workflows yet/);
   const split = libraryTable([], [], [], ["library data is at /legacy; using /fresh"]);
   assert.match(split, /id="library-split"/);

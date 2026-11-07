@@ -79,10 +79,9 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(rail, /Runs/);
     assert.match(rail, /Settings/);
     await page.click("#rail button[data-place=workflows]");
-    await page.click("#screen-list button[data-screen=library]");
-    const screens = await page.locator("#screen-list").innerText();
-    assert.match(screens, /Library/);
-    assert.match(screens, /Capture/);
+    await page.getByRole("heading", { name: "Workflows", exact: true }).waitFor();
+    assert.equal(await page.locator("#screen-list").isHidden(), true);
+    assert.equal(await page.getByRole("button", { name: "Record", exact: true }).isVisible(), true);
     assert.equal(await page.locator("#rail button[data-screen=trail]").count(), 0);
     assert.match(rail, /helper off|helper available/);
     assert.match(rail, /no model|fixture model|model ready|cursor account/);
@@ -91,7 +90,8 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     app.library.save(workflow(app.port, "wf-open", "fixture open", "/fixture", []));
     await post(app.port, "/api/replay", { id: "wf-open", args: {} });
 
-    await page.click(`[data-screen=replay][data-workflow="${confirmWf.id}"]`);
+    await page.locator(`[data-open-workflow="${confirmWf.id}"]`).click();
+    await page.locator(`#main [data-screen=replay][data-workflow="${confirmWf.id}"]`).click();
     await page.waitForSelector("#run");
     const waitForAsk = (kind: "login" | "confirm") => page.waitForResponse(async (response) => {
       if (response.url() !== `http://127.0.0.1:${app.port}/api/state`) return false;

@@ -30,9 +30,12 @@ test("capture list mapping and record controls stay reachable without scrolling 
     const base = `http://127.0.0.1:${app.port}`;
     await page.goto(base);
     await page.locator("#rail [data-place=workflows]").click();
-    await page.locator("#screen-list [data-screen=capture]").click();
+    await page.getByRole("button", { name: "Record", exact: true }).click();
     await page.locator("#start-url").fill(`http://127.0.0.1:${address.port}`);
+    const started = page.waitForResponse((response) => response.url() === `${base}/api/sessions` && response.request().method() === "POST");
     await page.locator("#start").click();
+    const session = await started;
+    assert.equal(session.ok(), true, await session.text());
     await page.locator("#record-bar").waitFor();
     for (const viewport of [{ width: 1200, height: 800 }, { width: 720, height: 420 }, { width: 320, height: 480 }]) {
       await page.setViewportSize(viewport);

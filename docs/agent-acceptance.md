@@ -27,7 +27,7 @@ The app identifier is `dev.bao.desktop`. The server's cwd should point inside Ba
 
 Check the running app in light and dark at the default window size, 720 px, 320 px, and 200% zoom. Runs opens first. The sidebar contains exactly Runs, Workflows, and Settings. At narrow widths, Show sidebar opens Places; Escape closes it and returns focus.
 
-Check the second-pane screens: Runs, Live, and Heals under Runs; Library, Capture, Teach, and Replay under Workflows; Settings and Logins under Settings. Every screen remains reachable by keyboard and the command list. Opening a workflow or run keeps its place selected and moves focus to the content pane.
+Workflows opens a full-width list beside the sidebar, with no middle pane. Record opens Capture. Capture’s Teach button and the command list keep Teach reachable; the command list also opens Replay. Other screens retain the second-pane screens: Runs, Live, and Heals under Runs; Library, Capture, Teach, and Replay under Workflows; Settings and Logins under Settings. Every screen remains reachable by keyboard and the command list. Opening a workflow or run keeps its place selected and moves focus to the content pane.
 
 Use isolated historical fixtures for display checks, not as proof of recording or replay:
 
@@ -37,6 +37,17 @@ Use isolated historical fixtures for display checks, not as proof of recording o
 - **Open receipt:** Open a saved-workflow run and a browser session without a saved workflow. Check the workflow name, status, time, step results, and paged receipts beyond 20 steps. Edit or remove the saved workflow, then reopen its run: stored reasons, read-backs, owner requests, and available step pictures must remain readable. Detailed evidence still exposes the existing local picture, video, input, and debug controls. A failed receipt read offers Retry and allows another run to open.
 - **Connection recovery:** Fail the first state request. Check the connection-error card and Retry. Restore the server and retry without reloading; Runs and history appear instead of a silent empty screen.
 - **Access and layout:** Tab through rows and receipt controls, check visible focus, then open a row with Enter. Check reduced motion, non-color status text, full long names, no horizontal overflow, and reachable scrollers at every width and zoom. Read the page, take before and after screenshots, and open each image.
+
+## Check the Workflows list
+
+Use isolated saved workflows in light and dark at the default window size, 720 px, 320 px, and 200% zoom.
+
+- **List layout:** Check the title, count, Record button, search icon, and Name / Last run / When columns against the Inbox mock. There is no middle pane, input-chip wall, placeholder picture, or Schedule column. Bao does not store workflow schedules.
+- **Long names:** Read the full name in the list, including long unbroken names. Tab to it, check visible focus, then press Enter to open the existing workflow detail. Run remains on that detail.
+- **Last run:** Check newest-run order, status text with a glyph, local time with its zone, Not run yet, and Time not saved for a run without a timestamp.
+- **Name search:** Open search with its header button or `/`. Filter names, try a name with no matches, then use Clear search. Focus returns to search and the list returns.
+- **Damaged file:** Keep good workflows visible. Check the red warning glyph on Workflows, its text description, the banner, and the Can’t open row. Show in Finder opens this Library’s workflow folder. Open a damaged file’s name to show File details and recovery, then read the reason, path, and recovery steps. If the folder cannot open, check the plain error, the recovery control, and the path. Record again opens Capture. Restore the fixture file and check that the warning disappears after refresh.
+- **Empty list:** Check No workflows yet with Record a task. With only damaged files, check No workflows can open instead. Check that Record reaches Capture and Teach remains reachable there.
 
 ## Check the helper only when its feature needs it
 
@@ -60,7 +71,7 @@ Against a local fixture and synthetic source profile, call `agent_browser` with 
 
 Bao returns native output for ordinary commands and owner-wait status for handoffs. It records ordinary commands and page screenshots in Runs, but reads only URL/title and omits page pictures during owner waits. It does not create a replayable workflow or block final clicks. Raw evidence can contain credentials. Do not claim saved-workflow redaction protects pass-through evidence. [Pass-through behavior](agent-browser-engine.md) owns the command, copy, recording, and cleanup contract.
 
-Saved workflows whose driver is `cdp-live` must remain readable. Their Library card and Replay form must say the workflow used the retired live driver. Replay and MCP must refuse before opening a browser with `this workflow used the retired live driver`. No pass-through replay layer exists yet.
+Saved workflows whose driver is `cdp-live` must remain readable. Their Workflows row and Replay form must say the workflow used the retired live driver. Replay and MCP must refuse before opening a browser with `this workflow used the retired live driver`. No pass-through replay layer exists yet.
 
 ## Inspect evidence and cleanup
 

@@ -62,8 +62,8 @@ test("finished live captures show their end status without uncounted model-call 
         assert.match(viewer, new RegExp(`id="run-status"><strong>${label}</strong>`));
         assert.doesNotMatch(viewer, /recording \(|id="model-calls"/);
         const card = libraryTable([{ ...workflow, steps: workflow.steps.length }], [run], workflowPromotion ? [workflowPromotion] : []);
-        assert.match(card, new RegExp(`class="status ${kind}">${label}</span>`));
-        assert.match(card, new RegExp(`class="swatch ${kind}" title="${label}"`));
+        assert.match(card, new RegExp(`class="status ${kind}"[\\s\\S]*?${label.charAt(0).toUpperCase() + label.slice(1)}</span>`));
+        assert.match(card, /<table id="workflow-list"/);
         assert.equal(runKind({ ...run, kind: "replay" }, workflowPromotion),
           status === "timed-out" ? "timed-out" : workflowPromotion || promotion ? "provisional" : kind);
       }

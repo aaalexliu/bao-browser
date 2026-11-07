@@ -43,7 +43,6 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
         await page.evaluate((value) => { localStorage.setItem("bao-theme", value); }, theme);
         await page.reload();
         await page.locator('#rail [data-place="workflows"]').click();
-        await page.locator('#screen-list [data-screen="library"]').click();
         assert.equal(await page.locator("#onboarding, #perm-dot, #automation-ask").count(), 0);
         assert.doesNotMatch(await page.locator("#rail").innerText(), /needs permission|AX press|live Chrome|Accessibility|Automation|Screen Recording/);
         await page.locator('#rail [data-place="settings"]').click();

@@ -112,7 +112,7 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
     ], "hide only a repeated class label, not a distinct reason or evidence");
     await page.getByRole('button', { name: 'Show sidebar', exact: true }).click();
     await page.locator('#rail button[data-place="workflows"]').click();
-    await page.locator('#screen-list button[data-screen="capture"]').click();
+    await page.getByRole('button', { name: 'Record', exact: true }).click();
     const mcp = page.locator(".card").filter({ has: page.getByRole("heading", { name: "Agent and MCP" }) });
     assert.match(await mcp.innerText(), /agent_browser/);
     assert.match(await mcp.innerText(), /do not save replayable workflows/);

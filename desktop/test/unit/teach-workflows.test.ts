@@ -107,7 +107,8 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
 
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.click("#rail button[data-place=workflows]");
-    await page.click("#screen-list button[data-screen=teach]");
+    await page.getByRole("button", { name: "Record", exact: true }).click();
+    await page.getByRole("button", { name: "Teach", exact: true }).click();
     const width = await page.waitForFunction(() => {
       const panel = document.querySelector("#teach-panel");
       if (!panel || getComputedStyle(panel).visibility !== "visible") return null;
@@ -138,7 +139,8 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     assert.equal(review.phase, "review");
     await page.reload();
     await page.click("#rail button[data-place=workflows]");
-    await page.click("#screen-list button[data-screen=teach]");
+    await page.getByRole("button", { name: "Record", exact: true }).click();
+    await page.getByRole("button", { name: "Teach", exact: true }).click();
     await page.waitForSelector("#teach-review");
     await page.locator("#teach-trail summary").click();
     const reviewText = await page.locator("#teach-review").innerText();
@@ -263,7 +265,6 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     assert.equal(merged.steps.find((step) => step.identity?.id === "apply-btn")?.when, undefined);
     await page.goto(`${base}/`);
     await page.click('#rail button[data-place="workflows"]');
-    await page.click('#screen-list button[data-screen="library"]');
     await page.click(`[data-open-workflow="${merged.id}"]`);
     await page.waitForSelector("#route-branch");
     const branch = (await page.locator("#route-branch").innerText()).replace(/\s+/g, " ").trim();

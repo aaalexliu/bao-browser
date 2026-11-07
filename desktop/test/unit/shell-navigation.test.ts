@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -22,7 +22,8 @@ test("three places keep all nine screens and their detail routes reachable", () 
   for (const [screen, place] of routes) {
     assert.equal(shellScreens[screen].place, place);
     assert.match(rail({}, screen), new RegExp(`data-place="${place}"[^>]*aria-current="page"`));
-    assert.match(shellList(screen, {}), new RegExp(`data-screen="${screen}"[^>]*aria-current="page"`));
+    if (screen === "library") assert.equal(shellList(screen, {}), "");
+    else assert.match(shellList(screen, {}), new RegExp(`data-screen="${screen}"[^>]*aria-current="page"`));
     assert.ok(commandItems([]).some((item) => item.screen === screen));
   }
   for (const [screen, parent] of [["run", "runs"], ["workflow", "library"], ["import", "library"]] as const) {
@@ -67,11 +68,22 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   }
   async function navigate(screen: Screen, place: string): Promise<void> {
     const primary = page.locator(`#rail [data-place="${place}"]`);
-    await page.locator("#screen-list nav").waitFor();
     if (!await primary.isVisible()) await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await primary.click();
-    await page.locator(`#screen-list [data-screen="${screen}"]`).click();
-    assert.equal(await page.locator("#main").evaluate((element) => element === document.activeElement), true);
+    if (place === "workflows" && screen !== "library") {
+      if (screen === "capture") {
+        await page.getByRole("button", { name: "Record", exact: true }).click();
+      } else {
+        await page.keyboard.press("ControlOrMeta+k");
+        await page.locator("#palette-input").fill(screen === "teach" ? "Teach" : "Replay");
+        await page.locator(`#palette-list [data-command="${screen}"]`).click();
+      }
+    } else if (screen !== "library") await page.locator(`#screen-list [data-screen="${screen}"]`).click();
+    if (screen === "capture") {
+      await page.waitForResponse((response) => response.url().endsWith("/api/state"));
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    }
+    assert.equal(await page.locator("#main").evaluate((element) => element === document.activeElement), true, `${screen} at ${page.viewportSize()?.width}px focused ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 200))}`);
   }
   try {
     await page.goto(url);
@@ -85,15 +97,18 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       assert.equal(listBounds?.width, width === 1200 ? 340 : width === 720 ? 296 : 320);
       for (const [screen, place, heading] of routes) {
         await navigate(screen, place);
-        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), heading);
+        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : heading);
         await checkTitle("Bao");
-        assert.equal(await page.locator("#screen-list [aria-current=page]").count(), 1);
-        const label = screen === "live" ? "Live" : screen === "replay" ? "Replay" : heading;
-        assert.equal(await page.locator("#screen-list").getByRole("button", { name: new RegExp(`^${label}(?: |$)`) }).getAttribute("aria-current"), "page");
+        assert.equal(await page.locator("#screen-list [aria-current=page]").count(), screen === "library" ? 0 : 1);
+        if (screen !== "library") {
+          const label = screen === "live" ? "Live" : screen === "replay" ? "Replay" : heading;
+          assert.equal(await page.locator("#screen-list").getByRole("button", { name: new RegExp(`^${label}(?: |$)`) }).getAttribute("aria-current"), "page");
+        }
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
         assert.ok(bounds.scroll <= bounds.width + 1, `${screen} at ${width}px overflows: ${JSON.stringify(bounds)}`);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         if (screen === "library") {
+          await page.getByRole("button", { name: "Search workflows", exact: true }).click();
           assert.equal(await page.locator("#palette-open").evaluate((element) => {
             const label = document.createRange();
             label.selectNodeContents(element);
@@ -108,9 +123,9 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       }
     }
     await page.setViewportSize({ width: 1200, height: 800 });
-    for (const [theme, linkColor, inputBorder, cardColor] of [
-      ["light", "rgb(29, 29, 31)", "rgb(210, 210, 215)", "rgb(255, 255, 255)"],
-      ["dark", "rgb(242, 242, 247)", "rgb(58, 58, 60)", "rgb(44, 44, 46)"],
+    for (const [theme, linkColor, inputBorder, surfaceColor] of [
+      ["light", "rgb(29, 29, 31)", "rgb(110, 110, 115)", "rgb(255, 255, 255)"],
+      ["dark", "rgb(242, 242, 247)", "rgb(161, 161, 166)", "rgb(30, 30, 30)"],
     ] as const) {
       await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
       await page.reload();
@@ -120,13 +135,14 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       const title = page.getByRole("button", { name: workflow.name, exact: true });
       assert.ok((await title.boundingBox())!.height < 32);
       assert.equal(await page.locator("#library-search").evaluate((element) => getComputedStyle(element).borderTopColor), inputBorder);
-      assert.equal(await page.locator(".wf-card").evaluate((element) => getComputedStyle(element).backgroundColor), cardColor);
+      assert.equal(await page.locator("#content").evaluate((element) => getComputedStyle(element).backgroundColor), surfaceColor);
       assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "10px");
     }
     await page.evaluate(() => localStorage.setItem("bao-theme", "light"));
     await page.reload();
     await navigate("library", "workflows");
     const search = page.locator("#library-search");
+    await page.getByRole("button", { name: "Search workflows", exact: true }).click();
     await search.fill("Read");
     const searchBeforePoll = await search.elementHandle();
     let pendingHeal = false;
@@ -243,6 +259,102 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   }
 });
 
+test("Workflows list keeps long names, search recovery, warnings and actions reachable", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-workflows-list-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const longName = "Create production Google OAuth client for 五秒 in the Chinglish AI project using the shared sign-in screen";
+  for (const [id, name] of [["long", longName], ["short", "Read fixture"], ["unused", "Not run"]] as const) {
+    app.library.save({ schema: "bao.workflow/v2", version: 2, id, name, createdAt: 1, startUrl: "/fixture", inputs: Array.from({ length: 13 }, (_, n) => ({ name: `text${n}`, type: "text" as const })), steps: [] });
+  }
+  app.library.saveRun({ id: "old", workflowId: "long", status: "passed", at: 1, steps: [], heals: [] });
+  app.library.saveRun({ id: "latest", workflowId: "long", status: "failed", at: 20, steps: [], heals: [] });
+  app.library.saveRun({ id: "other", workflowId: "short", status: "passed", at: 10, steps: [], heals: [] });
+  const damaged = path.join(home, "workflows", "damaged.json");
+  await writeFile(damaged, "{");
+  let page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
+  try {
+    for (const theme of ["light", "dark"]) {
+      if (theme === "dark") {
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
+      }
+      await page.addInitScript((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.goto(`http://127.0.0.1:${app.port}`);
+      await page.locator("#rail [data-place=workflows]").click();
+      await page.locator("#workflow-list").waitFor();
+      assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-describedby"), "workflow-warning-description");
+      assert.match(await page.locator("#workflow-warning-description").textContent() || "", /One workflow can’t open/);
+      assert.equal(await page.locator(".workflow-warning svg").count(), 1);
+      assert.equal(await page.locator(".workflow-warning svg").evaluate((element) => getComputedStyle(element).color), theme === "light" ? "rgb(215, 0, 21)" : "rgb(255, 105, 97)");
+      assert.equal(await page.locator("#workflow-list .status.passed").first().evaluate((element) => getComputedStyle(element).color), theme === "light" ? "rgb(30, 123, 52)" : "rgb(48, 209, 88)");
+      assert.deepEqual(await page.locator(".workflow-row:not(.damaged-workflow-row)").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-workflow"))), ["long", "short", "unused"]);
+      assert.match(await page.locator(".workflow-row").first().locator(".status").innerText(), /Failed$/);
+      assert.equal(await page.locator("#library .chip, #library .thumb, #library img").count(), 0);
+      for (const width of [1280, 720, 320, 640]) {
+        await page.setViewportSize({ width, height: width === 640 ? 430 : 860 });
+        const title = page.getByRole("button", { name: longName, exact: true });
+        assert.equal(await title.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true);
+        assert.equal(await title.evaluate((element) => getComputedStyle(element).whiteSpace), "normal");
+        await title.focus();
+        await page.keyboard.press("Tab");
+        const next = page.getByRole("button", { name: "Read fixture", exact: true });
+        assert.equal(await next.evaluate((element) => element === document.activeElement), true);
+        assert.notEqual(await next.evaluate((element) => getComputedStyle(element).outlineStyle), "none");
+        const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
+        assert.ok(bounds.scroll <= bounds.width + 1, `${theme} ${width}px: ${JSON.stringify(bounds)}`);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      }
+      await page.getByRole("button", { name: "Search workflows", exact: true }).click();
+      const search = page.getByRole("searchbox", { name: "Search workflows" });
+      await search.fill("no such name");
+      await page.locator("#library-no-results:not([hidden])").waitFor();
+      assert.equal(await page.locator("#workflow-list").isHidden(), true);
+      assert.match(await page.locator("#library-search-status").innerText(), /0 matching workflows/);
+      await page.getByRole("button", { name: "Clear search", exact: true }).click();
+      assert.equal(await search.inputValue(), "");
+      assert.equal(await search.evaluate((element) => element === document.activeElement), true);
+      assert.equal(await page.locator(".workflow-row:visible").count(), 4);
+      await page.getByRole("button", { name: "damaged.json", exact: true }).click();
+      assert.equal(await page.locator("#library-damaged summary").evaluate((element) => element === document.activeElement), true);
+      assert.match(await page.locator("#library-damaged").innerText(), /damaged.json/);
+      assert.match(await page.locator("#library-damaged").innerText(), /Go to Folder/);
+      await page.getByRole("button", { name: "Record", exact: true }).click();
+      await page.locator("#screen-list [data-screen=library]").click();
+      assert.equal(await page.locator("#library-damaged details").isHidden(), true);
+      await page.route("**/api/workflows/reveal", (route) => route.fulfill({ status: 500, json: { error: "Could not open the workflow folder." } }));
+      await page.getByRole("button", { name: "Show in Finder", exact: true }).click();
+      await page.getByText("Could not open the workflow folder. Open File details and recovery to find its path.", { exact: true }).waitFor();
+      assert.equal(await page.locator("#library-damaged details").isVisible(), true);
+      await page.unroute("**/api/workflows/reveal");
+      await page.getByRole("button", { name: longName, exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await page.locator("#workflow-detail").waitFor();
+      assert.equal(await page.locator("#workflow-detail h2").innerText(), longName);
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await page.locator("#run").waitFor();
+      assert.equal(await page.locator("#wf").inputValue(), "long");
+      await page.setViewportSize({ width: 1280, height: 860 });
+    }
+    for (const id of ["long", "short", "unused"]) await rm(path.join(home, "workflows", `${id}.json`));
+    await page.locator("#screen-list [data-screen=library]").click();
+    await page.getByText("No workflows can open", { exact: true }).waitFor();
+    await rm(damaged);
+    await page.getByText("No workflows yet", { exact: true }).waitFor();
+    assert.equal(await page.locator(".workflow-warning").count(), 0);
+    await page.getByRole("button", { name: "Record a task", exact: true }).click();
+    await page.getByRole("button", { name: "Start capture", exact: true }).waitFor();
+  } finally {
+    await browser.close();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("the palette takes focus from the modal sidebar without a queued close stealing it", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-shell-palette-"));
   const oldHome = process.env.HOME;
@@ -348,6 +460,7 @@ test("the palette takes focus from the modal sidebar without a queued close stea
     await page.keyboard.press("ControlOrMeta+k");
     await input.fill("Library");
     await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Search workflows", exact: true }).click();
     await page.locator("#palette-open").click();
     assert.equal(await input.evaluate((element) => element === document.activeElement), true);
     assert.equal(await input.inputValue(), "");

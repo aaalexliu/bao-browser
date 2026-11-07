@@ -9,6 +9,7 @@ import test from "node:test";
 import { frameRpc } from "../../src/mcp/frame";
 import { startApp } from "../../src/app/server";
 import { resolveHome } from "../../src/home";
+import { testChromium } from "../../src/test-browser.js";
 
 const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
 const darwinPreload = path.join(process.cwd(), "desktop/test/unit/force-darwin.cjs");
@@ -855,14 +856,20 @@ test("the window names the library directory it is using", async () => {
   const dirs = layout();
   const home = path.join(dirs.root, "library");
   plantWorkflow(home, "keep");
-  const app = await startApp({ home, port: 0 });
+  const app = await startApp({ home, port: 0, extensionHost: false, chromeProfilesRoot: path.join(dirs.root, "profiles") });
+  let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
     const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { home?: string; workflows?: { id: string }[] };
     assert.equal(state.home, home);
     assert.ok(state.workflows?.some((item) => item.id === "keep"));
-    const js = await (await fetch(`http://127.0.0.1:${app.port}/app.js`)).text();
-    assert.match(js, /library-home/);
+    browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${app.port}/`);
+    await page.locator("#rail [data-place=settings]").click();
+    await page.locator("#settings-home").waitFor();
+    assert.equal(await page.locator("#settings-home").innerText(), home);
   } finally {
+    await browser?.close();
     await app.close();
   }
 });

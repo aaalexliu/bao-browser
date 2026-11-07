@@ -127,7 +127,7 @@ test("rendered product pages never contain the listen address", () => {
     ["guide", guideHtml(doc, new Map())],
   ];
   for (const [where, html] of pages) assertNoListen(html, where);
-  assert.match(pages[0][1], /ph-label">Fixture</);
+  assert.match(pages[0][1], /data-open-workflow="wf">Fixture</);
   assert.match(pages[1][1], /\/secure/);
   assert.match(pages[3][1], /Sign in to the fixture in the Bao window/);
   assert.match(pages[5][1], /Fixture</);

@@ -145,7 +145,6 @@ test("the product window title is Bao and the capture field hides the listen add
   assert.equal(client.includes("location.origin"), false);
   const html = readFileSync(path.join(process.cwd(), "desktop/src/app/public/index.html"), "utf8");
   assert.match(html, /<title>Bao<\/title>/);
-  assert.match(html, /\.wf-card\[hidden\]\s*\{\s*display:\s*none;/);
   assert.match(html, /select\s*\{\s*min-height:\s*32px;/);
 });
 

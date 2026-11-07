@@ -223,7 +223,7 @@ test("failed runs keep step details but no longer offer Teach repair", () => {
   );
   assert.match(html, /id="open-failed-step"/);
   assert.doesNotMatch(html, /Teach this step|id="teach-fix"/);
-  const workflows = shellList("library", {});
+  const workflows = shellList("capture", {});
   assert.match(workflows, /data-screen="teach"/);
   assert.match(workflows, /data-screen="capture"/);
   const runs = shellList("runs", {});
