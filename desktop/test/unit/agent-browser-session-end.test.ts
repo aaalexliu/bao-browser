@@ -342,10 +342,14 @@ test("close near the stop deadline closes a retained window before a queued cata
 });
 
 test("keep-open finishes the run and the next session reclaims only that home's retained window", { timeout: 60_000 }, async (t) => {
+  let other: Awaited<ReturnType<typeof fixture>> | undefined;
   const f = await fixture();
-  t.after(() => f.close());
-  const other = await fixture();
-  t.after(() => other.close());
+  t.after(async () => {
+    const results = await Promise.allSettled([f.close(), other?.close()]);
+    const errors = results.flatMap(result => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length) throw new AggregateError(errors, "Session fixture cleanup failed");
+  });
+  other = await fixture();
   const unrelated = other.start();
   await unrelated.request("initialize");
   assert.equal((await unrelated.call("open")).isError, false);
