@@ -529,7 +529,7 @@ test("a held replay blocks update stops and supports resume and cancel after rep
     const resumed = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token } }, 15_000);
     assert.equal(resumed.error, undefined);
     assert.equal(resumed.result?.isError, false);
-    const waiting = JSON.parse(resumed.result?.content?.[0]?.text || "{}");
+    const waiting = JSON.parse(resumed.result?.content?.[0]?.text || "{}") as { status?: string; run_id?: string; resume_token?: string };
     assert.equal(waiting.status, "needs_signin");
     assert.equal(waiting.run_id, paused.run_id);
     assert.equal(waiting.resume_token, token);
@@ -537,7 +537,7 @@ test("a held replay blocks update stops and supports resume and cancel after rep
     const reply = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token, cancel: true } }, 15_000);
     assert.equal(reply.error, undefined);
     assert.equal(reply.result?.isError, false);
-    const cancelled = JSON.parse(reply.result?.content?.[0]?.text || "{}");
+    const cancelled = JSON.parse(reply.result?.content?.[0]?.text || "{}") as { status?: string; reason?: string; run_id?: string };
     assert.equal(cancelled.status, "stopped");
     assert.equal(cancelled.reason, "nothing applied");
     assert.equal(cancelled.run_id, paused.run_id);
