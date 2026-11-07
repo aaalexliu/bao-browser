@@ -285,7 +285,7 @@ function render(focusDetail = true): void {
   const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft], #settings [data-setting]")].filter((input) => {
     if (input.id === "act-minutes" && input.value === "custom") return customWait === focused || customWait?.validity.valid === false;
     return input.dataset.settingsEdited === "true" || (input instanceof HTMLSelectElement
-      ? [...input.options].some((option) => option.selected !== option.defaultSelected)
+      ? input.value !== (([...input.options].find((option) => option.defaultSelected) ?? input.options[0])?.value ?? "")
       : input.type === "checkbox" || input.type === "radio" ? input.checked !== input.defaultChecked : input.value !== input.defaultValue);
   }).map((input) => [input.id, input instanceof HTMLInputElement && (input.type === "checkbox" || input.type === "radio") ? input.checked : input.value, input.dataset.settingsEdited === "true"] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
@@ -508,7 +508,7 @@ function settings(): string {
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
     <p class="quiet">AI help uses the connected Cursor account or a model key set when Bao starts. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
-    <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}"></label>
+    <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
@@ -571,6 +571,18 @@ function navigate(next: Screen): void {
   document.getElementById("content")!.scrollTop = 0;
 }
 
+function paintSettingsValidation(): void {
+  document.querySelectorAll<HTMLInputElement>('#settings input[type="number"][data-setting]').forEach((input) => {
+    const invalid = input.dataset.settingsEdited === "true" && !input.validity.valid;
+    input.setAttribute("aria-invalid", String(invalid));
+    const error = document.getElementById(`${input.id}-error`);
+    if (error) {
+      error.textContent = invalid ? input.validationMessage : "";
+      error.hidden = !invalid || input.hidden;
+    }
+  });
+}
+
 function bindSettings(): void {
   document.querySelectorAll<HTMLAnchorElement>("[data-settings-jump]").forEach((link) => {
     if (link.dataset.settingsJump === settingsSection) link.setAttribute("aria-current", "true");
@@ -589,15 +601,20 @@ function bindSettings(): void {
   const custom = document.getElementById("act-custom") as HTMLInputElement | null;
   const wait = document.getElementById("act-minutes") as HTMLSelectElement | null;
   if (custom && wait) custom.hidden = wait.value !== "custom";
+  paintSettingsValidation();
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-setting]").forEach((input) => {
     const save = async () => {
       if (input.value === "custom") {
         const custom = document.getElementById("act-custom") as HTMLInputElement;
         custom.hidden = false;
+        paintSettingsValidation();
         custom.focus();
         return;
       }
-      if (!input.reportValidity()) return;
+      if (!input.validity.valid) {
+        paintSettingsValidation();
+        return;
+      }
       delete input.dataset.settingsEdited;
       const key = input.dataset.setting!;
       const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
@@ -617,7 +634,10 @@ function bindSettings(): void {
       }
     };
     if (input instanceof HTMLInputElement && input.type === "number") {
-      input.oninput = () => { input.dataset.settingsEdited = "true"; };
+      input.oninput = () => {
+        input.dataset.settingsEdited = "true";
+        paintSettingsValidation();
+      };
       const commit = () => {
         if (input.dataset.settingsEdited === "true") void save();
       };
@@ -626,6 +646,15 @@ function bindSettings(): void {
       input.onkeydown = (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
+          if (!input.reportValidity()) {
+            paintSettingsValidation();
+            return;
+          }
+          if (Number(input.value) === Number(input.defaultValue)) {
+            input.value = input.defaultValue;
+            delete input.dataset.settingsEdited;
+            return;
+          }
           commit();
         }
       };

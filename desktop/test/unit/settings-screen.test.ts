@@ -236,6 +236,56 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
   }
 });
 
+test("the first Settings visit keeps the saved Chrome profile", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-profile-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  let release: (() => void) | undefined;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    for (const directory of ["Default", "Profile 2"]) await mkdir(path.join(home, "profiles", directory), { recursive: true });
+    await writeFile(path.join(home, "profiles", "Local State"), JSON.stringify({ profile: { info_cache: {
+      Default: { name: "Fixture Default" }, "Profile 2": { name: "Fixture Two", user_name: "two@example.test" },
+    } } }));
+    app.library.updateSettings({ pageEngine: "old", chromeProfile: "Profile 2" });
+    const page = await browser.newPage();
+    await page.route("**/api/chrome-profiles", async (route) => {
+      const response = await route.fetch();
+      await released;
+      await route.fulfill({ response });
+    });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    await page.locator("#settings-advanced > summary").click();
+    assert.equal(await page.locator("#chrome-profile option").count(), 1);
+    release?.();
+    await page.waitForFunction(() => document.querySelector<HTMLOptionElement>('#chrome-profile option[value="Profile 2"]')?.defaultSelected);
+    assert.equal(await page.locator("#chrome-profile").inputValue(), "Profile 2");
+    const [response] = await Promise.all([
+      page.waitForResponse((item) => item.request().method() === "PUT" && new URL(item.url()).pathname === "/api/settings"),
+      page.locator("#save-engine").click(),
+    ]);
+    assert.equal(response.ok(), true);
+    assert.equal((response.request().postDataJSON() as Record<string, unknown>).chromeProfile, "Profile 2");
+    assert.equal(app.library.settings().chromeProfile, "Profile 2");
+    assert.equal(app.library.settings().pageEngine, "old");
+    await page.waitForFunction(() => document.getElementById("engine-feedback")?.textContent === "Engine choice saved. It applies to the next run.");
+    await page.locator("#page-engine").selectOption("agent-browser");
+    assert.equal(await page.locator("#chrome-profile").inputValue(), "Profile 2");
+    assert.equal(await page.locator("#chrome-profile-extensions").isEnabled(), true);
+  } finally {
+    release?.();
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-overlap-"));
   const previousHome = process.env.HOME;
@@ -276,12 +326,19 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
         const writesBefore = writes.length;
         await input.fill(value);
         if (!value) await input.press("Tab");
+        const focusAfterEdit = await page.evaluate(() => document.activeElement?.id);
+        assert.ok(focusAfterEdit);
+        if (!value) assert.notEqual(focusAfterEdit, selector.slice(1));
         release?.();
         await page.waitForFunction((element) => !element?.isConnected, original);
         await original.dispose();
         assert.equal(await input.inputValue(), value);
         assert.equal(await input.evaluate((element) => (element as HTMLInputElement).validity.valueMissing), !value);
-        assert.equal(await page.evaluate(() => document.activeElement?.id), selector.slice(1));
+        assert.equal(await page.evaluate(() => document.activeElement?.id), focusAfterEdit);
+        if (!value) {
+          assert.equal(await page.locator(`${selector}-error`).isVisible(), true);
+          assert.notEqual(await page.locator(`${selector}-error`).textContent(), "");
+        }
         assert.equal(await input.isVisible(), true);
         assert.equal(await page.locator("#settings-feedback").textContent(), "Saved.");
         assert.deepEqual(writes.slice(writesBefore), []);
@@ -324,10 +381,36 @@ test("Enter commits each edited number once without waiting for blur", { timeout
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
     await page.locator("#settings-advanced > summary").click();
-    for (const [selector, key] of [["#promote-after", "promoteAfter"], ["#act-custom", "actTimeoutMin"], ["#circuit-limit", "circuitLimit"]] as const) {
+    for (const [selector, key, aboveMax] of [["#promote-after", "promoteAfter", "21"], ["#act-custom", "actTimeoutMin", "1441"], ["#circuit-limit", "circuitLimit", "51"]] as const) {
       if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
       const input = page.locator(selector);
       const writesBefore = writes.length;
+      const saved = await input.inputValue();
+      for (const [invalid, validity] of [["", "valueMissing"], ["0", "rangeUnderflow"], [aboveMax, "rangeOverflow"]] as const) {
+        for (const direction of ["Tab", "Shift+Tab"]) {
+          await input.fill(invalid);
+          await input.press(direction);
+          const target = await page.evaluate(() => document.activeElement?.id);
+          assert.ok(target);
+          assert.notEqual(target, selector.slice(1));
+          assert.equal(await input.inputValue(), invalid);
+          assert.equal(await input.evaluate((element, validity) => (element as HTMLInputElement).validity[validity], validity), true);
+          assert.equal(await page.locator(`${selector}-error`).isVisible(), true);
+          assert.notEqual(await page.locator(`${selector}-error`).textContent(), "");
+          await page.waitForResponse((item) => new URL(item.url()).pathname === "/api/state");
+          assert.equal(await page.evaluate(() => document.activeElement?.id), target);
+          assert.equal(await input.inputValue(), invalid);
+          assert.deepEqual(writes.slice(writesBefore), []);
+        }
+      }
+      await input.focus();
+      await input.press("ControlOrMeta+A");
+      await input.pressSequentially(saved);
+      await input.press("Enter");
+      await input.press("Tab");
+      await page.waitForResponse((item) => new URL(item.url()).pathname === "/api/state");
+      assert.deepEqual(writes.slice(writesBefore), []);
+      if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
       await input.focus();
       await input.press("ControlOrMeta+A");
       await input.press("4");
