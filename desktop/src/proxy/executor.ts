@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Page } from "playwright";
-import { isSensitiveField, isSensitiveValue, redactPayload } from "../../../shared/mask";
+import { isSensitiveField, isSensitiveValue } from "../../../shared/mask";
 import { installPageHelpers, type Described } from "../page-fns";
 import { AuditTrail, deriveWorkflow, trimTrail, type AuditEvent, type AuditOrigin, type AuditSnapshot } from "./audit";
 import { PAGE_KEYS, normalizeKey, readFocus, type TrackedFocus } from "./focus";
@@ -29,7 +29,6 @@ export async function preparePage(page: Page): Promise<void> {
 
 export class PageExecutor implements Executor {
   private navId: string | null = null;
-  private secrets: string[] = [];
   /** Last pointer position in viewport pixels. Claude's cursor_position reads this. */
   private cursor = { x: 0, y: 0 };
 
@@ -141,7 +140,7 @@ export class PageExecutor implements Executor {
         kind: "act",
         op: "click",
         source: origin.source,
-        raw: redactPayload(origin.raw).value,
+        raw: origin.raw,
         before: before.snap,
         after: after.snap,
         resolved: null,
@@ -168,7 +167,7 @@ export class PageExecutor implements Executor {
       kind: "act",
       op: "click",
       source: origin.source,
-      raw: redactPayload(origin.raw).value,
+      raw: origin.raw,
       before: before.snap,
       after: after.snap,
       resolved: {
@@ -195,7 +194,7 @@ export class PageExecutor implements Executor {
     if (focus.scope !== "element" || !focus.editable || !focus.described) {
       const reason = "type has no focused editable";
       const after = await this.capture();
-      this.trail.append(scrubEvent({
+      this.trail.append({
         kind: "act",
         op: "type",
         source: origin.source,
@@ -206,7 +205,7 @@ export class PageExecutor implements Executor {
         unresolved: { reason },
         sensitive: secret || undefined,
         focus: focusNote(focus),
-      }, secret ? text : ""));
+      });
       return { unresolved: true, reason };
     }
     await this.page.evaluate(() => {
@@ -215,12 +214,9 @@ export class PageExecutor implements Executor {
       if (el instanceof HTMLElement) el.setAttribute("data-bao-hit", "1");
     });
     await this.page.locator("[data-bao-hit='1']").fill(text);
-    if (secret) {
-      this.secrets.push(text);
-    }
     const afterFocus = await readFocus(this.page);
     const after = await this.capture();
-    this.trail.append(scrubEvent({
+    this.trail.append({
       kind: "act",
       op: "type",
       source: origin.source,
@@ -231,11 +227,11 @@ export class PageExecutor implements Executor {
         tag: focus.tag,
         selectors: focus.described.selectors,
         unique: focus.described.unique,
-        text: secret ? undefined : (focus.described.text || undefined),
+        text: focus.described.text || undefined,
       },
       sensitive: secret || undefined,
       focus: focusNote(afterFocus),
-    }, secret ? text : ""));
+    });
     return { unresolved: false };
   }
 
@@ -243,7 +239,7 @@ export class PageExecutor implements Executor {
     const focus = await readFocus(this.page);
     const normalized = keys.map(normalizeKey);
     const key = normalized.join(",");
-    const raw = redactPayload(origin.raw).value;
+    const raw = origin.raw;
     const urlBefore = this.page.url();
     const press = async (k: string) => {
       if (!holdMs) {
@@ -334,7 +330,7 @@ export class PageExecutor implements Executor {
       kind: "read",
       op: "zoom",
       source: origin.source,
-      raw: redactPayload(origin.raw).value,
+      raw: origin.raw,
       before: before.snap,
     });
     return { unresolved: false, png };
@@ -385,7 +381,7 @@ export class PageExecutor implements Executor {
       kind: "act",
       op,
       source: origin.source,
-      raw: redactPayload(origin.raw).value,
+      raw: origin.raw,
       before: before.snap,
       after: after.snap,
       resolved: null,
@@ -418,13 +414,12 @@ export class PageExecutor implements Executor {
       });
       return out;
     });
-    const ax = (await axSnapshot(this.page)).map((a) => ({ ...a, name: this.scrub(a.name) }));
-    const domScrubbed = dom.map((d) => ({ ...d, text: this.scrub(d.text) }));
+    const ax = await axSnapshot(this.page);
     const screenshot = "sha256:" + createHash("sha256").update(png).digest("hex");
     return {
       png,
       viewport: { w: viewport.width, h: viewport.height },
-      snap: { screenshot, url: this.page.url(), dom: domScrubbed, ax },
+      snap: { screenshot, url: this.page.url(), dom, ax },
     };
   }
 
@@ -452,12 +447,6 @@ export class PageExecutor implements Executor {
     }, { x, y, control: CONTROL });
   }
 
-  private scrub(s: string): string {
-    let out = s;
-    for (const secret of this.secrets) out = out.split(secret).join("");
-    return out;
-  }
-
   private async readChecked(x: number, y: number): Promise<boolean> {
     return this.page.evaluate(({ x, y }) => {
       const el = document.elementFromPoint(x, y);
@@ -473,27 +462,6 @@ function focusNote(focus: TrackedFocus): NonNullable<AuditEvent["focus"]> {
     editable: focus.editable,
     axRole: focus.ax?.role || undefined,
     axName: focus.ax?.name || undefined,
-  };
-}
-
-function scrubEvent(partial: Omit<AuditEvent, "id" | "ts">, secret: string): Omit<AuditEvent, "id" | "ts"> {
-  if (!secret) return partial;
-  const clean = (s: string) => s.split(secret).join("");
-  const snap = (s?: AuditSnapshot): AuditSnapshot | undefined => {
-    if (!s) return s;
-    return {
-      ...s,
-      dom: s.dom.map((d) => ({ ...d, text: clean(d.text) })),
-      ax: s.ax.map((a) => ({ ...a, name: clean(a.name) })),
-    };
-  };
-  return {
-    ...partial,
-    before: snap(partial.before),
-    after: snap(partial.after),
-    focus: partial.focus
-      ? { ...partial.focus, axName: partial.focus.axName ? clean(partial.focus.axName) : undefined }
-      : undefined,
   };
 }
 

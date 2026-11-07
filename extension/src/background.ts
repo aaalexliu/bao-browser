@@ -206,7 +206,7 @@ async function ensureInjected(tabId: number): Promise<void> {
 const RETRY_AFTER_NAV = new Set([
   "tree", "text", "captureStep", "markers", "metrics", "flush-events", "box", "point",
   "readList", "propose", "file-name", "showAsk", "clearAsk", "commit", "select-all",
-  "last-trust", "gesture", "mask", "unmask", "dismiss",
+  "last-trust", "gesture", "dismiss",
   "field-state", "mark-focus", "clear-focus", "arm-click", "disarm-click",
 ]);
 
@@ -1235,19 +1235,14 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
   }
   if (op === "shot") {
     const tabId = await ownedTab();
-    await sendTab(tabId, { op: "mask" });
-    try {
-      // CDP avoids captureVisibleTab's two-pictures-per-second limit.
-      return await withDebugger(tabId, async () => {
-        const shot = await chrome.debugger.sendCommand({ tabId }, "Page.captureScreenshot", {
-          format: "jpeg", quality: 40,
-        }) as { data?: string };
-        if (!shot.data) throw new Error("Chrome returned no picture");
-        return { ok: true, jpeg: `data:image/jpeg;base64,${shot.data}` };
-      });
-    } finally {
-      await sendTab(tabId, { op: "unmask" }).catch(() => undefined);
-    }
+    // CDP avoids captureVisibleTab's two-pictures-per-second limit.
+    return await withDebugger(tabId, async () => {
+      const shot = await chrome.debugger.sendCommand({ tabId }, "Page.captureScreenshot", {
+        format: "jpeg", quality: 40,
+      }) as { data?: string };
+      if (!shot.data) throw new Error("Chrome returned no picture");
+      return { ok: true, jpeg: `data:image/jpeg;base64,${shot.data}` };
+    });
   }
   if (op === "pageSignals") {
     const tabId = await ownedTab();

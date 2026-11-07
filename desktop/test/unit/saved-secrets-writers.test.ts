@@ -47,7 +47,7 @@ test("recording, teaching and save inference retain password defaults for replay
   const meta = { id: "saved-inputs", startUrl: "https://fixture.test/", secrets: [PASSWORD] };
   const recorded = interpret([event], meta);
   const taught = projectTeach([event], [{ ts: 2, cardId: event.id, kind: "secret", name: "password", detail: "Keep as password" }], meta).workflow;
-  const inferred = await inferSavedWorkflow(recorded, { floorTitle: "Saved inputs", secrets: [PASSWORD] }, null, 1);
+  const inferred = await inferSavedWorkflow(recorded, { floorTitle: "Saved inputs" }, null, 1);
   for (const doc of [recorded, taught, inferred]) {
     assert.equal(doc.inputs[0]!.default, PASSWORD);
     assert.equal(doc.steps[0]!.value, "{{password}}");

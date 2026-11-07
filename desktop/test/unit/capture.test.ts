@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Capture } from "../../src/app/capture";
 import { startApp } from "../../src/app/server";
-import { shotWithBlur, type BlurPage } from "../../src/v1/blur";
+import { BrowserDriver, elementShot, pagePoster } from "../../src/v1/browser-driver";
 import { interpret } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
 import { validateWorkflow } from "../../src/v1/schema";
@@ -81,54 +81,36 @@ test("a note replays without touching the page and a check becomes a verify step
   assert.equal(looked, 4);
 });
 
-test("blur runs before the screenshot and clears after", async () => {
-  const calls: string[] = [];
-  const page: BlurPage = {
-    async evaluate(fn) {
-      calls.push(fn.name);
-      return 1;
-    },
-    async screenshot() {
-      calls.push("screenshot");
-      assert.equal(calls[0], "blurSensitiveFields");
-      return Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    },
-  };
-  const png = await shotWithBlur(page, { type: "png" });
-  assert.equal(png[0], 0x89);
-  assert.deepEqual(calls, ["blurSensitiveFields", "screenshot", "clearSensitiveBlur"]);
-
-  const blown: string[] = [];
-  await assert.rejects(shotWithBlur({
-    async evaluate(fn) { blown.push(fn.name); },
-    async screenshot() { throw new Error("shot"); },
-  }));
-  assert.deepEqual(blown, ["blurSensitiveFields", "clearSensitiveBlur"]);
-});
-
-test("a password field is blurred while the screenshot is taken", async () => {
+test("pictures and snapshots retain password controls and native pixels without Bao overlays", async () => {
   const { testChromium: chromium } = await import("../../src/test-browser.js");
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.setContent(`<!doctype html><input type="password" id="pw" value="fixture-secret"><input id="name" value="ada">`);
-    let during = "";
-    let plain = "";
+    await page.setContent(`<!doctype html><label>Password<input type="password" id="password" name="password" value="fixture-secret"></label><input id="pin" autocomplete="one-time-code" value="482731"><input id="name" value="ada">`);
     const original = page.screenshot.bind(page);
     page.screenshot = async (opts?: Parameters<typeof page.screenshot>[0]) => {
-      during = await page.locator("#pw").evaluate((el) => getComputedStyle(el).filter);
-      plain = await page.locator("#name").evaluate((el) => getComputedStyle(el).filter);
+      assert.equal(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), "none");
+      assert.equal(await page.locator("#pin").evaluate((el) => getComputedStyle(el).filter), "none");
+      assert.equal(await page.locator("[data-bao-mask], [data-bao-blur], [data-bao-blur-cover], [data-bao-guide-shot]").count(), 0);
       return original(opts);
     };
-    const png = await shotWithBlur(page, { type: "png" });
-    assert.ok(png.length > 32);
-    assert.equal(during, "blur(14px)");
-    assert.equal(plain, "none");
-    const after = await page.locator("#pw").evaluate((el) => {
-      return { filter: getComputedStyle(el).filter, marked: el.getAttribute("data-bao-blur") };
-    });
-    assert.equal(after.filter, "none");
-    assert.equal(after.marked, null);
+    const native = await original({ type: "png" });
+    const driver = new BrowserDriver(page);
+    assert.deepEqual(await driver.pageShot(), native);
+    assert.deepEqual(await pagePoster(page), native);
+    const tree = await driver.tree();
+    assert.ok(tree.nodes.some((node) => node.id === "password"));
+    assert.ok(tree.values.some((row) => row.identity.id === "password" && row.value === "fixture-secret"));
+    const step = await driver.captureStep();
+    assert.ok(step.dom?.some((node) => node.id === "password"));
+    assert.match(step.ax || "", /Password/);
+    const snapshot = await driver.snapshot();
+    assert.deepEqual(Buffer.from(snapshot.screenshot!, "base64"), native);
+    assert.match(String(snapshot.ax || ""), /Password/);
+    assert.ok(await elementShot(page, { identity: tree.nodes.find((node) => node.id === "pin") }));
+    assert.equal(await page.locator("#password").inputValue(), "fixture-secret");
+    assert.equal(await page.locator("#pin").inputValue(), "482731");
+    assert.equal(await page.locator("[data-bao-shot-outline]").count(), 0);
   } finally {
     await browser.close();
   }

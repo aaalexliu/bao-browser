@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
 import { migrate, validateWorkflow } from "../../src/v1/schema";
-import { liveShotUrl, publicLiveSession, redactLabel, shotNameOk } from "../../src/cdp-live/live-record";
+import { liveShotUrl, publicLiveSession, liveLabel, shotNameOk } from "../../src/cdp-live/live-record";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
 import {
@@ -122,19 +122,19 @@ test("the browser handshake has no Origin header", () => {
   assert.equal(scrubCdp("no /devtools/browser/abc-def"), "no /devtools/browser/<id>");
 });
 
-test("start and navigate audit URLs keep host and port digits without exposing private URL parts", () => {
+test("start and navigate audit URLs retain captured URL parts", () => {
   const urls = [
     ["http://127.0.0.1:47811/member", "http://127.0.0.1:47811/member"],
     ["http://[::1]:47811/member", "http://[::1]:47811/member"],
     ["https://www3.example123.com:8443/member", "https://www3.example123.com:8443/member"],
-    ["https://person:secret@example.com/member?token=123456#private", "https://example.com/member"],
-    ["https://example.com/report/123456", "https://example.com/report/"],
+    ["https://person:secret@example.com/member?token=123456#private", "https://person:secret@example.com/member?token=123456#private"],
+    ["https://example.com/report/123456", "https://example.com/report/123456"],
   ];
   for (const action of ["start", "navigate"]) {
     for (const [label, expected] of urls) {
       const session = publicLiveSession({ status: "running", audit: [{ action, label }] });
       assert.equal(session?.audit[0]?.label, expected);
-      assert.equal(publicLiveSession(session)?.audit[0]?.label, expected, "redaction survives repeated log writes");
+      assert.equal(publicLiveSession(session)?.audit[0]?.label, expected, "labels survive repeated log writes");
     }
   }
   const session = publicLiveSession({ status: "running", audit: [
@@ -143,11 +143,11 @@ test("start and navigate audit URLs keep host and port digits without exposing p
     { action: "click", label: "Credit score 742" },
     { action: "type", label: "user@example.com" },
   ] });
-  assert.deepEqual(session?.audit.map((row) => row.label), ["Member dashboard", "Target page", "Credit score", ""]);
-  assert.equal(redactLabel("Credit score 742"), "Credit score");
+  assert.deepEqual(session?.audit.map((row) => row.label), ["Member dashboard", "Target page", "Credit score 742", "user@example.com"]);
+  assert.equal(liveLabel("Credit score 742"), "Credit score 742");
 });
 
-test("a live session view stays on this machine and blurs the page shot", () => {
+test("a live session view reads stored page shots", () => {
   assert.equal(screenFromQuery("?screen=live"), "live");
   assert.equal(screenFromQuery("?screen=library"), "");
   assert.equal(screenFromQuery("?screen=settings"), "");
@@ -157,8 +157,8 @@ test("a live session view stays on this machine and blurs the page shot", () => 
   assert.equal(shotNameOk("../session.json"), false);
   assert.equal(liveShotUrl("shot-001.png"), "/api/live-session/shots/shot-001.png");
   assert.equal(liveShotUrl("../x.png"), "");
-  assert.equal(redactLabel("bananas $1.29"), "bananas");
-  assert.equal(redactLabel("user@example.com"), "");
+  assert.equal(liveLabel("bananas $1.29"), "bananas $1.29");
+  assert.equal(liveLabel("user@example.com"), "user@example.com");
   const html = liveSessionView({
     id: "live",
     intent: "Add one cheap item, then remove it.",

@@ -1,7 +1,6 @@
 // Deterministic workflow title. The URL is the floor, so a save always has a
 // name even when no model key is set. A model pass may replace it later.
 
-import { isSensitiveValue } from "../../../shared/mask";
 import { isLoopbackHost, visibleCopy } from "./visible-copy";
 
 export interface NameEvent {
@@ -22,7 +21,6 @@ export interface NameSource {
   events?: NameEvent[];
   steps?: NameStep[];
   pageTitle?: string;
-  secrets?: string[];
 }
 
 const VERB = /^(book|reserve|submit|save|send|search|sign in|log in|sign up|download|upload|create|add|delete|remove|pay|buy|order|check out|checkout|apply|register|subscribe|share|post|publish|schedule|confirm|place|update|edit|invite|export|import|message|print|rename|enable|disable|complete|finish|filter|sort)\b/i;
@@ -75,10 +73,9 @@ export function workflowFloorTitle(source: NameSource): string {
 }
 
 function obviousPhrase(source: NameSource, host: string): string {
-  const secrets = source.secrets || [];
   const phrases: string[] = [];
   const add = (raw?: string) => {
-    const phrase = phraseFrom(raw, secrets);
+    const phrase = phraseFrom(raw);
     if (phrase) phrases.push(phrase);
   };
   for (const event of source.events || []) {
@@ -104,7 +101,7 @@ function obviousPhrase(source: NameSource, host: string): string {
   return "";
 }
 
-function phraseFrom(raw: string | undefined, secrets: string[]): string {
+function phraseFrom(raw: string | undefined): string {
   if (!raw) return "";
   let text = raw.replace(/\s+/g, " ").trim();
   const quoted = text.match(/^(?:click|confirm|press|select|check|uncheck)\s+"([^"]+)"$/i);
@@ -116,7 +113,7 @@ function phraseFrom(raw: string | undefined, secrets: string[]): string {
   text = hideLoopback(text);
   if (!text || text.length > 60 || /^https?:/i.test(text)) return "";
   if (/^(click|type|note|check|open|press key|fixture)$/i.test(text) || /^type\b/i.test(text)) return "";
-  if (!VERB.test(text) || blocked(text, secrets)) return "";
+  if (!VERB.test(text)) return "";
   return text;
 }
 
@@ -125,7 +122,6 @@ function usableTitle(title: string | undefined, host: string): string {
   if (!text || text.length > 80) return "";
   if (host && text.toLowerCase() === host.toLowerCase()) return "";
   if (/^(home|untitled|new tab|about:blank|fixture)$/i.test(text)) return "";
-  if (blocked(text, [])) return "";
   return text;
 }
 
@@ -148,12 +144,6 @@ function presentTitle(text: string, host: string): string {
   const cleaned = hideLoopback(text);
   if (cleaned && !leaksListen(cleaned)) return cleaned;
   return host || "Untitled workflow";
-}
-
-function blocked(text: string, secrets: string[]): boolean {
-  if (secrets.some((secret) => secret.length >= 4 && text.includes(secret))) return true;
-  if (/\d{6,}/.test(text)) return true;
-  return isSensitiveValue(text);
 }
 
 function words(text: string): number {

@@ -178,14 +178,13 @@ test("a model narration is labeled, and a failed model call stays on the heurist
     phase: "live",
     since: 5,
     narrator: "heuristic",
-    blur: true,
     paused: true,
     cards: [card as TeachCardView],
   });
   assert.match(html, /Add check/);
   assert.match(html, /Discard/);
   assert.match(html, />Resume</);
-  assert.match(html, /Sensitive fields blurred/);
+  assert.doesNotMatch(html, /Sensitive fields blurred/);
   assert.match(html, /data-narrator="heuristic"/);
   assert.match(html, /teach-row/);
   assert.match(html, /\/api\/capture\/shots\//);

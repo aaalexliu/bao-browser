@@ -303,7 +303,7 @@ test("run viewer shows the stop, one segment per step, and zero model calls", ()
   assert.match(passed, /passed/);
 });
 
-test("heal review shows both targets, hides the prompt, and masks a secret", () => {
+test("heal review shows both targets and retains the collapsed prompt text", () => {
   const html = healDetail({
     id: "run-9",
     workflowId: "wf",
@@ -324,15 +324,15 @@ test("heal review shows both targets, hides the prompt, and masks a secret", () 
       id({ text: "Upload file", id: "file-submit" }),
       id({ text: "Upload", id: "other-upload" }),
     ]),
-  }, ["SuperSecretPassword!"]);
+  });
   assert.match(html, /Recorded/);
   assert.match(html, /Proposed/);
   assert.match(html, /Upload file/);
   assert.match(html, /id=file-submit/);
   assert.match(html, /<details id="heal-prompt">/);
   assert.equal(html.includes("heal-prompt\" open"), false);
-  assert.equal(html.includes("SuperSecretPassword!"), false);
-  assert.match(html, /\[secret\]/);
+  assert.equal(html.includes("SuperSecretPassword!"), true);
+  assert.doesNotMatch(html, /\[secret\]/);
   assert.match(html, /data-keep="heal-1"/);
   assert.match(html, /data-revert="heal-1"/);
   assert.match(html, /Candidates/);
@@ -345,7 +345,7 @@ test("target review uses the recorded step index, honest evidence and promotion 
     id: "review-target", ts: 1, failedStep: { index: 2, identity: { role: "link", name: "Statements", path: [{ role: "navigation", name: "Main menu" }] } },
     proposedPatch: { identity: { role: "menuitem", name: "Statements", path: [{ role: "menu", name: "Accounts" }] } },
   };
-  const html = healDetail(run, heal, [], { promotion: { status: "provisional", replays: 1, need: 3 } });
+  const html = healDetail(run, heal, { promotion: { status: "provisional", replays: 1, need: 3 } });
   assert.match(html, /<h2>Step 3 moved<\/h2>/);
   assert.match(html, /Old target<\/dt><dd>“Statements” link in “Main menu” navigation/);
   assert.match(html, /New target<\/dt><dd>“Statements” menuitem in “Accounts” menu/);
@@ -364,13 +364,13 @@ test("target review uses the recorded step index, honest evidence and promotion 
   assert.match(kept, /Saved this target as a draft/);
   for (const status of ["provisional", "promoted", "reverted"]) {
     for (const decision of ["keep", "revert"] as const) {
-      const decided = healDetail({ ...run, decisions: [{ ts: 1, healId: heal.id, decision }] }, heal, [], { promotion: { status, replays: 1, need: 3 } });
+      const decided = healDetail({ ...run, decisions: [{ ts: 1, healId: heal.id, decision }] }, heal, { promotion: { status, replays: 1, need: 3 } });
       assert.match(decided, decision === "keep" ? /Target kept/ : /Target reverted/);
       assert.match(decided, decision === "keep" ? /Saved this target as a draft/ : /Saved the recorded target as a draft/);
       assert.doesNotMatch(decided, /Keep it now/);
     }
   }
-  const reverted = healDetail(run, heal, [], { promotion: { status: "reverted", replays: 1, need: 3 } });
+  const reverted = healDetail(run, heal, { promotion: { status: "reverted", replays: 1, need: 3 } });
   assert.match(reverted, /Target reverted/);
   assert.match(reverted, /Bao reverted this target/);
 });
@@ -586,7 +586,7 @@ test("a provisional heal can be shown as promoted without editing the record", (
     workflowId: "wf-login",
     failedStep: { label: "Click login" },
     proposedPatch: { identity: { testId: "login" } },
-  }, [], {
+  }, {
     workflowName: "fixture login",
     promotion: { status: "provisional", drift: "passed", replays: 1, healId: "heal-1" },
   });

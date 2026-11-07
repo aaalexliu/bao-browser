@@ -6,9 +6,8 @@ import test from "node:test";
 import { Capture } from "../../src/app/capture";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
-import { shotWithBlur } from "../../src/v1/blur";
-import { blurSensitiveFields as teachBlur, unblurSensitiveFields as clearTeachBlur } from "../../src/v1/dom-page";
-import { cleanSaveField, saveIntentPrompt, secretValues } from "../../src/v1/save-intent";
+import { pagePoster } from "../../src/v1/browser-driver";
+import { cleanSaveField, saveIntentPrompt } from "../../src/v1/save-intent";
 import { projectTeach } from "../../src/v1/teach";
 import { Library } from "../../src/v1/store";
 
@@ -94,26 +93,9 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
     await context.addInitScript(recorderSource());
     const page = await context.newPage();
     await page.goto(`data:text/html,${encodeURIComponent('<!doctype html><label>Password<input id="password" type="password"></label><label>Guests<input id="guests" type="text" autocomplete="off"></label><label>New password<input id="next-password" type="password"></label><label>Code<input id="otp" autocomplete="one-time-code"></label>')}`);
-    // Capture and teach screenshots can overlap while the owner types.
-    // Cleanup must leave the site's controls and their recorded values intact.
-    for (const cleanup of [clearTeachBlur, teachBlur]) {
-      await shotWithBlur({
-        evaluate: (fn) => page.evaluate(fn),
-        screenshot: async () => {
-          await page.evaluate(cleanup);
-          assert.equal(await page.locator("input").count(), 4);
-          assert.equal(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter.includes("blur")), true);
-          try {
-            return await page.screenshot();
-          } finally {
-            await page.evaluate(clearTeachBlur);
-          }
-        },
-      });
-      await page.evaluate(clearTeachBlur);
-      assert.equal(await page.locator("input").count(), 4);
-      assert.equal(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), "none");
-    }
+    assert.ok(await pagePoster(page));
+    assert.equal(await page.locator("input").count(), 4);
+    assert.equal(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), "none");
     for (const [id, value] of [["password", "1qaz2wsx"], ["guests", "1"], ["next-password", "Book!password"], ["otp", "683742"]] as const) {
       const recorded = new Promise<void>((resolve) => {
         received = (event) => { if (event.identity?.id === id && event.value === value) resolve(); };
@@ -151,10 +133,8 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
     }
     const otp = saved.steps.find((step) => step.identity?.id === "otp")!;
     assert.equal(saved.inputs.find((input) => input.name === otp.input)!.default, undefined);
-    const secrets = secretValues(events);
-    assert.deepEqual(secrets, ["1qaz2wsx", "Book!password", "683742"]);
-    assert.equal(cleanSaveField("Book a table", secrets, 80), "Book a table");
-    const prompt = saveIntentPrompt({ floorTitle: "Book a table", steps: [{ id: "guests", action: "type", label: "Book a table" }], secrets });
+    assert.equal(cleanSaveField("Book a table", 80), "Book a table");
+    const prompt = saveIntentPrompt({ floorTitle: "Book a table", steps: [{ id: "guests", action: "type", label: "Book a table" }] });
     assert.ok(prompt.includes("guests | type | - | Book a table"));
     assert.deepEqual(events, original);
     assert.equal(JSON.stringify(library.readTrail(document.id)), JSON.stringify(original));

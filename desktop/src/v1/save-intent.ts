@@ -3,10 +3,8 @@
 // No provider, a bad reply, or a timeout leaves that title and does not fail the save.
 // The result is stored on the workflow so the pass does not run again.
 
-import { isSensitiveValue } from "../../../shared/mask";
 import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
-import { retainedEvents, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
 
@@ -30,49 +28,19 @@ export interface PromptStep {
 
 const SAVE_TIMEOUT_MS = 8000;
 
-export function secretValues(events: readonly TrailEvent[]): string[] {
-  const out: string[] = [];
-  const add = (value: string | undefined, force: boolean) => {
-    if (!value || value.length < 4 || out.includes(value)) return;
-    if (force || isSensitiveValue(value) || /\d{6,}/.test(value)) out.push(value);
-  };
-  for (const event of retainedEvents(events)) {
-    const password = !!event.sensitive || event.identity?.role === "password";
-    add(event.value, password);
-    add(event.dialogValue, false);
-  }
-  return out;
-}
-
-export function redactModelText(text: string, secrets: string[]): string {
-  let out = text;
-  const ordered = secrets.filter((secret) => secret.length >= 4).sort((a, b) => b.length - a.length);
-  for (const secret of ordered) out = out.split(secret).join("[redacted]");
-  out = out.replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[redacted]");
-  out = out.replace(/\d{6,}/g, "[code]");
-  return out;
-}
-
 export function saveIntentPrompt(input: {
   floorTitle: string;
   host?: string;
   pageTitle?: string;
   steps: PromptStep[];
-  secrets?: string[];
 }): string {
-  const secrets = input.secrets || [];
-  const lines = input.steps.map((step) => {
-    const url = redactModelText(step.url || "-", secrets);
-    const label = redactModelText(step.label || "-", secrets);
-    return [step.id, step.action, url, label].join(" | ");
-  });
-  const page = input.pageTitle ? redactModelText(input.pageTitle, secrets) : "";
+  const lines = input.steps.map((step) => [step.id, step.action, step.url || "-", step.label || "-"].join(" | "));
+  const page = input.pageTitle || "";
   return [
     "Name this recorded workflow and say what the person is doing.",
     "Reply with JSON only: {\"title\":\"short human title\",\"summary\":\"one line of what this does\",\"intent\":\"what the user is trying to accomplish\",\"steps\":[{\"id\":\"id\",\"intent\":\"one sentence\"}]}",
     "title is a short name. summary is one line. intent is the goal. Every step id is listed once.",
-    "Do not include a password, a pin, a secret, or a numeric code.",
-    `Deterministic title: ${redactModelText(input.floorTitle, secrets)}`,
+    `Deterministic title: ${input.floorTitle}`,
     `Host: ${input.host || "-"}`,
     page ? `Page title: ${page}` : "",
     "id | action | url | visible label",
@@ -80,19 +48,16 @@ export function saveIntentPrompt(input: {
   ].filter(Boolean).join("\n");
 }
 
-export function cleanSaveField(value: unknown, secrets: string[], max: number): string {
+export function cleanSaveField(value: unknown, max: number): string {
   if (typeof value !== "string") return "";
   const text = value.replace(/\s+/g, " ").trim();
   if (!text || text === "Captured workflow") return "";
-  if (secrets.some((secret) => secret.length >= 4 && text.includes(secret))) return "";
-  if (/\d{6,}/.test(text) || isSensitiveValue(text)) return "";
   return text.slice(0, max);
 }
 
 export function applySaveEdits(
   workflow: WorkflowV2,
   edits: { name?: string; summary?: string; intent?: string },
-  secrets: string[] = [],
   floor = "",
 ): WorkflowV2 {
   const next: WorkflowV2 = {
@@ -100,17 +65,17 @@ export function applySaveEdits(
     steps: workflow.steps.map((step) => ({ ...step })),
     updatedAt: Date.now(),
   };
-  const name = cleanSaveField(edits.name ?? "", secrets, 80);
+  const name = cleanSaveField(edits.name ?? "", 80);
   const current = workflow.name && workflow.name !== "Captured workflow" ? workflow.name : "";
   const floorName = floor && floor !== "Captured workflow" ? floor : "";
   next.name = name || current || floorName || "Untitled workflow";
   if ("summary" in edits) {
-    const summary = cleanSaveField(edits.summary ?? "", secrets, 200);
+    const summary = cleanSaveField(edits.summary ?? "", 200);
     if (summary) next.summary = summary;
     else delete next.summary;
   }
   if ("intent" in edits) {
-    const intent = cleanSaveField(edits.intent ?? "", secrets, 280);
+    const intent = cleanSaveField(edits.intent ?? "", 280);
     if (intent) next.intent = intent;
     else delete next.intent;
   }
@@ -161,7 +126,6 @@ export async function inferSavedWorkflow(
   now = Date.now(),
 ): Promise<WorkflowV2> {
   if (workflow.inference) return workflow;
-  const secrets = source.secrets || [];
   const floor = source.floorTitle && source.floorTitle !== "Captured workflow"
     ? source.floorTitle
     : (workflow.name && workflow.name !== "Captured workflow" ? workflow.name : "Untitled workflow");
@@ -175,8 +139,7 @@ export async function inferSavedWorkflow(
     floorTitle: floor,
     host: primaryHost(source),
     pageTitle: source.pageTitle,
-    steps: promptSteps(workflow, source.groups, secrets),
-    secrets,
+    steps: promptSteps(workflow, source.groups),
   });
   let text = "";
   try {
@@ -184,7 +147,7 @@ export async function inferSavedWorkflow(
   } catch {
     return skipped(completer.provider, completer.model);
   }
-  const parsed = parseSaveIntent(text, new Set(workflow.steps.map((step) => step.id)), secrets);
+  const parsed = parseSaveIntent(text, new Set(workflow.steps.map((step) => step.id)));
   if (!parsed) return skipped(completer.provider, completer.model);
   const next: WorkflowV2 = {
     ...base,
@@ -205,13 +168,12 @@ export async function inferSavedWorkflow(
 function promptSteps(
   workflow: WorkflowV2,
   groups: { beforeUrl?: string; afterUrl?: string }[][] | undefined,
-  secrets: string[],
 ): PromptStep[] {
   return workflow.steps.map((step, index) => {
     const group = groups?.[index] || [];
     const event = [...group].reverse().find((item) => item.afterUrl || item.beforeUrl);
     const visible = [step.identity?.name, step.identity?.text, step.identity?.label, step.label]
-      .filter((item): item is string => typeof item === "string" && !!item.trim() && !leaks(item, secrets))
+      .filter((item): item is string => typeof item === "string" && !!item.trim())
       .join(" · ");
     return {
       id: step.id,
@@ -222,16 +184,9 @@ function promptSteps(
   });
 }
 
-function leaks(text: string, secrets: string[]): boolean {
-  if (secrets.some((secret) => secret.length >= 4 && text.includes(secret))) return true;
-  if (/\d{6,}/.test(text)) return true;
-  return isSensitiveValue(text);
-}
-
 function parseSaveIntent(
   text: string,
   ids: ReadonlySet<string>,
-  secrets: string[],
 ): { title: string; summary: string; intent: string; steps: Map<string, string> } | null {
   try {
     const start = text.indexOf("{");
@@ -243,16 +198,16 @@ function parseSaveIntent(
       intent?: unknown;
       steps?: unknown;
     };
-    const title = cleanSaveField(body.title, secrets, 80);
-    const summary = cleanSaveField(body.summary, secrets, 200);
-    const intent = cleanSaveField(body.intent, secrets, 280);
+    const title = cleanSaveField(body.title, 80);
+    const summary = cleanSaveField(body.summary, 200);
+    const intent = cleanSaveField(body.intent, 280);
     const steps = new Map<string, string>();
     if (Array.isArray(body.steps)) {
       for (const item of body.steps) {
         if (!item || typeof item !== "object") continue;
         const row = item as { id?: unknown; intent?: unknown };
         if (typeof row.id !== "string" || !ids.has(row.id)) continue;
-        const line = cleanSaveField(row.intent, secrets, 240);
+        const line = cleanSaveField(row.intent, 240);
         if (line) steps.set(row.id, line);
       }
     }

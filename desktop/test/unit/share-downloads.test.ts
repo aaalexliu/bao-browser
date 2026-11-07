@@ -26,7 +26,7 @@ const fileBytes = `{
   "version": 2
 }`;
 
-test("Share omits credentials while editor export and import preserve local JSON", { timeout: 60_000 }, async () => {
+test("Share, guide, editor export, and import preserve saved evidence", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-share-download-"));
   const app = await startApp({ home, port: 0 });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
@@ -56,18 +56,16 @@ test("Share omits credentials while editor export and import preserve local JSON
     assert.equal(released.status, 200);
     const releasedBytes = Buffer.from(await released.arrayBuffer());
     const releasedDoc = JSON.parse(releasedBytes.toString()) as WorkflowV2;
-    assert.equal(releasedBytes.includes(password), false);
-    assert.deepEqual(releasedDoc.inputs.map((input) => input.default), [
-      undefined, "ada@example.test", "Ada Lovelace", "/Users/fixture/report.txt", "415-555-0123", "café notes",
-    ]);
+    assert.equal(releasedBytes.includes(password), true);
+    assert.deepEqual(releasedDoc, doc);
     assert.equal(releasedDoc.inputs.some((input) => input.askOnImport), false);
     assert.equal(releasedDoc.steps[1]?.value, "{{password}}");
-    assert.equal(releasedDoc.steps[2]?.value, "[secret stripped]");
+    assert.equal(releasedDoc.steps[2]?.value, password);
     const guide = await fetch(base + endpoint + "/guide");
     assert.equal(guide.status, 200);
     const guideBytes = Buffer.from(await guide.arrayBuffer());
     assert.match(guideBytes.toString(), /<!doctype html>/i);
-    assert.equal(guideBytes.includes(password), false);
+    assert.equal(guideBytes.includes(password), true);
 
     browser = await testChromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
     const page = await browser.newPage({ acceptDownloads: true });

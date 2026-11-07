@@ -3,10 +3,9 @@
 
 import { readFileSync } from "node:fs";
 import type { Dialog, Page } from "playwright";
-import { shotWithBlur } from "./blur";
 import { installDataPage } from "./data-page";
 import type { ExtractSpec } from "./data-steps";
-import { dumpPage, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, type DomDump } from "./dom-page";
+import { dumpPage, type DomDump } from "./dom-page";
 import { assignSiblingIndex } from "./identity";
 import type { FailureSnapshot } from "./heal";
 import type { HumanAsk } from "./human-ask";
@@ -68,7 +67,6 @@ export class BrowserDriver implements Driver {
   private handles = new WeakMap<Identity, string>();
   readonly proofs: FileProof[] = [];
   private currentStep = "";
-  private secretOnPage = false;
   private domNodes: { role?: string; name?: string; text?: string; testId?: string; id?: string }[] = [];
   private readonly consoleLines: TraceLine[] = [];
   private readonly networkLines: TraceRequest[] = [];
@@ -96,13 +94,13 @@ export class BrowserDriver implements Driver {
     dialogHandlers.set(page, onDialog);
     page.on("dialog", onDialog);
     page.on("console", (msg) => {
-      const text = maskTrace(msg.text());
+      const text = msg.text().replace(/\s+/g, " ").trim().slice(0, 240);
       if (!text) return;
       this.consoleLines.push({ stepId: this.currentStep, type: msg.type(), text, ts: Date.now() });
       if (this.consoleLines.length > 80) this.consoleLines.shift();
     });
     page.on("response", (res) => {
-      const url = publicUrl(res.url());
+      const url = traceUrl(res.url());
       if (!url) return;
       this.networkLines.push({
         stepId: this.currentStep,
@@ -160,18 +158,13 @@ export class BrowserDriver implements Driver {
 
   async captureStep(): Promise<{ dom?: { role?: string; name?: string; text?: string; testId?: string; id?: string }[]; ax?: string }> {
     let ax = await this.page.locator("body").ariaSnapshot().catch(() => undefined);
-    if (ax && this.secretOnPage) {
-      ax = ax.split("\n").filter((line) => !/password/i.test(line)).join("\n").trim();
-    }
     if (ax && ax.length > 4000) ax = ax.slice(0, 4000);
     return { dom: this.domNodes.slice(), ax: ax || undefined };
   }
 
   async tree(): Promise<LiveTree> {
     const dump = await this.evaluateDump();
-    this.secretOnPage = dump.nodes.some((node) => node.id === "password" || node.nameAttr === "password" || node.role === "password");
     this.domNodes = dump.nodes
-      .filter((node) => node.id !== "password" && node.nameAttr !== "password")
       .slice(0, 40)
       .map((node) => ({
         role: node.role,
@@ -249,13 +242,10 @@ export class BrowserDriver implements Driver {
 
   /** The whole viewport. Proof uses this when the end page no longer shows who ran. */
   async pageShot(): Promise<Buffer | undefined> {
-    await this.page.evaluate(maskPasswordFields).catch(() => undefined);
     try {
       return await this.page.screenshot({ type: "png" });
     } catch {
       return undefined;
-    } finally {
-      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
     }
   }
 
@@ -281,23 +271,9 @@ export class BrowserDriver implements Driver {
   }
 
   async snapshot(): Promise<FailureSnapshot> {
-    await this.page.evaluate(maskPasswordFields).catch(() => undefined);
-    let png: Buffer;
-    try {
-      png = await shotWithBlur(this.page, { type: "png" });
-    } finally {
-      await this.page.evaluate(unmaskPasswordFields).catch(() => undefined);
-    }
+    const png = await this.page.screenshot({ type: "png" });
     const dump = await this.evaluateDump();
-    const secretField = dump.nodes.some((node) => node.id === "password" || node.nameAttr === "password");
-    let ax: string | undefined;
-    if (!secretField) {
-      try {
-        ax = await this.page.locator("body").ariaSnapshot();
-      } catch {
-        ax = undefined;
-      }
-    }
+    const ax = await this.page.locator("body").ariaSnapshot().catch(() => undefined);
     return {
       screenshot: png.toString("base64"),
       screenshotRef: `png:${png.length}`,
@@ -327,7 +303,7 @@ export class BrowserDriver implements Driver {
           id: payload.id || undefined,
           testId: payload.testId || undefined,
           name: payload.name || undefined,
-          value: payload.secret ? undefined : payload.value,
+          value: payload.value,
           key: payload.key,
           secret: payload.secret === true,
           ts: payload.ts || Date.now(),
@@ -626,7 +602,7 @@ export class BrowserDriver implements Driver {
       ? `needs you. You're in control. ${ask.instruction}`
       : ask.kind === "wall"
         ? ask.instruction
-        : "You're in control. Sign in on this page. bao isn't recording keystrokes in password fields.";
+        : "You're in control. Sign in on this page. Continue when you're ready.";
     await this.injectStrip(ask.kind, text);
   }
 
@@ -776,7 +752,7 @@ function installGuideWatch(): void {
     send({
       op: "type",
       ...describe(el),
-      value: secret ? "" : el.value.slice(0, 80),
+      value: el.value.slice(0, 80),
       secret,
       ts: Date.now(),
     });
@@ -784,119 +760,35 @@ function installGuideWatch(): void {
 }
 
 /**
- * The whole page, with password fields covered. Not a control crop.
+ * The whole page. Not a control crop.
  * A scrolling capture is tried first and gives up quickly; the viewport is the fallback.
  */
 export async function pagePoster(page: Page): Promise<Buffer | undefined> {
-  await page.evaluate(maskPasswordFields).catch(() => undefined);
   try {
     try {
-      return await shotWithBlur(page, { type: "png", fullPage: true, timeout: 4000 });
+      return await page.screenshot({ type: "png", fullPage: true, timeout: 4000 });
     } catch {
-      return await shotWithBlur(page, { type: "png", timeout: 4000 });
+      return await page.screenshot({ type: "png", timeout: 4000 });
     }
   } catch {
     return undefined;
-  } finally {
-    await page.evaluate(unmaskPasswordFields).catch(() => undefined);
   }
 }
 
 /** Crop around the step's target and outline it. The card poster does not use this. */
-export async function elementShot(page: Page, target?: ShotTarget, opts?: { blur?: boolean }): Promise<Buffer | undefined> {
+export async function elementShot(page: Page, target?: ShotTarget): Promise<Buffer | undefined> {
   try {
-    await page.evaluate(maskPasswordFields).catch(() => undefined);
     const found = await locateTarget(page, target);
     if (!found) return;
     await found.mark();
     const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
     const clip = paddedClip(found.box, view);
-    if (opts?.blur === false) return await page.screenshot({ type: "png", clip });
-    return await shotWithBlur(page, { type: "png", clip });
+    return await page.screenshot({ type: "png", clip });
   } catch {
     return undefined;
   } finally {
     await clearShotMarks(page);
-    await page.evaluate(unmaskPasswordFields).catch(() => undefined);
   }
-}
-
-/**
- * Crop of the same control with its value cleared and no blur.
- * A clone covers the live field, so the person's typing is left alone.
- */
-export async function guideFieldShot(page: Page, target?: ShotTarget): Promise<Buffer | undefined> {
-  const identity = target?.identity;
-  if (!identity) return;
-  await page.evaluate(unblurSensitiveFields).catch(() => undefined);
-  await page.evaluate(unmaskPasswordFields).catch(() => undefined);
-  const found = await locateTarget(page, target);
-  if (!found) return;
-  const mounted = await page.evaluate(mountEmptyField, {
-    id: identity.id,
-    nameAttr: identity.nameAttr,
-    testId: identity.testId,
-  }).catch(() => false);
-  if (!mounted) return;
-  try {
-    const view = page.viewportSize() || await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-    const clip = paddedClip(found.box, view);
-    return await page.screenshot({ type: "png", clip });
-  } finally {
-    await page.evaluate(removeEmptyField).catch(() => undefined);
-  }
-}
-
-function mountEmptyField(hint: { id?: string; nameAttr?: string; testId?: string }): boolean {
-  document.querySelectorAll("[data-bao-guide-shot]").forEach((el) => el.remove());
-  let el: Element | null = null;
-  if (hint.id && document.getElementById(hint.id)) el = document.getElementById(hint.id);
-  if (!el && hint.nameAttr) el = document.querySelector(`[name="${CSS.escape(hint.nameAttr)}"]`);
-  if (!el && hint.testId) el = document.querySelector(`[data-testid="${CSS.escape(hint.testId)}"]`);
-  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false;
-  const source = el.closest("label") || el;
-  const rect = source.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return false;
-  const pad = 8;
-  const host = document.createElement("div");
-  host.setAttribute("data-bao-guide-shot", "1");
-  host.style.position = "fixed";
-  host.style.left = `${rect.x - pad}px`;
-  host.style.top = `${rect.y - pad}px`;
-  host.style.width = `${rect.width + pad * 2}px`;
-  host.style.height = `${rect.height + pad * 2}px`;
-  host.style.margin = "0";
-  host.style.padding = `${pad}px`;
-  host.style.boxSizing = "border-box";
-  host.style.zIndex = "2147483647";
-  host.style.background = getComputedStyle(document.body).backgroundColor;
-  host.style.pointerEvents = "none";
-  const clone = source.cloneNode(true);
-  if (!(clone instanceof HTMLElement)) return false;
-  clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
-  clone.removeAttribute("id");
-  const nodes = clone.querySelectorAll("*");
-  for (const node of [clone, ...nodes]) {
-    if (!(node instanceof HTMLElement)) continue;
-    node.style.removeProperty("filter");
-    node.style.setProperty("filter", "none", "important");
-    node.style.removeProperty("-webkit-filter");
-    node.style.setProperty("backdrop-filter", "none", "important");
-  }
-  const field = clone instanceof HTMLInputElement || clone instanceof HTMLTextAreaElement
-    ? clone
-    : clone.querySelector("input, textarea");
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.value = "";
-  clone.style.margin = "0";
-  clone.style.outline = "2px solid #d4532b";
-  clone.style.outlineOffset = "2px";
-  host.appendChild(clone);
-  document.body.appendChild(host);
-  return true;
-}
-
-function removeEmptyField(): void {
-  document.querySelectorAll("[data-bao-guide-shot]").forEach((el) => el.remove());
 }
 
 /** Crop around the step's target. A full-page picture is not used as a thumbnail. */
@@ -963,12 +855,6 @@ async function clearShotMarks(page: Page): Promise<void> {
   }).catch(() => undefined);
 }
 
-function maskTrace(text: string): string {
-  const trimmed = text.replace(/\s+/g, " ").trim().slice(0, 240);
-  if (!trimmed) return "";
-  return trimmed.replace(/password[=:]\s*\S+/gi, "password=[secret]");
-}
-
 function vendorHeaders(headers: Record<string, string>): { name: string; value: string }[] {
   const out: { name: string; value: string }[] = [];
   for (const [name, value] of Object.entries(headers)) {
@@ -979,11 +865,10 @@ function vendorHeaders(headers: Record<string, string>): { name: string; value: 
   return out;
 }
 
-function publicUrl(raw: string): string {
+function traceUrl(raw: string): string {
   if (raw.startsWith("data:") || raw.startsWith("blob:")) return "";
   try {
-    const url = new URL(raw);
-    return `${url.origin}${url.pathname}`.slice(0, 180);
+    return new URL(raw).href.slice(0, 180);
   } catch {
     return "";
   }

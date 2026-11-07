@@ -103,7 +103,6 @@ export interface GuideAct {
   id?: string;
   testId?: string;
   name?: string;
-  /** Empty when the field is a password. */
   value?: string;
   key?: string;
   secret?: boolean;
@@ -2171,7 +2170,7 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
     bytes = await driver.shot?.({
       identity: step.identity,
       action: step.action,
-      label: step.sensitive ? undefined : step.label,
+      label: step.label,
     });
     if (!bytes?.length && driver.pageShot) bytes = await driver.pageShot();
   } catch (err) {
@@ -2180,7 +2179,6 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
       : /cannot take|unsupported|not supported/i.test(message) ? "This driver cannot take page pictures."
       : /timeout|timed out/i.test(message) ? "Chrome timed out taking this picture."
       : /closed|no tab|not attached/i.test(message) ? "The Chrome page is no longer available."
-      : /mask/i.test(message) ? "Bao could not hide private fields for this picture."
       : "Chrome could not take this picture.";
     return { error: reason };
   }

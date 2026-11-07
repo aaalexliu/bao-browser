@@ -2,7 +2,7 @@
 // The recorder, when it is armed, lives in the page world and posts events here.
 
 import { installDataPage } from "../../desktop/src/v1/data-page";
-import { dumpPage, maskPasswordFields, unmaskPasswordFields } from "../../desktop/src/v1/dom-page";
+import { dumpPage } from "../../desktop/src/v1/dom-page";
 import { clickKnownClose, dismissCoveringAds, readPageMarkers } from "../../desktop/src/v1/page-class";
 
 interface Gesture {
@@ -277,7 +277,6 @@ declare global {
       if (!(node instanceof Element) && !(node instanceof ShadowRoot)) return "";
       if (node instanceof Element) {
         if (skipTag.test(node.tagName)) return "";
-        if (node instanceof HTMLInputElement && node.type === "password") return "";
         const style = getComputedStyle(node);
         if (style.display === "none" || style.visibility === "hidden") return "";
         if (node instanceof HTMLInputElement && node.type === "file") {
@@ -311,7 +310,7 @@ declare global {
     const text = [strip, [...prices].join(" "), files.join("\n"), values.join("\n"), plain, rendered]
       .filter((part) => part && part.trim())
       .join("\n");
-    return text.split("\n").filter((line) => !/password/i.test(line)).join("\n").slice(0, 20000);
+    return text.slice(0, 20000);
   }
 
   function deepActive(): Element | null {
@@ -470,14 +469,6 @@ declare global {
       await playGesture(gesture);
       return { ok: true };
     }
-    if (op === "mask") {
-      maskPasswordFields();
-      return { ok: true };
-    }
-    if (op === "unmask") {
-      unmaskPasswordFields();
-      return { ok: true };
-    }
     if (op === "metrics") {
       return {
         ok: true,
@@ -519,7 +510,6 @@ declare global {
     if (op === "captureStep") {
       const dump = dumpPage();
       const dom = dump.nodes
-        .filter((node) => node.id !== "password" && node.nameAttr !== "password")
         .slice(0, 40)
         .map((node) => ({ role: node.role, name: node.name, text: node.text, testId: node.testId, id: node.id }));
       return { ok: true, dom, ax: pageText() };

@@ -46,9 +46,8 @@ export function inferExpect(
     if (!event.identity) return {};
     return { postcondition: { kind: "element", identity: event.identity, timeoutMs: 4000 } };
   }
-  const secrets = opts.secrets.filter(Boolean);
-  const known = opts.known.filter((item) => item.value && !secrets.includes(item.value));
-  if (opts.input && event.value && !opts.secret && !secrets.includes(event.value)) {
+  const known = opts.known.filter((item) => item.value);
+  if (opts.input && event.value) {
     known.push({ name: opts.input, value: event.value });
   }
   const errorPage = isBrowserError(event.afterUrl);
@@ -58,10 +57,10 @@ export function inferExpect(
     const after = savedText(event.afterText);
     if (after && after !== ownLabel(event.identity)) return textCheck(templateText(after, known));
   }
-  if (!opts.secret && isTypeOp(event.op) && event.value && !secrets.includes(event.value)) {
+  if (isTypeOp(event.op) && event.value) {
     return valueCheck(opts.input ? `{{${opts.input}}}` : event.value);
   }
-  if (!opts.secret && event.valueBefore != null && event.valueAfter != null && event.valueBefore !== event.valueAfter) {
+  if (event.valueBefore != null && event.valueAfter != null && event.valueBefore !== event.valueAfter) {
     const next = savedText(event.valueAfter);
     if (next) return valueCheck(templateText(next, known));
   }
