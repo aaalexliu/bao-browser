@@ -12,6 +12,64 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 
 const patch = { identity: { surface: "dom", role: "button", testId: "login", path: [] } };
 
+test("unusable vendor replies retain failed heal evidence", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-heal-evidence-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const realFetch = globalThis.fetch;
+  let sentPrompt = "";
+  let raw = "";
+  t.mock.method(globalThis, "fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (String(input).startsWith("https://api.openai.com/") || String(input).startsWith("https://api.anthropic.com/")) {
+      sentPrompt = (JSON.parse(String(init?.body)) as { messages: { content: string }[] }).messages[0].content;
+      return new Response(raw);
+    }
+    return realFetch(input, init);
+  });
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  try {
+    for (const provider of ["openai", "anthropic"] as const) {
+      raw = JSON.stringify(provider === "openai"
+        ? { choices: [{ message: { content: "I cannot find it" } }] }
+        : { content: [{ type: "text", text: "I cannot find it" }] });
+      app.library.updateSettings({ healSource: { kind: "api-key", provider, key: "fixture-key" } });
+      for (const heal of ["auto", "approve"] as const) {
+        const workflow: WorkflowV2 = {
+          schema: "bao.workflow/v2", version: 2, createdAt: 1, id: `wf-evidence-${provider}-${heal}`, name: "Failed heal evidence", heal,
+          startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [],
+          steps: [{ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 }],
+        };
+        app.library.save(workflow);
+        const response = await realFetch(`http://127.0.0.1:${app.port}/api/replay`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }),
+        });
+        assert.equal(response.status, 200);
+        const result = await response.json() as { status: string; runId: string; modelCalls: number };
+        assert.equal(result.status, "failed");
+        const stored = app.library.readRun(result.runId);
+        assert.equal(stored.status, "failed");
+        assert.equal(stored.modelCalls, 1);
+        assert.equal(result.modelCalls, 1);
+        assert.equal(stored.heals.length, 1);
+        const record = stored.heals[0] as HealRecord;
+        assert.equal(record.model?.provider, provider);
+        assert.ok(record.model?.name);
+        assert.match(sentPrompt, /missing-login/);
+        assert.equal(record.prompt, sentPrompt);
+        assert.equal(record.rawResponse, raw);
+        assert.equal(record.proposedPatch, undefined);
+        assert.equal(record.executed, undefined);
+      }
+    }
+  } finally {
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("saved None, Cursor account and API keys drive real replay heals after restart", { timeout: 240_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-source-"));
   const previous = { HOME: process.env.HOME, BAO_CURSOR_AGENT: process.env.BAO_CURSOR_AGENT, BAO_HEAL_CURSOR_ACCOUNT: process.env.BAO_HEAL_CURSOR_ACCOUNT, OPENAI_API_KEY: process.env.OPENAI_API_KEY };
@@ -115,9 +173,16 @@ if (process.argv[2] === 'status') {
         const stored = app.library.readRun(run.runId);
         assert.equal(stored.status, failed ? "failed" : "passed");
         assert.equal(stored.heals.length, choice.kind === "none" ? 0 : 1);
-        if (failure) {
-          assert.equal((stored.heals[0] as HealRecord).proposedPatch, undefined, `${route}: ${choice.kind}: ${failure}`);
-          assert.equal((stored.heals[0] as HealRecord).model, undefined);
+        assert.equal(stored.modelCalls, choice.kind === "none" ? 0 : 1);
+        if (failure && choice.kind === "api-key") {
+          const record = stored.heals[0] as HealRecord;
+          assert.equal(record.proposedPatch, undefined, `${route}: ${choice.kind}: ${failure}`);
+          assert.equal(record.executed, undefined);
+          assert.equal(record.model?.provider, choice.provider);
+          assert.match(record.prompt, /missing-login/);
+          if (failure === "fetch-rejection" || failure === "body-rejection") assert.equal(record.rawResponse, "");
+          else assert.ok(record.rawResponse);
+          if (failure === "http-error") assert.match(record.rawResponse!, /Invalid API key/);
         }
         assert.equal((await cursorCalls()).length - beforeCursor, choice.kind === "cursor-account" ? 1 : 0);
         assert.equal(vendorCalls.length - beforeVendor, choice.kind === "api-key" ? 1 : 0);

@@ -79,9 +79,11 @@ export interface HealRecord {
   identity?: IdentityView;
 }
 
+export type HealAttempt = HealProposal | (Omit<HealProposal, "patch"> & { patch?: undefined });
+
 export interface HealProvider {
   available(): boolean;
-  propose(failure: StepFailure, step: WorkflowStep, context?: SavedContext): Promise<HealProposal | null>;
+  propose(failure: StepFailure, step: WorkflowStep, context?: SavedContext): Promise<HealAttempt | null>;
 }
 
 export type HealSource =
@@ -159,11 +161,12 @@ export function llmHealFromEnv(
     async propose(failure, step, context) {
       if (!openai && !anthropic) return null;
       const prompt = buildPrompt(failure, step, secrets, context);
+      const provider = openai ? "openai" : "anthropic";
+      const name = openai
+        ? env.BAO_OPENAI_MODEL || "gpt-4.1-mini"
+        : env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
+      const attempt: HealAttempt = { model: { provider, name, version: name }, prompt, rawResponse: "" };
       try {
-        const provider = openai ? "openai" : "anthropic";
-        const name = openai
-          ? env.BAO_OPENAI_MODEL || "gpt-4.1-mini"
-          : env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
         const res = await fetchImpl(openai
           ? "https://api.openai.com/v1/chat/completions"
           : "https://api.anthropic.com/v1/messages", {
@@ -177,33 +180,28 @@ export function llmHealFromEnv(
             messages: [{ role: "user", content: prompt }],
           }),
         });
-        if (!res.ok) return null;
-        const raw = await res.text();
-        const body = JSON.parse(raw) as {
+        attempt.rawResponse = await res.text();
+        if (!res.ok) return attempt;
+        const body = JSON.parse(attempt.rawResponse) as {
           choices?: { message?: { content?: string } }[];
           content?: { type: string; text?: string }[];
         };
         let text: unknown;
         if (openai) {
-          if (!Array.isArray(body?.choices)) return null;
+          if (!Array.isArray(body?.choices)) return attempt;
           text = body.choices[0]?.message?.content;
         } else {
-          if (!Array.isArray(body?.content)) return null;
+          if (!Array.isArray(body?.content)) return attempt;
           const blocks = body.content.filter((block) => block?.type === "text");
-          if (blocks.some((block) => typeof block.text !== "string")) return null;
+          if (blocks.some((block) => typeof block.text !== "string")) return attempt;
           text = blocks.map((block) => block.text).join("\n");
         }
-        if (typeof text !== "string") return null;
+        if (typeof text !== "string") return attempt;
         const patch = patchFromText(text);
-        if (!patch.identity) return null;
-        return {
-          patch,
-          model: { provider, name, version: name },
-          prompt,
-          rawResponse: raw,
-        };
+        if (!patch.identity) return attempt;
+        return { ...attempt, patch };
       } catch {
-        return null;
+        return attempt;
       }
     },
   };

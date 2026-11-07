@@ -30,7 +30,7 @@ test("a cursor session proposal is the heal output when no vendor key is used", 
   assert.ok(proposal);
   assert.equal(proposal.model.provider, "cursor");
   assert.equal(proposal.model.name, "cursor-session");
-  assert.equal(proposal.patch.identity?.testId, "login");
+  assert.equal(proposal.patch?.identity?.testId, "login");
   assert.match(proposal.prompt, /testId/);
   assert.match(proposal.rawResponse, /"login"/);
 });
