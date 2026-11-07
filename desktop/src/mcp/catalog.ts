@@ -19,13 +19,11 @@ import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
-import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { fitPictureBody } from "../v1/sync-pictures";
-import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
 
@@ -65,8 +63,6 @@ export interface WorkflowOutcome {
   link: string;
   source?: string;
   lastGreen?: string;
-  /** Set when a marketplace listing has not been allowed. */
-  permissions?: PermissionPreview;
   /** Saved status spelling; may differ from the normalized outcome. `completed` follows resume. */
   status?: OutcomeName | "completed" | "timed-out" | "timeout" | "stopped" | "passed" | "paused" | "running" | "idle" | "needs-sign-in";
   run_id?: string;
@@ -226,24 +222,6 @@ export async function runWorkflow(
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
   const refusal = workflowReplayRefusal(library, request.document ?? placed!.document);
   if (refusal) return emptyOutcome(id, "failed", refusal);
-  if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
-    const listingId = placed.forkedFrom || placed.document.id;
-    const access = await marketplaceAccess(library, listingId, placed.document);
-    if (!access.allowed) {
-      return {
-        outcome: "needs_approval",
-        status: "needs_approval",
-        workflowId: id,
-        source: "marketplace",
-        reason: "Allow this listing before it can run.",
-        link: linkFor(id),
-        receipts: [],
-        stops: [],
-        permissions: access.preview,
-      };
-    }
-    rememberListingTrust(library, access.preview);
-  }
   if (placed && !placed.local) materializeWorkflow(library, placed);
   const loaded = request.document ? migrate(request.document) : placed!.document;
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
@@ -501,7 +479,6 @@ async function replayInBrowser(
       now: () => Date.now(),
       yieldHuman: true,
       trail,
-      siteTrust: trustMode(library.settings(), originOf(workflow.startUrl)),
     });
     const outcome = rememberRun(library, workflow, run, args, secrets);
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
@@ -666,9 +643,7 @@ function rememberRun(
   } else if (run.status === "paused") {
     outcome = "needs_human";
     status = "needs_human";
-    reason = run.steps.some((step) => step.reason === "always ask")
-      ? "Always ask before this step."
-      : "Approve the heal before the run can continue";
+    reason = "Approve the heal before the run can continue";
   } else if (run.status === "failed") {
     outcome = signInStep(step) ? "needs_signin" : "failed";
     status = outcome;
@@ -1177,62 +1152,6 @@ function healProvider(): HealProvider {
     });
   }
   return llmHealFromEnv();
-}
-
-async function marketplaceAccess(
-  library: Library,
-  id: string,
-  document: WorkflowV2,
-): Promise<{ allowed: boolean; preview: PermissionPreview }> {
-  const state = loadState(library.root);
-  let remote: { allowed?: boolean; preview?: PermissionPreview } | null = null;
-  try {
-    remote = await remoteFetch<{ allowed?: boolean; preview?: PermissionPreview }>(
-      state,
-      "GET",
-      `/api/marketplace/${encodeURIComponent(id)}/allow`,
-    );
-  } catch {
-    remote = null;
-  }
-  const preview = remote?.preview || permissionPreview(document);
-  if (remote?.allowed) {
-    writeAllow(library, id);
-    return { allowed: true, preview };
-  }
-  if (remote && remote.allowed === false) return { allowed: false, preview };
-  if (hasAllow(library, id)) return { allowed: true, preview };
-  return { allowed: false, preview };
-}
-
-function rememberListingTrust(library: Library, preview: PermissionPreview): void {
-  if (preview.trust !== "ask") return;
-  const siteTrust = { ...(library.settings().siteTrust || {}) };
-  let changed = false;
-  for (const site of preview.sites) {
-    if (siteTrust[site] === "ask") continue;
-    siteTrust[site] = "ask";
-    changed = true;
-  }
-  if (changed) library.updateSettings({ siteTrust });
-}
-
-function allowFile(library: Library, id: string): string {
-  return path.join(library.root, "allows", `${safeToken(id)}.json`);
-}
-
-function hasAllow(library: Library, id: string): boolean {
-  try {
-    return existsSync(allowFile(library, id));
-  } catch {
-    return false;
-  }
-}
-
-function writeAllow(library: Library, id: string): void {
-  const file = allowFile(library, id);
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ id, at: Date.now() }));
 }
 
 function linkFor(id: string): string {

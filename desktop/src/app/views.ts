@@ -17,7 +17,7 @@ import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
-import { controlKey, visibleCopy } from "../v1/visible-copy";
+import { visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
@@ -211,10 +211,9 @@ export interface SaveSheet {
 }
 
 export interface RemoteView {
-  phase: "idle" | "approval" | "running" | "confirm";
+  phase: "idle" | "running" | "waiting";
   workflowId?: string;
   workflowName?: string;
-  stepLabel?: string;
   jobId?: string;
 }
 
@@ -351,21 +350,10 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
       </button>`).join("")}</nav>${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : ""}`;
 }
 
-/** Shown while a cloud agent is asking this Mac to run something. */
+/** Shows the remote run without adding an approval step. */
 export function remoteBanner(remote: RemoteView | undefined): string {
   if (!remote || remote.phase === "idle") return "";
   const name = remote.workflowName || remote.workflowId || "a workflow";
-  if (remote.phase === "approval") {
-    return `<section id="remote-agent" data-testid="remote-approval" data-phase="approval">
-      <p class="kicker">Remote agent</p>
-      <p class="instruction">Allow ${esc(name)} on this Mac?</p>
-      <p class="timeout">Nothing runs until you choose. A confirm step still has to be approved here.</p>
-      <div class="row">
-        <button id="remote-allow" data-testid="remote-allow" type="button">Allow</button>
-        <button id="remote-deny" data-testid="remote-deny" type="button">Deny</button>
-      </div>
-    </section>`;
-  }
   if (remote.phase === "running") {
     return `<section id="remote-agent" data-testid="remote-running" data-phase="running">
       <p class="kicker">Remote agent running</p>
@@ -373,10 +361,10 @@ export function remoteBanner(remote: RemoteView | undefined): string {
       <div class="row"><button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
     </section>`;
   }
-  return `<section id="remote-agent" data-testid="remote-confirm" data-phase="confirm">
-    <p class="kicker">Confirm on this Mac</p>
-    <p class="instruction">A remote agent cannot approve ${esc(remote.stepLabel || "this step")}. Approve it here.</p>
-    <div class="row"><button id="remote-confirm-allow" data-testid="remote-confirm-allow" type="button">Approve on this Mac</button></div>
+  return `<section id="remote-agent" data-testid="remote-waiting" data-phase="waiting">
+    <p class="kicker">Workflow waiting</p>
+    <p class="instruction">${esc(name)} is waiting for a site interaction or a step assigned to you. Complete it in the Bao window, then resume the run.</p>
+    <div class="row"><button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
   </section>`;
 }
 
@@ -1411,21 +1399,6 @@ export function hostAccessPanel(access: unknown): string {
     <p id="host-access-status" data-host-access="${mode}">Site access: ${label}</p>
     <p class="quiet">Allow all sites lets Bao read and act on any site in this Chrome profile. Bao only does that while a run or a recording is active. Revoke takes that away.</p>
     <button type="button" id="revoke-hosts"${revoke}>Revoke</button>
-  </section>`;
-}
-
-export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
-  const rows = sites.map((site) => `<label>${esc(site.origin)}
-      <select id="site-trust-${htmlEsc(controlKey(site.origin))}" data-setting="siteTrust" data-site-trust="${htmlEsc(controlKey(site.origin))}">
-        <option value="ask" ${site.mode === "ask" ? "selected" : ""}>Always ask</option>
-        <option value="allow" ${site.mode === "allow" ? "selected" : ""}>Allow</option>
-      </select>
-    </label>`).join("");
-  const body = rows || `<p class="quiet">No sites yet. A site shows up here from a workflow's start address.</p>`;
-  return `<section id="site-trust">
-    <h3>Site trust</h3>
-    <p class="quiet">Always ask waits before an ordinary click or type on that site. Allow runs those. Confirm and Apply still wait for you. This is separate from When a page changes.</p>
-    ${body}
   </section>`;
 }
 

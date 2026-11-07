@@ -9,7 +9,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { workflowDriver } from "../../src/extension/protocol";
-import { createRemoteAgent, remoteRunAllowed } from "../../src/v1/remote-agent";
+import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { relayPath, saveRelay } from "../../src/v1/relay-link";
 import { remoteDriverKind } from "../../src/v1/remote-run";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -248,10 +248,7 @@ test("relay keeps pictures and owner data while credentials and CDP stay out", a
   }
 });
 
-test("the device enforces ask or deny, and the driver follows the workflow", async () => {
-  assert.equal(remoteRunAllowed("deny"), "deny");
-  assert.equal(remoteRunAllowed("ask"), "ask");
-  assert.equal(remoteRunAllowed(undefined), "ask");
+test("requested remote runs start directly and keep the workflow's driver", async () => {
   assert.equal(workflowDriver({}), "playwright");
   assert.equal(workflowDriver({ driver: "cdp-live" }), "playwright");
   assert.equal(workflowDriver({ driver: "extension" }), "extension");
@@ -281,7 +278,7 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
     const agent = await directory.mintAgent("user-a", paired.deviceId);
     assert.ok(agent);
     saveRelay(root, { server: server.origin, token: paired.token, deviceId: paired.deviceId, tokenId: paired.tokenId });
-    library.updateSettings({ remoteMcp: true, remotePermission: "deny" });
+    writeFileSync(path.join(root, "settings.json"), JSON.stringify({ remoteMcp: true, remotePermission: "deny" }));
     const calls = { extension: 0, live: 0, playwright: 0 };
     const runners = {
       extension: async () => { calls.extension += 1; return { outcome: "ok", via: "extension" }; },
@@ -292,54 +289,22 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
         return { outcome: "ok", via: "playwright", readBack: inputs.routing };
       },
     };
-    const denied = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, autoAllow: true });
-    denied.start();
-    try {
-      await waitFor(() => directory.lookups > 0);
-      const blocked = await tool(server.origin, agent.token, "run_workflow", {
-        id: "books",
-        permissionMode: "allow",
-        inputs: { permissionMode: "allow" },
-      });
-      assert.equal(blocked.json.outcome, "denied");
-      assert.equal(calls.playwright, 0);
-      const read = await tool(server.origin, agent.token, "get_run", { run_id: "run-1" });
-      assert.equal(read.json.outcome, "ok");
-      assert.equal(JSON.stringify(read.json).includes("s3cret"), false);
-      assert.equal((read.json.outputs as { value: string }[])[0]?.value, "Books");
-      const found = await tool(server.origin, agent.token, "search_workflows", { query: "books" });
-      assert.equal(found.json.outcome, "ok");
-    } finally {
-      await denied.stop();
-    }
-
-    library.updateSettings({ remotePermission: "ask" });
-    const asked = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners });
-    asked.start();
-    try {
-      const mark = directory.lookups;
-      await waitFor(() => directory.lookups > mark);
-      const pending = tool(server.origin, agent.token, "run_workflow", { id: "books", permissionMode: "deny", autoApprove: true, inputs: { routing: "021000021" } });
-      await waitFor(() => asked.view().phase === "approval");
-      assert.equal(calls.playwright, 0);
-      asked.allow();
-      const allowed = await pending;
-      assert.equal(allowed.json.outcome, "ok");
-      assert.equal(allowed.json.via, "playwright");
-      assert.equal(allowed.json.readBack, "021000021");
-      assert.equal(calls.playwright, 1);
-    } finally {
-      await asked.stop();
-    }
-
-    library.updateSettings({ pageEngine: "agent-browser" });
     let extensionLinked = true;
-    const auto = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, extensionLinked: () => extensionLinked, autoAllow: true });
+    const auto = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, extensionLinked: () => extensionLinked });
     auto.start();
     try {
       const mark = directory.lookups;
       await waitFor(() => directory.lookups > mark);
+      const requested = await tool(server.origin, agent.token, "run_workflow", { id: "books", inputs: { routing: "021000021" } });
+      assert.equal(requested.json.outcome, "ok");
+      assert.equal(requested.json.via, "playwright");
+      assert.equal(requested.json.readBack, "021000021");
+      assert.equal(calls.playwright, 1);
+      const read = await tool(server.origin, agent.token, "get_run", { run_id: "run-1" });
+      assert.equal(read.json.outcome, "ok");
+      assert.equal((read.json.outputs as { value: string }[])[0]?.value, "Books");
       const found = await tool(server.origin, agent.token, "search_workflows", { query: "" });
+      assert.equal(found.json.outcome, "ok");
       assert.ok((found.json.hits as { id: string }[]).some((hit) => hit.id === "ext"));
       const ext = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(ext.json.via, "extension");
@@ -366,7 +331,7 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       await auto.stop();
     }
 
-    const missing = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, autoAllow: true });
+    const missing = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {} });
     missing.start();
     try {
       const mark = directory.lookups;
@@ -389,11 +354,15 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
   }
 });
 
-test("resume_workflow during a local confirm returns needs_human and leaves the confirm up", async () => {
+test("remote resume observes an explicit human step and unblocks queued runs after it completes", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-relay-confirm-"));
   const library = new Library(root);
   library.save(workflow("books"));
+  library.save(workflow("next"));
   const token = "confirm-token";
+  let interacted = false;
+  const resumed: string[] = [];
+  const ran: string[] = [];
   mkdirSync(path.join(root, "resumes"));
   writeFileSync(path.join(root, "resumes", `${token}.json`), JSON.stringify({ kind: "confirm" }));
   const { server, directory } = await up();
@@ -409,9 +378,15 @@ test("resume_workflow during a local confirm returns needs_human and leaves the 
       prompts: {},
       stop() {},
       clearStop() {},
-      autoAllow: true,
       runners: {
-        playwright: async () => ({ outcome: "needs_human", resume: token, workflowId: "books" }),
+        playwright: async (id) => {
+          ran.push(id);
+          return id === "books" ? { outcome: "needs_human", resume: token, workflowId: id } : { outcome: "ok", workflowId: id };
+        },
+        resume: async (value) => {
+          resumed.push(value);
+          return interacted ? { outcome: "ok", workflowId: "books" } : { outcome: "needs_human", resume: token, workflowId: "books" };
+        },
       },
     });
     remote.start();
@@ -420,13 +395,21 @@ test("resume_workflow during a local confirm returns needs_human and leaves the 
       const paused = await tool(server.origin, agent.token, "run_workflow", { id: "books" });
       assert.equal(paused.json.outcome, "needs_human");
       assert.equal(paused.json.resume, token);
-      await waitFor(() => remote.view().phase === "confirm");
-      const started = Date.now();
-      const refused = await tool(server.origin, agent.token, "resume_workflow", { resume: token, approved: true });
-      assert.ok(Date.now() - started < 5_000);
-      assert.equal(refused.json.outcome, "needs_human");
-      assert.match(String(refused.json.reason), /Mac/);
-      assert.equal(remote.view().phase, "confirm");
+      await waitFor(() => remote.view().phase === "waiting");
+      const stillWaiting = await tool(server.origin, agent.token, "resume_workflow", { resume: token, approved: true });
+      assert.equal(stillWaiting.json.outcome, "needs_human");
+      assert.equal(remote.view().phase, "waiting");
+      assert.deepEqual(resumed, [token]);
+      assert.deepEqual(ran, ["books"]);
+      const queued = tool(server.origin, agent.token, "run_workflow", { id: "next" });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(ran, ["books"]);
+      interacted = true;
+      const completed = await tool(server.origin, agent.token, "resume_workflow", { resume: token });
+      assert.equal(completed.json.outcome, "ok");
+      assert.equal((await queued).json.outcome, "ok");
+      assert.deepEqual(resumed, [token, token]);
+      assert.deepEqual(ran, ["books", "next"]);
     } finally {
       await remote.stop();
     }
@@ -579,7 +562,7 @@ test("Settings pairs and revokes without putting the token in /api/state", { tim
     const state = await fetch(`http://127.0.0.1:${app.port}/api/state`).then((res) => res.json()) as { relay?: { paired?: boolean; deviceId?: string }; settings?: { remotePermission?: string } };
     assert.equal(state.relay?.paired, true);
     assert.equal(state.relay?.deviceId, pairedBody.deviceId);
-    assert.equal(state.settings?.remotePermission, "deny");
+    assert.equal(state.settings?.remotePermission, undefined);
     assert.equal(JSON.stringify(state).includes("bao_rt_"), false);
     const link = JSON.parse(readFileSync(relayPath(home), "utf8")) as { token: string };
     const mark = directory.lookups;

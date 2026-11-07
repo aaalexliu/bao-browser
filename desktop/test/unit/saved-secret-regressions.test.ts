@@ -135,7 +135,7 @@ test("every replay exit waits for capture before copying and strips only owned w
     { name: "circuit", opts: { circuitOpen: true }, expected: "failed", triage: "circuit" },
     { name: "unresolved", step: { unresolved: { reason: "recorded miss" } }, expected: "failed" },
     { name: "stripped", step: { action: "type", value: STRIPPED_SECRET }, expected: "failed" },
-    { name: "trust pause", opts: { siteTrust: "ask" }, expected: "paused" },
+    { name: "human pause", step: { action: "confirm", human: true }, opts: { yieldHuman: true }, expected: "paused" },
     { name: "passed", step: { action: "note" }, expected: "passed" },
     { name: "skipped", step: { when: { input: "branch", value: "other" } }, expected: "failed" },
     { name: "capture failure", step: { action: "note" }, expected: "passed" },

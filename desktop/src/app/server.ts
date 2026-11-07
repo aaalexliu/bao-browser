@@ -107,7 +107,6 @@ import {
   writePendingPrompt,
 } from "../v1/pending-prompt";
 import { editInput } from "../v1/input-token";
-import { cleanSiteTrust, originOf, trustMode } from "../v1/site-trust";
 import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
@@ -817,7 +816,7 @@ export async function startApp(opts: {
         }
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown };
         const patch: Partial<Settings> = {};
         if (body.keepAgentBrowserOpen !== undefined) {
           if (typeof body.keepAgentBrowserOpen !== "boolean") return json(res, { error: "keepAgentBrowserOpen must be a boolean" }, 400);
@@ -856,11 +855,6 @@ export async function startApp(opts: {
         }
         if (typeof body.syncServer === "string") patch.syncServer = body.syncServer;
         if (typeof body.remoteMcp === "boolean") patch.remoteMcp = body.remoteMcp;
-        if (body.remotePermission === "ask" || body.remotePermission === "deny") patch.remotePermission = body.remotePermission;
-        if ("siteTrust" in body) {
-          const siteTrust = cleanSiteTrust(body.siteTrust);
-          if (siteTrust) patch.siteTrust = siteTrust;
-        }
         if (!Object.keys(patch).length) return json(res, { error: "settings" }, 400);
         return json(res, library.updateSettings(patch));
       }
@@ -1270,20 +1264,9 @@ export async function startApp(opts: {
         clearRelay(library.root);
         return json(res, { ok: true });
       }
-      if (req.method === "POST" && url.pathname === "/api/remote/allow") {
-        remote.allow();
-        return json(res, { ok: true });
-      }
-      if (req.method === "POST" && url.pathname === "/api/remote/deny") {
-        remote.deny();
-        return json(res, { ok: true });
-      }
       if (req.method === "POST" && url.pathname === "/api/remote/kill") {
         remote.kill();
         return json(res, { ok: true });
-      }
-      if (req.method === "POST" && url.pathname === "/api/remote/confirm") {
-        return json(res, await remote.approveConfirm());
       }
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         stopRun = true;
@@ -2807,7 +2790,6 @@ async function runExtension(
       fromStepId: fromStep,
       reviewSteps,
       circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
-      siteTrust: trustMode(settings, originOf(workflow.startUrl)),
       holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
       onPause: (partial) => {
         library.saveRun(persistedRun(partial, workflow, args, {
@@ -2891,7 +2873,6 @@ async function runRecorded(
       fromStepId: fromStep,
       reviewSteps,
       circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
-      siteTrust: trustMode(settings, originOf(workflow.startUrl)),
       // The desktop waits. The proof scores the pause and must not sit on a bot wall.
       holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
       onPause: (partial) => {

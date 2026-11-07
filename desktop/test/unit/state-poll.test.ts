@@ -407,7 +407,7 @@ test("live work stays fast without treating historical results as active", () =>
   assert.equal(activePolling({ liveSessionOpen: false }), false);
   assert.equal(activePolling({ pendingImport: { phase: "running" } }), true);
   assert.equal(activePolling({ remote: { phase: "running" } }), true);
-  assert.equal(activePolling({ remote: { phase: "confirm" } }), true);
+  assert.equal(activePolling({ remote: { phase: "waiting" } }), true);
   for (const status of ["passed", "failed", "paused", "needs_human", "timed-out", "refused"]) {
     assert.equal(activePolling({ runs: [{ id: "run", workflowId: "workflow", status }] }), false);
   }

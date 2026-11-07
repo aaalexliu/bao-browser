@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "../../../shared/saved-secrets";
-import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
+import type { ApplyGate, RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
@@ -37,7 +37,6 @@ import {
   type PageClassRecord,
   type PageSignals,
 } from "./page-class";
-import { consequential, type SiteTrustMode } from "./site-trust";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import {
@@ -260,11 +259,6 @@ export interface ReplayOptions {
   reviewSteps?: ReadonlySet<string>;
   /** Replay starts here. Earlier steps are not run again. */
   fromStepId?: string;
-  /**
-   * Per-site trust for ordinary actions. Absent leaves those actions as they are.
-   * A confirm or login step does not read this.
-   */
-  siteTrust?: SiteTrustMode;
   /** Return as soon as a person must sign in or confirm. The page is not clicked. */
   yieldHuman?: boolean;
   /** The person already acted on this page. Confirm is observed and never pressed. */
@@ -468,7 +462,7 @@ export async function replay(
         if (driver.loginContinued?.()) {
           await driver.clearLoginWait?.();
           endHandoff(driver, gate, step.id);
-          const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+          const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
           repairs.push(...retried.repairs);
           if (retried.ok) {
             stamp({ id: step.id, status: "passed", ...(retried.recovered ? { reason: `recovered: ${retried.recovered}` } : {}) });
@@ -512,7 +506,7 @@ export async function replay(
         }
       }
     }
-    if (!outcome) outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+    if (!outcome) outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
     if (!outcome.ok && "failure" in outcome && (outcome.failure.reason === "cancelled" || driver.shouldStop?.())) {
       const failure = { ...outcome.failure, reason: "cancelled" };
       stamp({ id: step.id, status: "failed", reason: "cancelled", phase: "action" });
@@ -529,7 +523,7 @@ export async function replay(
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
-        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+        outcome = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
         repairs.push(...outcome.repairs);
       }
     }
@@ -548,7 +542,7 @@ export async function replay(
       continue;
     }
     if ("paused" in outcome) {
-      const reason = outcome.paused === "trust" ? "always ask" : outcome.paused === "signin" ? "sign in" : "confirm";
+      const reason = outcome.paused === "signin" ? "sign in" : "confirm";
       stamp({ id: step.id, status: "paused", reason });
       noteTrajectory(trajectory, step, undefined, true, clock() - started);
       const pausedKind = outcome.paused === "signin" || outcome.paused === "confirm" ? outcome.paused : undefined;
@@ -577,7 +571,7 @@ export async function replay(
         if (await dismissNamed(driver, missed)) {
           recovery.used += 1;
           repairs.push({ stepId: step.id, repair: "overlay", detail: missed.reason });
-          const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+          const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
           repairs.push(...retried.repairs);
           if (retried.ok) {
             stamp({ id: step.id, status: "passed", reason: "recovered: clutter" });
@@ -585,7 +579,7 @@ export async function replay(
             continue;
           }
           if ("paused" in retried) {
-            const reason = retried.paused === "trust" ? "always ask" : retried.paused === "signin" ? "sign in" : "confirm";
+            const reason = retried.paused === "signin" ? "sign in" : "confirm";
             stamp({ id: step.id, status: "paused", reason });
             return finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: retried.paused === "signin" || retried.paused === "confirm" ? retried.paused : undefined, ask: retried.ask });
           }
@@ -705,13 +699,13 @@ export async function replay(
     }
     const patched = applyPatch(step, proposal.patch);
     pictured = patched;
-    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, opts.siteTrust, tables);
+    const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
     repairs.push(...retried.repairs);
     record.executed = { action: patched.action, identity: patched.identity };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
-      const reason = retried.paused === "trust" ? "always ask" : retried.paused === "signin" ? "sign in" : "confirm";
+      const reason = retried.paused === "signin" ? "sign in" : "confirm";
       stamp({ id: step.id, status: "paused", reason });
       noteTrajectory(trajectory, patched, undefined, true, clock() - started);
       const pausedKind = retried.paused === "signin" || retried.paused === "confirm" ? retried.paused : undefined;
@@ -780,7 +774,7 @@ export function runPassed(
 type StepOutcome =
   | { ok: true; repairs: RepairLog[]; acted?: Identity; authRecovered?: boolean; recovered?: string; note?: string; detail?: string; skipped?: true }
   | { ok: false; failure: StepFailure; repairs: RepairLog[]; acted?: Identity }
-  | { ok: false; paused: "confirm" | "trust" | "signin"; repairs: RepairLog[]; ask?: HumanAsk };
+  | { ok: false; paused: "confirm" | "signin"; repairs: RepairLog[]; ask?: HumanAsk };
 
 interface RecoveryBudget {
   used: number;
@@ -799,7 +793,6 @@ async function runStep(
   gate: ApplyGate,
   recovery: RecoveryBudget,
   extra?: ReadBack,
-  trust?: SiteTrustMode,
   tables?: Map<string, Record<string, string>[]>,
   appending = false,
 ): Promise<StepOutcome> {
@@ -812,7 +805,7 @@ async function runStep(
     const bag = tables ?? new Map();
     const data = await performDataStep(step, args, bag, driver, appending, async (nested, nestedArgs) => {
       const inner = await runStep(
-        workflow, nested, nestedArgs, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, undefined, trust, bag, true,
+        workflow, nested, nestedArgs, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, undefined, bag, true,
       );
       if (inner.ok) return { ok: true };
       if ("failure" in inner) return { ok: false, reason: inner.failure.reason };
@@ -843,7 +836,7 @@ async function runStep(
       return { ok: false, repairs, failure: await fail(driver, step, "wait_for", checkReason(step.waitFor), undefined, secrets) };
     }
   }
-  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery, trust);
+  const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery);
   if (!outcome.ok || outcome.skipped) return outcome;
   if (step.gone) {
     const left = await holdCheck(step.gone, args, driver, false);
@@ -874,16 +867,12 @@ async function runStepAction(
   locatorMode: LocatorMode,
   gate: ApplyGate,
   recovery: RecoveryBudget,
-  trust?: SiteTrustMode,
 ): Promise<StepOutcome> {
   if (step.action === "login") return runLogin(gate.workflow, step, args, driver, secrets, gate);
   const seen = await driver.tree();
   const miss = authPreconditionMiss(gate.workflow.precondition, seen.url);
   if (miss) return { ok: false, repairs, failure: await fail(driver, step, "auth", miss, undefined, secrets) };
   if (step.action === "confirm") return runConfirm(step, args, driver, secrets, gate);
-  if (trust === "ask" && !consequential(step) && step.action !== "verify" && step.action !== "note") {
-    return { ok: false, paused: "trust", repairs };
-  }
   if (step.action === "download" || step.action === "open" || step.datePicker) {
     return runFilesDatesStep(step, args, driver, secrets, repairs, gate, recovery);
   }
@@ -1012,10 +1001,12 @@ async function dismissCover(
   // removes the step's control. An overlay whose target is outside the dialog
   // is still dismissed.
   if (block.kind === "modal" && targetInsideDialog(step, tree)) return undefined;
-  const cleared = block.kind === "spinner"
-    ? await waitSpinner(driver, step)
-    : block.node ? await guardedClick(driver, gate, step.id, block.node) : false;
-  if (!cleared) return undefined;
+  if (block.kind === "spinner") {
+    if (!await waitSpinner(driver, step)) return undefined;
+  } else {
+    if (!block.node) return undefined;
+    await recordedClick(driver, gate, step.id, block.node);
+  }
   repairs.push({ stepId: step.id, repair: "overlay", detail: block.kind });
   budget.used += 1;
   return block.kind;
@@ -1208,7 +1199,7 @@ async function openReveal(
   if (!pick) return false;
   const node = tree.nodes[pick.index];
   if (!node) return false;
-  if (!await guardedClick(driver, gate, step.id, node)) return false;
+  await recordedClick(driver, gate, step.id, node);
   // The opened field replaces the collapsed one. Wait until that swap settles
   // before the next dump, or the handle is on a node fill cannot use.
   await (driver.sleep ? driver.sleep(300) : sleep(300));
@@ -1476,7 +1467,7 @@ async function fillSecretLogin(
   const user = tree.nodes.find((node) => node.id === "username" || node.nameAttr === "username");
   if (user && username) await driver.fill(user, username, false);
   const cont = tree.nodes.find((node) => node.id === "continue" || node.testId === "login-continue");
-  if (cont) await guardedClick(driver, gate, "login", cont);
+  if (cont) await recordedClick(driver, gate, "login", cont);
   tree = await driver.tree();
   const pass = tree.nodes.find((node) => node.id === "password" || node.nameAttr === "password" || node.role === "password");
   if (!pass) throw new Error("password field missing");
@@ -1491,26 +1482,24 @@ async function fillSecretLogin(
   if (hold > 0) await (driver.sleep ? driver.sleep(hold) : sleep(hold));
   tree = await driver.tree();
   const sign = tree.nodes.find((node) => node.id === "signin" || node.testId === "login-submit");
-  if (sign) await guardedClick(driver, gate, "login", sign);
+  if (sign) await recordedClick(driver, gate, "login", sign);
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
   const code = tree.nodes.find((node) => node.id === "code" || node.testId === "verify-code");
   if (code && verifyCode) {
     await driver.fill(code, verifyCode, false);
     const button = tree.nodes.find((node) => node.id === "verify" || node.testId === "verify-submit");
-    if (button) await guardedClick(driver, gate, "login", button);
+    if (button) await recordedClick(driver, gate, "login", button);
   }
 }
 
-async function guardedClick(driver: Driver, gate: ApplyGate, stepId: string, node: Identity): Promise<boolean> {
-  if (!applyAllowed(gate.workflow, gate.trail, node)) return false;
+async function recordedClick(driver: Driver, gate: ApplyGate, stepId: string, node: Identity): Promise<void> {
   await driver.click(node);
   gate.trail.push({
     kind: "click",
     stepId,
     target: node.testId || node.id || node.text || node.name || node.role,
   });
-  return true;
 }
 
 async function poll(
@@ -1729,9 +1718,7 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     const answer = String(args[step.input] ?? "");
     if (answer) driver.answerDialog(answer);
   }
-  if (!await guardedClick(driver, gate, step.id, node)) {
-    throw new Error("refusing to click Apply without a human confirm");
-  }
+  await recordedClick(driver, gate, step.id, node);
 }
 
 export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {

@@ -177,13 +177,6 @@ const SCHEMA = [
     permission text NOT NULL,
     PRIMARY KEY (workflow_id, user_id)
   )`,
-  `CREATE TABLE IF NOT EXISTS listing_allows (
-    user_id text NOT NULL REFERENCES users(id),
-    workflow_id text NOT NULL REFERENCES workflows(id),
-    trust text NOT NULL,
-    at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, workflow_id)
-  )`,
   `CREATE TABLE IF NOT EXISTS reports (
     id text PRIMARY KEY,
     workflow_id text NOT NULL REFERENCES workflows(id),
@@ -226,13 +219,14 @@ const SCHEMA = [
     workflow_id text,
     status text NOT NULL,
     outcome text,
-    policy jsonb NOT NULL,
+    policy jsonb NOT NULL DEFAULT '{}'::jsonb,
     args jsonb NOT NULL,
     result jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
     claimed_at timestamptz,
     finished_at timestamptz
   )`,
+  `ALTER TABLE agent_jobs ALTER COLUMN policy SET DEFAULT '{}'::jsonb`,
   `ALTER TABLE agent_jobs ADD COLUMN IF NOT EXISTS events jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE TABLE IF NOT EXISTS relay_tokens (
     id text PRIMARY KEY,

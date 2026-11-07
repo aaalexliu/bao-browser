@@ -4,7 +4,6 @@ import fc from "fast-check";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { applyAllowed, guardsApply, isApplyTarget } from "../../src/v1/apply-guard";
 import { authPreconditionMiss, pathMatches } from "../../src/v1/auth";
 import { loginDocument, loginRedirect, readCookie, sessionStatus } from "../../src/v1/freeze-session";
 import { interpret } from "../../src/v1/interpret";
@@ -214,50 +213,23 @@ test("the human handoff signs in and replay stops at confirm", async () => {
   assert.equal(driver.confirmLabel, "Confirm before Apply");
 });
 
-test("replay paths do not click Apply without a human confirm event", async () => {
+test("an Apply click runs before a later explicit human confirm", async () => {
   const workflow = freezeWorkflow();
-  assert.equal(guardsApply(workflow), true);
-  assert.equal(applyAllowed(workflow, [], ident({ testId: "apply", text: "Apply" })), false);
-  assert.equal(applyAllowed(workflow, [{ kind: "human-confirm", stepId: "c" }], ident({ testId: "apply", text: "Apply" })), true);
-  assert.equal(isApplyTarget(ident({ testId: "overlay-close", text: "Dismiss" })), false);
-
-  const healClicks: string[] = [];
-  const missing = tree([ident({ role: "button", testId: "apply", text: "Apply" })], {
-    url: "http://127.0.0.1/freeze",
-    texts: ["Apply"],
-  });
-  const broken = structuredClone(workflow);
-  broken.steps[1]!.identity = ident({ role: "radio", id: "missing-frozen", text: "Frozen" });
-  broken.steps[1]!.expect = undefined;
-  broken.steps[1]!.readBack = undefined;
-  const healed = await replay(broken, {}, driverWith(healClicks, [missing, missing]), {
-    heal: {
-      available: () => true,
-      propose: async () => ({
-        patch: { identity: ident({ role: "button", testId: "apply", text: "Apply" }) },
-        model: { provider: "cursor", name: "cursor", version: "live" },
-        prompt: "apply",
-        rawResponse: "{}",
-      }),
-    },
-  });
-  assert.equal(healClicks.includes("apply"), false);
-  assert.equal(healed.trail.some((event) => event.kind === "human-confirm"), false);
-  assert.notEqual(healed.status, "passed");
-
-  const repairClicks: string[] = [];
-  const covered = tree([
-    ident({ role: "dialog", testId: "overlay", text: "A notice" }),
-    ident({ role: "button", testId: "overlay-close", text: "Apply" }),
-    ident({ id: "frozen", role: "radio", nameAttr: "freeze", text: "Frozen" }),
-  ], { url: "http://127.0.0.1/freeze", texts: ["Status: none", "Frozen", "Apply"], flags: [{}, {}, { checked: true }] });
-  const repaired = await replay(workflow, {}, driverWith(repairClicks, [covered, covered, covered]), {
-    heal: { available: () => true, propose: async () => { throw new Error("heal"); } },
-  });
-  assert.equal(repairClicks.includes("apply"), false);
-  assert.equal(repairClicks.includes("overlay-close"), false);
-  assert.equal(repaired.trail.some((event) => event.kind === "human-confirm"), false);
-  assert.equal(repaired.status, "paused");
+  workflow.precondition = undefined;
+  workflow.inputs = [];
+  workflow.steps = [
+    { id: "apply", index: 0, action: "click", label: "Apply", surface: "dom", timeoutMs: 0,
+      identity: ident({ testId: "apply", text: "Apply" }) },
+    { id: "wait", index: 1, action: "confirm", human: true, label: "You confirm", surface: "dom", timeoutMs: 0 },
+  ];
+  const clicks: string[] = [];
+  const page = tree([ident({ testId: "apply", text: "Apply" })]);
+  const result = await replay(workflow, {}, driverWith(clicks, [page, page]), { yieldHuman: true });
+  assert.deepEqual(clicks, ["apply"]);
+  assert.equal(result.steps[0]?.status, "passed");
+  assert.equal(result.status, "paused");
+  assert.equal(result.pausedKind, "confirm");
+  assert.equal(result.trail.some((event) => event.kind === "human-confirm"), false);
 });
 
 test("the local fixture redirects logged-out and expired sessions and hides the secret", async () => {

@@ -46,7 +46,7 @@
       "desktop/test/unit/input-token.test.ts",
       "desktop/test/unit/owner-auth.test.ts",
       "desktop/test/unit/relay.test.ts",
-      "desktop/test/unit/remote-policy.test.ts",
+      "desktop/test/unit/audit-redact.test.ts",
       "desktop/test/unit/run-pass.test.ts",
       "desktop/test/unit/save-workflow.test.ts",
       "desktop/test/unit/saved-secret-regressions.test.ts",

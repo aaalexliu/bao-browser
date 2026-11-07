@@ -85,17 +85,3 @@ export function hostGrantPlan(pattern: string, granted: readonly string[], grant
   if (grantMs <= 0) return { action: "needs_human", message: hostGrantMessage(pattern, "timeout") };
   return { action: "prompt" };
 }
-
-/** A secret is typed only when the tab is still on the origin the workflow opened. */
-export function secretStaysOnWorkflowOrigin(tabUrl: string, workflowOrigin: string): boolean {
-  if (!workflowOrigin) return false;
-  try {
-    const tab = new URL(tabUrl);
-    const pinned = new URL(workflowOrigin);
-    if (tab.protocol !== "http:" && tab.protocol !== "https:") return false;
-    if (pinned.protocol !== "http:" && pinned.protocol !== "https:") return false;
-    return tab.origin === pinned.origin;
-  } catch {
-    return false;
-  }
-}
