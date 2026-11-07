@@ -47,7 +47,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
     });
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
-      const state = await response.json();
+      const state = await response.json() as StateFixture;
       await route.fulfill({ json: { ...state, activeAsk: live ? {
         ...makeAsk({ kind: "confirm", workflowId: workflow.id, workflowName: workflow.name, stepId: "s", stepIndex: 1, stepCount: 1, label: "Continue", timeoutMs: 120_000 }), runId: "focus-run",
       } : null } });
