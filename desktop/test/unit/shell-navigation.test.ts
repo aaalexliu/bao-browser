@@ -274,12 +274,15 @@ test("Workflows list keeps long names, search recovery, warnings and actions rea
   app.library.saveRun({ id: "other", workflowId: "short", status: "passed", at: 10, steps: [], heals: [] });
   const damaged = path.join(home, "workflows", "damaged.json");
   await writeFile(damaged, "{");
-  const page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
+  let page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
   try {
     for (const theme of ["light", "dark"]) {
+      if (theme === "dark") {
+        await page.close();
+        page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
+      }
+      await page.addInitScript((value) => localStorage.setItem("bao-theme", value), theme);
       await page.goto(`http://127.0.0.1:${app.port}`);
-      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
-      await page.reload();
       await page.locator("#rail [data-place=workflows]").click();
       await page.locator("#workflow-list").waitFor();
       assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-describedby"), "workflow-warning-description");

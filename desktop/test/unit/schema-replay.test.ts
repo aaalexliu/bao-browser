@@ -227,7 +227,7 @@ test("property: interpret drops secret input data and paths while preserving emb
     assert.equal(blob.includes(secret), false);
     const effects: [TrailEvent, string | undefined][] = [
       [events[0]!, undefined],
-      [{ ...events[2]!, afterText: `leaked ${secret}` }, `leaked ${secret}`],
+      [{ ...events[2]!, literal: true, afterText: `leaked ${secret}` }, `leaked ${secret}`],
     ];
     for (const [event, match] of effects) {
       const effect = interpret([event], { id: "effect", startUrl: "https://example.test/", secrets: [secret] });
@@ -235,7 +235,7 @@ test("property: interpret drops secret input data and paths while preserving emb
     }
     assert.equal(blob.includes(filePath), false);
     assert.equal(canonical(doc), canonical(interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] })));
-  }), { numRuns: 40 });
+  }), { numRuns: 40, examples: [["ZZa0a00a0a", "/tmp/bao-0a000a.pdf", "ake"]] });
 });
 
 function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
