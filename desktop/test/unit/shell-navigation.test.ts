@@ -129,8 +129,8 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     ] as const) {
       await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
       await page.reload();
-      await navigate("runs", "runs");
-      assert.equal(await page.locator("[data-open-run=run-shell]").evaluate((element) => getComputedStyle(element).color), linkColor);
+      await navigate("live", "runs");
+      assert.equal(await page.locator("#runs [data-open-run=run-shell]").evaluate((element) => getComputedStyle(element).color), linkColor);
       await navigate("library", "workflows");
       const title = page.getByRole("button", { name: workflow.name, exact: true });
       assert.ok((await title.boundingBox())!.height < 32);

@@ -176,6 +176,18 @@ test("footer follows replay start and end when no other state changes", { timeou
     assert.equal(await page.locator("#attention-label").innerText(), "Sign-in needs you · 1 step needs review");
     assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "2");
     assert.equal(await page.locator("html").getAttribute("data-badge"), "2");
+    for (const width of [1280, 720, 320]) {
+      await page.setViewportSize({ width, height: 820 });
+      const names = await page.locator('#runs ul[aria-label="Needs you"] .run-name').evaluateAll((nodes) => nodes.map((node) => {
+        const glyph = node.parentElement!.querySelector(".run-glyph")!;
+        return { text: node.textContent, fits: node.scrollWidth <= node.clientWidth, beside: node.getBoundingClientRect().left >= glyph.getBoundingClientRect().right };
+      }));
+      assert.deepEqual(names, [
+        { text: "Sign-in needs you", fits: true, beside: true },
+        { text: "Read account", fits: true, beside: true },
+      ], `attention names fit beside glyphs at ${width}px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 820 });
     await page.locator(".rail-foot").click();
     await page.locator("#login-site").waitFor();
   } finally {
@@ -211,7 +223,7 @@ test("Runs first load opens the top Needs-you run, else newest, without replacin
     await page.locator('#screen-list [data-screen=runs]').click();
     await page.locator('#run-receipt').waitFor();
     assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
-    await page.locator('[data-open-run=newest]').click();
+    await page.locator('#runs [data-open-run=newest]').click();
     app.library.saveRun({ id: "another", workflowId: "agent-browser", status: "paused", at: 400, steps: [], heals: [] });
     await page.waitForFunction(() => document.querySelector('#attention')?.getAttribute('data-count') === '2');
     assert.equal(await page.locator('#runs [aria-current=true]').first().getAttribute("data-open-run"), "newest");
@@ -268,7 +280,7 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
     assert.deepEqual(await page.locator('#runs ul[aria-label="Needs you"] button:has(.run-state.paused)').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run")).sort()), ["human", "signin"], "only current human and sign-in waits contribute waiting rows");
     assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "4", "two waits, one timeout and one failure need attention");
     for (const item of cases) {
-      await page.locator(`[data-open-run="${item.id}"]`).first().click();
+      await page.locator(`#runs [data-open-run="${item.id}"]`).first().click();
       await page.locator("#run-receipt").waitFor();
       assert.equal((await page.locator("#run-receipt").innerText()).includes(item.ask), true, "ended runs retain the original ask as information");
       assert.equal(await page.locator(".receipt-handoff").count(), item.waiting ? 1 : 0, item.id);
@@ -331,7 +343,7 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     assert.doesNotMatch(await page.locator("#runs").innerText(), /raw-/);
     assert.doesNotMatch(await history.locator("[data-open-run=raw-failed]").innerText(), /model calls/);
     assert.equal(await page.locator('#runs section[aria-label="Now"] [data-open-run=raw-paused]').count(), 1);
-    assert.match(await page.locator("[data-open-run=raw-old]").innerText(), /Passed/);
+    assert.match(await page.locator("#runs [data-open-run=raw-old]").innerText(), /Passed/);
     assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 2);
     const row = history.locator("[data-open-run=raw-failed]");
     await row.focus();
@@ -349,7 +361,7 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     assert.equal(receipt.run.modelCalls, null);
     await page.getByText("Detailed evidence", { exact: true }).click();
     assert.equal(await page.locator("#run-viewer").isVisible(), true);
-    await page.locator("[data-open-run=raw-browser]").click();
+    await page.locator("#runs [data-open-run=raw-browser]").click();
     await page.getByRole("button", { name: "Next steps", exact: true }).click();
     await page.waitForFunction(() => document.querySelector(".receipt-steps")?.getAttribute("start") === "21");
     assert.equal(await page.locator(".receipt-steps li").count(), 1);
@@ -416,8 +428,8 @@ test("running Runs groups history, opens shared receipts, survives polling and r
         await page.reload();
         await page.locator("#runs").waitFor();
         assert.equal(await page.locator("#runs .run-name").first().evaluate((node) => getComputedStyle(node.parentElement!).textAlign), "start");
-        await page.locator("[data-open-run=raw-failed]").first().focus();
-        assert.notEqual(await page.locator("[data-open-run=raw-failed]").first().evaluate((node) => getComputedStyle(node).outlineStyle), "none");
+        await page.locator("#runs [data-open-run=raw-failed]").first().focus();
+        assert.notEqual(await page.locator("#runs [data-open-run=raw-failed]").first().evaluate((node) => getComputedStyle(node).outlineStyle), "none");
         await page.keyboard.press("Enter");
         await page.locator("#run-receipt").waitFor();
         assert.equal(await page.locator("#content").evaluate((node) => node.scrollWidth <= node.clientWidth + 1), true, `${theme} ${width}px`);
