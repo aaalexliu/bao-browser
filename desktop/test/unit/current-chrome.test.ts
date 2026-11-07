@@ -147,7 +147,7 @@ test("current Chrome reports a missing checkbox and audits only actual presses",
   }
 });
 
-test("native commands outlive the consent polling deadline", async (t) => {
+test("native commands outlive the former consent deadline", async (t) => {
   const f = await fixture(true);
   try {
     const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
@@ -165,8 +165,52 @@ test("native commands outlive the consent polling deadline", async (t) => {
     });
     await Promise.resolve();
     t.mock.timers.tick(26_000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    t.mock.timers.tick(250);
     assert.equal(oldDeadline.aborted, true);
     assert.equal(await pending, "slow native output");
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("consent retries transient errors and approves connections that start after 25 seconds", async (t) => {
+  const f = await fixture(true);
+  try {
+    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+    for (const delay of [0, 27_000]) {
+      const started = Date.now();
+      let pendingSheet = false;
+      let attempts = 0;
+      let approvals = 0;
+      let approved!: () => void;
+      const result = { stdout: "connected native output", stderr: "native warning", exitCode: 0 };
+      f.deps.helper!.exec = async () => {
+        attempts++;
+        if (attempts === 1) throw new Error("transient AX failure");
+        if (!pendingSheet) return { ok: true, found: false, pressed: false };
+        pendingSheet = false;
+        approvals++;
+        assert.ok(Date.now() - started >= delay);
+        approved();
+        return { ok: true, found: true, pressed: true };
+      };
+      const pending = chrome.withConsent(async (signal) => {
+        await new Promise<void>(resolve => {
+          approved = resolve;
+          setTimeout(() => { pendingSheet = true; }, delay);
+        });
+        signal.throwIfAborted();
+        return result;
+      });
+      for (let elapsed = 0; elapsed < delay + 1000; elapsed += 250) {
+        t.mock.timers.tick(250);
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+      assert.equal(approvals, 1);
+      assert.ok(attempts >= 2);
+      assert.deepEqual(await pending, result);
+    }
     chrome.detach();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
@@ -251,7 +295,11 @@ test("a failed handshake closes the pending CDP connection without closing Chrom
       }
       return exec(args, timeout);
     };
-    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /cdp disconnected/);
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), (error: Error) => {
+      assert.match(error.message, /cdp disconnected/);
+      assert.match((error.cause as Error).message, /Allow failed/);
+      return true;
+    });
     assert.equal(f.state.closed, true);
     assert.ok(!f.state.cdpCalls.some(call => call.method === "Browser.close"));
   } finally { await rm(f.root, { recursive: true, force: true }); }
@@ -326,7 +374,33 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     assert.ok(afterOpen.targetInfos.filter(target => target.type === "page").every(target => target.attached === false), "recording detaches its per-page CDP sessions");
     const stateDir = await readFile(stateMarker, "utf8");
     await rm(path.join(stateDir, "bao.pid"));
-    assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+    t.mock.method(AbortSignal, "timeout", (ms: number) => {
+      const abort = new AbortController();
+      setTimeout(() => abort.abort(new DOMException("Timed out", "TimeoutError")), ms);
+      return abort.signal;
+    });
+    const oldMetadataDeadline = AbortSignal.timeout(5000);
+    const execFile = childProcess.execFile;
+    let setupStarted!: () => void;
+    const starting = new Promise<void>(resolve => { setupStarted = resolve; });
+    let delayed = false;
+    t.mock.method(childProcess, "execFile", (file: string, args: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
+      callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
+      if (!delayed && args.includes("new")) {
+        delayed = true;
+        setupStarted();
+        setTimeout(() => execFile(file, args, options, callback), 27_000);
+        return new EventEmitter();
+      }
+      return execFile(file, args, options, callback);
+    });
+    const recovered = proxy.execute("snapshot");
+    await starting;
+    t.mock.timers.tick(27_000);
+    assert.equal(oldMetadataDeadline.aborted, true);
+    assert.equal((await recovered)[0]!.exitCode, 0);
+    t.mock.timers.reset();
     const afterReset = await cdp.send<typeof afterOpen>("Target.getTargets");
     assert.equal(pageIds(afterReset).length, pageIds(afterOpen).length + 1);
     for (const owner of before.targetInfos.filter(target => target.type === "page")) {

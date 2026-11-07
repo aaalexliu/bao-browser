@@ -96,7 +96,7 @@ function helperError(message: string): Error {
   return new Error(message);
 }
 
-function runBin(bin: string, args: string[], timeoutMs = 20000): Promise<AxHit> {
+function runBin(bin: string, args: string[]): Promise<AxHit> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
@@ -107,7 +107,7 @@ function runBin(bin: string, args: string[], timeoutMs = 20000): Promise<AxHit> 
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`os helper timed out: ${args[0]}`));
-    }, timeoutMs);
+    }, 20000);
     child.on("close", (code) => {
       clearTimeout(timer);
       try { resolve(parseHit(out, err, code)); } catch (e) { reject(e); }
@@ -155,7 +155,7 @@ async function runApp(app: string, args: string[], timeoutMs = 45000): Promise<A
 }
 
 function run(bin: string, args: string[], timeoutMs?: number): Promise<AxHit> {
-  return bin.endsWith(".app") ? runApp(bin, args, timeoutMs) : runBin(bin, args, timeoutMs);
+  return bin.endsWith(".app") ? runApp(bin, args, timeoutMs) : runBin(bin, args);
 }
 
 function identity(target: OsTarget): string[] {

@@ -269,13 +269,13 @@ export class AgentBrowserProxy {
   }
 
   private async activePage(session: Session): Promise<{ targetId: string; page: OwnerPage } | undefined> {
-    const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(5000)]);
-    const tabs = await this.run(session, "tab", ["list", "--json"], signal);
+    const tabs = await this.run(session, "tab", ["list", "--json"], 5000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
     const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
     const active = parsed.data?.tabs?.find((tab) => tab.active);
     if (!active?.targetId) return undefined;
     // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
+    const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(2000)]);
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal });
     try {
       const { targetInfo } = await cdp.send<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, 2000);
@@ -409,6 +409,11 @@ export class AgentBrowserProxy {
       || session.kind === "current" && !session.taskTabPid) throw new Error("page closed");
     await this.detectOwnerWall(session);
     if (session.ownerWait) throw new Error("owner input is private");
+    const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
+    if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
+    const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
+    const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+    if (!targetId) throw new Error("no active page");
     const deadline = Date.now() + 3000;
     const remaining = () => Math.max(1, deadline - Date.now());
     const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(3000)]);
@@ -417,11 +422,6 @@ export class AgentBrowserProxy {
     const close = () => { if (session.kind === "copy") cdp?.close(); };
     signal.addEventListener("abort", close, { once: true });
     try {
-      const tabs = await this.run(session, "tab", ["list", "--json"], signal);
-      if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
-      const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
-      const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
-      if (!targetId) throw new Error("no active page");
       cdp = await this.connectSession(session, { signal, timeoutMs: remaining() });
       if (signal.aborted) throw new Error("screenshot timed out");
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, remaining());
@@ -437,9 +437,10 @@ export class AgentBrowserProxy {
     }
   }
 
-  private async run(session: Session, command: string, args: string[], signal = session.abort.signal): Promise<AgentBrowserCommandResult> {
+  private async run(session: Session, command: string, args: string[], readTimeoutMs?: number): Promise<AgentBrowserCommandResult> {
     if (this.disconnected) throw new Error("agent-browser client disconnected");
-    const execute = (command: string, args: string[], childSignal: AbortSignal) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
+    const execute = (command: string, args: string[], timeoutMs?: number) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
+      const childSignal = timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
       execFile(session.executable, [...session.flags, command, ...args], {
         cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: childSignal,
       }, (error, stdout, stderr) => {
@@ -447,8 +448,8 @@ export class AgentBrowserProxy {
         resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
       });
     });
-    if (session.kind === "copy") return execute(command, args, signal);
-    return session.chrome.withConsent(async (childSignal) => {
+    if (session.kind === "copy") return execute(command, args, readTimeoutMs);
+    return session.chrome.withConsent(async () => {
       const pidFile = path.join(session.stateDir, "bao.pid");
       const pid = await readFile(pidFile, "utf8").catch(() => undefined);
       let running = false;
@@ -458,12 +459,12 @@ export class AgentBrowserProxy {
       }
       if (!running || pid !== session.taskTabPid) {
         session.taskTabPid = undefined;
-        const tab = await execute("tab", ["new"], childSignal);
+        const tab = await execute("tab", ["new"]);
         if (tab.exitCode !== 0) return tab;
         session.taskTabPid = await readFile(pidFile, "utf8");
       }
-      return execute(command, args, childSignal);
-    }, signal);
+      return execute(command, args, readTimeoutMs);
+    }, session.abort.signal);
   }
 
   private async remove(session: Session, keepOpen = false): Promise<void> {

@@ -27,20 +27,25 @@ export interface CurrentChrome {
 async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, axLog: string,
   operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
   const signal = parent ?? new AbortController().signal;
-  const deadline = Date.now() + 25_000;
   signal.throwIfAborted();
   let finished = false;
+  let pollError: unknown;
   const pending = operation(signal).finally(() => { finished = true; });
   void pending.catch(() => undefined);
-  while (!finished && Date.now() < deadline) {
-    signal.throwIfAborted();
-    try {
-      const hit = await helper.exec(["debug-allow", "--pid", String(pid), "--press"], 5000);
-      if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
-    } catch { break; }
-    if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
+  try {
+    while (!finished) {
+      signal.throwIfAborted();
+      try {
+        const hit = await helper.exec(["debug-allow", "--pid", String(pid), "--press"], 5000);
+        if (hit.pressed) await logAx(axLog, { what: "AXPress", role: "AXButton", name: "Allow", window: "Allow remote debugging?", at: new Date().toISOString(), via: "BaoOSHelper" });
+      } catch (error) { pollError = error; }
+      if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return await pending;
+  } catch (error) {
+    if (error instanceof Error && pollError !== undefined) error.cause ??= pollError;
+    throw error;
   }
-  return pending;
 }
 
 export async function openCurrentChrome(options: {
