@@ -112,8 +112,8 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     if (bare) {
       assert.equal(startSite, "https://fixture.test/");
       assert.equal(importCalls[0], new URL(fixture.url("/")).origin);
-      const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
-      assert.equal(commands.find((entry) => entry.command === "open").args.at(-1), "fixture.test");
+      const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string; args: string[] });
+      assert.equal(commands.find((entry) => entry.command === "open")!.args.at(-1), "fixture.test");
     }
     const library = new Library(home);
     const initial = library.listRuns()[0]!;

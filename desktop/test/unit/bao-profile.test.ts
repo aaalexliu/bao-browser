@@ -125,7 +125,7 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
   let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
   try {
     chrome = await openBaoChromeForProxy(options);
-    assert.equal(JSON.parse(await readFile(marker, "utf8")).pid, process.pid);
+    assert.equal((JSON.parse(await readFile(marker, "utf8")) as { pid: number }).pid, process.pid);
     await assert.rejects(openBaoChromeForProxy(options), /already open/);
     const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
     assert.equal(dead.status, 0);
@@ -134,10 +134,10 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
     await writeFile(marker, JSON.stringify({ pid }));
     chrome = await openBaoChromeForProxy(options);
     assert.notDeepEqual(launches.pidsForDataDir(profile), []);
-    assert.equal(JSON.parse(await readFile(marker, "utf8")).pid, process.pid);
+    assert.equal((JSON.parse(await readFile(marker, "utf8")) as { pid: number }).pid, process.pid);
     slowClose = true;
     await chrome.close();
-    assert.equal(JSON.parse(await readFile(marker, "utf8")).retained, true);
+    assert.equal((JSON.parse(await readFile(marker, "utf8")) as { retained: boolean }).retained, true);
     slowClose = false;
     chrome = await openBaoChromeForProxy(options);
     assert.notDeepEqual(launches.pidsForDataDir(profile), []);
@@ -330,10 +330,10 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     if (!native) assert.equal((await commands()).filter((entry) => entry.command === "open").length, scenario === "stale SSO" || scenario === "newer anonymous wall" ? 2 : 1, JSON.stringify(results));
     assert.equal(launchCount, 2, "each open extracts source cookies only once for each needed origin");
     if (scenario === "signed-out wall" || scenario === "unavailable SSO source") {
-      assert.equal(JSON.parse(results[0]!.stdout).outcome, "halted");
+      assert.equal((JSON.parse(results[0]!.stdout) as { outcome: string }).outcome, "halted");
     } else {
       if (!native) assert.equal(results[0]!.stdout, "Opened\n");
-      else assert.notEqual(JSON.parse(results[0]!.stdout.startsWith("{") ? results[0]!.stdout : "{}").outcome, "halted", "valid source sign-in must recover without owner input");
+      else assert.notEqual((JSON.parse(results[0]!.stdout.startsWith("{") ? results[0]!.stdout : "{}") as { outcome?: string }).outcome, "halted", "valid source sign-in must recover without owner input");
       const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
       observer = await connectCdp(endpoint.port, endpoint.browserPath);
       const { targetInfos } = await observer.send<{ targetInfos: { type: string; url: string; targetId: string }[] }>("Target.getTargets");
@@ -352,7 +352,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
         assert.equal((await cookies()).find((cookie) => cookie.name === "session")?.value, "fresh");
         assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
         const wall = await proxy.execute("open", [`${site}/login`]);
-        assert.equal(JSON.parse(wall[0]!.stdout).outcome, "halted", "a failed wall snapshot falls through to owner wait");
+        assert.equal((JSON.parse(wall[0]!.stdout) as { outcome: string }).outcome, "halted", "a failed wall snapshot falls through to owner wait");
         assert.equal(launchCount, 3, "wall handling reuses the failed open snapshot without another source launch");
       }
       if (scenario === "signed-out home") {
@@ -369,7 +369,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
   } finally {
     try { await proxy.close(); }
     finally {
-      await observer?.close();
+      observer?.close();
       await launches.closeRetainedChrome(profile);
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
