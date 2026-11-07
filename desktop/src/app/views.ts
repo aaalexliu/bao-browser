@@ -95,6 +95,7 @@ export interface RunSummary {
   pageEngine?: "old" | "agent-browser";
   allowCommit?: boolean;
   workflowId: string;
+  task?: string;
   status: string;
   at?: number;
   modelCalls?: number;
@@ -1769,7 +1770,73 @@ export function versionsPanel(versions: VersionRow[]): string {
   </section>`;
 }
 
+const AGENT_SESSION_WORDS: Record<string, string> = {
+  session_closed: "The Bao session ended before the owner wait completed. This session cannot continue.",
+};
+
+function isAgentBrowserSession(run: { workflowId?: string; pageEngine?: string; kind?: string }): boolean {
+  return run.pageEngine === "agent-browser" || (run.workflowId === "agent-browser" && run.kind === "capture");
+}
+
+function sentence(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  return text && /\s|[.!?]$/.test(text) ? text : undefined;
+}
+
+function openHost(value: string): string | undefined {
+  try {
+    const url = new URL(value.includes("://") || /^(about|file|data|chrome|javascript):/i.test(value) ? value : `https://${value}`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.hostname : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function firstOpenHost(run: RunSummary): string | undefined {
+  for (const step of run.steps || []) {
+    if (step.native?.command !== "open") continue;
+    for (const arg of step.native.args || []) {
+      const host = openHost(arg);
+      if (host) return host;
+    }
+  }
+  return undefined;
+}
+
+function agentSessionTitle(run: RunSummary): string {
+  const task = run.task?.trim();
+  if (task) return task;
+  return firstOpenHost(run) || "Browser session";
+}
+
+function agentOwnerWait(run: RunSummary): boolean {
+  const status = run.envelope?.status || run.status;
+  if (status === "needs_human" || status === "needs_signin") return true;
+  if (["passed", "ok", "completed", "failed", "timed-out", "timeout", "stopped", "cancelled"].includes(run.status)) return false;
+  return (run.steps || []).some((step) => step.native?.command === "wait_for_owner" && step.status !== "passed" && step.status !== "failed");
+}
+
+function agentSessionBlocked(run: RunSummary): boolean {
+  if (!isAgentBrowserSession(run) || agentOwnerWait(run)) return false;
+  const status = run.envelope?.status || run.status;
+  return ["failed", "timed-out", "timeout", "stopped", "cancelled"].includes(run.status)
+    || ["failed", "timed-out", "timeout", "stopped", "cancelled"].includes(status);
+}
+
+function plainAgentReason(run: RunSummary): string | undefined {
+  if (!agentSessionBlocked(run)) return undefined;
+  const reason = run.envelope?.reason?.trim();
+  const ask = run.envelope?.ask?.trim();
+  const failure = run.failure?.reason?.trim();
+  const step = (run.steps || []).find((item) => item.status === "failed" && item.reason)?.reason?.trim();
+  return sentence(reason) || sentence(ask) || sentence(failure) || sentence(step)
+    || (reason ? AGENT_SESSION_WORDS[reason] : undefined)
+    || (reason ? ownerStopText(reason) : undefined)
+    || (failure ? ownerStopText(failure) : undefined);
+}
+
 export function runWorkflowName(run: RunSummary, workflows: WorkflowSummary[]): string {
+  if (isAgentBrowserSession(run)) return agentSessionTitle(run);
   return workflows.find((workflow) => workflow.id === run.workflowId)?.name
     || (run.workflowId === "agent-browser" ? "Browser session" : run.kind === "capture" ? "Browser capture" : "Workflow unavailable");
 }
@@ -1790,7 +1857,10 @@ type RunAttentionItem =
 export function runAttention(runs: RunSummary[], ask?: HumanAsk | null, activeRun?: ActiveRun | null): RunAttentionItem[] {
   const attention = [...runs].sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity)).flatMap((run) => {
     const items: RunAttentionItem[] = [];
-    if (run.id === activeRun?.id ? activeRun.phase === "waiting" : runWaiting(run)) items.push({ run, label: "Needs you", kind: "paused" });
+    const agent = isAgentBrowserSession(run);
+    const waiting = run.id === activeRun?.id ? activeRun.phase === "waiting" : agent ? agentOwnerWait(run) : runWaiting(run);
+    if (waiting) items.push({ run, label: "Needs you", kind: "paused" });
+    if (agent) return items;
     const decided = new Set((run.decisions || []).map((decision) => decision.healId));
     for (const heal of run.heals || []) if (!decided.has(heal.id)) items.push({ run, label: "Heal to keep", kind: "healed", healId: heal.id });
     if (["failed", "timed-out", "timeout"].includes(run.status)) items.push({ run, label: run.status === "failed" ? "Failed" : "Timed out", kind: "failed" });
@@ -1859,16 +1929,18 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const totalSteps = workflows.find((workflow) => workflow.id === run.workflowId)?.steps;
     const stoppedAt = run.failure?.index === undefined ? "" : `Stopped at step ${run.failure.index + 1}${attentionLabel ? "." : totalSteps ? ` of ${totalSteps}` : ""}`;
     const heal = run.heals?.find((item) => healId ? item.id === healId : !run.decisions?.some((decision) => decision.healId === item.id));
-    const detail = kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run);
+    const spoken = plainAgentReason(run);
+    const detail = spoken || (kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run));
+    const shown = spoken || (detail ? ownerStopText(detail) : "");
     const deadline = attentionLabel && kind === "paused" && ask && (live || ask.runId === run.id) ? ask.deadline : undefined;
     const promotion = healId ? selection.promotions?.find((item) => item.healId === healId && item.workflowId === run.workflowId) || (run.promotion?.healId === healId ? run.promotion : undefined) : undefined;
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;
     const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : remaining ? `Kept after ${remaining} more clean run${remaining === 1 ? "" : "s"}` : "";
-    const description = `${label}${detail ? ` · ${ownerStopText(detail)}` : ""}`;
+    const description = `${label}${shown ? ` · ${shown}` : ""}`;
     return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : live ? `data-open-run="${esc(run.id)}" data-screen="live"` : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>
       <span class="run-name" title="${esc(name)}">${esc(name)}</span><time${at === undefined ? "" : ` title="${esc(formatClock(at))}"`}>${esc(when)}</time>
-      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${detail ? ` · ${esc(ownerStopText(detail))}` : ""}</span>
+      <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${shown ? ` · ${esc(shown)}` : ""}</span>
       ${extra ? `<span class="run-extra"${typeof deadline === "number" ? ` data-run-deadline="${esc(deadline)}"` : ""}>${esc(ownerStopText(extra))}</span>` : ""}
     </button></li>`;
   };
@@ -1908,11 +1980,12 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
   const calls = view.run.modelCalls;
-  const ask = view.handoff?.ask || run.envelope?.ask;
+  const spoken = plainAgentReason(run);
+  const ask = spoken ? undefined : view.handoff?.ask || run.envelope?.ask;
   return `<section id="run-receipt" aria-label="Run receipt"><p class="receipt-kicker"><span class="run-state ${esc(kind)}">${esc(statusLabel(kind))}</span> · ${esc(at)}</p><h2>${esc(name)}</h2>
     <p class="receipt-meta">${view.run.stepCount} step${view.run.stepCount === 1 ? "" : "s"}${calls === null ? "" : ` · ${calls} model call${calls === 1 ? "" : "s"}`}</p>
-    ${ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
-    ${view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
+    ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
+    ${spoken ? "" : view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
     <h3 id="receipt-step-heading" class="section" tabindex="-1">Step results</h3><ol class="receipt-steps" start="${view.stepOffset + 1}">${view.steps.map((step) => `<li><div><strong>${esc(step.label || "Step")}</strong><span class="run-state">${esc(step.status)}</span></div>${step.reason || step.result ? `<p>${esc(ownerStopText(step.reason || step.result || ""))}</p>` : ""}</li>`).join("")}</ol>
     ${view.steps.length ? "" : `<p class="quiet">No step results recorded.</p>`}

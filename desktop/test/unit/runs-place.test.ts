@@ -277,7 +277,7 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.locator("#runs").waitFor();
     assert.deepEqual(await page.locator('#runs ul[aria-label="Needs you"] button:has(.run-state.paused)').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run")).sort()), ["human", "signin"], "only current human and sign-in waits contribute waiting rows");
-    assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "4", "two waits, one timeout and one failure need attention");
+    assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "3", "two waits and one timeout need attention; an ended agent session does not");
     for (const item of cases) {
       await page.locator(`#runs [data-open-run="${item.id}"]`).first().click();
       await page.locator("#run-receipt").waitFor();
