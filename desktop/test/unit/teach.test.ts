@@ -226,8 +226,8 @@ test("failed runs keep step details but no longer offer Teach repair", () => {
   const workflows = shellList("capture", {});
   assert.match(workflows, /data-screen="teach"/);
   assert.match(workflows, /data-screen="capture"/);
-  const runs = shellList("runs", {});
-  assert.match(runs, /data-screen="heals"/);
+  const runs = shellList("runs", { runs: [{ id: "run", workflowId: "wf", status: "passed", heals: [{ id: "heal" }] }] });
+  assert.match(runs, /data-heal="heal" data-run="run"/);
 });
 
 test("marking a secret constant is refused, and a check is a verify step", () => {

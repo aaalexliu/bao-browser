@@ -87,7 +87,10 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
       assert.deepEqual(await shownSteps(), liveSteps.map((step) => step.name));
       assert.equal(await page.locator("#live-audit tbody tr").count(), 40);
 
-      await page.locator('#screen-list button[data-screen="runs"]').click();
+      if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
+        await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+      }
+      await page.locator('#rail button[data-place="runs"]').click();
       await page.locator('#runs [data-open-run="run-ui-polish"]').first().click();
       await page.getByText("Detailed evidence", { exact: true }).click();
       await page.locator("#step-list .step-duration").waitFor();
@@ -103,7 +106,10 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
 
     }
 
-    await page.locator('#screen-list button[data-screen="runs"]').click();
+    if (await page.getByRole("button", { name: "Show sidebar", exact: true }).isVisible()) {
+      await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+    }
+    await page.locator('#rail button[data-place="runs"]').click();
     await page.locator('#runs [data-open-run="run-ui-paused"]').first().click();
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.locator("#page-class-list").waitFor();

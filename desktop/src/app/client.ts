@@ -281,11 +281,13 @@ function render(focusDetail = true): void {
   }).map((input) => [input.id, input instanceof HTMLInputElement && (input.type === "checkbox" || input.type === "radio") ? input.checked : input.value, input.dataset.settingsEdited === "true"] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
+  const focusedHeal = focused?.dataset.heal;
+  const focusedHealRun = focused?.dataset.run;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
   const focusSelector = !focusedNav ? "" : focused?.id ? `#${focused.id}` : focused?.dataset.screen ? `#${focusedNav.id} button[data-screen="${focused.dataset.screen}"]` : "";
   const runsScroll = document.getElementById("runs")?.scrollTop || 0;
   const runsPlace = shellScreens[shellScreen(screen)].place === "runs";
-  document.getElementById("app")!.dataset.runsDetail = screen === "run" ? "true" : "false";
+  document.getElementById("app")!.dataset.runsDetail = screen === "run" || screen === "live" || (screen === "heals" && Boolean(openHeal)) ? "true" : "false";
   document.getElementById("app")!.dataset.workflowsList = screen === "library" ? "true" : "false";
   document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
@@ -296,7 +298,7 @@ function render(focusDetail = true): void {
     railHtmlKey = railHtml;
   }
   const list = document.getElementById("screen-list")!;
-  const listHtml = screen === "settings" ? settingsIndex({ ...state, sites: login.saved }) : shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError);
+  const listHtml = screen === "settings" ? settingsIndex({ ...state, sites: login.saved }) : shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError, screen === "heals" ? openHeal : null);
   if (listHtmlKey !== listHtml) {
     list.innerHTML = listHtml;
     listHtmlKey = listHtml;
@@ -306,6 +308,8 @@ function render(focusDetail = true): void {
       const copies = [...list.querySelectorAll<HTMLElement>("[data-open-run]")].filter((row) => row.dataset.openRun === focusedRun);
       const target = copies.find((row) => row.closest("section")?.getAttribute("aria-label") === focusedRunGroup) || copies[0];
       target?.focus();
+    } else if (focusedHeal) {
+      [...list.querySelectorAll<HTMLElement>("[data-heal]")].find((row) => row.dataset.heal === focusedHeal && row.dataset.run === focusedHealRun)?.focus();
     }
   }
   if (focusSelector && !focused?.isConnected) document.querySelector<HTMLElement>(focusSelector)?.focus();
@@ -380,7 +384,7 @@ function render(focusDetail = true): void {
   paintSaveSheet();
   mountShots();
   paintToasts();
-  const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : "";
+  const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : screen === "heals" && openHeal ? `heal:${openHeal.runId}:${openHeal.healId}` : screen === "live" ? "live" : "";
   if (detail && detail !== renderedDetail) {
     if (focusDetail) mainEl().focus({ preventScroll: true });
     document.getElementById("content")!.scrollTop = 0;
@@ -966,10 +970,7 @@ function bind(): void {
   document.querySelectorAll("[data-heal]").forEach((btn) => {
     if ((btn as HTMLButtonElement).dataset.keep || (btn as HTMLButtonElement).dataset.revert) return;
     (btn as HTMLButtonElement).onclick = () => {
-      openHeal = {
-        runId: (btn as HTMLButtonElement).dataset.run || "",
-        healId: (btn as HTMLButtonElement).dataset.heal || "",
-      };
+      selectHeal((btn as HTMLButtonElement).dataset.run || "", (btn as HTMLButtonElement).dataset.heal || "");
       renderKey = "";
       render();
     };
@@ -1404,7 +1405,7 @@ async function showHeal(runId: string, healId: string): Promise<void> {
   const run = await (await fetch("/api/runs/" + encodeURIComponent(runId))).json() as RunSummary;
   const heal = (run.heals || []).find((item) => item.id === healId);
   const host = document.getElementById("heal-detail");
-  if (!host || !heal || screen !== "heals") return;
+  if (!host || !heal || screen !== "heals" || openHeal?.runId !== runId || openHeal.healId !== healId) return;
   const names = new Map((state.workflows || []).map((workflow) => [workflow.id, workflow.name]));
   const promotion = (state.promotions || []).find((item) => item.healId === heal.id)
     || (run.promotion && run.promotion.healId === heal.id ? run.promotion : undefined);
@@ -1828,10 +1829,16 @@ async function runReplay(): Promise<void> {
 function selectDefaultRun(): void {
   const first = runAttention(state.runs || [], state.activeAsk)[0];
   if (first?.live) screen = "live";
+  else if (first?.kind === "healed") selectHeal(first.run.id, first.healId);
   else {
     const id = first?.run.id || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id;
     if (id) selectRun(id);
   }
+}
+
+function selectHeal(runId: string, healId: string): void {
+  openHeal = { runId, healId };
+  screen = "heals";
 }
 
 function selectRun(id: string, stepId = ""): void {

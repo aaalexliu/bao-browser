@@ -33,8 +33,7 @@ test("Runs primary Keep and Import controls retain AA contrast in both themes", 
       await page.goto(`http://127.0.0.1:${app.port}/?theme=${theme}`);
       await page.locator("#runs").waitFor();
       assert.equal(await page.locator("html").getAttribute("data-theme"), theme);
-      await page.locator("#screen-list [data-screen=heals]").click();
-      await page.locator('[data-heal="contrast-heal"]').click();
+      await page.locator('#runs [data-heal="contrast-heal"]').click();
       const controls = [page.locator("#import-yes"), page.locator("#heal-detail [data-keep]")];
       for (const control of controls) {
         await control.waitFor();

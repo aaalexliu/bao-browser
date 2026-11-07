@@ -23,13 +23,14 @@ test("three places keep all nine screens and their detail routes reachable", () 
     assert.equal(shellScreens[screen].place, place);
     assert.match(rail({}, screen), new RegExp(`data-place="${place}"[^>]*aria-current="page"`));
     if (screen === "library") assert.equal(shellList(screen, {}), "");
+    else if (place === "runs") assert.doesNotMatch(shellList(screen, {}), /aria-label="Runs screens"/);
     else assert.match(shellList(screen, {}), new RegExp(`data-screen="${screen}"[^>]*aria-current="page"`));
     assert.ok(commandItems([]).some((item) => item.screen === screen));
   }
   for (const [screen, parent] of [["run", "runs"], ["workflow", "library"], ["import", "library"]] as const) {
     assert.equal(shellScreen(screen), parent);
   }
-  assert.match(shellList("heals", { runs: [{ id: "run", workflowId: "wf", status: "passed", heals: [{ id: "heal" }] }] }), /id="heal-count">1/);
+  assert.match(shellList("heals", { runs: [{ id: "run", workflowId: "wf", status: "passed", heals: [{ id: "heal" }] }] }), /data-heal="heal" data-run="run"/);
 });
 
 test("native narrow headers reserve one clearance and keep controls clickable", { timeout: 60_000 }, async () => {
@@ -81,11 +82,11 @@ test("native narrow headers reserve one clearance and keep controls clickable", 
               const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
               return {
                 top: rect.top, height: rect.height,
-                navTop: list.querySelector("nav")!.getBoundingClientRect().top,
+                bodyTop: list.querySelector("#runs, nav")!.getBoundingClientRect().top,
                 contained: controls.every((node) => { const box = node.getBoundingClientRect(); return box.top >= rect.top && box.bottom <= rect.bottom; }),
               };
             });
-            assert.deepEqual(geometry, { top: native && width <= 1060 ? 52 : 0, height: 52, navTop: native && width <= 1060 ? 104 : 52, contained: true }, `${screen} ${width}px native=${native}`);
+            assert.deepEqual(geometry, { top: native && width <= 1060 ? 52 : 0, height: 52, bodyTop: native && width <= 1060 ? 104 : 52, contained: true }, `${screen} ${width}px native=${native}`);
             for (const button of await page.locator("#screen-list > .pane-bar button, #screen-list > nav button").all()) {
               if (await button.isVisible()) await button.click({ trial: true });
             }
@@ -152,7 +153,11 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
         await page.locator("#palette-input").fill(screen === "teach" ? "Teach" : "Replay");
         await page.locator(`#palette-list [data-command="${screen}"]`).click();
       }
-    } else if (screen !== "library" && screen !== "settings") await page.locator(`#screen-list [data-screen="${screen}"]`).click();
+    } else if (screen === "live" || screen === "heals") {
+      await page.keyboard.press("ControlOrMeta+k");
+      await page.locator("#palette-input").fill(screen === "live" ? "Live" : "Heals");
+      await page.locator(`#palette-list [data-command="${screen}"]`).click();
+    }
     if (screen === "capture") {
       await page.waitForResponse((response) => response.url().endsWith("/api/state"));
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -174,12 +179,12 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
         if (screen === "settings") await page.locator("#set-runs").waitFor();
         else await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : screen === "runs" ? workflow.name : heading);
         await checkTitle("Bao");
-        assert.equal(await page.locator("#screen-list [aria-current=page]").count(), screen === "library" || screen === "settings" ? 0 : 1);
+        assert.equal(await page.locator("#screen-list [aria-current=page]").count(), place === "runs" || screen === "library" || screen === "settings" ? 0 : 1);
         if (screen === "settings") {
           assert.equal(await page.locator('#screen-list [data-settings-jump="runs"]').getAttribute("aria-current"), "true");
           assert.equal(await page.locator("#screen-list [aria-current]").count(), 1);
-        } else if (screen !== "library") {
-          const label = screen === "live" ? "Live" : screen === "replay" ? "Replay" : heading;
+        } else if (place !== "runs" && screen !== "library") {
+          const label = screen === "replay" ? "Replay" : heading;
           assert.equal(await page.locator("#screen-list").getByRole("button", { name: new RegExp(`^${label}(?: |$)`) }).getAttribute("aria-current"), "page");
         }
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
@@ -249,6 +254,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await checkTitle("Bao");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");
     await navigate("runs", "runs");
+    await page.locator('[data-open-run="run-shell"]').first().click();
     await page.locator("#run-receipt").waitFor();
     await navigate("live", "runs");
     await page.locator("[data-open-run=run-shell]").first().focus();
@@ -277,7 +283,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     assert.equal(await page.locator("#screen-list > .pane-bar").evaluate((element) => getComputedStyle(element).paddingInlineStart), "16px");
     await page.goto(`${url}/?screen=live`);
     await page.waitForSelector("#live-session");
-    assert.equal(await page.locator("#screen-list [data-screen=live]").getAttribute("aria-current"), "page");
+    assert.equal(await page.locator('#screen-list > nav[aria-label="Runs screens"]').count(), 0);
     await page.setViewportSize({ width: 1200, height: 800 });
     await page.route("**/api/login-sites", (route) => route.fulfill({ json: { sites: [{ origin: "https://saved.example", probeUrl: "https://saved.example/account" }] } }));
     async function command(label: string): Promise<void> {
