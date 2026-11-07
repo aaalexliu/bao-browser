@@ -74,6 +74,7 @@ async function stopCalculator(): Promise<void> {
   const child = calculator;
   calculator = undefined;
   if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    child.ref();
     const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
     child.kill("SIGTERM");
     await exited;
