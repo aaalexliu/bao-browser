@@ -43,7 +43,6 @@ function webSite(value: string | undefined): string | undefined {
 interface Session {
   browser: AgentBrowser;
   chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>>;
-  loginRetried: Set<string>;
   stateDir: string;
   executable: string;
   flags: string[];
@@ -109,6 +108,7 @@ export class AgentBrowserProxy {
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     const step = recording.begin(command as string, args);
     this.latest = { runId: recording.id, step };
+    const starting = !this.session;
     if (!this.session) {
       try {
         const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? "copy", webSite(args[0])));
@@ -131,7 +131,7 @@ export class AgentBrowserProxy {
       if (this.disconnected) throw new Error("agent-browser client disconnected");
       if (command === "open") {
         const site = webSite(args[0]);
-        if (site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
+        if (!starting && site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
       }
       if (command === "wait_for_owner") {
         results.push(...await this.waitForOwner(session, args));
@@ -214,7 +214,7 @@ export class AgentBrowserProxy {
       await writeFile(config, "{}", { mode: 0o600 });
       const endpoint = await readDevToolsActivePort(chrome.target.portFile);
       return {
-        chrome, browser, loginRetried: new Set(), stateDir, executable, abort: new AbortController(), recording,
+        chrome, browser, stateDir, executable, abort: new AbortController(), recording,
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
           "--idle-timeout", "0"],
         env: {
@@ -254,10 +254,9 @@ export class AgentBrowserProxy {
     let active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
-    if (openedSite && ownerWall(active.page) === "login_wall" && new URL(active.page.url).origin === new URL(openedSite).origin
-      && "importLogin" in session.chrome && !session.loginRetried.has(new URL(openedSite).origin)) {
-      session.loginRetried.add(new URL(openedSite).origin);
-      if (await session.chrome.importLogin(openedSite, true)) {
+    if (openedSite && ownerWall(active.page) === "login_wall" && new URL(active.page.url).origin !== new URL(openedSite).origin
+      && "importLogin" in session.chrome) {
+      if (await session.chrome.importLogin(new URL(active.page.url).origin)) {
         await this.run(session, "open", [openedSite]);
         active = await this.activePage(session);
         if (!active) throw new Error("no active Bao page metadata");

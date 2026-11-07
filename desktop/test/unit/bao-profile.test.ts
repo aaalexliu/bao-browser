@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, access, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, access, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -82,7 +82,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.equal(await chrome.importLogin("https://empty.test/"), false);
       assert.equal(await chrome.importLogin("https://storage.test/"), true);
       assert.equal(await chrome.importLogin("https://storage.test/another-path"), false);
-      assert.equal(launchCount, before, "checked origins, empty sites, and storage-only sites never launch cookie-extraction Chrome");
+      assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
     assert.notDeepEqual(launches.pidsForDataDir(baoAgentProfileDir(home)), []);
@@ -149,6 +149,179 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
     try { await chrome?.close(); }
     finally {
       for (const browser of browsers) await browser.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("a losing concurrent Bao open cannot alter the opening owner's profile or lease", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-concurrent-profile-"));
+  const home = path.join(root, "home");
+  const sourceRoot = path.join(root, "source");
+  const profile = baoAgentProfileDir(home);
+  const marker = path.join(profile, "bao-kept-window");
+  const idb = path.join("IndexedDB", "https_loser.test_0.indexeddb.leveldb", "sentinel");
+  await mkdir(path.dirname(path.join(sourceRoot, "Default", idb)), { recursive: true });
+  await writeFile(path.join(sourceRoot, "Default", idb), "must not reach the winning profile");
+  const launch = launches.launchOwnedChromeEndpoint;
+  let entered!: () => void;
+  const launching = new Promise<void>((resolve) => { entered = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let failLaunch = false;
+  let launchesSeen = 0;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async (options: Parameters<typeof launch>[0]) => {
+    if (++launchesSeen === 1) { entered(); await gate; }
+    if (failLaunch) throw new Error("synthetic launch failure");
+    return launch({ ...options, headless: true });
+  });
+  const options = { home, sourceRoot, directory: "Default" };
+  const opening = openBaoChromeForProxy(options);
+  let chrome: Awaited<typeof opening> | undefined;
+  try {
+    await launching;
+    const before = await readFile(marker, "utf8");
+    await assert.rejects(openBaoChromeForProxy({ ...options, site: "https://loser.test/" }), /already open/);
+    assert.equal(await readFile(marker, "utf8"), before, "the loser cannot overwrite or retain the winner's lease");
+    await assert.rejects(access(path.join(profile, "Default", idb)), /ENOENT/);
+    assert.equal(launchesSeen, 1);
+    release();
+    chrome = await opening;
+    assert.equal(chrome.isClosed(), false);
+    await chrome.close();
+    failLaunch = true;
+    await assert.rejects(openBaoChromeForProxy(options), /synthetic launch failure/);
+    await assert.rejects(readFile(marker), /ENOENT/, "a failed launch releases its own empty profile");
+    failLaunch = false;
+    chrome = await openBaoChromeForProxy(options);
+    assert.equal(chrome.isClosed(), false);
+  } finally {
+    release();
+    chrome ??= await opening.catch(() => undefined);
+    await chrome?.close();
+    await launches.closeRetainedChrome(profile);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const scenario of ["stale SSO", "signed-out home", "signed-out wall"] as const) test(`Bao refreshes ${scenario} from the selected source without repeating an origin`, { timeout: 90_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-source-refresh-"));
+  const sourceRoot = path.join(root, "source");
+  const home = path.join(root, "home");
+  const profile = baoAgentProfileDir(home);
+  const server = createServer((request, response) => {
+    const url = new URL(request.url!, `http://${request.headers.host}`);
+    const redirect = (location: string) => { response.writeHead(302, { location }); response.end(); };
+    if (scenario === "stale SSO") {
+      if (url.pathname === "/callback") {
+        response.setHeader("Set-Cookie", "session=fresh; Path=/");
+        redirect(`${site}/mail`); return;
+      }
+      if (url.hostname === "localhost") {
+        if (request.headers.cookie?.includes("sso=fresh")) { redirect(`${site}/callback`); return; }
+      } else if (!request.headers.cookie?.includes("session=fresh")) {
+        redirect(`${accounts}/login`); return;
+      }
+    }
+    const signedIn = request.headers.cookie?.includes("session=fresh");
+    const title = !signedIn && scenario !== "signed-out home" ? "Sign in" : "Account";
+    response.setHeader("Content-Type", "text/html");
+    response.end(`<!doctype html><title>${title}</title><h1>${signedIn ? "Signed in" : "Signed out"}</h1>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const site = `http://127.0.0.1:${port}`;
+  const accounts = `http://localhost:${port}`;
+  const opened = `${site}/${scenario === "stale SSO" ? "mail" : "home"}`;
+  const log = path.join(root, "native.jsonl");
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const fs=require('node:fs');
+const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
+const args=process.argv.slice(2),command=args[args.indexOf('--idle-timeout')+2];
+const endpoint=new URL(args[args.indexOf('--cdp')+1]);
+fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
+(async()=>{
+ if(command==='close'){console.log('Closed');return;}
+ const tabs=(await (await fetch('http://'+endpoint.host+'/json/list')).json()).filter(t=>t.type==='page');
+ if(command==='tab'){console.log(JSON.stringify({data:{tabs:tabs.map((t,i)=>({targetId:t.id,active:i===0}))}}));return;}
+ const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
+ try{
+  const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tabs[0].id,flatten:true});
+  await cdp.send('Page.enable',{},sessionId);
+  const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),5000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});});
+  await cdp.send('Page.navigate',{url:args.at(-1)},sessionId);await loaded;console.log('Opened');
+ }finally{cdp.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
+`, { mode: 0o700 });
+  let observer: Awaited<ReturnType<typeof connectCdp>> | undefined;
+  let launchCount = 0;
+  const launch = launches.launchOwnedChromeEndpoint;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
+    launchCount++;
+    return launch({ ...options, headless: true });
+  });
+  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
+  const writeSource = async (value: string) => {
+    const source = await launches.launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
+    try {
+      await source.addCookies([{ name: scenario === "stale SSO" ? "sso" : "session", value, url: scenario === "stale SSO" ? accounts : site }]);
+      if (scenario !== "stale SSO") {
+        const page = source.pages()[0]!;
+        await page.goto(opened);
+        await page.evaluate(() => localStorage.setItem("identity", "source-account"));
+      }
+    } finally { await source.close(); }
+  };
+  try {
+    const previous = await launches.launchOwnedChrome({ userDataDir: profile, headless: true });
+    try {
+      await previous.addCookies([
+        { name: "session", value: "revoked", url: site },
+        { name: "bao-only", value: "keep", url: site },
+        { name: "sso", value: "revoked", url: accounts },
+      ]);
+      if (scenario !== "stale SSO") {
+        const page = previous.pages()[0]!;
+        await page.goto(opened);
+        await page.evaluate(() => localStorage.setItem("identity", "bao-account"));
+      }
+    } finally { await previous.close(); }
+    await writeSource(scenario === "signed-out wall" ? "anonymous" : "fresh");
+    const results = await proxy.execute("open", [opened], "bao");
+    const commands = () => readFile(log, "utf8").then((text) => text.trim().split("\n").map((line) => JSON.parse(line) as { command: string }));
+    assert.equal((await commands()).filter((entry) => entry.command === "open").length, scenario === "stale SSO" ? 2 : 1);
+    assert.equal(launchCount, 2, "each open extracts source cookies only once for each needed origin");
+    if (scenario === "signed-out wall") {
+      assert.equal(JSON.parse(results[0]!.stdout).outcome, "halted");
+    } else {
+      assert.equal(results[0]!.stdout, "Opened\n");
+      const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+      observer = await connectCdp(endpoint.port, endpoint.browserPath);
+      const { targetInfos } = await observer.send<{ targetInfos: { type: string; url: string; targetId: string }[] }>("Target.getTargets");
+      const target = targetInfos.find((target) => target.type === "page" && target.url.startsWith(site))!;
+      const { sessionId } = await observer.send<{ sessionId: string }>("Target.attachToTarget", { targetId: target.targetId, flatten: true });
+      const evaluate = async (expression: string) => (await observer!.send<{ result: { value: string } }>("Runtime.evaluate", { expression, returnByValue: true }, sessionId, 2000)).result.value;
+      const cookies = async () => (await observer!.send<{ cookies: { name: string; value: string }[] }>("Storage.getCookies")).cookies;
+      assert.equal(await evaluate("document.querySelector('h1').textContent"), "Signed in");
+      assert.equal((await cookies()).find((cookie) => cookie.name === "bao-only")?.value, "keep");
+      if (scenario === "signed-out home") {
+        assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
+        await observer.send("Network.setCookie", { name: "session", value: "bao-renewed", url: site }, sessionId);
+        await proxy.execute("open", [opened]);
+        assert.equal((await cookies()).find((cookie) => cookie.name === "session")?.value, "bao-renewed", "unflushed Bao renewals beat the older source snapshot");
+        await writeSource("fresh-again");
+        await proxy.execute("open", [opened]);
+        assert.equal((await cookies()).find((cookie) => cookie.name === "session")?.value, "fresh-again", "a later explicit open imports a newer daily session");
+        assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
+      }
+    }
+  } finally {
+    try { await proxy.close(); }
+    finally {
+      await observer?.close();
+      await launches.closeRetainedChrome(profile);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
     }
   }

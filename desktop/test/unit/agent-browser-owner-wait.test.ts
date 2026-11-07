@@ -67,7 +67,7 @@ for (const { browser, check, bare } of [
       close: async () => { await browser.close(); await copy.close(); },
     };
   });
-  const importCalls: { site: string; force: boolean }[] = [];
+  const importCalls: string[] = [];
   let startSite: string | undefined;
   const openBao = bao.openBaoChromeForProxy;
   const launch = launches.launchOwnedChromeEndpoint;
@@ -77,9 +77,9 @@ for (const { browser, check, bare } of [
     const chrome = await openBao(options);
     copyDir = bao.baoAgentProfileDir(options.home);
     closeBrowser = chrome.close;
-    return { ...chrome, importLogin: async (site: string, force = false) => {
-      importCalls.push({ site, force });
-      return chrome.importLogin(site, force);
+    return { ...chrome, importLogin: async (site: string) => {
+      importCalls.push(site);
+      return chrome.importLogin(site);
     } };
   });
   const log = path.join(root, "native.jsonl");
@@ -111,7 +111,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     assert.equal(outcome(await proxy.execute("open", [bare ? "fixture.test" : fixture.url(`/owner/start?check=${check}`)], browser)), "halted");
     if (bare) {
       assert.equal(startSite, "https://fixture.test/");
-      assert.equal(importCalls[0]?.site, "https://fixture.test/");
+      assert.equal(importCalls[0], new URL(fixture.url("/")).origin);
       const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
       assert.equal(commands.find((entry) => entry.command === "open").args.at(-1), "fixture.test");
     }
@@ -125,7 +125,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     assert.ok(page);
     page.setDefaultTimeout(5000);
     assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you/);
-    assert.equal(importCalls.filter((call) => call.force).length, browser === "bao" && check === "signin" && !bare ? 1 : 0);
+    assert.equal(importCalls.length, bare ? 1 : 0, "only a new redirect-wall origin gets a second import");
     const importsBefore = importCalls.length;
     const before = await readFile(log, "utf8");
     for (const command of ["snapshot", "screenshot", "fill", "press", "tab", "open"]) {
