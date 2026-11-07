@@ -192,7 +192,7 @@ test("workflow loading and retry stay in the current visit across state polls", 
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
       const state = await response.json() as ShellState;
-      await route.fulfill({ json: { ...state, remote: { phase: "approval", workflowName: `Background request ${revision}` } } });
+      await route.fulfill({ json: { ...state, remote: { phase: "running", workflowName: `Background request ${revision}` } } });
     });
     let requests = 0;
     await page.route("**/api/workflows/poll-detail", async (route) => {
@@ -208,7 +208,7 @@ test("workflow loading and retry stay in the current visit across state polls", 
     const poll = async () => {
       revision += 1;
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-      await page.getByTestId("remote-approval").filter({ hasText: `Background request ${revision}` }).waitFor();
+      await page.getByTestId("remote-running").filter({ hasText: `Background request ${revision}` }).waitFor();
     };
     await poll();
     // The remote banner proves a changed state rendered without a second workflow request.

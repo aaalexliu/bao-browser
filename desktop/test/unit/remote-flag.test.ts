@@ -71,8 +71,6 @@ test("this Mac dials the websocket only when relay.json is present", async () =>
     await new Promise((resolve) => setTimeout(resolve, 800));
     assert.equal(hits.length, 0);
     assert.equal(agent.view().phase, "idle");
-    agent.allow();
-    agent.deny();
     assert.equal(remoteBanner(agent.view()), "");
 
     const saved = await fetch(`http://127.0.0.1:${app.port}/api/settings`, {
@@ -104,7 +102,6 @@ test("this Mac dials the websocket only when relay.json is present", async () =>
       await new Promise((resolve) => setTimeout(resolve, 500));
       assert.equal(hits.length, 0);
       assert.equal(quiet.view().phase, "idle");
-      quiet.allow();
       assert.equal(remoteBanner(quiet.view()), "");
     } finally {
       await quiet.stop();

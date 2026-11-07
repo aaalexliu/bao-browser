@@ -14,7 +14,6 @@ import {
   asJobId,
   deviceScope,
   durableResult,
-  jobPolicy,
   splitResult,
   takePng,
   PgJobStore,
@@ -261,10 +260,9 @@ export function createRelay(opts: {
         sendJob(session, running, "again");
         return;
       }
-      // A local confirm has not sent ready. resume_workflow only refuses, so it
-      // can answer without letting a run start.
-      const queued = await store.oldestQueued(scope);
-      if (queued?.tool !== "resume_workflow") return;
+      // A human step keeps the browser. Only its resume can continue that run.
+      const queued = await store.oldestQueued(scope, "resume_workflow");
+      if (!queued) return;
       const claimed = await store.claim(scope, queued.id);
       if (!claimed) return;
       session.availability = { state: "busy", jobId: claimed.id };
@@ -294,7 +292,6 @@ export function createRelay(opts: {
         id: job.id,
         tool: job.tool,
         workflowId: job.workflowId,
-        policy: job.policy,
         args: job.args,
       },
     }));
@@ -462,7 +459,6 @@ export function createRelay(opts: {
       tokenId: agent.id,
       tool,
       workflowId,
-      policy: jobPolicy(),
       args,
       events: [{ at, type: "queued" }],
       createdAt: at,
@@ -482,7 +478,6 @@ export function createRelay(opts: {
       tokenId: agent.id,
       tool,
       workflowId,
-      policy: jobPolicy(),
       args,
       events: [{ at, type: "done", outcome }],
       createdAt: at,

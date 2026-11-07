@@ -6,7 +6,6 @@ import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { OpenedView } from "./deeplink";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { settingsIndex, settingsScreen } from "./settings-view";
-import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -52,7 +51,6 @@ import {
   runViewer,
   runField,
   hostAccessPanel,
-  siteTrustPanel,
   tryResult,
   fixtureStartValue,
   productWindowTitle,
@@ -541,7 +539,6 @@ function settings(): string {
     ${hostAccessPanel(state.settings?.hostAccess)}
     <p class="quiet">AI help uses the source chosen above. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>
-    ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
@@ -682,7 +679,7 @@ function bindSettings(): void {
       }
       delete input.dataset.settingsEdited;
       const key = input.dataset.setting!;
-      const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
+      const value = input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
       await saveSetting({ [key]: value });
     };
     if (input instanceof HTMLInputElement && input.type === "number") {
@@ -1185,14 +1182,8 @@ async function discardSaveSheet(): Promise<void> {
 }
 
 function bindRemote(): void {
-  const allow = document.getElementById("remote-allow");
-  if (allow) allow.onclick = () => void statePoller.track(fetch("/api/remote/allow", { method: "POST" }));
-  const deny = document.getElementById("remote-deny");
-  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" }).then(() => refresh());
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
-  const confirm = document.getElementById("remote-confirm-allow");
-  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
   const pair = document.getElementById("relay-pair");
   if (pair) pair.onclick = async () => {
     const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
@@ -1761,16 +1752,6 @@ function field(
     ? steps.find((step) => step.download?.output === input.fromOutput)?.label || input.fromOutput
     : undefined;
   return runField({ ...input, boundStep }, previous);
-}
-
-function readSiteTrust(): Record<string, "ask" | "allow"> {
-  const siteTrust: Record<string, "ask" | "allow"> = {};
-  document.querySelectorAll<HTMLSelectElement>("[data-site-trust]").forEach((sel) => {
-    const origin = expandControlKey(sel.dataset.siteTrust || "");
-    if (!origin) return;
-    siteTrust[origin] = sel.value === "ask" ? "ask" : "allow";
-  });
-  return siteTrust;
 }
 
 async function tryWorkflowStep(id: string, stepId: string): Promise<void> {

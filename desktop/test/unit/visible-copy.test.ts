@@ -13,7 +13,6 @@ import {
   networkPane,
   notices,
   runViewer,
-  siteTrustPanel,
   teachHome,
   workflowDetail,
 } from "../../src/app/views";
@@ -122,7 +121,6 @@ test("rendered product pages never contain the listen address", () => {
     ["network", networkPane([{ stepId: "open", method: "GET", url: LISTEN, status: 200 }], "open")],
     ["logins", loginsScreen(login)],
     ["sync", syncPanel({ server: "https://bao.example", deviceName: "Ada's Mac" })],
-    ["trust", siteTrustPanel([{ origin: "http://127.0.0.1:4787", mode: "ask" }])],
     ["notice", notices([{ title: "You need to act", body: `Open ${LISTEN}` }])],
     ["guide", guideHtml(doc, new Map())],
   ];
@@ -134,8 +132,6 @@ test("rendered product pages never contain the listen address", () => {
   assert.match(pages[6][1], /<strong>Fixture<\/strong>/);
   assert.match(pages[6][1], /data-recheck="fixture4:4787"/);
   assert.match(pages[7][1], /placeholder="Pairing server"/);
-  assert.match(pages[8][1], /data-site-trust="fixture4:4787"/);
-  assert.match(pages[8][1], />Fixture/);
   const server = readFileSync(path.join(process.cwd(), "desktop/src/app/server.ts"), "utf8");
   assert.match(server, /function captureStepLabel[\s\S]*visibleCopy\(text\)/);
   assert.equal(visibleCopy(`Open ${LISTEN} — keep the note`), `Open Fixture — keep the note`);

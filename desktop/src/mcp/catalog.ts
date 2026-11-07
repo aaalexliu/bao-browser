@@ -20,13 +20,11 @@ import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
-import { originOf, trustMode } from "../v1/site-trust";
 import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { fitPictureBody } from "../v1/sync-pictures";
-import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
 
@@ -66,8 +64,6 @@ export interface WorkflowOutcome {
   link: string;
   source?: string;
   lastGreen?: string;
-  /** Set when a marketplace listing has not been allowed. */
-  permissions?: PermissionPreview;
   /** Saved status spelling; may differ from the normalized outcome. `completed` follows resume. */
   status?: OutcomeName | "completed" | "timed-out" | "timeout" | "stopped" | "passed" | "paused" | "running" | "idle" | "needs-sign-in";
   run_id?: string;
@@ -209,13 +205,13 @@ export async function runWorkflow(
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
-  if (request.cancel) return cancelWorkflow(library, request.resume || "");
+  if (request.cancel) return cancelWorkflow(library, request.resume || "", control);
   const peeked = request.resume ? peekResume(library, request.resume) : undefined;
   if (request.resume && !peeked) return emptyOutcome("", "failed", "resume token");
   const live = request.resume ? liveRuns.get(request.resume) : undefined;
   if (live) {
-    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT);
-    return continueLive(library, live, request.inputs ?? {});
+    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
+    return continueLive(library, live, request.inputs ?? {}, control);
   }
   if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm" || peeked.kind === "wall")) {
     dropResume(library, request.resume || "");
@@ -227,24 +223,6 @@ export async function runWorkflow(
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
   const refusal = workflowReplayRefusal(library, request.document ?? placed!.document);
   if (refusal) return emptyOutcome(id, "failed", refusal);
-  if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
-    const listingId = placed.forkedFrom || placed.document.id;
-    const access = await marketplaceAccess(library, listingId, placed.document);
-    if (!access.allowed) {
-      return {
-        outcome: "needs_approval",
-        status: "needs_approval",
-        workflowId: id,
-        source: "marketplace",
-        reason: "Allow this listing before it can run.",
-        link: linkFor(id),
-        receipts: [],
-        stops: [],
-        permissions: access.preview,
-      };
-    }
-    rememberListingTrust(library, access.preview);
-  }
   if (placed && !placed.local) materializeWorkflow(library, placed);
   const loaded = request.document ? migrate(request.document) : placed!.document;
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
@@ -442,6 +420,7 @@ interface LiveRun {
   kind: "signin" | "confirm" | "wall";
   deadline: number | null;
   ask: string;
+  prompts?: PersonPrompts;
 }
 
 const liveRuns = new Map<string, LiveRun>();
@@ -502,7 +481,6 @@ async function replayInBrowser(
       now: () => Date.now(),
       yieldHuman: true,
       trail,
-      siteTrust: trustMode(library.settings(), originOf(workflow.startUrl)),
     });
     const outcome = rememberRun(library, workflow, run, args, secrets);
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
@@ -524,6 +502,7 @@ async function replayInBrowser(
         kind: run.pausedKind,
         deadline: run.ask.deadline,
         ask: run.ask.instruction,
+        prompts: control?.prompts,
       };
       liveRuns.set(outcome.resume, live);
       await finishVideo();
@@ -538,9 +517,10 @@ async function replayInBrowser(
   }
 }
 
-async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs): Promise<WorkflowOutcome> {
+async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, control?: RunControl): Promise<WorkflowOutcome> {
   live.inputs = { ...live.inputs, ...extra };
-  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page), {
+  live.prompts = control?.prompts ?? live.prompts;
+  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page, undefined, live.prompts), {
     runId: live.runId,
     shotDir: live.shotDir,
     settings: library.settings(),
@@ -548,10 +528,11 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
     now: () => Date.now(),
     fromStepId: live.stepId,
     yieldHuman: true,
-    humanReady: true,
+    humanReady: live.kind !== "wall",
     trail: live.trail,
   });
   if (run.status === "paused" && run.pausedKind && run.ask) {
+    if (live.stepId === run.ask.stepId && live.kind === run.pausedKind) run.ask.deadline = live.deadline;
     live.stepId = run.pausedStepId || run.ask.stepId;
     live.kind = run.pausedKind;
     live.deadline = run.ask.deadline;
@@ -564,6 +545,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   }
   liveRuns.delete(live.token);
   dropResume(library, live.token);
+  clearLivePrompt(live);
   await releaseBrowser(library, live);
   library.savePublicInputs(live.workflow.id, publicInputs(live.workflow, live.inputs));
   const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
@@ -572,7 +554,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   return storeOutcome(library, outcome, live.secrets, live.inputs);
 }
 
-async function cancelWorkflow(library: Library, token: string): Promise<WorkflowOutcome> {
+async function cancelWorkflow(library: Library, token: string, control?: RunControl): Promise<WorkflowOutcome> {
   if (!token) return emptyOutcome("", "failed", "resume token");
   const live = liveRuns.get(token);
   if (!live) {
@@ -585,12 +567,19 @@ async function cancelWorkflow(library: Library, token: string): Promise<Workflow
     result.ask = peeked.ask;
     return result;
   }
-  return stopLive(library, live, "stopped", "nothing applied");
+  return stopLive(library, live, "stopped", "nothing applied", control);
 }
 
-async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string): Promise<WorkflowOutcome> {
+function clearLivePrompt(live: LiveRun): void {
+  if (live.kind === "confirm") live.prompts?.clearConfirm?.();
+  else live.prompts?.clearLoginWait?.();
+}
+
+async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string, control?: RunControl): Promise<WorkflowOutcome> {
   liveRuns.delete(live.token);
   dropResume(library, live.token);
+  live.prompts = control?.prompts ?? live.prompts;
+  clearLivePrompt(live);
   await releaseBrowser(library, live);
   const result = baseOutcome(live.workflow, undefined, "failed", reason, live.stepId, live.inputs);
   result.runId = live.runId;
@@ -667,9 +656,7 @@ function rememberRun(
   } else if (run.status === "paused") {
     outcome = "needs_human";
     status = "needs_human";
-    reason = run.steps.some((step) => step.reason === "always ask")
-      ? "Always ask before this step."
-      : "Approve the heal before the run can continue";
+    reason = "Approve the heal before the run can continue";
   } else if (run.status === "failed") {
     outcome = signInStep(step) ? "needs_signin" : "failed";
     status = outcome;
@@ -695,12 +682,12 @@ function rememberRun(
     };
   }
   if (outcome !== "ok") {
-    result.resume = resumeToken || writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
+    result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
       kind: run.pausedKind,
       deadline: run.ask?.deadline ?? null,
       ask: run.ask?.instruction,
       runId: run.runId,
-    });
+    }, resumeToken);
     result.resume_token = result.resume;
   }
   return storeOutcome(library, result, secrets, inputs);
@@ -892,8 +879,8 @@ function writeResume(
   inputs: Record<string, string | number>,
   stepId: string,
   extra: { kind?: ResumeFile["kind"]; deadline?: number | null; ask?: string; runId?: string } = {},
+  token = `r_${randomBytes(16).toString("hex")}`,
 ): string {
-  const token = `r_${randomBytes(16).toString("hex")}`;
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };
@@ -1178,62 +1165,6 @@ function healProvider(): HealProvider {
     });
   }
   return llmHealFromEnv();
-}
-
-async function marketplaceAccess(
-  library: Library,
-  id: string,
-  document: WorkflowV2,
-): Promise<{ allowed: boolean; preview: PermissionPreview }> {
-  const state = loadState(library.root);
-  let remote: { allowed?: boolean; preview?: PermissionPreview } | null = null;
-  try {
-    remote = await remoteFetch<{ allowed?: boolean; preview?: PermissionPreview }>(
-      state,
-      "GET",
-      `/api/marketplace/${encodeURIComponent(id)}/allow`,
-    );
-  } catch {
-    remote = null;
-  }
-  const preview = remote?.preview || permissionPreview(document);
-  if (remote?.allowed) {
-    writeAllow(library, id);
-    return { allowed: true, preview };
-  }
-  if (remote && remote.allowed === false) return { allowed: false, preview };
-  if (hasAllow(library, id)) return { allowed: true, preview };
-  return { allowed: false, preview };
-}
-
-function rememberListingTrust(library: Library, preview: PermissionPreview): void {
-  if (preview.trust !== "ask") return;
-  const siteTrust = { ...(library.settings().siteTrust || {}) };
-  let changed = false;
-  for (const site of preview.sites) {
-    if (siteTrust[site] === "ask") continue;
-    siteTrust[site] = "ask";
-    changed = true;
-  }
-  if (changed) library.updateSettings({ siteTrust });
-}
-
-function allowFile(library: Library, id: string): string {
-  return path.join(library.root, "allows", `${safeToken(id)}.json`);
-}
-
-function hasAllow(library: Library, id: string): boolean {
-  try {
-    return existsSync(allowFile(library, id));
-  } catch {
-    return false;
-  }
-}
-
-function writeAllow(library: Library, id: string): void {
-  const file = allowFile(library, id);
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ id, at: Date.now() }));
 }
 
 function linkFor(id: string): string {

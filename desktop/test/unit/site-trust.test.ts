@@ -1,109 +1,151 @@
-// Allow runs an ordinary click. It never presses a confirm step.
-
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { siteTrustPanel } from "../../src/app/views";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
+import { buildLocators } from "../../src/v1/locators";
 import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
-import { consequential, sitesForTrust } from "../../src/v1/site-trust";
+import { Library } from "../../src/v1/store";
 
-function ident(partial: Partial<Identity>): Identity {
-  return { surface: "dom", role: "button", path: [], ...partial };
-}
-
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return { index: 0, label: partial.label || partial.action, surface: "dom", timeoutMs: 0, ...partial };
+function ident(text: string): Identity {
+  return { surface: "dom", role: "button", text, path: [] };
 }
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
-    version: 2,
-    id: "wf",
-    name: "Fixture",
-    startUrl: "http://127.0.0.1:9/fixture",
-    createdAt: 1,
-    inputs: [],
-    steps: steps.map((item, index) => ({ ...item, index })),
+    schema: "bao.workflow/v2", version: 2, id: "requested", name: "Requested actions",
+    startUrl: "http://127.0.0.1:9/fixture", createdAt: 1, inputs: [],
+    steps: steps.map((step, index) => ({ ...step, index })),
   };
 }
 
-function tree(nodes: Identity[]): LiveTree {
-  return { nodes, texts: [], values: [] };
-}
-
-function counting(pages: LiveTree[]): Driver & { actions: number; clicks: string[] } {
-  let n = 0;
+function counting(): Driver & { clicks: string[] } {
   const clicks: string[] = [];
-  const driver = {
-    actions: 0,
+  const tree: LiveTree = { nodes: ["Apply", "Send", "Place Order", "Pay"].map(ident), texts: [], values: [] };
+  return {
     clicks,
-    tree: async () => pages[Math.min(n, pages.length - 1)]!,
+    tree: async () => tree,
     snapshot: async () => ({ dom: "fixture" }),
-    click: async (node: Identity) => {
-      driver.actions += 1;
-      clicks.push(node.testId || node.text || node.role);
-      n += 1;
-    },
-    fill: async () => { driver.actions += 1; },
-    key: async () => { driver.actions += 1; },
-    upload: async () => { driver.actions += 1; },
-    drop: async () => { driver.actions += 1; },
-    digits: async () => { driver.actions += 1; },
-    check: async () => { driver.actions += 1; },
-    notify: async () => {},
-    sleep: async () => {},
+    click: async (node) => { clicks.push(node.text || ""); },
+    fill: async () => {}, key: async () => {}, upload: async () => {}, drop: async () => {},
+    digits: async () => {}, check: async () => {}, notify: async () => {}, sleep: async () => {},
   };
-  return driver;
 }
 
-test("allow never auto-presses a confirm step", async () => {
-  const settings = { heal: "auto" as const, siteTrust: { "http://127.0.0.1:9": "allow" as const } };
-  const driver = counting([
-    tree([ident({ testId: "save-note", text: "Save note" })]),
-    tree([ident({ testId: "apply", text: "Apply" })]),
-  ]);
-  const workflow = doc([
-    step({ id: "save", action: "click", label: "Save note", identity: ident({ testId: "save-note", text: "Save note" }) }),
-    step({ id: "apply", action: "confirm", human: true, label: 'you press "Apply"', identity: ident({ testId: "apply", text: "Apply" }) }),
-  ]);
-  assert.equal(consequential(workflow.steps[1]!), true);
-  assert.equal(consequential(workflow.steps[0]!), false);
-  const result = await replay(workflow, {}, driver, { siteTrust: "allow", settings });
-  assert.equal(result.status, "paused");
-  assert.equal(result.steps[0]?.status, "passed");
-  assert.equal(result.steps[1]?.status, "paused");
-  assert.equal(result.steps[1]?.reason, "confirm");
-  assert.deepEqual(driver.clicks, ["save-note"]);
-  assert.equal(driver.clicks.includes("apply"), false);
-  assert.equal(driver.actions, 1);
-  assert.equal(settings.heal, "auto");
+function click(label: string, index: number): WorkflowStep {
+  return { id: `step-${index}`, index, action: "click", label, surface: "dom", timeoutMs: 0, identity: ident(label) };
+}
+
+test("old site and remote approvals do not survive the Settings read", () => {
+  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-retired-trust-")));
+  writeFileSync(path.join(library.root, "settings.json"), JSON.stringify({
+    siteTrust: { "http://127.0.0.1:9": "ask" }, remotePermission: "deny", heal: "approve",
+  }));
+  const settings = library.settings();
+  assert.equal("siteTrust" in settings, false);
+  assert.equal("remotePermission" in settings, false);
+  assert.equal(settings.heal, "approve");
+});
+
+test("requested Apply, Send, Place Order and Pay clicks run without a trust approval", async () => {
+  const driver = counting();
+  const result = await replay(doc(["Apply", "Send", "Place Order", "Pay"].map(click)), {}, driver);
+  assert.equal(result.status, "passed");
+  assert.deepEqual(driver.clicks, ["Apply", "Send", "Place Order", "Pay"]);
   assert.equal(result.modelCalls, 0);
 });
 
-test("always ask does not dispatch an ordinary step, and a confirm step still stops on its own", async () => {
-  const asked = counting([tree([ident({ testId: "save-note", text: "Save note" })])]);
-  const paused = await replay(doc([
-    step({ id: "save", action: "click", label: "Save note", identity: ident({ testId: "save-note", text: "Save note" }) }),
-  ]), {}, asked, { siteTrust: "ask", settings: { heal: "approve" } });
-  assert.equal(paused.status, "paused");
-  assert.equal(paused.steps[0]?.reason, "always ask");
-  assert.equal(asked.actions, 0);
-  assert.deepEqual(asked.clicks, []);
-  const confirm = counting([tree([ident({ testId: "apply", text: "Apply" })])]);
-  const held = await replay(doc([
-    step({ id: "apply", action: "confirm", human: true, label: 'you press "Apply"', identity: ident({ testId: "apply", text: "Apply" }) }),
-  ]), {}, confirm, { siteTrust: "allow", settings: { heal: "approve" } });
-  assert.equal(held.steps[0]?.reason, "confirm");
-  assert.equal(confirm.actions, 0);
-  const panel = siteTrustPanel(sitesForTrust(
-    [{ startUrl: "http://127.0.0.1:9/fixture" }],
-    { "http://127.0.0.1:9": "ask" },
-  ));
-  assert.match(panel, /id="site-trust"/);
-  assert.match(panel, /Always ask/);
-  assert.match(panel, /Allow/);
-  assert.match(panel, /value="ask" selected/);
-  assert.match(panel, /separate from When a page changes/);
-  assert.equal(panel.includes('id="heal"'), false);
+for (const locatorOnly of [false, true]) {
+  test(`heal cannot press the credit-freeze workflow's reserved Apply ${locatorOnly ? "locator" : "identity"}`, async () => {
+    const workflow = JSON.parse(readFileSync(path.resolve("examples/workflows/credit-freeze.json"), "utf8")) as WorkflowV2;
+    workflow.steps = workflow.steps.map((step) => ({ ...step, timeoutMs: 0 }));
+    if (locatorOnly) {
+      const confirm = workflow.steps.find((step) => step.action === "confirm")!;
+      delete confirm.identity;
+      confirm.locators = [{ kind: "role", role: "button", name: "Apply" }];
+    }
+    const driver = counting();
+    driver.tree = async () => ({ url: workflow.startUrl, nodes: [ident("Apply")], texts: [], values: [] });
+    let proposals = 0;
+    const result = await replay(workflow, {}, driver, {
+      yieldHuman: true,
+      heal: {
+        available: () => true,
+        propose: async () => {
+          proposals += 1;
+          return { patch: { identity: ident("Apply") }, model: { provider: "fixture", name: "fixture" }, prompt: "", rawResponse: "" };
+        },
+      },
+    });
+    assert.equal(proposals, 1);
+    assert.equal(result.status, "failed");
+    assert.deepEqual(driver.clicks, []);
+    assert.match(result.failure?.reason || "", /recorded human confirm/);
+  });
+}
+
+for (const recovery of ["overlay-find", "overlay-expect", "reveal"] as const) {
+  test(`reserved ${recovery} recovery returns a failed run without pressing the human target`, async () => {
+    const driver = counting();
+    const target = ident("Go");
+    const allow = ident("Allow");
+    driver.tree = async () => ({
+      nodes: recovery === "reveal" ? [target, allow] : [{ surface: "dom", role: "dialog", path: [] }, allow, ...(recovery === "overlay-expect" ? [target] : [])],
+      texts: [], values: [],
+      ...(recovery === "reveal" ? { boxes: [{ x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 0, w: 20, h: 20 }], hidden: [true, false] } : {}),
+    });
+    const workflow = doc([
+      { ...click("Go", 0), heal: "never", ...(recovery === "reveal" ? { reveal: { kind: "role" as const, role: "button", name: "Allow" } } : {}),
+        ...(recovery === "overlay-expect" ? { postcondition: { kind: "text" as const, match: "Done", timeoutMs: 0 } } : {}) },
+      { ...click("Allow", 1), action: "confirm", human: true },
+    ]);
+    const result = await replay(workflow, {}, driver);
+    assert.equal(result.status, "failed");
+    assert.ok(result.failure);
+    assert.deepEqual(driver.clicks, recovery === "overlay-expect" ? ["Go"] : []);
+    assert.equal(result.steps[0]?.status, "failed");
+  });
+}
+
+test("a missing Continue cannot press Place order in its recorded DOM position", async () => {
+  const heading: Identity = { surface: "dom", role: "heading", text: "Order summary", path: [] };
+  const original: Identity = {
+    ...ident("Continue"), name: "Continue", tag: "button",
+    cssPath: "html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1) > button:nth-of-type(1)",
+    xpath: "/html[1]/body[1]/main[1]/button[1]",
+    path: [{ role: "main", name: "Checkout" }], siblingIndex: 0,
+  };
+  const place: Identity = { ...original, text: "Place order", name: "Place order" };
+  const boxes = [{ x: 20, y: 20, w: 200, h: 30 }, { x: 20, y: 100, w: 100, h: 30 }];
+  const locators = buildLocators(original, [heading, original], boxes, 1);
+  for (const identity of [original, undefined]) {
+    const driver = counting();
+    driver.tree = async () => ({ nodes: [heading, place], texts: ["Order summary"], values: [], boxes });
+    const workflow = doc([
+      { ...click("Continue", 0), identity, heal: "never", locators },
+      { ...click("Place order", 1), identity: place, action: "confirm", human: true },
+    ]);
+    const result = await replay(workflow, {}, driver, { yieldHuman: true });
+    assert.deepEqual(driver.clicks, []);
+    assert.ok(result.locatorHits.some((hit) => hit.kind === "css" || hit.kind === "xpath"));
+    assert.equal(result.status, "failed");
+    assert.equal(result.steps[0]?.status, "failed");
+    assert.equal(result.trail.some((event) => event.kind === "click" || event.kind === "human-confirm"), false);
+  }
+});
+
+test("a requested click does not consume an explicit human workflow pause", async () => {
+  const driver = counting();
+  const workflow = doc([
+    click("Apply", 0),
+    { ...click("Apply", 1), action: "confirm", human: true, label: "You press Apply" },
+  ]);
+  const result = await replay(workflow, {}, driver, { yieldHuman: true });
+  assert.equal(result.status, "paused");
+  assert.equal(result.pausedKind, "confirm");
+  assert.equal(result.steps[0]?.status, "passed");
+  assert.equal(result.steps[1]?.reason, "confirm");
+  assert.deepEqual(driver.clicks, ["Apply"]);
+  assert.equal(result.modelCalls, 0);
 });

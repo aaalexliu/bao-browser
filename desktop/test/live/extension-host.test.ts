@@ -244,11 +244,6 @@ test("extension replay asks for one origin and does not error with no host permi
     assert.ok((wide.urls || []).includes("http://*/*"), JSON.stringify(wide.urls));
     assert.equal((wide.urls || []).includes("<all_urls>"), false);
 
-    const onWorkflow = await link.command("secret-pin", { url: "https://quotes.toscrape.com/login" }, 8_000) as { ok?: boolean };
-    const offWorkflow = await link.command("secret-pin", { url: "https://books.toscrape.com/" }, 8_000) as { ok?: boolean };
-    assert.equal(onWorkflow.ok, true, JSON.stringify(onWorkflow));
-    assert.equal(offWorkflow.ok, false, JSON.stringify(offWorkflow));
-
     app.library.save(workflow("wf-host-all", "Host all", [], "https://example.com/"));
     process.env.BAO_HOST_GRANT_MS = "8000";
     let promptedAgain = false;

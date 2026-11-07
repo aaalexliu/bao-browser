@@ -38,7 +38,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Replay a saved workflow on this device in Bao's own Chrome. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. A listing that has not been allowed returns needs_approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a saved workflow on this device in Bao's own Chrome. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
