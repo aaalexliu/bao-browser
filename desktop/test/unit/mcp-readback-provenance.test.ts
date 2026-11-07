@@ -24,15 +24,15 @@ function object(value: unknown): Record<string, unknown> {
   return value;
 }
 
-function isTextReceipt(value: unknown): value is Receipt {
-  return isRecord(value) && value.kind === "read-back" && value.source === "text"
+function isFixtureReceipt(value: unknown): value is Receipt {
+  return isRecord(value) && value.kind === "read-back" && (value.source === "text" || value.source === "value")
     && typeof value.ts === "number" && typeof value.runId === "string" && typeof value.workflowId === "string" && typeof value.stepId === "string"
     && typeof value.expected === "string" && typeof value.actual === "string" && typeof value.pass === "boolean"
     && typeof value.prev === "string" && typeof value.hash === "string";
 }
 
 function assertChain(value: unknown): void {
-  assert.ok(Array.isArray(value) && value.length > 0 && value.every(isTextReceipt));
+  assert.ok(Array.isArray(value) && value.length > 0 && value.every(isFixtureReceipt));
   assert.equal(verifyReceiptChain(value), true);
 }
 
@@ -139,14 +139,14 @@ async function fixture(t: test.TestContext) {
   await rpc.initialize();
   return {
     app: running, rpc, typed,
-    async run(id: string, secret: boolean, value: string) {
+    async run(id: string, secret: boolean, value: string, readSource: "text" | "value" = "text") {
       const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id, name: "Read-back provenance", createdAt: 1, driver: "playwright", startUrl: `http://127.0.0.1:${address.port}/${secret ? "secret" : "ordinary"}`,
+        schema: "bao.workflow/v2", version: 2, id, name: "Read-back provenance", createdAt: 1, driver: "playwright", startUrl: `http://127.0.0.1:${address.port}/${secret && readSource === "text" ? "secret" : "ordinary"}`,
         inputs: [{ name: "entry", type: secret ? "secret" : "text" }, { name: "note", type: "text" }],
         steps: ["entry", "note"].map((name, index) => ({
           id: name, index, action: "type", label: `Fill ${name}`, surface: "dom", timeoutMs: 2000, heal: "never", input: name, value: `{{${name}}}`,
-          identity: { surface: "dom", role: "textbox", id: name, inputType: name === "entry" && secret ? "password" : "text", path: [] }, locators: [{ kind: "css", value: `#${name}` }],
-          postcondition: { kind: "text", match: "Ready", timeoutMs: 2000 }, readBack: { source: "text", match: `{{${name}}}`, timeoutMs: 2000 },
+          identity: { surface: "dom", role: "textbox", id: name, inputType: name === "entry" && secret && readSource === "text" ? "password" : "text", path: [] }, locators: [{ kind: "css", value: `#${name}` }],
+          postcondition: { kind: "text", match: "Ready", timeoutMs: 2000 }, readBack: { source: name === "entry" ? readSource : "text", match: `{{${name}}}`, timeoutMs: 2000 },
         })),
       };
       running.library.save(workflow);
@@ -186,7 +186,7 @@ async function assertViews(f: Awaited<ReturnType<typeof fixture>>, runId: string
 test("new run secret names survive workflow edits/deletion and explicit empty provenance stays authoritative", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const value = `Retained-local-readback-${"s".repeat(600)}`;
-  const saved = await f.run("new-provenance", true, value);
+  const saved = await f.run("new-provenance", true, value, "value");
   assert.deepEqual(saved.run.secretInputNames, ["entry"]);
   f.app.library.save({ ...saved.workflow, inputs: saved.workflow.inputs.map((input) => ({ ...input, type: "text" })) });
   await assertViews(f, saved.run.id, value, true);
