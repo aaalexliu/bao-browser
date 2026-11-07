@@ -284,10 +284,10 @@ function render(focusDetail = true): void {
   const customWait = document.getElementById("act-custom") as HTMLInputElement | null;
   const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft], #settings [data-setting]")].filter((input) => {
     if (input.id === "act-minutes" && input.value === "custom") return customWait === focused || customWait?.validity.valid === false;
-    return input === focused || (input instanceof HTMLSelectElement
+    return input.dataset.settingsEdited === "true" || (input instanceof HTMLSelectElement
       ? [...input.options].some((option) => option.selected !== option.defaultSelected)
       : input.type === "checkbox" || input.type === "radio" ? input.checked !== input.defaultChecked : input.value !== input.defaultValue);
-  }).map((input) => [input.id, input instanceof HTMLInputElement && (input.type === "checkbox" || input.type === "radio") ? input.checked : input.value] as const) : [];
+  }).map((input) => [input.id, input instanceof HTMLInputElement && (input.type === "checkbox" || input.type === "radio") ? input.checked : input.value, input.dataset.settingsEdited === "true"] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
@@ -350,6 +350,7 @@ function render(focusDetail = true): void {
       libraryRecovery.visible = !recovery.hidden;
       libraryRecovery.open = recovery.open;
     }
+    mainEl().querySelectorAll<HTMLInputElement>('input[type="number"][data-setting]').forEach((input) => { input.onblur = null; });
     mainEl().innerHTML = body;
     const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
     if (nextRecovery && libraryRecovery) {
@@ -371,10 +372,11 @@ function render(focusDetail = true): void {
     if (screen === "replay") void fillArgs(replayId);
   }
   for (const id of settingsDetails) document.getElementById(id)?.setAttribute("open", "");
-  for (const [id, value] of settingsDrafts) {
+  for (const [id, value, edited] of settingsDrafts) {
     const input = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
     if (input instanceof HTMLInputElement && typeof value === "boolean") input.checked = value;
     else if (input && typeof value === "string") input.value = value;
+    if (input && edited) input.dataset.settingsEdited = "true";
   }
   bind();
   if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
@@ -593,6 +595,7 @@ function bindSettings(): void {
         return;
       }
       if (!input.reportValidity()) return;
+      delete input.dataset.settingsEdited;
       const key = input.dataset.setting!;
       const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
       settingsFeedback = "Saving…";
@@ -610,8 +613,12 @@ function bindSettings(): void {
         if (status) status.textContent = settingsFeedback;
       }
     };
-    if (input instanceof HTMLInputElement && input.type === "number") input.onblur = save;
-    else input.onchange = save;
+    if (input instanceof HTMLInputElement && input.type === "number") {
+      input.oninput = () => { input.dataset.settingsEdited = "true"; };
+      input.onblur = () => {
+        if (input.dataset.settingsEdited === "true") void save();
+      };
+    } else input.onchange = save;
   });
 }
 

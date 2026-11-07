@@ -307,6 +307,55 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
   }
 });
 
+test("a clean focused number adopts external updates without writing back", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-external-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    const writes: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/settings") writes.push(request.postDataJSON() as unknown);
+    });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    await page.locator("#settings-advanced > summary").click();
+    for (const [selector, initial, value, patch] of [
+      ["#promote-after", "3", "6", { promoteAfter: 6 }],
+      ["#act-custom", "120", "60", { actTimeoutMs: 3_600_000 }],
+      ["#circuit-limit", "3", "9", { circuitLimit: 9 }],
+    ] as const) {
+      if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
+      const input = page.locator(selector);
+      assert.equal(await input.inputValue(), initial);
+      await input.focus();
+      await input.press("Tab");
+      await input.focus();
+      app.library.updateSettings(patch);
+      await page.waitForFunction(({ selector, value }) => (document.querySelector(selector) as HTMLInputElement)?.defaultValue === value, { selector, value });
+      assert.equal(await input.inputValue(), value);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), selector.slice(1));
+      const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/state");
+      await input.press("Tab");
+      await refreshed;
+      assert.equal(await input.inputValue(), value);
+      assert.deepEqual(writes, []);
+    }
+    assert.equal(app.library.settings().promoteAfter, 6);
+    assert.equal(app.library.settings().actTimeoutMs, 3_600_000);
+    assert.equal(app.library.settings().circuitLimit, 9);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("pending CLI imports and the Logins profile picker keep separate handlers", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-import-"));
   const previousHome = process.env.HOME;
