@@ -1245,6 +1245,16 @@ async function discardSaveSheet(): Promise<void> {
 }
 
 function bindRemote(): void {
+  const resume = document.getElementById("remote-continue");
+  if (resume) resume.onclick = async () => {
+    (resume as HTMLButtonElement).disabled = true;
+    await fetch("/api/remote/continue", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ resume: resume.dataset.resume, stepId: resume.dataset.step }),
+    });
+    await refresh();
+  };
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
   const pair = document.getElementById("relay-pair");

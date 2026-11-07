@@ -17,7 +17,7 @@ import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
-import { expectedText, replay, withInputDefaults, type RunResult } from "../v1/replay";
+import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { secretInputName } from "../v1/auth";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
@@ -223,6 +223,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
 
 export interface RunControl {
   prompts?: PersonPrompts;
+  confirmCompleted?: boolean;
   onContext?: (context: BrowserContext) => void;
 }
 
@@ -237,8 +238,16 @@ export async function runWorkflow(
   if (request.resume && !peeked) return emptyOutcome("", "failed", "resume token");
   const live = request.resume ? liveRuns.get(request.resume) : undefined;
   if (live) {
-    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
-    return continueLive(library, live, request.inputs ?? {}, control);
+    if (live.continuing) return live.continuing;
+    live.continuing = Promise.resolve(live.observing)
+      .catch(() => undefined)
+      .then(() => {
+        if (liveRuns.get(live.token) !== live) return emptyOutcome(live.workflow.id, "failed", "the run's browser is gone");
+        if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
+        return continueLive(library, live, request.inputs ?? {}, control);
+      })
+      .finally(() => { live.continuing = undefined; });
+    return live.continuing;
   }
   if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm" || peeked.kind === "wall")) {
     dropResume(library, request.resume || "");
@@ -287,6 +296,33 @@ export async function withHeldPage(token: string, run: (page: Page) => Promise<v
   const live = liveRuns.get(token);
   if (!live) throw new Error("resume token");
   await run(live.page);
+}
+
+export function heldConfirmStep(token: string): { stepId: string; stepLabel: string; stepNumber: number; stepCount: number; canDetectCompletion: boolean } | undefined {
+  const live = liveRuns.get(token);
+  if (!live || live.kind !== "confirm" || live.continuing) return undefined;
+  const index = live.workflow.steps.findIndex((step) => step.id === live.stepId);
+  return {
+    stepId: live.stepId,
+    stepLabel: live.workflow.steps[index]?.label || "the site interaction",
+    stepNumber: index + 1,
+    stepCount: live.workflow.steps.length,
+    canDetectCompletion: live.confirmPending === true,
+  };
+}
+
+export async function heldConfirmReady(token: string): Promise<boolean> {
+  const live = liveRuns.get(token);
+  if (!live || live.kind !== "confirm" || live.continuing || !live.confirmPending) return false;
+  if (live.observing) return live.observing;
+  const stepId = live.stepId;
+  const post = live.workflow.steps.find((step) => step.id === stepId)?.postcondition;
+  if (!post) return false;
+  live.observing = (async () => {
+    const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
+    return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && holds(post, tree, live.inputs);
+  })().finally(() => { live.observing = undefined; });
+  return live.observing;
 }
 
 export async function reviewWorkflow(
@@ -450,6 +486,10 @@ interface LiveRun {
   deadline: number | null;
   ask: string;
   prompts?: PersonPrompts;
+  observer?: BrowserDriver;
+  observing?: Promise<boolean>;
+  confirmPending?: boolean;
+  continuing?: Promise<WorkflowOutcome>;
 }
 
 const liveRuns = new Map<string, LiveRun>();
@@ -533,6 +573,7 @@ async function replayInBrowser(
         ask: run.ask.instruction,
         prompts: control?.prompts,
       };
+      await observeConfirm(live);
       liveRuns.set(outcome.resume, live);
       await finishVideo();
       saveWorkflowRun(library, workflow, run, args, outcome, clip);
@@ -557,7 +598,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     now: () => Date.now(),
     fromStepId: live.stepId,
     yieldHuman: true,
-    humanReady: live.kind !== "wall",
+    humanReady: live.kind === "confirm" && control?.confirmCompleted ? "confirmed" : live.kind !== "wall",
     trail: live.trail,
   });
   if (run.status === "paused" && run.pausedKind && run.ask) {
@@ -568,6 +609,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     live.ask = run.ask.instruction;
     live.trail = run.trail;
     live.steps = run.steps;
+    await observeConfirm(live);
     const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, live.token);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
     return outcome;
@@ -581,6 +623,16 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
   return storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets);
+}
+
+async function observeConfirm(live: LiveRun): Promise<void> {
+  live.confirmPending = false;
+  if (live.kind !== "confirm") return;
+  const post = live.workflow.steps.find((step) => step.id === live.stepId)?.postcondition;
+  if (!post || ((post.kind === "element" || post.kind === "absent") ? !post.identity : !post.match?.trim())) return;
+  try {
+    live.confirmPending = !holds(post, await (live.observer ??= new BrowserDriver(live.page)).tree(), live.inputs);
+  } catch { /* The owner can use Continue if the page cannot be read. */ }
 }
 
 async function cancelWorkflow(library: Library, token: string, control?: RunControl): Promise<WorkflowOutcome> {
