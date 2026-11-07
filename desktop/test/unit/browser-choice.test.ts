@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -10,7 +11,7 @@ import { TOOLS } from "../../src/mcp/server";
 import { openWorkflowBrowser, navigateWorkflowBrowser } from "../../src/engines/workflow-browser";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import * as profiles from "../../src/engines/chrome-profile-copy";
-import { launchOwnedChrome, launchOwnedChromeEndpoint } from "../../src/launch";
+import { launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../../src/launch";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
@@ -188,6 +189,41 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   } finally { await reopenedAgent.close(); }
   await browser.close();
   await rm(root, { recursive: true, force: true });
+});
+
+test("a retained Bao session closes gracefully before reopening its saved sign-in", { timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-retained-reopen-"));
+  const profile = path.join(root, "agent-browser-profile");
+  const session = await openWorkflowBrowser({ browser: "bao", home: root, site: "http://127.0.0.1/", sourceRoot: path.join(root, "source") });
+  const kill = ChildProcess.prototype.kill;
+  // A browser busy flushing its profile may not finish on SIGTERM.
+  const slowSignal = t.mock.method(ChildProcess.prototype, "kill", function (this: ChildProcess, signal?: NodeJS.Signals | number) {
+    if (signal === "SIGTERM" && this.spawnargs.includes(`--user-data-dir=${profile}`)) return true;
+    return kill.call(this, signal);
+  });
+  try {
+    await session.context.addCookies([{ name: "saved-login", value: "fixture", url: "http://127.0.0.1/", expires: Date.now() / 1000 + 3600 }]);
+    if (session.kind === "owned") await session.keepOpen?.();
+    await session.close();
+    assert.deepEqual(pidsForDataDir(profile), [], "explicit close must release the retained profile before returning");
+    const reopened = await openWorkflowBrowser({ browser: "bao", home: root, site: "http://127.0.0.1/", sourceRoot: path.join(root, "source") });
+    try {
+      assert.ok((await reopened.context.cookies("http://127.0.0.1/")).some((cookie) => cookie.name === "saved-login" && cookie.value === "fixture"));
+    } finally { await reopened.close(); }
+  } finally {
+    slowSignal.mock.restore();
+    if (pidsForDataDir(profile).length) {
+      const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+      const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+      try { await cdp.send("Browser.close").catch(() => undefined); }
+      finally { cdp.close(); }
+      const deadline = Date.now() + 5000;
+      while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await session.close();
+    assert.deepEqual(pidsForDataDir(profile), [], "test must leave no owned Chrome processes");
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("copy and current runs leave the app Sign in window open", { timeout: 60_000 }, async (t) => {

@@ -584,11 +584,18 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
   const pages = new Set<string>();
   const close = (): Promise<void> => {
     if (state.phase === "closing" || state.phase === "settled") return state.completion;
+    const retained = state.phase === "retained";
     const completion = Promise.resolve().then(async () => {
       const openPages = pages.size;
       if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
       let browserClose: ShutdownTrace["browserClose"] = "skipped";
       try {
+        if (retained && !cdp?.isOpen && ownedChromeRunning(owner)) {
+          try {
+            const endpoint = await readDevToolsActivePort(portFile);
+            cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 3000 });
+          } catch { /* Fall back to stopping the owned process. */ }
+        }
         if (cdp?.isOpen) {
           try {
             await cdp.send("Browser.close", {}, undefined, 3000);
