@@ -2208,7 +2208,7 @@ export function captureView(state: ShellState, draft: { name: string; startUrl: 
       </div>` : ""}
       <p id="capture-error" role="alert"${draft.error ? "" : " hidden"}>${esc(draft.error)}</p>
     </div>
-    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : ""}</footer>
+    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : state.teach?.phase === "review" ? `<button type="button" id="capture-teach-discard"${draft.busy ? " disabled" : ""}>Discard Teach review</button>` : ""}</footer>
   </section>`;
 }
 

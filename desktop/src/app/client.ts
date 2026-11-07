@@ -445,6 +445,25 @@ async function captureAction(action: "start" | "save" | "discard"): Promise<void
   }
 }
 
+async function discardTeachReview(): Promise<void> {
+  if (captureBusy || state.teach?.phase !== "review") return;
+  if (!confirm("Discard this Teach review? The steps you recorded are deleted. You can’t undo this.")) return;
+  captureBusy = true;
+  captureError = "";
+  render();
+  try {
+    const response = await fetch("/api/teach/discard", { method: "POST" });
+    if (!response.ok) throw new Error((await response.json()).error || "Could not discard the Teach review. Try again.");
+  } catch (error) {
+    captureError = error instanceof Error ? error.message : "Could not discard the Teach review. Try again.";
+  } finally {
+    captureBusy = false;
+    renderKey = "";
+    await refresh().catch(() => undefined);
+    render();
+  }
+}
+
 function teachScreen(): string {
   const teach = state.teach;
   if (teach?.phase === "review") return teachReview(teach);
@@ -792,6 +811,8 @@ function bind(): void {
   };
   const load = document.getElementById("load-trail");
   if (load) load.onclick = () => void loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "trail-view");
+  const discardReview = document.getElementById("capture-teach-discard");
+  if (discardReview) discardReview.onclick = () => void discardTeachReview();
   const openTeach = document.getElementById("open-teach");
   if (openTeach) openTeach.onclick = () => {
     screen = "teach";

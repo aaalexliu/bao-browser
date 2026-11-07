@@ -70,6 +70,62 @@ test("capture routes a pending Teach review back to Teach without changing its s
   }
 });
 
+test("an empty Teach review can be discarded from capture to allow a new recording", { timeout: 30_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-capture-empty-teach-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.setDefaultTimeout(10_000);
+  const url = `http://127.0.0.1:${app.port}`;
+  const getState = async () => (await page.request.get(`${url}/api/state`)).json();
+  try {
+    await page.goto(url);
+    await page.locator(".runs-record").click();
+    await page.getByRole("button", { name: "Teach", exact: true }).click();
+    await page.locator("#teach-url").fill(`${url}/fixture`);
+    await page.locator("#teach-start").click();
+    await page.locator("#teach-stop").click();
+    await page.locator("#teach-review").waitFor();
+    const pending = (await getState()).teach;
+    assert.equal(pending.phase, "review");
+    assert.equal(pending.review.workflow.steps.length, 0);
+    await page.locator("#rail [data-place=workflows]").click();
+    await page.getByRole("button", { name: "Record", exact: true }).click();
+    const discard = page.getByRole("button", { name: "Discard Teach review", exact: true });
+    page.once("dialog", (dialog) => void dialog.dismiss());
+    await discard.click();
+    assert.deepEqual((await getState()).teach.review, pending.review);
+    assert.equal(await page.locator("#start").count(), 0);
+    await page.route("**/api/teach/discard", (route) => route.fulfill({ status: 500, json: { error: "Fixture discard failed" } }));
+    page.once("dialog", (dialog) => void dialog.accept());
+    await discard.click();
+    await page.getByRole("alert").filter({ hasText: "Fixture discard failed" }).waitFor();
+    assert.equal((await getState()).teach.phase, "review");
+    assert.equal(await page.locator("#start").count(), 0);
+    await page.unroute("**/api/teach/discard");
+    page.once("dialog", (dialog) => void dialog.accept());
+    await discard.click();
+    await page.locator("#start:not([disabled])").waitFor();
+    assert.equal((await getState()).teach.phase, "idle");
+    assert.equal(await discard.count(), 0);
+    assert.equal(app.library.list().workflows.length, 0);
+    await page.locator("#start-url").fill(`${url}/fixture`);
+    await page.locator("#start").click();
+    await page.locator("#stop:not([disabled])").waitFor();
+    const recording = await getState();
+    assert.equal(recording.recording, true);
+    assert.equal(recording.teach.phase, "idle");
+    assert.ok(recording.capture.steps.length > 0);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("the running capture saves its name and steps, pauses, recovers errors and discards", { timeout: 90_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-ui-"));
   const oldHome = process.env.HOME;
