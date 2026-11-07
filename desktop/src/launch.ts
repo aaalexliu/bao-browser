@@ -840,7 +840,7 @@ export function assessOwnedCommand(cmd: string, userDataDir: string, env: NodeJS
   const tokens = cmd.split(/\s+/);
   if (testLaneBrowser(env) || keychain === "mock") {
     if (!tokens.includes("--use-mock-keychain")) {
-      return { ok: false, reason: "Chrome started without the requested mock keychain." };
+      return { ok: false, reason: "Chrome started without a mock keychain." };
     }
   } else if (tokens.some((token) => isKeychainFlag(token))) {
     return { ok: false, reason: "Chrome was started with a mock keychain flag." };
