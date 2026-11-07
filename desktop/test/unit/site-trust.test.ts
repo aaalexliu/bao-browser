@@ -107,6 +107,29 @@ for (const recovery of ["overlay-find", "overlay-expect", "reveal"] as const) {
   });
 }
 
+test("a missing Continue anchor cannot press the reserved Place order control", async () => {
+  const driver = counting();
+  const heading: Identity = { surface: "dom", role: "heading", text: "Order summary", path: [] };
+  const place = { ...ident("Place order"), testId: "place-order" };
+  driver.tree = async () => ({
+    nodes: [heading, place], texts: ["Order summary"], values: [],
+    boxes: [{ x: 20, y: 20, w: 200, h: 30 }, { x: 20, y: 100, w: 100, h: 30 }],
+  });
+  const workflow = doc([
+    { ...click("Continue", 0), heal: "never", locators: [
+      { kind: "role", role: "button", name: "Continue" },
+      { kind: "anchor", role: "button", relation: "below", anchor: heading },
+    ] },
+    { ...click("Place order", 1), identity: place, action: "confirm", human: true },
+  ]);
+  const result = await replay(workflow, {}, driver, { yieldHuman: true });
+  assert.ok(result.locatorHits.some((hit) => hit.kind === "anchor"));
+  assert.equal(result.status, "failed");
+  assert.equal(result.steps[0]?.status, "failed");
+  assert.deepEqual(driver.clicks, []);
+  assert.equal(result.trail.some((event) => event.kind === "click" || event.kind === "human-confirm"), false);
+});
+
 test("a requested click does not consume an explicit human workflow pause", async () => {
   const driver = counting();
   const workflow = doc([

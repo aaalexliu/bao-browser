@@ -1730,8 +1730,9 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     if (answer) driver.answerDialog(answer);
   }
   const original = recordedSteps(gate.workflow).find((recorded) => recorded.id === step.id);
-  const requested = !!original && (step.identity === original.identity || (!!original.identity
-    && (sameRecordedControl(original.identity, node) || lookup(original.identity, [node]).ok)));
+  const requested = original?.identity
+    ? sameRecordedControl(original.identity, node) || lookup(original.identity, [node]).ok
+    : !!original?.locators?.some((locator) => locator.kind !== "anchor" && matchLocator(locator, [node]));
   if (!await recordedClick(driver, gate, step.id, node, requested)) {
     throw new Error("Target belongs to a recorded human confirm step");
   }
