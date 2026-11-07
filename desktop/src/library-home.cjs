@@ -67,6 +67,20 @@ function resolveLibraryHome(argsOrOptions, env) {
   return chooseHome(normalize(argsOrOptions, env));
 }
 
+function resolveLibraryIdentity(argsOrOptions, env) {
+  const settings = normalize(argsOrOptions, env);
+  const root = chooseHome(settings);
+  const candidates = explicitHome(settings) !== undefined
+    ? []
+    : [platformHome(settings.userHome, settings.platform), ...legacyDirs(settings)];
+  const inactive = [];
+  for (const dir of candidates) {
+    if (samePath(dir, root) || inactive.some((item) => samePath(item.path, dir)) || !libraryHasData(dir)) continue;
+    inactive.push(summarizeLibrary(dir));
+  }
+  return { active: { path: root }, inactive };
+}
+
 function otherLibraries(root, argsOrOptions, env) {
   const settings = normalize(argsOrOptions || {}, env);
   if (explicitHome(settings) !== undefined) return [];
@@ -267,6 +281,36 @@ function libraryHasData(dir) {
   return DATA_DIRS.some((name) => hasJsonFile(path.join(dir, name)));
 }
 
+function summarizeLibrary(dir) {
+  const contents = {};
+  let latest;
+  const add = (kind, file) => {
+    try {
+      const stat = statSync(file);
+      if (!stat.isFile()) return;
+      contents[kind] = (contents[kind] || 0) + 1;
+      latest = Math.max(latest ?? stat.mtimeMs, stat.mtimeMs);
+    } catch {}
+  };
+  for (const name of DATA_FILES) add(name, path.join(dir, name));
+  add("observer", path.join(dir, "observer", "trail.jsonl"));
+  add("live-session", path.join(dir, "live-session", "session.json"));
+  for (const name of DATA_DIRS) {
+    let files;
+    try { files = readdirSync(path.join(dir, name)); }
+    catch { continue; }
+    for (const file of files) {
+      if (file.endsWith(".json")) add(name, path.join(dir, name, file));
+    }
+  }
+  return {
+    path: dir,
+    state: "not_used_or_searched",
+    contents,
+    lastUpdated: latest === undefined ? null : new Date(latest).toISOString(),
+  };
+}
+
 function samePath(left, right) {
   return canonical(left) === canonical(right);
 }
@@ -282,6 +326,7 @@ function canonical(file) {
 
 module.exports = {
   resolveLibraryHome,
+  resolveLibraryIdentity,
   otherLibraries,
   serverHomes,
   showOnce,

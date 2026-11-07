@@ -154,7 +154,13 @@ async function initialize(mcp: Mcp): Promise<Reply> {
   return reply;
 }
 
-test("non-UI clients retain exactly the existing catalog and results, including unsupported UI MIME types", async () => {
+function receiptPayload(home: string, reply: Reply): Record<string, unknown> {
+  const { library, ...outcome } = JSON.parse(reply.result?.content?.[0]?.text || "null") as Record<string, unknown>;
+  assert.deepEqual(library, { active: { path: home }, inactive: [] });
+  return outcome;
+}
+
+test("non-UI clients retain the catalog and identify their active Library, including unsupported UI MIME types", async () => {
   const legacy = startMcp("bao-mcp-no-ui-");
   const unsupported = startMcp("bao-mcp-unsupported-ui-");
   try {
@@ -164,7 +170,14 @@ test("non-UI clients retain exactly the existing catalog and results, including 
     assert.deepEqual(other.result?.capabilities, first.result?.capabilities);
     assert.deepEqual((await legacy.request("tools/list")).result?.tools, TOOLS);
     assert.deepEqual((await unsupported.request("tools/list")).result?.tools, TOOLS);
-    assert.deepEqual(await legacy.tool("search_workflows", { query: "missing" }), { text: '{"damagedWorkflows":[],"hits":[]}', isError: false });
+    const search = await legacy.tool("search_workflows", { query: "missing" });
+    assert.equal(search.isError, false);
+    assert.deepEqual(JSON.parse(search.text), { damagedWorkflows: [], hits: [], library: { active: { path: legacy.home }, inactive: [] } });
+    assert.match(first.result?.instructions || "", /Use Bao's tools to find and read runs and workflows, not filesystem browsing/);
+    assert.match(first.result?.instructions || "", /Bao does not use or search those roots/);
+    for (const tool of TOOLS.filter((item) => item.name !== "agent_browser")) {
+      assert.match(tool.description, /not (by browsing folders|folder browsing)/, tool.name);
+    }
     assert.equal((await legacy.tool("list_runs")).isError, true);
     assert.equal((await legacy.request("resources/list")).error?.code, -32601);
     assert.equal((await legacy.request("resources/read", { uri: VIEWER_URI })).error?.code, -32601);
@@ -198,7 +211,8 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     assert.equal(history.result?._meta?.baoViewer?.runs?.[0]?.id, run.id);
     assert.match(history.result?.content?.[0]?.text || "", /run-ui/);
     const receipt = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
-    assert.deepEqual(receipt.result?.content, (await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } })).result?.content);
+    const plainReceipt = await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
+    assert.deepEqual(receiptPayload(mcp.home, receipt), receiptPayload(legacy.home, plainReceipt));
     assert.equal(receipt.result?._meta?.baoViewer?.run?.modelCalls, null);
     const detail = await mcp.request("tools/call", { name: "inspect_run", arguments: { run_id: run.id } });
     assert.equal(detail.result?._meta?.baoViewer?.run?.id, run.id);
@@ -223,7 +237,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       }
       const projected = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
       const plain = await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
-      assert.deepEqual(projected.result?.content, plain.result?.content);
+      assert.deepEqual(receiptPayload(mcp.home, projected), receiptPayload(legacy.home, plain));
       assert.ok(projected.result?.content?.[0]?.text?.includes(reason));
       const metadata = projected.result?._meta?.baoViewer as { reason?: string; handoff?: { ask?: string }; steps: { reason?: string; picturesAllowed: boolean }[] };
       assert.ok(metadata);

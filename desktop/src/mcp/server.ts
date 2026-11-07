@@ -1,4 +1,4 @@
-import { baoUserHome, otherLibraries, resolveHome, tildePath } from "../home";
+import { baoUserHome, resolveLibraryIdentity, tildePath, type LibraryIdentity } from "../home";
 import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
@@ -17,7 +17,7 @@ interface Rpc {
 const CATALOG_TOOLS = [
   {
     name: "search_workflows",
-    description: "Search this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time. A marketplace time this Mac has not replayed is labeled publisher green. Equal relevance ranks this Mac, then another device, then marketplace.",
+    description: "Find workflows through Bao, not by browsing folders. Search the active Library on this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time. A marketplace time this Mac has not replayed is labeled publisher green. Equal relevance ranks this Mac, then another device, then marketplace.",
     inputSchema: {
       type: "object",
       properties: {
@@ -31,12 +31,12 @@ const CATALOG_TOOLS = [
   },
   {
     name: "describe_workflow",
-    description: "Steps, input schema, declared outputs, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. Source is this Mac, the device name, or marketplace.",
+    description: "Read a workflow through Bao, not by browsing folders. Steps, input schema, declared outputs, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. Source is this Mac, the device name, or marketplace.",
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
   },
   {
     name: "run_workflow",
-    description: "Replay a saved workflow on this device in Bao's own Chrome. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. A listing that has not been allowed returns needs_approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a saved workflow from the active Library on this device in Bao's own Chrome. Use Bao's tools to find workflows, not folder browsing. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. A listing that has not been allowed returns needs_approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -50,7 +50,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "get_run",
-    description: "Read one replay outcome by run id, including declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
+    description: "Read a run from the active Library through Bao, not by browsing folders. Pass its run id to read the outcome, including declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
     inputSchema: { type: "object", properties: { run_id: { type: "string" } }, required: ["run_id"] },
   },
 ] as const;
@@ -72,20 +72,20 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
   "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report that the owner closed the window. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact or save a workflow. It needs no running Bao app. Bao does not block final clicks.",
-  "search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
+  "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows and runs. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
 ].join("\n");
 
 interface Context {
   library: Library;
-  libraries: string[] | undefined;
+  identity: LibraryIdentity;
   proxy: AgentBrowserProxy;
   ui: boolean;
 }
 
 export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const env = { ...process.env };
-  const home = resolveHome(args);
-  const libraries = publishedLibraries(home, otherLibraries(home, args));
+  const identity = resolveLibraryIdentity(args);
+  const home = identity.active.path;
   process.env.BAO_HOME = home;
   if (process.env.BAO_MCP_LIVE === "1") {
     const { liveMcpMain } = await import("../eval/live-mcp");
@@ -96,7 +96,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const library = new Library(home);
   const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile,
     keepOpen: () => library.settings().keepAgentBrowserOpen === true });
-  const ctx: Context = { library, libraries, proxy, ui: false };
+  const ctx: Context = { library, identity, proxy, ui: false };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -193,7 +193,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
         ? callViewerTool(ctx.library, name, args)
         : name === "agent_browser"
         ? await proxyTool(args, ctx.proxy)
-        : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.libraries, name, args)) }], isError: false };
+        : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.identity, name, args)) }], isError: false };
       if (ctx.ui && name === "get_run") {
         try {
           send({ jsonrpc: "2.0", id: msg.id, result: { ...result, _meta: { baoViewer: inspectRunView(ctx.library, args) } } });
@@ -225,19 +225,19 @@ async function proxyTool(args: Record<string, unknown>, proxy: AgentBrowserProxy
   };
 }
 
-async function callTool(library: Library, libraries: string[] | undefined, name: string, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(library: Library, identity: LibraryIdentity, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "search_workflows") {
     const filters = args.filters && typeof args.filters === "object" ? args.filters as Record<string, unknown> : args;
-    return withLibraries({
+    return withLibrary({
       damagedWorkflows: library.list().damagedWorkflows,
       hits: await searchWorkflows(library, String(args.query || ""), {
         source: stringArg(filters.source),
         site: stringArg(filters.site),
         category: stringArg(filters.category),
       }),
-    }, libraries);
+    }, identity);
   }
-  if (name === "describe_workflow") return describeWorkflow(library, String(args.id || ""));
+  if (name === "describe_workflow") return withLibrary(await describeWorkflow(library, String(args.id || "")), identity);
   if (name === "run_workflow") {
     const result = await runWorkflow(library, {
       id: args.id ? String(args.id) : undefined,
@@ -246,21 +246,18 @@ async function callTool(library: Library, libraries: string[] | undefined, name:
       rerun: args.rerun === true,
       cancel: args.cancel === true,
     });
-    return withLibraries(result, libraries);
+    return withLibrary(result, identity);
   }
-  if (name === "get_run") return withLibraries(getRun(library, String(args.run_id || "")), libraries);
+  if (name === "get_run") return withLibrary(getRun(library, String(args.run_id || "")), identity);
   throw new Error("unknown tool");
 }
 
-function publishedLibraries(root: string, also: string[]): string[] | undefined {
-  if (!also.length) return undefined;
+function withLibrary(result: object, identity: LibraryIdentity): object {
   const prefix = baoUserHome();
-  return [root, ...also].map((dir) => tildePath(dir, prefix));
-}
-
-function withLibraries(result: object, libraries: string[] | undefined): object {
-  if (!libraries) return result;
-  return { ...result, libraries };
+  return { ...result, library: {
+    active: { path: tildePath(identity.active.path, prefix) },
+    inactive: identity.inactive.map((item) => ({ ...item, path: tildePath(item.path, prefix) })),
+  } };
 }
 
 function stringArg(value: unknown): string | undefined {

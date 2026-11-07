@@ -21,8 +21,21 @@ export class HomeError extends Error {
   }
 }
 
+export interface LibraryIdentity {
+  active: { path: string };
+  inactive: {
+    path: string;
+    state: "not_used_or_searched";
+    /** Counts of the data files Bao recognizes, grouped by directory or file name. */
+    contents: Record<string, number>;
+    /** Latest data-file mtime in ISO 8601, or null if the files disappeared during inspection. */
+    lastUpdated: string | null;
+  }[];
+}
+
 interface LibraryHomeModule {
   resolveLibraryHome(argsOrOptions?: readonly string[] | HomeOptions, env?: NodeJS.ProcessEnv): string;
+  resolveLibraryIdentity(argsOrOptions?: readonly string[] | HomeOptions, env?: NodeJS.ProcessEnv): LibraryIdentity;
   otherLibraries(root: string, argsOrOptions?: readonly string[] | HomeOptions, env?: NodeJS.ProcessEnv): string[];
   serverHomes(args?: readonly string[], env?: NodeJS.ProcessEnv): string[];
   showOnce(home: string, lines: readonly string[]): string[];
@@ -57,6 +70,10 @@ function call<T>(fn: () => T): T {
 
 export function resolveHome(argsOrOptions: readonly string[] | HomeOptions = [], env?: NodeJS.ProcessEnv): string {
   return call(() => lib.resolveLibraryHome(argsOrOptions, env));
+}
+
+export function resolveLibraryIdentity(argsOrOptions: readonly string[] | HomeOptions = [], env?: NodeJS.ProcessEnv): LibraryIdentity {
+  return call(() => lib.resolveLibraryIdentity(argsOrOptions, env));
 }
 
 export function baoUserHome(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
