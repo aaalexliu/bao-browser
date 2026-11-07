@@ -249,7 +249,7 @@ test("plain Replay uses the current saved secret while pinned and run-link input
     async function openPlain(): Promise<void> {
       await page.goto(base);
       await page.click('#rail [data-place="workflows"]');
-      await page.click('#screen-list [data-screen="library"]');
+      await page.click(`[data-open-workflow="${workflow.id}"]`);
       await page.click(`[data-screen="replay"][data-workflow="${workflow.id}"]`);
       await password.waitFor();
     }
