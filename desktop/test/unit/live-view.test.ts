@@ -8,7 +8,7 @@ import { startApp } from "../../src/app/server";
 import type { ActiveRun, RunSummary, ShellState } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import { makeAsk } from "../../src/v1/human-ask";
-import { writePendingPrompt } from "../../src/v1/pending-prompt";
+import { readPendingPrompt, writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { blankPng } from "../../src/v1/redacted-png";
 import { saveRelay } from "../../src/v1/relay-link";
@@ -151,6 +151,35 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     await page.waitForSelector("#run-receipt");
     assert.equal((await (await fetch(`${base}/api/state`)).json() as ShellState).activeAsk, null);
   } finally { await browser.close(); await app.close(); rmSync(dirs.home, { recursive: true, force: true }); }
+});
+
+test("a returned-paused confirm does not block the next Run", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("paused-rerun");
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const base = `http://127.0.0.1:${app.port}`;
+  try {
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "reserve", index: 0, action: "confirm", human: true, label: "Press Reserve", surface: "dom", timeoutMs: 60000 },
+    ];
+    app.library.save(wf);
+    const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(first.status, "paused");
+    const ended = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(ended.replaying, false);
+    assert.equal(ended.activeRun?.phase, "waiting");
+    assert.equal(ended.activeRun?.id, first.runId);
+    assert.equal(readPendingPrompt(dirs.home)?.runId, first.runId, "returning paused must keep its pending prompt");
+    const second = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(second.status, "paused");
+    assert.notEqual(second.runId, first.runId, "Run again must start a new replay, not refuse the ended handoff");
+    assert.equal(app.library.readRun(first.runId).status, "needs_human");
+    assert.equal(readPendingPrompt(dirs.home)?.runId, second.runId);
+  } finally {
+    await stop(base).catch(() => undefined);
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
 });
 
 test("a relay extension run leaves a waiting local run controllable", { timeout: 60000 }, async () => {

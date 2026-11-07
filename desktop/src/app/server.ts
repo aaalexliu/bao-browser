@@ -1204,7 +1204,7 @@ export async function startApp(opts: {
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
-        if (!body.guide && activeRun?.phase === "waiting") {
+        if (!body.guide && activeRun?.phase === "waiting" && activeRun.id === ownedRunId) {
           return json(res, { error: "Another run is waiting for you. Finish or stop it first." }, 409);
         }
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
