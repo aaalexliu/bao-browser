@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -235,6 +236,56 @@ test("cancel and resume leave the confirm button unpressed", { timeout: 60_000 }
     assert.equal(cancelled.status, "stopped");
   } finally {
     if (token) await runWorkflow(app.library, { resume: token, cancel: true }).catch(() => undefined);
+    await app.close();
+  }
+});
+
+test("clearing a wall at a recorded confirm asks for the confirm instead of completing it", { timeout: 60_000 }, async () => {
+  process.env.BAO_CHROME_NO_SANDBOX = "1";
+  const home = mkdtempSync(path.join(tmpdir(), "bao-wall-confirm-"));
+  const app = await startApp({ home, port: 0 });
+  const fixture = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(`<h1>Verify you are human</h1><button id="clear" onclick="document.body.innerHTML='<button id=apply>Apply</button>'">Clear wall</button>`);
+  });
+  let token = "";
+  const asks: string[] = [];
+  const confirms: string[] = [];
+  try {
+    await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+    const address = fixture.address();
+    assert.ok(address && typeof address === "object");
+    const workflow = confirmWorkflow(`http://127.0.0.1:${address.port}/`, "wall-confirm");
+    delete workflow.steps[0]!.postcondition;
+    app.library.save(workflow);
+    const first = await runWorkflow(app.library, { id: workflow.id }, undefined, {
+      prompts: {
+        showAsk(ask) { asks.push(ask.kind); },
+        showConfirm(label) { confirms.push(label); },
+      },
+    });
+    token = first.resume || "";
+    assert.ok(token);
+    assert.equal(first.outcome, "needs_human");
+    assert.deepEqual(asks, ["wall"]);
+    assert.deepEqual(confirms, []);
+    await withHeldPage(token, async (page) => {
+      await page.locator("#clear").click();
+      await page.locator("#apply").waitFor();
+    });
+    const resumed = await runWorkflow(app.library, { resume: token });
+    assert.equal(resumed.outcome, "needs_human");
+    assert.notEqual(resumed.status, "completed");
+    assert.equal(resumed.resume, token);
+    assert.deepEqual(asks, ["wall", "confirm"]);
+    assert.deepEqual(confirms, ["Confirm before Apply"]);
+    const stored = app.library.readRun(first.runId || "");
+    assert.equal(stored.status, "needs_human");
+    assert.equal((stored.trail as { kind: string }[]).some((event) => event.kind === "human-confirm"), false);
+    await withHeldPage(token, async (page) => { assert.equal(page.isClosed(), false); });
+  } finally {
+    if (token) await runWorkflow(app.library, { resume: token, cancel: true }).catch(() => undefined);
+    await new Promise<void>((resolve) => fixture.close(() => resolve()));
     await app.close();
   }
 });

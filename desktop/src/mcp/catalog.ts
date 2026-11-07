@@ -527,7 +527,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     now: () => Date.now(),
     fromStepId: live.stepId,
     yieldHuman: true,
-    humanReady: true,
+    humanReady: live.kind !== "wall",
     trail: live.trail,
   });
   if (run.status === "paused" && run.pausedKind && run.ask) {
