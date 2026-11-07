@@ -205,7 +205,7 @@ The credit-freeze workflow's precondition is `{ kind: "url", match: "/freeze", p
 
 The login step has two paths. With no secret, replay shows the same confirm-style banner, title "Sign in on the site window", and waits. With the password supplied on the upfront secret input, replay fills the masked field and does not show that banner. Either way it continues on `/freeze`, clicks Frozen, re-reads `Status: none`, and pauses on the confirm step. The workflow has no Apply click; its confirm identity reserves that control for the person. See [workflow step semantics](workflow-schema.md#steps) for confirm, resume, and repair rules.
 
-That spike excluded passwords from saved files. Current capture reads password values and records them as named `secret` inputs with defaults in the local Library. Saved runs and teaching cases retain their values too. Replay uses a saved password unless a runtime input overrides it. OTP still asks for a fresh code. Screenshots cover `input[type=password]` with a black bar before the PNG is taken, and the accessibility snapshot is omitted while that field is on the page.
+That spike excluded passwords from saved files. Current capture, password replay, and screenshot and snapshot retention follow the [saved-evidence rules](permissions.md#secret-text-in-saved-files).
 
 ### What passed
 

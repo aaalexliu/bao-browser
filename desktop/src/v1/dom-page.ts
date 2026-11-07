@@ -182,7 +182,7 @@ export function dumpPage(): PageDump {
       if (chosen && chosen.length < 180) texts.push(chosen);
     }
     const input = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
-    const value = input ? (input.type !== "password" ? input.value : undefined)
+    const value = input ? input.value
       : el.isContentEditable ? el.innerText : undefined;
     if (value !== undefined && input?.type !== "file") {
       values.push({ handle, value });
@@ -230,84 +230,6 @@ export function dumpPage(): PageDump {
   };
   document.querySelectorAll("body *").forEach((el) => consider(el));
   return { url: location.href, title: document.title, nodes, texts, values };
-}
-
-/** Cover password fields before a screenshot. Does not read the field value. */
-export function maskPasswordFields(): void {
-  document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
-  for (const el of document.querySelectorAll("input[type=password]")) {
-    if (!(el instanceof HTMLInputElement) || !el.value) continue;
-    const rect = el.getBoundingClientRect();
-    const cover = document.createElement("div");
-    cover.setAttribute("data-bao-mask", "1");
-    cover.setAttribute("aria-hidden", "true");
-    cover.style.position = "fixed";
-    cover.style.left = `${rect.x}px`;
-    cover.style.top = `${rect.y}px`;
-    cover.style.width = `${Math.max(rect.width, 8)}px`;
-    cover.style.height = `${Math.max(rect.height, 8)}px`;
-    cover.style.background = "#1d1a16";
-    cover.style.color = "#f4f0e8";
-    cover.style.zIndex = "2147483647";
-    cover.style.display = "flex";
-    cover.style.alignItems = "center";
-    cover.style.padding = "0 8px";
-    cover.style.font = "16px sans-serif";
-    cover.textContent = "••••••••";
-    document.body.appendChild(cover);
-  }
-}
-
-export function unmaskPasswordFields(): void {
-  document.querySelectorAll("[data-bao-mask]").forEach((el) => el.remove());
-}
-
-/**
- * Scribe-style blur. Password fields and anything marked secret are blurred
- * before a teach screenshot, then put back so the page the person is driving
- * is not left covered.
- * Returns how many fields were blurred. Passed to page.evaluate, so it stays closed over nothing.
- */
-export function blurSensitiveFields(): number {
-  document.querySelectorAll("[data-bao-blur-cover]").forEach((el) => el.remove());
-  const targets = [
-    ...document.querySelectorAll("input[type=password], input[autocomplete='current-password'], [data-bao-secret]"),
-  ];
-  let count = 0;
-  for (const el of targets) {
-    if (!(el instanceof HTMLElement)) continue;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) continue;
-    el.dataset.baoBlurred = "1";
-    el.dataset.baoBlurPrev = el.style.filter;
-    el.style.filter = "blur(10px)";
-    const cover = document.createElement("div");
-    cover.setAttribute("data-bao-blur-cover", "1");
-    cover.setAttribute("aria-hidden", "true");
-    cover.style.position = "fixed";
-    cover.style.left = `${rect.x}px`;
-    cover.style.top = `${rect.y}px`;
-    cover.style.width = `${rect.width}px`;
-    cover.style.height = `${rect.height}px`;
-    cover.style.backdropFilter = "blur(12px)";
-    cover.style.background = "rgba(245, 245, 247, 0.28)";
-    cover.style.borderRadius = "6px";
-    cover.style.zIndex = "2147483646";
-    cover.style.pointerEvents = "none";
-    document.body.appendChild(cover);
-    count += 1;
-  }
-  return count;
-}
-
-export function unblurSensitiveFields(): void {
-  document.querySelectorAll("[data-bao-blur-cover]").forEach((el) => el.remove());
-  document.querySelectorAll("[data-bao-blurred]").forEach((el) => {
-    if (!(el instanceof HTMLElement)) return;
-    el.style.filter = el.dataset.baoBlurPrev || "";
-    delete el.dataset.baoBlurPrev;
-    delete el.dataset.baoBlurred;
-  });
 }
 
 /** Status lines a teach check can name. Runs in the page. Skips typed values and file echoes. */

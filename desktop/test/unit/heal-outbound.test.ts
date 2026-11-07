@@ -21,7 +21,6 @@ type PromptDom = [
 type ModelRequest = { messages: { content: string }[] };
 type CursorRequest = { prompt: string; dom: PromptDom; intent: string; reason: string; step: WorkflowStep };
 
-const stripped = "[secret stripped]";
 const reply = JSON.stringify({ identity: { surface: "dom", role: "button", testId: "fixed", path: [] } });
 
 function fixture(secret: string) {
@@ -52,10 +51,10 @@ function fixture(secret: string) {
 
 function assertPrompt(prompt: string, secret: string): void {
   const { dom } = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)) as { dom: PromptDom };
-  assert.equal(dom[0].value, stripped);
-  assert.equal(dom[0].identity.value, stripped);
-  assert.equal(dom[1].value, stripped);
-  assert.equal(dom[2].value, stripped);
+  assert.equal(dom[0].value, secret);
+  assert.equal(dom[0].identity.value, secret);
+  assert.equal(dom[1].value, "sk-generatedOutboundToken");
+  assert.equal(dom[2].value, "4111111111111111");
   assert.equal(dom[3].value, `prefix ${secret} suffix`);
   assert.equal(dom[4].value, "4111111111111111");
   assert.equal(dom[5].actual, secret);
@@ -69,7 +68,7 @@ function assertPrompt(prompt: string, secret: string): void {
 }
 
 for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"] as const) {
-  test(`${provider} generated requests keep main's typed-value policy and leave local evidence raw`, async () => {
+  test(`${provider} generated requests retain captured text and leave local evidence unchanged`, async () => {
     await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 1000000 }), async (seed) => {
       const secret = `outbound-password-${seed}`;
       const data = fixture(secret);
@@ -91,7 +90,7 @@ for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"]
       };
       resetCursorAccountCache();
       const heal = provider === "cursor-print"
-        ? await cursorAccountHeal({ BAO_CURSOR_AGENT: process.execPath }, [], agent)
+        ? await cursorAccountHeal({ BAO_CURSOR_AGENT: process.execPath }, agent)
         : provider === "cursor-session"
           ? cursorSessionHeal(() => reply)
           : llmHealFromEnv(provider === "openai" ? { OPENAI_API_KEY: "fixture" } : { ANTHROPIC_API_KEY: "fixture" }, fetchImpl);
@@ -110,7 +109,7 @@ for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"]
 }
 
 for (const mode of ["logged-out", "print-fails"] as const) {
-  test(`Cursor ${mode} file fallback keeps context and scrubs only typed values`, async (t) => {
+  test(`Cursor ${mode} file fallback retains captured context`, async (t) => {
     const dir = mkdtempSync(path.join(tmpdir(), "bao-heal-outbound-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     t.after(() => resetCursorAccountCache());
@@ -122,12 +121,12 @@ for (const mode of ["logged-out", "print-fails"] as const) {
       print: async () => ({ code: 1, stdout: "", stderr: "fixture print failure", args: [] }),
     };
     resetCursorAccountCache();
-    const heal = await cursorAccountHeal({ BAO_CURSOR_AGENT: process.execPath, BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: dir, BAO_HEAL_WAIT_MS: "0" }, [], agent);
+    const heal = await cursorAccountHeal({ BAO_CURSOR_AGENT: process.execPath, BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: dir, BAO_HEAL_WAIT_MS: "0" }, agent);
     assert.equal(await heal.propose(data.failure, data.step, data.context), null);
     const request = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8")) as CursorRequest;
     assertPrompt(request.prompt, secret);
-    assert.equal(request.dom[0].value, stripped);
-    assert.equal(request.dom[0].identity.value, stripped);
+    assert.equal(request.dom[0].value, secret);
+    assert.equal(request.dom[0].identity.value, secret);
     assert.equal(request.intent, secret);
     assert.equal(request.reason, secret);
     assert.equal(request.step.value, "{{password}}");
@@ -157,7 +156,7 @@ test("replay threads default and runtime secrets to the model while returning ra
     const result = await replay(data.workflow, supplied ? { password: secret } : {}, driver, { heal });
     assert.equal(result.status, "paused");
     const { dom } = JSON.parse(sent.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)) as { dom: PromptDom };
-    assert.equal(dom[0].value, stripped);
+    assert.equal(dom[0].value, secret);
     assert.deepEqual(result.heals[0]?.snapshot, snapshot);
     assert.equal((result.heals[0]?.snapshot.dom as { value: string }[])[0]?.value, secret);
     assert.equal(data.workflow.inputs[0]?.default, "default-password");

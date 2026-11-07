@@ -1,16 +1,7 @@
 // Capture-time HAR. Each entry records the audit event that was open when the
-// request started. Replay does not send these again. Cookies and auth headers
-// are stripped before the file is written.
+// request started. Replay does not send these again.
 
 import type { BrowserContext, Request, Response } from "playwright";
-
-const STRIP = new Set([
-  "cookie",
-  "authorization",
-  "proxy-authorization",
-  "x-api-key",
-  "set-cookie",
-]);
 
 interface HarHeader {
   name: string;
@@ -62,7 +53,6 @@ interface Started {
 function headersOf(raw: Record<string, string>): HarHeader[] {
   const out: HarHeader[] = [];
   for (const [name, value] of Object.entries(raw)) {
-    if (STRIP.has(name.toLowerCase())) continue;
     out.push({ name, value });
   }
   return out;

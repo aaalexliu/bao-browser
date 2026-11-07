@@ -1587,7 +1587,7 @@ async function showHeal(runId: string, healId: string): Promise<void> {
   const names = new Map((state.workflows || []).map((workflow) => [workflow.id, workflow.name]));
   const promotion = (state.promotions || []).find((item) => item.healId === heal.id && item.workflowId === run.workflowId)
     || (run.promotion && run.promotion.healId === heal.id ? run.promotion : undefined);
-  host.outerHTML = healDetail(run, heal as HealView, [], {
+  host.outerHTML = healDetail(run, heal as HealView, {
     workflowName: healWorkflowName(heal, run, names),
     promotion,
   });

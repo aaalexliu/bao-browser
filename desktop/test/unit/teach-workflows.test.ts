@@ -1,4 +1,4 @@
-// Teach a new workflow, correct it, replay twice, and blur secrets.
+// Teach a new workflow, correct it, and replay twice.
 // A second test merges demonstrations into a login route.
 // The capture browser is the local fixture page. No vendor network.
 
@@ -10,7 +10,6 @@ import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
-import { blurSensitiveFields, unblurSensitiveFields } from "../../src/v1/dom-page";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
@@ -33,8 +32,6 @@ async function state(port: number): Promise<{
   recording: boolean;
   teach: {
     phase: string;
-    blurredShots: number;
-    blur: boolean;
     cards: { id: string; intent: string; action: string; narrator: string; outcome: string; values: { role: string; name: string }[] }[];
     decisions: { kind: string; detail: string }[];
     review?: { workflow: { steps: { intent?: string; action?: string }[] }; raw: { kind?: string; op?: string }[] };
@@ -67,7 +64,7 @@ test("retired repair requests fail clearly without starting capture or changing 
   }
 });
 
-test("teach a new workflow, correct three cards, replay twice, and blur secrets", { timeout: 180000 }, async () => {
+test("teach a new workflow, correct three cards, and replay twice", { timeout: 180000 }, async () => {
   delete process.env.BAO_HEAL_FIXTURE;
   delete process.env.OPENAI_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
@@ -94,8 +91,6 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
 
     const live = await state(app.port);
     assert.equal(live.teach.phase, "live");
-    assert.equal(live.teach.blur, true);
-    assert.ok(live.teach.blurredShots >= 1, "password screenshot was not blurred");
     assert.ok(live.teach.cards.every((card) => card.narrator === "heuristic"));
     const note = live.teach.cards.find((card) => card.action === "type" && card.values.some((value) => value.name === "note"));
     const apply = live.teach.cards.find((card) => card.action === "click" && /apply/i.test(card.intent));
@@ -120,7 +115,7 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     const panel = await page.locator("#teach-panel").innerText();
     assert.match(panel, /Type \{\{note\}\}/);
     assert.match(panel, /heuristic/);
-    assert.match(panel, /Sensitive fields blurred/);
+    assert.doesNotMatch(panel, /Sensitive fields blurred/);
     assert.match(panel, /Add check/);
     assert.match(panel, /You do this/);
     assert.equal(await page.locator("#teach-panel .teach-card.on").count(), 1);
@@ -206,16 +201,12 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
       await post(app.port, "/api/replay/press", { name: "Apply" });
       const run = await pending as { status: string; failure?: { reason: string; stepId: string } };
       assert.equal(run.status, "passed", JSON.stringify(run.failure));
-      assert.equal(JSON.stringify(run).includes(password), false);
+      assert.equal(JSON.stringify(run).includes(password), true);
     }
 
     await page.goto(`http://127.0.0.1:${app.port}/fixture`);
     await page.fill("#password", secret);
-    const blurred = await page.evaluate(blurSensitiveFields);
-    assert.ok(blurred >= 1);
-    assert.match(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), /blur/);
-    assert.equal(await page.locator("[data-bao-blur-cover]").count(), blurred);
-    await page.evaluate(unblurSensitiveFields);
+    assert.equal(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), "none");
     assert.equal(await page.locator("[data-bao-blur-cover]").count(), 0);
 
     await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });

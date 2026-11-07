@@ -15,13 +15,12 @@ import { Capture, actNotice } from "./capture";
 import { resolveCaptureUrl } from "./capture-url";
 import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
-import { shotWithBlur } from "../v1/blur";
 import { publicLiveSession, shotNameOk } from "../cdp-live/live-record";
-import { BrowserDriver, clearOsNotify, elementShot, guideFieldShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
+import { BrowserDriver, clearOsNotify, elementShot, notifyOs, pagePoster, watchOsNotify, type PersonPrompts } from "../v1/browser-driver";
 import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } from "../v1/human-ask";
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
-import { blurSensitiveFields, maskPasswordFields, unblurSensitiveFields, unmaskPasswordFields, visibleStatusLines } from "../v1/dom-page";
+import { visibleStatusLines } from "../v1/dom-page";
 import {
   cookieHeader,
   loginDocument,
@@ -69,7 +68,7 @@ import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
 import { isClearPageShot, isPageAct, selectCardPoster } from "../v1/poster";
-import { applySaveEdits, inferSavedWorkflow, saveCompleter, secretValues } from "../v1/save-intent";
+import { applySaveEdits, inferSavedWorkflow, saveCompleter } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
 import {
   decide,
@@ -125,7 +124,6 @@ import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolve
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
-import { stripUnsafe } from "../../../shared/sync-guard";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -150,10 +148,8 @@ interface PendingCapture {
   workflow: WorkflowV2;
   events: TrailEvent[];
   shots: Map<string, string>;
-  guides: Map<string, string>;
   poster: string;
   floor: string;
-  secrets: string[];
   /** Written on commit so a discard does not leave an orphan gesture file. */
   gestures?: Gesture[];
 }
@@ -245,7 +241,6 @@ export async function startApp(opts: {
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
-  const captureGuideShots = new Map<string, string>();
   const pendingShots = new Set<Promise<unknown>>();
   const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
   let pending: PendingImport | undefined;
@@ -269,7 +264,6 @@ export async function startApp(opts: {
   let teachCaseId = "";
   let teachStartUrl = "";
   let teachName = "";
-  let blurredShots = 0;
   let teachBaseline: string[] = [];
   let narrateGen = 0;
   const narrationCache = new Map<string, Spoken & { sig: string }>();
@@ -616,7 +610,7 @@ export async function startApp(opts: {
         const body = await readBody(req) as { kind?: string; detail?: string };
         if (body.kind === "login") {
           const detail = typeof body.detail === "string" ? body.detail.replace(/\s+/g, " ").trim() : "";
-          if (detail && (detail.length > 120 || looksPersonal(detail))) return json(res, { error: "detail" }, 400);
+          if (detail.length > 120) return json(res, { error: "detail" }, 400);
           loginWait = { message: "waiting for you to log in", ...(detail ? { detail } : {}) };
         }
         else if (body.kind === "confirm") {
@@ -659,13 +653,13 @@ export async function startApp(opts: {
         const body = await readBody(req) as { phrases?: string[] };
         const phrases = (body.phrases || []).filter((phrase) => typeof phrase === "string" && phrase.length <= 40).slice(0, 6);
         const page = await sitePage();
-        const texts = (await shortTexts(page, phrases)).filter((text) => !looksPersonal(text));
+        const texts = await shortTexts(page, phrases);
         return json(res, { texts });
       }
       if (req.method === "POST" && url.pathname === "/api/site/shot") {
         const body = await readBody(req) as { phrase?: string; file?: string };
         const phrase = (body.phrase || "").trim();
-        if (!phrase || phrase.length > 80 || looksPersonal(phrase)) return json(res, { error: "phrase" }, 400);
+        if (!phrase || phrase.length > 80) return json(res, { error: "phrase" }, 400);
         const base = path.basename(body.file || "status-card.png");
         if (!/^[\w.-]+$/.test(base)) return json(res, { error: "file" }, 400);
         const page = await sitePage();
@@ -674,7 +668,7 @@ export async function startApp(opts: {
         const shots = path.join(opts.home, "shots");
         mkdirSync(shots, { recursive: true });
         const dest = path.join(shots, base);
-        await shotWithBlur(page, { path: dest, clip: box });
+        await page.screenshot({ path: dest, clip: box });
         return json(res, { file: base });
       }
       if (req.method === "GET" && url.pathname === "/api/pids") {
@@ -719,7 +713,7 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/export")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const released = stripUnsafe(library.read(id));
+        const released = library.read(id);
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(released, null, 2));
         return;
@@ -1434,12 +1428,7 @@ export async function startApp(opts: {
         }
         const shots = path.join(opts.home, "shots");
         mkdirSync(shots, { recursive: true });
-        await session.page.evaluate(maskPasswordFields);
-        try {
-          await session.page.screenshot({ path: path.join(shots, base), type: "png" });
-        } finally {
-          await session.page.evaluate(unmaskPasswordFields).catch(() => undefined);
-        }
+        await session.page.screenshot({ path: path.join(shots, base), type: "png" });
         return json(res, { file: base });
       }
       if (req.method === "POST" && url.pathname === "/api/replay/place") {
@@ -1749,7 +1738,6 @@ export async function startApp(opts: {
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
-    captureGuideShots.clear();
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
@@ -1838,33 +1826,9 @@ export async function startApp(opts: {
     if (sessionMode === "teach") void narrateSoon();
     try {
       const target = { identity: payload.identity, action: payload.op, label: payload.identity?.text };
-      if (sessionMode === "teach") {
-        const blurred = await page.evaluate(blurSensitiveFields);
-        try {
-          const png = await elementShot(page, target, { blur: false });
-          if (!png) return;
-          writeFileSync(dest, png);
-          const guide = await guideFieldShot(page, target).catch(() => undefined);
-          if (guide) {
-            const guideDest = path.join(dir, `${stored.id}.guide.png`);
-            writeFileSync(guideDest, guide);
-            captureGuideShots.set(stored.id, guideDest);
-          }
-        } finally {
-          await page.evaluate(unblurSensitiveFields).catch(() => undefined);
-        }
-        if (blurred > 0) blurredShots += 1;
-      } else {
-        const png = await elementShot(page, target);
-        if (!png) return;
-        writeFileSync(dest, png);
-        const guide = await guideFieldShot(page, target).catch(() => undefined);
-        if (guide) {
-          const guideDest = path.join(dir, `${stored.id}.guide.png`);
-          writeFileSync(guideDest, guide);
-          captureGuideShots.set(stored.id, guideDest);
-        }
-      }
+      const png = await elementShot(page, target);
+      if (!png) return;
+      writeFileSync(dest, png);
       captureShots.set(stored.id, dest);
     } catch { /* headed Chromium can refuse captureScreenshot */ }
   }
@@ -1875,7 +1839,6 @@ export async function startApp(opts: {
     cardSeen.clear();
     narrationCache.clear();
     narrateGen += 1;
-    blurredShots = 0;
     teachBaseline = [];
     teachName = "";
     teachStartUrl = startUrl;
@@ -1930,14 +1893,12 @@ export async function startApp(opts: {
     const clean = raw.map(storedFileEvent);
     const startUrl = captureStartUrl(clean, opened);
     extractProposal = undefined;
-    const secrets = secretValues(raw);
     const built = explain(clean, { id, name: "Untitled workflow", startUrl, secrets: [] });
     const floor = workflowFloorTitle({
       startUrl,
       events: clean,
       steps: built.workflow.steps,
       pageTitle: capturePageTitle,
-      secrets,
     });
     const drafted = await inferSavedWorkflow(built.workflow, {
       floorTitle: floor,
@@ -1946,7 +1907,6 @@ export async function startApp(opts: {
       steps: built.workflow.steps,
       pageTitle: capturePageTitle,
       groups: built.groups,
-      secrets,
     }, await saveCompleter());
     if (captureVia === "extension") drafted.driver = "extension";
     const gestures = captureVia === "extension"
@@ -1956,7 +1916,6 @@ export async function startApp(opts: {
     const shotDir = path.join(opts.home, "shots", "pending", drafted.id);
     mkdirSync(shotDir, { recursive: true });
     const shots = new Map<string, string>();
-    const guides = new Map<string, string>();
     for (let i = 0; i < drafted.steps.length; i++) {
       const group = built.groups[i] || [];
       const event = group.find((item) => item.op !== "note") || group[0];
@@ -1966,12 +1925,6 @@ export async function startApp(opts: {
         const dest = path.join(shotDir, workflowShotName(step.id));
         copyFileSync(src, dest);
         shots.set(step.id, dest);
-      }
-      const guideSrc = event ? captureGuideShots.get(event.id) : undefined;
-      if (guideSrc && step && existsSync(guideSrc)) {
-        const dest = path.join(shotDir, guideShotName(step.id));
-        copyFileSync(guideSrc, dest);
-        guides.set(step.id, dest);
       }
     }
     let poster = "";
@@ -1986,15 +1939,12 @@ export async function startApp(opts: {
       workflow: drafted,
       events: ensureTrailTimes(clean).events,
       shots,
-      guides,
       poster,
       floor,
-      secrets,
       gestures,
     };
     capture.discard();
     captureShots.clear();
-    captureGuideShots.clear();
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
@@ -2012,14 +1962,11 @@ export async function startApp(opts: {
       name: edits.name,
       summary: edits.summary,
       intent: edits.intent,
-    }, pending.secrets, pending.floor);
+    }, pending.floor);
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
     mkdirSync(shotDest, { recursive: true });
     for (const [stepId, src] of pending.shots) {
       if (existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(stepId)));
-    }
-    for (const [stepId, src] of pending.guides) {
-      if (existsSync(src)) copyFileSync(src, path.join(shotDest, guideShotName(stepId)));
     }
     if (pending.poster && existsSync(pending.poster)) {
       const bytes = readFileSync(pending.poster);
@@ -2192,8 +2139,6 @@ export async function startApp(opts: {
       phase: teachPhase,
       paused: capture.paused,
       since: recordingSince,
-      blur: true,
-      blurredShots,
       narrator,
       error,
       cards,
@@ -2283,8 +2228,6 @@ export async function startApp(opts: {
       stepIndex += 1;
       const src = captureShots.get(card.id);
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
-      const guideSrc = captureGuideShots.get(card.id);
-      if (guideSrc && step && existsSync(guideSrc)) copyFileSync(guideSrc, path.join(shotDest, guideShotName(step.id)));
     }
     library.save(workflow);
     const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];
@@ -2804,7 +2747,7 @@ async function runExtension(
     if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
     throw err;
   }
-  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
+  const heal = await healFromSource(library.settings().healSource, healProvider);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
@@ -2883,7 +2826,7 @@ async function runRecorded(
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
-  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
+  const heal = await healFromSource(library.settings().healSource, healProvider);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const clip = replayClips.get(session.profile);
   if (clip) clip.runId = runId;
@@ -3015,7 +2958,7 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
   };
 }
 
-async function healProvider(secrets: string[] = []): Promise<HealProvider> {
+async function healProvider(): Promise<HealProvider> {
   if (process.env.BAO_HEAL_FIXTURE === "1") {
     return scriptedHeal({
       patch: { identity: { surface: "dom", role: "button", testId: "login", path: [] } },
@@ -3028,7 +2971,7 @@ async function healProvider(secrets: string[] = []): Promise<HealProvider> {
   if (cursorResponse && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
     return cursorSessionHeal(() => readFileSync(cursorResponse, "utf8"));
   }
-  return cursorAccountHeal(process.env, secrets);
+  return cursorAccountHeal(process.env);
 }
 
 interface PendingImport {
@@ -3148,13 +3091,6 @@ async function shortTexts(page: Page, phrases: string[]): Promise<string[]> {
     }
     return out;
   }, phrases);
-}
-
-function looksPersonal(text: string): boolean {
-  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text)) return true;
-  if (/\b\d{3}-\d{2}-\d{4}\b/.test(text)) return true;
-  if (/\d{6,}/.test(text)) return true;
-  return false;
 }
 
 async function clipForPhrase(page: Page, phrase: string): Promise<{ x: number; y: number; width: number; height: number } | null> {

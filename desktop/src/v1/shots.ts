@@ -19,7 +19,7 @@ export function workflowShotName(stepId: string): string {
   return shotFile(stepId, "after").replace(/-after\.png$/, ".png");
 }
 
-/** Empty-field crop for the guide. The workflow card keeps the original shot. */
+/** Legacy guide crop filename. New guides use the original workflow picture. */
 export function guideShotName(stepId: string): string {
   return workflowShotName(stepId).replace(/\.png$/, ".guide.png");
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fc from "fast-check";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { authPreconditionMiss, pathMatches } from "../../src/v1/auth";
@@ -439,10 +439,10 @@ test("recording a password field saves its value in a secret slot", async (t) =>
     assert.equal(committed.id, saved.id);
     assert.deepEqual(committed.steps, saved.steps);
     assert.deepEqual(new Library(home).read(saved.id), committed);
-    for (const file of [workflowShotName(passwordStep.id), guideShotName(passwordStep.id)]) {
-      const png = readFileSync(path.join(home, "shots", "workflows", saved.id, file));
-      assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
-    }
+    const shotDir = path.join(home, "shots", "workflows", saved.id);
+    const png = readFileSync(path.join(shotDir, workflowShotName(passwordStep.id)));
+    assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.equal(existsSync(path.join(shotDir, guideShotName(passwordStep.id))), false);
   } finally {
     await app.close();
     if (previous === undefined) delete process.env.BAO_DRIVE;

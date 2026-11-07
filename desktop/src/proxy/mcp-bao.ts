@@ -3,7 +3,6 @@
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isSensitiveValue } from "../../../shared/mask";
 import { AuditTrail, type AuditSource } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { MacOsHelper, type AxNode } from "./os-macos";
@@ -177,7 +176,7 @@ function summary(
   img: { w: number; h: number } | undefined,
 ): string {
   const lines = nodes.filter((n) => n.useful || n.role === "AXStaticText" || n.role === "AXScrollArea" || n.role === "AXTextArea").slice(0, 40).map((n) => {
-    const value = n.value && isSensitiveValue(n.value) ? "[masked]" : (n.value || "").slice(0, 80);
+    const value = (n.value || "").slice(0, 80);
     const frame = n.frame && win && img && img.w > 0 ? imageFrame(n.frame, win, img) : "no-frame";
     return `${n.role} ${JSON.stringify(n.name)} value=${JSON.stringify(value)} ${frame}`;
   });

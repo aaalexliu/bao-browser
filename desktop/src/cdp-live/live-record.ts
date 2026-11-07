@@ -74,28 +74,8 @@ export function auditPage<T>(rows: readonly T[], page?: number, size = AUDIT_PAG
   return { rows: rows.slice(start, start + size), page: index, pages, total };
 }
 
-export function redactLabel(text: string): string {
-  const clean = text
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "")
-    .replace(/\$\d+(?:\.\d{2})?/g, "")
-    .replace(/\b\d{3,}\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!clean) return "";
-  if (/@|\bstreet\b|\bavenue\b|\broad\b|\bapt\b|\bssn\b|\bpassword\b/i.test(clean)) return "";
-  return clean.slice(0, 80);
-}
-
-function auditLabel(action: string, label: string): string {
-  if (action === "start" || action === "navigate") {
-    try {
-      const url = new URL(label);
-      if (url.protocol === "http:" || url.protocol === "https:") {
-        return `${url.origin}${redactLabel(url.pathname)}`.slice(0, 80);
-      }
-    } catch { /* A start result can be a page title rather than a URL. */ }
-  }
-  return redactLabel(label);
+export function liveLabel(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 export function publicLiveSession(value: unknown): LiveSessionRecord | null {
@@ -106,8 +86,8 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
     return null;
   }
   const audit = Array.isArray(raw.audit) ? raw.audit.map((row) => ({
-    action: redactLabel(String(row?.action || "")).slice(0, 40),
-    label: auditLabel(String(row?.action || ""), String(row?.label || "")),
+    action: liveLabel(String(row?.action || "")).slice(0, 40),
+    label: liveLabel(String(row?.label || "")),
     path: String(row?.path || "").startsWith("/") ? String(row.path).slice(0, 120) : "",
     isTrusted: row?.isTrusted === true ? true : row?.isTrusted === false ? false : null,
     ms: Number.isFinite(row?.ms) ? Math.max(0, Math.round(Number(row.ms))) : 0,
@@ -123,13 +103,13 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
   const navigationBlock = block && typeof block.url === "string" && /^https?:/.test(block.url)
     && (block.reason === "login_wall" || block.reason === "stop-path") ? { url: block.url, reason: block.reason } : undefined;
   const steps = Array.isArray(raw.steps) ? raw.steps.map((step) => ({
-    name: redactLabel(String(step?.name || "")).slice(0, 40),
+    name: liveLabel(String(step?.name || "")).slice(0, 40),
     status: String(step?.status || "").slice(0, 20),
     ms: Number.isFinite(step?.ms) ? Math.max(0, Math.round(Number(step.ms))) : 0,
   })) : [];
   return {
     id: String(raw.id || "").replace(/[^\w.-]/g, "").slice(0, 40),
-    intent: redactLabel(String(raw.intent || "")).slice(0, 160),
+    intent: liveLabel(String(raw.intent || "")).slice(0, 160),
     ...(raw.allowCommit === true ? { allowCommit: true } : {}),
     status: navigationFailure ? "failed" : navigationBlock ? "needs_human" : status,
     ...(navigationFailure ? { navigationFailure } : {}),
@@ -145,6 +125,6 @@ export function publicLiveSession(value: unknown): LiveSessionRecord | null {
       ms: Number.isFinite(tool.ms) ? Math.max(0, tool.ms) : 0,
       spans: Object.fromEntries(Object.entries(tool.spans || {}).filter(([key, ms]) => /^[a-z]+$/.test(key) && Number.isFinite(ms) && ms >= 0)),
     })) } : {}),
-    note: navigationFailure ? `Navigation failed: ${navigationFailure.errorCode} at ${navigationFailure.url}` : redactLabel(String(raw.note || "")).slice(0, 160),
+    note: navigationFailure ? `Navigation failed: ${navigationFailure.errorCode} at ${navigationFailure.url}` : liveLabel(String(raw.note || "")).slice(0, 160),
   };
 }

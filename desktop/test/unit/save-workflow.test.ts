@@ -9,7 +9,7 @@ import { resetCursorAccountCache } from "../../src/v1/cursor-account";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { selectCardPoster } from "../../src/v1/poster";
 import { blankPng, isElementCrop, isFullPageShot, redactedPng } from "../../src/v1/redacted-png";
-import { applySaveEdits, inferSavedWorkflow, redactModelText, saveCompleter, saveIntentPrompt } from "../../src/v1/save-intent";
+import { applySaveEdits, inferSavedWorkflow, saveCompleter, saveIntentPrompt } from "../../src/v1/save-intent";
 import { Library } from "../../src/v1/store";
 import { workflowFloorTitle } from "../../src/v1/workflow-name";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -189,7 +189,7 @@ test("a model failure still saves the floor title", async () => {
   assert.equal(named.inference?.provider, "grok");
 });
 
-test("the model prompt is redacted before it is sent", async () => {
+test("the model prompt and saved titles retain captured values", async () => {
   const workflow = interpret([
     act({
       id: "e0",
@@ -207,7 +207,6 @@ test("the model prompt is redacted before it is sent", async () => {
       identity: { surface: "dom", role: "password", name: "Password", path: [] },
     }),
   ], { id: "wf-secret", startUrl: "https://example.com/login" });
-  const secrets = [SECRET, "123456"];
   const leaked: WorkflowV2 = {
     ...workflow,
     steps: workflow.steps.map((step) => step.action === "type" ? { ...step, label: `Type ${SECRET}` } : step),
@@ -217,20 +216,16 @@ test("the model prompt is redacted before it is sent", async () => {
     host: "example.com",
     pageTitle: `Code ${SECRET}`,
     steps: [{ id: "wf-secret-1", action: "type", url: "https://example.com/login?code=123456", label: `Type ${SECRET}` }],
-    secrets: [SECRET],
   });
-  assert.equal(prompt.includes(SECRET), false);
-  assert.equal(prompt.includes("123456"), false);
-  assert.match(prompt, /\[redacted\]/);
-  assert.match(prompt, /\[code\]/);
-  assert.equal(redactModelText(`pin ${SECRET} 123456`, secrets).includes(SECRET), false);
+  assert.equal(prompt.includes(SECRET), true);
+  assert.equal(prompt.includes("123456"), true);
+  assert.doesNotMatch(prompt, /\[redacted\]|\[code\]/);
   let seen = "";
   const saved = await inferSavedWorkflow(leaked, {
     floorTitle: "example.com",
     startUrl: "https://example.com/login",
     pageTitle: SECRET,
     groups: [[], [{ afterUrl: "https://example.com/login?code=123456" }]],
-    secrets,
   }, {
     provider: "grok",
     model: "grok-4.7",
@@ -244,10 +239,10 @@ test("the model prompt is redacted before it is sent", async () => {
       });
     },
   });
-  assert.equal(seen.includes(SECRET), false);
-  assert.equal(seen.includes("123456"), false);
-  assert.equal(saved.name, "example.com");
-  assert.equal(saved.summary, undefined);
+  assert.equal(seen.includes(SECRET), true);
+  assert.equal(seen.includes("123456"), true);
+  assert.equal(saved.name, `Login ${SECRET}`);
+  assert.equal(saved.summary, "Uses code 123456");
   assert.equal(saved.intent, "Sign in to the site.");
   const typed = saved.steps.find((step) => step.action === "type")!;
   assert.equal(typed.label, `Type ${SECRET}`);
@@ -267,7 +262,7 @@ test("edited title and summary are what gets stored", () => {
     name: "Morning book",
     summary: "Books a table.",
     intent: "Reserve a table.",
-  }, [], named.name);
+  }, named.name);
   assert.equal(saved.name, "Morning book");
   assert.equal(saved.summary, "Books a table.");
   assert.equal(saved.intent, "Reserve a table.");
@@ -284,9 +279,9 @@ test("edited title and summary are what gets stored", () => {
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
-  const blocked = applySaveEdits(named, { name: `Book ${SECRET}`, summary: "ok", intent: "Reserve a table." }, [SECRET], named.name);
-  assert.equal(blocked.name, named.name);
-  assert.equal(blocked.summary, "ok");
+  const kept = applySaveEdits(named, { name: `Book ${SECRET}`, summary: "ok", intent: "Reserve a table." }, named.name);
+  assert.equal(kept.name, `Book ${SECRET}`);
+  assert.equal(kept.summary, "ok");
 });
 
 test("the save sheet shows its poster and detail retains the title and summary", () => {

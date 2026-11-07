@@ -328,7 +328,7 @@ test("a fixture crop frames that step's control and leaves the neighbor out", as
   }
 });
 
-test("an accessibility snapshot drops a password line and keeps the other controls", async () => {
+test("a step snapshot retains Chrome's accessibility tree and password control", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   try {
@@ -340,9 +340,9 @@ test("an accessibility snapshot drops a password line and keeps the other contro
     await driver.tree();
     const shot = await driver.captureStep();
     assert.match(shot.ax || "", /Upload file/);
-    assert.equal((shot.ax || "").includes("SuperSecretPassword!"), false);
-    assert.equal((shot.ax || "").toLowerCase().includes("password"), false);
-    assert.equal((shot.dom || []).some((node) => node.id === "password"), false);
+    assert.equal(shot.ax, await page.locator("body").ariaSnapshot());
+    assert.equal((shot.ax || "").toLowerCase().includes("password"), true);
+    assert.equal((shot.dom || []).some((node) => node.id === "password"), true);
   } finally {
     await browser.close();
   }

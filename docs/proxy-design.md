@@ -192,7 +192,7 @@ An event is appended when it starts, so network captured during it can point at 
 
 ## Network capture, and what replay would mean
 
-Capture writes a HAR 1.2 file (`NetworkCapture` in `desktop/src/proxy/network.ts`). Each entry's `_auditEventId` is the trail event that was open when the request started. The saved file drops request and response cookies and these headers: `cookie`, `authorization`, `proxy-authorization`, `x-api-key`, `set-cookie`. Bodies are not stored. This spike does not replay the HAR. The checkbox demo still replays by selector.
+Capture writes a HAR 1.2 file (`NetworkCapture` in `desktop/src/proxy/network.ts`). Each entry's `_auditEventId` is the trail event that was open when the request started. The saved file keeps request and response headers, including `cookie`, `authorization`, `proxy-authorization`, `x-api-key`, and `set-cookie`. Bodies are not stored. This spike does not replay the HAR. The checkbox demo still replays by selector.
 
 A later spike can use that HAR in three places, and should not use it in others.
 
@@ -205,12 +205,12 @@ It works when:
 It breaks when:
 
 - The body or a header carries a CSRF token or nonce minted for that page load. The recorded request fails on the next load.
-- The call needs an auth token or a cookie. The saved HAR does not have them, and replaying a captured session cookie would be the wrong session anyway.
+- The call needs a fresh auth token or cookie. The HAR keeps captured headers as evidence; replay still uses the current browser session.
 - The request is signed over a timestamp or a body hash. The signature does not survive a later send.
 - The session is a WebSocket or a stream. A HAR entry is not a live socket.
 - The request has a side effect (charge, send, delete). Replaying it does the thing twice. The click in the workflow is the write. The HAR is evidence of what the click caused, not a second way to cause it.
 
-**Follow-up spike.** A local fixture page GETs `/items` (idempotent JSON) and POSTs `/charge` with a csrf field read from the HTML. Throwaway Chrome, same launch as spike 1. Capture stores a HAR linked to the click that caused the POST, with no `Cookie` or `Authorization` header in the file. Replay serves the recorded GET from the HAR and does not send it to the network. The POST is not replayed from the HAR. The workflow click runs against a fresh load of the fixture, so the csrf is the new page's token. Pass: the GET is answered from the HAR, the saved HAR has no cookie or auth header, and `/charge` is hit once, by the click, not by a replayed entry. Fail: replay re-POSTs `/charge`, the HAR still contains `Cookie` or `Authorization`, or the mocked GET returns the POST's body.
+**Follow-up spike.** A local fixture page GETs `/items` (idempotent JSON) and POSTs `/charge` with a csrf field read from the HTML. Throwaway Chrome, same launch as spike 1. Capture stores a HAR linked to the click that caused the POST, as [described above](#network-capture-and-what-replay-would-mean). Replay serves the recorded GET from the HAR and does not send it to the network. The POST is not replayed from the HAR. The workflow click runs against a fresh load of the fixture, so the csrf is the new page's token. Pass: the GET is answered from the HAR and `/charge` is hit once, by the click, not by a replayed entry. Fail: replay re-POSTs `/charge` or the mocked GET returns the POST's body.
 
 ## Safety
 
@@ -218,7 +218,7 @@ Writes are gated on replay. The replayer runs reads and non-submitting DOM setup
 
 No capture of a real session without consent. The proxy launches the owned profile or a fresh temp profile. It does not attach to a running Chrome, does not open port 9222, and does not read the daily profile directory. Spike 1 already refuses those paths. The proxy uses that launch.
 
-Screenshots returned to the model are cropped to Bao's window. A full-desktop grab can include a window the person did not hand to the agent. They are not uploaded anywhere by this design. Sensitive field values are not written into the trace.
+Screenshots returned to the model are cropped to Bao's window. A full-desktop grab can include a window the person did not hand to the agent. They are not uploaded anywhere by this design. Trace value retention follows the [saved-evidence rules](permissions.md#secret-text-in-saved-files).
 
 A vendor `pending_safety_check` on an OpenAI computer call, if the API includes one, is surfaced to the person. This design does not auto-acknowledge it. The public guide points at safety checks on the computer call in the SDK types. This pass did not need that field for the first spike.
 
@@ -241,7 +241,7 @@ Scripted, no model. The driver speaks the OpenAI `computer_call` shape from the 
 
 **Fail.** Replay clicks the stored coordinate. Resolution misses and the run still claims success. The driver needed a network call to OpenAI. The profile was not a temp dir.
 
-The spike also writes the audit trail, trims duplicate screenshot reads, and re-derives the workflow from the trimmed trail. A click on blank space is an unresolved act with no selector. Typed-value retention follows [saved-file secret handling](permissions.md#secret-text-in-saved-files). Capture saves a HAR linked to the trail event that was open when each request started, with cookies and auth headers removed. Replaying that HAR is the follow-up spike above, not this one.
+The spike also writes the audit trail, trims duplicate screenshot reads, and re-derives the workflow from the trimmed trail. A click on blank space is an unresolved act with no selector. Typed-value retention follows [saved-file secret handling](permissions.md#secret-text-in-saved-files). Capture saves the [HAR described above](#network-capture-and-what-replay-would-mean). Replaying that HAR is the follow-up spike above, not this one.
 
 Claude's adapter and a live model are the spike after this one, on the same executor. Grok waits until either xAI publishes a computer-use action schema or we deliberately expose shape B's function tools.
 

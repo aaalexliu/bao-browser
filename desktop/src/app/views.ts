@@ -292,14 +292,6 @@ export function statusLegend(): string {
   return `<div class="legend">${items.map(([kind, label]) => `<span><i class="swatch ${kind}"></i> ${label}</span>`).join("")}</div>`;
 }
 
-export function maskSecrets(text: string, secrets: string[]): string {
-  let out = text;
-  for (const secret of secrets) {
-    if (secret) out = out.split(secret).join("[secret]");
-  }
-  return out;
-}
-
 export function icon(name: string): string {
   if (name === "warning") return `<svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path d="M7 5v3.2" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="10.4" r=".9" fill="var(--bg)"/></svg>`;
   if (name === "back" || name === "chevron") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${name === "back" ? "M10 3 5 8l5 5" : "m6 3.5 4.5 4.5L6 12.5"}"/></svg>`;
@@ -1136,7 +1128,7 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
   return rows;
 }
 
-export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = [], extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
+export function healDetail(run: RunSummary, heal: HealView, extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
   const recorded = heal.failedStep?.identity;
   const hasProposal = !!heal.proposedPatch;
   const proposed = heal.proposedPatch?.identity;
@@ -1158,8 +1150,8 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   const outcome = heal.postconditionPassed === true && run.status === "passed" ? "Bao found it there and finished."
     : heal.postconditionPassed === false ? "The new target did not pass its check. Review it before keeping it."
     : "Review the new target before keeping it.";
-  const prompt = maskSecrets(heal.prompt || "", secrets);
-  const raw = maskSecrets(heal.rawResponse || "", secrets);
+  const prompt = heal.prompt || "";
+  const raw = heal.rawResponse || "";
   const candidates = heal.identity?.candidates?.map((candidate, index) =>
     `#${index + 1} ${esc(candidate.label)} ${candidate.score}`).join("  ") || "No other candidates stored on this record.";
   const post = heal.postconditionPassed === undefined ? "not run" : heal.postconditionPassed ? "passed" : "failed";
@@ -1964,8 +1956,6 @@ export interface TeachView {
   phase?: "idle" | "live" | "review";
   paused?: boolean;
   since?: number;
-  blur?: boolean;
-  blurredShots?: number;
   narrator?: string;
   error?: string;
   cards?: TeachCardView[];
@@ -2035,7 +2025,6 @@ export function teachPanel(teach: TeachView): string {
       <button type="button" id="teach-stop">Stop</button>
       <button type="button" id="teach-check">Add check</button>
       <button type="button" id="teach-discard">Discard</button>
-      <span class="quiet" id="teach-blur">Sensitive fields blurred</span>
     </div>
     <div id="teach-cards">${list || `<p class="meta">Steps show up here as you demonstrate. Click a step to correct it.</p>`}</div>
   </section>`;

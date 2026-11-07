@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSyn
 import path from "node:path";
 import type { BrowserContext } from "playwright";
 import { redactAudit } from "../../../web/src/lib/audit-redact";
-import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
+import { hasPrivatePictureInput, scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
 import { EXTENSION_NOT_CONNECTED, replayRefusal } from "../cdp-live/launch-guard";
@@ -441,7 +441,7 @@ export function createRemoteAgent(opts: {
         return { outcome: "cancelled", workflowId: outcome.workflowId || id, runId: outcome.runId };
       }
       const body = publicOutcome(outcome);
-      const shot = shotBase64(outcome.runId || outcome.run_id);
+      const shot = hasPrivatePictureInput(workflow) ? undefined : shotBase64(outcome.runId || outcome.run_id);
       return shot ? { ...body, screenshot: shot } : body;
     } catch (err) {
       return { outcome: "failed", workflowId: id, reason: err instanceof Error ? err.message : String(err) };

@@ -1,5 +1,6 @@
 import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
+import { isSensitiveField, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
 import { fixedSavedChoice, hasStrippedSecret, isSealedArtifact, NEEDS_SECRET_VALUE, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
 import type { WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
@@ -87,6 +88,27 @@ export function redactSavedValue(value: string): string {
     sum += digit;
   }
   return sum % 10 === 0 ? STRIPPED_SECRET : value;
+}
+
+export function hasPrivatePictureInput(workflow: Pick<WorkflowV2, "inputs" | "steps">): boolean {
+  const privateField = (hint: FieldHint): boolean => isSensitiveField(hint)
+    || /\bcard\b|\bcc-/i.test([hint.name, hint.id, hint.autocomplete, hint.ariaLabel, hint.placeholder].filter(Boolean).join(" "));
+  if (workflow.inputs.some((input) => input.type === "secret" || privateField({ name: input.name, ariaLabel: input.label }))) return true;
+  const privateSteps = (steps: WorkflowStep[]): boolean => steps.some((step) => {
+    const identity = step.identity;
+    const field = step.action === "type" || step.action === "digits" || identity && (identity.inputType || identity.autocomplete
+      || ["input", "textarea", "select"].includes(identity.tag || "")
+      || /^(input|textbox|searchbox|combobox|password|axtextfield|axsecuretextfield|axtextarea)$/i.test(identity.role));
+    return !!field && (step.sensitive === true || !!identity && privateField({
+      type: identity.inputType || identity.role,
+      autocomplete: identity.autocomplete,
+      name: [identity.nameAttr, identity.name].filter(Boolean).join(" "),
+      id: identity.id,
+      ariaLabel: identity.label,
+      placeholder: identity.placeholder,
+    })) || !!step.forEach && privateSteps(step.forEach.steps);
+  });
+  return privateSteps(workflow.steps);
 }
 
 export interface SavedContext {
