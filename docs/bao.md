@@ -30,7 +30,7 @@ Permission is `ask` (the default) or `deny`, stored as `remotePermission` on thi
 
 `JobStore` is the small interface. `MemoryJobStore` is the in-process impl. `PgJobStore` is the durable impl on the registry database that already exists: PGlite when `DATABASE_URL` is unset, Postgres when it is set. No new service. Rows are `agent_jobs`, plus `relay_tokens` and `relay_pair_codes`. A redelivery uses `delivery: "again"`. If the Mac already wrote the result file, it sends that file and does not start the browser. If the process died before the file existed, the job runs again.
 
-The socket lives in the Node process that accepted the upgrade. `instrumentation.ts` patches `http.Server.prototype.emit` so `next start` can upgrade `/api/agent/relay` without a custom server. The pathname has to be exactly `/api/agent/relay`. A second instance does not see that socket. The process that holds it sends a job when the Mac says ready, or sends the same running job again. There is no poll pump. The MCP waiter that returns a screenshot is still memory in the process that took the HTTP call. Durable state is the row. `POST /api/agent/poll` does not claim jobs.
+The socket lives in the Node process that accepted the upgrade. `instrumentation.ts` patches `http.Server.prototype.emit` so `next start` can upgrade `/api/agent/relay` without a custom server. The pathname has to be exactly `/api/agent/relay`. A second instance does not see that socket. The process that holds it sends a job when the Mac says ready, or sends the same running job again. There is no poll pump. The MCP caller can read the stored result from another registry process, including its screenshot. Durable state is the row. `POST /api/agent/poll` does not claim jobs.
 
 ### WebSocket and long-poll
 
