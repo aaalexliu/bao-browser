@@ -34,9 +34,7 @@ not before Review. A new gate, a re-init, or another machine needs that hook
 reinstalled. Keep the hook script outside the Bao repository. The upstream fix
 is a no-mistakes feature to run preparation before Review.
 
-The repository prepare config takes effect only from the trusted default branch,
-so it cannot prove its own setup before merge. Firstmate will verify preparation
-on the first post-merge run.
+The hook fills the root and web `node_modules` in each new run copy before Review.
 
 ## PR checks
 
