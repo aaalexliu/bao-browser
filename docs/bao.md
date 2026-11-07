@@ -345,7 +345,7 @@ The import click saves the site. From then on, a workflow whose start URL is tha
 
 A workflow for an origin that was never saved is not checked. Bao runs it as before.
 
-Saved sites are listed on Logins. Each row shows the last probe time and whether that probe was live or needs sign-in. Re-check loads the probe in Bao's Chrome only. It does not read the person's profile. Remove drops the saved site, so later runs of that origin are not gated. It does not delete cookies already in Bao's profile.
+Saved sites appear in Settings → Logins and on the Logins screen, opened with Import a login… or the command list. The Logins screen shows the last probe time and whether that probe was live or needs sign-in. Re-check loads the probe in Bao's Chrome only. It does not read the person's profile. Remove… asks for confirmation before dropping the saved site, so later runs of that origin are not gated. It does not delete cookies already in Bao's profile.
 
 ## Sites that tie the session down
 
