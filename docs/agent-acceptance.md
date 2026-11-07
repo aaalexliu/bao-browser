@@ -33,10 +33,10 @@ Use isolated historical fixtures for display checks, not as proof of recording o
 
 - **Empty Runs:** Needs you shows 0 and History says No runs yet. Open Workflows reaches Library.
 - **Needs you:** Paused runs, pending heals, and failures appear above history. The count matches the items. Keeping or reverting a heal removes that item after refresh. The receipt links to Heals for review.
-- **Run history:** Several local days appear newest first, with rows sorted by time within each day. Unknown dates appear last. Each row’s accessible name is its workflow name, never its raw run id. Long names wrap and stay leading-aligned. Model calls appear only when recorded, including a known zero.
 - **Open receipt:** Open a saved-workflow run and a browser session without a saved workflow. Check the workflow name, status, time, step results, and paged receipts beyond 20 steps. Edit or remove the saved workflow, then reopen its run: stored reasons, read-backs, owner requests, and available step pictures must remain readable. Detailed evidence still exposes the existing local picture, video, input, and debug controls. A failed receipt read offers Retry and allows another run to open.
+- **Run history:** Check selection, grouping, row details, long names, and Record against the [Runs contract](v1.md#install-and-run). Unknown dates appear last. Each row’s accessible name is its workflow name, never its raw run id.
 - **Connection recovery:** Fail the first state request. Check the connection-error card and Retry. Restore the server and retry without reloading; Runs and history appear instead of a silent empty screen.
-- **Access and layout:** Tab through rows and receipt controls, check visible focus, then open a row with Enter. Check reduced motion, non-color status text, full long names, no horizontal overflow, and reachable scrollers at every width and zoom. Read the page, take before and after screenshots, and open each image.
+- **Access and layout:** Tab through rows and receipt controls, check visible focus, then open a row with Enter. Check reduced motion, non-color status text, full accessible names, no horizontal overflow, and reachable scrollers at every width and zoom. Read the page, take before and after screenshots, and open each image.
 
 ## Check the Workflows list
 
