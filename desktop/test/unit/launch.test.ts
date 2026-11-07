@@ -25,6 +25,15 @@ test("installed Mac Chrome launches as a new GUI app and waits for that instance
   assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", {}, "linux"), undefined);
 });
 
+test("windowless Mac Chrome launches without activating the app", () => {
+  const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--no-startup-window"];
+  const stderr = `${owned}/.bao-chrome-startup.stderr`;
+  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", {}, "darwin"), [
+    "-W", "-n", "-g", "-a", "/Applications/Google Chrome.app",
+    "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
+  ]);
+});
+
 for (const waiterExit of ["exit", "signal"] as const) {
   test(`GUI shutdown follows the browser PID after waiter ${waiterExit}`, { timeout: 5000 }, async (t) => {
     const waiter = Object.assign(new ChildProcess(), {

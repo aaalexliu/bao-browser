@@ -271,7 +271,7 @@ export function guiChromeLaunchArgs(
   env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform,
 ): string[] | undefined {
   if (platform !== "darwin" || testLaneBrowser(env) || exe !== ACCOUNT_CHROME_MAC) return undefined;
-  return ["-W", "-n", "-a", path.resolve(exe, "../../.."),
+  return ["-W", "-n", ...(args.includes("--no-startup-window") ? ["-g"] : []), "-a", path.resolve(exe, "../../.."),
     "--stdout", "/dev/null", "--stderr", stderrFile, "--env", `HOME=${childHome}`, "--args", ...args];
 }
 
