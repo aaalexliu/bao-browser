@@ -488,6 +488,7 @@ export async function startApp(opts: {
         runScheduledBackup(library);
         syncPending();
         const listing = library.list();
+        const capturedEvents = new Map(capture.events.map((event) => [event.id, event]));
         return json(res, {
           recording: capture.recording,
           replaying,
@@ -495,6 +496,17 @@ export async function startApp(opts: {
             recording: capture.recording,
             paused: capture.paused,
             steps: capture.steps.map(captureStepLabel),
+            url: page && !page.isClosed() ? page.url() : captureOpenUrl,
+            stream: capture.steps.map((step) => {
+              const event = capturedEvents.get(step.id);
+              return {
+                label: captureStepLabel(step),
+                op: event?.op,
+                field: event?.identity?.name || event?.identity?.label,
+                sensitive: event?.sensitive,
+                ts: event?.ts,
+              };
+            }),
           },
           notices,
           home: opts.home,

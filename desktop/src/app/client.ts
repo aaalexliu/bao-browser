@@ -32,6 +32,8 @@ import {
   libraryTable,
   networkPane,
   liveStepList,
+  captureView,
+  captureStream,
   notices,
   paletteView,
   rail,
@@ -144,6 +146,11 @@ let seenOpen = "";
 const noteTimers = new Map<string, number>();
 let teachOpenId = "";
 let teachHighlighted = "";
+let captureName = "";
+let captureUrl = fixtureStartValue();
+let captureError = "";
+let captureBusy = false;
+let capturePicking = false;
 try {
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
 } catch { /* private mode */ }
@@ -271,6 +278,8 @@ function render(focusDetail = true): void {
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
   const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
+  const captureFocus = screen === "capture" && focused?.closest("#capture-panel, .capture-controls") ? focused.id : "";
+  const captureCaret = focused instanceof HTMLInputElement && captureFocus ? focused.selectionStart : null;
   const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
   const customWait = document.getElementById("act-custom") as HTMLInputElement | null;
   const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft], #settings [data-setting]")].filter((input) => {
@@ -288,6 +297,8 @@ function render(focusDetail = true): void {
   const runsScroll = document.getElementById("runs")?.scrollTop || 0;
   const runsPlace = shellScreens[shellScreen(screen)].place === "runs";
   document.getElementById("app")!.dataset.runsDetail = screen === "run" || screen === "live" || (screen === "heals" && Boolean(openHeal)) ? "true" : "false";
+  document.getElementById("app")!.dataset.capture = screen === "capture" ? "true" : "false";
+  document.getElementById("content")!.classList.toggle("capture-content", screen === "capture");
   document.getElementById("app")!.dataset.workflowsList = screen === "library" ? "true" : "false";
   document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
@@ -318,7 +329,7 @@ function render(focusDetail = true): void {
   const importAsk = screen === "logins" ? loginAct(login) : "";
   actEl().innerHTML = remoteBanner(state.remote) + (importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const float = document.getElementById("float");
-  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state) + (state.extractPicker || "");
+  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state, screen === "capture", capturePicking) + (state.extractPicker || "");
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -379,6 +390,11 @@ function render(focusDetail = true): void {
   }
   bind();
   if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
+  if (captureFocus && !focused?.isConnected) {
+    const input = document.getElementById(captureFocus);
+    input?.focus({ preventScroll: true });
+    if (input instanceof HTMLInputElement && captureCaret !== null) input.setSelectionRange(captureCaret, captureCaret);
+  }
   applySearch();
   paintPalette();
   paintLive();
@@ -397,35 +413,36 @@ function render(focusDetail = true): void {
 }
 
 function capture(): string {
-  const ids = (state.trails || []).map((id) => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
-  return `<section>
-    <h2>Capture</h2>
-    <p class="quiet">Nothing is recorded until you start. The capture browser uses an app-owned profile, not your daily Chrome.</p>
-    <div class="card">
-      <h3>Browser</h3>
-      <label>Start URL <input id="start-url" value="${esc(fixtureStartValue())}"></label>
-      <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="open-teach" type="button">Teach</button><button id="stop" type="button">Stop and save</button></div>
-    </div>
-    <div class="card">
-      <h3>Mac app</h3>
-      <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
-    </div>
-    <div class="card">
-      <h3>Agent and MCP</h3>
-      <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Supported single-page tasks save replayable workflows when the session ends. Other sessions stay in Runs with a reason.</p>
-    </div>
-    <div class="card">
-      <h3>Steps</h3>
-      <div id="live-steps"></div>
-    </div>
-    <div class="card" id="trail-tab">
-      <h3>Trail</h3>
-      <p class="quiet">Trail is the evidence for a capture, not a place in the sidebar.</p>
-      <label>Trail <select id="trail-id">${ids}</select></label>
-      <button id="load-trail" type="button">Load</button>
-      <pre id="trail-view">Password values are not stored.</pre>
-    </div>
-  </section>`;
+  return captureView(state, { name: captureName, startUrl: captureUrl, error: captureError, busy: captureBusy, picking: capturePicking });
+}
+
+async function captureAction(action: "start" | "save" | "discard"): Promise<void> {
+  if (captureBusy) return;
+  if (action === "discard" && !confirm("Discard this recording? The steps you recorded are deleted. You can’t undo this.")) return;
+  captureBusy = true;
+  captureError = "";
+  render();
+  try {
+    const endpoint = action === "start" ? "/api/sessions" : action === "save" ? "/api/sessions/stop" : "/api/sessions/discard";
+    const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: action === "start" ? JSON.stringify({ url: captureUrl }) : "{}" });
+    if (!response.ok) throw new Error((await response.json()).error || "Could not update the recording. Try again.");
+    if (action === "save") {
+      const saved = await fetch("/api/sessions/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: captureName.trim() || undefined }) });
+      const doc = await saved.json() as { id?: string; error?: string };
+      if (!saved.ok || !doc.id) throw new Error(doc.error || "Could not save the recording. Try saving again in the save dialog.");
+      openWorkflow = doc.id;
+      screen = "workflow";
+    } else if (action === "discard") screen = "library";
+    if (action !== "start") captureName = "";
+    capturePicking = false;
+  } catch (error) {
+    captureError = error instanceof Error ? error.message : "Could not update the recording. Try again.";
+  } finally {
+    captureBusy = false;
+    renderKey = "";
+    await refresh().catch(() => undefined);
+    render();
+  }
 }
 
 function teachScreen(): string {
@@ -819,22 +836,18 @@ function bind(): void {
     await refresh();
   };
   bindTeach(document);
+  const captureBack = document.querySelector<HTMLButtonElement>(".cap-back");
+  if (captureBack) captureBack.onclick = () => navigate("library");
+  const captureNameInput = document.getElementById("cap-name") as HTMLInputElement | null;
+  if (captureNameInput) captureNameInput.oninput = () => { captureName = captureNameInput.value; };
+  const captureUrlInput = document.getElementById("start-url") as HTMLInputElement | null;
+  if (captureUrlInput) captureUrlInput.oninput = () => { captureUrl = captureUrlInput.value; };
   const start = document.getElementById("start");
-  if (start) start.onclick = async () => {
-    await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: (document.getElementById("start-url") as HTMLInputElement).value }),
-    });
-    renderKey = "";
-    await refresh();
-  };
+  if (start) start.onclick = () => void captureAction("start");
   const stop = document.getElementById("stop");
-  if (stop) stop.onclick = async () => {
-    await fetch("/api/sessions/stop", { method: "POST" });
-    renderKey = "";
-    await refresh();
-  };
+  if (stop) stop.onclick = () => void captureAction("save");
+  const discardCapture = document.getElementById("capture-discard");
+  if (discardCapture) discardCapture.onclick = () => void captureAction("discard");
   const load = document.getElementById("load-trail");
   if (load) load.onclick = () => loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "");
   const wf = document.getElementById("wf") as HTMLSelectElement | null;
@@ -1059,8 +1072,13 @@ function bind(): void {
   };
   const recExtract = document.getElementById("rec-extract");
   if (recExtract) recExtract.onclick = async () => {
-    await fetch("/api/sessions/extract/arm", { method: "POST" });
+    const response = await fetch("/api/sessions/extract/arm", { method: "POST" });
+    if (screen === "capture" && response.ok) {
+      capturePicking = true;
+      render();
+    }
   };
+  if (captureBusy) document.querySelectorAll<HTMLButtonElement>(".capture-controls button").forEach((button) => { button.disabled = true; });
   const extractCommit = document.getElementById("extract-commit");
   if (extractCommit) extractCommit.onclick = async () => {
     const names: Record<string, string> = {};
@@ -1077,11 +1095,13 @@ function bind(): void {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ names, drop, maxPages: pages ? Number(pages.value) : 1, as: "items" }),
     });
+    capturePicking = false;
     renderKey = "";
     await refresh();
   };
   const recStop = document.getElementById("rec-stop");
   if (recStop) recStop.onclick = async () => {
+    if (screen === "capture") return captureAction("save");
     await fetch("/api/sessions/stop", { method: "POST" });
     renderKey = "";
     await refresh();
@@ -1092,13 +1112,13 @@ function paintSaveSheet(): void {
   const host = document.getElementById("sheet");
   if (!host) return;
   const sheet = state.saveSheet;
-  if (!sheet) {
+  if (!sheet || (screen === "capture" && captureBusy)) {
     if (host.innerHTML) host.innerHTML = "";
     return;
   }
   const existing = host.querySelector("#save-sheet");
   if (existing && existing.getAttribute("data-id") === sheet.id) return;
-  host.innerHTML = saveSheetView(sheet);
+  host.innerHTML = saveSheetView(screen === "capture" && captureName.trim() ? { ...sheet, name: captureName } : sheet);
   const form = host.querySelector("#save-sheet-form") as HTMLFormElement | null;
   if (form) form.onsubmit = (ev) => {
     ev.preventDefault();
@@ -1127,6 +1147,10 @@ async function commitSaveSheet(): Promise<void> {
     return;
   }
   openWorkflow = doc.id;
+  if (screen === "capture") {
+    captureName = "";
+    captureError = "";
+  }
   screen = "workflow";
   renderKey = "";
   await refresh();
@@ -1134,6 +1158,10 @@ async function commitSaveSheet(): Promise<void> {
 
 async function discardSaveSheet(): Promise<void> {
   await fetch("/api/sessions/save/discard", { method: "POST" });
+  if (screen === "capture") {
+    captureName = "";
+    captureError = "";
+  }
   renderKey = "";
   await refresh();
 }
@@ -2332,8 +2360,10 @@ function paintLive(): void {
   if (!captureTrailOwnsSteps(screen)) return;
   const host = document.getElementById("live-steps");
   if (!host) return;
-  const live = (state as ShellState & { liveTrail?: { id?: string; op?: string; kind?: string }[] }).liveTrail || [];
-  const html = liveStepList(live);
+  const live = state.liveTrail || [];
+  const html = screen === "capture" ? captureStream(state, capturePicking) : liveStepList(live);
+  const count = document.getElementById("rec-steps");
+  if (count) count.textContent = `${state.capture?.steps.length || 0} steps`;
   if (host.innerHTML !== html) {
     host.innerHTML = html;
     mountShots(host);

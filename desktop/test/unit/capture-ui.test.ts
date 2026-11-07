@@ -1,0 +1,123 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { startApp } from "../../src/app/server";
+import { captureStream, captureView, recordBar } from "../../src/app/views";
+import { testChromium } from "../../src/test-browser";
+
+test("capture renders the recording name, ordered stream, controls and paused state", () => {
+  const state = { recording: true, capture: { recording: true, paused: false, url: "https://example.com", steps: ["Open https://example.com", 'Click <Next>'], stream: [{ label: "Open https://example.com", op: "navigate" }, { label: 'Click <Next>', op: "click" }] } };
+  const html = captureView(state, { name: 'A "named" task', startUrl: "/fixture", error: "", busy: false, picking: true });
+  assert.match(html, /value="A &quot;named&quot; task"/);
+  assert.match(html, /Recording in Bao’s Chrome · example.com/);
+  assert.match(html, /aria-label="Recorded steps"/);
+  assert.match(html, /Click &lt;Next&gt;/);
+  assert.match(html, /Pick list is on/);
+  assert.match(html, /Discard…/);
+  assert.match(html, /Stop and save/);
+  assert.doesNotMatch(html, /Mac app|Agent and MCP|Trail|thumb/);
+  assert.match(captureStream({ ...state, capturePaused: true }), /Recording is paused/);
+  assert.match(recordBar(state, true, true), /aria-pressed="true"/);
+  assert.match(recordBar({ ...state, capturePaused: true }, true), /Resume/);
+  assert.equal(recordBar({}, true), "");
+});
+
+test("the running capture saves its name and steps, pauses, recovers errors and discards", { timeout: 90_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-capture-ui-"));
+  const oldHome = process.env.HOME;
+  const oldDrive = process.env.BAO_DRIVE;
+  process.env.HOME = home;
+  process.env.BAO_DRIVE = "1";
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 400, height: 700 } });
+  page.setDefaultTimeout(10_000);
+  const url = `http://127.0.0.1:${app.port}`;
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const getState = async () => (await page.request.get(`${url}/api/state`)).json();
+  try {
+    await page.goto(url);
+    await page.locator(".runs-record").click();
+    await page.locator("#cap-name").fill("Read local notes");
+    await page.route("**/api/sessions", (route) => route.fulfill({ status: 500, json: { error: "Fixture start failed" } }));
+    await page.locator("#start").click();
+    await page.getByRole("alert").filter({ hasText: "Fixture start failed" }).waitFor();
+    assert.equal(await page.locator("#cap-name").inputValue(), "Read local notes");
+    await page.unroute("**/api/sessions");
+    await page.locator("#start").click();
+    await page.getByRole("heading", { name: "Recording", exact: true }).waitFor();
+    assert.equal(await page.locator("#rail").isVisible(), false);
+    assert.equal((await getState()).recording, true);
+    const drive = async (body: object) => {
+      const response = await page.request.post(`${url}/api/sessions/drive`, { data: body });
+      assert.equal(response.ok(), true, await response.text());
+    };
+    await drive({ fill: { selector: "#note-input", value: "local test" } });
+    await drive({ click: "#save-note" });
+    await page.waitForFunction(() => document.querySelectorAll(".stream li:not(.wait)").length >= 3);
+    assert.match(await page.locator(".stream").innerText(), /Click Save note/);
+    await page.locator("#cap-name").fill("Export local notes");
+    await page.locator("#rec-pause").click();
+    await page.getByRole("button", { name: "Resume", exact: true }).waitFor();
+    assert.equal((await getState()).capturePaused, true);
+    assert.equal(await page.locator("#cap-name").inputValue(), "Export local notes");
+    const before = (await getState()).capture.steps.length;
+    await drive({ click: "#apply-btn" });
+    assert.equal((await getState()).capture.steps.length, before);
+    await page.locator("#rec-pause").click();
+    await page.getByRole("button", { name: "Pause", exact: true }).waitFor();
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.locator("#rec-pause").click();
+      await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme);
+      for (const width of [1280, 400, 360, 320]) {
+        await page.setViewportSize({ width, height: 700 });
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        const footer = await page.locator(".cap-foot").boundingBox();
+        const toolbar = await page.locator(".capture-controls").boundingBox();
+        assert.ok(footer && toolbar && footer.y + footer.height <= toolbar.y, `Controls overlap at ${width}px`);
+        for (const button of await page.locator(".cap-foot button, .capture-controls button").all()) await button.click({ trial: true });
+      }
+    }
+    await page.locator("#stop").click();
+    await page.locator("#workflow-detail").waitFor();
+    const saved = app.library.list().workflows.find((workflow) => workflow.name === "Export local notes");
+    assert.ok(saved, "Stop and save stores the entered name");
+    assert.ok(saved.steps.some((step) => step.action === "click"));
+    assert.equal((await getState()).recording, false);
+    assert.equal((await getState()).saveSheet, null);
+    await page.locator('#workflow-detail [data-screen="capture"]').click();
+    await page.locator("#cap-name").fill("Recover saved name");
+    await page.locator("#start").click();
+    await page.locator("#capture-discard").waitFor();
+    await page.route("**/api/sessions/commit", (route) => route.fulfill({ status: 500, json: { error: "Fixture save failed" } }));
+    await page.locator("#stop").click();
+    await page.locator("#save-title").waitFor();
+    assert.equal(await page.locator("#save-title").inputValue(), "Recover saved name");
+    await page.unroute("**/api/sessions/commit");
+    await page.locator("#save-commit").click();
+    await page.locator("#workflow-detail").waitFor();
+    assert.ok(app.library.list().workflows.some((workflow) => workflow.name === "Recover saved name"));
+    await page.locator('#workflow-detail [data-screen="capture"]').click();
+    await page.locator("#start").click();
+    await page.locator("#capture-discard").waitFor();
+    page.once("dialog", (dialog) => void dialog.dismiss());
+    await page.locator("#capture-discard").click();
+    assert.equal((await getState()).recording, true);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator("#capture-discard").click();
+    await page.locator("#library").waitFor();
+    assert.equal((await getState()).recording, false);
+    assert.equal(app.library.list().workflows.length, 2);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    if (oldDrive === undefined) delete process.env.BAO_DRIVE; else process.env.BAO_DRIVE = oldDrive;
+    await rm(home, { recursive: true, force: true });
+  }
+});
