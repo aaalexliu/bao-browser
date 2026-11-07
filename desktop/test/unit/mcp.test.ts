@@ -264,7 +264,7 @@ test("get_run attaches a bounded exact-run view for a capture larger than two Mi
     const receipt = JSON.parse(reply.result!.content![0]!.text!) as { outcome: string; status: string; link?: string };
     assert.equal(receipt.outcome, "recording");
     assert.equal(receipt.status, "recording");
-    assert.equal(receipt.link, undefined);
+    assert.equal(receipt.link, "bao://receipt/run-large-capture");
     assert.ok(JSON.stringify(reply).length < 10000);
   } finally { mcp.child.kill(); }
 });
