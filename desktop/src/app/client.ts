@@ -321,7 +321,7 @@ function render(focusDetail = true): void {
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
-  const keepWorkflow = screen === "workflow" && document.getElementById("workflow-detail")?.getAttribute("data-workflow") === openWorkflow;
+  const keepWorkflow = screen === "workflow" && document.getElementById("workflow-host")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   if (!keepReplay && !keepWorkflow && !keepImport) {
     const body = initialConnectionError ? connectionError()
@@ -335,7 +335,7 @@ function render(focusDetail = true): void {
       : screen === "logins" ? loginsScreen(login)
       : screen === "replay" ? replayForm()
       : screen === "import" ? importSheet()
-      : screen === "workflow" ? `<section id="workflow-host"><div class="wf-toolbar">${workflowSidebarToggle()}</div><p class="meta">Loading workflow…</p></section>`
+      : screen === "workflow" ? `<section id="workflow-host" data-workflow="${esc(openWorkflow)}"><div class="wf-toolbar">${workflowSidebarToggle()}</div><p class="meta">Loading workflow…</p></section>`
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
