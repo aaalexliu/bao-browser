@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "../../../shared/saved-secrets";
-import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
+import { applyAllowed, type ApplyGate as BaseApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
@@ -285,6 +285,8 @@ export interface ReplayOptions {
   openExec?: (argv: string[]) => Promise<void>;
 }
 
+type ApplyGate = BaseApplyGate & { onPause?: (ask: HumanAsk) => void };
+
 let seq = 0;
 
 export async function replay(
@@ -331,7 +333,7 @@ export async function replay(
 
   const finish = (partial: Omit<RunResult, "trail" | "precondition" | "receipts" | "repairs" | "locatorHits" | "heals" | "trajectory" | "modelCalls" | "pageClasses"> & Partial<RunResult>): RunResult => {
     const trace = driver.trace?.();
-    const downloaded = endFilesRun(runId);
+    const downloaded = Object.fromEntries(prepared.outputs);
     const outputs = materializeOutputs(workflow, tables);
     return {
       heals,
@@ -399,6 +401,11 @@ export async function replay(
     const beforeShot = before.ref;
     const stamp = (patch: RunResult["steps"][number]) => {
       steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error };
+    };
+    gate.onPause = (ask) => {
+      stamp({ id: step.id, status: "paused", reason: ask.kind === "login" ? "sign in" : "confirm" });
+      const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: ask.kind === "login" ? "signin" : "confirm", ask });
+      opts.onPause?.(scrubSaved(paused, { workflow, args, secrets }));
     };
     try {
     if (skipReason) {
@@ -765,7 +772,11 @@ export async function replay(
   return finish({ runId, status: "passed", steps });
   };
   // Per-step finally fills snapshots and shot refs before this copy detaches the result.
-  return scrubSaved(await execute(), { workflow, args, secrets });
+  try {
+    return scrubSaved(await execute(), { workflow, args, secrets });
+  } finally {
+    endFilesRun(runId);
+  }
 }
 
 /** A run with nothing executed, or a failed final check, is not a pass. */
@@ -1271,9 +1282,10 @@ async function runConfirm(
     return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "nothing applied", undefined, secrets) };
   }
   const ask = personAsk(gate, step, "confirm");
+  beginHandoff(driver, gate, step.id);
+  gate.onPause?.(ask);
   await driver.showAsk?.(ask);
   await driver.showConfirm?.(step.label);
-  beginHandoff(driver, gate, step.id);
   if (gate.yieldHuman || !step.postcondition) {
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
@@ -1326,11 +1338,12 @@ async function runLogin(
   }
   if (human && (gate.humanReady || gate.yieldHuman)) {
     const ask = personAsk(gate, step, "login");
+    beginHandoff(driver, gate, step.id);
+    gate.onPause?.(ask);
     if (!gate.humanReady) {
       await driver.showAsk?.(ask);
       await driver.showLoginWait?.(step.label || "Sign in on the site window");
     }
-    beginHandoff(driver, gate, step.id);
     return { ok: false, paused: "signin", repairs: [], ask };
   }
   const filled = await settleLogin(workflow, step, args, driver, gate, human);
@@ -1366,9 +1379,11 @@ async function settleLogin(
       return false;
     }
   } else {
-    await driver.showAsk?.(personAsk(gate, step, "login"));
-    await driver.showLoginWait?.(step.label || "Sign in on the site window");
+    const ask = personAsk(gate, step, "login");
     beginHandoff(driver, gate, step.id);
+    gate.onPause?.(ask);
+    await driver.showAsk?.(ask);
+    await driver.showLoginWait?.(step.label || "Sign in on the site window");
   }
   let finished = false;
   try {

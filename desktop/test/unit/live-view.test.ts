@@ -105,10 +105,11 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     const show = page.waitForRequest((request) => request.url() === `${base}/api/replay/show` && request.method() === "POST");
     await page.getByRole("button", { name: "Show Bao’s Chrome" }).click();
     await show;
-    const check = page.waitForRequest((request) => request.url() === `${base}/api/prompt/continue` && request.method() === "POST");
+    const continuationRequests: string[] = [];
+    page.on("request", (request) => { if (request.url() === `${base}/api/prompt/continue`) continuationRequests.push(request.method()); });
     await page.getByRole("button", { name: "I pressed Reserve" }).click();
-    await check;
     await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent?.includes("checking"));
+    assert.deepEqual(continuationRequests, [], "a confirmation check must not authorize a login");
     await page.locator("#live-run-details summary").click();
     await page.locator("#live-run-details summary").focus();
     await page.waitForResponse((response) => response.url() === `${base}/api/state`);
@@ -147,17 +148,51 @@ test("live confirmation checks the site without pressing its final action", { ti
   let replay: Promise<{ status: string; runId: string }> | undefined;
   try {
     const wf = workflow(`${base}/fixture`);
-    wf.steps = [{ id: "reserve", index: 0, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", identity: { surface: "dom", role: "button", name: "Apply", path: [] }, timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } }];
+    wf.inputs = [{ name: "class", type: "text", required: true }];
+    wf.steps = [
+      { id: "open", index: 0, action: "verify", label: "Read the fixture", surface: "dom", timeoutMs: 1000, expect: { kind: "text", match: "Bao fixture", timeoutMs: 1000 } },
+      { id: "reserve", index: 1, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", identity: { surface: "dom", role: "button", name: "Apply", path: [] }, timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } },
+      { id: "login", index: 2, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Owner signed in", timeoutMs: 60000 } },
+      { id: "check", index: 3, action: "verify", label: "Check the result", surface: "dom", timeoutMs: 1000, expect: { kind: "text", match: "Applied", timeoutMs: 1000 } },
+    ];
     app.library.save(wf);
-    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    replay = post(`${base}/api/replay`, { id: wf.id, args: { class: "Morning class" } });
     await page.goto(`${base}/?screen=live`);
     await page.getByRole("button", { name: "I pressed Apply" }).waitFor();
+    await page.locator('#live-steps [data-status="passed"]').waitFor();
+    const pausedState = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    const pausedRun = app.library.readRun(pausedState.activeAsk!.runId!) as RunSummary;
+    assert.ok(pausedRun.steps);
+    assert.equal(pausedRun.steps[0]?.status, "passed");
+    assert.equal(pausedRun.steps[1]?.status, "paused");
+    assert.equal(pausedRun.steps[2]?.status, "pending");
+    assert.equal(pausedRun.inputs?.class, "Morning class");
+    assert.ok(pausedRun.steps[0]?.startedAt! <= pausedState.activeAsk!.startedAt);
+    assert.ok(pausedRun.steps[0]?.afterShot, "the earlier completed step must retain its screen");
+    assert.equal(await page.locator('#live-steps [data-status="passed"]').count(), 1);
+    assert.ok(await page.locator("#live-film img").count() >= 1);
+    const shot = await page.locator("#live-film img").first().getAttribute("src");
+    assert.equal((await fetch(`${base}${shot}`)).status, 200);
     await page.getByRole("button", { name: "I pressed Apply" }).click();
     await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent?.includes("checking"));
     const waiting = await (await fetch(`${base}/api/state`)).json() as ShellState;
     assert.equal(waiting.activeAsk?.kind, "confirm");
     assert.equal(waiting.replaying, true, "checking must not perform the final click or complete the run");
     await post(`${base}/api/replay/press`, { name: "Apply" });
+    await page.waitForResponse(async (response) => response.url() === `${base}/api/state` && ((await response.json()) as ShellState).activeAsk?.kind === "login");
+    const loginState = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(loginState.activeAsk?.stepId, "login", JSON.stringify(loginState.activeAsk));
+    const loginRun = app.library.readRun(loginState.activeAsk!.runId!) as RunSummary;
+    assert.ok(loginRun.steps);
+    assert.deepEqual(loginRun.steps.map((step) => step.status), ["passed", "passed", "paused", "pending"]);
+    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
+    const stillWaiting = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(stillWaiting.activeAsk?.kind, "login", "a prior confirm check must not skip the later login wait");
+    assert.equal(stillWaiting.replaying, true);
+    await page.goto(`${base}/?screen=live`);
+    const continued = page.waitForRequest((request) => request.url() === `${base}/api/prompt/continue` && request.method() === "POST");
+    await page.getByRole("button", { name: "I’m signed in, continue" }).click();
+    await continued;
     const result = await replay;
     assert.equal(result.status, "passed");
     await page.waitForSelector("#run-receipt");

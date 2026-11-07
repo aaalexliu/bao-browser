@@ -215,7 +215,7 @@ async function loadState(): Promise<void> {
       }
     }
   }
-  if (screen === "live" && !state.activeAsk && liveRunId) {
+  if (screen === "live" && !state.activeAsk && !state.replaying && liveRunId) {
     selectRun(liveRunId);
     liveRunId = "";
   }
@@ -1226,9 +1226,9 @@ function bindAsk(): void {
   if (cancel) cancel.onclick = () => void fetch("/api/replay/cancel", { method: "POST" }).then(() => refresh());
   const cont = document.getElementById("act-continue");
   if (cont) cont.onclick = async () => {
-    const response = await fetch("/api/prompt/continue", { method: "POST" });
+    const response = state.activeAsk?.kind === "confirm" ? null : await fetch("/api/prompt/continue", { method: "POST" });
     const status = document.getElementById("live-action-status");
-    if (status) status.textContent = response.ok ? "Bao is checking the page. The run waits until its check passes." : "Bao could not check the page. Try again.";
+    if (status) status.textContent = (!response || response.ok) ? "Bao is checking the page. The run waits until its check passes." : "Bao could not check the page. Try again.";
     await refresh();
   };
   const stop = document.getElementById("live-stop");
