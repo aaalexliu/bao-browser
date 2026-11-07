@@ -241,7 +241,7 @@ Scripted, no model. The driver speaks the OpenAI `computer_call` shape from the 
 
 **Fail.** Replay clicks the stored coordinate. Resolution misses and the run still claims success. The driver needed a network call to OpenAI. The profile was not a temp dir.
 
-The spike also writes the audit trail, trims duplicate screenshot reads, and re-derives the workflow from the trimmed trail. A click on blank space is an unresolved act with no selector. A typed Luhn test card is withheld with the extension's T1 rule. Capture saves a HAR linked to the trail event that was open when each request started, with cookies and auth headers removed. Replaying that HAR is the follow-up spike above, not this one.
+The spike also writes the audit trail, trims duplicate screenshot reads, and re-derives the workflow from the trimmed trail. A click on blank space is an unresolved act with no selector. Typed-value retention follows [saved-file secret handling](permissions.md#secret-text-in-saved-files). Capture saves a HAR linked to the trail event that was open when each request started, with cookies and auth headers removed. Replaying that HAR is the follow-up spike above, not this one.
 
 Claude's adapter and a live model are the spike after this one, on the same executor. Grok waits until either xAI publishes a computer-use action schema or we deliberately expose shape B's function tools.
 

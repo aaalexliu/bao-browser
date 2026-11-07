@@ -55,7 +55,9 @@ Older records can contain `[secret stripped]` or a redacted key with no value. T
 
 Read-back receipts seal the original expected and actual values with the previous receipt hash. Later local saves keep those bodies intact. `verifyReceiptChain` still checks the chain. Workflow sync hashes still track edits; they are not immutable seals.
 
-Screenshot masking, guide/export hiding, outbound sync filters, and site approvals are separate paths. This local-storage change does not remove those paths.
+Outbound copies still use `shared/outbound-secrets.ts` to replace eligible whole user values with `[secret stripped]`; they do not scan arbitrary metadata or secret fragments inside free text. Sync and workflow export then omit secret defaults and sensitive literals through `stripUnsafe`. Local saves do not use that filter. Marketplace review samples also omit whole values matching the token, card, and SSN checks. Screenshot masking, guide hiding, and site approvals remain separate paths.
+
+When sync pulls a newer workflow or resolves a conflict, `retainLocalDefaults` preserves this device's saved defaults and literals when the incoming fields still match their outbound copies. It does not recover values on another device or overwrite changed incoming fields. Conflict history restores local values only when a cloud document matches exactly one non-draft local version's outbound copy. File and OTP defaults are not restored.
 
 ## What each one costs in speed
 
