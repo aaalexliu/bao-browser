@@ -5,8 +5,36 @@ import path from "node:path";
 import test from "node:test";
 import { query } from "./db";
 import { catalog } from "./registry";
+import { consequentialCopy, permissionPreview } from "./permissions";
 import { catalogContext, workflowSearchEligible } from "./catalog-eligibility";
 import { workflowSearchEligible as desktopSearchEligible } from "../../../desktop/src/cdp-live/launch-guard";
+
+test("marketplace discloses purchase and confirm clicks without claiming a human gate", () => {
+  for (const name of ["Place Order", "Buy", "Buy now", "Pay", "Pay now", "Submit order", "Reserve", "Reserve now", "Confirm", "Confirm deletion", "PLACE   ORDER"]) {
+    for (const step of [
+      { action: "click", label: `Click "${name}"` },
+      { action: "click", identity: { name } },
+      { action: "click", identity: { text: name } },
+      { action: "click", value: name },
+    ]) {
+      const preview = permissionPreview({ steps: [step] });
+      assert.equal(preview.confirm, false, name);
+      assert.equal(preview.submit, true, name);
+      assert.equal(consequentialCopy(preview), "Can press submit.", name);
+    }
+  }
+  for (const step of [
+    { action: "click", label: 'Click "Open details"' },
+    { action: "type", value: "Buy now" },
+    { action: "navigate", label: "Confirm" },
+  ]) {
+    assert.equal(consequentialCopy(permissionPreview({ steps: [step] })), "Does not press confirm or submit.");
+  }
+  for (const step of [{ action: "confirm" }, { action: "click", gate: "confirm" }]) {
+    assert.equal(consequentialCopy(permissionPreview({ steps: [step] })), "Includes a human confirm step.");
+  }
+  assert.equal(consequentialCopy(permissionPreview({ steps: [{ action: "confirm" }, { action: "click", label: "Place Order" }] })), "Includes a human confirm step and can press submit.");
+});
 
 test("web and desktop search eligibility agree with the caller contract", () => {
   const contexts = [
