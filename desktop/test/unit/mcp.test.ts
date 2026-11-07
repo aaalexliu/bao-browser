@@ -45,7 +45,7 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
   });
 });
 
-test("MCP search and describe require only inputs without usable saved defaults", async () => {
+test("MCP search and describe relax only usable saved secrets", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [
       { name: "password", type: "secret", label: "Password", required: true, default: "fixture-password" },
@@ -68,7 +68,7 @@ test("MCP search and describe require only inputs without usable saved defaults"
     const result = await client.call("describe_workflow", { id: saved.id });
     assert.equal(result.isError, false);
     const described = JSON.parse(result.text) as { workflow: WorkflowV2; inputs: { name: string; type: string; label: string; required: boolean }[] };
-    const required = [false, false, false, true, true, true, true, true, false, true];
+    const required = [false, true, true, true, true, true, true, true, false, true];
     assert.deepEqual(described.inputs, inputs.map((input, index) => ({
       name: input.name, type: input.type, label: input.label || input.name, required: required[index],
     })));

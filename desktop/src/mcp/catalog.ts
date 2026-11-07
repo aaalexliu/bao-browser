@@ -839,12 +839,10 @@ function signInStep(step: WorkflowStep | undefined): boolean {
   return SIGN_IN.test(`${step.id} ${step.label} ${step.input || ""}`) || step.sensitive === true;
 }
 
-function inputSchema(doc: { inputs?: WorkflowV2["inputs"]; imported?: true }, defaults: ReplayArgs): InputField[] {
+function inputSchema(doc: { inputs?: WorkflowV2["inputs"] }, defaults: ReplayArgs): InputField[] {
   return (doc.inputs ?? []).map((input) => {
     const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
-    const saved = (input.type === "secret" || !doc.imported)
-      && value !== undefined && value !== "" && !hasStrippedSecret(value)
-      && (typeof value !== "number" || Number.isFinite(value));
+    const saved = input.type === "secret" && value !== undefined && value !== "" && !hasStrippedSecret(value);
     return {
       name: input.name,
       type: input.type,
@@ -1100,7 +1098,6 @@ async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): 
 
 function materializeWorkflow(library: Library, found: Located): void {
   const doc = migrate(found.document);
-  if (found.bucket === "public" || found.forkedFrom) doc.imported = true;
   library.save(doc);
   if (!found.version) return;
   const state = loadState(library.root);

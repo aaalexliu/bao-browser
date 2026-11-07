@@ -561,7 +561,6 @@ export async function startApp(opts: {
         const body = await readBody(req) as { answers?: Record<string, unknown> };
         try {
           const installed = migrate(applyImportAnswers(pendingDoc, body.answers || {}));
-          installed.imported = true;
           library.save(installed);
           pendingDoc = null;
           opened = {

@@ -27,66 +27,6 @@ test("search returns at most five hits and each hit has an input schema", async 
   }
 });
 
-test("imported publisher defaults stay required in offline search and describe", async () => {
-  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-import-"));
-  const library = new Library(home);
-  const publisher: WorkflowV2 = {
-    ...workflow("installed", "Publisher defaults"),
-    inputs: [
-      { name: "email", type: "text", default: "ada@acme.com" },
-      { name: "password", type: "secret", default: "owner-password" },
-      { name: "otp", type: "secret" },
-    ],
-  };
-  const remote = createServer((req, res) => {
-    res.setHeader("content-type", "application/json");
-    if (req.url === "/api/workflows/remote" || req.url === "/api/workflows/fork") {
-      const id = req.url.split("/").at(-1)!;
-      res.end(JSON.stringify({
-        document: { ...publisher, id },
-        owned: id === "fork",
-        visibility: "public",
-        ...(id === "fork" ? { forkedFrom: "listing" } : {}),
-      }));
-    } else {
-      res.statusCode = 404;
-      res.end("{}");
-    }
-  });
-  await new Promise<void>((resolve) => remote.listen(0, "127.0.0.1", resolve));
-  const app = await startApp({ home, port: 0, extensionHost: false });
-  try {
-    const post = (route: string, body: unknown) => fetch(`http://127.0.0.1:${app.port}${route}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    assert.equal((await post("/api/open", { link: "bao://import/installed", document: publisher })).status, 200);
-    assert.equal((await post("/api/open/install", { answers: {} })).status, 200);
-    const { port } = remote.address() as AddressInfo;
-    saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
-    for (const id of ["remote", "fork"]) {
-      assert.equal((await runWorkflow(library, { id })).outcome, "needs_human");
-    }
-    saveState(home, { ...loadState(home), server: "", deviceToken: undefined });
-    library.save({ ...publisher, id: "owner", name: "Owner defaults" });
-    const reopened = new Library(home);
-    for (const id of ["installed", "remote", "fork", "owner"]) {
-      const described = await describeWorkflow(reopened, id);
-      const expected = [id !== "owner", false, true];
-      assert.deepEqual(described.inputs.map((input) => input.required), expected, id);
-      assert.deepEqual(described.workflow.inputs.map((input) => input.required !== false), expected, id);
-      const hits = await searchWorkflows(reopened, "defaults");
-      assert.deepEqual(hits.find((item) => item.id === id)?.inputs.map((input) => input.required), expected, id);
-      assert.equal(reopened.read(id).inputs[0]?.default, "ada@acme.com");
-    }
-  } finally {
-    await app.close();
-    await new Promise<void>((resolve) => remote.close(() => resolve()));
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
 test("search excludes retired and fixture workflows while preserving readable records and replay eligibility", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-cat-"));
   try {
