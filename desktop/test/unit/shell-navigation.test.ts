@@ -140,6 +140,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   }
   async function navigate(screen: Screen, place: string): Promise<void> {
     const primary = page.locator(`#rail [data-place="${place}"]`);
+    await primary.waitFor({ state: "attached" });
     if (!await primary.isVisible()) await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await primary.click();
     if (place === "workflows" && screen !== "library") {
