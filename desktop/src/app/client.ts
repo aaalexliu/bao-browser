@@ -640,7 +640,7 @@ function importSheet(): string {
   </section>`;
 }
 
-function navigate(next: Screen): void {
+function navigate(next: Screen, focusMain = true): void {
   if (next === "heals") openHeal = null;
   screen = next;
   if (screen === "runs") selectDefaultRun();
@@ -659,8 +659,9 @@ function navigate(next: Screen): void {
   }
   render();
   const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
-  if (sidebar.open) sidebar.close("navigate");
-  mainEl().focus();
+  if (sidebar.open) sidebar.close(focusMain ? "navigate" : "navigate-unfocused");
+  if (focusMain) mainEl().focus();
+  else mainEl().blur();
   document.getElementById("content")!.scrollTop = 0;
 }
 
@@ -824,8 +825,8 @@ function bind(): void {
   const close = document.getElementById("sidebar-close");
   if (close) close.onclick = () => sidebar.close();
   document.querySelectorAll("#rail [data-screen], #screen-list [data-screen]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => {
-      navigate((btn as HTMLButtonElement).dataset.screen as Screen);
+    (btn as HTMLButtonElement).onclick = (event) => {
+      navigate((btn as HTMLButtonElement).dataset.screen as Screen, event.isTrusted && event.detail === 0);
     };
   });
   const importLogin = document.querySelector<HTMLButtonElement>('#settings [data-screen="logins"]');
@@ -2479,9 +2480,9 @@ function paintPalette(): void {
     paintPalette();
   };
   host.querySelectorAll("[data-command]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => {
+    (btn as HTMLButtonElement).onclick = (event) => {
       const id = (btn as HTMLButtonElement).dataset.command || "";
-      runCommand(filteredCommands().find((item) => item.id === id));
+      runCommand(filteredCommands().find((item) => item.id === id), event.isTrusted && event.detail === 0);
     };
   });
   if (input) {
@@ -2490,19 +2491,19 @@ function paintPalette(): void {
   }
 }
 
-function runCommand(item?: CommandItem): void {
+function runCommand(item?: CommandItem, focusMain = true): void {
   if (!item) return;
   paletteOpen = false;
   if (item.kind === "theme") theme = theme === "dark" ? "light" : "dark";
   else if (item.screen === "replay" && item.workflowId) {
     lastWf = item.workflowId;
-    navigate("replay");
+    navigate("replay", focusMain);
     return;
   } else if (item.kind === "workflow" && item.workflowId) {
     openWorkflow = item.workflowId;
     screen = "workflow";
   } else if (item.screen) {
-    navigate(item.screen as Screen);
+    navigate(item.screen as Screen, focusMain);
     return;
   }
   renderKey = "";
@@ -2765,7 +2766,7 @@ const sidebarDialog = document.getElementById("sidebar-dialog") as HTMLDialogEle
 sidebarDialog.addEventListener("close", () => {
   if (sidebarDialog.open) return;
   document.getElementById("app")!.prepend(railEl());
-  if (paletteOpen || sidebarDialog.returnValue === "palette") return;
+  if (paletteOpen || sidebarDialog.returnValue === "palette" || sidebarDialog.returnValue === "navigate-unfocused") return;
   if (sidebarDialog.returnValue === "navigate") mainEl().focus();
   else document.getElementById("sidebar-toggle")?.focus();
 });

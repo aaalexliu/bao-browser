@@ -20,6 +20,66 @@ async function eventually(check: () => boolean): Promise<void> {
   assert.ok(check(), "saved setting did not reach the Library");
 }
 
+test("Settings shows a focus ring only when opened with the keyboard", { timeout: 30_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-focus-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: false, accessibility: false }));
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    const url = `http://127.0.0.1:${app.port}`;
+    for (const theme of ["light", "dark"]) {
+      await page.goto(url);
+      await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
+      await page.reload();
+      const settings = page.locator('#rail [data-place="settings"]');
+      await settings.evaluate((button) => (button as HTMLButtonElement).click());
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none", `${theme}: programmatic opening has no focus box`);
+      await page.reload();
+      await settings.click();
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none", `${theme}: pointer opening has no focus box`);
+      await page.reload();
+      await settings.focus();
+      await page.keyboard.press("Enter");
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "main");
+      assert.equal(await page.locator("#main").evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle === "solid"), true, `${theme}: keyboard opening keeps a visible focus ring`);
+      await page.keyboard.press("Tab");
+      assert.equal(await page.locator("#heal-auto").evaluate((node) => document.activeElement === node && node.matches(":focus-visible")), true);
+      assert.equal(await page.locator('label[for="heal-auto"]').evaluate((node) => getComputedStyle(node).outlineStyle), "solid");
+      await page.keyboard.press("Meta+k");
+      await page.locator("#palette-input").fill("Settings");
+      await page.keyboard.press("Enter");
+      assert.equal(await page.locator("#main").evaluate((node) => document.activeElement === node && getComputedStyle(node).outlineStyle === "solid"), true);
+      await page.keyboard.press("Meta+k");
+      await page.locator("#palette-input").fill("Settings");
+      await page.locator('#palette-list [data-command="settings"]').click();
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none");
+      await page.setViewportSize({ width: 720, height: 860 });
+      await page.locator("#sidebar-toggle").click();
+      await settings.click();
+      await page.waitForFunction(() => !(document.querySelector("#sidebar-dialog") as HTMLDialogElement).open);
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none");
+      await page.locator("#sidebar-toggle").focus();
+      await page.keyboard.press("Enter");
+      await settings.focus();
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => document.activeElement?.id === "main");
+      assert.equal(await page.locator("#main").evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle === "solid"), true);
+      await page.setViewportSize({ width: 1280, height: 860 });
+    }
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("AI help saves each source and keeps API drafts across refreshes", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-ai-"));
   const previousHome = process.env.HOME;
