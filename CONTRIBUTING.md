@@ -15,11 +15,13 @@ installer; its safety tests stay in `desktop/test/unit/install-scripts.test.ts`.
 
 ## Local checks
 
-Install the lockfile dependencies with `npm ci` and `npm --prefix web ci`.
+Install lockfile dependencies with `npm ci` only if `node_modules` is missing
+and `npm --prefix web ci` only if `web/node_modules` is missing; never reinstall
+dependencies that already exist.
 Use the Node version in `.nvmrc`. Run `npm run check:static` and the focused
 tests for your change. [Testing](docs/TESTING.md) describes safe browser and
-Library isolation. Do not run full local suites on the shared Mac when focused
-checks will do.
+Library isolation. Never run a full local suite; use focused test files locally
+and the PR `full-suite` label for the full run.
 
 For a packaging change, build desktop and extension, then build Bao.app using
 [Mac build](docs/mac-build.md). Reuse the signed helper; do not rebuild it or
