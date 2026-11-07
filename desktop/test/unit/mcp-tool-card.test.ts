@@ -15,6 +15,7 @@ import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
+import { consolePane, runConsoleLines, type RunSummary } from "../../src/app/views";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=", "base64");
 const native = [{ stdout: '- button "Add blueberries" [ref=e280]\n', stderr: "", exitCode: 0 }];
@@ -59,17 +60,17 @@ test("capture cards fetch only their own frame through the bounded app reader", 
     assert.ok(JSON.stringify(reply).length < 2000);
     const read = (phase: string) => callViewerTool(library, "open_browser_picture", { run_id: f.recording.id, step_id: f.step.id, phase });
     const before = read("before");
-    assert.ok("baoPictures" in before._meta);
-    if ("baoPictures" in before._meta) {
-      assert.equal(before._meta.baoPictures.pictures.length, 1);
-      assert.deepEqual(Buffer.from(before._meta.baoPictures.pictures[0]!.data, "base64"), png);
-      assert.doesNotMatch(JSON.stringify(before.content), new RegExp(png.toString("base64")));
-    }
+    assert.ok(before._meta.baoPictures);
+    assert.equal(before._meta.baoPictures.pictures.length, 1);
+    assert.deepEqual(Buffer.from(before._meta.baoPictures.pictures[0]!.data, "base64"), png);
+    assert.doesNotMatch(JSON.stringify(before.content), new RegExp(png.toString("base64")));
     const after = read("after");
-    if ("baoPictures" in after._meta) assert.deepEqual(after._meta.baoPictures.pictures, []);
+    assert.ok(after._meta.baoPictures);
+    assert.deepEqual(after._meta.baoPictures.pictures, []);
     assert.throws(() => read("previous"), /Invalid picture phase/);
     const missing = callViewerTool(library, "open_browser_picture", { run_id: f.recording.id, step_id: "missing", phase: "before" });
-    if ("baoPictures" in missing._meta) assert.deepEqual(missing._meta.baoPictures.pictures, []);
+    assert.ok(missing._meta.baoPictures);
+    assert.deepEqual(missing._meta.baoPictures.pictures, []);
   } finally { await f.close(); }
 });
 
@@ -86,6 +87,37 @@ test("failed commands do not show a successful target annotation and preserve na
     assert.equal(reply._meta.baoToolCard.status, "failed");
     const picture = reply._meta.baoToolCard.picture;
     if (picture.kind === "captured") { assert.equal(picture.phase, "after"); assert.equal(picture.target, undefined); }
+  } finally { await f.close(); }
+});
+
+test("desktop Console projects native capture output without duplicating storage", async () => {
+  const f = await recorded("snapshot");
+  try {
+    await f.recording.complete(f.step, native, f.home, async () => png);
+    const click = f.recording.begin("click", ["@e280"]);
+    await f.recording.complete(click, [{ stdout: "Click attempted", stderr: "Target moved", exitCode: 1 }], f.home, async () => png);
+    const stored = new Library(f.home).readRun(f.recording.id);
+    assert.equal(Object.hasOwn(stored, "console"), false);
+    const run = stored as unknown as RunSummary;
+    const lines = runConsoleLines(run);
+    assert.deepEqual(lines, [
+      { stepId: f.step.id, type: "stdout", text: native[0]!.stdout, ts: f.step.endedAt },
+      { stepId: click.id, type: "stdout", text: "Click attempted", ts: click.endedAt },
+      { stepId: click.id, type: "stderr", text: "Target moved", ts: click.endedAt },
+    ]);
+    const selected = consolePane(lines, click.id);
+    assert.match(selected, /Click attempted/);
+    assert.match(selected, /stderr/);
+    assert.match(selected, /Target moved/);
+    assert.doesNotMatch(selected, /Add blueberries|No console lines were captured/);
+    const first = consolePane(lines, f.step.id);
+    assert.match(first, /Add blueberries/);
+    assert.doesNotMatch(first, /Target moved/);
+    assert.match(consolePane(lines), /Target moved/);
+    const oldLines = [{ stepId: "old", type: "info", text: "Existing page console" }];
+    assert.equal(runConsoleLines({ ...run, kind: "replay", console: oldLines }), oldLines);
+    assert.equal(runConsoleLines({ ...run, pageEngine: "old", console: oldLines }), oldLines);
+    assert.deepEqual(runConsoleLines({ ...run, console: oldLines }), lines);
   } finally { await f.close(); }
 });
 
@@ -121,10 +153,25 @@ test("owner waits and close keep live run identity without borrowing a picture",
 test("live proxy keeps run identity across validation and owner-wall returns and clips both screenshot axes", { timeout: 30000 }, async (t) => {
   pinTestBrowser();
   const home = await mkdtemp(path.join(tmpdir(), "bao-card-proxy-"));
-  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(home, "profile"), childHome: path.join(home, "user"), headless: true });
-  const endpoint = await readDevToolsActivePort(chrome.portFile);
-  const observer = await testChromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
+  let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let observer: Awaited<ReturnType<typeof testChromium.connectOverCDP>> | undefined;
+  let proxy: AgentBrowserProxy | undefined;
+  t.after(async () => {
+    try { await proxy?.close(); }
+    finally {
+      try { await observer?.close(); }
+      finally {
+        try { await chrome?.close(); }
+        finally { await rm(home, { recursive: true, force: true }); }
+      }
+    }
+  });
+  chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(home, "profile"), childHome: path.join(home, "user"), headless: true });
+  const { portFile, closed, isClosed, close } = chrome;
+  const endpoint = await readDevToolsActivePort(portFile);
+  observer = await testChromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
   const page = observer.contexts()[0]!.pages()[0]!;
+  await page.goto("about:blank");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1200, deviceScaleFactor: 2, mobile: false });
   await page.setContent('<!doctype html><title>Fixture</title><style>html{background:#000}body{margin:0;width:4000px;height:4000px}::-webkit-scrollbar{width:24px;height:32px}canvas{position:absolute;left:0;top:0}button{position:absolute;left:800px;top:800px;width:40px;height:20px;background:#ff0000;border:0;padding:0}</style><canvas width="2800" height="2200"></canvas><button aria-label="Target"></button>');
@@ -144,8 +191,8 @@ test("live proxy keeps run identity across validation and owner-wall returns and
     window.scrollTo(600, 600);
   });
   t.mock.method(profiles, "openCopiedChromeForProxy", async () => ({
-    target: { kind: "bao" as const, portFile: chrome.portFile }, closed: chrome.closed,
-    bytes: 0, copyMs: 0, isClosed: chrome.isClosed, keepOpen: async () => {}, close: chrome.close,
+    target: { kind: "bao" as const, portFile }, closed,
+    bytes: 0, copyMs: 0, isClosed, keepOpen: async () => {}, close,
   }));
   const executable = path.join(home, "native");
   await writeFile(executable, `#!${process.execPath}
@@ -161,59 +208,52 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
 `, { mode: 0o700 });
   const sourceRoot = path.join(home, "source");
   await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
-  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
-  try {
-    await proxy.execute("open", ["about:blank"], true);
-    const runId = proxy.activeRunId;
-    assert.ok(runId);
-    const results = await proxy.execute("click", ["@e1"], true);
-    const evidence = proxy.lastCommand!;
-    assert.deepEqual(evidence.step.target?.rect, { x: 200, y: 200, width: 40, height: 20 });
-    const viewport = await page.evaluate(() => ({ width: document.documentElement.clientWidth, height: document.documentElement.clientHeight, innerWidth, innerHeight, dpr: devicePixelRatio }));
-    assert.ok(viewport.width < viewport.innerWidth);
-    assert.ok(viewport.height < viewport.innerHeight);
-    assert.deepEqual(evidence.step.target?.viewport, { width: viewport.width, height: viewport.height });
-    const bytes = await readFile(path.join(home, "shots", "runs", runId, evidence.step.beforeShot!));
-    const image = await page.evaluate(async (data) => {
-      const image = new Image(); image.src = `data:image/jpeg;base64,${data}`; await image.decode();
-      const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
-      const context = canvas.getContext("2d")!; context.drawImage(image, 0, 0);
-      return { width: image.width, height: image.height, center: Array.from(context.getImageData(220, 210, 1, 1).data) };
-    }, bytes.toString("base64"));
-    assert.equal(viewport.dpr, 2);
-    assert.equal(image.width, viewport.width);
-    assert.equal(image.height, viewport.height);
-    const library = new Library(home);
-    let largest = 0;
-    for (const phase of ["before", "after"]) {
-      const reply = callViewerTool(library, "open_browser_picture", { run_id: runId, step_id: evidence.step.id, phase });
-      assert.ok("baoPictures" in reply._meta);
-      if ("baoPictures" in reply._meta) {
-        assert.equal(reply._meta.baoPictures.pictures.length, 1);
-        const picture = reply._meta.baoPictures.pictures[0]!;
-        const captured = await readFile(path.join(home, "shots", "runs", runId, phase === "before" ? evidence.step.beforeShot! : evidence.step.afterShot!));
-        assert.deepEqual(Buffer.from(picture.data, "base64"), captured);
-        largest = Math.max(largest, captured.length);
-      }
-    }
-    assert.ok(largest > 512 * 1024, "the photo-heavy fixture exceeds the old reader budget");
-    assert.ok(BROWSER_PICTURE_BYTES > largest);
-    assert.equal(BROWSER_PICTURE_BYTES, 2 * 1024 * 1024);
-    assert.ok(image.center[0]! > 240 && image.center[1]! < 20 && image.center[2]! < 20, "the scrolled target is in the marked picture position");
-    assert.equal(browserToolResult("click", results, evidence, proxy.activeRunId)._meta.baoToolCard.picture.kind, "captured");
-    await assert.rejects(proxy.execute("snapshot", ["--cdp", "forbidden"]));
-    assert.equal(proxy.lastCommand, undefined);
-    assert.equal(browserToolResult("snapshot", [], proxy.lastCommand, proxy.activeRunId, "validation failed").structuredContent.run_id, runId);
-    await page.evaluate(() => { document.title = "Sign in"; });
-    const halted = await proxy.execute("snapshot", [], true);
-    assert.equal(JSON.parse(halted[0]!.stdout).outcome, "halted");
-    const card = browserToolResult("snapshot", halted, proxy.lastCommand, proxy.activeRunId);
-    assert.equal(card.structuredContent.run_id, runId);
-    assert.equal(card._meta.baoToolCard.picture.kind, "unavailable");
-  } finally {
-    await proxy.close(); await observer.close(); await chrome.close();
-    await rm(home, { recursive: true, force: true });
+  proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
+  await proxy.execute("open", ["about:blank"], true);
+  const runId = proxy.activeRunId;
+  assert.ok(runId);
+  const results = await proxy.execute("click", ["@e1"], true);
+  const evidence = proxy.lastCommand!;
+  assert.deepEqual(evidence.step.target?.rect, { x: 200, y: 200, width: 40, height: 20 });
+  const viewport = await page.evaluate(() => ({ width: document.documentElement.clientWidth, height: document.documentElement.clientHeight, innerWidth, innerHeight, dpr: devicePixelRatio }));
+  assert.ok(viewport.width < viewport.innerWidth);
+  assert.ok(viewport.height < viewport.innerHeight);
+  assert.deepEqual(evidence.step.target?.viewport, { width: viewport.width, height: viewport.height });
+  const bytes = await readFile(path.join(home, "shots", "runs", runId, evidence.step.beforeShot!));
+  const image = await page.evaluate(async (data) => {
+    const image = new Image(); image.src = `data:image/jpeg;base64,${data}`; await image.decode();
+    const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext("2d")!; context.drawImage(image, 0, 0);
+    return { width: image.width, height: image.height, center: Array.from(context.getImageData(220, 210, 1, 1).data) };
+  }, bytes.toString("base64"));
+  assert.equal(viewport.dpr, 2);
+  assert.equal(image.width, viewport.width);
+  assert.equal(image.height, viewport.height);
+  const library = new Library(home);
+  let largest = 0;
+  for (const phase of ["before", "after"]) {
+    const reply = callViewerTool(library, "open_browser_picture", { run_id: runId, step_id: evidence.step.id, phase });
+    assert.ok(reply._meta.baoPictures);
+    assert.equal(reply._meta.baoPictures.pictures.length, 1);
+    const picture = reply._meta.baoPictures.pictures[0]!;
+    const captured: Buffer = await readFile(path.join(home, "shots", "runs", runId, phase === "before" ? evidence.step.beforeShot! : evidence.step.afterShot!));
+    assert.deepEqual(Buffer.from(picture.data, "base64"), captured);
+    largest = Math.max(largest, captured.length);
   }
+  assert.ok(largest > 512 * 1024, "the photo-heavy fixture exceeds the old reader budget");
+  assert.ok(BROWSER_PICTURE_BYTES > largest);
+  assert.equal(BROWSER_PICTURE_BYTES, 2 * 1024 * 1024);
+  assert.ok(image.center[0]! > 240 && image.center[1]! < 20 && image.center[2]! < 20, "the scrolled target is in the marked picture position");
+  assert.equal(browserToolResult("click", results, evidence, proxy.activeRunId)._meta.baoToolCard.picture.kind, "captured");
+  await assert.rejects(proxy.execute("snapshot", ["--cdp", "forbidden"]));
+  assert.equal(proxy.lastCommand, undefined);
+  assert.equal(browserToolResult("snapshot", [], proxy.lastCommand, proxy.activeRunId, "validation failed").structuredContent.run_id, runId);
+  await page.evaluate(() => { document.title = "Sign in"; });
+  const halted = await proxy.execute("snapshot", [], true);
+  assert.equal(JSON.parse(halted[0]!.stdout).outcome, "halted");
+  const card = browserToolResult("snapshot", halted, proxy.lastCommand, proxy.activeRunId);
+  assert.equal(card.structuredContent.run_id, runId);
+  assert.equal(card._meta.baoToolCard.picture.kind, "unavailable");
 });
 
 test("capture receipts preserve recording, owner handoff, and finished outcomes without a workflow", async () => {
@@ -273,11 +313,12 @@ test("large captures retain native output once and keep exact-run inspection and
     assert.ok(JSON.stringify(view).length < 4000);
     assert.equal(getRun(library, f.recording.id).outcome, "recording");
     const receiptPictures = callViewerTool(library, "open_step_pictures", { run_id: f.recording.id, step_id: f.step.id });
-    if ("baoPictures" in receiptPictures._meta) assert.equal(receiptPictures._meta.baoPictures.pictures.length, 1);
+    assert.ok(receiptPictures._meta.baoPictures);
+    assert.equal(receiptPictures._meta.baoPictures.pictures.length, 1);
     await rm(file);
     const direct = callViewerTool(library, "open_browser_picture", { run_id: f.recording.id, step_id: f.step.id, phase: "after" });
-    assert.ok("baoPictures" in direct._meta);
-    if ("baoPictures" in direct._meta) assert.deepEqual(Buffer.from(direct._meta.baoPictures.pictures[0]!.data, "base64"), png);
+    assert.ok(direct._meta.baoPictures);
+    assert.deepEqual(Buffer.from(direct._meta.baoPictures.pictures[0]!.data, "base64"), png);
   } finally { await f.close(); }
 });
 
