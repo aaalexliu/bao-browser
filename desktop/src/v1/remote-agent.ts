@@ -116,10 +116,10 @@ export function createRemoteAgent(opts: {
     chain = chain.then(work).then(() => undefined, () => undefined);
   }
 
-  function transition(event: SlotEvent): void {
+  function transition(event: SlotEvent, request?: AssignedJob): void {
     const next = apply(slot, event);
     slot = next.slot;
-    perform(next.effects);
+    perform(next.effects, event.type === "job" ? event.job : request);
   }
 
   async function loop(): Promise<void> {
@@ -195,14 +195,14 @@ export function createRemoteAgent(opts: {
     });
   }
 
-  function perform(effects: SlotEffect[]): void {
+  function perform(effects: SlotEffect[], request?: AssignedJob): void {
     for (const effect of effects) {
       if (effect.type === "send-ready") {
         socket?.send(JSON.stringify({ type: "ready" }));
         continue;
       }
       if (effect.type === "send-result") {
-        const clean = scrubSaved(effect.result, outboundContext(effect.jobId, effect.result));
+        const clean = scrubSaved(effect.result, outboundContext(request?.id === effect.jobId ? request : undefined, effect.result));
         const fitted = fitResult(effect.jobId, redactAudit(clean) as Record<string, unknown>);
         rememberResult(opts.library.root, effect.jobId, fitted);
         socket?.send(JSON.stringify({ type: "result", jobId: effect.jobId, result: fitted }));
@@ -247,7 +247,7 @@ export function createRemoteAgent(opts: {
             if (heldResume && typeof info?.deadline === "number") {
               armDeadline(heldResume, info.deadline);
             }
-            transition({ type: "run-finished", jobId: job.id, result, waiting });
+            transition({ type: "run-finished", jobId: job.id, result, waiting }, job);
           });
         }).catch((err) => {
           if (gen !== generation) return;
@@ -261,15 +261,14 @@ export function createRemoteAgent(opts: {
               jobId: job.id,
               result: { outcome: "failed", workflowId: job.workflowId, reason: err instanceof Error ? err.message : String(err) },
               waiting: null,
-            });
+            }, job);
           });
         });
       }
     }
   }
 
-  function outboundContext(jobId: string, result: Record<string, unknown>): SavedContext {
-    const job = current?.id === jobId ? current : null;
+  function outboundContext(job: AssignedJob | undefined, result: Record<string, unknown>): SavedContext {
     const runId = stringArg(result.runId) || stringArg(result.run_id) || (job?.tool === "get_run" ? stringArg(job.args.run_id) : "");
     let stored: ReturnType<Library["readRun"]> | undefined;
     if (runId) {

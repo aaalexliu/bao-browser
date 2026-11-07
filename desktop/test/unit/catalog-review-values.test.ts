@@ -82,7 +82,7 @@ test("marketplace review withholds token card and SSN crops but retains raw loca
     const document = workflow(origin);
     library.save(document);
     const saved = library.read(document.id);
-    library.updateSettings({ pageEngine: "old", siteTrust: { [origin]: "allow" } });
+    library.updateSettings({ pageEngine: "old" });
     const inputs = Object.fromEntries(values.map((value, index) => [`sample${index}`, value]));
     const outcome = await reviewWorkflow(library, document.id, inputs, { server: origin });
     resume = outcome.resume;

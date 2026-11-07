@@ -2184,7 +2184,7 @@ export function captureView(state: ShellState, draft: { name: string; startUrl: 
       </div>` : ""}
       <p id="capture-error" role="alert"${draft.error ? "" : " hidden"}>${esc(draft.error)}</p>
     </div>
-    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : state.teach?.phase === "review" ? `<button type="button" id="capture-teach-discard"${draft.busy ? " disabled" : ""}>Discard Teach review</button>` : ""}</footer>
+    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Typed values are saved for replay.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : state.teach?.phase === "review" ? `<button type="button" id="capture-teach-discard"${draft.busy ? " disabled" : ""}>Discard Teach review</button>` : ""}</footer>
   </section>`;
 }
 
@@ -2195,7 +2195,7 @@ export function captureStream(state: ShellState, picking = false): string {
     const field = kind === "type" ? step.field || (step.sensitive ? "Password" : "") : "";
     const label = field ? `Type the ${field.charAt(0).toLowerCase()}${field.slice(1)}` : step.label;
     const newest = index === steps.length - 1 && Boolean(step.ts && Date.now() - step.ts < 15_000);
-    const detail = field ? `<div class="sub"><span class="cap-token">${step.sensitive ? icon("lock") : ""}${esc(field)}</span>${step.sensitive ? `<span class="mask" aria-label="hidden">••••••••</span><span>Not saved. Bao uses your Chrome login.</span>` : ""}</div>` : "";
+    const detail = field ? `<div class="sub"><span class="cap-token">${step.sensitive ? icon("lock") : ""}${esc(field)}</span>${step.sensitive ? `<span class="mask" aria-label="hidden">••••••••</span><span>Saved in your local Library.</span>` : ""}</div>` : "";
     return `<li${newest ? ` class="new"` : ""}><span class="no">${index + 1}</span>${icon(kind)}<div><span class="lab">${esc(label)}</span>${detail}</div>${newest ? `<span class="just">Just now</span>` : ""}</li>`;
   }).join("");
   const waiting = state.capturePaused ? "Recording is paused" : picking ? "Pick list is on" : "Ready for your next step";
