@@ -21,7 +21,7 @@ Check helper presence and the chosen route against [Which grant each job needs](
 5. Drag a throwaway file from Finder onto **Drop a file here**.
 6. Click **Stop and save**.
 
-The new workflow opens. The password is not in it. The file path is not in it.
+The new workflow opens with the password. The file path is not in it.
 
 ## Replay
 

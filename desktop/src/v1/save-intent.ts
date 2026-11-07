@@ -6,9 +6,9 @@
 import { isSensitiveValue } from "../../../shared/mask";
 import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
+import { retainedEvents, type TrailEvent } from "./interpret";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
-import { scrubSaved } from "../../../shared/saved-secrets";
 
 export interface SaveCompleter {
   provider: string;
@@ -30,13 +30,13 @@ export interface PromptStep {
 
 const SAVE_TIMEOUT_MS = 8000;
 
-export function secretValues(events: { sensitive?: boolean; value?: string; dialogValue?: string; identity?: { role?: string } }[]): string[] {
+export function secretValues(events: readonly TrailEvent[]): string[] {
   const out: string[] = [];
   const add = (value: string | undefined, force: boolean) => {
     if (!value || value.length < 4 || out.includes(value)) return;
     if (force || isSensitiveValue(value) || /\d{6,}/.test(value)) out.push(value);
   };
-  for (const event of events) {
+  for (const event of retainedEvents(events)) {
     const password = !!event.sensitive || event.identity?.role === "password";
     add(event.value, password);
     add(event.dialogValue, false);
@@ -165,7 +165,7 @@ export async function inferSavedWorkflow(
   const floor = source.floorTitle && source.floorTitle !== "Captured workflow"
     ? source.floorTitle
     : (workflow.name && workflow.name !== "Captured workflow" ? workflow.name : "Untitled workflow");
-  const base = scrubSaved({ ...workflow, name: floor }, { secrets });
+  const base = structuredClone({ ...workflow, name: floor });
   const skipped = (provider: string, model: string): WorkflowV2 => ({
     ...base,
     inference: { at: now, provider, model, status: "skipped" },
@@ -199,7 +199,7 @@ export async function inferSavedWorkflow(
   else delete next.summary;
   if (parsed.intent) next.intent = parsed.intent;
   else delete next.intent;
-  return scrubSaved(next, { secrets });
+  return next;
 }
 
 function promptSteps(

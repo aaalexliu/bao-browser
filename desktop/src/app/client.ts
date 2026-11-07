@@ -9,6 +9,7 @@ import { settingsIndex, settingsScreen } from "./settings-view";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
+import { oneTimeCodeInput } from "../../../shared/saved-secrets";
 import type { inspectRunView } from "../mcp/run-view";
 import type { DamagedWorkflow, Settings } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
@@ -479,10 +480,10 @@ function replayForm(): string {
   const options = (state.workflows || []).map((workflow) =>
     `<option value="${esc(workflow.id)}" ${workflow.id === selected ? "selected" : ""}>${esc(workflow.name)}</option>`).join("");
   const prefill = Object.keys(deeplinkInputs).length
-    ? `<p id="run-prefill">Prefilled from the link. A secret is asked again.</p>`
+    ? `<p id="run-prefill">Prefilled from the link.</p>`
     : "";
   return `<section id="run-form"><h2>Run ${esc(current?.name || "")}</h2>
-    <p class="lede">Inputs are asked once, before the run. Secrets stay masked.</p>
+    <p class="lede">Saved inputs are ready to replay. Change any value before the run.</p>
     ${prefill}
     ${fromLine()}
     <label>Workflow <select id="wf">${options}</select></label>
@@ -503,7 +504,7 @@ function fromLine(): string {
   if (fromNote === "run" && debugStepId) {
     return `<p id="run-from-note">Run from step ${esc(String(runFromN || debugStepId))}. Earlier steps are not re-run.</p>`;
   }
-  if (debugStepId) return `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run. A secret is asked again.</p>`;
+  if (debugStepId) return `<p id="debug-note">Debug from this step (${esc(debugStepId)}). Earlier steps are not re-run.</p>`;
   return "";
 }
 
@@ -1710,16 +1711,18 @@ async function openEditor(id: string): Promise<void> {
 
 async function fillArgs(id: string): Promise<void> {
   if (!id) return;
-  const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as {
-    inputs: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string }[];
-    steps?: { label?: string; download?: { output?: string } }[];
-  };
+  const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as Pick<WorkflowV2, "inputs" | "steps">;
   const form = document.getElementById("args");
   if (!form || screen !== "replay") return;
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
-  form.innerHTML = doc.inputs.map((input) => field(input, input.type === "secret" ? undefined : prev[input.name], doc.steps || [])).join("") || "<p>This workflow has no inputs.</p>";
+  const pinnedArgs = (pinnedRunId && pinnedInputs) || pinned?.inputs;
+  const prev = { ...(pinnedArgs || last?.inputs || {}), ...deeplinkInputs };
+  form.innerHTML = doc.inputs.map((input) => {
+    const fresh = oneTimeCodeInput(doc, input.name);
+    const previous = input.type === "secret" ? deeplinkInputs[input.name] ?? pinnedArgs?.[input.name] : prev[input.name];
+    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, previous, doc.steps || []);
+  }).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
   form.querySelectorAll(".drop").forEach((zone) => {
@@ -1744,7 +1747,7 @@ async function fillArgs(id: string): Promise<void> {
 }
 
 function field(
-  input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string },
+  input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string; fresh?: boolean },
   previous: string | undefined,
   steps: { label?: string; download?: { output?: string } }[],
 ): string {
@@ -1774,7 +1777,6 @@ function bindTokens(host: HTMLElement, id: string): void {
 
 function openTokenEditor(token: HTMLButtonElement, id: string): void {
   const name = token.dataset.editInput || "";
-  const secret = token.dataset.type === "secret";
   const editor = document.createElement("form");
   editor.id = "input-editor";
   editor.className = "token-editor";
@@ -1783,24 +1785,14 @@ function openTokenEditor(token: HTMLButtonElement, id: string): void {
     <label>Type <select name="type">
       ${["text", "secret", "number", "choice", "file"].map((type) => `<option value="${type}" ${token.dataset.type === type ? "selected" : ""}>${type}</option>`).join("")}
     </select></label>
-    <label data-default-row ${secret ? "hidden" : ""}>Default <input name="default" value="${esc(secret ? "" : token.dataset.default || "")}" ${secret ? "disabled" : ""}></label>
+    <label>Default <input name="default" value="${esc(token.dataset.default || "")}"></label>
     <label>Required <input name="required" type="checkbox" ${token.dataset.required === "1" ? "checked" : ""}></label>
-    <p class="quiet" data-secret-note ${secret ? "" : "hidden"}>A secret stays masked. The value is not stored.</p>
     <button type="button" data-save-input>Save</button>`;
   document.getElementById("input-editor")?.remove();
   token.after(editor);
   editor.querySelector<HTMLInputElement>("[name=label]")?.focus();
   const typeSel = editor.querySelector("[name=type]") as HTMLSelectElement;
-  const defaultRow = editor.querySelector("[data-default-row]") as HTMLElement;
-  const secretNote = editor.querySelector("[data-secret-note]") as HTMLElement;
   const defaultInput = editor.querySelector("[name=default]") as HTMLInputElement;
-  typeSel.onchange = () => {
-    const hide = typeSel.value === "secret";
-    defaultRow.hidden = hide;
-    secretNote.hidden = !hide;
-    defaultInput.disabled = hide;
-    if (hide) defaultInput.value = "";
-  };
   editor.querySelector("[data-save-input]")!.addEventListener("click", async () => {
     const type = typeSel.value;
     const res = await fetch("/api/workflows/" + encodeURIComponent(id), {
@@ -1811,7 +1803,7 @@ function openTokenEditor(token: HTMLButtonElement, id: string): void {
           name,
           label: (editor.querySelector("[name=label]") as HTMLInputElement).value,
           type,
-          default: type === "secret" ? "" : defaultInput.value,
+          default: defaultInput.value,
           required: (editor.querySelector("[name=required]") as HTMLInputElement).checked,
         },
       }),
@@ -2510,7 +2502,7 @@ function bindShare(host: HTMLElement, id: string): void {
   if (exp && !exp.disabled) {
     exp.addEventListener("click", () => {
       const link = document.createElement("a");
-      link.href = "/api/workflows/" + encodeURIComponent(id);
+      link.href = "/api/workflows/" + encodeURIComponent(id) + "/export";
       link.download = `${id}.json`;
       document.body.append(link);
       link.click();

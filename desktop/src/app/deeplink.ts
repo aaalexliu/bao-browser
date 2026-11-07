@@ -1,6 +1,6 @@
 // bao://workflow/<id> opens that workflow. bao://import/<id> shows the import
 // sheet and does not save until the questions are answered.
-// bao://run/<id>?inputs=<json> opens the run form. Secret keys are refused.
+// bao://run/<id>?inputs=<json> opens the run form with supplied inputs.
 // bao://receipt/<runId> opens a saved run's receipt in Runs.
 
 import { migrate, type WorkflowV2 } from "../v1/schema";
@@ -22,7 +22,7 @@ interface OpenedWorkflowView {
   importLink: string;
   questions: ImportQuestion[];
   saved: boolean;
-  /** Non-secret values from a run link. Secrets are never copied here. */
+  /** Input values from a run link. */
   inputs?: Record<string, string>;
 }
 
@@ -83,13 +83,9 @@ export function decideOpen(
   };
   if (parsed.kind === "run") {
     if (!local) return { error: "workflow not on this Mac" };
-    const secret = (local.inputs || []).find((input) => input.type === "secret" && parsed.inputs && Object.prototype.hasOwnProperty.call(parsed.inputs, input.name));
-    if (secret) {
-      return { error: `Secret inputs are re-asked on this device. Remove ${secret.label || secret.name} from the link.` };
-    }
     const inputs: Record<string, string> = {};
     for (const input of local.inputs || []) {
-      if (input.type === "secret" || input.type === "file") continue;
+      if (input.type === "file") continue;
       const value = parsed.inputs?.[input.name];
       if (typeof value === "string" || typeof value === "number") inputs[input.name] = String(value);
     }

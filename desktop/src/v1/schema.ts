@@ -3,8 +3,7 @@
 
 import { isSensitiveField, isSensitiveValue } from "../../../shared/mask";
 import { canonical } from "./canonical";
-import { bindingTokens, INPUT_BINDING } from "./bindings";
-import { fixedSavedChoice, hasStrippedSecret } from "../../../shared/saved-secrets";
+import { INPUT_BINDING } from "./bindings";
 import { documentUsesDataSteps, validateDataSteps, workflowVersionError, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import type { ElementVersion } from "./element-history";
 import { filesDatesErrors, usesFilesDates } from "./files-dates-check";
@@ -27,9 +26,9 @@ export interface WorkflowInput {
   type: InputType;
   label?: string;
   required?: boolean;
-  /** Never a secret, and never an absolute path. */
+  /** Saved value used when the run supplies no override. */
   default?: string;
-  /** Asked again on import. Personal defaults are cleared either way. */
+  /** Asked again on import; see docs/bao.md for local and registry answer retention. */
   askOnImport?: boolean;
   /** Why a default was removed. The value itself is not stored. */
   cleared?: "email" | "name" | "path" | "phone" | "ssn";
@@ -62,14 +61,14 @@ export interface Identity {
   name?: string;
   title?: string;
   description?: string;
-  /** Static text. Not a typed secret. */
+  /** Field value or static text. */
   value?: string;
   testId?: string;
   id?: string;
   nameAttr?: string;
   placeholder?: string;
   tag?: string;
-  /** Field structure retained for at-rest secret stripping. */
+  /** Native input type used to identify the control. */
   inputType?: string;
   autocomplete?: string;
   label?: string;
@@ -190,7 +189,7 @@ export interface WorkflowStep {
   surface: "dom" | "os";
   identity?: Identity;
   selection?: SelectionRule;
-  /** A template such as "{{username}}". Literals are not secrets and not paths. */
+  /** A literal or a template such as "{{username}}". */
   value?: string;
   input?: string;
   key?: string;
@@ -334,7 +333,6 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (!NAME_RE.test(input.name)) errors.push(`input name ${input.name}`);
     if (names.has(input.name)) errors.push(`duplicate input ${input.name}`);
     names.add(input.name);
-    if (input.type === "secret" && input.default && !hasStrippedSecret(input.default)) errors.push(`secret default ${input.name}`);
     if (input.type === "file" && input.default && looksLikePath(input.default)) {
       errors.push(`file path default ${input.name}`);
     }
@@ -352,9 +350,6 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (step.input && !names.has(step.input)) errors.push(`unknown input ${step.input}`);
     if (step.value && looksLikePath(step.value) && !step.value.includes("{{")) {
       errors.push(`path baked into ${step.id}`);
-    }
-    if (step.sensitive && !fixedSavedChoice(step) && step.value && !bindingTokens(step.value, names).size && !hasStrippedSecret(step.value)) {
-      errors.push(`secret literal ${step.id}`);
     }
     if (step.action === "confirm" && step.human !== true) errors.push(`confirm ${step.id}`);
     if (step.confirm === true && (step.action !== "confirm" || step.human !== true)) errors.push(`confirm ${step.id}`);
@@ -539,6 +534,8 @@ function migrateStep(step: LooseStep, index: number, wf: string, inputs: Workflo
     if (step.action === "osSetValue" || step.action === "osType") {
       const secret = !!step.sensitive || isSensitiveValue(step.os.value || step.value || "");
       const input = addInput(inputs, secret ? "secret" : "text", secret ? "secret" : "text", identity);
+      const value = step.os.value ?? step.value;
+      if (value && !looksLikePath(value)) input.default = value;
       return {
         ...base,
         action: "type",
@@ -559,7 +556,7 @@ function migrateStep(step: LooseStep, index: number, wf: string, inputs: Workflo
       value: step.value,
     });
     const input = addInput(inputs, secret ? "secret" : "text", guessName(identity, secret), identity);
-    if (!secret && step.value && !looksLikePath(step.value)) input.default = step.value;
+    if (step.value && !looksLikePath(step.value)) input.default = step.value;
     return {
       ...base,
       action: "type",

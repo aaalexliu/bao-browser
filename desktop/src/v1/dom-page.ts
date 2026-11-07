@@ -269,7 +269,7 @@ export function unmaskPasswordFields(): void {
  * Returns how many fields were blurred. Passed to page.evaluate, so it stays closed over nothing.
  */
 export function blurSensitiveFields(): number {
-  document.querySelectorAll("[data-bao-blur]").forEach((el) => el.remove());
+  document.querySelectorAll("[data-bao-blur-cover]").forEach((el) => el.remove());
   const targets = [
     ...document.querySelectorAll("input[type=password], input[autocomplete='current-password'], [data-bao-secret]"),
   ];
@@ -282,7 +282,7 @@ export function blurSensitiveFields(): number {
     el.dataset.baoBlurPrev = el.style.filter;
     el.style.filter = "blur(10px)";
     const cover = document.createElement("div");
-    cover.setAttribute("data-bao-blur", "1");
+    cover.setAttribute("data-bao-blur-cover", "1");
     cover.setAttribute("aria-hidden", "true");
     cover.style.position = "fixed";
     cover.style.left = `${rect.x}px`;
@@ -301,7 +301,7 @@ export function blurSensitiveFields(): number {
 }
 
 export function unblurSensitiveFields(): void {
-  document.querySelectorAll("[data-bao-blur]").forEach((el) => el.remove());
+  document.querySelectorAll("[data-bao-blur-cover]").forEach((el) => el.remove());
   document.querySelectorAll("[data-bao-blurred]").forEach((el) => {
     if (!(el instanceof HTMLElement)) return;
     el.style.filter = el.dataset.baoBlurPrev || "";

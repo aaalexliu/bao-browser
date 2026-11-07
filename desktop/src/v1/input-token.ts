@@ -1,5 +1,6 @@
 // One description of an input. The step token and the run form both read it.
 
+import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
 import { validateWorkflow, type InputType, type WorkflowV2 } from "./schema";
 
 export interface TokenInput {
@@ -16,12 +17,12 @@ export interface TokenInput {
   fromOutput?: string;
   /** Label of the download step this file is filled from. */
   boundStep?: string;
+  fresh?: boolean;
 }
 
 export interface TokenFields {
   label: string;
   type: string;
-  /** Empty for a secret. A secret default is never shown or stored. */
   default: string;
   required: boolean;
   masked: boolean;
@@ -35,7 +36,7 @@ export function tokenFields(input: TokenInput): TokenFields {
   return {
     label: input.label || input.name,
     type,
-    default: masked ? "" : (input.default || ""),
+    default: input.fresh || hasStrippedSecret(input.default) ? "" : input.default || "",
     required: input.required === true,
     masked,
   };
@@ -57,12 +58,12 @@ export function editInput(
   }
   if (edit.required === true) nextInput.required = true;
   else if (edit.required === false) delete nextInput.required;
-  if (nextInput.type === "secret") delete nextInput.default;
-  else if (typeof edit.default === "string") {
-    const value = edit.default.trim();
+  if (typeof edit.default === "string") {
+    const value = nextInput.type === "secret" ? edit.default : edit.default.trim();
     if (value) nextInput.default = value;
     else delete nextInput.default;
   }
+  if (oneTimeCodeInput(doc, nextInput.name)) delete nextInput.default;
   const next: WorkflowV2 = {
     ...doc,
     inputs: doc.inputs.map((input) => input.name === edit.name ? nextInput : input),

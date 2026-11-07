@@ -1,3 +1,5 @@
+import { redactSavedValue } from "../../../shared/outbound-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { redactForRelease, type ReleaseChange } from "./publish";
 
 export interface ImportQuestion {
@@ -64,7 +66,7 @@ export function publicSamples(inputs: Record<string, unknown>): Record<string, s
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(inputs)) {
     if (typeof value !== "string" || !value.trim()) continue;
-    if (/password|secret|cookie|token/i.test(key)) continue;
+    if (/password|secret|cookie|token/i.test(key) || redactSavedValue(value) === STRIPPED_SECRET) continue;
     const kind = personalKind(value, key);
     if (kind === "email" || kind === "path" || kind === "phone" || kind === "ssn" || kind === "card") continue;
     out[key] = value.trim();
@@ -83,9 +85,20 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   if (missing.length) throw new Error(`answer ${missing.join(", ")}`);
   const doc = structuredClone(document) as { inputs?: InputRow[] };
   for (const input of doc.inputs ?? []) {
-    if (input.type === "secret") continue;
+    if (input.type === "file") {
+      delete input.default;
+      continue;
+    }
     const answer = answers[input.name];
-    if (typeof answer === "string" && answer.trim()) input.default = answer.trim();
+    if (typeof answer === "string" && answer.trim()) input.default = input.type === "secret" ? answer : answer.trim();
+  }
+  return doc;
+}
+
+export function applyRegistryImportAnswers(document: unknown, answers: Record<string, unknown>): unknown {
+  const doc = applyImportAnswers(document, answers) as { inputs?: InputRow[] };
+  for (const input of doc.inputs ?? []) {
+    if (input.type === "secret" || input.type === "file") delete input.default;
   }
   return doc;
 }

@@ -253,13 +253,13 @@ Interpret `helper` using [Which grant each job needs](permissions.md#which-grant
 
 The Capture field defaults to `/fixture`. The owned browser opens that page on this server. The product window does not show the listen address. Stop saves the page URL at stop time. The fixture's Log in button moves to `/secure`, and this server serves the fixture there too.
 
-A chooser and a Finder drop each add a `file` input. The secret string is absent. The absolute path of the file is absent. The trail says `Password values are not stored.` The drag has to be a real file drop. A scripted pointer move does not start an `NSDraggingSession`. Do not rebuild the helper to record one.
+A chooser and a Finder drop each add a `file` input. The password value stays in the local Library for replay. The absolute path of the file is absent. The trail says `Typed values are saved in the local Library for replay.` The drag has to be a real file drop. A scripted pointer move does not start an `NSDraggingSession`. Do not rebuild the helper to record one.
 
 Replay sets a file input with `DOM.setFileInputFiles`, and a drop zone with a synthetic `DataTransfer`. Run again after moving the replay window. The next run reuses that window. Chrome for Testing is moved with CDP `Browser.setWindowBounds`. The helper is also tried with the replay pid. A size row can stay `n/a-harness` when `AXSize` is rejected (`-25200`). A step failure counts only after the requested bounds landed.
 
 On macOS, the optional native-window recorder can save an ordinary browser replay to `videos/<runId>.webm` only with explicit `BAO_REPLAY_VIDEO=1`, `BAO_HEADED=1`, a `BaoWindowVideo.app`, a passing Screen Recording probe, and ffmpeg. The picture is that replay's window: a ScreenCaptureKit filter (`SCContentFilter`, desktop-independent window), not a display crop. Without the opt-in, Bao does not probe Screen Recording or start this recorder. Pass-through command recording uses the separate [CDP evidence path](agent-browser-engine.md#evidence). Supported single-page pass-through tasks save replayable workflows when the session ends; other tasks stay capture-only with a reason.
 
-A `login` step waits. Replay does not type the password and does not press Log in. The bar says to sign in in the Bao window. `Bao.app` posts that sentence with `UNUserNotificationCenter` (category `bao.act`). The Dock badge is `!`. `osascript` is not used, and BaoOSHelper does not post the notification.
+A `login` step without a supplied or saved password waits under the [saved-file replay rules](permissions.md#secret-text-in-saved-files). In that handoff, replay does not type the password or press Log in. The bar says to sign in in the Bao window. `Bao.app` posts that sentence with `UNUserNotificationCenter` (category `bao.act`). The Dock badge is `!`. `osascript` is not used, and BaoOSHelper does not post the notification.
 
 A confirm step uses the same bar. Replay does not press the site button. Place order and Reserve are that pause.
 

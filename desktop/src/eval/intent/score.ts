@@ -71,9 +71,12 @@ export function scoreParams(workflow: WorkflowV2, item: IntentCase): ParamScore 
   const got = textDefaults(workflow);
   const want = truthTexts(item);
   const text = multisetScore(want, got);
-  const blob = JSON.stringify(workflow);
+  const blob = JSON.stringify({
+    ...workflow,
+    inputs: workflow.inputs.map((input) => input.type === "secret" ? { ...input, default: undefined } : input),
+  });
   const leaked = item.secrets.filter((secret) => secret && blob.includes(secret));
-  const secretInputs = workflow.inputs.filter((input) => input.type === "secret" && !input.default).length;
+  const secretInputs = workflow.inputs.filter((input) => input.type === "secret").length;
   const fileInputs = workflow.inputs.filter((input) => input.type === "file").length;
   const fileWant = item.events.filter((event) => event.op === "upload" || event.op === "drop").length;
   const secretRecall = item.secrets.length ? Math.min(secretInputs, item.secrets.length) / item.secrets.length : secretInputs === 0 ? 1 : 0;

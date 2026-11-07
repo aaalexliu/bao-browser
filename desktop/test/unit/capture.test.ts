@@ -10,7 +10,7 @@ import { interpret } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
 import { validateWorkflow } from "../../src/v1/schema";
 
-test("pause drops ui events and a sensitive note is refused", () => {
+test("pause drops UI events while notes retain typed values", () => {
   const capture = new Capture();
   assert.equal(capture.push({ kind: "act", op: "click" }), false);
   capture.start();
@@ -23,15 +23,14 @@ test("pause drops ui events and a sensitive note is refused", () => {
   assert.equal(note.note, "wait for the banner");
   assert.equal(note.label, "Click Open");
   assert.equal(check.label, "Check: Welcome");
-  assert.throws(() => capture.note("123-45-6789"), /note/);
-  assert.throws(() => capture.check("123456"), /note/);
-  assert.equal(capture.events.some((event) => event.op === "note" && event.afterText === "123-45-6789"), false);
+  assert.equal(capture.note("123-45-6789").note, "123-45-6789");
+  assert.equal(capture.events.some((event) => event.op === "note" && event.afterText === "123-45-6789"), true);
   assert.equal(capture.steps.map((step) => step.label).join("|"), "Click Open|Check: Welcome");
   assert.equal(capture.steps[0]?.note, "wait for the banner");
-  assert.equal(capture.steps[1]?.note, undefined);
+  assert.equal(capture.steps[1]?.note, "123-45-6789");
   const kept = capture.stop();
   assert.equal(capture.recording, false);
-  assert.equal(kept.length, 3);
+  assert.equal(kept.length, 4);
   const doc = interpret(kept, { id: "wf-cap-note", name: "Fixture capture", startUrl: "http://127.0.0.1/fixture" });
   assert.equal(doc.steps.length, 2);
   assert.equal(doc.steps[0]?.action, "click");

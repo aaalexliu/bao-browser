@@ -3,9 +3,11 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { buildPushBody } from "../../../shared/sync-guard";
+import { retainLocalDefaults } from "./local-defaults";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
-import { scrubSaved } from "../../../shared/saved-secrets";
 
 export type VersionRole = "live" | "draft" | "past";
 export type VersionSource = "saved" | "heal" | "edit" | "restore" | "conflict";
@@ -92,7 +94,7 @@ function readBook(library: Library, id: string): WorkflowVersion[] {
 
 function writeBook(library: Library, id: string, versions: WorkflowVersion[]): void {
   mkdirSync(path.join(library.root, "versions"), { recursive: true });
-  writeFileSync(bookPath(library, id), JSON.stringify(scrubSaved(versions), null, 2));
+  writeFileSync(bookPath(library, id), JSON.stringify(versions, null, 2));
 }
 
 /** A missing or epoch timestamp is not a save. Wall times are milliseconds. */
@@ -314,7 +316,7 @@ export function versionDocument(library: Library, id: string, n: number): Workfl
 }
 
 export function draftVersion(library: Library, document: WorkflowV2, source: Exclude<VersionSource, "saved">): WorkflowVersion {
-  document = scrubSaved(document);
+  document = structuredClone(document);
   if (library.read(document.id).driver === "cdp-live") document.driver = "cdp-live";
   const errors = validateWorkflow(document);
   if (errors.length) throw new Error(errors.join(", "));
@@ -373,7 +375,7 @@ export function noteConflict(
     history?: CloudVersionRow[];
   },
 ): WorkflowVersion {
-  const cloud = cloudRows(input.history ?? []);
+  const cloud = cloudRows(input.history ?? [], readBook(library, input.mine.id));
   const versions = cloud.length
     ? [...cloud, ...localDrafts(library, input.mine.id, cloud)]
     : seed(library, input.mine.id).filter((item) => item.source !== "conflict");
@@ -401,12 +403,19 @@ export function noteConflict(
   return row;
 }
 
-function cloudRows(history: CloudVersionRow[]): WorkflowVersion[] {
+function cloudRows(history: CloudVersionRow[], local: WorkflowVersion[]): WorkflowVersion[] {
+  const promoted = local.filter((item) => item.role !== "draft").map((item) => ({
+    document: item.document,
+    projection: JSON.parse(JSON.stringify(buildPushBody(item.document, { baseVersion: 0 }).document)) as unknown,
+  }));
   const rows: WorkflowVersion[] = [];
   for (const item of history) {
     if (item.kind === "conflict" || item.document === undefined) continue;
-    const document = scrubSaved(migrate(item.document));
+    const document = migrate(item.document);
     if (validateWorkflow(document).length) continue;
+    const wire = JSON.parse(JSON.stringify(item.document)) as unknown;
+    const matches = promoted.filter((candidate) => isDeepStrictEqual(candidate.projection, wire));
+    if (matches.length === 1) retainLocalDefaults(document, matches[0]!.document);
     rows.push({
       n: item.version,
       role: "past",

@@ -129,10 +129,10 @@ export class MacOsExecutor implements Executor {
       kind: "act",
       op: "osSetValue",
       source: origin.source,
-      raw: secret ? { type: "type" } : origin.raw,
+      raw: origin.raw,
       before,
       after: this.snap(png),
-      os: { ...osOf(hit.element), value: secret ? undefined : text },
+      os: { ...osOf(hit.element), value: text },
       sensitive: secret || undefined,
     });
     return { unresolved: false };

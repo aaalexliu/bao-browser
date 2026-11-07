@@ -114,7 +114,7 @@ test("a logged-in CLI print is the heal and the prompt stays off the command lin
   const bin = writeAgent("login");
   const { env, log, stdin } = envFor(bin);
   resetCursorAccountCache();
-  const heal = await cursorAccountHeal(env, [SECRET]);
+  const heal = await cursorAccountHeal(env);
   assert.equal(heal.available(), true);
   const proposal = await heal.propose(failure, step);
   assert.ok(proposal);
@@ -141,7 +141,7 @@ test("print mode that authenticated with a flag is not used", async () => {
   const bin = writeAgent("flag");
   const { env } = envFor(bin);
   resetCursorAccountCache();
-  const heal = await cursorAccountHeal(env, [SECRET]);
+  const heal = await cursorAccountHeal(env);
   assert.equal(await heal.propose(failure, step), null);
   resetCursorAccountCache();
 });
@@ -151,7 +151,7 @@ test("a logged-out CLI falls back to the response file", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-heal-file-"));
   const { env } = envFor(bin, { BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: dir });
   resetCursorAccountCache();
-  const heal = await cursorAccountHeal(env, [SECRET]);
+  const heal = await cursorAccountHeal(env);
   assert.equal(heal.available(), true);
   const pending = heal.propose(failure, step);
   setTimeout(() => {

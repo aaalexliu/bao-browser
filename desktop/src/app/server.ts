@@ -64,7 +64,6 @@ import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
 import { healFromSource } from "../v1/heal-source";
 import { cursorSessionHeal, effectiveMode, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
-import { scrubSaved } from "../../../shared/saved-secrets";
 import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
@@ -99,7 +98,7 @@ import { isNeedsSignIn, runIfSignedIn } from "../login-import/session-gate";
 import { SiteStore, siteOrigin } from "../login-import/sites";
 import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
-import { replay, type HealNotice, type ReplayOptions, type RunResult } from "../v1/replay";
+import { replay, withInputDefaults, type HealNotice, type ReplayOptions, type RunResult } from "../v1/replay";
 import {
   clearPendingPrompt,
   markPromptTimedOut,
@@ -112,7 +111,7 @@ import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { DesktopMcpInstaller } from "./desktop-mcp-config";
-import { Library } from "../v1/store";
+import { Library, secretInputNames } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
@@ -126,6 +125,8 @@ import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolve
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
+import { stripUnsafe } from "../../../shared/sync-guard";
+import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
 
@@ -714,7 +715,14 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/inputs")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        return json(res, library.readPublicInputs(id));
+        return json(res, reusableInputs(library.read(id), library.readPublicInputs(id)));
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/export")) {
+        const id = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const released = stripUnsafe(library.read(id));
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(released, null, 2));
+        return;
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/versions")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
@@ -1183,7 +1191,7 @@ export async function startApp(opts: {
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
-        const args = await materializeFiles(body.args || {});
+        const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
         if (body.fresh) {
           const existing = replays.get(saved.id);
           if (existing) {
@@ -1914,13 +1922,7 @@ export async function startApp(opts: {
     const id = `wf-${Date.now()}`;
     const opened = captureOpenUrl || (page && !page.isClosed() ? page.url() : "");
     captureOpenUrl = "";
-    const clean = raw.map((event) => {
-      const file = storedFileEvent(event);
-      if (!file.sensitive && file.identity?.role !== "password") return file;
-      const copy = { ...file, sensitive: true };
-      delete copy.value;
-      return copy;
-    });
+    const clean = raw.map(storedFileEvent);
     const startUrl = captureStartUrl(clean, opened);
     extractProposal = undefined;
     const secrets = secretValues(raw);
@@ -2351,6 +2353,7 @@ export async function startApp(opts: {
       heals: [],
       steps: result.steps,
       modelCalls: 0,
+      secretInputNames: secretInputNames(workflow),
     });
     return { ...result, workflowId: workflow.id };
   }
@@ -2630,6 +2633,7 @@ async function gateSavedLogin(
     library.saveRun({
       id: outcome.runId,
       workflowId: workflow.id,
+      secretInputNames: secretInputNames(workflow),
       status: outcome.status,
       at: Date.now(),
       heals: [],
@@ -2653,7 +2657,7 @@ function persistedRun(
   },
 ): Parameters<Library["saveRun"]>[0] {
   const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm";
-  return scrubSaved({
+  const stored: Parameters<Library["saveRun"]>[0] & { console: unknown; network: unknown } = {
     id: result.runId,
     pageEngine: result.pageEngine,
     traceUnavailable: result.traceUnavailable,
@@ -2676,6 +2680,7 @@ function persistedRun(
     modelCalls: result.modelCalls,
     pageClasses: result.pageClasses,
     inputs: maskedInputs(workflow, args),
+    secretInputNames: secretInputNames(workflow),
     ...(result.outputs ? { outputs: result.outputs } : {}),
     ...(result.pageLeftOpen ? { pageLeftOpen: true } : {}),
     ...(needsHuman ? {
@@ -2689,7 +2694,8 @@ function persistedRun(
       },
     } : {}),
     ...(extra.recorded.wrote ? { video: `${result.runId}.webm`, videoStartedAt: extra.videoStartedAt } : result.video ? { video: result.video, videoStartedAt: result.videoStartedAt } : {}),
-  }, { workflow, args, secrets: extra.secretList });
+  };
+  return stored;
 }
 
 function hostGrantError(err: unknown): boolean {
@@ -2731,6 +2737,7 @@ function rememberHostGrant(
   const saved = {
     id: runId,
     workflowId: workflow.id,
+    secretInputNames: secretInputNames(workflow),
     status: "needs_human",
     at: Date.now(),
     heals: [],
@@ -3192,7 +3199,7 @@ async function checkPromotion(library: Library, id: string, notices: Notice[]): 
   const current = library.readPromotion(id) as (Promotion & { version?: number }) | undefined;
   if (!current || current.status !== "provisional") throw new Error("no provisional heal");
   const candidate = current.version ? versionDocument(library, id, current.version) : library.read(id);
-  const args = defaultArgs(candidate);
+  const args = withInputDefaults(candidate, {});
   let driftOk = true;
   for (const change of driftChanges) {
     if (!await replayChanged(candidate, args, change)) {
@@ -3234,15 +3241,6 @@ const driftChanges: { name: string; query: string; slow?: boolean; scale?: numbe
   { name: "scale-2x", query: "", scale: 2 },
 ];
 
-function defaultArgs(workflow: WorkflowV2): ReplayArgs {
-  const args: ReplayArgs = {};
-  for (const input of workflow.inputs) {
-    if (input.type === "secret" || input.type === "file" || !input.default) continue;
-    args[input.name] = input.type === "number" ? Number(input.default) : input.default;
-  }
-  return args;
-}
-
 async function replayChanged(
   workflow: WorkflowV2,
   args: ReplayArgs,
@@ -3281,7 +3279,7 @@ function withChange(startUrl: string, query: string): string {
 function keptInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string | number> {
   const out: Record<string, string | number> = {};
   for (const input of workflow.inputs) {
-    if (input.type === "secret" || input.type === "file") continue;
+    if (input.type === "file") continue;
     const value = args[input.name];
     if (typeof value === "string" || typeof value === "number") out[input.name] = value;
   }
@@ -3461,8 +3459,7 @@ function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, st
   const out: Record<string, string> = {};
   for (const input of workflow.inputs) {
     const value = args[input.name];
-    if (input.type === "secret") out[input.name] = value ? "••••" : "";
-    else if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) out[input.name] = String((value as { name?: string }).name || "");
+    if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) out[input.name] = String((value as { name?: string }).name || "");
     else if (Array.isArray(value)) out[input.name] = value.map((file) => file && typeof file === "object" && "name" in file ? String(file.name) : "").filter(Boolean).join(", ");
     else out[input.name] = value === undefined || value === null ? "" : String(value);
   }

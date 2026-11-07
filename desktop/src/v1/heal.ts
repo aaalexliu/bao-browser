@@ -2,7 +2,7 @@
 // The default policy is auto: apply the patch and keep going.
 // approve pauses at the proposal. Keeping a patch stores a draft. The live workflow changes when that draft is promoted.
 
-import { scrubSaved, type SavedContext } from "../../../shared/saved-secrets";
+import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
 import { withHealVersion, withRevertVersion } from "./element-history";
@@ -132,7 +132,7 @@ export function promptSnapshot(snapshot: FailureSnapshot): FailureSnapshot {
   };
 }
 
-export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: string[], context: SavedContext = {}): string {
+export function buildPrompt(failure: StepFailure, step: WorkflowStep, secrets: string[] = [], context: SavedContext = {}): string {
   const saved = scrubSaved({ failure: { ...failure, snapshot: promptSnapshot(failure.snapshot) }, step }, {
     ...context, secrets: [...secrets, ...(context.secrets ?? [])],
   });

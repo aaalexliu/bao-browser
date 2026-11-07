@@ -7,10 +7,13 @@ import { workflowShotName } from "../../src/v1/shots";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { WorkflowV2 } from "../../src/v1/schema";
-import type { WorkflowVersion } from "../../src/v1/versions";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { parseTable, tableToCsv } from "../../../shared/table";
+import type { SyncPush } from "../../../web/src/lib/guard";
+import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { loadState, syncAll } from "../../src/v1/sync";
+import { loadState, resolveConflict, syncAll } from "../../src/v1/sync";
+import type { WorkflowVersion } from "../../src/v1/versions";
 
 const planted = "SuperSecretValue99";
 
@@ -220,7 +223,7 @@ for (const mode of ["pull", "push"] as const) test(`${mode} keeps a dirty local 
     const book = JSON.parse(readFileSync(path.join(home, "versions", "secret-push.json"), "utf8")) as WorkflowVersion[];
     const conflict = book.find((row) => row.source === "conflict")?.conflict;
     assert.equal(conflict?.theirs.name, "Direct remote edit");
-    assert.equal(conflict?.theirs.inputs[0]!.default, "[secret stripped]");
+    assert.equal(conflict?.theirs.inputs[0]!.default, "direct-remote-password");
     assert.equal(document.inputs[0]!.default, "direct-remote-password");
     await syncAll(library, mode);
     assert.equal(library.read("secret-push").name, "Unsynced local edit");
@@ -228,6 +231,272 @@ for (const mode of ["pull", "push"] as const) test(`${mode} keeps a dirty local 
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("password defaults sync without leaving or disappearing from this device", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-password-sync-"));
+  const library = new Library(home);
+  const local = secretWorkflow();
+  local.inputs[0]!.default = planted;
+  local.inputs.push({ name: "deleted", type: "secret", label: "Deleted", default: "old-password" });
+  library.save(local);
+  let remote: unknown;
+  let version = 1;
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/api/sync/snapshot") {
+        res.writeHead(404).end("{}");
+      } else if (req.url === "/api/devices") {
+        res.end(JSON.stringify({ devices: [], categories: [] }));
+      } else if (req.method === "POST") {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as SyncPush;
+        assert.equal(JSON.stringify(body).includes(planted), false);
+        remote = body.document;
+        res.end(JSON.stringify({ version }));
+      } else if (req.url === "/api/workflows") {
+        res.end(JSON.stringify({ workflows: [{ id: local.id }] }));
+      } else {
+        res.end(JSON.stringify({ version, document: remote }));
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  writeFileSync(path.join(home, "sync.json"), JSON.stringify({
+    server: `http://127.0.0.1:${address.port}`, deviceToken: "device-token", backedUp: true,
+    workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+  }));
+  try {
+    const pushed = await syncAll(library, "push");
+    assert.match(pushed.lastResult || "", /pushed 1/);
+    const updated = remote as WorkflowV2;
+    assert.equal(updated.inputs[0]!.default, undefined);
+    updated.name = "Changed on another device";
+    updated.inputs = updated.inputs.filter((input) => input.name !== "deleted");
+    version = 2;
+    await syncAll(library, "pull");
+    const saved = library.read(local.id);
+    assert.equal(saved.name, updated.name);
+    assert.equal(saved.inputs[0]!.default, planted);
+    assert.equal(saved.inputs.some((input) => input.name === "deleted"), false);
+    const again = await syncAll(library, "push");
+    assert.match(again.lastResult || "", /pushed 0/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
+  test(`${mode} restores stripped local values without undoing remote edits or removals`, async () => {
+    const token = "sk-localSavedToken123456789";
+    const card = "4111111111111111";
+    const home = mkdtempSync(path.join(tmpdir(), `bao-defaults-${mode}-`));
+    const library = new Library(home);
+    const local = secretWorkflow();
+    local.version = 3;
+    const originalTable = `Display Name,Token\r\nAda,${token}\r\nGrace,${card}\r\n`;
+    const tableNames = ["unchangedRows", "renamedRows", "deletedRows", "reorderedRows"];
+    local.inputs = [
+      { name: "password", type: "secret", default: planted },
+      { name: "token", type: "text", default: token },
+      { name: "card", type: "text", default: card },
+      { name: "changed", type: "text", default: token },
+      { name: "changedSecret", type: "secret", default: planted },
+      { name: "cleared", type: "text", default: token },
+      { name: "removed", type: "text", default: token },
+      { name: "file", type: "file", default: token },
+      { name: "otp", type: "text", default: "123456" },
+      { name: "rows", type: "table", default: `name,token\nAda,${token}\nGrace,${card}\nReplaced row,${token}\nRemoved row,${card}` },
+      { name: "unstripped", type: "text", default: "local text" },
+      { name: "mixedRows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" },
+      ...tableNames.map((name) => ({ name, type: "table" as const, default: originalTable })),
+    ];
+    const literal = (id: string, value: string): WorkflowStep => ({
+      id, index: 0, action: "type", label: id, surface: "dom", timeoutMs: 1000,
+      identity: { surface: "dom", role: "textbox", path: [] }, value,
+    });
+    local.steps.push(
+      { ...literal("token-input", "{{token}}"), input: "token" },
+      literal("literal", token),
+      { ...literal("key", ""), action: "key", value: undefined, key: token },
+      literal("remote-value", token),
+      { ...literal("remote-key", ""), action: "key", value: undefined, key: token },
+      literal("removed-step", token),
+      { ...literal("unrelated", token), unresolved: { reason: "no identity" } },
+      literal("unavailable", STRIPPED_SECRET),
+      literal("unstripped", "local literal"),
+      { ...literal("sensitive", "private literal"), sensitive: true },
+      { ...literal("otp-step", "{{otp}}"), input: "otp", identity: { surface: "dom", role: "textbox", path: [], autocomplete: "one-time-code" } },
+      { ...literal("loop", ""), action: "for_each", value: undefined,
+        forEach: { over: { kind: "input", name: "rows" }, steps: [
+          literal("nested", card),
+          literal("nested-removed", token),
+          literal("nested-remote", token),
+          { ...literal("nested-key", ""), action: "key", value: undefined, key: token },
+          { ...literal("nested-unrelated", token), unresolved: { reason: "no identity" } },
+        ] } },
+    );
+    local.steps.forEach((step, index) => {
+      step.index = index;
+      step.forEach?.steps.forEach((child, childIndex) => { child.index = childIndex; });
+    });
+    library.save(local);
+    let remote: WorkflowV2;
+    let version = 1;
+    let pushes = 0;
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        res.setHeader("content-type", "application/json");
+        if (req.url === "/api/sync/snapshot") {
+          res.writeHead(404).end("{}");
+        } else if (req.url === "/api/devices") {
+          res.end(JSON.stringify({ devices: [], categories: [] }));
+        } else if (req.url?.endsWith("/conflict")) {
+          res.end(JSON.stringify({ version, document: remote, copyId: "remote-copy", copyVersion: 1, copy: { ...remote, id: "remote-copy" } }));
+        } else if (req.method === "POST") {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as SyncPush;
+          remote = body.document as WorkflowV2;
+          pushes += 1;
+          res.end(JSON.stringify({ version }));
+        } else if (req.url === "/api/workflows") {
+          res.end(JSON.stringify({ workflows: [{ id: local.id }] }));
+        } else {
+          res.end(JSON.stringify({ version, document: remote }));
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    writeFileSync(path.join(home, "sync.json"), JSON.stringify({
+      server: `http://127.0.0.1:${address.port}`, deviceToken: "device-token", backedUp: true,
+      workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+    }));
+    try {
+      await syncAll(library, "push");
+      assert.equal(pushes, 1);
+      const updated = remote!;
+      assert.equal(updated.inputs.find((input) => input.name === "token")?.default, STRIPPED_SECRET);
+      assert.equal(updated.inputs.find((input) => input.name === "card")?.default, STRIPPED_SECRET);
+      assert.equal(updated.steps.find((step) => step.id === "literal")?.value, STRIPPED_SECRET);
+      assert.equal(updated.steps.find((step) => step.id === "key")?.key, STRIPPED_SECRET);
+      assert.equal(updated.steps.find((step) => step.id === "unrelated")?.unresolved?.reason, NEEDS_SECRET_VALUE);
+      assert.equal(updated.steps.find((step) => step.id === "sensitive")?.value, undefined);
+      assert.deepEqual(parseTable(updated.inputs.find((input) => input.name === "rows")?.default), [
+        { name: "Ada", token: STRIPPED_SECRET },
+        { name: "Grace", token: STRIPPED_SECRET },
+        { name: "Replaced row", token: STRIPPED_SECRET },
+        { name: "Removed row", token: STRIPPED_SECRET },
+      ]);
+      assert.equal(updated.inputs.find((input) => input.name === "mixedRows")?.default,
+        "name,token\nAda,[secret stripped]\nGrace,[secret stripped]\n");
+      const pushedTable = updated.inputs.find((input) => input.name === "unchangedRows")!.default!;
+      assert.equal(pushedTable, `Display Name,Token\nAda,${STRIPPED_SECRET}\nGrace,${STRIPPED_SECRET}\n`);
+      const remoteTables = {
+        renamedRows: `Display Name,Token\nRemote Ada,${STRIPPED_SECRET}\nGrace,${STRIPPED_SECRET}\n`,
+        deletedRows: `Display Name,Token\nGrace,${STRIPPED_SECRET}\n`,
+        reorderedRows: `Display Name,Token\nGrace,${STRIPPED_SECRET}\nAda,${STRIPPED_SECRET}\n`,
+      };
+      for (const [name, value] of Object.entries(remoteTables)) updated.inputs.find((input) => input.name === name)!.default = value;
+      updated.name = "Remote edit";
+      updated.inputs = updated.inputs.filter((input) => input.name !== "removed");
+      updated.inputs.find((input) => input.name === "changed")!.default = "remote text";
+      updated.inputs.find((input) => input.name === "changedSecret")!.default = "remote password";
+      delete updated.inputs.find((input) => input.name === "cleared")!.default;
+      updated.inputs.find((input) => input.name === "otp")!.default = STRIPPED_SECRET;
+      updated.inputs.find((input) => input.name === "unstripped")!.default = STRIPPED_SECRET;
+      updated.inputs.find((input) => input.name === "rows")!.default = tableToCsv(["name", "token"], [
+        { name: "Remote Ada", token: STRIPPED_SECRET },
+        { name: "Remote Grace", token: "remote table value" },
+        { name: "New remote row", token: "new remote value" },
+      ]);
+      updated.steps = updated.steps.filter((step) => step.id !== "removed-step");
+      updated.steps.find((step) => step.id === "remote-value")!.value = "remote literal";
+      const remoteKey = updated.steps.find((step) => step.id === "remote-key")!;
+      remoteKey.action = "key";
+      remoteKey.value = undefined;
+      remoteKey.key = "Enter";
+      updated.steps.find((step) => step.id === "unstripped")!.value = STRIPPED_SECRET;
+      const nested = updated.steps.find((step) => step.id === "loop")!.forEach!;
+      assert.equal(nested.steps.find((step) => step.id === "nested-unrelated")?.unresolved?.reason, NEEDS_SECRET_VALUE);
+      nested.steps = nested.steps.filter((step) => step.id !== "nested-removed");
+      nested.steps.find((step) => step.id === "nested-remote")!.value = "remote nested value";
+      nested.steps.forEach((step, index) => { step.index = index; });
+      updated.steps.forEach((step, index) => { step.index = index; });
+      version = 2;
+      if (mode !== "pull") library.save({ ...library.read(local.id), name: "Local edit" });
+      await syncAll(library, "pull");
+      if (mode !== "pull") {
+        assert.equal(loadState(home).conflicts.length, 1);
+        assert.equal(library.read(local.id).name, "Local edit");
+        await resolveConflict(library, local.id, mode);
+      }
+      for (const id of mode === "keep-both" ? [local.id, "remote-copy"] : [local.id]) {
+        const saved = library.read(id);
+        const defaults = Object.fromEntries(saved.inputs.map((input) => [input.name, input.default]));
+        assert.equal(saved.name, "Remote edit");
+        assert.equal(defaults.password, planted);
+        assert.equal(defaults.token, token);
+        assert.equal(defaults.card, card);
+        assert.equal(defaults.changed, "remote text");
+        assert.equal(defaults.changedSecret, "remote password");
+        assert.equal(defaults.cleared, undefined);
+        assert.equal("removed" in defaults, false);
+        assert.equal(defaults.file, STRIPPED_SECRET);
+        assert.equal(defaults.otp, STRIPPED_SECRET);
+        assert.equal(defaults.unstripped, STRIPPED_SECRET);
+        assert.deepEqual(parseTable(defaults.rows), [
+          { name: "Remote Ada", token: STRIPPED_SECRET },
+          { name: "Remote Grace", token: "remote table value" },
+          { name: "New remote row", token: "new remote value" },
+        ]);
+        assert.equal(defaults.unchangedRows, originalTable);
+        assert.equal(defaults.mixedRows, "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n");
+        for (const [name, value] of Object.entries(remoteTables)) {
+          assert.equal(defaults[name], value);
+          assert.ok(defaults[name]!.includes(STRIPPED_SECRET));
+          assert.equal(defaults[name]!.includes(token), false);
+          assert.equal(defaults[name]!.includes(card), false);
+        }
+        const steps = new Map(saved.steps.map((step) => [step.id, step]));
+        assert.equal(steps.get("literal")?.value, token);
+        assert.equal(steps.get("literal")?.unresolved, undefined);
+        assert.equal(steps.get("key")?.key, token);
+        assert.equal(steps.get("key")?.unresolved, undefined);
+        assert.equal(steps.get("token-input")?.unresolved, undefined);
+        assert.equal(steps.get("pass")?.unresolved, undefined);
+        assert.equal(steps.get("remote-value")?.value, "remote literal");
+        assert.equal(steps.get("remote-key")?.key, "Enter");
+        assert.equal(steps.has("removed-step"), false);
+        assert.equal(steps.get("unrelated")?.unresolved?.reason, "no identity");
+        assert.equal(steps.get("unavailable")?.unresolved?.reason, NEEDS_SECRET_VALUE);
+        assert.equal(steps.get("unstripped")?.value, STRIPPED_SECRET);
+        assert.equal(steps.get("sensitive")?.value, "private literal");
+        const children = new Map(steps.get("loop")!.forEach!.steps.map((step) => [step.id, step]));
+        assert.equal(children.size, 4);
+        assert.equal(children.has("nested-removed"), false);
+        assert.equal(children.get("nested")?.value, card);
+        assert.equal(children.get("nested")?.unresolved, undefined);
+        assert.equal(children.get("nested-remote")?.value, "remote nested value");
+        assert.equal(children.get("nested-key")?.key, token);
+        assert.equal(children.get("nested-key")?.unresolved, undefined);
+        assert.equal(children.get("nested-unrelated")?.value, token);
+        assert.equal(children.get("nested-unrelated")?.unresolved?.reason, "no identity");
+        assert.equal(loadState(home).workflows[id]!.version, id === local.id ? 2 : 1);
+      }
+      assert.equal(loadState(home).conflicts.length, 0);
+      await syncAll(library, "push");
+      assert.equal(pushes, 1);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+}
 
 function secretWorkflow(): WorkflowV2 {
   return {

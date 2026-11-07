@@ -81,6 +81,47 @@ function checkDocument(document: unknown): void {
   for (const credential of credentials) assert.equal(text.includes(credential!), false);
 }
 
+test("required registry share answers survive install and pull except secret and file defaults", async () => {
+  const author = { userId: "answer-author" };
+  const importer = { userId: "answer-importer" };
+  await query("INSERT INTO users (id, email, name) VALUES ('answer-author', 'answer-author@fixture.test', 'Author'), ('answer-importer', 'answer-importer@fixture.test', 'Importer')");
+  const ordinary = {
+    email: "ada@example.test", path: "/tmp/registry-fixture/report.csv", phone: "202-555-0148",
+    ssn: "123-45-6789", note: "Safe ordinary note",
+  };
+  const document = {
+    ...source, id: "required-share-answers",
+    inputs: [
+      ...Object.keys(ordinary).map((name) => ({ name, type: "text", label: name, askOnImport: true, required: true })),
+      { name: "password", type: "secret", label: "Password", askOnImport: true },
+      { name: "file", type: "file", label: "File", askOnImport: true },
+    ],
+  };
+  await pushVersion(author, document.id, buildPushBody(document, { baseVersion: 0 }));
+  const shared = await createShare(author, document.id, "fork");
+  const share = await getShare(shared.token);
+  assert.deepEqual(share.questions.filter((question) => question.required).map((question) => question.name), Object.keys(ordinary));
+  assert.deepEqual(share.questions.filter((question) => !question.required).map((question) => question.name), ["password", "file"]);
+  await assert.rejects(() => installShare(importer, shared.token, {}), /answer email, path, phone, ssn, note/);
+  const installed = await installShare(importer, shared.token, {
+    ...ordinary, password: "Synthetic-import-password!", file: "/tmp/registry-fixture/attachment.txt",
+  });
+  const pulled = await pull(importer, installed.id);
+  const copy = pulled.document as { inputs: { name: string; default?: string }[] };
+  for (const [name, value] of Object.entries(ordinary)) {
+    assert.equal(copy.inputs.find((input) => input.name === name)?.default, value, name);
+  }
+  for (const name of ["password", "file"]) {
+    const input = copy.inputs.find((input) => input.name === name);
+    assert.ok(input);
+    assert.equal("default" in input, false, name);
+  }
+  const persisted = await query<{ document: unknown }>("SELECT document FROM workflow_versions WHERE workflow_id = $1 AND version = $2", [installed.id, pulled.version]);
+  assert.deepEqual(persisted[0]?.document, pulled.document);
+  assert.deepEqual((await pull(importer, installed.id)).document, pulled.document);
+  assert.equal(document.inputs.some((input) => "default" in input), false);
+});
+
 test("registry sync, share, release, and run pictures retain owner data without redaction markers", async () => {
   await query("INSERT INTO users (id, email, name) VALUES ('owner', 'owner@fixture.test', 'Owner'), ('reader', 'reader@fixture.test', 'Reader')");
   const png = await sharp({ create: { width: 200, height: 100, channels: 3, background: "#ff4444" } }).png().toBuffer();
@@ -113,7 +154,7 @@ test("registry sync, share, release, and run pictures retain owner data without 
   const copy = (await pull(reader, installed.id)).document;
   assert.equal(JSON.stringify(copy).includes("grace@fixture.test"), true);
   assert.equal(JSON.stringify(copy).includes("other-password"), false);
-  assert.equal(JSON.stringify(copy).includes("/Users/grace/import.txt"), true);
+  assert.equal(JSON.stringify(copy).includes("/Users/grace/import.txt"), false);
 
   const preview = await previewPublication(owner, source.id);
   checkDocument(preview.document);

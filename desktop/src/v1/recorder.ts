@@ -1,9 +1,7 @@
-// Page script for a capture session. A password field becomes a secret slot.
-// This string runs in the page. It must not read the password value.
+// Page script for a capture session.
 
-/** What a recorded field is allowed to keep. Password values are dropped. */
 export function recordedField(field: { type?: string; value?: string }): { value?: string; sensitive?: boolean } {
-  if ((field.type || "").toLowerCase() === "password") return { sensitive: true };
+  if ((field.type || "").toLowerCase() === "password") return { value: field.value, sensitive: true };
   return field.value === undefined ? {} : { value: field.value };
 }
 
@@ -134,13 +132,10 @@ export function recorderSource(): string {
     };
     const fieldValues = () => new Set([...document.querySelectorAll("input, textarea")].map((el) => norm(el.value)).filter(Boolean));
     const visible = () => [...document.querySelectorAll("[data-testid]")].map((el) => norm(el.innerText || el.value || "")).filter(Boolean);
-    const secretSent = new WeakSet();
     const notePassword = (el) => {
-      if (secretSent.has(el)) return;
-      secretSent.add(el);
       const identity = ident(el);
       identity.role = "password";
-      send({ kind: "act", op: "type", identity, sensitive: true });
+      send({ kind: "act", op: "type", identity, sensitive: true, value: el.value, valueMode: "full" });
     };
     const parentOf = (node) => {
       if (!node) return null;
