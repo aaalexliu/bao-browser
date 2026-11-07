@@ -454,7 +454,8 @@ export async function launchAccountChrome(opts: {
   const { owner, port } = await spawnOwnedChrome(exe, (debugPort) => [
     `--user-data-dir=${opts.userDataDir}`, ...accountLaunchArgs(debugPort), ...testLaneKeychainArgs(), ...testLaneMediaArgs(),
   ], opts.userDataDir);
-  const stop = () => releaseProfileProcesses(owner, false);
+  const ownedPids = new Set(pidsForDataDir(opts.userDataDir));
+  const stop = () => releaseProfileProcesses(owner, false, ownedPids);
   try {
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
     const context = browser.contexts()[0];
@@ -467,13 +468,14 @@ export async function launchAccountChrome(opts: {
     browser.on("disconnected", () => { if (!closing) void stop().catch(() => undefined); });
     context.close = () => closing ??= (async () => {
       const openPages = context.pages().filter((page) => !page.isClosed()).length;
+      if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
       let browserCloseSent = false;
       try {
         const session = await browser.newBrowserCDPSession();
         await session.send("Browser.close");
         browserCloseSent = true;
       } catch {}
-      const released = await releaseProfileProcesses(owner, browserCloseSent);
+      const released = await releaseProfileProcesses(owner, browserCloseSent, ownedPids);
       await browser.close().catch(() => undefined);
       console.error(formatShutdown({ browserClose: browserCloseSent ? "sent" : "failed", openPages, ...released, profile: opts.userDataDir }));
     })();
@@ -567,6 +569,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
 }> {
   const { owner } = await spawnNormalChrome(opts, opts.detached === true);
   const portFile = path.join(opts.userDataDir, "DevToolsActivePort");
+  const ownedPids = new Set(pidsForDataDir(opts.userDataDir));
   let cdp: CdpSocket | undefined;
   let closing: Promise<void> | undefined;
   let resolveClosed!: () => void;
@@ -575,6 +578,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
   let released = false;
   const close = (): Promise<void> => closing ??= (async () => {
     const openPages = pages.size;
+    if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
     let browserClose: ShutdownTrace["browserClose"] = "skipped";
     try {
       if (cdp?.isOpen) {
@@ -583,7 +587,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
           browserClose = "sent";
         } catch { browserClose = "failed"; }
       }
-      const released = await releaseProfileProcesses(owner, browserClose === "sent");
+      const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
       console.error(formatShutdown({ browserClose, openPages, ...released, profile: opts.userDataDir }));
     } finally {
       cdp?.close();
@@ -623,7 +627,8 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
 
 async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScaleFactor?: number }): Promise<BrowserContext> {
   const { owner, port } = await spawnNormalChrome(opts);
-  const stop = () => releaseProfileProcesses(owner, false);
+  const ownedPids = new Set(pidsForDataDir(opts.userDataDir));
+  const stop = () => releaseProfileProcesses(owner, false, ownedPids);
   try {
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
     const context = browser.contexts()[0];
@@ -647,13 +652,14 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     });
     context.close = () => closing ??= (async () => {
       const open = context.pages().filter((page) => !page.isClosed());
+      if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
       let browserClose: ShutdownTrace["browserClose"] = "failed";
       try {
         const session = await browser.newBrowserCDPSession();
         await session.send("Browser.close");
         browserClose = "sent";
       } catch {}
-      const released = await releaseProfileProcesses(owner, browserClose === "sent");
+      const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
       await browser.close().catch(() => undefined);
       console.error(formatShutdown({
         browserClose,
@@ -666,7 +672,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     })();
     return context;
   } catch (err) {
-    await releaseProfileProcesses(owner, false).catch(() => undefined);
+    await stop().catch(() => undefined);
     throw err;
   }
 }
@@ -700,10 +706,9 @@ export function formatShutdown(trace: ShutdownTrace): string {
   return `bao shutdown browserClose=${trace.browserClose} openPages=${trace.openPages} childExit=${trace.childExit ?? "none"} signal=${trace.signal ?? "none"} killedPids=${killed} profile=${trace.profile}`;
 }
 
-async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSent: boolean): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
+async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSent: boolean, ownedPids = new Set<number>()): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const { userDataDir } = owner;
   const child = owner.kind === "direct" ? owner.child : owner.launcher;
-  const ownedPids = new Set(pidsForDataDir(userDataDir));
   const remaining = () => {
     const pids = pidsForDataDir(userDataDir);
     if (ownedChromeRunning(owner)) for (const pid of pids) ownedPids.add(pid);
@@ -747,6 +752,7 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
   };
   if (pid) {
     let cdp: CdpSocket | undefined;
+    let sent = false;
     try {
       const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
       const command = ownedChromeBrowserCommand(exe, userDataDir, pid);
@@ -754,9 +760,10 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
       if (Number(port) === endpoint.port) {
         cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 3000 });
         await cdp.send("Browser.close", {}, undefined, 3000);
+        sent = true;
       }
     } catch {} finally { cdp?.close(); }
-    if (ownedChromeBrowserCommand(exe, userDataDir, pid)) {
+    if (!sent && ownedChromeBrowserCommand(exe, userDataDir, pid)) {
       try { process.kill(pid, "SIGTERM"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
     }
