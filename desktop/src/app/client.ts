@@ -6,7 +6,6 @@ import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { OpenedView } from "./deeplink";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { settingsIndex, settingsScreen } from "./settings-view";
-import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
@@ -32,6 +31,8 @@ import {
   libraryTable,
   networkPane,
   liveStepList,
+  captureView,
+  captureStream,
   notices,
   paletteView,
   rail,
@@ -50,7 +51,6 @@ import {
   runViewer,
   runField,
   hostAccessPanel,
-  siteTrustPanel,
   tryResult,
   fixtureStartValue,
   productWindowTitle,
@@ -90,7 +90,6 @@ let state: ShellState & {
     localCategories?: { category: string; count: number }[];
     conflicts?: { id: string; remoteVersion: number; file: string }[];
   };
-  trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
   opened?: OpenedView | null;
@@ -148,6 +147,11 @@ let seenOpen = "";
 const noteTimers = new Map<string, number>();
 let teachOpenId = "";
 let teachHighlighted = "";
+let captureName = "";
+let captureUrl = fixtureStartValue();
+let captureError = "";
+let captureBusy = false;
+let capturePicking = false;
 try {
   theme = localStorage.getItem("bao-theme") === "dark" ? "dark" : "light";
 } catch { /* private mode */ }
@@ -242,6 +246,7 @@ async function loadState(): Promise<void> {
     helper: state.helper,
     model: state.model,
     paused: state.capturePaused,
+    captureUrl: state.capture?.url,
     since: state.recordingSince,
     promotions: state.promotions,
     live: state.liveSession ? { status: state.liveSession.status, updatedAt: state.liveSession.updatedAt, n: state.liveSession.audit.length } : null,
@@ -283,6 +288,8 @@ function render(focusDetail = true): void {
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
   const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
+  const captureFocus = screen === "capture" && focused?.closest("#capture-panel, .capture-controls") ? focused.id : "";
+  const captureCaret = focused instanceof HTMLInputElement && captureFocus ? focused.selectionStart : null;
   const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
   const customWait = document.getElementById("act-custom") as HTMLInputElement | null;
   const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft], #settings [data-setting]")].filter((input) => {
@@ -300,6 +307,8 @@ function render(focusDetail = true): void {
   const runsScroll = document.getElementById("runs")?.scrollTop || 0;
   const runsPlace = shellScreens[shellScreen(screen)].place === "runs";
   document.getElementById("app")!.dataset.runsDetail = screen === "run" || screen === "live" || (screen === "heals" && Boolean(openHeal)) ? "true" : "false";
+  document.getElementById("app")!.dataset.capture = screen === "capture" ? "true" : "false";
+  document.getElementById("content")!.classList.toggle("capture-content", screen === "capture");
   document.getElementById("app")!.dataset.workflowsList = screen === "library" ? "true" : "false";
   document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
@@ -334,7 +343,7 @@ function render(focusDetail = true): void {
   const importAsk = screen === "logins" ? loginAct(login) : "";
   actEl().innerHTML = remoteBanner(state.remote) + (screen === "live" && live ? "" : importAsk || actBar(state)) + importCard(state.pendingImport as ImportPending);
   const float = document.getElementById("float");
-  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state) + (state.extractPicker || "");
+  if (float && state.teach?.phase !== "live" && !state.guide) float.innerHTML = recordBar(state, screen === "capture", capturePicking) + (state.extractPicker || "");
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
@@ -396,6 +405,11 @@ function render(focusDetail = true): void {
   }
   bind();
   if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
+  if (captureFocus && !focused?.isConnected) {
+    const input = document.getElementById(captureFocus);
+    input?.focus({ preventScroll: true });
+    if (input instanceof HTMLInputElement && captureCaret !== null) input.setSelectionRange(captureCaret, captureCaret);
+  }
   applySearch();
   paintPalette();
   paintLive();
@@ -459,35 +473,55 @@ async function showLiveRun(): Promise<void> {
 }
 
 function capture(): string {
-  const ids = (state.trails || []).map((id) => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
-  return `<section>
-    <h2>Capture</h2>
-    <p class="quiet">Nothing is recorded until you start. The capture browser uses an app-owned profile, not your daily Chrome.</p>
-    <div class="card">
-      <h3>Browser</h3>
-      <label>Start URL <input id="start-url" value="${esc(fixtureStartValue())}"></label>
-      <div class="row"><button class="primary" id="start" type="button">Start capture</button><button id="open-teach" type="button">Teach</button><button id="stop" type="button">Stop and save</button></div>
-    </div>
-    <div class="card">
-      <h3>Mac app</h3>
-      <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
-    </div>
-    <div class="card">
-      <h3>Agent and MCP</h3>
-      <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Supported single-page tasks save replayable workflows when the session ends. Other sessions stay in Runs with a reason.</p>
-    </div>
-    <div class="card">
-      <h3>Steps</h3>
-      <div id="live-steps"></div>
-    </div>
-    <div class="card" id="trail-tab">
-      <h3>Trail</h3>
-      <p class="quiet">Trail is the evidence for a capture, not a place in the sidebar.</p>
-      <label>Trail <select id="trail-id">${ids}</select></label>
-      <button id="load-trail" type="button">Load</button>
-      <pre id="trail-view">Password values are not stored.</pre>
-    </div>
-  </section>`;
+  return captureView(state, { name: captureName, startUrl: captureUrl, error: captureError, busy: captureBusy, picking: capturePicking });
+}
+
+async function captureAction(action: "start" | "save" | "discard"): Promise<void> {
+  if (captureBusy || (state.teach && state.teach.phase !== "idle")) return;
+  if (action === "discard" && !confirm("Discard this recording? The steps you recorded are deleted. You can’t undo this.")) return;
+  captureBusy = true;
+  captureError = "";
+  render();
+  try {
+    const endpoint = action === "start" ? "/api/sessions" : action === "save" ? "/api/sessions/stop" : "/api/sessions/discard";
+    const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: action === "start" ? JSON.stringify({ url: captureUrl }) : "{}" });
+    if (!response.ok) throw new Error((await response.json() as { error?: string }).error || "Could not update the recording. Try again.");
+    if (action === "save") {
+      const saved = await fetch("/api/sessions/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: captureName.trim() || undefined }) });
+      const doc = await saved.json() as { id?: string; error?: string };
+      if (!saved.ok || !doc.id) throw new Error(doc.error || "Could not save the recording. Try saving again in the save dialog.");
+      openWorkflow = doc.id;
+      screen = "workflow";
+    } else if (action === "discard") screen = "library";
+    if (action !== "start") captureName = "";
+    capturePicking = false;
+  } catch (error) {
+    captureError = error instanceof Error ? error.message : "Could not update the recording. Try again.";
+  } finally {
+    captureBusy = false;
+    renderKey = "";
+    await refresh().catch(() => undefined);
+    render();
+  }
+}
+
+async function discardTeachReview(): Promise<void> {
+  if (captureBusy || state.teach?.phase !== "review") return;
+  if (!confirm("Discard this Teach review? The steps you recorded are deleted. You can’t undo this.")) return;
+  captureBusy = true;
+  captureError = "";
+  render();
+  try {
+    const response = await fetch("/api/teach/discard", { method: "POST" });
+    if (!response.ok) throw new Error((await response.json() as { error?: string }).error || "Could not discard the Teach review. Try again.");
+  } catch (error) {
+    captureError = error instanceof Error ? error.message : "Could not discard the Teach review. Try again.";
+  } finally {
+    captureBusy = false;
+    renderKey = "";
+    await refresh().catch(() => undefined);
+    render();
+  }
 }
 
 function teachScreen(): string {
@@ -567,7 +601,6 @@ function settings(): string {
     ${hostAccessPanel(state.settings?.hostAccess)}
     <p class="quiet">AI help uses the source chosen above. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>
-    ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
@@ -708,7 +741,7 @@ function bindSettings(): void {
       }
       delete input.dataset.settingsEdited;
       const key = input.dataset.setting!;
-      const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
+      const value = input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
       await saveSetting({ [key]: value });
     };
     if (input instanceof HTMLInputElement && input.type === "number") {
@@ -835,6 +868,10 @@ function bind(): void {
     renderKey = "";
     await refresh();
   };
+  const load = document.getElementById("load-trail");
+  if (load) load.onclick = () => void loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "trail-view");
+  const discardReview = document.getElementById("capture-teach-discard");
+  if (discardReview) discardReview.onclick = () => void discardTeachReview();
   const openTeach = document.getElementById("open-teach");
   if (openTeach) openTeach.onclick = () => {
     screen = "teach";
@@ -881,24 +918,18 @@ function bind(): void {
     await refresh();
   };
   bindTeach(document);
+  const captureBack = document.querySelector<HTMLButtonElement>(".cap-back");
+  if (captureBack) captureBack.onclick = () => navigate("library");
+  const captureNameInput = document.getElementById("cap-name") as HTMLInputElement | null;
+  if (captureNameInput) captureNameInput.oninput = () => { captureName = captureNameInput.value; };
+  const captureUrlInput = document.getElementById("start-url") as HTMLInputElement | null;
+  if (captureUrlInput) captureUrlInput.oninput = () => { captureUrl = captureUrlInput.value; };
   const start = document.getElementById("start");
-  if (start) start.onclick = async () => {
-    await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: (document.getElementById("start-url") as HTMLInputElement).value }),
-    });
-    renderKey = "";
-    await refresh();
-  };
+  if (start) start.onclick = () => void captureAction("start");
   const stop = document.getElementById("stop");
-  if (stop) stop.onclick = async () => {
-    await fetch("/api/sessions/stop", { method: "POST" });
-    renderKey = "";
-    await refresh();
-  };
-  const load = document.getElementById("load-trail");
-  if (load) load.onclick = () => loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "");
+  if (stop) stop.onclick = () => void captureAction("save");
+  const discardCapture = document.getElementById("capture-discard");
+  if (discardCapture) discardCapture.onclick = () => void captureAction("discard");
   const wf = document.getElementById("wf") as HTMLSelectElement | null;
   if (wf) wf.onchange = () => {
     lastWf = wf.value;
@@ -1121,8 +1152,13 @@ function bind(): void {
   };
   const recExtract = document.getElementById("rec-extract");
   if (recExtract) recExtract.onclick = async () => {
-    await fetch("/api/sessions/extract/arm", { method: "POST" });
+    const response = await fetch("/api/sessions/extract/arm", { method: "POST" });
+    if (screen === "capture" && response.ok) {
+      capturePicking = true;
+      render();
+    }
   };
+  if (captureBusy) document.querySelectorAll<HTMLButtonElement>(".capture-controls button").forEach((button) => { button.disabled = true; });
   const extractCommit = document.getElementById("extract-commit");
   if (extractCommit) extractCommit.onclick = async () => {
     const names: Record<string, string> = {};
@@ -1139,11 +1175,14 @@ function bind(): void {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ names, drop, maxPages: pages ? Number(pages.value) : 1, as: "items" }),
     });
+    capturePicking = false;
     renderKey = "";
     await refresh();
   };
   const recStop = document.getElementById("rec-stop");
   if (recStop) recStop.onclick = async () => {
+    if (state.teach && state.teach.phase !== "idle") return;
+    if (screen === "capture") return captureAction("save");
     await fetch("/api/sessions/stop", { method: "POST" });
     renderKey = "";
     await refresh();
@@ -1154,13 +1193,13 @@ function paintSaveSheet(): void {
   const host = document.getElementById("sheet");
   if (!host) return;
   const sheet = state.saveSheet;
-  if (!sheet) {
+  if (!sheet || (screen === "capture" && captureBusy)) {
     if (host.innerHTML) host.innerHTML = "";
     return;
   }
   const existing = host.querySelector("#save-sheet");
   if (existing && existing.getAttribute("data-id") === sheet.id) return;
-  host.innerHTML = saveSheetView(sheet);
+  host.innerHTML = saveSheetView(captureName.trim() ? { ...sheet, name: captureName } : sheet);
   const form = host.querySelector("#save-sheet-form") as HTMLFormElement | null;
   if (form) form.onsubmit = (ev) => {
     ev.preventDefault();
@@ -1189,6 +1228,8 @@ async function commitSaveSheet(): Promise<void> {
     return;
   }
   openWorkflow = doc.id;
+  captureName = "";
+  captureError = "";
   screen = "workflow";
   renderKey = "";
   await refresh();
@@ -1196,19 +1237,15 @@ async function commitSaveSheet(): Promise<void> {
 
 async function discardSaveSheet(): Promise<void> {
   await fetch("/api/sessions/save/discard", { method: "POST" });
+  captureName = "";
+  captureError = "";
   renderKey = "";
   await refresh();
 }
 
 function bindRemote(): void {
-  const allow = document.getElementById("remote-allow");
-  if (allow) allow.onclick = () => void statePoller.track(fetch("/api/remote/allow", { method: "POST" }));
-  const deny = document.getElementById("remote-deny");
-  if (deny) deny.onclick = () => void fetch("/api/remote/deny", { method: "POST" }).then(() => refresh());
   const kill = document.getElementById("remote-kill");
   if (kill) kill.onclick = () => void fetch("/api/remote/kill", { method: "POST" });
-  const confirm = document.getElementById("remote-confirm-allow");
-  if (confirm) confirm.onclick = () => void fetch("/api/remote/confirm", { method: "POST" });
   const pair = document.getElementById("relay-pair");
   if (pair) pair.onclick = async () => {
     const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
@@ -1540,13 +1577,8 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
   if (!id) return;
   const trail = await (await fetch("/api/trails/" + encodeURIComponent(id))).json() as { id?: string; ts?: number; op?: string; kind?: string }[];
   const html = trailPane(Array.isArray(trail) ? trail : []);
-  if (hostId) {
-    const host = document.getElementById(hostId);
-    if (host) host.innerHTML = html;
-    return;
-  }
-  const pre = document.getElementById("trail-view");
-  if (pre) pre.outerHTML = html;
+  const host = document.getElementById(hostId);
+  if (host) host.innerHTML = html;
 }
 
 function bindSidebarToggle(): void {
@@ -1799,16 +1831,6 @@ function field(
     ? steps.find((step) => step.download?.output === input.fromOutput)?.label || input.fromOutput
     : undefined;
   return runField({ ...input, boundStep }, previous);
-}
-
-function readSiteTrust(): Record<string, "ask" | "allow"> {
-  const siteTrust: Record<string, "ask" | "allow"> = {};
-  document.querySelectorAll<HTMLSelectElement>("[data-site-trust]").forEach((sel) => {
-    const origin = expandControlKey(sel.dataset.siteTrust || "");
-    if (!origin) return;
-    siteTrust[origin] = sel.value === "ask" ? "ask" : "allow";
-  });
-  return siteTrust;
 }
 
 async function tryWorkflowStep(id: string, stepId: string): Promise<void> {
@@ -2423,8 +2445,10 @@ function paintLive(): void {
   if (!captureTrailOwnsSteps(screen)) return;
   const host = document.getElementById("live-steps");
   if (!host) return;
-  const live = (state as ShellState & { liveTrail?: { id?: string; op?: string; kind?: string }[] }).liveTrail || [];
-  const html = liveStepList(live);
+  const live = state.liveTrail || [];
+  const html = screen === "capture" ? captureStream(state, capturePicking) : liveStepList(live);
+  const count = document.getElementById("rec-steps");
+  if (count) count.textContent = `${state.capture?.steps.length || 0} steps`;
   if (host.innerHTML !== html) {
     host.innerHTML = html;
     mountShots(host);

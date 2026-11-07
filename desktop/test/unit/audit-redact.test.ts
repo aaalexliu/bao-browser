@@ -1,4 +1,4 @@
-// Remote policy and credential stripping. No database.
+// Audit redaction. No database.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -6,22 +6,8 @@ import { redactAudit } from "../../../web/src/lib/audit-redact";
 import { argsForJob, splitResult } from "../../../web/src/lib/relay-job";
 import { stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import type { ReplayArgs, WorkflowV2 } from "../../src/v1/schema";
-import { policyAllowsRemoteRun, REMOTE_POLICY } from "../../../web/src/lib/remote-policy";
 
 const shot = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-
-test("the remote policy requires a local approval and refuses a remote confirm", () => {
-  assert.equal(policyAllowsRemoteRun(REMOTE_POLICY), true);
-  assert.equal(REMOTE_POLICY.requireLocalApproval, true);
-  assert.equal(REMOTE_POLICY.confirmLocalOnly, true);
-  assert.equal(REMOTE_POLICY.remoteMayApproveConfirm, false);
-  assert.equal(policyAllowsRemoteRun({ ...REMOTE_POLICY, remoteMayApproveConfirm: true }), false);
-  assert.equal(policyAllowsRemoteRun({ ...REMOTE_POLICY, requireLocalApproval: false }), false);
-  assert.equal(policyAllowsRemoteRun({ ...REMOTE_POLICY, confirmLocalOnly: false }), false);
-  assert.equal(policyAllowsRemoteRun({ ...REMOTE_POLICY, version: 2 }), false);
-  assert.equal(policyAllowsRemoteRun(null), false);
-  assert.equal(policyAllowsRemoteRun("allow"), false);
-});
 
 test("relay routing numbers reach replay inputs and results unchanged", () => {
   const job = argsForJob({ id: "routing", inputs: { routing: "021000021", zip: "941031234", order: "123456789" } });

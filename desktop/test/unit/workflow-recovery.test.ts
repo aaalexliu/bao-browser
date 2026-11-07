@@ -57,7 +57,7 @@ test("workflow recovery keeps user choices, results and focus across state polls
 
     const returnFromRecord = async () => {
       await page.getByRole("button", { name: "Record", exact: true }).click();
-      await page.locator("#screen-list [data-screen=library]").click();
+      await page.getByRole("button", { name: "Back to Workflows", exact: true }).click();
       assert.equal(await details.isHidden(), true);
       assert.equal(await details.getAttribute("open"), null);
       assert.equal(await status.innerText(), "");

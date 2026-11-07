@@ -1,4 +1,4 @@
-// Permissions preview before the first run of a marketplace workflow.
+// Marketplace details and direct execution of an owner-requested workflow.
 // Local `vercel dev` only. Nothing is deployed.
 // Run after `tsc -p tsconfig.desktop.json`. Chrome needs BAO_CHROME_NO_SANDBOX=1.
 
@@ -25,7 +25,7 @@ const LISTING_ID = "trust-submit";
 const shots = testArtifacts("marketplace-trust");
 const TEST_BROWSER = pinTestBrowser();
 
-test("a marketplace listing previews permissions and waits for Allow", { timeout: 600_000 }, async () => {
+test("a marketplace listing installs and runs without a Bao approval", { timeout: 600_000 }, async () => {
   process.env.TZ = "America/New_York";
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-trust-"));
@@ -109,11 +109,9 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     assert.equal(await page.getByTestId("inputs").locator("input").count(), 0);
     assert.equal(await page.locator("input[type=password]").count(), 0);
     assert.equal(await page.getByTestId("perm-driver").innerText(), "Browser");
-    assert.equal(await page.getByTestId("perm-trust").innerText(), "Can press submit. Always ask.");
-    assert.equal(await page.getByTestId("step-ask").innerText(), "Always ask");
-    assert.equal(await page.getByTestId("allow").innerText(), "Allow");
-    assert.equal(await page.getByTestId("copy").isDisabled(), true);
-    assert.equal(await page.getByTestId("install").count(), 0);
+    assert.equal(await page.getByTestId("perm-trust").innerText(), "Can press submit.");
+    assert.equal(await page.getByTestId("copy").isDisabled(), false);
+    assert.equal(await page.getByTestId("install").getAttribute("href"), `bao://import/${LISTING_ID}`);
     assert.match(await page.getByTestId("last-green").innerText(), /^Publisher replayed green:/);
     assert.equal(await page.getByTestId("your-green").count(), 0);
     assert.equal(await page.getByTestId("share-panel").getAttribute("hidden"), "");
@@ -131,12 +129,14 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
       headers: { cookie: buyerCookie, "content-type": "application/json" },
       body: "{}",
     });
-    assert.equal(copied.status, 403, await copied.text());
+    assert.equal(copied.status, 200, await copied.text());
 
     await pairDevice(buyer, { code: await pairCode(origin, buyerCookie), server: origin, name: "Buyer Mac" });
     mcp = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
       env: {
         ...env,
+        HOME: buyerHome,
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
         BAO_HOME: buyerHome,
         BAO_HEAL_CURSOR_ACCOUNT: "0",
         OPENAI_API_KEY: "",
@@ -155,53 +155,19 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     });
     client.send({ jsonrpc: "2.0", method: "notifications/initialized" });
     const tools = await client.call({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    assert.deepEqual(toolNames(tools), ["search_workflows", "describe_workflow", "run_workflow", "get_run"]);
+    assert.deepEqual(toolNames(tools), ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser"]);
 
-    const blocked = await client.call({
+    const ran = await client.call({
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
       params: { name: "run_workflow", arguments: { id: LISTING_ID, inputs: {} } },
     });
-    const blockedBody = toolJson(blocked) as {
-      outcome: string;
-      status?: string;
-      reason?: string;
-      source?: string;
-      permissions?: { driver?: string; submit?: boolean; trust?: string; inputs?: { secret?: boolean }[]; sites?: string[] };
-    };
-    assert.equal(blockedBody.outcome, "needs_approval", blockedBody.reason || JSON.stringify(blockedBody));
-    assert.equal(blockedBody.status, "needs_approval");
-    assert.equal(blockedBody.source, "marketplace");
-    assert.equal(blockedBody.permissions?.driver, "browser");
-    assert.equal(blockedBody.permissions?.submit, true);
-    assert.equal(blockedBody.permissions?.trust, "ask");
-    assert.equal(blockedBody.permissions?.inputs?.[0]?.secret, true);
-    assert.ok(blockedBody.permissions?.sites?.includes(fixture.origin));
-    assert.throws(() => buyer.read(LISTING_ID));
-
-    await page.getByTestId("allow").click();
-    await page.getByTestId("install").waitFor();
-    assert.equal(await page.getByTestId("install").getAttribute("href"), `bao://import/${LISTING_ID}`);
-    assert.match(await page.getByTestId("allowed").innerText(), /Always ask/);
-    assert.equal(await page.getByTestId("step-ask").innerText(), "Always ask");
-    assert.equal(await page.getByTestId("copy").isDisabled(), false);
-    assert.equal(await page.getByTestId("share-panel").getAttribute("hidden"), "");
-    await page.locator("main").screenshot({ path: path.join(shots, "permissions-after-allow.png") });
-
-    const ran = await client.call({
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "run_workflow", arguments: { id: LISTING_ID, inputs: {} } },
-    });
     const ranBody = toolJson(ran) as { outcome: string; reason?: string; status?: string };
-    assert.equal(ranBody.outcome, "needs_human", ranBody.reason || JSON.stringify(ranBody));
-    assert.match(ranBody.reason || "", /Always ask/);
+    assert.equal(ranBody.outcome, "ok", ranBody.reason || JSON.stringify(ranBody));
     assert.equal(buyer.read(LISTING_ID).name, "Submit a payment");
-    assert.equal(buyer.settings().siteTrust?.[fixture.origin], "ask");
     await new Promise((resolve) => setTimeout(resolve, 500));
-    assert.equal(fixture.submits, publishedClicks);
+    assert.equal(fixture.submits, publishedClicks + 1);
     const token = JSON.parse(readFileSync(path.join(buyerHome, "sync.json"), "utf8")).deviceToken as string;
     const stamped = await fetch(`${origin}/api/workflows/${LISTING_ID}/runs`, {
       method: "POST",

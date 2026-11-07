@@ -135,7 +135,7 @@ test("every replay exit waits for capture before copying and strips only owned w
     { name: "circuit", opts: { circuitOpen: true }, expected: "failed", triage: "circuit" },
     { name: "unresolved", step: { unresolved: { reason: "recorded miss" } }, expected: "failed" },
     { name: "stripped", step: { action: "type", value: STRIPPED_SECRET }, expected: "failed" },
-    { name: "trust pause", opts: { siteTrust: "ask" }, expected: "paused" },
+    { name: "human pause", step: { action: "confirm", human: true }, opts: { yieldHuman: true }, expected: "paused" },
     { name: "passed", step: { action: "note" }, expected: "passed" },
     { name: "skipped", step: { when: { input: "branch", value: "other" } }, expected: "failed" },
     { name: "capture failure", step: { action: "note" }, expected: "passed" },
@@ -167,7 +167,16 @@ test("every replay exit waits for capture before copying and strips only owned w
     assert.equal(result.steps[0]?.triage, row.triage, row.name);
     assert.deepEqual(result.steps[0]?.snapshot, row.name === "capture failure" ? undefined : snapshot, row.name);
     assert.equal(result.modelCalls, 0, row.name);
-    assert.deepEqual(result.trail, [{ ...trail[0], value: STRIPPED_SECRET }], row.name);
+    const handoff = result.trail?.[1];
+    if (row.name === "human pause") {
+      assert.ok(handoff?.kind === "handoff");
+      assert.ok(Number.isFinite(handoff.ts));
+      assert.match(handoff.text || "", /^Handoff started /);
+    }
+    assert.deepEqual(result.trail, [
+      { ...trail[0], value: STRIPPED_SECRET },
+      ...(row.name === "human pause" ? [{ kind: "handoff", stepId: "entry", phase: "start", ts: handoff?.ts, text: handoff?.text }] : []),
+    ], row.name);
     assert.equal(trail[0]!.value, secret, row.name);
     assert.equal(result.console?.[0]?.text, secret, row.name);
     assert.equal(result.network?.[0]?.url, `https://example.test/${secret}`, row.name);

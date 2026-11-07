@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { CopyMenu } from "@/app/share-menu";
 import { listingStat } from "@/lib/listing";
 import { consequentialCopy, consequentialStep, driverLabel, permissionPreview } from "@/lib/permissions";
-import { HttpError, publicWorkflow, userAllowsListing, viewerLastGreen } from "@/lib/registry";
+import { HttpError, publicWorkflow, viewerLastGreen } from "@/lib/registry";
 import { principal, when } from "@/lib/viewer";
 import type { SetupQuestion } from "../../setup-form";
 
@@ -32,7 +32,6 @@ export default async function PublicWorkflowPage({
   const shots = new Map(workflow.shots.map((shot) => [shot.stepId, shot.url]));
   const stat = listingStat(workflow.passRate.total, when(workflow.lastGreenAt), workflow.ciVerified);
   const preview = permissionPreview(workflow.document);
-  const allowed = user ? await userAllowsListing(user.userId, id) : false;
   const yours = user ? await viewerLastGreen(user.userId, id) : null;
   return (
     <article data-testid="workflow" className="listing">
@@ -50,19 +49,8 @@ export default async function PublicWorkflowPage({
           </div>
         </div>
         <div className="listing-install">
-          {allowed ? (
-            <>
-              <a className="button primary" data-testid="install" href={workflow.importLink}>Install</a>
-              <p className="muted" data-testid="allowed">{preview.trust === "ask" ? "Allowed. Confirm and submit stay on Always ask." : "Allowed. Opens the import sheet on this Mac."}</p>
-            </>
-          ) : user ? (
-            <form action={`/api/marketplace/${id}/allow`} method="post">
-              <button className="button primary" type="submit" data-testid="allow">Allow</button>
-              <p className="muted">Allow it before it can be installed or run.</p>
-            </form>
-          ) : (
-            <a className="button primary" href="/login">Sign in to allow</a>
-          )}
+          <a className="button primary" data-testid="install" href={workflow.importLink}>Install</a>
+          <p className="muted">Opens the import sheet on this Mac. No Bao approval needed.</p>
         </div>
       </header>
       <div className="listing-layout">
@@ -72,16 +60,12 @@ export default async function PublicWorkflowPage({
             {steps.map((step, index) => {
               const src = shots.get(String(step.id || ""));
               const label = step.label || step.id || "Step";
-              const asks = consequentialStep(step);
               return (
                 <li key={step.id || index}>
                   <span className="n">{index + 1}</span>
                   {src ? <img src={src} alt="" /> : <span className="crop-empty">No crop</span>}
                   <span className="step-name">
                     <strong>{label}</strong>
-                    {preview.trust === "ask" && (asks.confirm || asks.submit)
-                      ? <span className="chip" data-testid="step-ask">Always ask</span>
-                      : null}
                   </span>
                 </li>
               );
@@ -91,9 +75,8 @@ export default async function PublicWorkflowPage({
             <h2>Inputs</h2>
             {user ? (
               <form className="listing-copy" action={`/api/marketplace/${workflow.id}/fork`} method="post">
-                <InputList questions={workflow.questions} fields={allowed} />
-                <button className="primary" type="submit" data-testid="copy" disabled={!allowed}>Copy to my library</button>
-                {allowed ? null : <p className="muted">Allow it before you can copy it.</p>}
+                <InputList questions={workflow.questions} fields={true} />
+                <button className="primary" type="submit" data-testid="copy">Copy to my library</button>
               </form>
             ) : (
               <>

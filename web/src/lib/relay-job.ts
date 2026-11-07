@@ -1,6 +1,5 @@
 // Job is the row. Settle is the only write from queued or running into done.
 import { redactAudit } from "./audit-redact";
-import { REMOTE_POLICY, type RemotePolicy } from "./remote-policy";
 import { isToolName, JOB_ID, type ToolName } from "./relay-tools";
 
 const OUTCOMES = ["ok", "denied", "failed", "cancelled", "needs_human", "forbidden", "device_offline"] as const;
@@ -41,7 +40,6 @@ type JobBase = {
   tokenId: string;
   tool: ToolName;
   workflowId: string | null;
-  policy: RemotePolicy;
   args: Record<string, unknown>;
   events: RelayEvent[];
   createdAt: string;
@@ -90,7 +88,7 @@ export function asJobId(value: string): JobId | null {
 export interface JobStore {
   insert(job: QueuedJob | DoneJob): Promise<void>;
   get(id: JobId): Promise<Job | null>;
-  oldestQueued(scope: DeviceScope): Promise<QueuedJob | null>;
+  oldestQueued(scope: DeviceScope, tool?: ToolName): Promise<QueuedJob | null>;
   oldestRunning(scope: DeviceScope): Promise<RunningJob | null>;
   claim(scope: DeviceScope, id: JobId): Promise<RunningJob | null>;
   appendEvent(scope: DeviceScope, id: JobId, event: RelayEvent): Promise<Job | null>;
@@ -119,6 +117,7 @@ export function argsForJob(raw: Record<string, unknown>):
   const requestedDevice = typeof raw.deviceId === "string" ? raw.deviceId : "";
   const walked = walkArgs(redactAudit(raw), 0);
   const args = (walked && typeof walked === "object" && !Array.isArray(walked) ? walked : {}) as Record<string, unknown>;
+  if (typeof raw.resume === "string") args.resume = raw.resume;
   return {
     args,
     workflowId: workflowIdOf(args),
@@ -142,10 +141,6 @@ export function splitResult(raw: unknown): { stored: DurableResult; callerText: 
   const caller = { ...stored };
   if (image) delete caller.screenshot;
   return { stored, callerText: caller, image };
-}
-
-export function jobPolicy(): RemotePolicy {
-  return REMOTE_POLICY;
 }
 
 function cdpCommand(value: unknown): string | null {
@@ -212,8 +207,8 @@ export class MemoryJobStore implements JobStore {
     return job ? cloneJob(job) : null;
   }
 
-  async oldestQueued(scope: DeviceScope): Promise<QueuedJob | null> {
-    return this.oldest(scope, "queued") as QueuedJob | null;
+  async oldestQueued(scope: DeviceScope, tool?: ToolName): Promise<QueuedJob | null> {
+    return this.oldest(scope, "queued", tool) as QueuedJob | null;
   }
 
   async oldestRunning(scope: DeviceScope): Promise<RunningJob | null> {
@@ -307,9 +302,9 @@ export class MemoryJobStore implements JobStore {
     return () => listeners.delete(fn);
   }
 
-  private oldest(scope: DeviceScope, status: "queued" | "running"): Job | null {
+  private oldest(scope: DeviceScope, status: "queued" | "running", tool?: ToolName): Job | null {
     const next = [...this.jobs.values()]
-      .filter((job) => sameScope(job, scope) && job.status === status)
+      .filter((job) => sameScope(job, scope) && job.status === status && (!tool || job.tool === tool))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     return next ? cloneJob(next) : null;
   }
@@ -340,7 +335,6 @@ interface JobColumns {
   workflow_id: string | null;
   status: string;
   outcome: string | null;
-  policy: unknown;
   args: unknown;
   result: unknown;
   events: unknown;
@@ -349,7 +343,7 @@ interface JobColumns {
   finished_at: unknown;
 }
 
-const COLUMNS = `id, token_id, user_id, device_id, tool, workflow_id, status, outcome, policy, args, result, events, created_at, claimed_at, finished_at`;
+const COLUMNS = `id, token_id, user_id, device_id, tool, workflow_id, status, outcome, args, result, events, created_at, claimed_at, finished_at`;
 
 async function sql<T>(text: string, params: unknown[] = []): Promise<T[]> {
   const { query } = await import("./db");
@@ -361,8 +355,8 @@ export class PgJobStore implements JobStore {
 
   async insert(job: QueuedJob | DoneJob): Promise<void> {
     await sql(
-      `INSERT INTO agent_jobs (id, token_id, user_id, device_id, tool, workflow_id, status, outcome, policy, args, result, events, created_at, claimed_at, finished_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14, $15)`,
+      `INSERT INTO agent_jobs (id, token_id, user_id, device_id, tool, workflow_id, status, outcome, args, result, events, created_at, claimed_at, finished_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12, $13, $14)`,
       [
         job.id,
         job.tokenId,
@@ -372,7 +366,6 @@ export class PgJobStore implements JobStore {
         job.workflowId,
         job.status,
         job.outcome,
-        JSON.stringify(job.policy),
         JSON.stringify(job.args),
         job.result ? JSON.stringify(job.result) : null,
         JSON.stringify(job.events),
@@ -389,12 +382,12 @@ export class PgJobStore implements JobStore {
     return rows[0] ? mapJob(rows[0]) : null;
   }
 
-  async oldestQueued(scope: DeviceScope): Promise<QueuedJob | null> {
+  async oldestQueued(scope: DeviceScope, tool?: ToolName): Promise<QueuedJob | null> {
     const rows = await sql<JobColumns>(
       `SELECT ${COLUMNS} FROM agent_jobs
-       WHERE user_id = $1 AND device_id = $2 AND status = 'queued'
+       WHERE user_id = $1 AND device_id = $2 AND status = 'queued' AND ($3::text IS NULL OR tool = $3)
        ORDER BY created_at LIMIT 1`,
-      [scope.userId, scope.deviceId],
+      [scope.userId, scope.deviceId, tool ?? null],
     );
     const job = rows[0] ? mapJob(rows[0]) : null;
     return job?.status === "queued" ? job : null;
@@ -517,19 +510,12 @@ function mapJob(row: JobColumns): Job | null {
   if (!JOB_ID.test(row.id)) return null;
   if (!isToolName(row.tool)) return null;
   const tool = row.tool;
-  const policy = jsonValue(row.policy);
-  if (!policy || typeof policy !== "object") return null;
-  const policyRow = policy as Record<string, unknown>;
-  if (policyRow.version !== 1 || policyRow.requireLocalApproval !== true || policyRow.confirmLocalOnly !== true || policyRow.remoteMayApproveConfirm !== false) {
-    return null;
-  }
   const base: JobBase = {
     id: row.id as JobId,
     scope: deviceScope(row.user_id, row.device_id),
     tokenId: row.token_id,
     tool,
     workflowId: row.workflow_id,
-    policy: policy as RemotePolicy,
     args: asRecord(jsonValue(row.args)),
     events: asEvents(row.events),
     createdAt: instant(row.created_at),

@@ -72,7 +72,9 @@ test("capture login, upload, and drop, then replay with two input sets", async (
       await uiPage.goto(`http://127.0.0.1:${app.port}/`);
       await uiPage.click("#rail button[data-place=workflows]");
       await uiPage.getByRole("button", { name: "Record", exact: true }).click();
-      await uiPage.click("#screen-list button[data-screen=replay]");
+      await uiPage.getByRole("button", { name: "Back to Workflows", exact: true }).click();
+      await uiPage.locator(`[data-open-workflow="${workflow.id}"]`).click();
+      await uiPage.locator(`#main [data-screen=replay][data-workflow="${workflow.id}"]`).click();
       await uiPage.waitForSelector(".drop");
       const dropped = await uiPage.evaluate(() => {
         const zone = document.querySelector(".drop");

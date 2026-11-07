@@ -27,18 +27,8 @@ export interface Settings extends HealSettings {
    * It is not part of synced settings.
    */
   remoteMcp?: boolean;
-  /**
-   * Ask before a remote run, or deny every remote run. Absent means ask.
-   * The cloud client cannot set this. It is not synced.
-   */
-  remotePermission?: "ask" | "deny";
   /** Scheduled library export. Absent means off. */
   backupSchedule?: "off" | "daily" | "weekly";
-  /**
-   * Ordinary clicks and typing, per site origin.
-   * Absent allows them. Confirm and login do not read this.
-   */
-  siteTrust?: Record<string, "ask" | "allow">;
   /**
    * Extension host grant on this machine.
    * all: every site. site: one origin at a time. none: nothing granted.
@@ -368,6 +358,8 @@ export class Library {
       const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<Settings> & Record<string, unknown>;
       delete saved.careful;
       delete saved.liveChromeProfile;
+      delete saved.siteTrust;
+      delete saved.remotePermission;
       return { ...DEFAULT_SETTINGS, ...saved };
     } catch {
       return { ...DEFAULT_SETTINGS };

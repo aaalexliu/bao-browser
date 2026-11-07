@@ -18,7 +18,6 @@ import {
   hostGrantMessage,
   hostGrantPlan,
   isHostGrantMessage,
-  secretStaysOnWorkflowOrigin,
   specificHost,
   specificOrigins,
 } from "../../../extension/src/host-grant";
@@ -187,14 +186,9 @@ test("an all-sites grant skips prompts and revoke returns to per-site needs_huma
   assert.equal(specificOrigins(`${quotes},https://*/*`).join(","), quotes);
   assert.equal(specificOrigins("http://*/*").length, 0);
 
-  assert.equal(secretStaysOnWorkflowOrigin("https://books.toscrape.com/catalogue/a", "https://books.toscrape.com"), true);
-  assert.equal(secretStaysOnWorkflowOrigin("https://quotes.toscrape.com/login", "https://books.toscrape.com"), false);
-  assert.equal(secretStaysOnWorkflowOrigin("https://books.toscrape.com/", ""), false);
-
   const background = readFileSync(path.join(process.cwd(), "extension/src/background.ts"), "utf8");
   const allow = readFileSync(path.join(process.cwd(), "extension/src/allow.ts"), "utf8");
   const page = readFileSync(path.join(process.cwd(), "extension/src/allow.html"), "utf8");
-  assert.match(background, /secretStaysOnWorkflowOrigin/);
   assert.match(background, /chrome\.permissions\.remove/);
   assert.match(background, /Matches stay on this origin/);
   assert.equal(background.includes("<all_urls>"), true);
