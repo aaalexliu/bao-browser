@@ -364,7 +364,7 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
       <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${available ? needsYouText(shellAttentionCount(state), Boolean(state.runs?.length)) : "Run history unavailable"}</p>` : ""}</div>
       ${place.id === "runs" ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
-    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, replaying: state.replaying }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
+    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}</span>
         <span class="screen-description">${item.description}</span>
       </button>`).join("")}</nav>`}`;
@@ -1834,7 +1834,7 @@ export function runWaitLeft(deadline: number, now = Date.now()): string {
   return Number.isFinite(remaining) ? `${remaining >= 60 ? `${Math.floor(remaining / 60)} h ` : ""}${remaining % 60} min left` : "";
 }
 
-export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; replaying?: boolean } = {}): string {
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[] } = {}): string {
   const attention = runAttention(runs, ask);
   const imports = attentionCount({ pendingHeals: 0, importPhase });
   const reviews = reviewItems(runs);
@@ -1869,9 +1869,8 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   const day = (value: number) => new Date(value).toDateString();
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const groups = new Map<string, RunSummary[]>();
-  const currentRunId = selection.replaying ? ask?.runId : undefined;
-  const currentRuns = runs.filter((run) => run.id === currentRunId);
-  for (const run of [...runs].filter((item) => item.id !== currentRunId).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
+  const currentRuns = runs.filter(runWaiting).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
+  for (const run of [...runs].filter((item) => !runWaiting(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
     const at = runTime(run);
     const label = at === undefined ? "Date unknown" : day(at) === day(now) ? "Today" : day(at) === day(+yesterday) ? "Yesterday" : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric", ...(new Date(at).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(at);
     const entries = groups.get(label);

@@ -7,6 +7,7 @@ import { startApp } from "../../src/app/server";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import { makeAsk } from "../../src/v1/human-ask";
 
 interface StateFixture extends Record<string, unknown> {
   sync?: Record<string, unknown>;
@@ -20,7 +21,7 @@ async function eventually(check: () => boolean): Promise<void> {
   assert.ok(check(), "saved setting did not reach the Library");
 }
 
-test("Settings shows a focus ring only when opened with the keyboard", { timeout: 30_000 }, async (t) => {
+test("main-pane navigation shows a focus ring only for keyboard input", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-focus-"));
   const previousHome = process.env.HOME;
   process.env.HOME = home;
@@ -30,6 +31,31 @@ test("Settings shows a focus ring only when opened with the keyboard", { timeout
   try {
     const page = await browser.newPage();
     const url = `http://127.0.0.1:${app.port}`;
+    const workflow: WorkflowV2 = {
+      schema: "bao.workflow/v2", version: 2, id: "focus-fixture", name: "Focus fixture", createdAt: 1,
+      startUrl: "/fixture", inputs: [], steps: [],
+    };
+    app.library.save(workflow);
+    app.library.saveRun({ id: "focus-run", workflowId: workflow.id, status: "passed", at: 1, steps: [], heals: [] });
+    app.library.saveRun({ id: "default-run", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [] });
+    let live = false;
+    let runFailure = "";
+    await page.route("**/api/runs/focus-run**", async (route) => {
+      const receipt = new URL(route.request().url()).pathname.endsWith("/receipt");
+      if (runFailure === (receipt ? "receipt" : "run")) await route.fulfill({ status: 503, json: { error: "Fixture unavailable" } });
+      else await route.continue();
+    });
+    await page.route("**/api/state", async (route) => {
+      const response = await route.fetch();
+      const state = await response.json();
+      await route.fulfill({ json: { ...state, activeAsk: live ? {
+        ...makeAsk({ kind: "confirm", workflowId: workflow.id, workflowName: workflow.name, stepId: "s", stepIndex: 1, stepCount: 1, label: "Continue", timeoutMs: 120_000 }), runId: "focus-run",
+      } : null } });
+    });
+    async function checkMain(keyboard: boolean): Promise<void> {
+      await page.waitForFunction(() => document.activeElement?.id === "main");
+      assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), keyboard ? "solid" : "none");
+    }
     for (const theme of ["light", "dark"]) {
       await page.goto(url);
       await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
@@ -71,6 +97,44 @@ test("Settings shows a focus ring only when opened with the keyboard", { timeout
       await page.waitForFunction(() => document.activeElement?.id === "main");
       assert.equal(await page.locator("#main").evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle === "solid"), true);
       await page.setViewportSize({ width: 1280, height: 860 });
+      for (const keyboard of [false, true]) {
+        await page.keyboard.press("Meta+k");
+        await page.locator("#palette-input").fill("Open Focus fixture");
+        if (keyboard) await page.keyboard.press("Enter");
+        else await page.locator("#palette-list [data-command]").first().click();
+        await page.locator("#workflow-detail").waitFor();
+        await checkMain(keyboard);
+        await settings.click();
+        await page.locator('#rail [data-place="runs"]').click();
+        const receipt = page.locator('[data-open-run="focus-run"]').first();
+        if (keyboard) { await receipt.focus(); await page.keyboard.press("Enter"); }
+        else await receipt.click();
+        await page.locator("#run-receipt").waitFor();
+        await checkMain(keyboard);
+        for (const failure of ["run", "receipt"]) {
+          runFailure = failure;
+          await settings.click();
+          await page.locator('#rail [data-place="runs"]').click();
+          await page.locator('[data-open-run="focus-run"]').first().click();
+          const retry = page.locator("#retry-run");
+          await retry.waitFor();
+          runFailure = "";
+          if (keyboard) { await retry.focus(); await page.keyboard.press("Enter"); }
+          else await retry.click();
+          await page.locator("#run-receipt").waitFor();
+          await checkMain(keyboard);
+        }
+        live = true;
+        await page.goto(`${url}/?screen=live`);
+        const openWorkflow = page.locator('#detail-bar [data-open-workflow="focus-fixture"]');
+        await openWorkflow.waitFor();
+        if (keyboard) { await openWorkflow.focus(); await page.keyboard.press("Enter"); }
+        else await openWorkflow.click();
+        await page.locator("#workflow-detail").waitFor();
+        await checkMain(keyboard);
+        live = false;
+        await settings.click();
+      }
     }
   } finally {
     await browser.close();

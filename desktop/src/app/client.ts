@@ -159,6 +159,19 @@ try {
 const railEl = () => document.getElementById("rail")!;
 const actEl = () => document.getElementById("act")!;
 const mainEl = () => document.getElementById("main")!;
+let keyboardInput = false;
+function focusMain(options?: FocusOptions): void {
+  mainEl().dataset.keyboardFocus = String(keyboardInput);
+  mainEl().focus(options);
+}
+document.addEventListener("pointerdown", () => {
+  keyboardInput = false;
+  mainEl().dataset.keyboardFocus = "false";
+}, true);
+document.addEventListener("keydown", () => {
+  keyboardInput = true;
+  mainEl().dataset.keyboardFocus = "true";
+}, true);
 
 let chromeProfiles: { directory: string; name: string; email: string }[] = [];
 
@@ -273,7 +286,7 @@ async function loadState(): Promise<void> {
   if (key === renderKey) return;
   renderKey = key;
   render(!firstLoad);
-  if (recovering) mainEl().focus({ preventScroll: true });
+  if (recovering) focusMain({ preventScroll: true });
   paintGuide();
 }
 
@@ -419,7 +432,7 @@ function render(focusDetail = true): void {
   paintToasts();
   const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : screen === "heals" && openHeal ? `heal:${openHeal.runId}:${openHeal.healId}` : screen === "live" ? "live" : "";
   if (detail && detail !== renderedDetail) {
-    if (focusDetail) mainEl().focus({ preventScroll: true });
+    if (focusDetail) focusMain({ preventScroll: true });
     document.getElementById("content")!.scrollTop = 0;
   }
   renderedDetail = detail;
@@ -640,7 +653,7 @@ function importSheet(): string {
   </section>`;
 }
 
-function navigate(next: Screen, focusMain = true): void {
+function navigate(next: Screen): void {
   if (next === "heals") openHeal = null;
   screen = next;
   if (screen === "runs") selectDefaultRun();
@@ -659,9 +672,8 @@ function navigate(next: Screen, focusMain = true): void {
   }
   render();
   const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
-  if (sidebar.open) sidebar.close(focusMain ? "navigate" : "navigate-unfocused");
-  if (focusMain) mainEl().focus();
-  else mainEl().blur();
+  if (sidebar.open) sidebar.close("navigate");
+  focusMain();
   document.getElementById("content")!.scrollTop = 0;
 }
 
@@ -825,8 +837,8 @@ function bind(): void {
   const close = document.getElementById("sidebar-close");
   if (close) close.onclick = () => sidebar.close();
   document.querySelectorAll("#rail [data-screen], #screen-list [data-screen]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = (event) => {
-      navigate((btn as HTMLButtonElement).dataset.screen as Screen, event.isTrusted && event.detail === 0);
+    (btn as HTMLButtonElement).onclick = () => {
+      navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
   });
   const importLogin = document.querySelector<HTMLButtonElement>('#settings [data-screen="logins"]');
@@ -1365,7 +1377,7 @@ async function showRun(id: string): Promise<void> {
     const host = document.getElementById("run-host");
     if (!host || screen !== "run" || openRun !== id || request !== runRequest) return;
     host.innerHTML = receiptError();
-    document.getElementById("retry-run")!.onclick = () => { void showRun(id).then(() => mainEl().focus({ preventScroll: true })); };
+    document.getElementById("retry-run")!.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
   }
 }
 
@@ -1392,7 +1404,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   const reviewStepIds = reviewItems((state.runs || []).filter((item) => item.workflowId === run.workflowId)).map((item) => item.stepId);
   host.innerHTML = (receipt ? runReceipt(receipt, workflow.name, run) : receiptError()) + `<details id="run-evidence"${evidenceOpen ? " open" : ""}><summary>Detailed evidence</summary>${runViewer(run, workflow, selectedStep, { recent: history, recorded, reviewStepIds })}</details>`;
   const retry = document.getElementById("retry-run");
-  if (retry) retry.onclick = () => { void showRun(id).then(() => mainEl().focus({ preventScroll: true })); };
+  if (retry) retry.onclick = () => { void showRun(id).then(() => focusMain({ preventScroll: true })); };
   const evidence = document.getElementById("run-evidence") as HTMLDetailsElement;
   evidence.ontoggle = () => { if (evidence.isConnected) evidenceOpen = evidence.open; };
   host.querySelectorAll<HTMLElement>("[data-receipt-offset]").forEach((button) => {
@@ -2480,9 +2492,9 @@ function paintPalette(): void {
     paintPalette();
   };
   host.querySelectorAll("[data-command]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = (event) => {
+    (btn as HTMLButtonElement).onclick = () => {
       const id = (btn as HTMLButtonElement).dataset.command || "";
-      runCommand(filteredCommands().find((item) => item.id === id), event.isTrusted && event.detail === 0);
+      runCommand(filteredCommands().find((item) => item.id === id));
     };
   });
   if (input) {
@@ -2491,19 +2503,19 @@ function paintPalette(): void {
   }
 }
 
-function runCommand(item?: CommandItem, focusMain = true): void {
+function runCommand(item?: CommandItem): void {
   if (!item) return;
   paletteOpen = false;
   if (item.kind === "theme") theme = theme === "dark" ? "light" : "dark";
   else if (item.screen === "replay" && item.workflowId) {
     lastWf = item.workflowId;
-    navigate("replay", focusMain);
+    navigate("replay");
     return;
   } else if (item.kind === "workflow" && item.workflowId) {
     openWorkflow = item.workflowId;
     screen = "workflow";
   } else if (item.screen) {
-    navigate(item.screen as Screen, focusMain);
+    navigate(item.screen as Screen);
     return;
   }
   renderKey = "";
@@ -2766,8 +2778,8 @@ const sidebarDialog = document.getElementById("sidebar-dialog") as HTMLDialogEle
 sidebarDialog.addEventListener("close", () => {
   if (sidebarDialog.open) return;
   document.getElementById("app")!.prepend(railEl());
-  if (paletteOpen || sidebarDialog.returnValue === "palette" || sidebarDialog.returnValue === "navigate-unfocused") return;
-  if (sidebarDialog.returnValue === "navigate") mainEl().focus();
+  if (paletteOpen || sidebarDialog.returnValue === "palette") return;
+  if (sidebarDialog.returnValue === "navigate") focusMain();
   else document.getElementById("sidebar-toggle")?.focus();
 });
 window.matchMedia("(max-width: 1060px)").addEventListener("change", (event) => {

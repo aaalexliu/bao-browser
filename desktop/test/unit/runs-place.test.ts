@@ -100,21 +100,7 @@ test("active asks share attention counts, open Live and use numeric deadlines on
   const waiting = { id: "active", workflowId: "wf", status: "paused", at: now, envelope: { status: "needs_human", ask: "Press Reserve", deadline: "Nov 6, 12:30 PM UTC" } };
   assert.equal(runAttention([waiting], ask).length, 1);
   assert.equal(runAttention([], { ...ask, runId: undefined }).length, 1);
-  const oldHeld = { ...waiting, id: "old-held", at: Date.UTC(2026, 10, 1, 9, 41) };
-  assert.match(shellList("runs", { runs: [waiting], activeAsk: ask, replaying: true }), /aria-label="Now"/);
-  assert.doesNotMatch(shellList("runs", { runs: [waiting], activeAsk: ask, replaying: false }), /aria-label="Now"/);
-  const active = runsList([waiting, oldHeld], [], "", now, ask, undefined, { replaying: true });
-  assert.match(active, /2 min left/);
-  assert.match(active, /<section aria-label="Now">[\s\S]*?data-open-run="active"/);
-  assert.doesNotMatch(active.match(/<section aria-label="Now">[\s\S]*?<\/section>/)?.[0] || "", /data-open-run="old-held"/);
-  assert.match(active, /<section aria-label="Sunday, Nov 1">[\s\S]*?data-open-run="old-held"/);
-  for (const replaying of [false, undefined]) {
-    const inactive = runsList([waiting, oldHeld], [], "", now, ask, undefined, { replaying });
-    assert.doesNotMatch(inactive, /aria-label="Now"/);
-    assert.match(inactive, /<section aria-label="Today">[\s\S]*?data-open-run="active"/);
-    assert.match(inactive, /<section aria-label="Sunday, Nov 1">[\s\S]*?data-open-run="old-held"/);
-    assert.equal((inactive.match(/data-open-run="old-held"/g) || []).length, 2, "historical waits stay in Needs you and their day");
-  }
+  assert.match(runsList([waiting], [], "", now, ask), /2 min left/);
   const stored = runsList([waiting], [], "", now);
   assert.match(stored, /Waits until Nov 6, 12:30 PM UTC/);
   assert.doesNotMatch(stored, /min left|data-run-deadline|datetime=/);
@@ -352,13 +338,13 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     await page.locator("#rail [data-place=runs]").click();
     await page.locator("#needs-you-heading .run-count").filter({ hasText: "3" }).waitFor();
     const history = page.locator('#runs section[aria-label="Today"]');
-    assert.deepEqual(await history.locator("button").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run"))), ["raw-paused", "raw-failed", "raw-heal", "raw-browser"]);
+    assert.deepEqual(await history.locator("button").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run"))), ["raw-failed", "raw-heal", "raw-browser"]);
     assert.equal(await page.locator('#runs section[aria-label="Yesterday"]').count(), 1);
     assert.doesNotMatch(await page.locator("#runs").innerText(), /raw-/);
     assert.doesNotMatch(await history.locator("[data-open-run=raw-failed]").innerText(), /model calls/);
-    assert.equal(await page.locator('#runs section[aria-label="Now"]').count(), 0);
+    assert.equal(await page.locator('#runs section[aria-label="Now"] [data-open-run=raw-paused]').count(), 1);
     assert.match(await page.locator("#runs [data-open-run=raw-old]").innerText(), /Passed/);
-    assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 3);
+    assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 2);
     const row = history.locator("[data-open-run=raw-failed]");
     await row.focus();
     app.library.appendDecision("raw-heal", { ts: now, healId: "proposal", decision: "keep" });
