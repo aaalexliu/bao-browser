@@ -726,7 +726,7 @@ export async function replay(
     } finally {
       const quiet = gate.shotsPaused;
       const after = quiet ? { error: "Pictures stay off while you have the page." } : await writeStepShot(driver, opts.shotDir, pictured, "after");
-      const snapshot = quiet || !driver.captureStep ? undefined : await driver.captureStep().catch(() => undefined);
+      const snapshot = !driver.captureStep ? undefined : await driver.captureStep().catch(() => undefined);
       if (steps[i]) steps[i] = { ...steps[i], beforeShot, afterShot: after.ref, beforeShotError: before.error, afterShotError: after.error, ...(snapshot ? { snapshot } : {}) };
     }
   }

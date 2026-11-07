@@ -167,7 +167,16 @@ test("every replay exit waits for capture before copying and strips only owned w
     assert.equal(result.steps[0]?.triage, row.triage, row.name);
     assert.deepEqual(result.steps[0]?.snapshot, row.name === "capture failure" ? undefined : snapshot, row.name);
     assert.equal(result.modelCalls, 0, row.name);
-    assert.deepEqual(result.trail, [{ ...trail[0], value: STRIPPED_SECRET }], row.name);
+    const handoff = result.trail?.[1];
+    if (row.name === "human pause") {
+      assert.ok(handoff?.kind === "handoff");
+      assert.ok(Number.isFinite(handoff.ts));
+      assert.match(handoff.text || "", /^Handoff started /);
+    }
+    assert.deepEqual(result.trail, [
+      { ...trail[0], value: STRIPPED_SECRET },
+      ...(row.name === "human pause" ? [{ kind: "handoff", stepId: "entry", phase: "start", ts: handoff?.ts, text: handoff?.text }] : []),
+    ], row.name);
     assert.equal(trail[0]!.value, secret, row.name);
     assert.equal(result.console?.[0]?.text, secret, row.name);
     assert.equal(result.network?.[0]?.url, `https://example.test/${secret}`, row.name);
