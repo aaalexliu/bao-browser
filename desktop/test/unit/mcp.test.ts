@@ -30,7 +30,10 @@ const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "saved
 
 async function fixture(run: (client: McpClient, library: Library) => Promise<void>): Promise<void> {
   const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-test-"));
-  const client = McpClient.start({ ...process.env, HOME: home, BAO_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" });
+  const sourceRoot = path.join(home, "chrome-source");
+  mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
+  writeFileSync(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
+  const client = McpClient.start({ ...process.env, HOME: home, BAO_HOME: home, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot, BAO_HEAL_CURSOR_ACCOUNT: "0" });
   try { await run(client, new Library(home)); }
   finally { await client.close(); rmSync(home, { recursive: true, force: true }); }
 }
