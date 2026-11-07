@@ -168,7 +168,7 @@ test("a user-data-dir inside the daily profile is refused even when the binary i
   );
   const verdict = assessOwnedCommand(daily, "/Users/alex/Library/Application Support/Google/Chrome", product);
   assert.equal(verdict.ok, false);
-  assert.match(verdict.reason || "", /daily profile/);
+  assert.match(verdict.reason, /daily profile/);
 });
 
 test("an account browser uses installed Chrome and skips Playwright automation switches", () => {
@@ -279,7 +279,7 @@ test("the test lane launches BAO_TEST_BROWSER with a mock keychain", () => {
   assert.equal(assessOwnedCommand(laneCmd, owned, product).ok, false);
   const bare = assessOwnedCommand(fixture, owned, lane);
   assert.equal(bare.ok, false);
-  assert.match(bare.reason || "", /without a mock keychain/);
+  assert.match(bare.reason, /without a mock keychain/);
 });
 
 test("pinTestBrowser pins Playwright's Chromium and keeps an existing pin", () => {
@@ -328,7 +328,7 @@ test("a product command line rejects mock keychain flags in every form", () => {
   for (const flag of flags) {
     const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned, product);
     assert.equal(verdict.ok, false, flag);
-    assert.match(verdict.reason || "", /mock keychain/);
+    assert.match(verdict.reason, /mock keychain/);
   }
   const cleaned = ownedChromeLaunchArgs([
     "--use-mock-keychain",
@@ -362,7 +362,7 @@ test("remote debugging port zero is refused because it sets webdriver", () => {
   for (const flag of ["--remote-debugging-port=0", "--remote-debugging-port 0"]) {
     const verdict = assessOwnedCommand(`${fixture.trim()} ${flag}`, owned, product);
     assert.equal(verdict.ok, false);
-    assert.match(verdict.reason || "", /navigator.webdriver/);
+    assert.match(verdict.reason, /navigator.webdriver/);
   }
 });
 
@@ -370,12 +370,13 @@ test("remote debugging port 9222 is refused", () => {
   const cmd = `${fixture.trim()} --remote-debugging-port=9222`;
   const verdict = assessOwnedCommand(cmd, owned, product);
   assert.equal(verdict.ok, false);
-  assert.match(verdict.reason || "", /9222/);
+  assert.match(verdict.reason, /9222/);
 });
 
 test("a mismatched user-data-dir is refused", () => {
   const verdict = assessOwnedCommand(fixture, "/tmp/someone-else", product);
   assert.equal(verdict.ok, false);
+  assert.equal(verdict.reason, "No browser process was launched with user-data-dir /tmp/someone-else.");
 });
 
 test("saved tabs are removed and the cookie store is left in place", () => {

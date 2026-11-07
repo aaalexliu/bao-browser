@@ -4,16 +4,16 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact } from "../../../shared/saved-secrets";
-import type { HealSettings, HealSource } from "./heal";
+import type { GlobalHealMode, HealSettings, HealSource } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
-import { migrate, toJson, validateWorkflow, type HealMode, type WorkflowV2 } from "./schema";
+import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead } from "./library-read";
 
 export interface Settings extends HealSettings {
-  heal: HealMode;
+  heal: GlobalHealMode;
   /** Absent keeps the source Bao detected before a choice was saved. */
   healSource?: HealSource;
   promoteAfter: number;
@@ -365,7 +365,7 @@ export class Library {
     }
   }
 
-  setHeal(heal: HealMode): Settings {
+  setHeal(heal: GlobalHealMode): Settings {
     return this.updateSettings({ heal });
   }
 
