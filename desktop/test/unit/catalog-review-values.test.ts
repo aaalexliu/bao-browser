@@ -57,7 +57,7 @@ test("marketplace review withholds token card and SSN crops but retains raw loca
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-review-values-"));
   const library = new Library(root);
-  let review: { shots: { stepId: string; png: string; redacted: boolean }[]; samples: Record<string, string> } | undefined;
+  let review: { shots: { stepId: string; png: string }[]; samples: Record<string, string> } | undefined;
   const received: string[] = [];
   const server = createServer((req, res) => {
     if (req.url === "/fixture") {
@@ -92,7 +92,7 @@ test("marketplace review withholds token card and SSN crops but retains raw loca
     assert.equal(received.length, 1);
     assert.deepEqual(review.samples, { sample3: "Ada Lovelace" });
     assert.deepEqual(review.shots.map((shot) => shot.stepId), ["field3"]);
-    assert.equal(review.shots[0]!.redacted, true);
+    assert.equal(Object.hasOwn(review.shots[0]!, "redacted"), false);
     assert.deepEqual(Buffer.from(review.shots[0]!.png, "base64").subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     const run = library.readRun(outcome.runId);
     assert.equal(run.modelCalls, 0);
