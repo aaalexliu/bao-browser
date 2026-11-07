@@ -13,9 +13,9 @@
 {"command":"close","args":[]}
 ```
 
-Bao fixes one session in a private socket directory, installed Google Chrome, and a visible window. On `open`, `browser: "copy"` (the default) starts a fresh marked copy of the profile selected in Settings. `browser: "bao"` uses Bao's lasting profile and imports missing site sign-ins from that selected Chrome profile. `browser: "current"` explicitly uses the owner's running Chrome as described below. An unset source profile selects `Default`. Close the session before changing browser. The page-engine choice does not affect this tool. Extensions stay disabled. Bao launches Chrome itself, then attaches the pinned native agent-browser through `--cdp`.
+Bao fixes one session in a private socket directory, installed Google Chrome, and a visible window. On `open`, `browser: "copy"` (the default) starts a fresh marked copy of the profile selected in Settings. `browser: "bao"` uses Bao's lasting profile and imports missing site sign-ins from that selected Chrome profile. `browser: "current"` explicitly uses the owner's running Chrome as described below. An unset source profile selects `Default`. Close the session before changing browser. The page-engine choice does not affect this tool. For copied and Bao-owned profiles, extensions stay disabled and Bao launches Chrome itself. The current route leaves the running browser's extensions unchanged. Bao attaches the pinned native agent-browser through `--cdp`.
 
-Bao picks a nonzero debugging port. Port zero makes headed Chrome set `navigator.webdriver` to true. Bao accepts only the WebSocket endpoint its own Chrome child prints to stderr, then writes that endpoint to the copy's `DevToolsActivePort` file. A port-bind race stops startup rather than attaching to another browser.
+For copied and Bao-owned profiles, Bao picks a nonzero debugging port. Port zero makes headed Chrome set `navigator.webdriver` to true. Bao accepts only the WebSocket endpoint its own Chrome child prints to stderr, then writes that endpoint to the owned profile's `DevToolsActivePort` file. A port-bind race stops startup rather than attaching to another browser. The current route reads the running profile's `DevToolsActivePort` and accepts it only when the listener PID matches the selected Chrome process.
 
 Pass-through startup connects only to Chrome's browser-level CDP endpoint and discovers targets without attaching Playwright to restored tabs. An unrelated unresponsive renderer does not block startup. Bao leaves those tabs in place without waiting for page readiness or parking startup pages. Successful `open` adds native `tab list` output. For `browser: "copy"`, the agent selects the signed-in copied tab with `tab <id>`; Bao does not guess its login state. `tab list --json` exposes CDP target ids.
 
@@ -51,9 +51,11 @@ This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper 
 
 Bao creates a new task tab before the first navigation. A native daemon restart also opens a new task tab and loses prior tab selection and refs; navigate that task tab again, then take a fresh snapshot. It keeps one browser-level CDP connection for metadata and page pictures. Stay in the current session's task tab, which shares the owner's sign-ins; use another tab only when the owner asks. The copied-profile setting does not affect this route. Both routes record commands and page screenshots in Runs.
 
-`close`, MCP disconnect, and handled stop signals detach from current Chrome. They do not quit it, remove its profile, or close its tabs. Keep-open applies only to copied windows. Bao leaves the debugging checkbox enabled; this route does not restore the old preference or revive retired live-driver workflows.
+`close`, MCP disconnect, and handled stop signals detach from current Chrome. They do not quit it, remove its profile, or close its tabs. Keep-open applies only to copied windows. [Session end](#session-end) defines native daemon shutdown and state cleanup. Bao leaves the debugging checkbox enabled; this route does not restore the old preference or revive retired live-driver workflows.
 
 ### Session end
+
+For every route, Bao stops only this session's native daemon before removing its private state directory. It waits up to one second after each of two SIGTERM attempts, then up to one second after SIGKILL, and verifies exit. If signaling or exit verification fails, cleanup reports the error and preserves the state directory; current Chrome still detaches without closing the borrowed browser.
 
 For the default copied-profile route, `close` ends only this session and removes its copy after Chrome stops. It succeeds if the owner already closed the marked window or the session already ended. Agent exit, MCP disconnect, and SIGINT/SIGTERM/SIGHUP close the marked window, delete its copy, and finish the run by default. Proxy cleanup starts at once, even when another tool call is still waiting.
 
