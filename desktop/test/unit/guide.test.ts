@@ -112,6 +112,26 @@ test("a focus click folds into typing without rewriting typed or password pictur
   assert.deepEqual(embedded(html), [...crops.values()]);
 });
 
+test("guides use human login copy and list defaults rather than import examples", () => {
+  const doc = document();
+  doc.inputs = [
+    { name: "saved", type: "text", default: "captured-value", example: "import-example" },
+    { name: "sample", type: "text", example: "sample-only" },
+    { name: "empty", type: "text", default: "", example: "empty-example" },
+  ];
+  doc.steps = [
+    step({ id: "login", action: "login", label: "ensure logged in (import from chrome, else wait for user)" }, 0),
+    step({ id: "secret", action: "type", label: "Type stored secret", value: "stored secret", sensitive: true }, 1),
+  ];
+  const html = guideHtml(doc, new Map());
+  assert.match(html, /<li class="step"><p>Sign in<\/p><\/li>/);
+  assert.match(html, /<li class="step"><p>Type stored secret<\/p><\/li>/);
+  assert.match(html, /<li><code>\{\{saved\}\}<\/code> captured-value<\/li>/);
+  assert.match(html, /<li><code>\{\{sample\}\}<\/code><\/li>/);
+  assert.match(html, /<li><code>\{\{empty\}\}<\/code><\/li>/);
+  assert.doesNotMatch(html, /ensure logged in|import-example|sample-only|empty-example/);
+});
+
 test("guide crops prefer the original capture over an old empty-field copy and skip page pictures", () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-guide-"));
   const library = new Library(root);

@@ -192,7 +192,7 @@ function inputList(doc: WorkflowV2): string {
       const listed = options.length ? ` ${esc(options.join(" / "))}` : "";
       return `<li><code>${esc(token)}</code>${listed}</li>`;
     }
-    const value = input.default ?? input.example;
+    const value = input.default;
     return `<li><code>${esc(token)}</code>${value ? ` ${esc(value)}` : ""}</li>`;
   });
   return `<h2>Inputs</h2><ul class="inputs">${rows.join("")}</ul>`;
@@ -206,7 +206,8 @@ function instruction(doc: WorkflowV2, step: WorkflowStep): string {
   if ((step.action === "type" || step.action === "digits") && token) {
     const where = fieldLabel(step);
     text = where ? `Type ${token} in ${where}` : `Type ${token}`;
-  } else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : "Add a file";
+  } else if (step.action === "login") text = "Sign in";
+  else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : "Add a file";
   else if (step.action === "click") text = clickLine(doc, step);
   else text = step.label || step.action;
   const cleaned = tidy(text);

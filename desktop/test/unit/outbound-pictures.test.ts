@@ -6,6 +6,10 @@ import path from "node:path";
 import { text } from "node:stream/consumers";
 import test from "node:test";
 import { hasPrivatePictureInput } from "../../../shared/outbound-secrets";
+import { MemoryJobStore } from "../../../web/src/lib/relay-job";
+import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
+import { createRemoteAgent } from "../../src/v1/remote-agent";
+import { saveRelay } from "../../src/v1/relay-link";
 import { blankPng } from "../../src/v1/redacted-png";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { shotFile, workflowShotName } from "../../src/v1/shots";
@@ -98,7 +102,22 @@ test("sync omits private-workflow step pictures from versions and runs without c
         }
       }
     }
+    for (const id of ["missing", "deleted", "damaged"]) {
+      if (id === "deleted") { library.save(workflow(id)); library.remove(id); }
+      if (id === "damaged") writeFileSync(path.join(root, "workflows", `${id}.json`), "{invalid");
+      library.saveRun({ id: `run-${id}`, workflowId: id, status: "passed", at: 1, heals: [], steps: [{ id: "go", status: "passed" }] });
+      const file = path.join(root, "shots", "runs", `run-${id}`, shotFile("go", "after"));
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, png);
+      localFiles.push(file);
+    }
     await syncAll(library, "push");
+    for (const id of ["missing", "deleted", "damaged"]) {
+      const body = sent.get(`/api/workflows/${id}/runs`);
+      assert.ok(body, id);
+      assert.deepEqual(body.shots, [], id);
+      assert.equal(sent.has(`/api/workflows/${id}/versions`), false, id);
+    }
     for (const id of ["private-declared", "private-field", "ordinary"]) {
       for (const suffix of ["versions", "runs"]) {
         const body = sent.get(`/api/workflows/${id}/${suffix}`);
@@ -109,6 +128,83 @@ test("sync omits private-workflow step pictures from versions and runs without c
     for (const file of localFiles) assert.deepEqual(readFileSync(file), png);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("relay run results omit private-input pictures and reject unreadable workflows while retaining ordinary pictures", { timeout: 60000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-relay-pictures-"));
+  const library = new Library(root);
+  const site = createServer((_req, res) => {
+    res.setHeader("content-type", "text/html");
+    res.end('<input id="pin" value="482731"><button id="go">Continue</button>');
+  });
+  const directory = new MemoryDirectory();
+  directory.addDevice("picture-device", "picture-owner");
+  const relay = createRelay({ store: new MemoryJobStore(), directory, enabled: () => true });
+  const server = await listenRelay(relay, { principal: () => ({ userId: "picture-owner" }) });
+  let stopped = false;
+  const remote = createRemoteAgent({
+    library, prompts: { shouldStop: () => stopped },
+    stop() { stopped = true; }, clearStop() { stopped = false; },
+  });
+  const post = async (route: string, body: unknown, token?: string): Promise<Record<string, unknown>> => {
+    const response = await fetch(`${server.origin}${route}`, {
+      method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 200, JSON.stringify(result));
+    return result;
+  };
+  try {
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    const address = site.address();
+    assert.ok(address && typeof address !== "string");
+    for (const id of ["private", "ordinary"]) {
+      const doc = workflow(id);
+      doc.startUrl = `http://127.0.0.1:${address.port}/`;
+      if (id === "private") doc.inputs = [{ name: "PIN", type: "text" }];
+      doc.steps[0]!.identity = { surface: "dom", role: "button", tag: "button", id: "go", path: [] };
+      doc.steps[0]!.heal = "never";
+      library.save(doc);
+    }
+    writeFileSync(path.join(root, "workflows", "damaged.json"), "{invalid");
+    library.updateSettings({ remoteMcp: true, pageEngine: "old" });
+    const issued = await post("/api/agent/pair", {});
+    const paired = await post("/api/agent/pair/claim", { code: issued.code, name: "Synthetic Mac", deviceId: "picture-device" });
+    const agent = await directory.mintAgent("picture-owner", "picture-device");
+    assert.ok(agent);
+    saveRelay(root, { server: server.origin, token: String(paired.token), deviceId: String(paired.deviceId), tokenId: String(paired.tokenId) });
+    const tool = async (name: string, args: Record<string, unknown>) => {
+      const body = await post("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent.token);
+      const result = body.result as { content: { type: string; text?: string }[] };
+      const output = result.content.find((item) => item.type === "text")?.text;
+      assert.ok(output, JSON.stringify(body));
+      return { output: JSON.parse(output) as Record<string, unknown>, images: result.content.filter((item) => item.type === "image") };
+    };
+    remote.start();
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if ((await tool("search_workflows", { query: "Synthetic" })).output.outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online, "remote worker did not connect");
+    for (const id of ["private", "ordinary", "missing", "damaged"]) {
+      const result = await tool("run_workflow", { id, inputs: id === "private" ? { PIN: "482731" } : {} });
+      const readable = id === "private" || id === "ordinary";
+      assert.equal(result.output.outcome, readable ? "ok" : "failed", JSON.stringify(result.output));
+      assert.equal(result.images.length, id === "ordinary" ? 1 : 0, id);
+      if (readable) {
+        const runId = String(result.output.runId || result.output.run_id);
+        const png = readFileSync(path.join(root, "shots", "runs", runId, shotFile("go", "after")));
+        assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+      }
+    }
+  } finally {
+    await remote.stop();
+    await server.close();
+    await new Promise<void>((resolve) => site.close(() => resolve()));
     rmSync(root, { recursive: true, force: true });
   }
 });

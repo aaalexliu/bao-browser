@@ -769,7 +769,7 @@ function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png
 }
 
 function runCrops(library: Library, runId: string, steps: { id?: string }[], doc: WorkflowV2 | undefined): { stepId: string; png: Buffer }[] {
-  if (doc && hasPrivatePictureInput(doc)) return [];
+  if (!doc || hasPrivatePictureInput(doc)) return [];
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of steps) {
     const id = String(step.id || "");
