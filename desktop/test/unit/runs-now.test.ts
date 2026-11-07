@@ -67,9 +67,18 @@ test("an unsaved running replay is the only Now row and opens live", { timeout: 
     assert.equal(await page.locator('#runs section[aria-label="Now"] [data-open-run="run-old"]').count(), 0);
     await row.click();
     await page.locator("#live-run").waitFor();
+    await page.getByText("Steps appear when the run pauses or ends.").waitFor();
     assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
     assert.equal(await page.locator("#run-receipt").count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Continuing" }).count(), 0);
+    assert.equal(await page.getByText("Bao is continuing this run").count(), 0);
+    assert.equal(await page.getByText("Not yet").count(), 0);
+    assert.equal(await page.getByText("No screen captured yet.").count(), 0);
+    assert.equal(await page.getByText("No screens captured yet.").count(), 0);
     assert.equal(app.library.listRuns().some((run) => run.id === runId), false);
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    assert.equal(await page.getByRole("button", { name: "Keep running" }).count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Keep waiting" }).count(), 0);
   } finally {
     const current = await stateOf(base).catch(() => undefined);
     if (current?.activeRun) await fetch(`${base}/api/replay/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId: current.activeRun.id }) }).catch(() => undefined);
@@ -126,7 +135,7 @@ test("a replay waiting in this process is under Needs you and Now, and opens liv
   }
 });
 
-test("a returned paused run stays out of Now and opens its receipt", { timeout: 90_000 }, async () => {
+test("a returned paused run stays out of Now and opens live", { timeout: 90_000 }, async () => {
   const previousHome = process.env.HOME;
   const dirs = applyHermeticApp("runs-now-returned");
   process.env.HOME = dirs.home;
@@ -149,8 +158,9 @@ test("a returned paused run stays out of Now and opens its receipt", { timeout: 
     assert.equal(await page.locator('#runs section[aria-label="Now"]').count(), 0);
     assert.equal(await page.locator(`#runs section[aria-label="Today"] [data-open-run="${runId}"]`).count(), 1);
     await page.locator(`#runs section[aria-label="Today"] [data-open-run="${runId}"]`).click();
-    await page.locator("#run-receipt").waitFor();
-    assert.equal(await page.locator("#live-run").count(), 0);
+    await page.locator("#live-run").waitFor();
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
+    assert.equal(await page.locator("#run-receipt").count(), 0);
   } finally {
     const current = await stateOf(base).catch(() => undefined);
     if (current?.activeRun) await fetch(`${base}/api/replay/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId: current.activeRun.id }) }).catch(() => undefined);
@@ -162,7 +172,7 @@ test("a returned paused run stays out of Now and opens its receipt", { timeout: 
   }
 });
 
-test("a restored wait stays out of Now, in Needs you and its day group, and opens its receipt", { timeout: 30_000 }, async () => {
+test("a restored wait stays out of Now, in Needs you and its day group, and opens live", { timeout: 30_000 }, async () => {
   const previousHome = process.env.HOME;
   const dirs = applyHermeticApp("runs-now-restored");
   process.env.HOME = dirs.home;
@@ -215,8 +225,9 @@ test("a restored wait stays out of Now, in Needs you and its day group, and open
     assert.equal(await page.locator('#runs section[aria-label="Now"] [data-open-run="guide-permit"]').count(), 0);
     assert.equal(await page.locator('#runs section[aria-label="Today"] [data-open-run="guide-permit"]').count(), 1);
     await page.locator('#runs section[aria-label="Today"] [data-open-run="run-live"]').click();
-    await page.locator("#run-receipt").waitFor();
-    assert.equal(await page.locator("#live-run").count(), 0);
+    await page.locator("#live-run").waitFor();
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), "run-live");
+    assert.equal(await page.locator("#run-receipt").count(), 0);
   } finally {
     await browser.close();
     await app.close();

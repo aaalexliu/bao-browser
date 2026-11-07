@@ -1997,7 +1997,7 @@ function selectHeal(runId: string, healId: string): void {
 }
 
 function selectRun(id: string, stepId = ""): void {
-  if (state.runExecuting && state.activeRun?.id === id && !stepId) {
+  if ((state.runExecuting || state.activeRun?.ask) && state.activeRun?.id === id && !stepId) {
     screen = "live";
     return;
   }
