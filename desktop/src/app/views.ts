@@ -20,7 +20,6 @@ import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-gra
 import { controlKey, visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
-import type { LiveSessionRecord } from "../cdp-live/live-record";
 
 /** Chromium app mode uses the document title as the window title. */
 export function productWindowTitle(): string {
@@ -157,7 +156,7 @@ export interface HealView {
   rawResponse?: string;
   model?: { name?: string; version?: string; provider?: string };
   proposedPatch?: { identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string }; label?: string };
-  failedStep?: { id?: string; label?: string; action?: string; identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string } };
+  failedStep?: { id?: string; index?: number; label?: string; action?: string; identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string } };
   postconditionPassed?: boolean;
   snapshot?: { screenshot?: string; screenshotRef?: string };
   beforeShot?: string;
@@ -179,7 +178,6 @@ export interface ShellState {
   recording?: boolean;
   replaying?: boolean;
   liveSessionOpen?: boolean;
-  liveSession?: LiveSessionRecord | null;
   capturePaused?: boolean;
   recordingSince?: number;
   helper?: {
@@ -1807,7 +1805,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const selected = !selectionShown && (healId ? selection.selectedHeal?.runId === run.id && selection.selectedHeal.healId === healId : live ? selection.liveSelected : selectedRun === run.id);
     if (selected) selectionShown = true;
     const at = runTime(run);
-    const name = names.get(run.workflowId) || (live ? ask?.workflowName || "Live session" : undefined) || runWorkflowName(run, []);
+    const name = names.get(run.workflowId) || (live ? ask?.workflowName : undefined) || runWorkflowName(run, []);
     const word = statusLabel(kind);
     const label = attentionLabel || word.charAt(0).toUpperCase() + word.slice(1);
     const when = at === undefined ? "Time unknown" : formatTime(at);
@@ -1815,11 +1813,11 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const totalSteps = workflows.find((workflow) => workflow.id === run.workflowId)?.steps;
     const stoppedAt = run.failure?.index === undefined ? "" : `Stopped at step ${run.failure.index + 1}${attentionLabel ? "." : totalSteps ? ` of ${totalSteps}` : ""}`;
     const heal = run.heals?.find((item) => healId ? item.id === healId : !run.decisions?.some((decision) => decision.healId === item.id));
-    const detail = kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.intent || `Review the repair${heal.failedStep?.label ? ` to ${heal.failedStep.label}` : ""}.` : reason || runDuration(run);
+    const detail = kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run);
     const deadline = attentionLabel && kind === "paused" && ask && (live || ask.runId === run.id) ? ask.deadline : undefined;
     const promotion = healId ? selection.promotions?.find((item) => item.healId === healId && item.workflowId === run.workflowId) || (run.promotion?.healId === healId ? run.promotion : undefined) : undefined;
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;
-    const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" && Number.isFinite(deadline) ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : remaining ? `Kept after ${remaining} more clean run${remaining === 1 ? "" : "s"}` : "";
+    const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : remaining ? `Kept after ${remaining} more clean run${remaining === 1 ? "" : "s"}` : "";
     const description = `${label}${detail ? ` · ${ownerStopText(detail)}` : ""}`;
     return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : live ? 'data-screen="live"' : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>

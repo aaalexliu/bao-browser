@@ -21,9 +21,9 @@ test("Runs rows open the exact target proposal, preserve receipts, keep keyboard
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   try {
     app.library.save(workflow);
-    const heal = { id: "first", intent: "First target moved", failedStep: workflow.steps[0]!, proposedPatch: { identity: { ...workflow.steps[0]!.identity!, name: "New statements" } } };
-    app.library.saveRun({ id: "run-targets", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [heal, { ...heal, id: "second", intent: "Second target moved" }] });
-    app.library.saveRun({ id: "run-other", workflowId: workflow.id, status: "passed", at: 1, steps: [], heals: [{ ...heal, intent: "Other run target" }] });
+    const heal = { id: "first", intent: "Open statements", failedStep: { ...workflow.steps[0]!, index: 2 }, proposedPatch: { identity: { ...workflow.steps[0]!.identity!, name: "New statements" } } };
+    app.library.saveRun({ id: "run-targets", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [heal, { ...heal, id: "second", failedStep: workflow.steps[0]! }] });
+    app.library.saveRun({ id: "run-other", workflowId: workflow.id, status: "passed", at: 1, steps: [], heals: [heal] });
     const promotion = { workflowId: workflow.id, healId: "first", status: "provisional", drift: "passed", replays: 1, need: 3 };
     app.library.savePromotion(promotion);
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
@@ -37,7 +37,9 @@ test("Runs rows open the exact target proposal, preserve receipts, keep keyboard
       await page.reload();
       await page.locator('#heal-detail[data-heal="first"][data-run="run-targets"]').waitFor();
       assert.equal(await row("run-targets", "first").getAttribute("aria-current"), "true");
-      assert.match(await row("run-targets", "first").innerText(), /First target moved/);
+      assert.match(await row("run-targets", "first").innerText(), /Heal to keep · Step 3 moved\./);
+      assert.match(await row("run-targets", "second").innerText(), /Heal to keep · Step 1 moved\./);
+      assert.doesNotMatch(await row("run-targets", "first").innerText(), /Open statements/);
       assert.match(await row("run-targets", "first").innerText(), /Kept after 2 more clean runs/);
       assert.equal(await page.locator('#screen-list > nav[aria-label="Runs screens"]').count(), 0);
       for (const width of [1280, 720, 320]) {
