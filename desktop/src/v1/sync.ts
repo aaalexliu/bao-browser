@@ -6,7 +6,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rm
 import { hostname } from "node:os";
 import path from "node:path";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
-import { isPicture } from "../../../web/src/lib/png";
+import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
@@ -738,7 +738,7 @@ function docHash(doc: WorkflowV2): string {
 function readCrop(file: string): Buffer | undefined {
   if (!existsSync(file)) return;
   const png = readFileSync(file);
-  return isPicture(png) ? png : undefined;
+  return isElementCrop(png) ? png : undefined;
 }
 
 function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {

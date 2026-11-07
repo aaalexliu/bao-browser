@@ -44,8 +44,8 @@ test("a push retains owner data and screenshots while stripping credentials", ()
   assert.equal((body.heal as { snapshot?: { dom?: string } }).snapshot?.dom, "button");
 });
 
-test("workflow pictures skip private steps but retain full-page public pictures without markers", () => {
-  const crop = tinyPng(1200, 900);
+test("workflow pictures skip private steps and retain control crops without markers", () => {
+  const crop = tinyPng(320, 180);
   const sent = buildPushBody(
     {
       inputs: [{ name: "password", type: "secret" }],
@@ -57,14 +57,14 @@ test("workflow pictures skip private steps but retain full-page public pictures 
   assert.deepEqual(sent.shots.map((shot) => shot.stepId), ["go"]);
   assert.equal("redacted" in sent.shots[0]!, false);
   assert.deepEqual(Buffer.from(sent.shots[0]!.png, "base64"), crop);
-  assert.equal(isElementCrop(crop), false);
+  assert.equal(isElementCrop(crop), true);
   const run = buildRunBody({ id: "run", status: "passed", at: 1, steps: [{ id: "pass" }] }, { crops: [{ stepId: "pass", png: crop }] });
   assert.deepEqual(run.shots, [{ stepId: "pass", png: crop.toString("base64") }]);
   const stripe = buildPushBody(
     { steps: [{ id: "go" }] },
     { baseVersion: 0, crops: [{ stepId: "go", png: redactedPng(1) }] },
   );
-  assert.equal(stripe.shots.length, 1);
+  assert.equal(stripe.shots.length, 0);
   assert.deepEqual(buildPushBody({ steps: [{ id: "bad" }] }, { baseVersion: 0, crops: [{ stepId: "bad", png: Buffer.from("not an image") }] }).shots, []);
 });
 
@@ -104,7 +104,7 @@ test("many-picture workflow, run and review bodies obey transport limits", async
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     pixels[i] = seed >>> 24;
   }
-  const png = await sharp(pixels, { raw: { width: 720, height: 480, channels: 3 } }).resize(1440, 960).jpeg({ quality: 80 }).toBuffer();
+  const png = await sharp(pixels, { raw: { width: 720, height: 480, channels: 3 } }).jpeg({ quality: 80 }).toBuffer();
   const steps = Array.from({ length: 60 }, (_, i) => ({ id: `step-${i}` }));
   const crops = steps.map((step) => ({ stepId: step.id, png }));
   const sources = [

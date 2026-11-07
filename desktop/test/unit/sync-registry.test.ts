@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 import { query } from "../../../web/src/lib/db";
 import { getPng } from "../../../web/src/lib/blobstore";
-import { redactedPng } from "../../../web/src/lib/png";
 import { buildPushBody } from "../../../web/src/lib/guard";
 import sharp from "sharp";
 import { createRelay, MemoryDirectory } from "../../../web/src/lib/relay";
@@ -73,7 +72,7 @@ function checkDocument(document: unknown): void {
 
 test("registry sync, share, release, and run pictures retain owner data without redaction markers", async () => {
   await query("INSERT INTO users (id, email, name) VALUES ('owner', 'owner@fixture.test', 'Owner'), ('reader', 'reader@fixture.test', 'Reader')");
-  const png = redactedPng(1);
+  const png = await sharp({ create: { width: 200, height: 100, channels: 3, background: "#ff4444" } }).png().toBuffer();
   const shots = [{ stepId: "go", png: png.toString("base64") }];
   const direct = { ...source, id: "direct-push" };
   await pushVersion(owner, direct.id, { baseVersion: 0, document: direct, shots: [{ stepId: "pass", png: png.toString("base64") }, ...shots] });

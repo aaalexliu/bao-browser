@@ -94,7 +94,7 @@ export default async function WorkflowPage({
               </li>
             ))}
           </ol>
-          <p className="muted" data-testid="crop-caption">The picture shows the recorded step.</p>
+          <p className="muted" data-testid="crop-caption">The picture is the element crop, with the control outlined.</p>
         </>
       ) : null}
       <ol className="steps">

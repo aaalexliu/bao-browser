@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Ajv from "ajv/dist/2020.js";
 import { getPng, putPng } from "./blobstore";
-import { isPicture } from "./png";
+import { isElementCrop, isPicture } from "./png";
 import { syncPicture } from "./sync-pictures";
 import { query } from "./db";
 import type { SyncShot } from "./guard";
@@ -557,7 +557,7 @@ export async function recordReview(
 ) {
   const preview = await previewPublication(principal, id);
   if (preview.documentHash !== documentHash) throw new HttpError("replay the public preview, then review that hash", 409);
-  const real = shots.filter((shot) => shot.stepId && shot.png && isPicture(Buffer.from(shot.png, "base64")));
+  const real = shots.filter((shot) => shot.stepId && shot.png && isElementCrop(Buffer.from(shot.png, "base64")));
   if (real.length) await writeShots(id, preview.version, real);
   await query(
     `INSERT INTO reviews (workflow_id, document_hash, samples) VALUES ($1, $2, $3::jsonb)
@@ -1026,7 +1026,7 @@ async function pickThumbnail(document: unknown, workflowId: string, version: num
     const key = byId.get(String(step.id ?? ""));
     if (!key) continue;
     const bytes = await getPng(key);
-    if (!bytes || !isPicture(bytes)) continue;
+    if (!bytes || !isElementCrop(bytes)) continue;
     return `/api/blobs/${key}`;
   }
   return "";

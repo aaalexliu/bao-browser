@@ -1,5 +1,5 @@
 import { isSealedArtifact, scrubSaved, STRIPPED_SECRET, type SavedContext } from "../../../shared/saved-secrets";
-import { isPicture } from "./png";
+import { isElementCrop } from "./png";
 
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|args|params)$/i;
 
@@ -74,7 +74,7 @@ function stepShots(
     if (step.sensitive || (step.input && secrets.has(step.input))) return;
     const id = String(step.id ?? index);
     const png = byId.get(id);
-    if (png && isPicture(png)) shots.push({ stepId: id, png: png.toString("base64") });
+    if (png && isElementCrop(png)) shots.push({ stepId: id, png: png.toString("base64") });
   });
   return shots;
 }
