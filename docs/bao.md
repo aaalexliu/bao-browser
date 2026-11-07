@@ -271,7 +271,7 @@ The desktop window and the web app share one formatter (`web/src/lib/time.ts`). 
 
 ### 2026-10-22 — Act prompts survive a restart
 
-A login or confirm wait is stored in the app home as `pending-prompt.json`. Closing the window and opening it again restores the bar and the badge. When the deadline passes and no replay is still in that wait, the file is removed and the run is marked stopped, timed out. A wait that finishes inside a running replay still stops with `nothing applied` or `waiting for you to log in`.
+[Bao desktop v1](v1.md#you-need-to-act) owns handoff controls, prompt persistence, and timeout behavior.
 
 ### 2026-10-22 — Locator history and a banner that stays off the workflow
 
