@@ -1309,7 +1309,6 @@ async function runLogin(
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
   const human = !secretArg(workflow, args, step.input)
-    || stepNeedsSecretValue(step, workflow, args)
     || Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
   if (loginSatisfied(workflow, step, seen, args) && !miss) {
     if (gate.humanReady) endHandoff(driver, gate, step.id);
