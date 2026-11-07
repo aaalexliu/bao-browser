@@ -5,7 +5,7 @@ import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, type CurrentChrome } from "../cdp-live/current-chrome";
-import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "./agent-browser-record";
+import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand } from "./agent-browser-record";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
@@ -15,6 +15,8 @@ import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, ty
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
 export interface AgentBrowserCommandResult { stdout: string; stderr: string; exitCode: number }
+
+const SESSION_IDLE_MS = 10 * 60 * 1000;
 
 const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=copy explicitly to start a copied-profile session.";
 
@@ -57,11 +59,13 @@ interface SessionData {
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
+  outcome?: AgentBrowserTaskOutcome;
+  idleTimer?: ReturnType<typeof setTimeout>;
 }
 
 type Session = SessionData & (
   | { kind: "copy"; chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>> }
-  | { kind: "current"; chrome: CurrentChrome; taskTabPid?: string }
+  | { kind: "current"; chrome: CurrentChrome; taskTabPid?: string; taskTabs: Set<string> }
 );
 
 export class AgentBrowserProxy {
@@ -78,7 +82,7 @@ export class AgentBrowserProxy {
   get activeRunId(): string | undefined { return this.session?.recording.id; }
   private currentEnded = false;
 
-  constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean }) {}
+  constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean }) {}
 
   queueClose(args: unknown = []): () => void {
     validateAgentBrowserCommand("close", args);
@@ -145,6 +149,7 @@ export class AgentBrowserProxy {
       }
     }
     const session = this.session;
+    clearTimeout(session.idleTimer);
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
     const results: AgentBrowserCommandResult[] = [];
@@ -174,7 +179,7 @@ export class AgentBrowserProxy {
       }
       await session.workflow.record(command as string, args, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
-          ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Its tabs and windows stay open." : "", stderr: "", exitCode: 0 }
+          ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
           : await this.run(session, command as string, args);
         results.push(result);
         if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
@@ -201,7 +206,8 @@ export class AgentBrowserProxy {
         }
       } finally {
         commandDone();
-        if (command === "close") await this.remove(session);
+        if (command === "close" || session.kind === "current" && session.abort.signal.aborted && !session.removing && !this.disconnected) await this.remove(session);
+        else this.armIdle(session);
       }
     }
   }
@@ -226,6 +232,24 @@ export class AgentBrowserProxy {
     }
   }
 
+  async finishTask(outcome: AgentBrowserTaskOutcome): Promise<string | undefined> {
+    this.workflowOutcome = undefined;
+    this.currentEnded = false;
+    const session = this.session;
+    if (!session) return undefined;
+    session.outcome = outcome;
+    if (outcome.outcome === "failed") session.workflow.unavailable(outcome.reason);
+    const runId = session.recording.id;
+    try {
+      await this.remove(session, this.options.keepOpen?.() === true);
+      session.recording.finish(outcome);
+      if (this.session === session) this.session = undefined;
+      return runId;
+    } finally {
+      this.currentEnded = false;
+    }
+  }
+
   async close(): Promise<void> {
     if (!this.session) return;
     this.session.closing = true;
@@ -246,7 +270,7 @@ export class AgentBrowserProxy {
       detached: this.options.keepOpen?.() === true,
     };
     const browser = route === "current"
-      ? { kind: "current" as const, chrome: await openCurrentChrome({ root: options.sourceRoot, defaultRoot: chromeProfilesRoot(),
+      ? { kind: "current" as const, taskTabs: new Set<string>(), chrome: await openCurrentChrome({ root: options.sourceRoot, defaultRoot: chromeProfilesRoot(),
         axLog: path.join(this.options.home, "audit", "current-chrome.jsonl"), signal: abort.signal }) }
       : { kind: "copy" as const, chrome: route === "bao" ? await openBaoChromeForProxy({ ...options, site }) : await openCopiedChromeForProxy(options) };
     let stateDir: string | undefined;
@@ -352,7 +376,6 @@ export class AgentBrowserProxy {
     session.ownerWait = undefined;
     session.workflow.unavailable("the owner wait did not finish");
     session.recording.finish("session_closed");
-    if (session.kind === "current") session.chrome.detach();
     return this.ownerResult("closed", session.kind === "current");
   }
 
@@ -362,7 +385,7 @@ export class AgentBrowserProxy {
     session.ownerWait ??= "pending";
     session.recording.ownerWaiting(true);
     let cdp: CdpSocket | undefined;
-    const onAbort = () => cdp?.close();
+    const onAbort = () => { if (session.kind === "copy") cdp?.close(); };
     session.abort.signal.addEventListener("abort", onAbort, { once: true });
     let candidate = "";
     let stableAt = 0;
@@ -479,57 +502,104 @@ export class AgentBrowserProxy {
         try { process.kill(Number(pid), 0); running = true; }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
       }
+      const rememberTaskTab = async () => {
+        try {
+          const tabs = await execute("tab", ["list", "--json"], 5000);
+          if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);
+          const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
+          const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+          if (!targetId) throw new Error("Native task tab has no target id");
+          session.taskTabs.add(targetId);
+        } catch (error) {
+          process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
+        }
+      };
       if (!running || pid !== session.taskTabPid) {
         session.taskTabPid = undefined;
         const tab = await execute("tab", ["new"]);
         if (tab.exitCode !== 0) return tab;
         session.taskTabPid = await readFile(pidFile, "utf8");
+        await rememberTaskTab();
       }
-      return execute(command, args, readTimeoutMs);
+      const result = await execute(command, args, readTimeoutMs);
+      if (command === "tab" && args[0] === "new" && result.exitCode === 0) await rememberTaskTab();
+      return result;
     }, session.abort.signal, (result, context) => result.exitCode === 0 ? result : {
       ...result, stderr: `${result.stderr}${result.stderr && !result.stderr.endsWith("\n") ? "\n" : ""}${context}`,
     });
   }
 
-  private async remove(session: Session, keepOpen = false): Promise<void> {
-    if (session.kind === "current" && !session.closing && !this.disconnected) this.currentEnded = true;
-    await (session.removing ??= (async () => {
-      session.abort.abort();
-      await session.commandDone;
-      session.recording.finish();
-      if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
-      this.workflowOutcome = session.workflow.finish();
-      try {
-        const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
-        if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) {
-          const running = () => {
-            try { process.kill(pid, 0); return true; }
-            catch (error) {
-              if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-              throw error;
+  private armIdle(session: Session): void {
+    clearTimeout(session.idleTimer);
+    if (this.session !== session || session.removing || session.ownerWait || this.disconnected) return;
+    session.idleTimer = setTimeout(() => {
+      if (this.options.hasHold?.()) { this.armIdle(session); return; }
+      session.outcome = { outcome: "failed", reason: "Session ended without finish_task after 10 minutes of inactivity." };
+      session.workflow.unavailable(session.outcome.reason);
+      void this.remove(session, this.options.keepOpen?.() === true, false)
+        .then(() => {
+          if (this.session === session) this.session = undefined;
+        })
+        .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
+    }, SESSION_IDLE_MS);
+    session.idleTimer.unref();
+  }
+
+  private async remove(session: Session, keepOpen = false, closeTaskTabs = true): Promise<void> {
+    clearTimeout(session.idleTimer);
+    try {
+      if (session.kind === "current" && !session.closing && !this.disconnected) this.currentEnded = true;
+      await (session.removing ??= (async () => {
+        session.abort.abort();
+        await session.commandDone;
+        session.recording.finish(session.outcome);
+        if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
+        try {
+          try {
+            const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
+            if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) {
+              const running = () => {
+                try { process.kill(pid, 0); return true; }
+                catch (error) {
+                  if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+                  throw error;
+                }
+              };
+              for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
+                process.kill(pid, signal);
+                const deadline = performance.now() + 1000;
+                while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+                if (!running()) break;
+              }
+              if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
             }
-          };
-          for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
-            process.kill(pid, signal);
-            const deadline = performance.now() + 1000;
-            while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-            if (!running()) break;
+          } catch (error) {
+            if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+          } finally {
+            if (session.kind === "current") {
+              try {
+                if (closeTaskTabs && session.taskTabs.size && session.chrome.cdp.isOpen) {
+                  const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 5000);
+                  for (const target of targetInfos.filter((target) => session.taskTabs.has(target.targetId))) {
+                    await session.chrome.cdp.send("Target.closeTarget", { targetId: target.targetId }, undefined, 5000).catch(() => undefined);
+                  }
+                }
+              } finally { session.chrome.detach(); }
+            } else if (keepOpen && !session.closing && this.pendingCloses === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
+            else await session.chrome.close();
           }
-          if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
+          await rm(session.stateDir, { recursive: true, force: true });
+        } finally {
+          this.workflowOutcome = session.workflow.finish();
         }
-      } catch (error) {
-        if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
-      } finally {
-        if (session.kind === "current") session.chrome.detach();
-        else if (keepOpen && !session.closing && this.pendingCloses === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
-        else await session.chrome.close();
+      })());
+      if (session.kind === "copy" && (session.closing || this.pendingCloses > 0) && !session.chrome.isClosed()) {
+        session.closing = true;
+        await session.chrome.close();
       }
-      await rm(session.stateDir, { recursive: true, force: true });
-    })());
-    if (session.kind === "copy" && (session.closing || this.pendingCloses > 0) && !session.chrome.isClosed()) {
-      session.closing = true;
-      await session.chrome.close();
+      if (this.session === session && session.chrome.isClosed()) this.session = undefined;
+    } finally {
+      if (this.session === session && session.kind === "current" && session.chrome.isClosed()) this.session = undefined;
     }
-    if (this.session === session && session.chrome.isClosed()) this.session = undefined;
   }
 }

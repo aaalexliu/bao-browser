@@ -26,6 +26,11 @@ export interface RecordedAgentBrowserCommand {
   };
 }
 
+export interface AgentBrowserTaskOutcome {
+  outcome: "passed" | "failed";
+  reason: string;
+}
+
 export class AgentBrowserRun {
   private readonly run: Omit<StoredRun, "steps"> & {
     steps: RecordedAgentBrowserCommand[];
@@ -112,11 +117,15 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  finish(reason?: "session_closed"): void {
-    if (this.run.status !== "recording" && this.run.status !== "needs_human") return;
-    if (reason === "session_closed" || this.run.status === "needs_human") {
+  finish(result?: "session_closed" | AgentBrowserTaskOutcome): void {
+    if (this.run.status !== "recording" && this.run.status !== "needs_human"
+      && (typeof result !== "object" || this.run.envelope)) return;
+    if (result === "session_closed" || this.run.status === "needs_human") {
       this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The Bao session ended before the owner wait completed. This session cannot continue." };
       this.run.status = "failed";
+    } else if (result) {
+      this.run.status = result.outcome;
+      this.run.envelope = { status: result.outcome, run_id: this.run.id, reason: result.reason };
     } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
       : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();

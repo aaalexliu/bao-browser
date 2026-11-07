@@ -44,6 +44,26 @@ test("recorder keeps exact native values and requested image bytes without workf
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+for (const status of ["passed", "failed", "paused"] as const) test(`outcome-less ${status} runs accept exactly one task outcome`, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-outcome-record-"));
+  try {
+    const library = new Library(root);
+    const recorder = new AgentBrowserRun(root);
+    const step = recorder.begin("snapshot", []);
+    if (status !== "paused") await recorder.complete(step, [{ stdout: "native result", stderr: "", exitCode: status === "failed" ? 1 : 0 }], root, async () => png);
+    recorder.finish();
+    assert.equal(library.readRun(recorder.id).status, status);
+    assert.equal(library.readRun(recorder.id).envelope, undefined);
+    recorder.finish({ outcome: "failed", reason: "Checked task failed" });
+    const saved = library.readRun(recorder.id);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.reason, "Checked task failed");
+    recorder.finish({ outcome: "passed", reason: "Later claim" });
+    recorder.finish();
+    assert.deepEqual(library.readRun(recorder.id), saved);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 for (const waiting of [true, false]) test(`closed owner wait finalizes a ${waiting ? "needs-human" : "recording"} run`, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-owner-record-"));
   try {
@@ -59,6 +79,7 @@ for (const waiting of [true, false]) test(`closed owner wait finalizes a ${waiti
     assert.equal(ended.envelope?.reason, "session_closed");
     assert.doesNotMatch(ended.envelope?.ask ?? "", /will continue here|is waiting/);
     recorder.finish();
+    recorder.finish({ outcome: "passed", reason: "Later claim" });
     assert.deepEqual(library.readRun(id), ended);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

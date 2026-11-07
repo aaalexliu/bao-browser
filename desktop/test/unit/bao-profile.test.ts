@@ -281,7 +281,15 @@ test("Bao reclaims dead owners and slow closes but refuses a live owner", { time
     const pid = Number(dead.stdout);
     assert.ok(pid > 1);
     await writeFile(marker, JSON.stringify({ pid }));
+    const previous = chrome;
     chrome = await openBaoChromeForProxy(options);
+    await previous.closed;
+    const endpoint = await readDevToolsActivePort(chrome.target.portFile);
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    try {
+      const { targetInfos } = await cdp.send<{ targetInfos: { type: string }[] }>("Target.getTargets");
+      assert.ok(targetInfos.some((target) => target.type === "page"), "the replacement must remain usable after the previous owner's cleanup");
+    } finally { cdp.close(); }
     assert.notDeepEqual(launches.pidsForDataDir(profile), []);
     assert.equal((JSON.parse(await readFile(marker, "utf8")) as { pid: number }).pid, process.pid);
     slowClose = true;

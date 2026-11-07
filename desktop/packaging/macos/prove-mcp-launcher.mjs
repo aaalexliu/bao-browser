@@ -80,7 +80,7 @@ try {
   check(init.result?.serverInfo?.name === "bao", `initialize did not name the bao server: ${JSON.stringify(init)}`);
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
   const names = ((await request("tools/list")).result?.tools || []).map((item) => item.name);
-  const expected = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser"];
+  const expected = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser", "finish_task"];
   check(names.length === expected.length && expected.every((name) => names.includes(name)), `unexpected tools/list: ${names.join(", ")}`);
   const search = await tool("search_workflows", { query: "launcher" });
   const ids = (JSON.parse(search.text).hits || []).map((hit) => hit.id);

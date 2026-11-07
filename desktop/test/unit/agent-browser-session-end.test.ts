@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { closeRetainedChrome, pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import { closeRetainedChrome, launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import * as cdpSocket from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState } from "../../src/v1/sync";
 import { laneChildEnv } from "../runtime";
@@ -36,6 +37,8 @@ const args = process.argv.slice(2);
 if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringify(blockCommand)})) {
   fs.writeFileSync(${JSON.stringify(path.join(root, "native-pending"))}, 'ready');
   setInterval(() => {}, 1000);
+} else if (args.includes('fill')) {
+  console.error('fixture field missing'); process.exitCode = 7;
 } else if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
   fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
@@ -117,8 +120,8 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     send(method, params, id);
   });
   return {
-    request, send, pid: child.pid,
-    call: (command: string) => request("tools/call", { name: "agent_browser", arguments: { command } }),
+    request, send, pid: child.pid, diagnostics: () => stderr,
+    call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } }),
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
     async interruptGroup(signal: "SIGINT" | "SIGTERM" | "SIGHUP", repeat: boolean) {
@@ -190,6 +193,233 @@ if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 }
+
+test("retained-profile reclaim removes orphan renderers only for its exact profile", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-orphan-reclaim-"));
+  const executable = path.join(root, "chrome-renderer.cjs");
+  await writeFile(executable, "setInterval(() => {}, 1000); console.log('ready');");
+  const children: { child: ReturnType<typeof spawn>; exited: Promise<void> }[] = [];
+  t.after(async () => {
+    for (const { child } of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await Promise.all(children.map(({ exited }) => exited));
+    await rm(root, { recursive: true, force: true });
+  });
+  const profile = path.join(root, "profile");
+  const unrelated = path.join(root, "profile-other");
+  for (const directory of [profile, profile, unrelated]) {
+    const child = spawn(process.execPath, [executable, `--user-data-dir=${directory}`, "--type=renderer"], { stdio: ["ignore", "pipe", "pipe"] });
+    const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+    children.push({ child, exited });
+    await new Promise<void>((resolve, reject) => {
+      child.stdout!.once("data", () => resolve());
+      child.once("error", reject);
+      void exited.then(() => reject(new Error("fixture renderer exited before readiness")));
+    });
+  }
+  assert.equal(pidsForDataDir(profile).length, 2);
+  await closeRetainedChrome(profile);
+  await Promise.all(children.slice(0, 2).map(({ exited }) => exited));
+  assert.equal(pidsForDataDir(profile).length, 0);
+  assert.equal(children[2]!.child.exitCode, null);
+  assert.equal(children[2]!.child.signalCode, null, "a different profile is never signaled");
+});
+
+test("owned shutdown waits for exact-profile orphan processes to exit", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-shutdown-orphan-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  const orphan = spawn(process.execPath, ["-e", "console.log('ready'); setInterval(() => {}, 1000)", "--", `--user-data-dir=${profile}`, "--type=renderer"], { stdio: ["ignore", "pipe", "inherit"] });
+  const exited = new Promise<void>(resolve => orphan.once("exit", () => resolve()));
+  const kill = process.kill.bind(process);
+  let signalTimer: ReturnType<typeof setTimeout> | undefined;
+  t.after(async () => {
+    clearTimeout(signalTimer);
+    t.mock.restoreAll();
+    if (orphan.exitCode === null && orphan.signalCode === null) orphan.kill("SIGKILL");
+    await exited;
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  await new Promise<void>((resolve, reject) => {
+    orphan.stdout!.once("data", () => resolve());
+    orphan.once("error", reject);
+    void exited.then(() => reject(new Error("orphan exited before readiness")));
+  });
+  let signaled = false;
+  t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+    if (pid === orphan.pid && signal === "SIGKILL") {
+      signaled = true;
+      // Model a signal that the OS accepts before the process has exited.
+      signalTimer = setTimeout(() => kill(pid, signal), 500);
+      return true;
+    }
+    return kill(pid, signal);
+  });
+  await chrome.close();
+  assert.equal(signaled, true, "shutdown must reclaim the orphan");
+  assert.equal(pidsForDataDir(profile).length, 0, "close must await process exit, not just signal delivery");
+});
+
+test("owned shutdown terminates a stalled exact-profile browser before returning", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-shutdown-stalled-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  t.after(async () => {
+    for (const pid of pidsForDataDir(profile)) {
+      try { process.kill(pid, "SIGKILL"); } catch {}
+    }
+    await until(() => pidsForDataDir(profile).length === 0);
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const pids = pidsForDataDir(profile);
+  assert.ok(pids.length);
+  for (const pid of pids) process.kill(pid, "SIGSTOP");
+  await chrome.close();
+  assert.equal(pidsForDataDir(profile).length, 0, "close must not succeed while its owned browser is still alive");
+});
+
+test("retained reclaim terminates its exact browser even when CDP acknowledges close without exiting", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-ack-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  t.after(async () => { await chrome.close(); await rm(root, { recursive: true, force: true }); });
+  let acknowledged = false;
+  t.mock.method(cdpSocket, "connectCdp", async () => ({
+    async send(method: string) { assert.equal(method, "Browser.close"); acknowledged = true; return {}; },
+    close() {},
+  }));
+  assert.ok(pidsForDataDir(profile).length);
+  await closeRetainedChrome(profile);
+  assert.equal(acknowledged, true);
+  assert.equal(pidsForDataDir(profile).length, 0, "a close acknowledgement is not proof that Chrome exited");
+});
+
+test("retained reclaim terminates a stalled exact-profile browser before returning", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-stalled-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  t.after(async () => {
+    for (const pid of pidsForDataDir(profile)) {
+      try { process.kill(pid, "SIGKILL"); } catch {}
+    }
+    await until(() => pidsForDataDir(profile).length === 0);
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  t.mock.method(cdpSocket, "connectCdp", async () => ({
+    async send() { return {}; },
+    close() {},
+  }));
+  const pids = pidsForDataDir(profile);
+  assert.ok(pids.length);
+  for (const pid of pids) process.kill(pid, "SIGSTOP");
+  await closeRetainedChrome(profile);
+  assert.equal(pidsForDataDir(profile).length, 0, "reclaim must not succeed while its retained browser is still alive");
+});
+
+for (const keepOpen of [false, true]) {
+  test(`finish_task finalizes without close or disconnect, honors keep-open=${keepOpen}, and accepts another task`, { timeout: 60_000 }, async (t) => {
+    const f = await fixture();
+    t.after(() => f.close());
+    f.library.updateSettings({ keepAgentBrowserOpen: keepOpen, heal: "never" });
+    const c = f.start();
+    const initialized = await c.request("initialize") as Result & { instructions: string };
+    assert.match(initialized.instructions, /finish_task.*before your final answer/);
+    assert.equal((await c.call("open")).isError, false);
+    const copy = await f.copy();
+    const runId = f.library.listRuns()[0]!.id;
+    assert.equal(f.library.readRun(runId).status, "recording");
+    const result = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Verified the task result." } });
+    assert.equal(result.isError, false);
+    const receipt = JSON.parse(result.content![0]!.text) as { run_id: string; status: string };
+    assert.equal(receipt.run_id, runId);
+    assert.equal(receipt.status, "passed");
+    assert.equal(f.library.readRun(runId).status, "passed");
+    if (keepOpen) assert.ok(pidsForDataDir(copy).length);
+    else {
+      assert.equal(pidsForDataDir(copy).length, 0);
+      await assert.rejects(access(copy), /ENOENT/);
+    }
+    assert.equal((await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Already finished." } })).isError, false);
+    assert.equal(f.library.listRuns().length, 1, "finishing again creates no empty run");
+    assert.equal((await c.call("open")).isError, false, "the same MCP process accepts a new task");
+    assert.notEqual(await f.copy(), copy);
+    assert.equal(pidsForDataDir(copy).length, 0, "a new task reclaims a kept window");
+    await c.close();
+  });
+}
+
+test("finish_task after a completed close leaves the prior task unchanged", { timeout: 60_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const runId = f.library.listRuns()[0]!.id;
+  assert.equal((await c.call("close")).isError, false);
+  const saved = f.library.readRun(runId);
+  assert.equal(saved.status, "passed");
+  assert.equal(saved.envelope, undefined);
+  const result = await c.request("tools/call", { name: "finish_task", arguments: {
+    outcome: "failed", reason: "The requested item was unavailable.",
+  } });
+  assert.equal(result.isError, false);
+  const receipt = JSON.parse(result.content![0]!.text) as { outcome: string; run_id?: string };
+  assert.equal(receipt.outcome, "no_session");
+  assert.equal(receipt.run_id, undefined);
+  assert.deepEqual(f.library.readRun(runId), saved, "a later task cannot relabel a fully removed session");
+  await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "A later claim" } });
+  assert.deepEqual(f.library.readRun(runId), saved, "repeated finishes leave the prior task unchanged");
+  assert.equal(f.library.listRuns().length, 1);
+});
+
+for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) {
+  test(`finish_task records the checked outcome for ${outcome}`, { timeout: 60_000 }, async (t) => {
+    const f = await fixture();
+    t.after(() => f.close());
+    const c = f.start();
+    await c.request("initialize");
+    assert.equal((await c.call("open")).isError, false);
+    if (outcome === "failed-command") assert.equal((await c.call("fill", ["#missing", "Ada"])).isError, true);
+    if (outcome === "owner-wait") {
+      assert.equal((await c.call("wait_for_owner", ["1"])).isError, false);
+      assert.equal(f.library.listRuns()[0]!.status, "needs_human", "waiting does not complete a task");
+    }
+    const copy = await f.copy();
+    const invalid = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: " " } });
+    assert.equal(invalid.isError, true);
+    assert.ok(pidsForDataDir(copy).length, "invalid finish leaves the session available");
+    const result = await c.request("tools/call", { name: "finish_task", arguments: {
+      outcome: outcome === "failed-task" ? "failed" : "passed", reason: "The requested item was unavailable.",
+    } });
+    assert.equal(result.isError, false);
+    const run = f.library.listRuns()[0]!;
+    assert.equal(run.status, outcome === "failed-command" ? "passed" : "failed");
+    assert.ok(run.envelope?.reason, "every completion has a reason");
+    if (outcome !== "owner-wait") assert.equal(run.envelope?.reason, "The requested item was unavailable.");
+    if (outcome === "failed-command") {
+      const steps = f.library.readRun(run.id).steps as unknown as { status: string }[];
+      assert.ok(steps.some(step => step.status === "failed"), "recovered command errors remain in the receipt");
+    }
+    assert.equal(pidsForDataDir(copy).length, 0, c.diagnostics());
+    assert.equal(f.library.list().workflows.length, 0, "failed tasks cannot save a replayable workflow");
+  });
+}
+
+test("an untouched MCP client disconnect creates no recording run", { timeout: 30_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  await c.close();
+  assert.deepEqual(f.library.listRuns(), []);
+});
 
 for (const ending of ["queued-eof", "active-signal"] as const) {
   test(`explicit close overrides keep-open during ${ending}`, { timeout: 60_000 }, async (t) => {
