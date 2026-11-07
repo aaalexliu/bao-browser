@@ -239,8 +239,13 @@ export async function runWorkflow(
   const live = request.resume ? liveRuns.get(request.resume) : undefined;
   if (live) {
     if (live.continuing) return live.continuing;
-    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
-    live.continuing = continueLive(library, live, request.inputs ?? {}, control)
+    live.continuing = Promise.resolve(live.observing)
+      .catch(() => undefined)
+      .then(() => {
+        if (liveRuns.get(live.token) !== live) return emptyOutcome(live.workflow.id, "failed", "the run's browser is gone");
+        if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
+        return continueLive(library, live, request.inputs ?? {}, control);
+      })
       .finally(() => { live.continuing = undefined; });
     return live.continuing;
   }
@@ -309,11 +314,15 @@ export function heldConfirmStep(token: string): { stepId: string; stepLabel: str
 export async function heldConfirmReady(token: string): Promise<boolean> {
   const live = liveRuns.get(token);
   if (!live || live.kind !== "confirm" || live.continuing || !live.confirmPending) return false;
+  if (live.observing) return live.observing;
   const stepId = live.stepId;
   const post = live.workflow.steps.find((step) => step.id === stepId)?.postcondition;
   if (!post) return false;
-  const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
-  return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && holds(post, tree, live.inputs);
+  live.observing = (async () => {
+    const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
+    return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && holds(post, tree, live.inputs);
+  })().finally(() => { live.observing = undefined; });
+  return live.observing;
 }
 
 export async function reviewWorkflow(
@@ -478,6 +487,7 @@ interface LiveRun {
   ask: string;
   prompts?: PersonPrompts;
   observer?: BrowserDriver;
+  observing?: Promise<boolean>;
   confirmPending?: boolean;
   continuing?: Promise<WorkflowOutcome>;
 }

@@ -258,6 +258,113 @@ test("production remote confirms continue locally once and reject non-held order
   }
 });
 
+for (const observationFailure of ["navigation", "unreadable"] as const) {
+  test(`live continuation drains a ${observationFailure} observation before replay`, { timeout: 30_000 }, async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-observer-resume-"));
+    const library = new Library(home);
+    let finishes = 0;
+    let wrongClicks = 0;
+    const site = createServer((req, res) => {
+      if (req.method === "POST") {
+        if (req.url === "/finish") finishes += 1;
+        else wrongClicks += 1;
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end(`<body><button id="wrong" onclick="fetch('/wrong',{method:'POST'})">Do not click</button><button id="finish" onclick="fetch('/finish',{method:'POST'}).then(()=>document.getElementById('status').textContent='Finished')">Finish</button><p id="status"></p></body>`);
+    });
+    let token = "";
+    let release = () => {};
+    let observation: Promise<boolean> | undefined;
+    const resumes: Promise<unknown>[] = [];
+    try {
+      await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+      const address = site.address();
+      assert.ok(address && typeof address === "object");
+      library.save({
+        schema: "bao.workflow/v2", version: 2, id: "observer-order", name: "Observer order", createdAt: 1,
+        startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [
+          { id: "confirm", index: 0, action: "confirm", human: true, label: "Finish on the site", surface: "dom", timeoutMs: 5000, postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } },
+          { id: "finish", index: 1, action: "click", label: "Finish", surface: "dom", timeoutMs: 1000, heal: "never",
+            identity: { surface: "dom", role: "button", id: "finish", name: "Finish", path: [] }, postcondition: { kind: "text", match: "Finished", timeoutMs: 3000 } },
+        ],
+      });
+      const held = await runWorkflow(library, { id: "observer-order" });
+      assert.equal(held.outcome, "needs_human");
+      token = String(held.resume);
+      await withHeldPage(token, async (page) => {
+        const evaluate = page.evaluate;
+        const waitForLoadState = page.waitForLoadState;
+        let unblock!: () => void;
+        let retryStarted!: () => void;
+        const blocked = new Promise<void>((resolve) => { unblock = resolve; });
+        const retry = new Promise<void>((resolve) => { retryStarted = resolve; });
+        release = unblock;
+        let evaluations = 0;
+        page.evaluate = (async (...args: unknown[]) => {
+          evaluations += 1;
+          if (evaluations === 1) {
+            if (observationFailure === "navigation") throw new Error("Execution context was destroyed");
+            retryStarted();
+            await blocked;
+            throw new Error("Page unreadable");
+          }
+          return Reflect.apply(evaluate, page, args);
+        }) as typeof page.evaluate;
+        page.waitForLoadState = async (...args) => {
+          if (args[0] === "domcontentloaded") {
+            retryStarted();
+            await blocked;
+            return;
+          }
+          return Reflect.apply(waitForLoadState, page, args);
+        };
+        try {
+          observation = heldConfirmReady(token);
+          const sharedObservation = heldConfirmReady(token);
+          const observed = Promise.allSettled([observation, sharedObservation]);
+          await retry;
+          const first = runWorkflow(library, { resume: token }, undefined, { confirmCompleted: true });
+          const second = runWorkflow(library, { resume: token });
+          resumes.push(first, second);
+          assert.equal(await heldConfirmReady(token), false, "a new poll started while continuation owned the run");
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          assert.equal(evaluations, 1, "replay read page handles before the held observation drained");
+          assert.equal(finishes, 0, "replay acted while the held observation could still retry");
+          await page.locator("#finish").evaluate((button) => {
+            const inserted = document.createElement("button");
+            inserted.textContent = "New control";
+            inserted.onclick = () => { void fetch("/wrong", { method: "POST" }); };
+            button.before(inserted);
+          });
+          release();
+          const observations = await observed;
+          assert.ok(observations.every((result) => observationFailure === "navigation"
+            ? result.status === "fulfilled" && result.value === false
+            : result.status === "rejected"));
+          const results = await Promise.all([first, second]);
+          assert.ok(results.every((result) => result.outcome === "ok"), JSON.stringify(results));
+          assert.equal(results[0]?.runId, held.runId);
+          assert.deepEqual(results[0], results[1], "competing resumes did not share the first winner");
+          assert.equal(finishes, 1, "competing resumes repeated the downstream action");
+          assert.equal(wrongClicks, 0, "the replay clicked a different control");
+        } finally {
+          release();
+          page.evaluate = evaluate;
+          page.waitForLoadState = waitForLoadState;
+        }
+      });
+    } finally {
+      release();
+      await Promise.allSettled([observation, ...resumes]);
+      if (token) await runWorkflow(library, { resume: token, cancel: true });
+      await new Promise<void>((resolve) => site.close(() => resolve()));
+    }
+  });
+}
+
 async function waitFor(ready: () => boolean): Promise<void> {
   const deadline = Date.now() + 5000;
   while (!ready()) {
