@@ -125,6 +125,9 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
           await page.locator('[data-open-run="focus-run"]').first().click();
           const retry = page.locator("#retry-run");
           await retry.waitFor();
+          await page.waitForResponse("**/api/state");
+          await page.waitForRequest("**/api/state");
+          await retry.waitFor();
           runFailure = "";
           if (keyboard) { await retry.focus(); await page.keyboard.press("Enter"); }
           else await retry.click();
