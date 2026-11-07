@@ -281,7 +281,10 @@ function render(focusDetail = true): void {
   const focused = document.activeElement as HTMLElement | null;
   const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
   const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
-  const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement>("#settings input[data-settings-draft]")].filter((input) => input.value !== input.defaultValue).map((input) => [input.id, input.value] as const) : [];
+  const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft]")].filter((input) => input instanceof HTMLSelectElement
+    ? [...input.options].some((option) => option.selected !== option.defaultSelected)
+    : input.type === "checkbox" ? input.checked !== input.defaultChecked : input.value !== input.defaultValue)
+    .map((input) => [input.id, input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.value] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
@@ -366,8 +369,9 @@ function render(focusDetail = true): void {
   }
   for (const id of settingsDetails) document.getElementById(id)?.setAttribute("open", "");
   for (const [id, value] of settingsDrafts) {
-    const input = document.getElementById(id) as HTMLInputElement | null;
-    if (input) input.value = value;
+    const input = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+    if (input instanceof HTMLInputElement && typeof value === "boolean") input.checked = value;
+    else if (input && typeof value === "string") input.value = value;
   }
   if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
   bind();
@@ -472,15 +476,15 @@ function settings(): string {
     ${desktopMcpSettings()}
     <div class="card" id="page-engine-settings">
       <h3>Page engine</h3>
-      <label>Run engine <select id="page-engine">
+      <label>Run engine <select id="page-engine" data-settings-draft>
         <option value="old" ${state.settings?.pageEngine !== "agent-browser" ? "selected" : ""}>Current engine (default)</option>
         <option value="agent-browser" ${state.settings?.pageEngine === "agent-browser" ? "selected" : ""}>agent-browser (trial)</option>
       </select></label>
-      <label>Chrome profile for agent-browser <select id="chrome-profile" ${state.settings?.pageEngine !== "agent-browser" ? "disabled" : ""}>
+      <label>Chrome profile for agent-browser <select id="chrome-profile" data-settings-draft ${state.settings?.pageEngine !== "agent-browser" ? "disabled" : ""}>
         <option value="">Choose a Chrome profile</option>
         ${chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${state.settings?.chromeProfile === profile.directory ? "selected" : ""}>${esc(profile.name)}${profile.email ? ` - ${esc(profile.email)}` : ""} (${esc(profile.directory)})</option>`).join("")}
       </select></label>
-      <label class="extensions-choice"><input id="chrome-profile-extensions" type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
+      <label class="extensions-choice"><input id="chrome-profile-extensions" data-settings-draft type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
       <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. No remote-debugging switch, Accessibility, or Automation is needed.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
@@ -489,7 +493,7 @@ function settings(): string {
     </div>
     <div class="card" id="agent-window-settings">
       <h3>Agent window</h3>
-      <label><input id="keep-agent-browser-open" type="checkbox" aria-describedby="agent-browser-lifetime-help" ${state.settings?.keepAgentBrowserOpen === true ? "checked" : ""}> Keep window open after agent finishes</label>
+      <label><input id="keep-agent-browser-open" data-settings-draft type="checkbox" aria-describedby="agent-browser-lifetime-help" ${state.settings?.keepAgentBrowserOpen === true ? "checked" : ""}> Keep window open after agent finishes</label>
       <p class="quiet" id="agent-browser-lifetime-help">Off by default. Bao closes the marked Chrome window and deletes its private profile copy when the agent disconnects or Bao MCP stops. Turn this on to finish a task by hand. The next agent session closes the kept window and deletes its copy before opening a fresh one. The agent's close command, or closing the window by hand during a live session, still closes Chrome and deletes its copy. Kept Chrome has no Bao owner and keeps a local debugging port open, even after you close its window, until you quit that Chrome or the next agent session reclaims its copy. Other local processes can use that port to read the copy's cookies or control its signed-in pages. Your original Chrome stays untouched.</p>
       <button id="save-agent-browser-lifetime" type="button">Save window choice</button>
       <p id="agent-browser-lifetime-feedback" role="status"></p>
@@ -876,10 +880,12 @@ function bind(): void {
   const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
   const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;
   const extensionsChoice = document.getElementById("chrome-profile-extensions") as HTMLInputElement | null;
-  if (engineChoice) engineChoice.onchange = () => {
-    if (profileChoice) profileChoice.disabled = engineChoice.value !== "agent-browser";
-    if (extensionsChoice) extensionsChoice.disabled = engineChoice.value !== "agent-browser" || !profileChoice?.value;
+  const updateEngineControls = () => {
+    if (profileChoice) profileChoice.disabled = engineChoice?.value !== "agent-browser";
+    if (extensionsChoice) extensionsChoice.disabled = engineChoice?.value !== "agent-browser" || !profileChoice?.value;
   };
+  updateEngineControls();
+  if (engineChoice) engineChoice.onchange = updateEngineControls;
   if (profileChoice) profileChoice.onchange = () => {
     if (!extensionsChoice) return;
     extensionsChoice.checked = state.settings?.chromeProfileExtensions?.[profileChoice.value] === true;
@@ -1076,11 +1082,15 @@ function bindRemote(): void {
   const pair = document.getElementById("relay-pair");
   if (pair) pair.onclick = async () => {
     const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
-    await fetch("/api/remote/pair", {
+    const response = await fetch("/api/remote/pair", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code }),
     });
+    if (response.ok) {
+      const input = document.getElementById("relay-code") as HTMLInputElement | null;
+      if (input) input.value = input.defaultValue;
+    }
     renderKey = "";
     await refresh();
   };
@@ -1971,6 +1981,11 @@ async function postSync(url: string, body: unknown): Promise<void> {
   const payload = await res.json().catch(() => ({})) as { error?: string; id?: string; name?: string; steps?: string[] };
   if (!res.ok) {
     banner = { id: "sync", title: "Sync", body: payload.error || "Sync failed" };
+  } else if (url === "/api/sync/pair") {
+    for (const id of ["pair-code", "invite-secret"]) {
+      const input = document.getElementById(id) as HTMLInputElement | null;
+      if (input) input.value = input.defaultValue;
+    }
   } else if (Array.isArray(payload.steps) && payload.id) {
     conflictCopy = { id: payload.id, name: payload.name || payload.id, steps: payload.steps };
   } else if (url.endsWith("/conflict")) {

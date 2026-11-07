@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 import { testChromium } from "../../src/test-browser";
+
+interface StateFixture extends Record<string, unknown> {
+  sync?: Record<string, unknown>;
+}
 
 async function eventually(check: () => boolean): Promise<void> {
   for (let i = 0; i < 100; i++) {
@@ -25,19 +29,32 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
   try {
     const site = { origin: "https://example.test", probeUrl: "https://example.test/account", signedInSelector: "", signedInText: "", botCookies: "skip", origins: [], signedIn: false };
     await writeFile(path.join(home, "library", "login-sites.json"), JSON.stringify({ sites: [site] }));
+    for (const directory of ["Default", "Profile 1"]) await mkdir(path.join(home, "profiles", directory), { recursive: true });
+    await writeFile(path.join(home, "profiles", "Local State"), JSON.stringify({ profile: { info_cache: {} } }));
     app.library.updateSettings({ siteTrust: { "https://example.test": "allow" } });
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    const settingsWrites: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/settings") settingsWrites.push(request.postDataJSON() as unknown);
+    });
+    let syncPairOk = false;
+    let relayPairOk = false;
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
-      const state = await response.json();
-      await route.fulfill({ response, json: { ...state, sync: { ...state.sync, paired: true, server: "https://registry-a.test" } } });
+      const state = await response.json() as StateFixture;
+      await route.fulfill({ response, json: { ...state, sync: { ...state.sync, paired: true, server: "https://registry-a.test", inviteSaved: syncPairOk }, relay: { paired: relayPairOk } } });
     });
     let pairRequest: Record<string, string> | undefined;
     await page.route("**/api/sync/pair", async (route) => {
       pairRequest = route.request().postDataJSON() as Record<string, string>;
-      await route.fulfill({ json: {} });
+      await route.fulfill({ status: syncPairOk ? 200 : 400, json: syncPairOk ? {} : { error: "Pair fixture rejected" } });
+    });
+    let relayRequest: unknown;
+    await page.route("**/api/remote/pair", async (route) => {
+      relayRequest = route.request().postDataJSON() as unknown;
+      await route.fulfill({ status: relayPairOk ? 200 : 400, json: relayPairOk ? { paired: true } : { error: "Pair fixture rejected" } });
     });
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
@@ -81,7 +98,6 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     for (const [id, value] of drafts) await page.locator(`#${id}`).fill(value);
     await page.locator("#sync-server").focus();
     await page.locator("#sync-server").press("Tab");
-    assert.equal(app.library.settings().syncServer, undefined);
     await page.locator("#remote-mcp").check();
     await eventually(() => app.library.settings().remoteMcp === true);
     await page.waitForFunction(() => document.getElementById("remote-state")?.textContent === "On, not paired");
@@ -92,14 +108,32 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await eventually(() => app.library.settings().remoteMcp === false);
     await page.locator('[data-settings-jump="ai"]').click();
     assert.equal(await page.evaluate(() => document.activeElement?.id), "set-ai");
+    await page.locator("#page-engine").selectOption("agent-browser");
+    await page.locator("#chrome-profile").selectOption("Profile 1");
+    await page.locator("#chrome-profile-extensions").check();
+    await page.locator("#keep-agent-browser-open").check();
     await page.locator("#circuit-limit").fill("7");
     await page.locator("#circuit-limit").press("Tab");
     await eventually(() => app.library.settings().circuitLimit === 7);
     await page.locator("#remote-permission").selectOption("deny");
     await eventually(() => app.library.settings().remotePermission === "deny");
-    await page.locator("[data-site-trust]").selectOption("ask");
+    const trust = page.locator("[data-site-trust]");
+    const trustId = await trust.getAttribute("id");
+    assert.ok(trustId);
+    await trust.focus();
+    await trust.press("Home");
+    await page.waitForFunction(() => (document.querySelector('[data-site-trust] option[value="ask"]') as HTMLOptionElement)?.defaultSelected === true);
     await eventually(() => app.library.settings().siteTrust?.["https://example.test"] === "ask");
-    await page.locator("#keep-agent-browser-open").check();
+    assert.equal(await page.evaluate(() => document.activeElement?.id), trustId);
+    assert.equal(await page.locator("#page-engine").inputValue(), "agent-browser");
+    assert.equal(await page.locator("#chrome-profile").inputValue(), "Profile 1");
+    assert.equal(await page.locator("#chrome-profile").isEnabled(), true);
+    assert.equal(await page.locator("#chrome-profile-extensions").isEnabled(), true);
+    assert.equal(await page.locator("#chrome-profile-extensions").isChecked(), true);
+    assert.equal(await page.locator("#keep-agent-browser-open").isChecked(), true);
+    await page.locator("#save-engine").click();
+    await eventually(() => app.library.settings().pageEngine === "agent-browser" && app.library.settings().chromeProfile === "Profile 1" && app.library.settings().chromeProfileExtensions?.["Profile 1"] === true);
+    await page.waitForFunction(() => document.getElementById("engine-feedback")?.textContent === "Engine choice saved. It applies to the next run.");
     await page.locator("#save-agent-browser-lifetime").click();
     await eventually(() => app.library.settings().keepAgentBrowserOpen === true);
     assert.equal(await page.locator("#settings-advanced").evaluate((el) => (el as HTMLDetailsElement).open), true);
@@ -109,6 +143,46 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
       page.locator("#pair").click(),
     ]);
     assert.deepEqual(pairRequest, { server: "https://registry-b.test", code: "SYNC1234", secret: "synthetic-invite", name: "Fixture Mac" });
+    await page.waitForFunction(() => document.getElementById("toasts")?.textContent?.includes("Pair fixture rejected"));
+    for (const id of ["pair-code", "invite-secret", "relay-code"]) assert.equal(await page.locator(`#${id}`).inputValue(), drafts.find(([key]) => key === id)?.[1]);
+    syncPairOk = true;
+    await page.locator("#pair").click();
+    await page.waitForFunction(() => (document.getElementById("invite-secret") as HTMLInputElement)?.placeholder === "Saved on this Mac");
+    assert.equal(await page.locator("#pair-code").inputValue(), "");
+    assert.equal(await page.locator("#invite-secret").inputValue(), "");
+    const relayInput = await page.locator("#relay-code").elementHandle();
+    await page.locator("#relay-pair").click();
+    await page.waitForFunction((input) => !input?.isConnected, relayInput);
+    await relayInput?.dispose();
+    assert.deepEqual(relayRequest, { code: "RELAY123" });
+    assert.equal(await page.locator("#relay-code").inputValue(), "RELAY123");
+    relayPairOk = true;
+    await page.locator("#relay-pair").click();
+    await page.waitForFunction(() => document.getElementById("relay-status")?.textContent?.startsWith("Connected."));
+    assert.equal(await page.locator("#relay-code").inputValue(), "");
+    assert.equal(settingsWrites.some((body) => body !== null && typeof body === "object" && "syncServer" in body), false);
+    assert.equal(app.library.settings().syncServer, undefined);
+    await page.locator("#chrome-profile-extensions").uncheck();
+    await page.locator("#keep-agent-browser-open").uncheck();
+    await page.locator("#page-engine").selectOption("old");
+    await page.locator("#promote-after").fill("6");
+    await page.locator("#promote-after").press("Tab");
+    await eventually(() => app.library.settings().promoteAfter === 6);
+    await page.waitForFunction(() => (document.getElementById("promote-after") as HTMLInputElement)?.defaultValue === "6");
+    assert.equal(await page.locator("#page-engine").inputValue(), "old");
+    assert.equal(await page.locator("#chrome-profile").isDisabled(), true);
+    assert.equal(await page.locator("#chrome-profile-extensions").isDisabled(), true);
+    assert.equal(await page.locator("#chrome-profile-extensions").isChecked(), false);
+    assert.equal(await page.locator("#keep-agent-browser-open").isChecked(), false);
+    await page.locator("#save-engine").click();
+    await eventually(() => app.library.settings().pageEngine === "old" && app.library.settings().chromeProfileExtensions?.["Profile 1"] === false);
+    await page.locator("#save-agent-browser-lifetime").click();
+    await eventually(() => app.library.settings().keepAgentBrowserOpen === false);
+    await page.locator("#act-minutes").selectOption("custom");
+    await page.locator("#act-custom").fill("1");
+    await page.locator("#act-custom").press("Tab");
+    await eventually(() => app.library.settings().actTimeoutMs === 60_000);
+    await page.waitForFunction(() => document.querySelector('#act-minutes option:checked')?.textContent === "1 minute");
     await page.locator("#theme").selectOption("dark");
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
     for (const width of [1280, 720, 390, 320]) {
@@ -168,7 +242,7 @@ test("pending CLI imports and the Logins profile picker keep separate handlers",
     const answers: unknown[] = [];
     await page.route("**/api/state", async (route) => {
       const response = await route.fetch();
-      const state = await response.json();
+      const state = await response.json() as StateFixture;
       await route.fulfill({ response, json: { ...state, pendingImport: pendingId ? { id: pendingId, phase: "pick", domain: "example.test", profiles } : null } });
     });
     await page.route("**/api/import-login/answer", async (route) => {

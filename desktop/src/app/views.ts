@@ -1416,7 +1416,7 @@ export function hostAccessPanel(access: unknown): string {
 
 export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
   const rows = sites.map((site) => `<label>${esc(site.origin)}
-      <select data-setting="siteTrust" data-site-trust="${htmlEsc(controlKey(site.origin))}">
+      <select id="site-trust-${htmlEsc(controlKey(site.origin))}" data-setting="siteTrust" data-site-trust="${htmlEsc(controlKey(site.origin))}">
         <option value="ask" ${site.mode === "ask" ? "selected" : ""}>Always ask</option>
         <option value="allow" ${site.mode === "allow" ? "selected" : ""}>Allow</option>
       </select>

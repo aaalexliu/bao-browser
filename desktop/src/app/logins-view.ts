@@ -258,7 +258,7 @@ function categoryRows(row: {
       ? `<p data-testid="catchup-count">${esc(bucket.local)} on this device of ${esc(bucket.cloud)} in the cloud</p>`
       : "";
     return `<li data-testid="sync-category" data-category="${esc(category)}">
-      <label><input type="checkbox" data-sync-category="${esc(category)}"${bucket.enabled ? " checked" : ""}> ${esc(categoryLabel(category))}</label>
+      <label><input id="sync-category-${esc(category)}" type="checkbox" data-sync-category="${esc(category)}"${bucket.enabled ? " checked" : ""}> ${esc(categoryLabel(category))}</label>
       ${count}
     </li>`;
   }).join("");
