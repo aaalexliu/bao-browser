@@ -76,6 +76,7 @@ export class AgentBrowserProxy {
   private pendingCloses = 0;
   private latest: { runId: string; step: RecordedAgentBrowserCommand; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
   private workflowOutcome: string | undefined;
+  private recentRun: AgentBrowserRun | undefined;
 
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
   get lastCommand(): typeof this.latest { return this.latest; }
@@ -127,6 +128,7 @@ export class AgentBrowserProxy {
     }
     const continuing = !!this.session;
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
+    this.recentRun = recording;
     let step = continuing ? undefined : recording.begin(command as string, args);
     if (step) this.latest = { runId: recording.id, step };
     if (!this.session) {
@@ -236,7 +238,10 @@ export class AgentBrowserProxy {
     this.workflowOutcome = undefined;
     this.currentEnded = false;
     const session = this.session;
-    if (!session) return undefined;
+    if (!session) {
+      this.recentRun?.finish(outcome);
+      return this.recentRun?.id;
+    }
     session.outcome = outcome;
     if (outcome.outcome === "failed") session.workflow.unavailable(outcome.reason);
     const runId = session.recording.id;

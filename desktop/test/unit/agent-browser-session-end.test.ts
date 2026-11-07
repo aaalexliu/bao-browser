@@ -274,6 +274,31 @@ for (const keepOpen of [false, true]) {
   });
 }
 
+test("finish_task after close records the checked outcome once", { timeout: 60_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const runId = f.library.listRuns()[0]!.id;
+  assert.equal((await c.call("close")).isError, false);
+  assert.equal(f.library.readRun(runId).status, "passed");
+  assert.equal(f.library.readRun(runId).envelope, undefined);
+  const result = await c.request("tools/call", { name: "finish_task", arguments: {
+    outcome: "failed", reason: "The requested item was unavailable.",
+  } });
+  assert.equal(result.isError, false);
+  const receipt = JSON.parse(result.content![0]!.text) as { run_id: string; status: string };
+  assert.equal(receipt.run_id, runId);
+  assert.equal(receipt.status, "failed");
+  const saved = f.library.readRun(runId);
+  assert.equal(saved.status, "failed");
+  assert.equal(saved.envelope?.reason, "The requested item was unavailable.");
+  await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "A later claim" } });
+  assert.deepEqual(f.library.readRun(runId), saved, "an explicit task outcome cannot be overwritten");
+  assert.equal(f.library.listRuns().length, 1);
+});
+
 for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) {
   test(`finish_task records the checked outcome for ${outcome}`, { timeout: 60_000 }, async (t) => {
     const f = await fixture();

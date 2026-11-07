@@ -118,21 +118,16 @@ export class AgentBrowserRun {
   }
 
   finish(result?: "session_closed" | AgentBrowserTaskOutcome): void {
-    if (this.run.status !== "recording" && this.run.status !== "needs_human") return;
+    if (this.run.status !== "recording" && this.run.status !== "needs_human"
+      && (typeof result !== "object" || this.run.envelope)) return;
     if (result === "session_closed" || this.run.status === "needs_human") {
       this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The Bao session ended before the owner wait completed. This session cannot continue." };
       this.run.status = "failed";
-    } else {
-      const failed = this.run.steps.find((step) => step.status === "failed");
-      const pending = this.run.steps.find((step) => step.status === "pending");
-      const reason = result ? result.reason
-        : failed ? failed.reason || "A browser command failed."
-        : pending ? "The session ended before a browser command completed." : undefined;
-      this.run.status = result ? result.outcome : reason ? "failed" : "passed";
-      if (reason || result) this.run.envelope = {
-        status: this.run.status, run_id: this.run.id, reason: reason || result?.reason,
-      };
-    }
+    } else if (result) {
+      this.run.status = result.outcome;
+      this.run.envelope = { status: result.outcome, run_id: this.run.id, reason: result.reason };
+    } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
+      : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();
   }
 
