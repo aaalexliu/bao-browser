@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
+import { RETIRED_LIVE_TOOL } from "../../src/mcp/version";
 import { libraryTable, runDriverField, type WorkflowSummary } from "../../src/app/views";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -31,8 +32,12 @@ test("Library and Replay explain retired workflows; replay and live API never op
     assert.equal(state.settings.liveChromeProfile, undefined);
     assert.match(libraryTable(state.workflows, []), /This workflow used the retired live driver/);
     assert.match(runDriverField(workflow.driver), /This workflow used the retired live driver/);
+    for (const op of ["live_session_start", "live_snapshot", "live_stop", "__live_replay"]) {
+      const retired = await fetch(`${origin}/api/live`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, url: workflow.startUrl }) });
+      assert.equal(retired.status, 410);
+      assert.deepEqual(await retired.json(), RETIRED_LIVE_TOOL);
+    }
     assert.deepEqual(library.listRuns(), []);
-    assert.equal((await fetch(`${origin}/api/live`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "live_session_start", url: workflow.startUrl }) })).status, 404);
   } finally { await app.close(); for (const dir of Object.values(dirs)) rmSync(dir, { recursive: true, force: true }); }
 });
 

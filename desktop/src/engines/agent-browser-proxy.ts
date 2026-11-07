@@ -145,6 +145,10 @@ export class AgentBrowserProxy {
     }
   }
 
+  hasSession(): boolean {
+    return this.session !== undefined || this.starting !== undefined;
+  }
+
   disconnect(): void {
     this.disconnected = true;
     this.session?.abort.abort();

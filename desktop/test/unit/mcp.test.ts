@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync } from "node:fs";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
+import { pidsForDataDir } from "../../src/launch";
 import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
+import { createMcpVersionCheck, McpVersionError } from "../../src/mcp/version";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
 import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import type { BrowserToolCard } from "../../src/mcp/tool-card";
@@ -114,12 +118,12 @@ interface Reply {
 interface Mcp {
   home: string;
   child: ChildProcessWithoutNullStreams;
-  request(method: string, params?: unknown): Promise<Reply>;
+  request(method: string, params?: unknown, timeoutMs?: number): Promise<Reply>;
   tool(name: string, args?: Record<string, unknown>): Promise<{ text: string; isError: boolean }>;
 }
 
 // The child gets its own HOME, so it never reads or writes the person's library.
-function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: string) => void, automatic = false): Mcp {
+function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: string) => void, automatic = false, bootstrap?: string): Mcp {
   const root = mkdtempSync(path.join(tmpdir(), prefix));
   const user = path.join(root, "user");
   const home = automatic
@@ -127,7 +131,7 @@ function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: stri
     : path.join(root, "library");
   mkdirSync(user);
   setup?.(user, home);
-  const child = spawn(process.execPath, [cli, cmd], {
+  const child = spawn(process.execPath, bootstrap ? ["-e", bootstrap] : [cli, cmd], {
     cwd: root,
     env: { ...process.env, HOME: user, BAO_HOME: automatic ? undefined : home, BAO_HEAL_CURSOR_ACCOUNT: "0" },
     stdio: ["pipe", "pipe", "pipe"],
@@ -145,11 +149,11 @@ function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: stri
     }
   });
   let nextId = 1;
-  const request = async (method: string, params?: unknown): Promise<Reply> => {
+  const request = async (method: string, params?: unknown, timeoutMs = 5000): Promise<Reply> => {
     const id = nextId++;
     child.stdin.write(frame({ jsonrpc: "2.0", id, method, params }));
     const start = Date.now();
-    while (Date.now() - start < 5000) {
+    while (Date.now() - start < timeoutMs) {
       const hit = messages.find((msg) => msg.id === id);
       if (hit) return hit;
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -351,6 +355,209 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       assert.deepEqual(JSON.parse(inspected.result?.content?.[0]?.text || "null"), metadata);
     }
   } finally { mcp.child.kill(); legacy.child.kill(); }
+});
+
+test("MCP version checks wait for stable replacement entries before reporting updates", async (t) => {
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
+  const entry = path.join(home, "server.js");
+  writeFileSync(entry, "original");
+  const check = createMcpVersionCheck(entry);
+  try {
+    await check();
+    const loaded = statSync(entry);
+    renameSync(entry, `${entry}.old`);
+    await check();
+    writeFileSync(entry, "original");
+    utimesSync(entry, loaded.atime, loaded.mtime);
+    await check();
+    await check();
+    now = 1999;
+    await check();
+    now = 2000;
+    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && /Bao was updated/.test(error.message));
+    const rebuilt = createMcpVersionCheck(entry);
+    utimesSync(entry, loaded.atime, new Date(loaded.mtimeMs + 1000));
+    await rebuilt();
+    now = 4000;
+    await assert.rejects(rebuilt, (error: unknown) => error instanceof McpVersionError);
+    rmSync(entry);
+    await check();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("changing, missing, or restored entries reset the replacement wait", async (t) => {
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-stable-"));
+  const entry = path.join(home, "server.js");
+  writeFileSync(entry, "loaded");
+  const check = createMcpVersionCheck(entry);
+  try {
+    renameSync(entry, `${entry}.loaded`);
+    writeFileSync(entry, "first replacement");
+    await check();
+    now = 2000;
+    writeFileSync(entry, "second replacement still being copied");
+    await check();
+    now = 4000;
+    rmSync(entry);
+    await check();
+    writeFileSync(entry, "complete replacement");
+    await check();
+    now = 6000;
+    renameSync(entry, `${entry}.replacement`);
+    renameSync(`${entry}.loaded`, entry);
+    await check();
+    renameSync(entry, `${entry}.loaded`);
+    renameSync(`${entry}.replacement`, entry);
+    await check();
+    now = 7999;
+    await check();
+    now = 8000;
+    await assert.rejects(check, /Bao was updated/);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test("update polling preserves a long in-flight call and an idle browser session", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-mcp-inflight-"));
+  const entry = path.join(root, "server.js");
+  const started = path.join(root, "started");
+  writeFileSync(entry, "loaded");
+  const bootstrap = `
+    const versions = require(${JSON.stringify(path.resolve(__dirname, "../../src/mcp/version.js"))});
+    const createCheck = versions.createMcpVersionCheck;
+    versions.createMcpVersionCheck = () => createCheck(${JSON.stringify(entry)});
+    const proxy = require(${JSON.stringify(path.resolve(__dirname, "../../src/engines/agent-browser-proxy.js"))}).AgentBrowserProxy.prototype;
+    const abort = new AbortController();
+    const disconnect = proxy.disconnect;
+    let active = false;
+    proxy.hasSession = () => active;
+    proxy.disconnect = function () { abort.abort(); disconnect.call(this); };
+    proxy.execute = async function (command) {
+      if (command === "close") {
+        active = false;
+        return [{ stdout: "closed", stderr: "", exitCode: 0 }];
+      }
+      require("node:fs").writeFileSync(${JSON.stringify(started)}, "started");
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 6000);
+        abort.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new Error("browser operation was aborted"));
+        }, { once: true });
+      });
+      active = true;
+      return [{ stdout: "finished", stderr: "", exitCode: 0 }];
+    };
+    require(${JSON.stringify(path.resolve(__dirname, "../../src/mcp/server.js"))}).mcpMain();
+  `;
+  const mcp = startMcp("bao-mcp-inflight-home-", "mcp", undefined, false, bootstrap);
+  try {
+    await initialize(mcp);
+    const reply = mcp.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: ["https://example.test/"] } }, 12_000);
+    const deadline = Date.now() + 5000;
+    while (!existsSync(started) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(existsSync(started), "browser operation started");
+    writeFileSync(entry, "replacement installed");
+    const result = await reply;
+    assert.equal(result.error, undefined);
+    assert.equal(result.result?.isError, false);
+    assert.deepEqual(result.result?.content, [{ type: "text", text: "finished" }]);
+    await new Promise((resolve) => setTimeout(resolve, 4500));
+    assert.equal(mcp.child.exitCode, null, "idle browser session prevents poll shutdown");
+    const close = await mcp.tool("agent_browser", { command: "close", args: [] });
+    assert.equal(close.isError, false);
+    assert.equal(close.text, "closed");
+  } finally {
+    if (mcp.child.exitCode === null && mcp.child.signalCode === null) {
+      const exited = once(mcp.child, "exit");
+      mcp.child.kill();
+      await exited;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a held replay blocks update stops and supports resume and cancel after replacement", { timeout: 60_000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-mcp-held-"));
+  const entry = path.join(root, "server.js");
+  writeFileSync(entry, "loaded");
+  const fixture = createServer((_req, res) => {
+    res.setHeader("content-type", "text/html");
+    res.end('<!doctype html><p>Fixture owner handoff</p>');
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const address = fixture.address();
+  assert.ok(address && typeof address !== "string");
+  const bootstrap = `
+    process.env.BAO_CHROME_NO_SANDBOX = "1";
+    const versions = require(${JSON.stringify(path.resolve(__dirname, "../../src/mcp/version.js"))});
+    const createCheck = versions.createMcpVersionCheck;
+    versions.createMcpVersionCheck = () => createCheck(${JSON.stringify(entry)});
+    require(${JSON.stringify(path.resolve(__dirname, "../../src/mcp/server.js"))}).mcpMain();
+  `;
+  const mcp = startMcp("bao-mcp-held-home-", "mcp", undefined, false, bootstrap);
+  let token = "";
+  try {
+    const library = new Library(mcp.home);
+    library.updateSettings({ pageEngine: "old" });
+    library.save({
+      ...workflow,
+      id: "held-signin",
+      startUrl: `http://127.0.0.1:${address.port}/`,
+      steps: [{
+        id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 1000,
+      }],
+    });
+    await initialize(mcp);
+    const first = await mcp.request("tools/call", { name: "run_workflow", arguments: { id: "held-signin" } }, 20_000);
+    assert.equal(first.error, undefined);
+    assert.equal(first.result?.isError, false);
+    const paused = JSON.parse(first.result?.content?.[0]?.text || "{}") as { status?: string; resume_token?: string; run_id?: string };
+    token = paused.resume_token || "";
+    assert.equal(paused.status, "needs_signin");
+    assert.ok(paused.run_id);
+    assert.ok(token);
+    writeFileSync(entry, "replacement installed");
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    assert.equal(mcp.child.exitCode, null, "held replay prevents poll shutdown");
+    assert.deepEqual((await mcp.request("tools/list")).result?.tools, TOOLS);
+    const resumed = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token } }, 15_000);
+    assert.equal(resumed.error, undefined);
+    assert.equal(resumed.result?.isError, false);
+    const waiting = JSON.parse(resumed.result?.content?.[0]?.text || "{}") as { status?: string; run_id?: string; resume_token?: string };
+    assert.equal(waiting.status, "needs_signin");
+    assert.equal(waiting.run_id, paused.run_id);
+    assert.equal(waiting.resume_token, token);
+    assert.equal(mcp.child.exitCode, null, "resume preserves the held run and process");
+    const reply = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token, cancel: true } }, 15_000);
+    assert.equal(reply.error, undefined);
+    assert.equal(reply.result?.isError, false);
+    const cancelled = JSON.parse(reply.result?.content?.[0]?.text || "{}") as { status?: string; reason?: string; run_id?: string };
+    assert.equal(cancelled.status, "stopped");
+    assert.equal(cancelled.reason, "nothing applied");
+    assert.equal(cancelled.run_id, paused.run_id);
+    token = "";
+  } finally {
+    if (token && mcp.child.exitCode === null && mcp.child.signalCode === null) {
+      await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token, cancel: true } }, 15_000).catch(() => undefined);
+    }
+    const pids = pidsForDataDir(path.join(mcp.home, "chrome-profile"));
+    if (mcp.child.exitCode === null && mcp.child.signalCode === null) {
+      const exited = once(mcp.child, "exit");
+      mcp.child.kill();
+      await exited;
+    }
+    for (const pid of pids) {
+      try { process.kill(pid, "SIGTERM"); } catch {}
+    }
+    await new Promise<void>((resolve) => fixture.close(() => resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 const shelfWorkflow = `{

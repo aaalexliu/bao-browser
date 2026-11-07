@@ -1,5 +1,5 @@
 import { baoUserHome, resolveLibraryIdentity, tildePath, type LibraryIdentity } from "../home";
-import { describeWorkflow, getRun, runWorkflow, searchWorkflows } from "./catalog";
+import { describeWorkflow, getRun, hasHeldRuns, runWorkflow, searchWorkflows } from "./catalog";
 import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
@@ -7,6 +7,7 @@ import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI,
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
 import { inspectRunView, listRunViews } from "./run-view";
 import { BROWSER_RESULT_SCHEMA, browserToolResult } from "./tool-card";
+import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -79,6 +80,9 @@ export const INSTRUCTIONS = [
 ].join("\n");
 
 interface Context {
+  checkVersion(): Promise<void>;
+  canStopForUpdate(currentRequest?: boolean): boolean;
+  stop(): void;
   library: Library;
   identity: LibraryIdentity;
   proxy: AgentBrowserProxy;
@@ -99,7 +103,10 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const library = new Library(home);
   const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile,
     keepOpen: () => library.settings().keepAgentBrowserOpen === true });
-  const ctx: Context = { library, identity, proxy, ui: false };
+  let pending = 0;
+  const ctx: Context = { library, identity, proxy, ui: false, checkVersion: createMcpVersionCheck(__filename),
+    canStopForUpdate: (currentRequest = false) => pending === (currentRequest ? 1 : 0) && !proxy.hasSession() && !hasHeldRuns(),
+    stop: () => stop() };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
   process.stdin.on("data", (chunk: Buffer) => {
@@ -124,9 +131,13 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
           });
         } catch {}
       }
+      pending++;
       chain = chain.then(() => handle(msg, ctx)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      }).finally(releaseClose);
+      }).finally(() => {
+        releaseClose?.();
+        pending--;
+      });
     }
   });
   // End proxy ownership immediately; queued catalog work can outlast cleanup.
@@ -135,6 +146,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const end = (): void => {
     if (ending) return;
     ending = true;
+    clearInterval(versionPoll);
     const proxyEnd = ctx.proxy.end();
     void Promise.all([proxyEnd, chain])
       .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
@@ -148,6 +160,15 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
     setTimeout(() => process.exit(0), 15_000).unref();
     end();
   };
+  const versionPoll = setInterval(() => {
+    void ctx.checkVersion().catch((error: unknown) => {
+      if (error instanceof McpVersionError && ctx.canStopForUpdate()) {
+        process.stderr.write(`${error.message}\n`);
+        stop();
+      }
+    });
+  }, MCP_UPDATE_POLL_MS);
+  versionPoll.unref();
   process.stdin.on("end", end);
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
@@ -171,6 +192,17 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
     return;
   }
   if (msg.method === "notifications/initialized") return;
+  if ((msg.method === "tools/list" || msg.method === "tools/call") &&
+      !(msg.method === "tools/call" && msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close")) {
+    try { await ctx.checkVersion(); }
+    catch (error) {
+      if (!(error instanceof McpVersionError) || ctx.canStopForUpdate(true)) {
+        send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
+        if (error instanceof McpVersionError) ctx.stop();
+        return;
+      }
+    }
+  }
   if (msg.method === "tools/list") {
     const tools = ctx.ui ? [
       ...TOOLS.map((tool) => ({ ...tool, ...(tool.name === "agent_browser" ? { outputSchema: BROWSER_RESULT_SCHEMA } : {}), _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs", "agent_browser"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
