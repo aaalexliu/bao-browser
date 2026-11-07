@@ -1,5 +1,7 @@
 # Real-world proof
 
+The p3 and p9 results below are historical. Those recordings relied on label-inferred confirms. New p3 and p9 recordings end before Reserve Now and Place Order and expect `completed`, not `needs_human`. They have not been rerun against the public sites. The saved workflows and replay artifacts remain unchanged for compatibility evidence; their old passes do not prove the revised tasks.
+
 Measured on Linux with headless Chrome from v1/desktop. Replay video is macOS-only, so each browser replay saved keyframes (and a keyframe webm when ffmpeg could encode one). Pass means both the doc's check and 0 model calls. A task with expect needs_human passes when the replay pauses for a person and that check holds.
 
 | Task | Pass | Model calls | Heals | First failure |
@@ -179,6 +181,8 @@ Artifacts:
 - `docs/proof/realworld/artifacts/p2-r2.png`
 
 ### p3 Booking, stop before reserve
+
+Historical run: paused at an inferred confirm. The current task must complete after preparing the booking without recording or pressing Reserve Now. Current result: not run.
 
 Site: automationintesting.online
 
@@ -491,6 +495,8 @@ Artifacts:
 - `docs/proof/realworld/artifacts/p8-r2.png`
 
 ### p9 Shadow-DOM shop, stop before place order
+
+Historical run: paused at an inferred confirm. The current task must complete after preparing checkout without recording or pressing Place Order. Current result: not run.
 
 Site: shop.polymer-project.org
 

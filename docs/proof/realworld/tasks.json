@@ -21,7 +21,7 @@
     "site": "automationintesting.online",
     "openUrl": "https://automationintesting.online/",
     "mac": false,
-    "expect": "needs_human"
+    "expect": "completed"
   },
   {
     "id": "p4",
@@ -69,7 +69,7 @@
     "site": "shop.polymer-project.org",
     "openUrl": "https://shop.polymer-project.org/",
     "mac": false,
-    "expect": "needs_human"
+    "expect": "completed"
   },
   {
     "id": "p10",

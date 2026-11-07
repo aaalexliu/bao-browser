@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { pauseIsExpected, scoreBotWall } from "../../src/proof/task-expect";
+import { recordP3, recordP9, scoreP3, scoreP9, type ScoreInput } from "../../src/proof/realworld";
 
 interface SavedRun {
   replay: {
@@ -35,9 +36,9 @@ test("every proof task declares completed or needs_human", () => {
     assert.ok(task.expect === "completed" || task.expect === "needs_human", task.id);
   }
   const expectOf = (id: string) => tasks.find((task) => task.id === id)?.expect;
-  assert.equal(expectOf("p3"), "needs_human");
+  assert.equal(expectOf("p3"), "completed");
   assert.equal(expectOf("p5"), "completed");
-  assert.equal(expectOf("p9"), "needs_human");
+  assert.equal(expectOf("p9"), "completed");
   assert.equal(expectOf("p13"), "completed");
   assert.equal(expectOf("p14"), "needs_human");
 });
@@ -78,7 +79,65 @@ test("the same bot wall fails when the task expects a completed run", () => {
   assert.match(scored.detail, /heals 0/);
 });
 
-test("p9 still pauses as needs_human at Place Order", () => {
+test("proof recordings stop before booking and checkout submission", async () => {
+  for (const guestForm of [false, true]) {
+    const calls: Record<string, unknown>[] = [];
+    await recordP3({
+      open: async () => {},
+      waitFor: async () => ({}),
+      view: async () => ({ text: guestForm ? "First name" : "Choose dates" }),
+      drive: async (body) => { calls.push(body); },
+    });
+    assert.deepEqual(calls.filter((body) => body.click).map((body) => body.click), [
+      "a[href*='/reservation/1']",
+      "button:text-is('Next')",
+    ]);
+    assert.equal(calls.filter((body) => body.drag).length, 1);
+    assert.equal(calls.filter((body) => body.fill).length, guestForm ? 3 : 0);
+  }
+  const calls: Record<string, unknown>[] = [];
+  await recordP9({
+    open: async () => {},
+    waitFor: async () => ({}),
+    drive: async (body) => { calls.push(body); },
+  });
+  assert.deepEqual(calls.filter((body) => body.click).map((body) => body.click), [
+    "shop-app >> a[href*='YouTube+Organic']",
+    "shop-app >> shop-detail >> button:has-text('Add to Cart')",
+    "shop-app >> #viewCartAnchor",
+    "shop-app >> shop-cart >> text=Checkout",
+  ]);
+  assert.deepEqual(calls.at(-1), { fill: { selector: "shop-app >> #ccName", value: "Bao" } });
+});
+
+test("p3 and p9 score completed preparation, not final clicks or pauses", () => {
+  for (const run of [1, 2] as const) {
+    for (const id of ["p3", "p9"] as const) {
+      const nights = run === 1 ? 2 : 3;
+      const input: ScoreInput = {
+        run,
+        expect: "completed",
+        replay: { status: "passed", modelCalls: 0 },
+        workflow: { ...load<ScoreInput["workflow"]>(`workflows/${id}.json`), steps: [] },
+        page: { text: id === "p3"
+          ? `£100 x ${nights} nights £${100 * nights} Fees £10 Total £${100 * nights + 10}`
+          : `YouTube Organic Cotton $29.50 ${run === 1 ? "2 Market" : "3 Market"}` },
+        args: {},
+        files: { recordFile: "", replayFile: ["", ""], recordImage: "", replayImage: ["", ""] },
+        openUrl: "",
+      };
+      const score = id === "p3" ? scoreP3 : scoreP9;
+      assert.equal(score(input).pass, true, `${id} run ${run}`);
+      assert.equal(score({ ...input, replay: { status: "paused", pausedKind: "confirm" } }).pass, false);
+      assert.equal(score({ ...input, expect: "needs_human" }).pass, false);
+      assert.equal(score({ ...input, page: { text: "Wrong booking or empty cart" } }).pass, false);
+      const label = id === "p3" ? "Reserve Now" : "Place Order";
+      assert.equal(score({ ...input, workflow: { ...input.workflow, steps: [{ id: "submit", index: 0, action: "click", label, surface: "dom", timeoutMs: 1000 }] } }).pass, false);
+    }
+  }
+});
+
+test("historical p9 saved workflows retain their confirm pause", () => {
   const workflow = load<SavedWorkflow>("workflows/p9.json");
   const confirm = workflow.steps.some((step) =>
     step.action === "confirm" && step.confirm === true && /place order/i.test(`${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""}`));
