@@ -1162,7 +1162,7 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   const model = heal.model ? `${heal.model.name || ""} ${heal.model.version || ""}`.trim() : "no model";
   const name = extra.workflowName || healWorkflowName(heal, run, new Map());
   return `<article id="heal-detail" data-heal="${esc(heal.id)}" data-run="${esc(run.id)}" aria-label="Target review: ${esc(name)}">
-    <p class="heal-kicker"><span class="heal-state">${hasProposal ? runStatusGlyph("healed") : ""}${reviewState === "keep" ? "Target kept" : reviewState === "revert" ? "Target reverted" : hasProposal ? "Heal to keep" : "No proposed target"}</span><span class="heal-dot" aria-hidden="true"></span><span id="heal-workflow">${esc(name)}</span>${heal.ts === undefined ? "" : `<span class="heal-dot" aria-hidden="true"></span><time datetime="${esc(new Date(heal.ts).toISOString())}">${esc(formatWhen(heal.ts))}</time>`}</p>
+    <p class="heal-kicker"><span class="heal-state">${hasProposal ? runStatusGlyph("healed") : ""}${reviewState === "keep" ? "Target kept" : reviewState === "revert" ? "Target reverted" : hasProposal ? "Heal to keep" : "No proposed target"}</span><span class="heal-dot" aria-hidden="true"></span><span id="heal-workflow">${esc(name)}</span>${heal.ts === undefined ? "" : `<span class="heal-dot" aria-hidden="true"></span><span>${esc(formatWhen(heal.ts))}</span>`}</p>
     <h2>${esc(step)}${hasProposal ? " moved" : " needs review"}</h2>
     <p class="heal-lead">${hasProposal ? `${esc(move)} ${esc(outcome)}` : "Bao could not propose a new target for this step."}</p>
     <div class="heal-comparison">

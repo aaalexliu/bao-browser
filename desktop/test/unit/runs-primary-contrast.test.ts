@@ -22,7 +22,7 @@ test("Runs primary Keep and Import controls retain AA contrast in both themes", 
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage();
   await page.addInitScript(() => localStorage.setItem("bao-theme", new URL(location.href).searchParams.get("theme") || "light"));
-  app.library.saveRun({ id: "contrast-run", workflowId: "contrast-workflow", status: "passed", at: 1, steps: [], heals: [{ id: "contrast-heal" }] });
+  app.library.saveRun({ id: "contrast-run", workflowId: "contrast-workflow", status: "passed", at: 1, steps: [], heals: [{ id: "contrast-heal", proposedPatch: { identity: { surface: "dom", role: "button", name: "Continue" } } }] });
   await page.route("**/api/state", async (route) => {
     const response = await route.fetch();
     const state = await response.json() as Record<string, unknown>;

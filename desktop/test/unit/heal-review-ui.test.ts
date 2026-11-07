@@ -95,6 +95,7 @@ test("target review matches the paired layout and keeps decisions on the exact e
     assert.match(await page.locator(".heal-note").innerText(), /Saved this target as a draft/);
     const promoted = { ...promotion, status: "promoted" };
     app.library.savePromotion(promoted);
+    await page.locator('#promotion[data-status="promoted"]').waitFor();
     assert.equal(app.library.readRun("review-run").decisions?.at(-1)?.decision, "keep");
     assert.equal(app.library.readRun("other-run").decisions?.length || 0, 0);
     assert.equal(app.library.read(workflow.id).steps[0]!.identity!.role, "link");
