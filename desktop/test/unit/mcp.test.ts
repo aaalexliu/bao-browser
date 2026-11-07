@@ -5,12 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
+import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
 import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
 import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
+
+interface HistoryPayload {
+  library: LibraryIdentity;
+  runs: { id: string }[];
+}
 
 const names = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser"];
 const retired = ["live_session_start", "live_snapshot", "live_click", "live_type", "live_key", "live_select", "live_scroll", "live_navigate", "live_read", "live_screenshot", "live_tabs", "live_switch_tab", "live_stop"];
@@ -185,7 +191,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       const history = await client.request("tools/call", { name: "list_runs", arguments: {} });
       assert.equal(history.result?.isError, false);
       assert.equal(history.result?._meta, undefined);
-      const data = JSON.parse(history.result?.content?.[0]?.text || "null");
+      const data = JSON.parse(history.result?.content?.[0]?.text || "null") as HistoryPayload;
       assert.deepEqual(data.library, { active: { path: client.home }, inactive: [] });
       assert.equal(data.runs.length, 1);
       assert.deepEqual(data.runs[0], { id: run.id, workflowId: run.workflowId, name: "Browser capture", status: "passed", at: run.at, kind: "capture", stepCount: 0, modelCalls: null, healCount: 0 });
@@ -260,7 +266,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     const history = await mcp.request("tools/call", { name: "list_runs", arguments: {} });
     assert.equal(history.result?._meta?.baoViewer?.runs?.[0]?.id, run.id);
     assert.match(history.result?.content?.[0]?.text || "", /run-ui/);
-    assert.deepEqual(JSON.parse(history.result?.content?.[0]?.text || "null").library, { active: { path: mcp.home }, inactive: [] });
+    assert.deepEqual((JSON.parse(history.result?.content?.[0]?.text || "null") as HistoryPayload).library, { active: { path: mcp.home }, inactive: [] });
     const receipt = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
     const plainReceipt = await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
     assert.deepEqual(receiptPayload(mcp.home, receipt), receiptPayload(legacy.home, plainReceipt));
