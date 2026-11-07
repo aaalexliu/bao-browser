@@ -65,13 +65,10 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
     const share = await shareRes.json() as { token: string; document: unknown; questions: { name: string; cleared?: string }[] };
     assert.equal(shareRes.ok, true, JSON.stringify(share));
     const text = JSON.stringify(share.document);
-    assert.equal(text.includes("@"), false, text);
-    assert.equal(text.includes("/home/ada"), false, text);
-    assert.equal(text.includes("Ada Lovelace"), false, text);
-    for (const name of ["email", "who", "note", "desk"]) {
-      assert.ok(share.questions.some((question) => question.name === name), name);
-    }
-    assert.equal(share.questions.find((question) => question.name === "email")?.cleared, "email");
+    assert.equal(text.includes("ada@acme.com"), true, text);
+    assert.equal(text.includes("/home/ada"), true, text);
+    assert.equal(text.includes("Ada Lovelace"), true, text);
+    assert.deepEqual(share.questions.map((question) => question.name), ["desk"]);
     const before = await fetch(`${origin}/api/workflows`, { headers: { cookie: reader } });
     const library = await before.json() as { workflows: { title?: string }[] };
     assert.equal(before.ok, true, JSON.stringify(library));
@@ -85,21 +82,15 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
     await page.getByTestId("import-sheet").waitFor();
     await page.getByRole("heading", { name: "Import" }).waitFor();
     const sheet = await page.getByTestId("import-sheet").innerText();
-    assert.match(await page.locator("article").innerText(), /Nothing is saved until you answer these/);
-    assert.match(sheet, /Email to use/);
-    assert.match(sheet, /The sharer's email was removed/);
-    assert.match(sheet, /Which file/);
-    assert.match(sheet, /The sharer's file was removed/);
+    assert.match(sheet, /Desk/);
+    assert.equal(await page.locator('[name="a_email"]').count(), 0);
+    assert.equal(await page.locator('[name="a_note"]').count(), 0);
     assert.match(sheet, /For example, front/);
     assert.equal(sheet.includes("What email should"), false);
     assert.equal(sheet.includes("Cleared email"), false);
     assert.equal(sheet.includes("What should Desk"), false);
     const steps = await page.getByTestId("step-preview").innerText();
     assert.match(steps, /Click Log in/);
-    const html = await page.content();
-    assert.equal(html.includes("ada@acme.com"), false);
-    assert.equal(html.includes("/home/ada"), false);
-    assert.equal(html.includes("Ada Lovelace"), false);
     await page.screenshot({ path: path.join(shots, "import-sheet.png"), fullPage: true });
     await setTheme(page, "dark");
     await page.screenshot({ path: path.join(shots, "import-sheet-dark.png"), fullPage: true });
@@ -115,7 +106,7 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
     const copy = await fetch(`${origin}/api/workflows/${created.id}`, { headers: { cookie: reader } });
     const copyText = await copy.text();
     assert.equal(copy.ok, true, copyText);
-    assert.equal(copyText.includes("@"), false);
+    assert.equal(copyText.includes("ada@other.com"), true);
     assert.equal(copyText.includes("/home/ada"), false);
     assert.match(copyText, /west/);
 

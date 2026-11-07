@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,4 +40,7 @@ cpSync(path.join(stage, "node_modules"), path.join(destBao, "node_modules"), {
   recursive: true,
   verbatimSymlinks: true,
 });
+const webModules = path.join(destBao, "../web/node_modules");
+rmSync(webModules, { recursive: true, force: true });
+symlinkSync("../bao/node_modules", webModules, "dir");
 rmSync(stage, { recursive: true, force: true });

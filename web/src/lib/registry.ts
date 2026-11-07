@@ -1,9 +1,10 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Ajv from "ajv/dist/2020.js";
 import { getPng, putPng } from "./blobstore";
-import { isElementCrop } from "./png";
+import { isElementCrop, isPicture } from "./png";
+import { syncPicture } from "./sync-pictures";
 import { query } from "./db";
-import { assertSyncSafe, type SyncShot } from "./guard";
+import type { SyncShot } from "./guard";
 import { applyImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
 import { permissionPreview, type PermissionPreview } from "./permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
@@ -41,7 +42,6 @@ export interface User {
 interface ShotIn {
   stepId?: string;
   png?: string;
-  redacted?: boolean;
 }
 
 let seeded = false;
@@ -278,10 +278,9 @@ export async function pushVersion(
   body: { baseVersion?: number; document?: unknown; heal?: unknown; shots?: ShotIn[]; category?: string },
 ) {
   assertId(id);
-  assertSyncSafe(body);
-  const document = body.document;
-  const errors = workflowErrors(document);
+  const errors = workflowErrors(body.document);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
+  const { document, heal } = body;
   const doc = document as { id?: string; name?: string };
   if (doc.id !== id) throw new HttpError("id", 400);
   const user = await mustUser(principal.userId);
@@ -295,7 +294,7 @@ export async function pushVersion(
   );
   if (!existing.length) {
     if (base !== 0) throw new HttpError("conflict", 409);
-    await insertOwned(principal.userId, document, base, body.heal, body.shots ?? [], user.name, category, undefined, principal.deviceId ?? null);
+    await insertOwned(principal.userId, document, base, heal, body.shots ?? [], user.name, category, undefined, principal.deviceId ?? null);
     await noteDeviceSync(principal);
     return { version: 1, created: true };
   }
@@ -307,12 +306,12 @@ export async function pushVersion(
     category,
     base,
     document,
-    heal: body.heal,
+    heal,
     deviceId: principal.deviceId ?? null,
   });
   const version = bumped?.version;
   if (!version) {
-    const draft = await insertConflict(id, principal.userId, base, document, body.heal, principal.deviceId ?? null);
+    const draft = await insertConflict(id, principal.userId, base, document, heal, principal.deviceId ?? null);
     if (draft) await writeShots(id, draft, body.shots ?? []);
     const current = await pull(principal, id);
     await noteDeviceSync(principal);
@@ -395,7 +394,6 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
   steps?: { id?: string; status?: string }[];
   shots?: ShotIn[];
 }) {
-  assertSyncSafe(body);
   const row = await readable(principal, workflowId);
   const id = String(body.id || "");
   if (!id) throw new HttpError("run id", 400);
@@ -415,10 +413,10 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
     );
   }
   for (const shot of body.shots ?? []) {
-    if (shot.redacted !== true || !shot.stepId || !shot.png) continue;
-    const bytes = Buffer.from(shot.png, "base64");
-    if (!isElementCrop(bytes)) continue;
-    const key = `runs/${id}/${shot.stepId}.png`;
+    if (!shot.stepId || !shot.png) continue;
+    const bytes = await syncPicture(Buffer.from(shot.png, "base64"));
+    if (!bytes) continue;
+    const key = `runs/${id}/${shot.stepId}.jpg`;
     await putPng(key, bytes);
     await query(
       `INSERT INTO run_shots (run_id, step_id, blob_key) VALUES ($1, $2, $3)
@@ -445,7 +443,7 @@ export async function listRuns(principal: Principal, workflowId: string) {
     const visible = [];
     for (const shot of shots) {
       const bytes = await getPng(shot.blob_key);
-      if (!bytes || !isElementCrop(bytes)) continue;
+      if (!bytes || !isPicture(bytes)) continue;
       visible.push({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` });
     }
     out.push({
@@ -510,9 +508,7 @@ export async function boot(): Promise<void> {
 }
 
 export async function installShare(principal: Principal, token: string, answers: Record<string, unknown>) {
-  assertSyncSafe({ answers });
   const share = await getShare(token);
-  rejectSecretAnswers(share.document, answers);
   if (share.permission !== "fork") throw new HttpError("this link is view only", 403);
   const user = await mustUser(principal.userId);
   const installed = answered(share.document, answers);
@@ -561,7 +557,7 @@ export async function recordReview(
 ) {
   const preview = await previewPublication(principal, id);
   if (preview.documentHash !== documentHash) throw new HttpError("replay the public preview, then review that hash", 409);
-  const real = shots.filter((shot) => shot.redacted === true && shot.stepId && shot.png && isElementCrop(Buffer.from(shot.png, "base64")));
+  const real = shots.filter((shot) => shot.stepId && shot.png && isElementCrop(Buffer.from(shot.png, "base64")));
   if (real.length) await writeShots(id, preview.version, real);
   await query(
     `INSERT INTO reviews (workflow_id, document_hash, samples) VALUES ($1, $2, $3::jsonb)
@@ -719,12 +715,10 @@ export async function viewerLastGreen(userId: string, workflowId: string): Promi
 }
 
 export async function forkPublic(principal: Principal, id: string, answers: Record<string, unknown>) {
-  assertSyncSafe({ answers });
   const pub = await publicWorkflow(id);
   if (!(await userAllowsListing(principal.userId, id))) {
     throw new HttpError("Allow this listing before it can be copied.", 403);
   }
-  rejectSecretAnswers(pub.document, answers);
   const user = await mustUser(principal.userId);
   const installed = answered(pub.document, answers);
   const nextId = `wf-${randomUUID()}`;
@@ -980,10 +974,10 @@ async function insertOwned(
 
 async function writeShots(workflowId: string, version: number, shots: ShotIn[]) {
   for (const shot of shots) {
-    if (shot.redacted !== true || !shot.stepId || !shot.png) throw new HttpError("unredacted screenshot", 400);
-    const bytes = Buffer.from(shot.png, "base64");
-    if (!isElementCrop(bytes)) continue;
-    const key = `shots/${workflowId}/v${version}/${shot.stepId}.png`;
+    if (!shot.stepId || !shot.png) throw new HttpError("screenshot", 400);
+    const bytes = await syncPicture(Buffer.from(shot.png, "base64"));
+    if (!bytes) continue;
+    const key = `shots/${workflowId}/v${version}/${shot.stepId}.jpg`;
     await putPng(key, bytes);
     await query(
       `INSERT INTO workflow_shots (workflow_id, version, step_id, blob_key) VALUES ($1, $2, $3, $4)
@@ -997,7 +991,7 @@ async function shotUrls(workflowId: string, version: number) {
   const visible = [];
   for (const shot of await listShotRows(workflowId, version)) {
     const bytes = await getPng(shot.blob_key);
-    if (!bytes || !isElementCrop(bytes)) continue;
+    if (!bytes || !isPicture(bytes)) continue;
     visible.push({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` });
   }
   return visible;
@@ -1013,8 +1007,8 @@ async function listShotRows(workflowId: string, version: number) {
 async function copyRealShots(workflowId: string, fromVersion: number, toVersion: number) {
   for (const row of await listShotRows(workflowId, fromVersion)) {
     const bytes = await getPng(row.blob_key);
-    if (!bytes || !isElementCrop(bytes)) continue;
-    await writeShots(workflowId, toVersion, [{ stepId: row.step_id, png: bytes.toString("base64"), redacted: true }]);
+    if (!bytes || !isPicture(bytes)) continue;
+    await writeShots(workflowId, toVersion, [{ stepId: row.step_id, png: bytes.toString("base64") }]);
   }
 }
 
@@ -1025,11 +1019,10 @@ async function pickThumbnail(document: unknown, workflowId: string, version: num
     inputs?: { name?: string; type?: string }[];
     steps?: { id?: string; sensitive?: boolean; input?: string }[];
   } : {};
-  const secrets = new Set((doc.inputs ?? []).filter((input) => input.type === "secret" && input.name).map((input) => String(input.name)));
-  const steps = (doc.steps && doc.steps.length ? doc.steps : [...byId.keys()].map((id) => ({ id }))) as { id?: string; sensitive?: boolean; input?: string }[];
+  const secrets = new Set((doc.inputs ?? []).filter((input) => input.type === "secret").map((input) => input.name));
+  const steps: { id?: string; sensitive?: boolean; input?: string }[] = doc.steps?.length ? doc.steps : [...byId.keys()].map((id) => ({ id }));
   for (const step of steps) {
-    if (step.sensitive) continue;
-    if (step.input && secrets.has(step.input)) continue;
+    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
     const key = byId.get(String(step.id ?? ""));
     if (!key) continue;
     const bytes = await getPng(key);
@@ -1142,13 +1135,6 @@ async function readable(principal: Principal, id: string) {
   );
   if (!grants.length) throw new HttpError("not found", 404);
   return row;
-}
-
-function rejectSecretAnswers(document: unknown, answers: Record<string, unknown>) {
-  const secret = new Set(questions(document).filter((item) => item.type === "secret").map((item) => item.name));
-  for (const [name, value] of Object.entries(answers)) {
-    if (secret.has(name) && value) throw new HttpError("secret param", 400);
-  }
 }
 
 function answered(document: unknown, answers: Record<string, unknown>) {

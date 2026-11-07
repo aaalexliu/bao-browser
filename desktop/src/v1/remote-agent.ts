@@ -274,7 +274,7 @@ export function createRemoteAgent(opts: {
         continue;
       }
       if (effect.type === "send-result") {
-        const fitted = fitResult(effect.jobId, presentResult(effect.result));
+        const fitted = fitResult(effect.jobId, redactAudit(effect.result) as Record<string, unknown>);
         rememberResult(opts.library.root, effect.jobId, fitted);
         socket?.send(JSON.stringify({ type: "result", jobId: effect.jobId, result: fitted }));
         continue;
@@ -357,7 +357,7 @@ export function createRemoteAgent(opts: {
     const id = stringArg(job.args.run_id);
     try {
       const stored = opts.library.readRun(id);
-      const outputs = redactAudit(stored.outputs ?? []) as unknown;
+      const outputs = stored.outputs ?? [];
       return { outcome: "ok", runId: stored.id, status: stored.status, outputs };
     } catch {
       return { outcome: "failed", reason: "run not found", runId: id };
@@ -618,18 +618,6 @@ function apply(slot: Slot, event: SlotEvent, current: AssignedJob | null): { slo
   }
   if (slot.phase !== "confirm") return { slot, effects: [{ type: "none" }] };
   return { slot: { phase: "idle" }, effects: [{ type: "send-ready" }] };
-}
-
-function presentResult(result: Record<string, unknown>): Record<string, unknown> {
-  const shot = typeof result.screenshot === "string" ? result.screenshot : "";
-  const resume = typeof result.resume === "string" ? result.resume : undefined;
-  const resumeToken = typeof result.resume_token === "string" ? result.resume_token : undefined;
-  const clean = redactAudit(result) as Record<string, unknown>;
-  delete clean.screenshot;
-  if (resume !== undefined) clean.resume = resume;
-  if (resumeToken !== undefined) clean.resume_token = resumeToken;
-  if (shot.startsWith("iVBORw0KGgo")) clean.screenshot = shot;
-  return clean;
 }
 
 function fitResult(jobId: string, result: Record<string, unknown>): Record<string, unknown> {

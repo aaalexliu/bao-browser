@@ -89,7 +89,7 @@ project, database, or blob store.
 2. Choose Next.js and set Root Directory to `web`.
 3. Generate an invite secret with `openssl rand -hex 32`. Do not commit it. Set `BAO_OWNER_EMAIL` to the one email that may sign in and `BAO_INVITE_SECRET` to that secret (Sensitive). Do not set `BAO_AUTH_STUB`; production refuses to start with it.
 4. Deploy with Standard Protection on. Copy the production domain, not a preview or generated deployment URL. All Deployments would block the Mac, which sends only its device token.
-5. In Storage, create a Private Blob store and connect it to the project. This sets `BLOB_STORE_ID` for redacted PNGs. Do not create a public store.
+5. In Storage, create a Private Blob store and connect it to the project. This sets `BLOB_STORE_ID` for saved pictures. Do not create a public store.
 6. In Marketplace, choose Neon and the free plan. Read and accept the plan. Neon injects `DATABASE_URL`. Do not install the sunset Vercel Postgres or KV products.
 7. Redeploy so functions see `DATABASE_URL`, `BLOB_STORE_ID`, and the owner variables.
 8. Sign in with the owner email and invite secret. In Settings → Sync, paste the production domain, Devices pairing code, and invite secret once. Pair, then Sync.

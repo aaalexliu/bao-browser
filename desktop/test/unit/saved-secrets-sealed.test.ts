@@ -8,8 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { redactForRelease, releaseHash } from "../../../web/src/lib/publish";
-import { stripUnsafe as webStrip, assertSyncSafe } from "../../../web/src/lib/guard";
-import { stripUnsafe as desktopStrip } from "../../src/v1/sync-guard";
+import { stripUnsafe as webStrip } from "../../../web/src/lib/guard";
 import { runWorkflow } from "../../src/mcp/catalog";
 import { PageExecutor } from "../../src/proxy/executor";
 import { AuditTrail } from "../../src/proxy/audit";
@@ -97,7 +96,6 @@ test("sealed artifact census preserves payload bytes and verifies every seal aft
   const passes: [string, (value: unknown) => unknown | Promise<unknown>][] = [
     ["strip", (artifact) => scrubSaved({ artifact, evidence: typed }, { secrets: [STRIPPED_SECRET, "sha256"] }).artifact],
     ["library context", (artifact) => library.scrub({ artifact }, doc.id, undefined, [SECRET, STRIPPED_SECRET, "sha256"]).artifact],
-    ["desktop outbound strip", (artifact) => desktopStrip(artifact, [SECRET, STRIPPED_SECRET, "sha256"])],
     ["web outbound strip", (artifact) => webStrip(artifact, [SECRET, STRIPPED_SECRET, "sha256"])],
     ["release strip", (artifact) => redactForRelease(artifact).document],
     ["workflow", (artifact) => { library.save({ ...doc, artifact } as WorkflowV2); return (library.read(doc.id) as WorkflowV2 & { artifact: unknown }).artifact; }],
@@ -135,7 +133,7 @@ test("sealed artifact census preserves payload bytes and verifies every seal aft
   files.forEach((file, index) => assert.deepEqual(readFileSync(path.join(home, file)), before[index], file));
   assert.deepEqual(readFileSync(logFile), chainBytes);
   assert.equal(verifyReceiptChain(log.entries), true);
-  assert.throws(() => assertSyncSafe({ screenshot: snapshot.screenshot }), /screenshot/);
+  assert.deepEqual(webStrip({ screenshot: snapshot.screenshot }, []), { screenshot: snapshot.screenshot });
 });
 
 test("sealed lookalikes inside user data strip before outbound copies", () => {
@@ -145,7 +143,7 @@ test("sealed lookalikes inside user data strip before outbound copies", () => {
   assert.deepEqual(scrubSaved(lookalike, { secrets: [SECRET] }), lookalike);
   const data = { receipt: { kind: "read-back", hash: "signed", expected: SECRET, actual: SECRET }, preview: lookalike };
   const value = { op: "type", args: data, list: { rows: [{ cell: data }] }, workflow: { ...document(), inputs: [{ name: "payload", type: "text", default: data }] } };
-  for (const strip of [(item: unknown) => scrubSaved(item), (item: unknown) => desktopStrip(item, []), (item: unknown) => webStrip(item, [])]) {
+  for (const strip of [(item: unknown) => scrubSaved(item), (item: unknown) => webStrip(item, [])]) {
     const saved = JSON.stringify(strip(value));
     assert.equal(saved.includes(SECRET), false);
     assert.ok(saved.includes(STRIPPED_SECRET));

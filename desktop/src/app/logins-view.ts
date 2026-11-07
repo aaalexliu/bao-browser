@@ -210,7 +210,7 @@ export function syncPanel(sync: {
     : "";
   return `<div class="card" id="sync-panel" data-testid="sync">
     <h3>Sync</h3>
-    <p>Secrets, cookies, and unredacted screenshots stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
+    <p>Sync carries saved workflows and pictures. Passwords and credential values stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
     <label>Server <input id="sync-server" value="${htmlEsc(row.server || "")}" placeholder="Pairing server"></label>
     <label>Pairing code <input id="pair-code" autocomplete="off"></label>
     <label>Invite secret <input id="invite-secret" type="password" autocomplete="off" placeholder="${row.inviteSaved ? "Saved on this Mac" : "Paste once"}"></label>

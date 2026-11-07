@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { text } from "node:stream/consumers";
 import test from "node:test";
+import sharp from "sharp";
 import { pidsForDataDir } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
-import { inspectRunView, openStepPictures } from "../../src/mcp/run-view";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
@@ -17,7 +17,7 @@ test("marketplace review keeps private step crops local while uploading ordinary
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-catalog-review-"));
   const library = new Library(root);
-  let review: { shots: { stepId: string; png: string; redacted: boolean }[] } | undefined;
+  let review: { shots: { stepId: string; png: string }[] } | undefined;
   const server = createServer((req, res) => {
     if (req.url === "/fixture") {
       res.setHeader("content-type", "text/html");
@@ -69,7 +69,7 @@ test("marketplace review keeps private step crops local while uploading ordinary
       })),
     };
     library.save(document);
-    library.updateSettings({ pageEngine: "old", siteTrust: { [origin]: "allow" } });
+    library.updateSettings({ pageEngine: "old" });
     const outcome = await reviewWorkflow(library, document.id, {
       password: "synthetic-password-42",
       attachment: { name: "sample.txt", path: file },
@@ -79,17 +79,20 @@ test("marketplace review keeps private step crops local while uploading ordinary
     assert.equal(outcome.reviewed, true, outcome.reason);
     assert.ok(review);
     assert.ok(outcome.runId);
-    const local = inspectRunView(library, { run_id: outcome.runId });
+    const local = library.readRun(outcome.runId) as { steps: { id: string; afterShot?: string }[] };
     t.diagnostic(JSON.stringify({ uploaded: review.shots.map((shot) => shot.stepId), local: local.steps.map((step) => step.id) }));
     assert.deepEqual(local.steps.map((step) => step.id), document.steps.map((step) => step.id));
     for (const step of local.steps) {
-      assert.equal(step.picturesAllowed, true, step.id);
-      assert.ok(openStepPictures(library, { run_id: outcome.runId, step_id: step.id }).pictures.length > 0, step.id);
+      assert.ok(step.afterShot, step.id);
+      const picture = await readFile(path.join(root, "shots", "runs", outcome.runId, step.afterShot));
+      const decoded = await sharp(picture).raw().toBuffer({ resolveWithObject: true });
+      assert.ok(decoded.info.width > 0 && decoded.info.height > 0, step.id);
     }
     assert.deepEqual(pidsForDataDir(path.join(root, "chrome-profile")), []);
     assert.deepEqual(review.shots.map((shot) => shot.stepId), ["ordinary"]);
-    assert.equal(review.shots[0]?.redacted, true);
-    assert.deepEqual(Buffer.from(review.shots[0]!.png, "base64").subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const uploaded = await sharp(Buffer.from(review.shots[0]!.png, "base64")).raw().toBuffer({ resolveWithObject: true });
+    assert.ok(uploaded.info.width > 0 && uploaded.info.width <= 720);
+    assert.ok(uploaded.info.height > 0 && uploaded.info.height <= 480);
   } finally {
     if (resume) await runWorkflow(library, { resume, cancel: true });
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

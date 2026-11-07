@@ -123,6 +123,15 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
 
     appA = await startApp({ home: homeA });
     appB = await startApp({ home: homeB });
+    for (const app of [appA, appB]) {
+      const issued = await fetch(`${origin}/api/agent/pair`, { method: "POST", headers: { cookie, "content-type": "application/json" } });
+      assert.equal(issued.status, 200, await issued.clone().text());
+      const { code } = await issued.json() as { code: string };
+      const claimed = await fetch(`http://127.0.0.1:${app.port}/api/remote/pair`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, server: origin }),
+      });
+      assert.equal(claimed.status, 200, await claimed.clone().text());
+    }
     browser = await chromium.launch({
       executablePath: TEST_BROWSER,
       headless: true,
@@ -159,7 +168,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     const runStarted = Date.now();
     const running = tool(origin, tokenA.token, "run_workflow", {
       id: "hello-bao",
-      inputs: { password: PASSWORD, cookie: COOKIE },
+      inputs: { password: PASSWORD, cookie: COOKIE, reference: "021000021" },
     });
     await page.waitForSelector("[data-testid=remote-allow]", { timeout: 20_000 });
     await shot(page, "remote-approval.png");
@@ -272,7 +281,11 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     assert.equal(auditRes.ok, true, JSON.stringify(audit));
     const blob = JSON.stringify(audit);
     assertClean(blob);
+    assert.ok(blob.includes('"reference":"021000021"'), "audit retains a routing-number-shaped owner value");
+    evidence.retainedReference = "021000021";
     const jobs = audit.jobs;
+    assert.ok(jobs.some((job) => JSON.stringify(job.result).includes(hello.image)), "audit retains the real replay screenshot");
+    assert.ok(jobs.some((job) => JSON.stringify(job.result).includes(resumeToken)), "audit retains the owner-wait resume token");
     assert.ok(jobs.length >= 5, `only ${jobs.length} audit rows`);
     for (const job of jobs) {
       assert.match(String(job.token_id), /^atk-/);
@@ -417,7 +430,6 @@ async function rpc(origin: string, token: string, method: string, params?: unkno
 function assertClean(text: string): void {
   assert.equal(text.includes(PASSWORD), false, "audit or result kept a password");
   assert.equal(text.includes("super-secret-cookie"), false, "audit or result kept a cookie");
-  assert.equal(text.includes("iVBORw0KGgo"), false, "audit kept screenshot bytes");
 }
 
 async function shot(page: Page, name: string): Promise<void> {

@@ -52,6 +52,7 @@ function laneEnv(lane: TestLane, parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
  */
 export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrightPath?: () => string): NodeJS.ProcessEnv {
   const env = laneEnv(lane, parent);
+  env.NODE_PATH = [path.resolve("web/node_modules"), env.NODE_PATH].filter(Boolean).join(path.delimiter);
   pinTestBrowser(env, playwrightPath);
   return env;
 }

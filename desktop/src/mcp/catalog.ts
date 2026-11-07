@@ -22,6 +22,7 @@ import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { fitPictureBody } from "../v1/sync-pictures";
 import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
@@ -291,15 +292,17 @@ export async function reviewWorkflow(
   const outcome = await runWorkflow(library, { id, inputs, startUrl: opts.startUrl, document: replayDoc }, opts);
   if (outcome.outcome !== "ok") return { ...outcome, reviewed: false, documentHash };
   const state = loadState(library.root);
+  const fitted = await fitPictureBody({
+    documentHash,
+    shots: outcome.runId ? stepShots(library, replayDoc, outcome.runId) : [],
+    samples: publicSamples(inputs),
+  });
+  if (fitted.tooLarge) return { ...outcome, reviewed: false, documentHash, reason: "review exceeds transport limit" };
   const recorded = await remoteFetch<{ ok?: boolean }>(
     state,
     "POST",
     `/api/workflows/${encodeURIComponent(id)}/review`,
-    {
-      documentHash,
-      shots: outcome.runId ? redactedStepShots(library, replayDoc, outcome.runId) : [],
-      samples: publicSamples(inputs),
-    },
+    fitted.body,
     opts,
   );
   if (!recorded?.ok) return { ...outcome, reviewed: false, documentHash, reason: "review was not recorded" };
@@ -314,10 +317,10 @@ export async function reviewWorkflow(
   return { ...outcome, reviewed: true, documentHash };
 }
 
-function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string; redacted: true }[] {
+function stepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string }[] {
   const dir = path.join(library.root, "shots", "runs", runId);
   const run = library.readRun(runId);
-  const shots: { stepId: string; png: string; redacted: true }[] = [];
+  const shots: { stepId: string; png: string }[] = [];
   for (const step of workflow.steps) {
     if (privateReviewStep(workflow, step, run)) continue;
     const after = path.join(dir, shotFile(step.id, "after"));
@@ -326,7 +329,7 @@ function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string
     if (!existsSync(file)) continue;
     const png = readFileSync(file);
     if (png.length < 32 || png[0] !== 0x89 || png[1] !== 0x50) continue;
-    shots.push({ stepId: step.id, png: png.toString("base64"), redacted: true });
+    shots.push({ stepId: step.id, png: png.toString("base64") });
   }
   return shots;
 }

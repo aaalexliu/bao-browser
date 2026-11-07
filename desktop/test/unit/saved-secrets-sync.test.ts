@@ -135,8 +135,7 @@ test("sync hashes match saved documents after pull and every conflict choice", a
   await check();
   const heal = readFileSync(path.join(home, "heals", "heal.json"), "utf8");
   assert.equal(heal.includes("private-entry"), false);
-  assert.equal(heal.includes("secret{{1}}"), false);
-  assert.ok(heal.includes(STRIPPED_SECRET));
+  assert.deepEqual(JSON.parse(heal).heal, remoteDocument());
   for (const action of ["keep-mine", "keep-theirs", "keep-both"] as const) {
     const file = path.join(home, "conflicts", "saved.json");
     mkdirSync(path.dirname(file), { recursive: true });
@@ -208,8 +207,7 @@ test("two homes sync a kept HealRecord without stripping its owned binding", asy
   const stored = JSON.parse(readFileSync(path.join(receiver.root, "heals/kept.json"), "utf8"));
   assert.deepEqual(stored.heal, kept);
   const bare = JSON.parse(readFileSync(path.join(receiver.root, "heals/bare.json"), "utf8"));
-  assert.equal(bare.heal.failedStep.value, STRIPPED_SECRET);
-  assert.equal(bare.heal.failedStep.unresolved.reason, NEEDS_SECRET_VALUE);
+  assert.deepEqual(bare.heal, { ...kept, failedStep: { ...kept.failedStep, id: "unknown" } });
   const saved = receiver.read(doc.id);
   assert.equal(saved.steps[0]!.value, "{{password}}");
   const fills: string[] = [];

@@ -1,4 +1,4 @@
-// Import questions clear personal values. bao:// opens the running app.
+// Import questions follow author marks. bao:// opens the running app.
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -41,60 +41,68 @@ function workflow(id: string, name: string): WorkflowV2 {
   };
 }
 
-test("personal defaults become import questions and leave the shared copy", () => {
+test("personal defaults remain in shared copies and only author marks create questions", () => {
   const doc = workflow("sheet", "Sheet");
   const released = prepareImport(doc);
-  const text = JSON.stringify(released.document);
-  assert.equal(text.includes("@"), false);
-  assert.equal(text.includes("/home/ada"), false);
-  assert.equal(text.includes("Ada Lovelace"), false);
-  const names = released.questions.map((question) => question.name);
-  assert.deepEqual(names, ["email", "who", "note", "desk", "password"]);
-  const email = released.questions.find((question) => question.name === "email");
-  assert.equal(email?.cleared, "email");
-  assert.equal(email?.prompt, "Email to use");
-  assert.equal(email?.hint, "The sharer's email was removed.");
-  const note = released.questions.find((question) => question.name === "note");
-  assert.equal(note?.type, "file");
-  assert.equal(note?.prompt, "Which file");
-  assert.equal(note?.hint, "The sharer's file was removed.");
-  const desk = released.questions.find((question) => question.name === "desk");
-  assert.equal(desk?.prompt, "Desk");
-  assert.equal(desk?.example, "front");
-  assert.equal(desk?.hint, "For example, front.");
-  assert.equal(released.questions.find((question) => question.name === "password")?.required, false);
+  assert.deepEqual(released.document, doc);
+  assert.deepEqual(released.changes, []);
+  assert.deepEqual(released.questions.map((question) => question.name), ["desk"]);
+  const desk = released.questions[0]!;
+  assert.equal(desk.prompt, "Desk");
+  assert.equal(desk.example, "front");
+  assert.equal(desk.hint, "For example, front.");
   assert.equal(plainReplayReason("below-threshold"), "bao couldn't find this control confidently enough.");
-  const stored = released.document as { inputs: { name: string; cleared?: string; default?: string; askOnImport?: boolean }[] };
-  assert.equal(stored.inputs.find((input) => input.name === "email")?.cleared, "email");
-  assert.equal(stored.inputs.find((input) => input.name === "email")?.default, undefined);
-  assert.equal(stored.inputs.find((input) => input.name === "desk")?.askOnImport, true);
-  assert.equal(missingAnswers(importQuestions(released.document), {}).includes("email"), true);
-  assert.throws(() => applyImportAnswers(released.document, {}), /answer email/);
-  const saved = applyImportAnswers(released.document, {
-    email: "ada@other.com",
-    who: "front desk",
-    note: "inbox",
-    desk: "west",
-  }) as { inputs: { name: string; default?: string }[] };
-  assert.equal(JSON.stringify(saved).includes("@"), false);
-  assert.equal(JSON.stringify(saved).includes("/home/"), false);
+  assert.deepEqual(missingAnswers(importQuestions(released.document), {}), ["desk"]);
+  assert.throws(() => applyImportAnswers(released.document, {}), /answer desk/);
+  const saved = applyImportAnswers(released.document, { email: "ada@other.com", desk: "west" }) as WorkflowV2;
   assert.equal(saved.inputs.find((input) => input.name === "desk")?.default, "west");
-  assert.equal(saved.inputs.find((input) => input.name === "email")?.default, undefined);
+  assert.equal(saved.inputs.find((input) => input.name === "email")?.default, "ada@other.com");
+  assert.equal(saved.inputs.find((input) => input.name === "note")?.default, "/home/ada/note.txt");
+  assert.equal(doc.inputs.find((input) => input.name === "email")?.default, "ada@acme.com");
 });
 
-test("public samples keep a search query and drop a secret", () => {
+test("public samples keep main's filtering and trimmed string values", () => {
   const samples = publicSamples({
-    query: "Ada Lovelace",
+    query: "  Ada Lovelace  ",
     username: "grace",
     email: "ada@acme.com",
     note: "/Users/ada/note.txt",
+    relativeHome: "~/note.txt",
+    windowsPath: "C:\\Users\\ada\\note.txt",
+    phone: "+1 415-555-0123",
+    ssn: "123-45-6789",
     password: "fixture-pass-value",
+    apiToken: "fixture-token",
+    empty: "  ",
+    number: 42,
+    zip: "941031234",
+    routing: "021000021",
+    card: "4111111111111111",
+    pin: "  private-pin  ",
   });
-  assert.equal(samples.query, "Ada Lovelace");
-  assert.equal(samples.username, "grace");
-  assert.equal(samples.email, undefined);
-  assert.equal(samples.note, undefined);
-  assert.equal(samples.password, undefined);
+  assert.deepEqual(samples, {
+    query: "Ada Lovelace",
+    username: "grace",
+    zip: "941031234",
+    routing: "021000021",
+    card: "4111111111111111",
+    pin: "private-pin",
+  });
+});
+
+test("secret and file import questions need no answer or example", () => {
+  const document = { inputs: [
+    { name: "pin", type: "secret", askOnImport: true, required: true, default: "[secret stripped]", example: "hidden" },
+    { name: "upload", type: "file", askOnImport: true, required: true, default: "/Users/ada/file.txt" },
+  ] };
+  const questions = importQuestions(document);
+  assert.equal(questions.length, 2);
+  assert.ok(questions.every((question) => !question.required && question.example === undefined));
+  assert.deepEqual(missingAnswers(questions, {}), []);
+  assert.deepEqual(applyImportAnswers(document, {}), document);
+  const answered = applyImportAnswers(document, { pin: "not-for-the-registry", upload: "/Users/grace/import.txt" }) as typeof document;
+  assert.equal(answered.inputs[0]!.default, "[secret stripped]");
+  assert.equal(answered.inputs[1]!.default, "/Users/grace/import.txt");
 });
 
 test("bao links open a workflow or an unsaved import", () => {
@@ -145,7 +153,7 @@ test("bao open round trip", { timeout: 30_000 }, async () => {
     const pendingBody = await pending.json() as { ok: boolean; opened: { kind: string; questions: { name: string }[] } };
     assert.equal(pending.ok, true, JSON.stringify(pendingBody));
     assert.equal(pendingBody.opened.kind, "import");
-    assert.ok(pendingBody.opened.questions.some((question) => question.name === "email"));
+    assert.ok(pendingBody.opened.questions.some((question) => question.name === "desk"));
     assert.throws(() => app.library.read("import-me"));
     const blocked = await fetch(`http://127.0.0.1:${app.port}/api/open/install`, {
       method: "POST",
@@ -157,12 +165,12 @@ test("bao open round trip", { timeout: 30_000 }, async () => {
     const saved = await fetch(`http://127.0.0.1:${app.port}/api/open/install`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ answers: { email: "ada@other.com", who: "front desk", note: "inbox", desk: "west" } }),
+      body: JSON.stringify({ answers: { email: "ada@other.com", who: "front desk", note: "inbox", desk: "  west  " } }),
     });
     assert.equal(saved.status, 200, await saved.text());
     const stored = new Library(home).read("import-me");
-    assert.equal(JSON.stringify(stored).includes("@"), false);
-    assert.equal(JSON.stringify(stored).includes("/home/ada"), false);
+    assert.equal(JSON.stringify(stored).includes("ada@other.com"), true);
+    assert.equal(stored.inputs.find((input) => input.name === "who")?.default, "front desk");
     assert.equal(stored.inputs.find((input) => input.name === "desk")?.default, "west");
   } finally {
     await app.close();

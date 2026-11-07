@@ -13,7 +13,7 @@ import type { Page } from "playwright";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { pinTestBrowser } from "../../src/launch";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
-import { isElementCrop } from "../../../web/src/lib/png";
+import { isPng } from "../../../web/src/lib/png";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -85,7 +85,7 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
       },
     });
     await shotContext.close();
-    assert.equal(isElementCrop(png), true);
+    assert.equal(isPng(png), true);
 
     await pairDevice(seller, { code: await pairCode(origin, sellerCookie), server: origin, name: "Listing Mac" });
     const pushed = await syncAll(seller, "push");
@@ -105,7 +105,7 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     assert.equal(await page.locator("h2", { hasText: /^Sites$/ }).count(), 0);
     assert.equal(await page.getByTestId("domains").count(), 0);
     assert.equal(await page.locator("[data-secret=true]").innerText(), "Password · secret");
-    assert.equal(await page.getByTestId("secret-note").innerText(), "You enter this on your device.");
+    assert.equal(await page.getByTestId("setup-questions").innerText(), "This workflow asks for nothing.");
     assert.equal(await page.getByTestId("inputs").locator("input").count(), 0);
     assert.equal(await page.locator("input[type=password]").count(), 0);
     assert.equal(await page.getByTestId("perm-driver").innerText(), "Browser");

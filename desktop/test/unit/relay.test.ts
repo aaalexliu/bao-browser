@@ -174,7 +174,7 @@ test("a dropped socket receives the running job again and the call finishes", as
   }
 });
 
-test("secrets and CDP stay off the relay, and a screenshot is not stored", async () => {
+test("relay keeps pictures and owner data while credentials and CDP stay out", async () => {
   const store = new MemoryJobStore();
   const { server, directory } = await up(store);
   try {
@@ -192,6 +192,7 @@ test("secrets and CDP stay off the relay, and a screenshot is not stored", async
           password: "s3cret",
           cookie: "sid=1",
           title: "Books",
+          email: "ada@fixture.test",
           screenshot: PNG,
         },
       }));
@@ -210,11 +211,12 @@ test("secrets and CDP stay off the relay, and a screenshot is not stored", async
       id: "books",
       permissionMode: "allow",
       autoApprove: true,
-      inputs: { password: "s3cret", name: "ada", permissionMode: "allow" },
+      inputs: { password: "s3cret", name: "ada", email: "ada@fixture.test", path: "/Users/ada/books.csv", permissionMode: "allow" },
       cookie: "sid=1",
     });
     assert.equal(call.json.outcome, "ok");
     assert.equal(call.json.title, "Books");
+    assert.equal(call.json.email, "ada@fixture.test");
     assert.equal(call.json.screenshot, undefined);
     assert.equal(call.image, PNG);
     const args = delivered[0] || {};
@@ -223,13 +225,16 @@ test("secrets and CDP stay off the relay, and a screenshot is not stored", async
     assert.equal(dumped.includes("sid=1"), false);
     assert.equal(dumped.includes("permissionMode"), false);
     assert.equal((args.inputs as { name?: string } | undefined)?.name, "ada");
+    assert.equal((args.inputs as { email?: string } | undefined)?.email, "ada@fixture.test");
+    assert.equal((args.inputs as { path?: string } | undefined)?.path, "/Users/ada/books.csv");
     const job = store.snapshot().find((item) => item.tool === "run_workflow" && item.status === "done");
     assert.ok(job);
     const stored = JSON.stringify({ args: job.args, result: job.result, events: job.events });
     assert.equal(stored.includes("s3cret"), false);
     assert.equal(stored.includes("sid=1"), false);
-    assert.equal(stored.includes("iVBORw0KGgo"), false);
-    assert.equal(stored.includes(PNG), false);
+    assert.equal(stored.includes("iVBORw0KGgo"), true);
+    assert.equal(stored.includes(PNG), true);
+    assert.equal(stored.includes("ada@fixture.test"), true);
     const stream = await fetch(`${server.origin}/api/agent/jobs/${job.id}/stream`, {
       headers: { authorization: `Bearer ${agent.token}` },
     });
@@ -281,7 +286,11 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
     const runners = {
       extension: async () => { calls.extension += 1; return { outcome: "ok", via: "extension" }; },
       live: async () => { calls.live += 1; throw new Error("retired live runner called"); },
-      playwright: async () => { calls.playwright += 1; return { outcome: "ok", via: "playwright" }; },
+      playwright: async (_id: string, inputs: Record<string, unknown>) => {
+        calls.playwright += 1;
+        assert.equal(inputs.routing, "021000021");
+        return { outcome: "ok", via: "playwright", readBack: inputs.routing };
+      },
     };
     const denied = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, autoAllow: true });
     denied.start();
@@ -310,13 +319,14 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
     try {
       const mark = directory.lookups;
       await waitFor(() => directory.lookups > mark);
-      const pending = tool(server.origin, agent.token, "run_workflow", { id: "books", permissionMode: "deny", autoApprove: true });
+      const pending = tool(server.origin, agent.token, "run_workflow", { id: "books", permissionMode: "deny", autoApprove: true, inputs: { routing: "021000021" } });
       await waitFor(() => asked.view().phase === "approval");
       assert.equal(calls.playwright, 0);
       asked.allow();
       const allowed = await pending;
       assert.equal(allowed.json.outcome, "ok");
       assert.equal(allowed.json.via, "playwright");
+      assert.equal(allowed.json.readBack, "021000021");
       assert.equal(calls.playwright, 1);
     } finally {
       await asked.stop();

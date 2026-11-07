@@ -81,7 +81,7 @@ export default async function WorkflowPage({
         <a className="button" href={`/workflows/${id}/publish`}>Preview what goes public</a>
       </p>
       {query.share ? (
-        <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission}). Personal values were cleared from the shared copy.</p>
+        <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission}). Personal values remain; saved credential defaults are omitted.</p>
       ) : null}
       <h2>Steps</h2>
       {workflow.shots.length ? (
@@ -129,7 +129,7 @@ export default async function WorkflowPage({
       <h2>Runs</h2>
       <ul>
         {runs.map((run) => (
-          <li key={run.id}>{run.status} · {when(run.at)} · {run.shots.length} element crop{run.shots.length === 1 ? "" : "s"}</li>
+          <li key={run.id}>{run.status} · {when(run.at)} · {run.shots.length} picture{run.shots.length === 1 ? "" : "s"}</li>
         ))}
       </ul>
       {runs.length ? null : <p className="muted">No runs pushed from a device yet.</p>}
