@@ -62,7 +62,7 @@ export interface StepView {
   endedAt?: number;
   label?: string;
   action?: string;
-  native?: { command: string; args: string[] };
+  native?: { command: string; args: string[]; results?: { stdout: string; stderr: string; exitCode: number }[] };
   identity?: IdentityView;
   beforeShot?: string;
   afterShot?: string;

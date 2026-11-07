@@ -21,7 +21,7 @@ Pass-through startup connects only to Chrome's browser-level CDP endpoint and di
 
 `desktop/test/unit/agent-browser-startup.test.ts` covers startup with a stalled restored renderer. `desktop/test/unit/chrome-startup.test.ts` covers launch flags, a stale endpoint file, a port-bind race, browser-only startup commands, and headed `navigator.webdriver` before and after a Runtime-domain attach.
 
-Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign-in and human-check handoffs return Bao's wait status instead. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. It does not save a replayable workflow. Workflows from the retired live driver fail with `this workflow used the retired live driver`; replay on the pass-through is a later layer.
+Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign-in and human-check handoffs return Bao's wait status instead. [Browser tool cards](mcp-viewer.md#browser-tool-cards) describes the visual result and receipt handoff in MCP Apps hosts. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. It does not save a replayable workflow. Workflows from the retired live driver fail with `this workflow used the retired live driver`; replay on the pass-through is a later layer.
 
 ### Session end
 

@@ -1027,6 +1027,14 @@ export function snapshotPane(dom: SnapshotNode[] | undefined, ax: string | undef
   return `<div id="snapshot-inspector"><h3 class="section">Snapshot</h3><h4>DOM</h4>${list}<h4>Accessibility</h4>${axBlock}</div>`;
 }
 
+export function runConsoleLines(run: RunSummary): ConsoleLine[] | undefined {
+  if (run.kind !== "capture" || run.pageEngine !== "agent-browser") return run.console;
+  return (run.steps || []).flatMap((step) => (step.native?.results || []).flatMap((result) =>
+    (["stdout", "stderr"] as const).filter((type) => result[type].length > 0).map((type) => ({
+      stepId: step.id, type, text: result[type], ts: step.endedAt,
+    }))));
+}
+
 export function consolePane(lines: ConsoleLine[] | undefined, stepId?: string): string {
   const all = lines || [];
   const mine = stepId ? all.filter((line) => line.stepId === stepId) : all;

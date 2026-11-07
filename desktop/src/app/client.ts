@@ -26,6 +26,7 @@ import {
   healWorkflowName,
   importCard,
   consolePane,
+  runConsoleLines,
   inputsPane,
   guidePanel,
   libraryTable,
@@ -1248,7 +1249,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   const consoleTab = host.querySelector("[data-run-tab=console]");
   if (consoleTab) (consoleTab as HTMLButtonElement).onclick = () => {
     const extra = document.getElementById("run-extra");
-    if (extra) extra.innerHTML = consolePane(run.console, selectedStep);
+    if (extra) extra.innerHTML = consolePane(runConsoleLines(run), selectedStep);
   };
   const networkTab = host.querySelector("[data-run-tab=network]");
   if (networkTab) (networkTab as HTMLButtonElement).onclick = () => {

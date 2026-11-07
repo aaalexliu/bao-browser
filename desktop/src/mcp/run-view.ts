@@ -1,10 +1,12 @@
-import { readLibraryFile } from "../v1/library-read";
+import { findNodeAtLocation, parseTree } from "jsonc-parser";
+import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
 import { shotFile, shotFormat } from "../v1/shots";
 import { Library, type StoredRun } from "../v1/store";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
 export const VIEW_PICTURE_BYTES = 512 * 1024;
+export const BROWSER_PICTURE_BYTES = 2 * 1024 * 1024;
 const PAGE_SIZE = 5;
 const STEP_PAGE_SIZE = 20;
 const bounded = { maxBytes: VIEW_RECORD_BYTES };
@@ -40,6 +42,7 @@ function count(value: unknown): number | null {
 }
 
 function workflowFor(library: Library, run: StoredRun): WorkflowV2 | undefined {
+  if (run.kind === "capture") return undefined;
   try { return library.readWorkflowSnapshot(viewerId(run.workflowId), bounded).workflow; }
   catch { return undefined; }
 }
@@ -60,13 +63,20 @@ export function listRunViews(library: Library, args: Record<string, unknown>) {
   return { view: "history", runs: runs.map((run) => summary(run, workflowFor(library, run))), offset: page, nextOffset, skipped, order: "recently updated" };
 }
 
+function readViewerRun(library: Library, runId: string): StoredRun {
+  const header = parseTree(readLibraryPrefix(library.root, ["runs", `${runId}.json`], 4096).toString("utf8"));
+  const capture = header !== undefined && findNodeAtLocation(header, ["kind"])?.value === "capture";
+  return library.readRun(runId, capture ? { maxBytes: Number.MAX_SAFE_INTEGER } : bounded);
+}
+
 export function inspectRunView(library: Library, args: Record<string, unknown>) {
-  const run = library.readRun(viewerId(args.run_id), bounded);
+  const run = readViewerRun(library, viewerId(args.run_id));
   const workflow = workflowFor(library, run);
   const stepOffset = offset(args.step_offset);
   const workflowOffset = offset(args.workflow_offset);
-  const failure = record(run.failure);
-  const stopped = run.steps.map(record).find((step) => ["paused", "failed", "timeout", "timed-out"].includes(String(step.status)));
+  const recording = run.kind === "capture" && (run.envelope?.status || run.status) === "recording";
+  const failure = record(recording ? undefined : run.failure);
+  const stopped = recording ? undefined : run.steps.map(record).find((step) => ["paused", "failed", "timeout", "timed-out"].includes(String(step.status)));
   const results = (run.receipts || []).map(record);
   const steps = run.steps.slice(stepOffset, stepOffset + STEP_PAGE_SIZE).map((item, index) => {
     const step = record(item);
@@ -86,8 +96,8 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
   });
   return {
     view: "receipt", run: summary(run, workflow),
-    reason: text(run.envelope?.reason) || text(failure.reason) || text(stopped?.reason),
-    handoff: run.envelope ? { status: text(run.envelope.status, 60), ask: text(run.envelope.ask), reason: text(run.envelope.reason), deadline: text(run.envelope.deadline, 80) } : null,
+    reason: recording ? undefined : text(run.envelope?.reason) || text(failure.reason) || text(stopped?.reason),
+    handoff: !recording && run.envelope ? { status: text(run.envelope.status, 60), ask: text(run.envelope.ask), reason: text(run.envelope.reason), deadline: text(run.envelope.deadline, 80) } : null,
     steps, stepOffset, nextStepOffset: stepOffset + STEP_PAGE_SIZE < run.steps.length ? stepOffset + STEP_PAGE_SIZE : null,
     workflow: workflow ? {
       id: viewerId(workflow.id), name: text(workflow.name, 120), stepCount: workflow.steps.length,
@@ -100,10 +110,31 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
   };
 }
 
+function readPicture(library: Library, runId: string, name: string, maxBytes: number) {
+  try {
+    const bytes = readLibraryFile(library.root, ["shots", "runs", runId, name], maxBytes);
+    const format = shotFormat(bytes);
+    if (format) return { mimeType: format === "png" ? "image/png" : "image/jpeg", data: bytes.toString("base64") };
+  } catch {}
+  return undefined;
+}
+
+export function openBrowserPicture(library: Library, args: Record<string, unknown>) {
+  const runId = viewerId(args.run_id);
+  const stepId = viewerId(args.step_id);
+  const phase = args.phase;
+  if (phase !== "before" && phase !== "after") throw new Error("Invalid picture phase");
+  for (const format of ["jpg", "png"] as const) {
+    const picture = readPicture(library, runId, shotFile(stepId, phase, format), BROWSER_PICTURE_BYTES);
+    if (picture) return { runId, stepId, pictures: [{ phase, ...picture }] };
+  }
+  return { runId, stepId, pictures: [] };
+}
+
 export function openStepPictures(library: Library, args: Record<string, unknown>) {
   const runId = viewerId(args.run_id);
   const stepId = viewerId(args.step_id);
-  const run = library.readRun(runId, bounded);
+  const run = readViewerRun(library, runId);
   const recorded = run.steps.map(record).find((item) => item.id === stepId);
   if (!recorded) throw new Error("Step not found in this run");
   const pictures: { phase: string; mimeType: string; data: string }[] = [];
@@ -111,13 +142,8 @@ export function openStepPictures(library: Library, args: Record<string, unknown>
     const names = [recorded[`${phase}Shot`], shotFile(stepId, phase, "png"), shotFile(stepId, phase, "jpg")];
     for (const name of names) {
       if (typeof name !== "string") continue;
-      try {
-        const bytes = readLibraryFile(library.root, ["shots", "runs", runId, name], VIEW_PICTURE_BYTES);
-        const format = shotFormat(bytes);
-        if (!format) continue;
-        pictures.push({ phase, mimeType: format === "png" ? "image/png" : "image/jpeg", data: bytes.toString("base64") });
-        break;
-      } catch { /* Missing, linked, malformed, or oversized evidence is never exported. */ }
+      const picture = readPicture(library, runId, name, run.kind === "capture" ? BROWSER_PICTURE_BYTES : VIEW_PICTURE_BYTES);
+      if (picture) { pictures.push({ phase, ...picture }); break; }
     }
   }
   return { runId, stepId, pictures };

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Library, type StoredRun } from "../v1/store";
-import { shotFile, shotFormat } from "../v1/shots";
+import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
 export interface RecordedAgentBrowserCommand {
@@ -12,6 +12,8 @@ export interface RecordedAgentBrowserCommand {
   startedAt: number;
   endedAt?: number;
   reason?: string;
+  beforeShot?: string;
+  target?: { rect: ShotBox; viewport: { width: number; height: number } };
   afterShot?: string;
   afterShotError?: string;
   native: {
@@ -27,15 +29,22 @@ export interface RecordedAgentBrowserCommand {
 export class AgentBrowserRun {
   private readonly run: Omit<StoredRun, "steps"> & {
     steps: RecordedAgentBrowserCommand[];
-    console: { stepId: string; type: string; text: string; ts: number }[];
   } = {
     id: `run-${randomUUID()}`, kind: "capture", pageEngine: "agent-browser", workflowId: "agent-browser",
-    status: "recording", at: Date.now(), steps: [], heals: [], console: [],
+    status: "recording", at: Date.now(), steps: [], heals: [],
   };
   private readonly shots: string;
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
+    this.persist();
+  }
+
+  get id(): string { return this.run.id; }
+
+  async actionPicture(step: RecordedAgentBrowserCommand, bytes: Buffer, target: NonNullable<RecordedAgentBrowserCommand["target"]>): Promise<void> {
+    step.beforeShot = await this.picture(step, bytes, "before");
+    step.target = target;
     this.persist();
   }
 
@@ -60,11 +69,6 @@ export class AgentBrowserRun {
       step.reason = step.native.error;
     } else if (step.native.isError) {
       step.reason = "Native agent-browser command failed.";
-    }
-    for (const result of results) {
-      for (const type of ["stdout", "stderr"] as const) {
-        if (result[type]) this.run.console.push({ stepId: step.id, type, text: result[type], ts: step.endedAt });
-      }
     }
     this.persist();
     if (privatePage) {
@@ -109,10 +113,10 @@ export class AgentBrowserRun {
     this.persist();
   }
 
-  private async picture(step: RecordedAgentBrowserCommand, bytes: Buffer, which: "requested" | "after"): Promise<string> {
+  private async picture(step: RecordedAgentBrowserCommand, bytes: Buffer, which: "requested" | "before" | "after"): Promise<string> {
     const format = shotFormat(bytes);
     if (!format) throw new Error("not a page screenshot");
-    const file = which === "after" ? shotFile(step.id, "after", format) : `${step.id}-requested.${format}`;
+    const file = which === "requested" ? `${step.id}-requested.${format}` : shotFile(step.id, which, format);
     await mkdir(this.shots, { recursive: true });
     await writeFile(path.join(this.shots, file), bytes);
     return file;
