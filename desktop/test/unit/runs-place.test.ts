@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { rail, runAttention, runsList, runWaitLeft } from "../../src/app/views";
+import { rail, runAttention, runsList, runWaitLeft, shellAttentionCount, shellList } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import type { inspectRunView } from "../../src/mcp/run-view";
@@ -49,6 +49,11 @@ test("Runs shows stored step reasons after workflow edits or deletion in both th
     await rm(home, { recursive: true, force: true });
   }
 });
+const reviewRuns = [1, 2, 3].map((at) => ({
+  id: `review-${at}`, workflowId: "wf", status: "passed", at,
+  heals: [{ id: `heal-${at}`, failedStep: { id: "step", label: "Read account" } }],
+  decisions: [{ ts: at, healId: `heal-${at}`, decision: "keep" as const }],
+}));
 
 test("Runs counts waiting runs, undecided heals and failures without changing records", () => {
   const runs = [
@@ -75,7 +80,7 @@ test("Runs rows use filled glyphs, stop reasons and elapsed time without invente
   assert.doesNotMatch(html, /model calls|0 s/);
   const side = rail({ runs: [{ id: "fail", workflowId: "wf", status: "failed" }], damagedWorkflows: [{}], helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false } });
   assert.match(side, /data-count="1"/);
-  assert.match(side, /1 run is waiting for you/);
+  assert.match(side, /Nothing running/);
   assert.match(side, /1 workflow can’t open/);
   assert.doesNotMatch(side, /Optional Mac permissions not granted/);
 });
@@ -97,7 +102,7 @@ test("active asks share attention counts, open Live and use numeric deadlines on
   assert.equal(runAttention([], { ...ask, runId: undefined }).length, 1);
   assert.match(runsList([waiting], [], "", now, ask), /2 min left/);
   const stored = runsList([waiting], [], "", now);
-  assert.match(stored, /Nov 6, 12:30 PM UTC/);
+  assert.match(stored, /Waits until Nov 6, 12:30 PM UTC/);
   assert.doesNotMatch(stored, /min left|data-run-deadline|datetime=/);
   assert.match(stored, /<time[^>]*>\d{1,2}:\d{2} [AP]M (?:[A-Z]{2,5}|GMT[+-][\d:]+)</);
   assert.match(runsList([waiting], [], "", now, { ...ask, runId: "other" }), /Nov 6, 12:30 PM UTC/);
@@ -108,6 +113,35 @@ test("active asks share attention counts, open Live and use numeric deadlines on
     assert.match(ended, /Owner wait ended\./);
     assert.doesNotMatch(ended, /Press Reserve|Nov 6/);
   }
+});
+
+test("attention separates waiting runs from items and keeps import and step reviews", () => {
+  const runs = [
+    { id: "wait", workflowId: "wf", status: "paused", heals: [{ id: "repair" }] },
+    { id: "failed", workflowId: "wf", status: "failed" },
+    ...reviewRuns,
+  ];
+  const state = { runs, pendingImport: { phase: "confirm" } };
+  assert.equal(shellAttentionCount(state), 5);
+  for (const phase of ["confirm", "pick", "running", "error"]) {
+    assert.equal(shellAttentionCount({ pendingImport: { phase } }), 1, phase);
+    assert.match(rail({ pendingImport: { phase } }), /Sign-in needs you/);
+  }
+  for (const phase of ["cancelled", "done"]) assert.equal(shellAttentionCount({ pendingImport: { phase } }), 0, phase);
+  const side = rail(state);
+  assert.match(side, /data-count="5" aria-label="5 need you"/);
+  assert.match(side, /1 run is waiting for you · Sign-in needs you · 1 step needs review/);
+  assert.doesNotMatch(side, /5 runs/);
+  assert.match(shellList("runs", state), />5 need you</);
+  const list = runsList(runs, [], "", Date.now(), undefined, "confirm");
+  assert.match(list, /aria-label="5 items">5</);
+  assert.match(list, /Sign-in needs you/);
+  assert.match(list, /Step needs review after 3 heals/);
+  assert.match(shellList("runs", {}), />No runs yet</);
+  assert.match(rail({}), /aria-label="No runs yet"/);
+  assert.match(shellList("runs", { runs: [runs[1]!] }), />1 needs you</);
+  assert.match(rail({ runs: [runs[1]!] }), /aria-label="1 needs you"/);
+  assert.match(shellList("runs", { runs: [{ id: "done", workflowId: "wf", status: "passed" }] }), />Nothing needs you</);
 });
 
 test("footer follows replay start and end when no other state changes", { timeout: 30_000 }, async () => {
@@ -122,7 +156,11 @@ test("footer follows replay start and end when no other state changes", { timeou
     const url = `http://127.0.0.1:${app.port}`;
     const state = await (await fetch(`${url}/api/state`)).json() as Record<string, unknown>;
     let replaying = false;
-    await page.route("**/api/state", (route) => route.fulfill({ json: { ...state, replaying } }));
+    let extra: Record<string, unknown> = {};
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "setAppBadge", { value: async (count: number) => { document.documentElement.dataset.badge = String(count); } });
+    });
+    await page.route("**/api/state", (route) => route.fulfill({ json: { ...state, ...extra, replaying } }));
     await page.goto(url);
     await page.waitForFunction(() => document.querySelector("#attention-label")?.textContent === "Nothing running");
     replaying = true;
@@ -131,6 +169,15 @@ test("footer follows replay start and end when no other state changes", { timeou
     replaying = false;
     await page.waitForFunction(() => document.querySelector("#attention-label")?.textContent === "Nothing running");
     assert.equal(await page.locator("#attention").getAttribute("data-count"), "0");
+    for (const run of reviewRuns) app.library.saveRun({ ...run, steps: [] });
+    extra = { runs: reviewRuns, pendingImport: { id: "consent", phase: "confirm", domain: "example.com", message: "Review the import" } };
+    await page.waitForFunction(() => document.querySelector("#attention")?.getAttribute("data-count") === "2");
+    assert.equal(await page.locator(".pane-title p").innerText(), "2 need you");
+    assert.equal(await page.locator("#attention-label").innerText(), "Sign-in needs you · 1 step needs review");
+    assert.equal(await page.locator("#needs-you-heading .run-count").innerText(), "2");
+    assert.equal(await page.locator("html").getAttribute("data-badge"), "2");
+    await page.locator(".rail-foot").click();
+    await page.locator("#login-site").waitFor();
   } finally {
     await browser.close(); await app.close();
     if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
@@ -156,7 +203,14 @@ test("Runs first load opens the top Needs-you run, else newest, without replacin
     assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
     assert.equal(await page.evaluate(() => document.activeElement?.tagName), "BODY", "first load does not draw a keyboard focus ring around the receipt");
     assert.equal(await page.locator("#attention-label").innerText(), "1 run is waiting for you");
-    assert.equal(await page.locator(".pane-title p").innerText(), "1 need you");
+    assert.equal(await page.locator(".pane-title p").innerText(), "1 needs you");
+    await page.locator('#rail [data-place=workflows]').click();
+    await page.locator('#rail [data-place=runs]').click();
+    await page.locator('#run-receipt').waitFor();
+    assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
+    await page.locator('#screen-list [data-screen=runs]').click();
+    await page.locator('#run-receipt').waitFor();
+    assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
     await page.locator('[data-open-run=newest]').click();
     app.library.saveRun({ id: "another", workflowId: "agent-browser", status: "paused", at: 400, steps: [], heals: [] });
     await page.waitForFunction(() => document.querySelector('#attention')?.getAttribute('data-count') === '2');

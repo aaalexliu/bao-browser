@@ -97,7 +97,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       assert.equal(listBounds?.width, width === 1200 ? 340 : width === 720 ? 296 : 320);
       for (const [screen, place, heading] of routes) {
         await navigate(screen, place);
-        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : heading);
+        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : screen === "runs" ? workflow.name : heading);
         await checkTitle("Bao");
         assert.equal(await page.locator("#screen-list [aria-current=page]").count(), screen === "library" ? 0 : 1);
         if (screen !== "library") {
@@ -165,11 +165,13 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.locator("#edit-json").focus();
     pendingHeal = true;
     await page.locator('#attention[data-count="1"]').waitFor();
-    assert.equal(await page.locator("#attention-label").innerText(), "1 run is waiting for you");
+    assert.equal(await page.locator("#attention-label").innerText(), "Nothing running");
     assert.equal(await page.locator("#edit-json").evaluate((element) => element === document.activeElement), true);
     await checkTitle("Bao");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");
     await navigate("runs", "runs");
+    await page.locator("#run-receipt").waitFor();
+    await navigate("live", "runs");
     await page.locator("[data-open-run=run-shell]").first().focus();
     await scrollContent();
     await page.keyboard.press("Enter");

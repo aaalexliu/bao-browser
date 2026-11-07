@@ -194,7 +194,7 @@ test("login act bar offers continue and does not press the site button", () => {
   assert.match(html, /still signed out/);
 });
 
-test("sidebar count covers Needs-you runs and active asks, not imports", () => {
+test("sidebar count covers Needs-you runs, active asks and imports", () => {
   const html = rail({
     recording: true,
     helper: { label: "helper off" },
@@ -211,8 +211,8 @@ test("sidebar count covers Needs-you runs and active asks, not imports", () => {
   assert.match(html, /data-place="runs"/);
   assert.match(html, /data-screen="settings"/);
   assert.equal(html.includes("data-screen=\"trail\""), false);
-  assert.match(html, /id="attention" data-count="2"/);
-  assert.match(html, /id="attention-label">2 runs waiting for you</);
+  assert.match(html, /id="attention" data-count="3"/);
+  assert.match(html, /id="attention-label">1 run is waiting for you · Sign-in needs you</);
   assert.doesNotMatch(html, /recording|helper off|no model/);
   assert.equal(attentionCount({ ask: { kind: "confirm" }, importPhase: "confirm", pendingHeals: 1 }), 3);
 });

@@ -43,6 +43,7 @@ import {
   receiptError,
   runWorkflowName,
   runAttention,
+  shellAttentionCount,
   runWaitLeft,
   runKind,
   reviewItems,
@@ -217,15 +218,7 @@ async function loadState(): Promise<void> {
       }
     }
   }
-  if (firstLoad && screen === "runs" && !opened) {
-    const first = runAttention(state.runs || [], state.activeAsk)[0];
-    if (first?.live) screen = "live";
-    else {
-      openRun = first?.run.id
-        || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id || "";
-      if (openRun) screen = "run";
-    }
-  }
+  if (screen === "runs" && !opened) selectDefaultRun();
   const key = JSON.stringify({
     recording: state.recording,
     replaying: state.replaying,
@@ -556,6 +549,7 @@ function importSheet(): string {
 
 function navigate(next: Screen): void {
   screen = next;
+  if (screen === "runs") selectDefaultRun();
   renderKey = "";
   if (screen === "logins") void loadSaved();
   if (screen === "settings") void loadHostAccess();
@@ -1707,6 +1701,15 @@ async function runReplay(): Promise<void> {
   await refresh();
 }
 
+function selectDefaultRun(): void {
+  const first = runAttention(state.runs || [], state.activeAsk)[0];
+  if (first?.live) screen = "live";
+  else {
+    const id = first?.run.id || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id;
+    if (id) selectRun(id);
+  }
+}
+
 function selectRun(id: string, stepId = ""): void {
   openRun = id;
   selectedStep = stepId;
@@ -1745,7 +1748,7 @@ function tickClock(): void {
 }
 
 function paintDockBadge(): void {
-  const count = runAttention(state.runs || [], state.activeAsk).length;
+  const count = shellAttentionCount(state);
   document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);

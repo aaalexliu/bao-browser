@@ -6,7 +6,7 @@ import type { inspectRunView } from "../mcp/run-view";
 import { shellPlaces, shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
-import { formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
+import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatTime, formatWhen } from "../v1/time";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
@@ -299,15 +299,37 @@ function baoMark(): string {
   return `<svg class="bao-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="bao-mark-bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient><radialGradient id="bao-mark-dough" cx="42%" cy="32%" r="78%"><stop stop-color="#FFFDF8"/><stop offset=".66" stop-color="#FFF1DE"/><stop offset="1" stop-color="#F8DEBE"/></radialGradient></defs><rect x="4" y="4" width="92" height="92" rx="24" fill="url(#bao-mark-bg)"/><g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27C39.2 24.3 42.8 23 41 20.3M50 26C48.2 23.3 51.8 22 50 19.3M59 27C57.2 24.3 60.8 23 59 20.3"/></g><path d="M50 34C70 34 79 48 79 62C79 78 65 84 50 84C35 84 21 78 21 62C21 48 30 34 50 34Z" fill="url(#bao-mark-dough)" stroke="#EBD3B2" stroke-width="1.4"/><ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2"/><path d="M36 60Q41 52.5 46 60M54 60Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M44 72Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>`;
 }
 
+export function shellAttentionCount(state: ShellState): number {
+  return attentionCount({
+    pendingHeals: runAttention(state.runs || [], state.activeAsk).length,
+    importPhase: state.pendingImport?.phase,
+    reviews: reviewItems(state.runs).length,
+  });
+}
+
+function needsYouText(count: number, hasRuns: boolean): string {
+  return count ? `${count} ${count === 1 ? "needs" : "need"} you` : hasRuns ? "Nothing needs you" : "No runs yet";
+}
+
 export function rail(state: ShellState, screen: Screen = "runs"): string {
   const attention = runAttention(state.runs || [], state.activeAsk);
-  const waiting = attention.length;
+  const waits = attention.filter((item) => item.kind === "paused");
+  const waiting = new Set(waits.map((item) => item.run.id)).size;
+  const count = shellAttentionCount(state);
+  const imports = attentionCount({ pendingHeals: 0, importPhase: state.pendingImport?.phase });
+  const reviews = reviewItems(state.runs).length;
+  const footer = [
+    waiting ? `${waiting} run${waiting === 1 ? " is" : "s are"} waiting for you` : "",
+    imports ? "Sign-in needs you" : "",
+    reviews ? `${reviews} step${reviews === 1 ? " needs" : "s need"} review` : "",
+  ].filter(Boolean).join(" · ") || (state.recording ? "Recording" : state.replaying ? "Running" : "Nothing running");
+  const action = waits[0] ? waits[0].live ? ' data-screen="live"' : ` data-open-run="${esc(waits[0].run.id)}"` : imports ? ' data-screen="logins"' : reviews ? ' data-screen="library"' : ' data-screen="live"';
   const damaged = state.damagedWorkflows?.length || 0;
   const current = shellScreens[shellScreen(screen)].place;
   const workflowWarning = damaged ? `<span class="workflow-warning" aria-hidden="true">${icon("warning")}</span><span id="workflow-warning-description" hidden>${damaged === 1 ? "One workflow can’t open." : `${damaged} workflows can’t open.`} Open Workflows for recovery options.</span>` : "";
   return `<button id="sidebar-close" type="button" aria-label="Close sidebar">Close</button>
-    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} <span>${place.label}</span>${place.id === "runs" ? `<span class="place-count" id="attention" data-count="${waiting}" aria-label="${waiting} need you">${waiting || ""}</span>` : place.id === "workflows" && damaged ? workflowWarning : ""}</button>`).join("")}</nav>
-    <button type="button" class="rail-foot"${attention[0] && !attention[0].live ? ` data-open-run="${esc(attention[0].run.id)}"` : ` data-screen="live"`}>${baoMark()}<span><strong>Bao</strong><span id="attention-label">${waiting ? `${waiting} run${waiting === 1 ? " is" : "s"} waiting for you` : state.recording ? "Recording" : state.replaying ? "Running" : "Nothing running"}</span></span></button>`;
+    <nav aria-label="Places">${shellPlaces.map((place) => `<button type="button" data-place="${place.id}" data-screen="${place.screen}"${current === place.id ? ` class="on" aria-current="page"` : ""}${place.id === "workflows" && damaged ? ` aria-describedby="workflow-warning-description"` : ""}>${icon(place.icon)} <span>${place.label}</span>${place.id === "runs" ? `<span class="place-count" id="attention" data-count="${count}" aria-label="${needsYouText(count, Boolean(state.runs?.length))}">${count || ""}</span>` : place.id === "workflows" && damaged ? workflowWarning : ""}</button>`).join("")}</nav>
+    <button type="button" class="rail-foot"${action}>${baoMark()}<span><strong>Bao</strong><span id="attention-label">${esc(footer)}</span></span></button>`;
 }
 
 export function shellList(screen: Screen, state: ShellState, selectedRun = "", available = true): string {
@@ -317,13 +339,13 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
   const heals = pendingHealCount(state.runs || []);
   return `<header class="pane-bar">
       <button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${icon("sidebar")}</button>
-      <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${runAttention(state.runs || [], state.activeAsk).length} need you</p>` : ""}</div>
+      <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${available ? needsYouText(shellAttentionCount(state), Boolean(state.runs?.length)) : "Run history unavailable"}</p>` : ""}</div>
       ${place.id === "runs" ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
     <nav aria-label="${place.label} screens" class="screen-list${place.id === "runs" ? " runs-screens" : ""}">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}${id === "heals" && heals > 0 ? ` <span id="heal-count">${heals}</span>` : ""}</span>
         <span class="screen-description">${item.description}</span>
-      </button>`).join("")}</nav>${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : ""}`;
+      </button>`).join("")}</nav>${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : ""}`;
 }
 
 /** Settings control for the outbound relay. Unchecked until this Mac opts in. */
@@ -1778,8 +1800,11 @@ export function runWaitLeft(deadline: number, now = Date.now()): string {
   return Number.isFinite(remaining) ? `${remaining >= 60 ? `${Math.floor(remaining / 60)} h ` : ""}${remaining % 60} min left` : "";
 }
 
-export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null): string {
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string): string {
   const attention = runAttention(runs, ask);
+  const imports = attentionCount({ pendingHeals: 0, importPhase });
+  const reviews = reviewItems(runs);
+  const count = shellAttentionCount({ runs, activeAsk: ask, pendingImport: { phase: importPhase } });
   const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
   let selectionShown = false;
   const row = (run: RunSummary, attentionLabel?: string, kind = runListKind(run), live = false) => {
@@ -1796,7 +1821,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     const healStep = run.heals?.find((heal) => !run.decisions?.some((decision) => decision.healId === heal.id))?.failedStep;
     const detail = kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && healStep ? `Review the repair${healStep.label ? ` to ${healStep.label}` : ""}.` : reason || runDuration(run);
     const deadline = attentionLabel && kind === "paused" && ask && (live || ask.runId === run.id) ? ask.deadline : undefined;
-    const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" ? run.envelope?.deadline : "";
+    const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : "";
     const description = `${label}${detail ? ` · ${ownerStopText(detail)}` : ""}`;
     return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${live ? 'data-screen="live"' : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>
@@ -1817,8 +1842,8 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
     else groups.set(label, [run]);
   }
   return `<div id="runs" class="runs-list" tabindex="0" aria-label="Run history, newest first">
-    <section aria-labelledby="needs-you-heading"><h2 id="needs-you-heading" class="run-group-heading">Needs you <span class="run-count" aria-label="${attention.length} items">${attention.length}</span></h2>
-      ${attention.length ? `<ul aria-label="Needs you">${attention.map(({ run, label, kind, live }) => row(run, label, kind, live)).join("")}</ul>` : `<p class="run-list-note">Nothing needs you.</p>`}</section>
+    <section aria-labelledby="needs-you-heading"><h2 id="needs-you-heading" class="run-group-heading">Needs you <span class="run-count" aria-label="${count} items">${count}</span></h2>
+      ${count ? `<ul aria-label="Needs you">${attention.map(({ run, label, kind, live }) => row(run, label, kind, live)).join("")}${imports ? `<li><button type="button" class="run-row" data-screen="logins"><span class="run-name">Sign-in needs you</span><span class="run-meta">Review the login import</span></button></li>` : ""}${reviews.map((review) => `<li><button type="button" class="run-row" data-screen="library"><span class="run-name">${esc(review.label)}</span><span class="run-meta">Step needs review after ${review.streak} heals</span></button></li>`).join("")}</ul>` : `<p class="run-list-note">Nothing needs you.</p>`}</section>
     ${currentRuns.length ? `<section aria-label="Now"><h2 class="run-group-heading">Now</h2><ul>${currentRuns.map((run) => row(run)).join("")}</ul></section>` : ""}
     ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : !runs.length ? `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>` : ""}
   </div>`;
