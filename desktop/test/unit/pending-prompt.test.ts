@@ -151,7 +151,7 @@ test("cancel on a restored prompt clears the bar and leaves the run paused", asy
   try {
     const live = await state(app.port);
     assert.equal(live.activeAsk?.kind, "login");
-    const res = await fetch(`http://127.0.0.1:${app.port}/api/replay/cancel`, { method: "POST" });
+    const res = await fetch(`http://127.0.0.1:${app.port}/api/replay/cancel`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId: ask.runId }) });
     assert.equal(res.ok, true);
     const next = await state(app.port);
     assert.equal(next.activeAsk, null);
