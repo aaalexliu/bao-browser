@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
+import { buildLocators } from "../../src/v1/locators";
 import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
@@ -107,27 +108,31 @@ for (const recovery of ["overlay-find", "overlay-expect", "reveal"] as const) {
   });
 }
 
-test("a missing Continue anchor cannot press the reserved Place order control", async () => {
-  const driver = counting();
+test("a missing Continue cannot press Place order in its recorded DOM position", async () => {
   const heading: Identity = { surface: "dom", role: "heading", text: "Order summary", path: [] };
-  const place = { ...ident("Place order"), testId: "place-order" };
-  driver.tree = async () => ({
-    nodes: [heading, place], texts: ["Order summary"], values: [],
-    boxes: [{ x: 20, y: 20, w: 200, h: 30 }, { x: 20, y: 100, w: 100, h: 30 }],
-  });
-  const workflow = doc([
-    { ...click("Continue", 0), heal: "never", locators: [
-      { kind: "role", role: "button", name: "Continue" },
-      { kind: "anchor", role: "button", relation: "below", anchor: heading },
-    ] },
-    { ...click("Place order", 1), identity: place, action: "confirm", human: true },
-  ]);
-  const result = await replay(workflow, {}, driver, { yieldHuman: true });
-  assert.ok(result.locatorHits.some((hit) => hit.kind === "anchor"));
-  assert.equal(result.status, "failed");
-  assert.equal(result.steps[0]?.status, "failed");
-  assert.deepEqual(driver.clicks, []);
-  assert.equal(result.trail.some((event) => event.kind === "click" || event.kind === "human-confirm"), false);
+  const original: Identity = {
+    ...ident("Continue"), name: "Continue", tag: "button",
+    cssPath: "html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1) > button:nth-of-type(1)",
+    xpath: "/html[1]/body[1]/main[1]/button[1]",
+    path: [{ role: "main", name: "Checkout" }], siblingIndex: 0,
+  };
+  const place: Identity = { ...original, text: "Place order", name: "Place order" };
+  const boxes = [{ x: 20, y: 20, w: 200, h: 30 }, { x: 20, y: 100, w: 100, h: 30 }];
+  const locators = buildLocators(original, [heading, original], boxes, 1);
+  for (const identity of [original, undefined]) {
+    const driver = counting();
+    driver.tree = async () => ({ nodes: [heading, place], texts: ["Order summary"], values: [], boxes });
+    const workflow = doc([
+      { ...click("Continue", 0), identity, heal: "never", locators },
+      { ...click("Place order", 1), identity: place, action: "confirm", human: true },
+    ]);
+    const result = await replay(workflow, {}, driver, { yieldHuman: true });
+    assert.deepEqual(driver.clicks, []);
+    assert.ok(result.locatorHits.some((hit) => hit.kind === "css" || hit.kind === "xpath"));
+    assert.equal(result.status, "failed");
+    assert.equal(result.steps[0]?.status, "failed");
+    assert.equal(result.trail.some((event) => event.kind === "click" || event.kind === "human-confirm"), false);
+  }
 });
 
 test("a requested click does not consume an explicit human workflow pause", async () => {
