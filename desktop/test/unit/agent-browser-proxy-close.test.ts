@@ -7,6 +7,7 @@ import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as launch from "../../src/launch";
 import { Library } from "../../src/v1/store";
 
@@ -54,6 +55,7 @@ if (command === 'tab' && args.includes('--json')) {
     return remove(file, options);
   });
   let currentStarts = 0;
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     currentStarts++;
     await assert.rejects(access(copies[0]!), /ENOENT/);

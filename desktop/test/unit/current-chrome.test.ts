@@ -324,6 +324,7 @@ test("a failed handshake exposes the helper reason in the public error and run r
       return exec(args, timeout);
     };
     const realOpen = currentChrome.openCurrentChrome;
+    t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(f.root, "default-chrome"));
     t.mock.method(currentChrome, "openCurrentChrome", () => realOpen(f.options, f.deps));
     const executable = path.join(f.root, "native");
     await writeFile(executable, `#!${process.execPath}\nprocess.exitCode = 99;\n`, { mode: 0o700 });
@@ -384,6 +385,7 @@ test("native failures expose helper context without changing success or native o
   const helperReason = "BaoOSHelper is older than this Bao; rebuild it";
   for (const exitCode of [0, 9]) {
     const f = await fixture(true);
+    t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(f.root, "default-chrome"));
     const home = path.join(f.root, "library");
     const effect = path.join(f.root, "effect");
     const executable = path.join(f.root, "native");
@@ -577,6 +579,7 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
   await writeFile(executable, `#!${process.execPath}\nconsole.error('tab setup failed'); process.exitCode = 1;\n`, { mode: 0o700 });
   const fixtures: Awaited<ReturnType<typeof fixture>>[] = [];
   let copies = 0;
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => { copies++; throw new Error("copy startup reached"); });
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const f = await fixture(true);
