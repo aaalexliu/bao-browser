@@ -31,11 +31,11 @@ Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign
 
 Bao stores this profile at `<Bao home>/agent-browser-profile`. It keeps cookies and site data after `close` and agent exit. It uses Chrome's mock keychain so a background agent can read Bao's saved cookies without OS Keychain access. The older replay/login-import profile stays separate.
 
-When the requested site has no saved state, Bao copies the selected Chrome source's cookie database into a temporary browser profile, reads that site's cookies through CDP, and reuses the login importer's cookie and storage helpers. It does not copy or restore source tabs. The temporary cookie profile closes after import. Existing Bao cookies and localStorage take priority over a fresh source snapshot. If a recognized sign-in wall remains, Bao retries the site's cookie/localStorage import once in the same session before the existing owner-wait path applies. It never enters credentials or answers a browser or OS prompt.
+When the requested site has no saved state, Bao copies the selected Chrome source's cookie database into a temporary browser profile, reads that site's cookies through CDP, and reuses the login importer's cookie and storage helpers. It does not copy or restore source tabs. The temporary cookie profile closes after import. Bao checks each origin once per session and skips cookie extraction when the source has no matching cookies. Existing Bao cookies and localStorage take priority over a fresh source snapshot. Only when an explicit open reaches a recognized sign-in wall on the requested origin does Bao retry the site's cookie/localStorage import once per session before the existing owner-wait path applies. Bot checks, later actions, and screenshot capture never trigger that retry. It never enters credentials or answers a browser or OS prompt.
 
 IndexedDB transfer still has no passing real-browser proof. The initial site's import uses the existing disk-copy helper; later site imports into an open browser transfer cookies and localStorage only. A cookie or storage record alone does not prove the site accepts a login.
 
-Keep-window-open also applies to this profile. The next Bao-profile session closes that kept window before reopening the same saved profile. Another active session must close before a second session can use it.
+Keep-window-open also applies to this profile. The next Bao-profile session closes that kept window before reopening the same saved profile. It also reclaims a window whose owning MCP process has exited or whose explicit close is still finishing. Another active session must close before a second session can use it.
 
 ### Session end
 

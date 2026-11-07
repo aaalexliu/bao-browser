@@ -34,7 +34,8 @@ export type AgentBrowser = typeof AGENT_BROWSERS[number];
 
 function webSite(value: string | undefined): string | undefined {
   try {
-    const url = new URL(value ?? "");
+    if (!value) return undefined;
+    const url = new URL(value.includes("://") || /^(about|file|data|chrome|javascript):/i.test(value) ? value : `https://${value}`);
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
   } catch { return undefined; }
 }
@@ -42,7 +43,6 @@ function webSite(value: string | undefined): string | undefined {
 interface Session {
   browser: AgentBrowser;
   chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>>;
-  lastOpenUrl?: string;
   loginRetried: Set<string>;
   stateDir: string;
   executable: string;
@@ -102,7 +102,7 @@ export class AgentBrowserProxy {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
     }
-    if (this.session && command !== "close" && command !== "wait_for_owner" && !(command === "open" && this.session.browser === "bao")) {
+    if (this.session && command !== "close" && command !== "wait_for_owner") {
       await this.detectOwnerWall(this.session);
       if (this.session.ownerWait) return this.ownerResult("halted");
     }
@@ -131,14 +131,7 @@ export class AgentBrowserProxy {
       if (this.disconnected) throw new Error("agent-browser client disconnected");
       if (command === "open") {
         const site = webSite(args[0]);
-        if (site) {
-          if (site !== session.lastOpenUrl && "importLogin" in session.chrome) await session.chrome.importLogin(site);
-          session.lastOpenUrl = site;
-        }
-        if (session.browser === "bao") {
-          session.ownerWait = undefined;
-          session.recording.ownerWaiting(false);
-        }
+        if (site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
       }
       if (command === "wait_for_owner") {
         results.push(...await this.waitForOwner(session, args));
@@ -152,7 +145,7 @@ export class AgentBrowserProxy {
         ? { stdout: "", stderr: "", exitCode: 0 }
         : await this.run(session, command as string, args));
       if (command !== "close" && results[0]!.exitCode === 0) {
-        await this.detectOwnerWall(session);
+        await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         if (session.ownerWait) {
           results.splice(0, results.length, ...this.ownerResult("halted"));
           return results;
@@ -221,7 +214,7 @@ export class AgentBrowserProxy {
       await writeFile(config, "{}", { mode: 0o600 });
       const endpoint = await readDevToolsActivePort(chrome.target.portFile);
       return {
-        chrome, browser, loginRetried: new Set(), lastOpenUrl: site, stateDir, executable, abort: new AbortController(), recording,
+        chrome, browser, loginRetried: new Set(), stateDir, executable, abort: new AbortController(), recording,
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
           "--idle-timeout", "0"],
         env: {
@@ -256,15 +249,16 @@ export class AgentBrowserProxy {
     } finally { cdp.close(); }
   }
 
-  private async detectOwnerWall(session: Session): Promise<void> {
+  private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
     if (session.ownerWait) return;
     let active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
-    if ("importLogin" in session.chrome && session.lastOpenUrl && !session.loginRetried.has(new URL(session.lastOpenUrl).origin)) {
-      session.loginRetried.add(new URL(session.lastOpenUrl).origin);
-      if (await session.chrome.importLogin(session.lastOpenUrl, true)) {
-        await this.run(session, "open", [session.lastOpenUrl]);
+    if (openedSite && ownerWall(active.page) === "login_wall" && new URL(active.page.url).origin === new URL(openedSite).origin
+      && "importLogin" in session.chrome && !session.loginRetried.has(new URL(openedSite).origin)) {
+      session.loginRetried.add(new URL(openedSite).origin);
+      if (await session.chrome.importLogin(openedSite, true)) {
+        await this.run(session, "open", [openedSite]);
         active = await this.activePage(session);
         if (!active) throw new Error("no active Bao page metadata");
         if (!ownerWall(active.page)) return;

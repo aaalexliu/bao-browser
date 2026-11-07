@@ -3,7 +3,7 @@ import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
-import { launchOwnedChromeEndpoint, pidsForDataDir } from "../launch";
+import { closeRetainedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../launch";
 import { assertNotDailyChrome } from "../profile";
 import { cookieMatchesHost, findCookieDb, summarizeDb, withCookieDb, type DecryptedCookie } from "../login-import/read";
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
@@ -51,7 +51,7 @@ async function readChromeLogin(options: { sourceRoot: string; directory: string 
   const storage = await readLocalStorage(profile, origins);
   if (destination) copyIndexedDb(profile, destination, origins);
   const db = findCookieDb(profile);
-  if (!db) return { cookies: [], storage };
+  if (!db || withCookieDb(db.file, (sqlite) => summarizeDb(sqlite, new URL(site).hostname, "include", Date.now()).willImport) === 0) return { cookies: [], storage };
   const temporary = await mkdtemp(path.join(tmpdir(), "bao-login-source-"));
   let source: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let cdp: CdpSocket | undefined;
@@ -126,37 +126,50 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
   const profile = baoAgentProfileDir(options.home);
   assertNotDailyChrome(profile);
   const keptWindow = path.join(profile, "bao-kept-window");
-  if (await readFile(keptWindow, "utf8").catch(() => "") === "kept") {
-    if (pidsForDataDir(profile).length) {
-      const previous = await connect(path.join(profile, "DevToolsActivePort"));
-      try { await previous.send("Browser.close", {}, undefined, 3000).catch(() => undefined); }
-      finally { previous.close(); }
-      const deadline = Date.now() + 5000;
-      while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 80));
-    }
+  const marker = await readFile(keptWindow, "utf8").catch(() => "");
+  const lease: { pid?: number; retained?: boolean } = marker === "kept" ? { retained: true } : JSON.parse(marker || "{}");
+  let ownerAlive = true;
+  if (Number.isSafeInteger(lease.pid) && lease.pid! > 1) {
+    try { process.kill(lease.pid!, 0); }
+    catch (error) { ownerAlive = (error as NodeJS.ErrnoException).code !== "ESRCH"; }
   }
+  if (lease.retained || !ownerAlive) await closeRetainedChrome(profile);
   if (pidsForDataDir(profile).length) throw new Error("The Bao profile is already open. Close that session before starting another.");
   await rm(keptWindow, { force: true });
   const login = options.site && !await hasSiteData(profile, options.site)
     ? await readChromeLogin(options, options.site, profile) : undefined;
+  const retain = () => writeFile(keptWindow, JSON.stringify({ pid: process.pid, retained: true }), { mode: 0o600 });
+  await mkdir(profile, { recursive: true });
+  await writeFile(keptWindow, JSON.stringify({ pid: process.pid }), { mode: 0o600 });
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, keychain: "mock", headless: false,
-    loadExtensions: false, detached: options.detached });
+    loadExtensions: false, detached: options.detached }).catch(async (error) => { await retain(); throw error; });
+  const checkedOrigins = new Set(options.site ? [new URL(options.site).origin] : []);
+  const close = async () => {
+    await retain();
+    await chrome.close();
+    if (!pidsForDataDir(profile).length) await rm(keptWindow, { force: true });
+  };
   try {
     if (login) await seedLogin(chrome.portFile, login);
     return {
       target: { kind: "bao" as const, portFile: chrome.portFile },
-      closed: chrome.closed, isClosed: chrome.isClosed, close: chrome.close,
+      closed: chrome.closed, isClosed: chrome.isClosed, close,
       async keepOpen() {
-        await writeFile(keptWindow, "kept");
+        await retain();
         chrome.keepOpen();
       },
       async importLogin(site: string, force = false): Promise<boolean> {
+        const origin = new URL(site).origin;
+        if (!force && checkedOrigins.has(origin)) return false;
+        checkedOrigins.add(origin);
         if (!force && await hasSiteData(profile, site)) return false;
-        return seedLogin(chrome.portFile, await readChromeLogin(options, site));
+        const login = await readChromeLogin(options, site);
+        if (!login.cookies.length && !login.storage.length) return false;
+        return seedLogin(chrome.portFile, login);
       },
     };
   } catch (error) {
-    await chrome.close();
+    await close();
     throw error;
   }
 }

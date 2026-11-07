@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, access } from "node:fs/promises";
+import { mkdtemp, rm, access, readFile, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -11,6 +12,7 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
 import { TOOLS } from "../../src/mcp/server";
+import { readLocalStorage } from "../../src/login-import/storage";
 
 launches.pinTestBrowser();
 
@@ -25,7 +27,11 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const site = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const launch = launches.launchOwnedChromeEndpoint;
-  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
+  let launchCount = 0;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
+    launchCount++;
+    return launch({ ...options, headless: true });
+  });
   let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
   try {
     const source = await launches.launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
@@ -39,6 +45,9 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       await page.evaluate(async () => {
         localStorage.setItem("identity", "source-account");
       });
+      await page.route("https://storage.test/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Storage</title>" }));
+      await page.goto("https://storage.test/");
+      await page.evaluate(() => localStorage.setItem("identity", "storage-only"));
     } finally { await source.close(); }
     const inspect = async () => {
       const endpoint = await readDevToolsActivePort(chrome!.target.portFile);
@@ -54,6 +63,10 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       }
       return { cdp, evaluate, sessionId };
     };
+    assert.deepEqual((await readLocalStorage(path.join(sourceRoot, "Default"), [site, "https://storage.test"])).sort((a, b) => a.origin.localeCompare(b.origin)), [
+      { origin: site, key: "identity", value: "source-account" },
+      { origin: "https://storage.test", key: "identity", value: "storage-only" },
+    ].sort((a, b) => a.origin.localeCompare(b.origin)), "the closed synthetic source contains both saved storage records");
     chrome = await openBaoChromeForProxy({ sourceRoot, directory: "Default", home, site });
     let page = await inspect();
     try {
@@ -62,6 +75,14 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.equal(await page.evaluate("localStorage.getItem('identity')"), "source-account");
       await page.cdp.send("Network.setCookie", { name: "login", value: "renewed-in-bao", url: site, httpOnly: true }, page.sessionId);
       await page.evaluate("localStorage.setItem('identity', 'bao-account')");
+      const before = launchCount;
+      assert.equal(await chrome.importLogin(`${site}/another-path`), false);
+      const renewed = await page.cdp.send<{ cookies: { name: string; value: string }[] }>("Storage.getCookies");
+      assert.equal(renewed.cookies.find((cookie) => cookie.name === "login")?.value, "renewed-in-bao");
+      assert.equal(await chrome.importLogin("https://empty.test/"), false);
+      assert.equal(await chrome.importLogin("https://storage.test/"), true);
+      assert.equal(await chrome.importLogin("https://storage.test/another-path"), false);
+      assert.equal(launchCount, before, "checked origins, empty sites, and storage-only sites never launch cookie-extraction Chrome");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
     assert.notDeepEqual(launches.pidsForDataDir(baoAgentProfileDir(home)), []);
@@ -84,6 +105,52 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
     await chrome?.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Bao reclaims dead owners and slow closes but refuses a live owner", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-profile-owner-"));
+  const home = path.join(root, "home");
+  const profile = baoAgentProfileDir(home);
+  const marker = path.join(profile, "bao-kept-window");
+  const options = { sourceRoot: path.join(root, "source"), directory: "Default", home };
+  const launch = launches.launchOwnedChromeEndpoint;
+  let slowClose = false;
+  const browsers: Awaited<ReturnType<typeof launch>>[] = [];
+  t.mock.method(launches, "launchOwnedChromeEndpoint", async (options: Parameters<typeof launch>[0]) => {
+    const chrome = await launch({ ...options, headless: true });
+    browsers.push(chrome);
+    return { ...chrome, close: async () => { if (!slowClose) await chrome.close(); } };
+  });
+  let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
+  try {
+    chrome = await openBaoChromeForProxy(options);
+    assert.equal(JSON.parse(await readFile(marker, "utf8")).pid, process.pid);
+    await assert.rejects(openBaoChromeForProxy(options), /already open/);
+    const dead = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+    assert.equal(dead.status, 0);
+    const pid = Number(dead.stdout);
+    assert.ok(pid > 1);
+    await writeFile(marker, JSON.stringify({ pid }));
+    chrome = await openBaoChromeForProxy(options);
+    assert.notDeepEqual(launches.pidsForDataDir(profile), []);
+    assert.equal(JSON.parse(await readFile(marker, "utf8")).pid, process.pid);
+    slowClose = true;
+    await chrome.close();
+    assert.equal(JSON.parse(await readFile(marker, "utf8")).retained, true);
+    slowClose = false;
+    chrome = await openBaoChromeForProxy(options);
+    assert.notDeepEqual(launches.pidsForDataDir(profile), []);
+    await chrome.close();
+    assert.deepEqual(launches.pidsForDataDir(profile), []);
+    await assert.rejects(readFile(marker), /ENOENT/);
+  } finally {
+    slowClose = false;
+    try { await chrome?.close(); }
+    finally {
+      for (const browser of browsers) await browser.close();
+      await rm(root, { recursive: true, force: true });
+    }
   }
 });
 
