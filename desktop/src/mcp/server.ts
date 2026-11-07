@@ -323,7 +323,7 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
-      browser: browserChoice(args.browser),
+      browser: args.browser === undefined ? undefined : browserChoice(args.browser),
     });
     return withLibrary(result, identity);
   }

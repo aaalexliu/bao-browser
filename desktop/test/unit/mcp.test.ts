@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
-import { pidsForDataDir } from "../../src/launch";
+import { launchOwnedChrome, pidsForDataDir } from "../../src/launch";
 import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
 import { createMcpVersionCheck, McpVersionError } from "../../src/mcp/version";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
@@ -617,6 +617,69 @@ test("update polling preserves a long in-flight call and an idle browser session
       await exited;
     }
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("input resumes preserve the browser choice and allow explicit overrides", { timeout: 90_000 }, async () => {
+  const seen: string[] = [];
+  const fixture = createServer((req, res) => {
+    if (req.url === "/resume-account") seen.push(req.headers.cookie?.includes("route=bao") ? "bao" : "copy");
+    res.setHeader("content-type", "text/html");
+    res.end("<!doctype html><h1>Account fixture</h1>");
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const address = fixture.address();
+  assert.ok(address && typeof address !== "string");
+  const site = `http://127.0.0.1:${address.port}/resume-account`;
+  const bootstrap = `process.env.BAO_CHROME_NO_SANDBOX = "1"; require(${JSON.stringify(path.resolve(__dirname, "../../src/mcp/server.js"))}).mcpMain();`;
+  const mcp = startMcp("bao-mcp-input-browser-", "mcp", undefined, false, bootstrap);
+  try {
+    const seed = await launchOwnedChrome({ userDataDir: path.join(mcp.home, "agent-browser-profile"), headless: true });
+    try {
+      await seed.addCookies([{ name: "route", value: "bao", url: site, expires: Date.now() / 1000 + 3600 }]);
+    } finally { await seed.close(); }
+    const library = new Library(mcp.home);
+    library.save({
+      ...workflow, id: "input-browser", startUrl: site,
+      inputs: [{ name: "password", type: "secret", label: "Password", required: true }],
+      steps: [{ id: "account", index: 0, action: "verify", label: "Read account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Account fixture", timeoutMs: 1000 } }],
+    });
+    await initialize(mcp);
+    for (const scenario of [
+      { initial: "copy", override: undefined, older: false, expected: "copy" },
+      { initial: "copy", override: "bao", older: false, expected: "bao" },
+      { initial: "copy", override: undefined, older: true, expected: "bao" },
+      { initial: undefined, override: undefined, older: false, expected: "bao" },
+    ]) {
+      const first = await mcp.request("tools/call", { name: "run_workflow", arguments: { id: "input-browser", browser: scenario.initial } });
+      assert.equal(first.result?.isError, false);
+      const paused = JSON.parse(first.result?.content?.[0]?.text || "{}") as { status?: string; resume_token?: string };
+      assert.equal(paused.status, "needs_human");
+      assert.ok(paused.resume_token);
+      if (scenario.older) {
+        const file = path.join(mcp.home, "resumes", `${paused.resume_token}.json`);
+        const record = JSON.parse(readFileSync(file, "utf8")) as { browser?: string };
+        delete record.browser;
+        writeFileSync(file, JSON.stringify(record));
+      }
+      seen.length = 0;
+      const resumed = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: paused.resume_token, inputs: { password: "fixture-secret" }, browser: scenario.override } }, 20_000);
+      assert.equal(resumed.result?.isError, false);
+      const result = JSON.parse(resumed.result?.content?.[0]?.text || "{}") as { outcome?: string; reason?: string };
+      assert.equal(result.outcome, "ok", result.reason);
+      assert.equal(seen.at(-1), scenario.expected, "the resumed request uses the chosen profile, not a silent default");
+    }
+  } finally {
+    const pids = pidsForDataDir(path.join(mcp.home, "agent-browser-profile"));
+    if (mcp.child.exitCode === null && mcp.child.signalCode === null) {
+      const exited = once(mcp.child, "exit");
+      mcp.child.kill();
+      await exited;
+    }
+    for (const pid of pids) {
+      try { process.kill(pid, "SIGTERM"); } catch {}
+    }
+    await new Promise<void>((resolve) => fixture.close(() => resolve()));
   }
 });
 
