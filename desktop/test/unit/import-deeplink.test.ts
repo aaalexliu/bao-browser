@@ -165,7 +165,7 @@ test("bao open round trip", { timeout: 30_000 }, async () => {
     const saved = await fetch(`http://127.0.0.1:${app.port}/api/open/install`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ answers: { email: "ada@other.com", who: "front desk", note: "inbox", desk: "west" } }),
+      body: JSON.stringify({ answers: { email: "ada@other.com", who: "front desk", note: "inbox", desk: "  west  " } }),
     });
     assert.equal(saved.status, 200, await saved.text());
     const stored = new Library(home).read("import-me");
