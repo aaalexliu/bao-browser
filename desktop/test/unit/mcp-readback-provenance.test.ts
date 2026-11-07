@@ -185,7 +185,9 @@ async function assertViews(f: Awaited<ReturnType<typeof fixture>>, runId: string
 
 test("new run secret names survive workflow edits/deletion and explicit empty provenance stays authoritative", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  const value = `Retained-local-readback-${"s".repeat(600)}`;
+  const prefix = "Retained-local-readback-";
+  const value = prefix + "s".repeat(500 - prefix.length);
+  assert.equal(value.length, 500);
   const saved = await f.run("new-provenance", true, value, "value");
   assert.deepEqual(saved.run.secretInputNames, ["entry"]);
   f.app.library.save({ ...saved.workflow, inputs: saved.workflow.inputs.map((input) => ({ ...input, type: "text" })) });
