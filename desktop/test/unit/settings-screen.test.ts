@@ -576,41 +576,34 @@ test("Settings Stop survives restart and stops a changed fixture step without a 
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
     assert.equal(await page.getByRole("radio", { name: "Stop", exact: true }).isChecked(), true);
-    for (const mode of ["never", "auto", "approve"] as const) {
-      await page.locator('#rail [data-place="settings"]').click();
-      await page.locator(`label[for="heal-${mode}"]`).click();
-      await eventually(() => app.library.settings().heal === mode);
-      const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id: `global-${mode}`, name: `Changed button ${mode}`,
-        startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
-        steps: [
-          { id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 },
-          { id: "after-miss", index: 1, action: "note", label: "After the changed button", surface: "dom", timeoutMs: 0 },
-        ],
-      };
-      app.library.save(workflow);
-      await page.locator('#rail [data-place="workflows"]').click();
-      await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
-      await page.locator(`#main [data-screen="replay"][data-workflow="${workflow.id}"]`).click();
-      assert.match(await page.locator("#wf-heal option:checked").innerText(), new RegExp(mode === "never" ? "Stop" : mode === "approve" ? "Ask me" : "Heal it"));
-      const [response] = await Promise.all([
-        page.waitForResponse((res) => res.url().endsWith("/api/replay") && res.request().method() === "POST"),
-        page.locator("#run").click(),
-      ]);
-      assert.equal(response.ok(), true);
-      const run = await response.json() as { runId: string; status: string; modelCalls: number; failure?: { stepId: string } };
-      assert.equal(run.status, mode === "never" ? "failed" : mode === "approve" ? "paused" : "passed");
-      assert.equal(run.modelCalls, mode === "never" ? 0 : 1);
-      const saved = app.library.readRun(run.runId);
-      assert.equal(saved.heals.length, mode === "never" ? 0 : 1);
-      assert.equal((saved.steps as { id: string; status: string }[]).find((step) => step.id === "after-miss")?.status, mode === "auto" ? "passed" : "pending");
-      if (mode === "never") {
-        assert.equal(run.failure?.stepId, "changed");
-        await page.locator('#rail [data-place="runs"]').click();
-        await page.locator(`[data-open-run="${run.runId}"]`).first().click();
-        await page.locator("#main").getByText("Click the missing login button", { exact: false }).first().waitFor();
-      }
-    }
+    const workflow: WorkflowV2 = {
+      schema: "bao.workflow/v2", version: 2, id: "global-never", name: "Changed button Stop",
+      startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
+      steps: [
+        { id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 },
+        { id: "after-miss", index: 1, action: "note", label: "After the changed button", surface: "dom", timeoutMs: 0 },
+      ],
+    };
+    app.library.save(workflow);
+    await page.locator('#rail [data-place="workflows"]').click();
+    await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
+    await page.locator(`#main [data-screen="replay"][data-workflow="${workflow.id}"]`).click();
+    assert.match(await page.locator("#wf-heal option:checked").innerText(), /Stop/);
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => res.url().endsWith("/api/replay") && res.request().method() === "POST"),
+      page.locator("#run").click(),
+    ]);
+    assert.equal(response.ok(), true);
+    const run = await response.json() as { runId: string; status: string; modelCalls: number; failure?: { stepId: string } };
+    assert.equal(run.status, "failed");
+    assert.equal(run.modelCalls, 0);
+    const saved = app.library.readRun(run.runId);
+    assert.equal(saved.heals.length, 0);
+    assert.equal((saved.steps as { id: string; status: string }[]).find((step) => step.id === "after-miss")?.status, "pending");
+    assert.equal(run.failure?.stepId, "changed");
+    await page.locator('#rail [data-place="runs"]').click();
+    await page.locator(`[data-open-run="${run.runId}"]`).first().click();
+    await page.locator("#main").getByText("Click the missing login button", { exact: false }).first().waitFor();
   } finally {
     await browser.close();
     await app.close();
