@@ -1,8 +1,7 @@
-import sharp from "sharp";
-
 export const SYNC_BODY_LIMIT = 4_000_000;
 
 export async function syncPicture(bytes: Buffer): Promise<Buffer | undefined> {
+  const { default: sharp } = await import("sharp");
   try {
     const image = sharp(bytes, { limitInputPixels: 40_000_000 });
     const meta = await image.metadata();
