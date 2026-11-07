@@ -134,9 +134,10 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
 }
 
 function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { doc: WorkflowV2; groups: TrailEvent[][] } {
-  const secrets = secretStrings(events, meta.secrets ?? []);
+  const merged = retainedEvents(events);
+  const secrets = secretStrings(merged, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };
-  const kept = seen.preserveActions ? events.filter(keep) : mergeTyping(withoutChooserClicks(events.filter(keep)));
+  const kept = seen.preserveActions ? events.filter(keep) : merged;
   const inputs: WorkflowInput[] = [];
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {

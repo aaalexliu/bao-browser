@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { text } from "node:stream/consumers";
 import test from "node:test";
+import { publicSamples } from "../../../web/src/lib/import-sheet";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import { privateReviewStep } from "../../src/mcp/review-step-privacy";
 import { inspectRunView, openStepPictures } from "../../src/mcp/run-view";
@@ -14,6 +15,12 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 const values = ["sk-reviewFixtureToken123456789", "4111111111111111", "123-45-6789", "Ada Lovelace"];
+
+test("review samples preserve ordinary choice and fixed values", () => {
+  assert.deepEqual(publicSamples({ currency: "USD", guests: "1", fixed: "standard", note: " public sample " }), {
+    currency: "USD", guests: "1", fixed: "standard", note: "public sample",
+  });
+});
 
 function workflow(origin: string): WorkflowV2 {
   return {
@@ -50,7 +57,7 @@ test("marketplace review withholds token card and SSN crops but retains raw loca
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-review-values-"));
   const library = new Library(root);
-  let review: { shots: { stepId: string; png: string; redacted: boolean }[] } | undefined;
+  let review: { shots: { stepId: string; png: string; redacted: boolean }[]; samples: Record<string, string> } | undefined;
   const received: string[] = [];
   const server = createServer((req, res) => {
     if (req.url === "/fixture") {
@@ -83,6 +90,7 @@ test("marketplace review withholds token card and SSN crops but retains raw loca
     assert.ok(outcome.runId);
     assert.ok(review);
     assert.equal(received.length, 1);
+    assert.deepEqual(review.samples, { sample3: "Ada Lovelace" });
     assert.deepEqual(review.shots.map((shot) => shot.stepId), ["field3"]);
     assert.equal(review.shots[0]!.redacted, true);
     assert.deepEqual(Buffer.from(review.shots[0]!.png, "base64").subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));

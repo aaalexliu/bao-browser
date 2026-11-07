@@ -858,7 +858,7 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
   return out;
 }
 
-function publicOutcome(library: Library, outcome: WorkflowOutcome, inputs?: ReplayArgs): WorkflowOutcome {
+function publicOutcome<T extends Pick<WorkflowOutcome, "workflowId">>(library: Library, outcome: T, inputs?: ReplayArgs): T {
   let workflow: WorkflowV2 | undefined;
   try { workflow = library.read(outcome.workflowId); }
   catch { workflow = undefined; }

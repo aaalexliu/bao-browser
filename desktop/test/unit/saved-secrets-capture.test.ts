@@ -6,6 +6,8 @@ import test from "node:test";
 import { Capture } from "../../src/app/capture";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
+import { cleanSaveField, saveIntentPrompt, secretValues } from "../../src/v1/save-intent";
+import { projectTeach } from "../../src/v1/teach";
 import { Library } from "../../src/v1/store";
 
 const fields = [
@@ -67,6 +69,71 @@ test("browser capture retains password changes and ordinary fields in Library de
       assert.equal(input.type, field.secret ? "secret" : "text", field.id);
       assert.equal(trail.filter((event) => event.identity?.id === field.id).at(-1)!.value, field.value);
     }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("sequential password prefixes do not turn Guests into a secret or erase ordinary naming", { timeout: 30_000 }, async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-password-prefix-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const capture = new Capture();
+  capture.start();
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext();
+    let received: ((event: TrailEvent) => void) | undefined;
+    await context.exposeBinding("__baoRecord", async (_source, event: TrailEvent) => {
+      assert.equal(capture.push(event), true);
+      received?.(event);
+    });
+    await context.addInitScript(recorderSource());
+    const page = await context.newPage();
+    await page.goto(`data:text/html,${encodeURIComponent('<!doctype html><label>Password<input id="password" type="password"></label><label>Guests<input id="guests" type="text" autocomplete="off"></label><label>New password<input id="next-password" type="password"></label>')}`);
+    for (const [id, value] of [["password", "1qaz2wsx"], ["guests", "1"], ["next-password", "Book!password"]] as const) {
+      const recorded = new Promise<void>((resolve) => {
+        received = (event) => { if (event.identity?.id === id && event.value === value) resolve(); };
+      });
+      await page.locator(`#${id}`).pressSequentially(value);
+      await recorded;
+      received = undefined;
+      assert.equal(await page.locator(`#${id}`).inputValue(), value);
+    }
+    const events = capture.stop();
+    const original = structuredClone(events);
+    assert.ok(events.some((event) => event.identity?.id === "password" && event.value === "1"));
+    assert.ok(events.some((event) => event.identity?.id === "next-password" && event.value === "Book"));
+    const meta = { id: "prefix-capture", startUrl: "https://fixture.test/booking" };
+    const document = interpret(events, meta);
+    library.save(document);
+    library.saveTrail(document.id, events);
+    const saved = library.read(document.id);
+    const taught = projectTeach(events, [], meta).workflow;
+    for (const workflow of [saved, taught, interpret(events, { ...meta, preserveActions: true })]) {
+      const guests = workflow.steps.find((step) => step.identity?.id === "guests")!;
+      assert.ok(guests);
+      const input = workflow.inputs.find((input) => input.name === guests.input)!;
+      assert.equal(input.type, "text");
+      assert.equal(input.default, "1");
+      assert.notEqual(guests.sensitive, true);
+      assert.equal(guests.gate, undefined);
+      assert.ok(guests.postcondition);
+    }
+    for (const [id, value] of [["password", "1qaz2wsx"], ["next-password", "Book!password"]] as const) {
+      const step = saved.steps.find((step) => step.identity?.id === id)!;
+      const input = saved.inputs.find((input) => input.name === step.input)!;
+      assert.equal(input.type, "secret");
+      assert.equal(input.default, value);
+    }
+    const secrets = secretValues(events);
+    assert.deepEqual(secrets, ["1qaz2wsx", "Book!password"]);
+    assert.equal(cleanSaveField("Book a table", secrets, 80), "Book a table");
+    const prompt = saveIntentPrompt({ floorTitle: "Book a table", steps: [{ id: "guests", action: "type", label: "Book a table" }], secrets });
+    assert.ok(prompt.includes("guests | type | - | Book a table"));
+    assert.deepEqual(events, original);
+    assert.equal(JSON.stringify(library.readTrail(document.id)), JSON.stringify(original));
   } finally {
     await browser.close();
   }

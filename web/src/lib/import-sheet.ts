@@ -1,3 +1,5 @@
+import { redactSavedValue } from "../../../shared/outbound-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { redactForRelease, type ReleaseChange } from "./publish";
 
 export interface ImportQuestion {
@@ -64,7 +66,7 @@ export function publicSamples(inputs: Record<string, unknown>): Record<string, s
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(inputs)) {
     if (typeof value !== "string" || !value.trim()) continue;
-    if (/password|secret|cookie|token/i.test(key)) continue;
+    if (/password|secret|cookie|token/i.test(key) || redactSavedValue(value) === STRIPPED_SECRET) continue;
     const kind = personalKind(value, key);
     if (kind === "email" || kind === "path" || kind === "phone" || kind === "ssn" || kind === "card") continue;
     out[key] = value.trim();
