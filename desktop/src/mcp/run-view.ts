@@ -65,7 +65,7 @@ export function listRunViews(library: Library, args: Record<string, unknown>) {
 
 function readViewerRun(library: Library, runId: string): StoredRun {
   const header = parseTree(readLibraryPrefix(library.root, ["runs", `${runId}.json`], 4096).toString("utf8"));
-  const capture = findNodeAtLocation(header, ["kind"])?.value === "capture";
+  const capture = header !== undefined && findNodeAtLocation(header, ["kind"])?.value === "capture";
   return library.readRun(runId, capture ? { maxBytes: Number.MAX_SAFE_INTEGER } : bounded);
 }
 
