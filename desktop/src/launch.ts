@@ -730,26 +730,37 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
 export async function closeRetainedChrome(userDataDir: string): Promise<void> {
   const exe = resolveNormalChrome();
   const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
-  if (!pid) return;
-  let cdp: CdpSocket | undefined;
-  let sent = false;
-  try {
-    const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
-    const command = ownedChromeBrowserCommand(exe, userDataDir, pid);
-    const port = command?.match(/(?:^|\s)--remote-debugging-port=(\d+)(?:\s|$)/)?.[1];
-    if (Number(port) === endpoint.port) {
-      cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 3000 });
-      await cdp.send("Browser.close", {}, undefined, 3000);
-      sent = true;
+  if (pid) {
+    let cdp: CdpSocket | undefined;
+    let sent = false;
+    try {
+      const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
+      const command = ownedChromeBrowserCommand(exe, userDataDir, pid);
+      const port = command?.match(/(?:^|\s)--remote-debugging-port=(\d+)(?:\s|$)/)?.[1];
+      if (Number(port) === endpoint.port) {
+        cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 3000 });
+        await cdp.send("Browser.close", {}, undefined, 3000);
+        sent = true;
+      }
+    } catch {} finally { cdp?.close(); }
+    if (!sent && ownedChromeBrowserCommand(exe, userDataDir, pid)) {
+      try { process.kill(pid, "SIGTERM"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
     }
-  } catch {} finally { cdp?.close(); }
-  if (!sent && ownedChromeBrowserCommand(exe, userDataDir, pid)) {
-    try { process.kill(pid, "SIGTERM"); }
+    const deadline = Date.now() + 4000;
+    while (ownedChromeBrowserCommand(exe, userDataDir, pid) && Date.now() < deadline) await delay(50);
+    if (ownedChromeBrowserCommand(exe, userDataDir, pid)) {
+      console.error(`bao reclaim browser still shutting down profile=${userDataDir}`);
+      return;
+    }
+  }
+  for (const orphan of pidsForDataDir(userDataDir)) {
+    try { process.kill(orphan, "SIGKILL"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
   }
-  const deadline = Date.now() + 4000;
+  const deadline = Date.now() + 1500;
   while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await delay(50);
-  if (pidsForDataDir(userDataDir).length) console.error(`bao reclaim browser still shutting down profile=${userDataDir}`);
+  if (pidsForDataDir(userDataDir).length) throw new Error(`Reclaimed Chrome processes did not exit: ${userDataDir}`);
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */

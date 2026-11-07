@@ -408,6 +408,7 @@ if (command === 'tab' && args.includes('new')) {
 `, { mode: 0o700 });
     borrowed = await realOpen(f.options, f.deps);
     t.mock.method(f.socket, "send", async (method: string) => {
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
       if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/task", title: "Task" } };
       if (method === "Target.attachToTarget") return { sessionId: "shot" };
       if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB/kAAAAASUVORK5CYII=" };
@@ -439,7 +440,7 @@ if (command === 'tab' && args.includes('new')) {
   }
 });
 
-test("current proxy retries task-tab setup, handles daemon resets, and detaches on close", { timeout: 30_000 }, async (t) => {
+for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy retries task-tab setup, handles daemon resets, and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-proxy-"));
   const home = path.join(root, "home");
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true });
@@ -542,13 +543,15 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     for (const owner of before.targetInfos.filter(target => target.type === "page")) {
       assert.equal(afterReset.targetInfos.find(target => target.targetId === owner.targetId)?.url, owner.url);
     }
-    await proxy.execute("close");
+    if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+    else if (ending === "disconnect") await proxy.end();
+    else await proxy.execute("close");
     assert.equal(chrome.isClosed(), false);
     await assert.rejects(access(marker), /ENOENT/);
     const probe = await connectCdp(endpoint.port, endpoint.browserPath);
     try {
       const afterClose = await probe.send<typeof afterOpen>("Target.getTargets");
-      assert.deepEqual(pageIds(afterClose), pageIds(afterReset));
+      assert.deepEqual(pageIds(afterClose), pageIds(before), "all Bao-created task tabs close; every pre-existing owner tab survives");
     } finally { probe.close(); }
     const library = new Library(home);
     const runs = library.listRuns();
@@ -557,7 +560,7 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     const steps = library.readRun(runs[0]!.id).steps as unknown as RecordedAgentBrowserCommand[];
     const opens = steps.filter(step => step.native.command === "open");
     // Consent and metadata precheck failures leave no command receipt.
-    assert.deepEqual(steps.map(step => step.native.command), ["open", "open", "snapshot", "close"]);
+    assert.deepEqual(steps.map(step => step.native.command), ["open", "open", "snapshot", ...(ending === "close" ? ["close"] : [])]);
     assert.equal(opens.length, 2);
     assert.equal(opens[0]!.status, "failed");
     assert.equal(opens[0]!.afterShot, undefined);

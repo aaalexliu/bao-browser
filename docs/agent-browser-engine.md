@@ -2,7 +2,16 @@
 
 ## Direct MCP commands
 
-`bao mcp` exposes `agent_browser`. It needs no running Bao app. It accepts a native `command` and an `args` array. Each item is one CLI argument, without shell quoting. Supported commands are `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `tab`, `screenshot`, `wait_for_owner`, and `close`.
+`bao mcp` exposes `agent_browser` and `finish_task`. Call `finish_task` before the final chat reply for every completed, failed, or cancelled browser task. A long-lived MCP connection has no conversation-turn-end event, so a final answer alone cannot release the browser.
+
+```json
+{"name":"finish_task","arguments":{"outcome":"passed","reason":"Verified the requested change on the page."}}
+{"name":"finish_task","arguments":{"outcome":"failed","reason":"The requested item was unavailable."}}
+```
+
+`finish_task` returns the saved run receipt and workflow save result. It ends the browser session without stopping MCP, so the same client can start the next task. Browser command failures and incomplete owner waits still make the capture fail even if the agent claims success. Failed captures include a reason. Do not finish while waiting for sign-in, `wait_for_owner`, or an owner confirmation. There is no idle timer. Settings Stop remains the replay heal policy; task completion neither heals nor calls a model.
+
+`agent_browser` needs no running Bao app. It accepts a native `command` and an `args` array. Each item is one CLI argument, without shell quoting. Supported commands are `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `tab`, `screenshot`, `wait_for_owner`, and `close`.
 
 ```json
 {"command":"open","args":["http://127.0.0.1:8080/"]}
@@ -59,15 +68,15 @@ This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper 
 
 Bao creates a new task tab before the first navigation. A native daemon restart also opens a new task tab and loses prior tab selection and refs; navigate that task tab again, then take a fresh snapshot. It keeps one browser-level CDP connection for metadata and page pictures. Stay in the current session's task tab, which shares the owner's sign-ins; use another tab only when the owner asks. The copied-profile setting does not affect this route. Both routes record commands and page screenshots in Runs.
 
-`close`, MCP disconnect, and handled stop signals detach from current Chrome. They do not quit it, remove its profile, or close its tabs. Keep-open applies only to copied windows. [Session end](#session-end) defines native daemon shutdown and state cleanup. Bao leaves the debugging checkbox enabled; this route does not restore the old preference or revive retired live-driver workflows.
+`finish_task`, `close`, MCP disconnect, and handled stop signals close only task tabs Bao created, then detach from current Chrome. Bao tracks their target ids, including task tabs created after native daemon restarts. Pre-existing owner tabs stay open, even if the agent selected one during the task. Bao never quits, signals, or relaunches the borrowed Chrome or removes its profile. Keep-open applies only to copied windows. [Session end](#session-end) defines native daemon shutdown and state cleanup. Bao leaves the debugging checkbox enabled; this route does not restore the old preference or revive retired live-driver workflows.
 
 ### Session end
 
 For every route, Bao stops only this session's native daemon before removing its private state directory. It waits up to one second after each of two SIGTERM attempts, then up to one second after SIGKILL, and verifies exit. If signaling or exit verification fails, cleanup reports the error and preserves the state directory; current Chrome still detaches without closing the borrowed browser.
 
-For the default copied-profile route, `close` ends only this session and removes its copy after Chrome stops. It succeeds if the owner already closed the marked window or the session already ended. Agent exit, MCP disconnect, and SIGINT/SIGTERM/SIGHUP close the marked window, delete its copy, and finish the run by default. Proxy cleanup starts at once, even when another tool call is still waiting.
+For the default copied-profile route, `finish_task` closes the browser by default and finalizes the existing capture without adding a native close command. `close` ends only this session and removes its copy after Chrome stops. It succeeds if the owner already closed the marked window or the session already ended. Agent exit, MCP disconnect, and SIGINT/SIGTERM/SIGHUP close the marked window, delete its copy, and finish the run by default. Proxy cleanup starts at once, even when another tool call is still waiting.
 
-In **Settings → Technical details → Agent window**, **Keep window open after agent finishes** leaves the marked window available for a manual final step. This local choice is off by default and does not enable extensions. Bao still finishes the run and removes the native agent's private state. The next copied-profile agent session closes the kept window and deletes its copy before opening a fresh one, even if the setting has since been turned off. A kept copy stays on disk until the next agent session cleans it up, even if the owner closes its window by hand. Keep-open applies only when the agent disconnects or Bao MCP stops. An explicit `close`, or closing the window by hand during a live session, still closes Chrome and deletes its copy. Bao never closes the source profile or another Bao home's window.
+In **Settings → Technical details → Agent window**, **Keep window open after agent finishes** leaves the marked window available for a manual final step. This local choice is off by default and does not enable extensions. Bao still finishes the run and removes the native agent's private state. The next copied-profile agent session closes the kept window and deletes its copy before opening a fresh one, even if the setting has since been turned off. A kept copy stays on disk until the next agent session cleans it up, even if the owner closes its window by hand. Keep-open applies when `finish_task` ends a task, the agent disconnects, or Bao MCP stops. An explicit `close`, or closing the window by hand during a live session, still closes Chrome and deletes its copy. Bao never closes the source profile or another Bao home's window.
 
 Kept Chrome has no Bao owner and keeps a local debugging port open, even after you close its window, until you quit that Chrome or the next agent session reclaims its copy. Other local processes, including those run by another OS user, can use that port to read the copy's cookies or control its signed-in pages. Bao has already finished the run and no longer records those actions.
 
@@ -81,7 +90,7 @@ When the active tab's URL or title signals sign-in, a verification code, Imperva
 
 The optional timeout is 1 to 120000 milliseconds, with a default of 60000. It limits each check, not the whole owner wait. The run viewer labels the step **Wait for you to sign in or clear a check**, with the limit in seconds or minutes. Without an explicit run deadline, the wait status says **no overall timeout**. Each call stays below the 180-second MCP limit. On `waiting`, call it again without ending the agent turn. Temporary metadata or CDP errors keep the handoff open until the call's deadline. On `ready`, take a fresh snapshot and continue in the same session. On `closed`, report the returned session-ended instruction. If the owner's Chrome session ended unexpectedly, reconnect with `open` and `browser: "current"` or explicitly choose `browser: "copy"`; do not silently start a copy. Do not start another MCP process to resume this window. Closing during an owner wait finalizes its run as `failed` with reason `session_closed`.
 
-During handoff, Bao polls only the pinned tab's URL and title through browser-level CDP. It does not run native page commands, inspect fields, read text, take snapshots, or save screenshots. Other page commands return the handoff without recording their arguments. `close` stays available. `wait_for_owner` never forwards a native command or saves a page picture.
+During handoff, Bao polls only the pinned tab's URL and title through browser-level CDP. It does not run native page commands, inspect fields, read text, take snapshots, or save screenshots. Other page commands return the handoff without recording their arguments. `close` and `finish_task` stay available to end an abandoned task; ending an unfinished handoff records a failed run with reason `session_closed`. `wait_for_owner` never forwards a native command or saves a page picture.
 
 Readiness means the tab has an HTTP(S) URL and a nonblank title, its URL or title changed, neither matches a sign-in/check marker, and both stayed stable for 750 milliseconds. This is not proof of authentication. An unchanged URL and title keep waiting even if page content changes. An unrecognized check can use `wait_for_owner` to enter the same private wait. Metadata does not identify every sign-in form or embedded challenge.
 
