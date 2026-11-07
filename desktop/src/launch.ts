@@ -299,7 +299,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     rmSync(stderrFile, { force: true });
   }
   const child = spawn(guiArgs ? "/usr/bin/open" : exe, guiArgs ?? chromeArgs, {
-    stdio: ["ignore", "ignore", "pipe"], detached: guiArgs ? true : detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+    stdio: ["ignore", "ignore", "pipe"], detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
   });
   let output = "";
   let browserPath = "";
@@ -319,7 +319,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     while (Date.now() < deadline) {
       if (guiArgs && !browserPath && existsSync(stderrFile)) readEndpoint(readFileSync(stderrFile, "utf8"));
       if (spawnError) throw spawnError;
-      if (!guiArgs && (child.exitCode != null || child.signalCode != null)) {
+      if (child.exitCode != null || child.signalCode != null) {
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
       const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, listProcesses()) : child.pid;
@@ -333,14 +333,20 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     }
     throw new Error("Chrome debugging port did not open");
   } catch (error) {
-    if (guiArgs) {
-      const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
-      if (pid) await releaseProfileProcesses(userDataDir, child, pid, false);
-    }
-    if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
+    try {
+      if (guiArgs) {
+        const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
+        if (pid) await releaseProfileProcesses(userDataDir, child, pid, false);
+      }
+    } catch {}
+    try {
+      if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
+    } catch {}
     throw error;
   } finally {
-    if (guiArgs) rmSync(stderrFile, { force: true });
+    if (guiArgs) {
+      try { rmSync(stderrFile, { force: true }); } catch {}
+    }
   }
 }
 
@@ -449,7 +455,7 @@ export async function launchAccountChrome(opts: {
     })();
     return context;
   } catch (err) {
-    await stop();
+    await stop().catch(() => undefined);
     throw err;
   }
 }
@@ -583,7 +589,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
       child.unref();
     } };
   } catch (error) {
-    await close();
+    await close().catch(() => undefined);
     throw error;
   }
 }
@@ -632,7 +638,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     })();
     return context;
   } catch (err) {
-    await releaseProfileProcesses(opts.userDataDir, child, pid, false);
+    await releaseProfileProcesses(opts.userDataDir, child, pid, false).catch(() => undefined);
     throw err;
   }
 }
@@ -718,7 +724,7 @@ async function launchOwnedChromeForVideo(opts: {
     assertOwnedProcess(ctx, opts.userDataDir);
     await parkOnBlank(ctx);
   } catch (err) {
-    await ctx.close();
+    await ctx.close().catch(() => undefined);
     throw err;
   }
   return ctx;

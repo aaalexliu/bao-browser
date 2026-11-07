@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -46,7 +46,7 @@ for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
         name: "group_shutdown_probe", value: "synthetic", domain: "127.0.0.1", path: "/", expires: Math.floor(Date.now() / 1000) + 3600,
       }] });
       process.kill(-worker.pid!, signal);
-      const [code, exitSignal] = await exited;
+      const [code, exitSignal] = await exited as [number | null, NodeJS.Signals | null];
       assert.equal(code, 0, "group shutdown must complete gracefully");
       assert.equal(exitSignal, null);
       assert.deepEqual(pidsForDataDir(userDataDir), []);
@@ -71,6 +71,54 @@ for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
     }
   });
 }
+
+test("startup keeps its original error when graceful cleanup times out", { timeout: 15_000 }, async (t) => {
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-startup-error-"));
+  const startupError = new Error("discovery rejected during startup");
+  const connect = sockets.connectCdp;
+  const kill = process.kill.bind(process);
+  const signals: Array<NodeJS.Signals | number | undefined> = [];
+  const killMock = t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+    if (signal === "SIGTERM" || signal === "SIGKILL") {
+      signals.push(signal);
+      return true;
+    }
+    return kill(pid, signal);
+  });
+  const childKillMock = t.mock.method(ChildProcess.prototype, "kill", (signal?: NodeJS.Signals | number) => {
+    signals.push(signal);
+    return true;
+  });
+  t.mock.method(sockets, "connectCdp", async (...args: Parameters<typeof connect>) => {
+    const cdp = await connect(...args);
+    const send = cdp.send.bind(cdp);
+    t.mock.method(cdp, "send", (method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => {
+      if (method === "Target.setDiscoverTargets") return Promise.reject(startupError);
+      if (method === "Browser.close") return Promise.reject(new Error("shutdown request failed"));
+      return send(method, params, sessionId, timeoutMs);
+    });
+    return cdp;
+  });
+  try {
+    await assert.rejects(launchOwnedChromeEndpoint({ userDataDir, headless: true }), (error) => error === startupError);
+    assert.ok(signals.includes("SIGTERM"));
+    assert.ok(!signals.includes("SIGKILL"), "cleanup must not force-kill a live browser");
+    assert.ok(pidsForDataDir(userDataDir).length > 0, "the shutdown fault must leave Chrome alive");
+  } finally {
+    killMock.mock.restore();
+    childKillMock.mock.restore();
+    if (pidsForDataDir(userDataDir).length) {
+      const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
+      const cdp = await connect(endpoint.port, endpoint.browserPath);
+      try { await cdp.send("Browser.close", {}, undefined, 3000).catch(() => undefined); }
+      finally { cdp.close(); }
+    }
+    const deadline = Date.now() + 5000;
+    while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(pidsForDataDir(userDataDir), []);
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
 
 for (const mode of ["close", "retained-close", "failed-close", "disconnect", "process-exit", "startup-failure"] as const) {
   test(`endpoint-only launch releases its owned Chrome after ${mode}`, { timeout: 20_000 }, async (t) => {

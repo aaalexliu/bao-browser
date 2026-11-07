@@ -26,9 +26,10 @@ test("installed Mac Chrome launches as a new GUI app and waits for that instance
 
 for (const waiterExit of ["exit", "signal"] as const) {
   test(`GUI shutdown follows the browser PID after waiter ${waiterExit}`, { timeout: 5000 }, async (t) => {
-    const waiter = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open" });
-    if (waiterExit === "exit") waiter.exitCode = 0;
-    else waiter.signalCode = "SIGHUP";
+    const waiter = Object.assign(new ChildProcess(), {
+      spawnfile: "/usr/bin/open",
+      ...(waiterExit === "exit" ? { exitCode: 0 } : { signalCode: "SIGHUP" as const }),
+    });
     const browser = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
     t.after(async () => {
       if (browser.exitCode == null && browser.signalCode == null) {
@@ -51,10 +52,9 @@ test("direct shutdown signals its child only while it is running", (t) => {
   const kill = t.mock.method(child, "kill", () => true);
   stopOwnedChrome(child, 31415);
   assert.deepEqual(kill.mock.calls.map((call) => call.arguments), [["SIGTERM"]]);
-  child.exitCode = 0;
+  Object.assign(child, { exitCode: 0 });
   stopOwnedChrome(child, 31415);
-  child.exitCode = null;
-  child.signalCode = "SIGTERM";
+  Object.assign(child, { exitCode: null, signalCode: "SIGTERM" });
   stopOwnedChrome(child, 31415);
   assert.equal(kill.mock.callCount(), 1);
 });
