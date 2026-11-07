@@ -144,6 +144,30 @@ test("saved-workflow replays keep Needs you when the page engine is agent-browse
   assert.match(receipt, /<h2>Download the bill<\/h2>/);
 });
 
+const signInAsk = "Bao is waiting for you to sign in or clear the check in its browser window. The agent will continue here.";
+
+test("a waiting agent session receipt shows the sign-in ask and not a stop sentence", () => {
+  const run = session({
+    id: "signin",
+    status: "needs_human",
+    steps: [{ id: "command-1", status: "paused", native: { command: "wait_for_owner", args: [] } }],
+    envelope: { status: "needs_human", reason: "owner_signin", ask: signInAsk },
+  });
+  const receipt = runReceipt({
+    view: "receipt",
+    run: { id: "signin", workflowId: "agent-browser", name: "Browser capture", status: "needs_human", at: 1, kind: "capture", stepCount: 1, modelCalls: null, healCount: 0 },
+    reason: "owner_signin",
+    handoff: { status: "needs_human", ask: signInAsk, reason: "owner_signin", deadline: undefined },
+    steps: [],
+    stepOffset: 0,
+    nextStepOffset: null,
+    workflow: null,
+  }, "instacart.com", run);
+  assert.match(receipt, /<aside class="receipt-handoff"><h3>Needs you<\/h3>/);
+  assert.match(receipt, /Bao is waiting for you to sign in or clear the check in its browser window\. The agent will continue here\./);
+  assert.doesNotMatch(receipt, /Bao stopped\. Open Chrome to check the page before continuing\./);
+});
+
 test("Runs names agent sessions, shows the failure reason, and leaves ended sessions out of Needs you", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-agent-runs-"));
   const previousHome = process.env.HOME;
