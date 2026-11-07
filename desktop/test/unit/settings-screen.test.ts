@@ -31,7 +31,6 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await writeFile(path.join(home, "library", "login-sites.json"), JSON.stringify({ sites: [site] }));
     for (const directory of ["Default", "Profile 1"]) await mkdir(path.join(home, "profiles", directory), { recursive: true });
     await writeFile(path.join(home, "profiles", "Local State"), JSON.stringify({ profile: { info_cache: {} } }));
-    app.library.updateSettings({ siteTrust: { "https://example.test": "allow" } });
     const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -66,6 +65,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     assert.equal(await page.locator("#settings-model").innerText(), "None");
     assert.equal(await page.locator("#save-settings").count(), 0);
     assert.equal(await page.locator("#remote-permission").count(), 0);
+    assert.equal(await page.locator("[data-site-trust]").count(), 0);
     await page.locator('label[for="heal-approve"]').click();
     await eventually(() => app.library.settings().heal === "approve");
     await page.locator("#promote-after").fill("5");
@@ -122,17 +122,10 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.locator("#chrome-profile-extensions").check();
     await page.locator("#keep-agent-browser-open").check();
     await page.locator("#circuit-limit").fill("7");
-    await page.locator("#circuit-limit").press("Tab");
+    await page.locator("#circuit-limit").press("Enter");
     await eventually(() => app.library.settings().circuitLimit === 7);
-    const trust = page.locator("[data-site-trust]");
-    const trustId = await trust.getAttribute("id");
-    assert.ok(trustId);
-    await trust.focus();
-    await trust.press("a");
-    await trust.press("Enter");
-    await page.waitForFunction(() => (document.querySelector('[data-site-trust] option[value="ask"]') as HTMLOptionElement)?.defaultSelected === true);
-    await eventually(() => app.library.settings().siteTrust?.["https://example.test"] === "ask");
-    assert.equal(await page.evaluate(() => document.activeElement?.id), trustId);
+    await page.waitForFunction(() => (document.getElementById("circuit-limit") as HTMLInputElement)?.defaultValue === "7");
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "circuit-limit");
     assert.equal(await page.locator("#page-engine").inputValue(), "agent-browser");
     assert.equal(await page.locator("#chrome-profile").inputValue(), "Profile 1");
     assert.equal(await page.locator("#chrome-profile").isEnabled(), true);
