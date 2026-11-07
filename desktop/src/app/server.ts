@@ -253,7 +253,6 @@ export async function startApp(opts: {
   function beginRun(workflowId: string, id: string): void {
     ownedRunId = id;
     activeRun = { id, workflowId, startedAt: Date.now(), phase: "running", ask: null };
-    clearPendingPrompt(library.root);
     stopRun = false;
     loginContinued = false;
     replaying = true;
