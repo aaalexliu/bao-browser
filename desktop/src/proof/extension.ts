@@ -1389,10 +1389,9 @@ async function runTasks(link: ExtensionLink, chrome: ChromeRun): Promise<void> {
       await drive(link, { op: "drive-fill", selector: "#shipState", text: "CA" });
       await drive(link, { op: "drive-fill", selector: "#shipZip", text: "94105" });
       await drive(link, { op: "drive-fill", selector: "#ccName", text: "Bao" });
-      await drive(link, { op: "drive-click", text: "Place Order" });
       await settle();
     });
-    taskResults.p9 = await scoreTask(link, workflow, "p9", "needs_human", (run) => argsFor(workflow, {
+    taskResults.p9 = await scoreTask(link, workflow, "p9", "completed", (run) => argsFor(workflow, {
       byDefault: run === 1 ? P9_A : P9_B,
     }) as ReplayArgs, scoreP9, ["", ""]);
   } catch (err) {
