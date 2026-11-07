@@ -240,7 +240,6 @@ async function loadState(): Promise<void> {
       id: run.id, workflowId: run.workflowId, status: run.status, envelopeStatus: run.envelope?.status,
       at: run.at, kind: run.kind, modelCalls: run.modelCalls,
       envelope: run.envelope, failure: run.failure,
-      timing: run.steps?.flatMap((step) => step.startedAt === undefined && step.endedAt === undefined ? [] : [[step.startedAt, step.endedAt]]),
       heals: run.heals?.map((heal) => [heal.id, heal.failedStep]), decisions: run.decisions, promotionStatus: run.promotion?.status,
     })),
     day: new Date().toDateString(),
