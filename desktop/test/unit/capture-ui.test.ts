@@ -49,6 +49,7 @@ test("the running capture saves its name and steps, pauses, recovers errors and 
     await page.unroute("**/api/sessions");
     await page.locator("#start").click();
     await page.getByRole("heading", { name: "Recording", exact: true }).waitFor();
+    await page.locator("#stop:not([disabled])").waitFor();
     assert.equal(await page.locator("#rail").isVisible(), false);
     assert.equal((await getState()).recording, true);
     const drive = async (body: object) => {
@@ -92,7 +93,7 @@ test("the running capture saves its name and steps, pauses, recovers errors and 
     await page.locator('#workflow-detail [data-screen="capture"]').click();
     await page.locator("#cap-name").fill("Recover saved name");
     await page.locator("#start").click();
-    await page.locator("#capture-discard").waitFor();
+    await page.locator("#capture-discard:not([disabled])").waitFor();
     await page.route("**/api/sessions/commit", (route) => route.fulfill({ status: 500, json: { error: "Fixture save failed" } }));
     await page.locator("#stop").click();
     await page.locator("#save-title").waitFor();
@@ -103,7 +104,7 @@ test("the running capture saves its name and steps, pauses, recovers errors and 
     assert.ok(app.library.list().workflows.some((workflow) => workflow.name === "Recover saved name"));
     await page.locator('#workflow-detail [data-screen="capture"]').click();
     await page.locator("#start").click();
-    await page.locator("#capture-discard").waitFor();
+    await page.locator("#capture-discard:not([disabled])").waitFor();
     page.once("dialog", (dialog) => void dialog.dismiss());
     await page.locator("#capture-discard").click();
     assert.equal((await getState()).recording, true);

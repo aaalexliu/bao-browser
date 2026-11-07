@@ -1189,8 +1189,9 @@
     #capture-panel .stream svg { width: 16px; height: 16px; color: var(--quiet); }
     #capture-panel .stream .lab { font-weight: 500; }
     #capture-panel .stream .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; color: var(--quiet); font-size: .75rem; }
-    #capture-panel .cap-token { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 4px; background: var(--capture-control); border: 1px solid var(--line); line-height: 1.3; }
-    #capture-panel .cap-token svg { width: 10px; height: 10px; }
+    #capture-panel .cap-token { display: inline-block; vertical-align: middle; line-height: 20px; height: 20px; padding: 0 7px; border-radius: 5px; background: rgba(0,0,0,.06); box-shadow: inset 0 0 0 .5px var(--line); font-weight: 500; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    [data-theme="dark"] #capture-panel .cap-token { background: rgba(255,255,255,.09); }
+    #capture-panel .cap-token svg { display: inline-block; vertical-align: -1px; width: 11px; height: 11px; opacity: .8; margin-inline-end: 4px; }
     #capture-panel .mask { font-family: var(--mono); letter-spacing: .08em; color: var(--ink); }
     #capture-panel .stream li.new { background: var(--capture-control); }
     #capture-panel .stream .just { font-size: .75rem; color: var(--quiet); white-space: nowrap; }
@@ -1199,7 +1200,8 @@
     #capture-panel .dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .5; }
     #capture-panel .cap-foot { flex: none; border-top: 1px solid var(--line); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
     #capture-panel .cap-foot p { flex: 1; font-size: .75rem; color: var(--quiet); display: flex; gap: 6px; align-items: center; min-width: 0; margin: 0; }
-    #capture-panel .cap-foot button { height: 28px; padding: 0 12px; border-radius: 6px; border-color: var(--capture-button); background: var(--bg); font-size: .8125rem; white-space: nowrap; box-shadow: 0 .5px 1px rgba(0,0,0,.08); }
+    #capture-panel .cap-foot button { height: 28px; padding: 0 12px; border-radius: 7px; border-color: var(--capture-button); background: var(--bg); font-size: .8125rem; font-weight: 500; white-space: nowrap; box-shadow: 0 .5px 1px rgba(0,0,0,.08); }
+    [data-theme="dark"] #capture-panel .cap-foot button { box-shadow: none; }
     #capture-panel .cap-foot button.primary { background: #b9520a; border-color: transparent; color: #fff; font-weight: 500; }
     #capture-panel .cap-foot:has(#start) { justify-content: flex-end; }
     #capture-panel .ico { flex: none; }

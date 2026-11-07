@@ -92,7 +92,6 @@ let state: ShellState & {
     localCategories?: { category: string; count: number }[];
     conflicts?: { id: string; remoteVersion: number; file: string }[];
   };
-  trails?: string[];
   workflows?: WorkflowSummary[];
   runs?: RunSummary[];
   opened?: OpenedView | null;
@@ -240,6 +239,7 @@ async function loadState(): Promise<void> {
     helper: state.helper,
     model: state.model,
     paused: state.capturePaused,
+    captureUrl: state.capture?.url,
     since: state.recordingSince,
     promotions: state.promotions,
     live: state.liveSession ? { status: state.liveSession.status, updatedAt: state.liveSession.updatedAt, n: state.liveSession.audit.length } : null,
@@ -848,8 +848,6 @@ function bind(): void {
   if (stop) stop.onclick = () => void captureAction("save");
   const discardCapture = document.getElementById("capture-discard");
   if (discardCapture) discardCapture.onclick = () => void captureAction("discard");
-  const load = document.getElementById("load-trail");
-  if (load) load.onclick = () => loadTrail((document.getElementById("trail-id") as HTMLSelectElement).value, "");
   const wf = document.getElementById("wf") as HTMLSelectElement | null;
   if (wf) wf.onchange = () => {
     lastWf = wf.value;
@@ -1489,13 +1487,8 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
   if (!id) return;
   const trail = await (await fetch("/api/trails/" + encodeURIComponent(id))).json() as { id?: string; ts?: number; op?: string; kind?: string }[];
   const html = trailPane(Array.isArray(trail) ? trail : []);
-  if (hostId) {
-    const host = document.getElementById(hostId);
-    if (host) host.innerHTML = html;
-    return;
-  }
-  const pre = document.getElementById("trail-view");
-  if (pre) pre.outerHTML = html;
+  const host = document.getElementById(hostId);
+  if (host) host.innerHTML = html;
 }
 
 function bindSidebarToggle(): void {
