@@ -142,7 +142,7 @@ export interface Driver {
   clearConfirm?(): void | Promise<void>;
   showLoginWait?(label: string): void | Promise<void>;
   clearLoginWait?(): void | Promise<void>;
-  /** The product window's act bar. Replay still does not press the site button. */
+  /** The product window's handoff prompt. Replay still does not press the site button. */
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
