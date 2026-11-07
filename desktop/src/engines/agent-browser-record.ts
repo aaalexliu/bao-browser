@@ -42,6 +42,16 @@ export class AgentBrowserRun {
 
   get id(): string { return this.run.id; }
 
+  get lastPicture(): { stepId: string; phase: "before" | "after" | "requested" } | undefined {
+    for (let i = this.run.steps.length - 1; i >= 0; i--) {
+      const step = this.run.steps[i]!;
+      if (step.afterShot) return { stepId: step.id, phase: "after" };
+      if (step.native.screenshots.length) return { stepId: step.id, phase: "requested" };
+      if (step.beforeShot) return { stepId: step.id, phase: "before" };
+    }
+    return undefined;
+  }
+
   async actionPicture(step: RecordedAgentBrowserCommand, bytes: Buffer, target: NonNullable<RecordedAgentBrowserCommand["target"]>): Promise<void> {
     step.beforeShot = await this.picture(step, bytes, "before");
     step.target = target;

@@ -123,9 +123,10 @@ export function openBrowserPicture(library: Library, args: Record<string, unknow
   const runId = viewerId(args.run_id);
   const stepId = viewerId(args.step_id);
   const phase = args.phase;
-  if (phase !== "before" && phase !== "after") throw new Error("Invalid picture phase");
+  if (phase !== "before" && phase !== "after" && phase !== "requested") throw new Error("Invalid picture phase");
   for (const format of ["jpg", "png"] as const) {
-    const picture = readPicture(library, runId, shotFile(stepId, phase, format), BROWSER_PICTURE_BYTES);
+    const name = phase === "requested" ? `${stepId}-requested.${format}` : shotFile(stepId, phase, format);
+    const picture = readPicture(library, runId, name, BROWSER_PICTURE_BYTES);
     if (picture) return { runId, stepId, pictures: [{ phase, ...picture }] };
   }
   return { runId, stepId, pictures: [] };

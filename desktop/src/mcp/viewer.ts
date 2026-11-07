@@ -131,13 +131,15 @@ function viewerMain(): void {
   function calls(value: number | null): string { return value === null ? "Model calls unknown (not tracked)" : `${value} Bao model calls`; }
   async function loadBrowserPicture(card: BrowserToolCard): Promise<void> {
     const picture = card.picture;
-    if (picture.kind !== "captured" || !card.runId || !card.stepId) return;
+    if (picture.kind !== "captured" || !card.runId) return;
+    const stepId = picture.stepId ?? card.stepId;
+    if (!stepId) return;
     pictureLoading = true; render();
     try {
-      const reply = await tool("open_browser_picture", { run_id: card.runId, step_id: card.stepId, phase: picture.phase });
+      const reply = await tool("open_browser_picture", { run_id: card.runId, step_id: stepId, phase: picture.phase });
       if (browserCall !== card) return;
       const data = reply._meta?.baoPictures;
-      if (!data || data.runId !== card.runId || data.stepId !== card.stepId) throw new HostDataError("This host did not forward the page picture.");
+      if (!data || data.runId !== card.runId || data.stepId !== stepId) throw new HostDataError("This host did not forward the page picture.");
       browserPicture = data.pictures.find((candidate) => candidate.phase === picture.phase);
       if (!browserPicture) pictureError = "The page picture is missing, invalid, or over the size limit.";
     } catch (cause) {
@@ -156,7 +158,7 @@ function viewerMain(): void {
     if (picture.kind === "captured" && browserPicture) {
       const figure = el("figure", undefined, `browser-picture${expanded ? " expanded" : ""}`);
       const image = el("img");
-      const phase = picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
+      const phase = card.command === "close" ? "Last page before the session closed" : picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
       image.src = `data:${browserPicture.mimeType};base64,${browserPicture.data}`; image.alt = `${phase}: ${card.caption}`;
       const frame = el("div", undefined, "browser-frame"); frame.append(image);
       if (picture.target) {
