@@ -11,6 +11,9 @@ import { makeAsk } from "../../src/v1/human-ask";
 import { writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { blankPng } from "../../src/v1/redacted-png";
+import { saveRelay } from "../../src/v1/relay-link";
+import { MemoryJobStore } from "../../../web/src/lib/relay-job";
+import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 import { applyHermeticApp } from "../runtime";
 
 function workflow(startUrl: string): WorkflowV2 {
@@ -148,6 +151,101 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     await page.waitForSelector("#run-receipt");
     assert.equal((await (await fetch(`${base}/api/state`)).json() as ShellState).activeAsk, null);
   } finally { await browser.close(); await app.close(); rmSync(dirs.home, { recursive: true, force: true }); }
+});
+
+test("a relay extension run leaves a waiting local run controllable", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("overlap");
+  const directory = new MemoryDirectory();
+  directory.addDevice("overlap-device", "overlap-user");
+  const app = await startApp({ home: dirs.home, port: 0, extensionHost: true, extensionConfigHome: path.join(dirs.home, "host-config") });
+  const relay = await listenRelay(createRelay({ store: new MemoryJobStore(), directory, enabled: () => true }), { principal: () => ({ userId: "overlap-user" }) });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  let relayRun: Promise<Record<string, unknown>> | undefined;
+  let releaseOpen!: () => void;
+  const openGate = new Promise<void>((resolve) => { releaseOpen = resolve; });
+  let opened!: () => void;
+  const opening = new Promise<void>((resolve) => { opened = resolve; });
+  async function relayPost(route: string, body: unknown, token?: string): Promise<Record<string, unknown>> {
+    const response = await fetch(`${relay.origin}${route}`, { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    const result = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 200, JSON.stringify(result));
+    return result;
+  }
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async (op) => {
+      if (op === "open") { opened(); await openGate; }
+      return {};
+    };
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "login-first", index: 0, action: "login", human: true, label: "Sign in first", surface: "dom", timeoutMs: 60000 },
+      { id: "login-next", index: 1, action: "login", human: true, label: "Sign in next", surface: "dom", timeoutMs: 60000 },
+    ];
+    app.library.save(wf);
+    app.library.save({ ...wf, id: "relay-note", name: "Relay overlap", driver: "extension", steps: [
+      { id: "note", index: 0, action: "note", label: "Relay overlap", surface: "dom", timeoutMs: 1000 },
+    ] });
+    const issued = await relayPost("/api/agent/pair", {});
+    const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Overlap Mac", deviceId: "overlap-device" });
+    const agent = await directory.mintAgent("overlap-user", "overlap-device");
+    assert.ok(agent);
+    saveRelay(dirs.home, { server: relay.origin, token: String(paired.token), tokenId: String(paired.tokenId), deviceId: String(paired.deviceId) });
+    app.library.updateSettings({ remoteMcp: true });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await relayPost("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const result = body.result as { content?: { type: string; text?: string }[] };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      if ((await tool("search_workflows", { query: "Relay overlap" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor();
+    const before = (await (await fetch(`${base}/api/state`)).json() as ShellState).activeRun!;
+    relayRun = tool("run_workflow", { id: "relay-note" });
+    await opening;
+    const during = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.deepEqual(during.activeRun, before, "relay start must preserve the local handoff identity");
+    assert.equal(during.replaying, true);
+    releaseOpen();
+    const relayResult = await relayRun;
+    assert.equal(relayResult.outcome, "ok", JSON.stringify(relayResult));
+    await page.getByRole("button", { name: "Open workflow", exact: true }).click();
+    await page.locator(`#workflow-detail [data-screen="replay"][data-workflow="${wf.id}"]`).click();
+    await page.locator("#wf").selectOption(wf.id);
+    await page.locator("#run").click();
+    await page.waitForFunction(() => document.getElementById("live")?.textContent === "Another run is waiting for you. Finish or stop it first.");
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor();
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), before.id);
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    await page.getByRole("button", { name: "Keep waiting" }).click();
+    await page.getByRole("button", { name: "I’m signed in, continue" }).click();
+    await page.waitForFunction(() => document.getElementById("live-run")?.dataset.step?.includes(":login-next:"));
+    await page.getByRole("button", { name: "Stop run…" }).click();
+    await page.getByRole("button", { name: "Stop run", exact: true }).click();
+    assert.notEqual((await replay).status, "passed", "Stop must still stop the waiting local run");
+  } finally {
+    releaseOpen();
+    await relayRun?.catch(() => undefined);
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close();
+    await app.close();
+    await relay.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
 });
 
 test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {

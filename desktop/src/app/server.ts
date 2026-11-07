@@ -258,10 +258,10 @@ export async function startApp(opts: {
     loginContinued = false;
     replaying = true;
   }
-  function finishRun(): void {
+  function finishRun(id: string): void {
     replaying = false;
-    if (activeRun?.phase === "running" && activeRun.id === ownedRunId) activeRun = null;
-    ownedRunId = null;
+    if (activeRun?.phase === "running" && activeRun.id === id) activeRun = null;
+    if (ownedRunId === id) ownedRunId = null;
   }
   let stopRun = false;
   let loginContinued = false;
@@ -377,8 +377,7 @@ export async function startApp(opts: {
         if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
         const workflow = library.read(id);
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-        beginRun(workflow.id, runId);
-        const result = await runExtension(library, workflow, inputs, notices, runId, prompts, extensionLink).finally(finishRun) as {
+        const result = await runExtension(library, workflow, inputs, notices, runId, prompts, extensionLink) as {
           status?: string;
           runId?: string;
           outputs?: unknown;
@@ -1205,6 +1204,9 @@ export async function startApp(opts: {
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
+        if (!body.guide && activeRun?.phase === "waiting") {
+          return json(res, { error: "Another run is waiting for you. Finish or stop it first." }, 409);
+        }
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         if (body.guide) {
           stopRun = false;
@@ -1221,7 +1223,7 @@ export async function startApp(opts: {
           }
           await releaseSharedProfile({ keepReplays: true });
           if (body.guide) {
-            const run = await runGuide(library, workflow, args, replays, runId, prompts);
+            const run = await runGuide(library, workflow, args, replays, prompts);
             return json(res, run);
           }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
@@ -1243,7 +1245,7 @@ export async function startApp(opts: {
           return json(res, run);
         } finally {
           if (body.guide) replaying = false;
-          else finishRun();
+          else finishRun(runId);
         }
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
@@ -2286,7 +2288,6 @@ export async function startApp(opts: {
     workflow: WorkflowV2,
     args: ReplayArgs,
     replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
-    runId: string,
     prompts?: PersonPrompts,
   ) {
     if (refusesOwnedBrowser(workflow.driver)) throw new Error(CDP_LIVE_SERVER_REFUSAL);
@@ -2295,6 +2296,7 @@ export async function startApp(opts: {
     const driver = new BrowserDriver(page, undefined, prompts);
     if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
     await driver.watchGuide();
+    const runId = `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const first = workflow.steps[0];
     guideLive = {
       workflowId: workflow.id,
