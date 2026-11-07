@@ -5,9 +5,11 @@
 `bao mcp` exposes `agent_browser` and `finish_task`. Call `finish_task` before the final chat reply for every completed, failed, or cancelled browser task. A long-lived MCP connection has no conversation-turn-end event, so a final answer alone cannot release the browser.
 
 ```json
-{"name":"finish_task","arguments":{"outcome":"passed","reason":"Verified the requested change on the page."}}
+{"name":"finish_task","arguments":{"outcome":"passed","reason":"Verified the requested change on the page.","task":"Add milk"}}
 {"name":"finish_task","arguments":{"outcome":"failed","reason":"The requested item was unavailable."}}
 ```
+
+`task` is optional. It is a short name for the run, such as the request you carried out. Omit it when you have no task name. Bao stores a trimmed non-blank value and drops a blank one. [Runs](v1.md#install-and-run) uses that stored name in the list.
 
 Use `finish_task`, not `close`, to end a task. It returns the saved run receipt and workflow save result without stopping MCP, so the same client can start the next task. If session cleanup is still running, `finish_task` waits and applies the outcome to that same session's run only if it has no outcome yet. Once the session is fully removed, `finish_task` returns `no_session` and leaves earlier runs and saved workflows unchanged. Call `finish_task` before `close`; a late finish cannot change the status that a completed close computed. The agent's checked outcome and reason set the capture result, even after a recovered command failure. Earlier command failures stay in the receipt; workflow saving keeps its existing harmless-failure rule. An incomplete owner wait still fails with `session_closed`. Explicit task outcomes include a reason; a session ended without an outcome keeps its step-derived status without adding an outcome envelope. Do not finish while waiting for sign-in, `wait_for_owner`, or an owner confirmation. After 10 minutes without an agent command, Bao ends a non-waiting session as failed with a reason that it ended without `finish_task`. Active commands, owner waits, sign-in handoffs, and held replay confirmations do not expire. Idle cleanup honors keep-open for owned windows and only detaches from current Chrome, leaving its task tabs open. Settings Stop remains the replay heal policy; task completion neither heals nor calls a model.
 

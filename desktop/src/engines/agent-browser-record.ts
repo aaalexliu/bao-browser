@@ -29,6 +29,7 @@ export interface RecordedAgentBrowserCommand {
 export interface AgentBrowserTaskOutcome {
   outcome: "passed" | "failed";
   reason: string;
+  task?: string;
 }
 
 export class AgentBrowserRun {
@@ -126,6 +127,8 @@ export class AgentBrowserRun {
     } else if (result) {
       this.run.status = result.outcome;
       this.run.envelope = { status: result.outcome, run_id: this.run.id, reason: result.reason };
+      const task = result.task?.trim();
+      if (task) this.run.task = task;
     } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
       : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();

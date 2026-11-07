@@ -54,6 +54,7 @@ export interface StoredRun {
   pageEngine?: "old" | "agent-browser";
   traceUnavailable?: string;
   workflowId: string;
+  task?: string;
   status: string;
   at: number;
   heals: unknown[];
