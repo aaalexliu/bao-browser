@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { secretArg } from "../../src/v1/auth";
 import { runField } from "../../src/app/views";
+import { startApp } from "../../src/app/server";
 import { editInput } from "../../src/v1/input-token";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
@@ -130,6 +134,62 @@ test("OTP history never supplies defaults or past-run inputs, while fresh input 
     assert.equal(input.default, "123456");
     const bound = { ...workflow, steps: [{ ...workflow.steps[0]!, input: undefined }] };
     assert.deepEqual(withInputDefaults(bound, {}), {});
+  }
+});
+
+test("past-input route filters current OTP fields without changing saved history or explicit run-link values", { timeout: 30_000 }, async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-otp-inputs-"));
+  const app = await startApp({ home, port: 0 });
+  try {
+    const workflow = doc({
+      id: "otp", index: 0, action: "type", label: "Code", surface: "dom",
+      input: "code", value: "{{code}}", identity: { ...field },
+    });
+    workflow.inputs = [
+      { name: "code", type: "text", label: "Code", default: "123456" },
+      { name: "ordinary", type: "text", label: "Display name" },
+      { name: "password", type: "secret", label: "Password" },
+      { name: "count", type: "number", label: "Count" },
+    ];
+    app.library.save(workflow);
+    const history = { code: "123456", ordinary: "Ada", password: secret, count: 2 };
+    app.library.savePublicInputs(workflow.id, history);
+    const historyPath = path.join(app.library.root, "inputs", `${workflow.id}.json`);
+    const historyBytes = readFileSync(historyPath, "utf8");
+    const base = `http://127.0.0.1:${app.port}`;
+    const endpoint = `${base}/api/workflows/${workflow.id}/inputs`;
+    const ordinary = await fetch(endpoint);
+    assert.equal(ordinary.status, 200);
+    assert.deepEqual(await ordinary.json(), history);
+
+    for (const type of ["text", "secret"] as const) {
+      for (const binding of ["input", "value"] as const) {
+        workflow.inputs[0]!.type = type;
+        workflow.steps[0]!.identity!.autocomplete = "section-login ONE-TIME-CODE";
+        workflow.steps[0]!.input = binding === "input" ? "code" : undefined;
+        app.library.save(workflow);
+        const saved = app.library.read(workflow.id);
+        const past = await fetch(endpoint);
+        assert.equal(past.status, 200);
+        assert.deepEqual(await past.json(), { ordinary: "Ada", password: secret, count: 2 }, `${type} ${binding}`);
+        assert.deepEqual(await (await fetch(`${base}/api/workflows/${workflow.id}`)).json(), saved);
+        assert.equal(readFileSync(historyPath, "utf8"), historyBytes);
+        assert.deepEqual(app.library.readPublicInputs(workflow.id), history);
+        assert.equal(saved.inputs[0]!.default, "123456");
+
+        const link = `bao://run/${workflow.id}?inputs=${encodeURIComponent(JSON.stringify({ code: "654321", ordinary: "Grace" }))}`;
+        const opened = await fetch(`${base}/api/open`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ link }),
+        });
+        assert.equal(opened.status, 200);
+        const body = await opened.json() as { opened: { inputs: Record<string, string> } };
+        assert.deepEqual(body.opened.inputs, { code: "654321", ordinary: "Grace" });
+      }
+    }
+    assert.equal(readFileSync(historyPath, "utf8"), historyBytes);
+  } finally {
+    await app.close();
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

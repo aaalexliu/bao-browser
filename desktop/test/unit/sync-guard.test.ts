@@ -10,6 +10,7 @@ import { isElementCrop, redactedPng } from "../../src/v1/redacted-png";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
 import sharp from "sharp";
+import type { WorkflowV2 } from "../../src/v1/schema";
 
 test("a push retains owner data and screenshots while stripping credentials", () => {
   const secret = "SuperSecret";
@@ -43,6 +44,34 @@ test("a push retains owner data and screenshots while stripping credentials", ()
   assert.equal(JSON.stringify(body.heal).includes("not-a-real-image"), true);
   assert.equal((body.heal as { snapshot?: { dom?: string } }).snapshot?.dom, "button");
 });
+
+for (const build of [buildPushBody]) {
+  test("push accepts saved passwords that also occur in metadata", () => {
+    for (const password of ["password", "secret", "test", "pass", "admin", "8000", "5000"]) {
+      const doc: WorkflowV2 = {
+        schema: "bao.workflow/v2", version: 2, id: "sync-password", name: "Password test", createdAt: 1,
+        startUrl: "https://example.test/admin",
+        inputs: [{ name: "password", type: "secret", default: password }],
+        steps: [
+          { id: "pass", index: 0, action: "type", label: "Type password", surface: "dom", timeoutMs: 8000,
+            input: "password", value: "{{password}}", identity: { surface: "dom", role: "textbox", testId: "password", path: [] } },
+          { id: "echo", index: 1, action: "type", label: "Echo", surface: "dom", timeoutMs: 5000, value: password },
+        ],
+      };
+      const pushed = build(doc, { baseVersion: 0 }).document as WorkflowV2;
+      assert.equal(pushed.inputs[0]!.default, undefined);
+      assert.equal(pushed.inputs[0]!.name, "password");
+      assert.equal(pushed.inputs[0]!.type, "secret");
+      assert.equal(pushed.steps[0]!.value, "{{password}}");
+      assert.equal(pushed.steps[0]!.identity!.testId, "password");
+      assert.equal(pushed.steps[0]!.timeoutMs, 8000);
+      assert.equal(pushed.steps[1]!.timeoutMs, 5000);
+      assert.equal(pushed.steps[1]!.value, "[secret stripped]");
+      assert.equal(pushed.startUrl, doc.startUrl);
+      assert.equal(doc.inputs[0]!.default, password);
+    }
+  });
+}
 
 test("workflow pictures skip private steps and retain control crops without markers", () => {
   const crop = tinyPng(320, 180);

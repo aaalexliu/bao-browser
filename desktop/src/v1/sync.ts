@@ -11,6 +11,7 @@ import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
+import { parseTable, tableToCsv } from "../../../shared/table";
 import { migrate, toJson, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
@@ -695,28 +696,54 @@ function enqueueDirty(library: Library, state: SyncState): void {
 }
 
 function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
+  const projected = local ? stripUnsafe(local) as WorkflowV2 : undefined;
   const inputs = new Map(local?.inputs.map((input) => [input.name, input]));
+  const projectedInputs = new Map(projected?.inputs.map((input) => [input.name, input]));
   for (const input of doc.inputs) {
     if (input.type === "file" || oneTimeCodeInput(doc, input.name)) continue;
-    if (!hasStrippedSecret(input.default) && !(input.type === "secret" && input.default === undefined)) continue;
     const saved = inputs.get(input.name);
-    if (saved?.type === input.type && saved.default !== undefined && !hasStrippedSecret(saved.default)) input.default = saved.default;
+    const stripped = projectedInputs.get(input.name);
+    if (saved?.type !== input.type || saved.default === undefined || !stripped) continue;
+    if (input.type === "table" && typeof input.default === "string") {
+      const rows = parseTable(input.default);
+      const savedRows = parseTable(saved.default);
+      const strippedRows = parseTable(stripped.default);
+      let restored = false;
+      rows.forEach((row, index) => {
+        for (const column of Object.keys(row)) {
+          const value = savedRows[index]?.[column];
+          if (hasStrippedSecret(row[column]) && row[column] === strippedRows[index]?.[column]
+            && value !== undefined && !hasStrippedSecret(value)) {
+            row[column] = value;
+            restored = true;
+          }
+        }
+      });
+      if (restored) input.default = tableToCsv(Object.keys(rows[0]!), rows);
+    } else if ((hasStrippedSecret(input.default) && input.default === stripped.default
+      || input.type === "secret" && input.default === undefined && stripped.default === undefined)
+      && !hasStrippedSecret(saved.default)) input.default = saved.default;
   }
   const steps = new Map<string, WorkflowStep>();
-  const remember = (items: WorkflowStep[]): void => {
+  const projectedSteps = new Map<string, WorkflowStep>();
+  const remember = (items: WorkflowStep[], target: Map<string, WorkflowStep>): void => {
     for (const step of items) {
-      steps.set(step.id, step);
-      if (step.forEach) remember(step.forEach.steps);
+      target.set(step.id, step);
+      if (step.forEach) remember(step.forEach.steps, target);
     }
   };
-  remember(local?.steps ?? []);
+  remember(local?.steps ?? [], steps);
+  remember(projected?.steps ?? [], projectedSteps);
   const defaults = Object.fromEntries(doc.inputs.flatMap((input) => input.default === undefined ? [] : [[input.name, input.default] as const]));
   const restore = (items: WorkflowStep[]): void => {
     for (const step of items) {
       const saved = steps.get(step.id);
+      const stripped = projectedSteps.get(step.id);
       for (const field of ["value", "key"] as const) {
         const value = saved?.[field];
-        if (hasStrippedSecret(step[field]) && value !== undefined && !hasStrippedSecret(value) && !value.includes("{{")) {
+        if (stripped && step[field] === stripped[field]
+          && (hasStrippedSecret(step[field]) || step[field] === undefined)
+          && value !== undefined && !hasStrippedSecret(value) && !value.includes("{{")) {
           step[field] = value;
         }
       }
@@ -726,7 +753,11 @@ function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
       if (step.unresolved?.reason === NEEDS_SECRET_VALUE
         && (step.value !== undefined || step.key !== undefined || bound.size > 0)
         && [...bound].every((name) => defaults[name] !== undefined && defaults[name] !== "")
-        && !stepNeedsSecretValue({ ...step, unresolved: undefined }, doc, defaults)) delete step.unresolved;
+        && !stepNeedsSecretValue({ ...step, unresolved: undefined }, doc, defaults)) {
+        if (stripped?.unresolved?.reason === NEEDS_SECRET_VALUE && saved?.unresolved
+          && saved.unresolved.reason !== NEEDS_SECRET_VALUE) step.unresolved = saved.unresolved;
+        else delete step.unresolved;
+      }
       if (step.forEach) restore(step.forEach.steps);
     }
   };

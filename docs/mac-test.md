@@ -19,7 +19,7 @@ Check helper presence in Settings against [Which grant each job needs](permissio
 5. Drag a throwaway file from Finder onto **Drop a file here**.
 6. Click **Stop and save**.
 
-Library shows the new workflow. The password is not in it. The file path is not in it.
+Library shows the new workflow and password. The file path is not in it.
 
 ## Replay
 

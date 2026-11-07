@@ -7,7 +7,19 @@ import fc from "fast-check";
 import { cursorAccountHeal, resetCursorAccountCache, type CursorAgentRun } from "../../src/v1/cursor-account";
 import { cursorSessionHeal, llmHealFromEnv, type StepFailure } from "../../src/v1/heal";
 import { replay, type Driver } from "../../src/v1/replay";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+
+type PromptDom = [
+  { value: string; identity: { value: string } },
+  { value: string },
+  { value: string },
+  { value: string },
+  { value: string },
+  { actual: string },
+  { note: string },
+];
+type ModelRequest = { messages: { content: string }[] };
+type CursorRequest = { prompt: string; dom: PromptDom; intent: string; reason: string; step: WorkflowStep };
 
 const stripped = "[secret stripped]";
 const reply = JSON.stringify({ identity: { surface: "dom", role: "button", testId: "fixed", path: [] } });
@@ -39,7 +51,7 @@ function fixture(secret: string) {
 }
 
 function assertPrompt(prompt: string, secret: string): void {
-  const dom = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)).dom;
+  const { dom } = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)) as { dom: PromptDom };
   assert.equal(dom[0].value, stripped);
   assert.equal(dom[0].identity.value, stripped);
   assert.equal(dom[1].value, stripped);
@@ -51,7 +63,7 @@ function assertPrompt(prompt: string, secret: string): void {
   assert.ok(prompt.includes(`Intent: ${secret}`));
   assert.ok(prompt.includes(`Reason: ${secret}`));
   assert.equal(prompt.includes("AAAALOCALSCREENSHOT"), false);
-  const step = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Step: "))!.slice(6));
+  const step = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Step: "))!.slice(6)) as WorkflowStep;
   assert.equal(step.value, "{{password}}");
   assert.equal(step.label, secret);
 }
@@ -64,7 +76,8 @@ for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"]
       const original = structuredClone(data);
       let sent = "";
       const fetchImpl: typeof fetch = async (_url, init) => {
-        sent = JSON.parse(String(init?.body)).messages[0].content;
+        const request = JSON.parse(String(init?.body)) as ModelRequest;
+        sent = request.messages[0]!.content;
         return new Response(reply);
       };
       const agent: CursorAgentRun = {
@@ -108,7 +121,7 @@ for (const mode of ["logged-out", "print-fails"] as const) {
     resetCursorAccountCache();
     const heal = await cursorAccountHeal({ BAO_CURSOR_AGENT: process.execPath, BAO_HEAL_CURSOR: "1", BAO_HEAL_DIR: dir, BAO_HEAL_WAIT_MS: "0" }, [], agent);
     assert.equal(await heal.propose(data.failure, data.step, data.context), null);
-    const request = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8"));
+    const request = JSON.parse(readFileSync(path.join(dir, "heal-request.json"), "utf8")) as CursorRequest;
     assertPrompt(request.prompt, secret);
     assert.equal(request.dom[0].value, stripped);
     assert.equal(request.dom[0].identity.value, stripped);
@@ -127,7 +140,8 @@ test("replay threads default and runtime secrets to the model while returning ra
     const snapshot = fixture(secret).failure.snapshot;
     let sent = "";
     const heal = llmHealFromEnv({ OPENAI_API_KEY: "fixture" }, async (_url, init) => {
-      sent = JSON.parse(String(init?.body)).messages[0].content;
+      const request = JSON.parse(String(init?.body)) as ModelRequest;
+      sent = request.messages[0]!.content;
       return new Response(reply);
     });
     const driver: Driver = {
@@ -139,7 +153,7 @@ test("replay threads default and runtime secrets to the model while returning ra
     data.workflow.heal = "approve";
     const result = await replay(data.workflow, supplied ? { password: secret } : {}, driver, { heal });
     assert.equal(result.status, "paused");
-    const dom = JSON.parse(sent.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)).dom;
+    const { dom } = JSON.parse(sent.split("\n").find((line) => line.startsWith("Snapshot: "))!.slice(10)) as { dom: PromptDom };
     assert.equal(dom[0].value, stripped);
     assert.deepEqual(result.heals[0]?.snapshot, snapshot);
     assert.equal((result.heals[0]?.snapshot.dom as { value: string }[])[0]?.value, secret);

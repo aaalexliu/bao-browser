@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { parseTable, tableToCsv } from "../../../shared/table";
 import type { SyncPush } from "../../../web/src/lib/guard";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
@@ -296,7 +297,6 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
     const library = new Library(home);
     const local = secretWorkflow();
     local.version = 3;
-    local.filesDates = 1;
     local.inputs = [
       { name: "password", type: "secret", default: planted },
       { name: "token", type: "text", default: token },
@@ -307,7 +307,8 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       { name: "removed", type: "text", default: token },
       { name: "file", type: "file", default: token },
       { name: "otp", type: "text", default: "123456" },
-      { name: "rows", type: "table", default: "name\nAda" },
+      { name: "rows", type: "table", default: `name,token\nAda,${token}\nGrace,${card}\nReplaced row,${token}\nRemoved row,${card}` },
+      { name: "unstripped", type: "text", default: "local text" },
     ];
     const literal = (id: string, value: string): WorkflowStep => ({
       id, index: 0, action: "type", label: id, surface: "dom", timeoutMs: 1000,
@@ -322,9 +323,17 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       literal("removed-step", token),
       { ...literal("unrelated", token), unresolved: { reason: "no identity" } },
       literal("unavailable", STRIPPED_SECRET),
+      literal("unstripped", "local literal"),
+      { ...literal("sensitive", "private literal"), sensitive: true },
       { ...literal("otp-step", "{{otp}}"), input: "otp", identity: { surface: "dom", role: "textbox", path: [], autocomplete: "one-time-code" } },
       { ...literal("loop", ""), action: "for_each", value: undefined,
-        forEach: { over: { kind: "input", name: "rows" }, steps: [literal("nested", card), literal("nested-removed", token)] } },
+        forEach: { over: { kind: "input", name: "rows" }, steps: [
+          literal("nested", card),
+          literal("nested-removed", token),
+          literal("nested-remote", token),
+          { ...literal("nested-key", ""), action: "key", value: undefined, key: token },
+          { ...literal("nested-unrelated", token), unresolved: { reason: "no identity" } },
+        ] } },
     );
     local.steps.forEach((step, index) => {
       step.index = index;
@@ -372,21 +381,38 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       assert.equal(updated.inputs.find((input) => input.name === "card")?.default, STRIPPED_SECRET);
       assert.equal(updated.steps.find((step) => step.id === "literal")?.value, STRIPPED_SECRET);
       assert.equal(updated.steps.find((step) => step.id === "key")?.key, STRIPPED_SECRET);
+      assert.equal(updated.steps.find((step) => step.id === "unrelated")?.unresolved?.reason, NEEDS_SECRET_VALUE);
+      assert.equal(updated.steps.find((step) => step.id === "sensitive")?.value, undefined);
+      assert.deepEqual(parseTable(updated.inputs.find((input) => input.name === "rows")?.default), [
+        { name: "Ada", token: STRIPPED_SECRET },
+        { name: "Grace", token: STRIPPED_SECRET },
+        { name: "Replaced row", token: STRIPPED_SECRET },
+        { name: "Removed row", token: STRIPPED_SECRET },
+      ]);
       updated.name = "Remote edit";
       updated.inputs = updated.inputs.filter((input) => input.name !== "removed");
       updated.inputs.find((input) => input.name === "changed")!.default = "remote text";
       updated.inputs.find((input) => input.name === "changedSecret")!.default = "remote password";
       delete updated.inputs.find((input) => input.name === "cleared")!.default;
       updated.inputs.find((input) => input.name === "otp")!.default = STRIPPED_SECRET;
+      updated.inputs.find((input) => input.name === "unstripped")!.default = STRIPPED_SECRET;
+      updated.inputs.find((input) => input.name === "rows")!.default = tableToCsv(["name", "token"], [
+        { name: "Remote Ada", token: STRIPPED_SECRET },
+        { name: "Remote Grace", token: "remote table value" },
+        { name: "New remote row", token: "new remote value" },
+      ]);
       updated.steps = updated.steps.filter((step) => step.id !== "removed-step");
       updated.steps.find((step) => step.id === "remote-value")!.value = "remote literal";
       const remoteKey = updated.steps.find((step) => step.id === "remote-key")!;
       remoteKey.action = "key";
       remoteKey.value = undefined;
       remoteKey.key = "Enter";
-      updated.steps.find((step) => step.id === "unrelated")!.unresolved = { reason: "no identity" };
+      updated.steps.find((step) => step.id === "unstripped")!.value = STRIPPED_SECRET;
       const nested = updated.steps.find((step) => step.id === "loop")!.forEach!;
+      assert.equal(nested.steps.find((step) => step.id === "nested-unrelated")?.unresolved?.reason, NEEDS_SECRET_VALUE);
       nested.steps = nested.steps.filter((step) => step.id !== "nested-removed");
+      nested.steps.find((step) => step.id === "nested-remote")!.value = "remote nested value";
+      nested.steps.forEach((step, index) => { step.index = index; });
       updated.steps.forEach((step, index) => { step.index = index; });
       version = 2;
       if (mode !== "pull") library.save({ ...library.read(local.id), name: "Local edit" });
@@ -409,6 +435,12 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
         assert.equal("removed" in defaults, false);
         assert.equal(defaults.file, STRIPPED_SECRET);
         assert.equal(defaults.otp, STRIPPED_SECRET);
+        assert.equal(defaults.unstripped, STRIPPED_SECRET);
+        assert.deepEqual(parseTable(defaults.rows), [
+          { name: "Remote Ada", token },
+          { name: "Remote Grace", token: "remote table value" },
+          { name: "New remote row", token: "new remote value" },
+        ]);
         const steps = new Map(saved.steps.map((step) => [step.id, step]));
         assert.equal(steps.get("literal")?.value, token);
         assert.equal(steps.get("literal")?.unresolved, undefined);
@@ -421,10 +453,18 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
         assert.equal(steps.has("removed-step"), false);
         assert.equal(steps.get("unrelated")?.unresolved?.reason, "no identity");
         assert.equal(steps.get("unavailable")?.unresolved?.reason, NEEDS_SECRET_VALUE);
-        const children = steps.get("loop")!.forEach!.steps;
-        assert.equal(children.length, 1);
-        assert.equal(children[0]!.value, card);
-        assert.equal(children[0]!.unresolved, undefined);
+        assert.equal(steps.get("unstripped")?.value, STRIPPED_SECRET);
+        assert.equal(steps.get("sensitive")?.value, "private literal");
+        const children = new Map(steps.get("loop")!.forEach!.steps.map((step) => [step.id, step]));
+        assert.equal(children.size, 4);
+        assert.equal(children.has("nested-removed"), false);
+        assert.equal(children.get("nested")?.value, card);
+        assert.equal(children.get("nested")?.unresolved, undefined);
+        assert.equal(children.get("nested-remote")?.value, "remote nested value");
+        assert.equal(children.get("nested-key")?.key, token);
+        assert.equal(children.get("nested-key")?.unresolved, undefined);
+        assert.equal(children.get("nested-unrelated")?.value, token);
+        assert.equal(children.get("nested-unrelated")?.unresolved?.reason, "no identity");
         assert.equal(loadState(home).workflows[id]!.version, id === local.id ? 2 : 1);
       }
       assert.equal(loadState(home).conflicts.length, 0);

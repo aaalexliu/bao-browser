@@ -26,22 +26,45 @@ const fileBytes = `{
   "version": 2
 }`;
 
-test("Share opens exports that download the original bytes and names within the click", { timeout: 60_000 }, async () => {
+test("Share and editor export released JSON while local workflow JSON stays raw", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-share-download-"));
   const app = await startApp({ home, port: 0 });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
     const doc = JSON.parse(fileBytes) as WorkflowV2;
+    const password = "share-export-password-fixture";
+    doc.inputs = [
+      { name: "password", type: "secret", label: "Password", required: true, default: password },
+      { name: "email", type: "text", label: "Email", default: "ada@example.test" },
+      { name: "query", type: "text", label: "Query", default: "café notes" },
+    ];
+    doc.steps.push(
+      { id: "password", index: 1, action: "type", label: "Password", surface: "dom", input: "password", value: "{{password}}" },
+      { id: "copy", index: 2, action: "type", label: "Copy", surface: "dom", value: password },
+    );
     app.library.save(doc);
     const base = `http://127.0.0.1:${app.port}`;
     const endpoint = `/api/workflows/${encodeURIComponent(doc.id)}`;
     const json = await fetch(base + endpoint);
     assert.equal(json.status, 200);
-    assert.equal(await json.text(), fileBytes);
+    const rawBytes = await json.text();
+    assert.deepEqual(JSON.parse(rawBytes), doc);
+    const released = await fetch(base + endpoint + "/export");
+    assert.equal(released.status, 200);
+    const releasedBytes = Buffer.from(await released.arrayBuffer());
+    const releasedDoc = JSON.parse(releasedBytes.toString()) as WorkflowV2;
+    assert.equal(releasedBytes.includes(password), false);
+    assert.equal(releasedBytes.includes("ada@example.test"), false);
+    assert.deepEqual(releasedDoc.inputs.map((input) => input.default), [undefined, undefined, "café notes"]);
+    assert.equal(releasedDoc.inputs[0]?.askOnImport, true);
+    assert.equal(releasedDoc.inputs[1]?.askOnImport, true);
+    assert.equal(releasedDoc.steps[1]?.value, "{{password}}");
+    assert.equal(releasedDoc.steps[2]?.value, "[secret stripped]");
     const guide = await fetch(base + endpoint + "/guide");
     assert.equal(guide.status, 200);
     const guideBytes = Buffer.from(await guide.arrayBuffer());
     assert.match(guideBytes.toString(), /<!doctype html>/i);
+    assert.equal(guideBytes.includes(password), false);
 
     browser = await testChromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
     const page = await browser.newPage({ acceptDownloads: true });
@@ -78,7 +101,7 @@ test("Share opens exports that download the original bytes and names within the 
     });
 
     for (const item of [
-      { button: "share-export", endpoint, name: "export-é.json", bytes: Buffer.from(fileBytes) },
+      { button: "share-export", endpoint: endpoint + "/export", name: "export-é.json", bytes: releasedBytes },
       { button: "share-guide", endpoint: endpoint + "/guide", name: "export-_-guide.html", bytes: guideBytes },
     ]) {
       const pending = page.waitForEvent("download");
@@ -94,6 +117,13 @@ test("Share opens exports that download the original bytes and names within the 
       assert.deepEqual(observed.at(-1), { connected: true, synchronous: true, href: base + item.endpoint, name: item.name });
       assert.equal(new URL(page.url()).pathname, "/");
     }
+    await page.locator("#workflow-edit summary").click();
+    assert.deepEqual(JSON.parse(await page.locator("#edit-json").inputValue()), doc);
+    await page.locator("[data-export]").click();
+    await page.waitForFunction(() => (document.getElementById("import-json") as HTMLTextAreaElement).value.length > 0);
+    assert.deepEqual(JSON.parse(await page.locator("#import-json").inputValue()), releasedDoc);
+    assert.equal(await (await fetch(base + endpoint)).text(), rawBytes);
+    assert.deepEqual(app.library.read(doc.id), doc);
   } finally {
     await browser?.close();
     await app.close();

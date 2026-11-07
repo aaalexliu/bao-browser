@@ -1,6 +1,6 @@
 // bao://workflow/<id> opens that workflow. bao://import/<id> shows the import
 // sheet and does not save until the questions are answered.
-// bao://run/<id>?inputs=<json> opens the run form. Secret keys are refused.
+// bao://run/<id>?inputs=<json> opens the run form with supplied inputs.
 // bao://receipt/<runId> opens a saved run's receipt in Runs.
 
 import { migrate, type WorkflowV2 } from "../v1/schema";
