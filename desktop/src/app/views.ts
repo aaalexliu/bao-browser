@@ -284,6 +284,8 @@ export function maskSecrets(text: string, secrets: string[]): string {
 
 function icon(name: string): string {
   if (name === "warning") return `<svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path d="M7 5v3.2" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="10.4" r=".9" fill="var(--bg)"/></svg>`;
+  if (name === "back" || name === "chevron") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${name === "back" ? "M10 3 5 8l5 5" : "m6 3.5 4.5 4.5L6 12.5"}"/></svg>`;
+  if (name === "more") return `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor"/></svg>`;
   if (name === "search") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/></svg>`;
   const strokes: Record<string, string> = {
     library: '<rect x="2.25" y="2.25" width="11.5" height="4.5" rx="1.25"/><rect x="2.25" y="9.25" width="11.5" height="4.5" rx="1.25"/><path d="M5 4.5h3.5M5 11.5h5"/>',
@@ -1373,23 +1375,11 @@ export interface StepCard {
   sensitive?: boolean;
   input?: string;
   value?: string;
-  expect?: { kind?: string };
-  readBack?: { source?: string };
+  expect?: { kind?: string; match?: string; state?: string };
+  readBack?: { source?: string; match?: string };
   identity?: { role?: string; name?: string; text?: string; testId?: string; id?: string };
   heal?: string;
   when?: { input?: string; value?: string; present?: string };
-}
-
-export function identityChip(identity: StepCard["identity"]): string {
-  if (!identity) return "";
-  const bits = [
-    identity.role,
-    identity.name || identity.text,
-    identity.testId ? `testId ${identity.testId}` : "",
-    identity.id ? `id ${identity.id}` : "",
-  ].filter(Boolean);
-  if (!bits.length) return "";
-  return `<span class="chip id-chip">${esc(bits.join(" · "))}</span>`;
 }
 
 export function inputToken(input: TokenInput): string {
@@ -1402,51 +1392,8 @@ export function inputToken(input: TokenInput): string {
   return `<button type="button" class="token${secret}" data-edit-input="${esc(input.name)}" data-type="${esc(shown.type)}" data-label="${esc(shown.label)}" data-default="${esc(shown.default)}" data-required="${shown.required ? "1" : "0"}">${bits.join("")}</button>`;
 }
 
-export function renderStepText(text: string, inputs: TokenInput[]): string {
-  return text.split(/(\{\{\s*[\w.-]+\s*\}\})/g).map((part) => {
-    const match = part.match(/^\{\{\s*([\w.-]+)\s*\}\}$/);
-    if (!match) return esc(part);
-    const input = inputs.find((item) => item.name === match[1]);
-    if (!input) return esc(part);
-    return inputToken(input);
-  }).join("");
-}
-
 function mustacheName(value: string | undefined): string {
   return value?.match(/\{\{\s*([\w.-]+)\s*\}\}/)?.[1] || "";
-}
-
-function stepHeadline(step: StepCard, inputs: TokenInput[]): { html: string; token: boolean } {
-  const raw = step.label || step.action || step.id;
-  let html = inputs.length ? renderStepText(raw, inputs) : esc(raw);
-  let token = html.includes("data-edit-input");
-  const name = step.input || mustacheName(step.value);
-  if (!token && name) {
-    const input = inputs.find((item) => item.name === name);
-    if (input) {
-      html = `${html} ${inputToken(input)}`;
-      token = true;
-    }
-  }
-  return { html, token };
-}
-
-export function inputChips(step: StepCard, token = false): string {
-  const chips: string[] = [];
-  if (!token) {
-    const template = step.value && step.value.includes("{{") ? step.value : step.input ? `{{${step.input}}}` : "";
-    if (template) chips.push(`<span class="chip">${esc(template)}</span>`);
-    if (step.sensitive) chips.push(`<span class="chip secret">secret</span>`);
-  }
-  if (step.action === "upload" || step.action === "drop") chips.push(`<span class="chip">file</span>`);
-  return chips.join("");
-}
-
-function expectBadge(step: StepCard): string {
-  if (step.action === "verify") return `<span class="badge expect">verify</span>`;
-  if (step.expect) return `<span class="badge expect">expect</span>`;
-  if (step.readBack) return `<span class="badge expect">read back</span>`;
-  return "";
 }
 
 export function tryResult(result: {
@@ -1501,78 +1448,113 @@ export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[
   </section>`;
 }
 
+function workflowStepKind(step: StepCard): { label: string; glyph: string } {
+  const human = step.human || step.action === "login" || step.action === "confirm";
+  const label = human ? "Waits for you" : ({ navigate: "Open page", click: "Click", type: "Type", digits: "Type", key: "Press key", check: "Choose", select: "Choose", verify: "Check", upload: "Upload file", drop: "Drop file", download: "Save file", open: "Open file", extract: "Read table", for_each: "Repeat", note: "Note" } as Record<string, string>)[step.action || ""] || "Step";
+  const path = human ? "M5.25 8.5V3.75a1 1 0 0 1 2 0V7.5M7.25 7V2.75a1 1 0 0 1 2 0V7M9.25 7V3.75a1 1 0 0 1 2 0v4.5M11.25 6.5a1 1 0 0 1 2 0v2.75a4.75 4.75 0 0 1-4.75 4.75h-.4a4.1 4.1 0 0 1-3.3-1.66L2.9 9.85a1 1 0 0 1 1.5-1.3l.85.95"
+    : step.action === "type" ? "M3.5 4h9A1.75 1.75 0 0 1 14.25 5.75v4.5A1.75 1.75 0 0 1 12.5 12h-9a1.75 1.75 0 0 1-1.75-1.75v-4.5A1.75 1.75 0 0 1 3.5 4ZM4.5 6.75h.01M7 6.75h.01M9.5 6.75h.01M12 6.75h.01M5.5 9.5h5"
+    : step.action === "select" ? "m2.25 4.25 1.25 1.25 2.25-2.5M8 4.25h5.75M8 8.25h5.75M8 12.25h5.75M3 8.25h1.5M3 12.25h1.5"
+    : step.action === "navigate" ? "M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0ZM2 8h12M8 2c-3 3-3 9 0 12 3-3 3-9 0-12Z"
+    : step.action === "verify" ? "M1.75 8s2.25-4.25 6.25-4.25S14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8ZM9.75 8a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0Z"
+    : "M4.5 2.5v9.25l2.4-2.3 1.75 4 1.7-.75-1.75-3.95 3.4-.3Z";
+  return { label, glyph: `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>` };
+}
+
+function workflowStepTitle(step: StepCard, inputs: TokenInput[]): string {
+  return (step.label || step.action || step.id).replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, name: string) => {
+    const input = inputs.find((item) => item.name === name);
+    return input?.label || input?.name || match;
+  });
+}
+
+function workflowRunStatus(run: RunSummary): string {
+  const kind = runKind(run);
+  const mark = kind === "failed" || kind === "timed-out" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4"
+    : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.4 4.4v5.2M8.6 4.4v5.2" : "m4 7.2 2 2 4-4.4";
+  const shape = kind === "provisional" ? `<circle cx="7" cy="7" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 .8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/>`
+    : `<circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<span class="wf-run-status ${esc(kind)}"><svg viewBox="0 0 14 14" aria-hidden="true">${shape}</svg>${esc(statusLabel(kind))}</span>`;
+}
+
 export function workflowDetail(
-  doc: { id: string; name: string; summary?: string; intent?: string; steps: StepCard[]; inputs?: TokenInput[] },
+  doc: { id: string; name: string; summary?: string; intent?: string; startUrl?: string; steps: StepCard[]; inputs?: TokenInput[] },
   meta: {
+    runs?: RunSummary[];
     lastRunId?: string;
-    lastLabel?: string;
+    selectedStep?: string;
     shots?: Record<string, string>;
     share?: { link?: string; publishEnabled?: boolean; publishWhy?: string; exportEnabled?: boolean; exportWhy?: string };
   } = {},
 ): string {
   const inputs = doc.inputs || [];
-  const cards = doc.steps.map((step, index) => {
-    const human = step.human || step.action === "login" || step.action === "confirm";
+  const selected = doc.steps.find((step) => step.id === meta.selectedStep) || doc.steps[0];
+  const rows = doc.steps.map((step, index) => {
+    const kind = workflowStepKind(step);
+    const input = step.input || mustacheName(step.value) || mustacheName(step.label);
+    return `<tr data-step-row="${esc(step.id)}"${step === selected ? ` class="selected"` : ""}>
+      <td class="wf-number">${index + 1}</td><td class="wf-kind" title="${esc(kind.label)}">${kind.glyph}<span class="sr-only">${esc(kind.label)}</span></td>
+      <td><button type="button" class="wf-step-pick" data-workflow-step="${esc(step.id)}" data-step-input="${esc(input)}" aria-pressed="${step === selected}" aria-controls="workflow-inspector">${esc(workflowStepTitle(step, inputs))}</button></td>
+      <td class="wf-uses">${input ? `<span class="wf-token">${esc(inputs.find((item) => item.name === input)?.label || input)}</span>` : ""}</td>
+      <td class="wf-check">${step.expect || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
+    </tr>`;
+  }).join("");
+  const panels = doc.steps.map((step, index) => {
+    const kind = workflowStepKind(step);
     const known = meta.shots?.[step.id] || "";
-    const runShot = meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : "";
     const captured = `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(workflowShotName(step.id))}`;
-    const shot = known || runShot || captured;
-    const fallback = shot === captured ? "" : captured;
-    const face = known ? `<img src="${esc(known)}" alt="">` : "";
-    const headline = stepHeadline(step, inputs);
-    const n = index + 1;
-    const branch = step.when?.present
-      ? `<span class="badge route" data-present="${esc(step.when.present)}">when ${esc(step.when.present)}</span>`
-      : step.when?.value
-        ? `<span class="badge route" data-route="${esc(step.when.value)}">route: ${esc(step.when.value)}</span>`
-        : "";
-    return `<article class="step-card ${human ? "human" : ""}" data-step-card="${esc(step.id)}">
-      <div class="thumb${known ? " has-shot" : ""}" data-shot="${esc(shot)}" ${fallback ? `data-shot-fallback="${esc(fallback)}"` : ""}>${face}${placeholder(step.action, step.label || step.action || step.id)}</div>
-      <div class="step-copy">
-        <div class="row"><strong>${headline.html}</strong> ${branch} ${expectBadge(step)} ${human ? `<span class="badge you">you</span>` : ""}</div>
-        <p class="meta">${esc(step.intent || (human ? "This step waits for you." : ""))}</p>
-        <div class="chips">${identityChip(step.identity)}${inputChips(step, headline.token)}</div>
-        <label class="meta">If this step misses <select data-step-heal="${esc(step.id)}">
-          <option value="" ${step.heal ? "" : "selected"}>Use the workflow setting</option>
-          <option value="auto" ${step.heal === "auto" ? "selected" : ""}>Auto</option>
-          <option value="ask" ${step.heal === "ask" ? "selected" : ""}>Ask</option>
-          <option value="never" ${step.heal === "never" ? "selected" : ""}>Never</option>
-        </select></label>
-        <div class="row step-actions">
-          <button type="button" data-try-step="${esc(step.id)}">Try</button>
-          <button type="button" data-run-from="${esc(step.id)}" data-step-n="${n}">Run from step ${n}</button>
-        </div>
-        <div class="try-slot" data-try-slot="${esc(step.id)}"></div>
-      </div>
-    </article>`;
+    const shot = known || (meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : captured);
+    const input = inputs.find((item) => item.name === (step.input || mustacheName(step.value) || mustacheName(step.label)));
+    const targetName = step.identity?.name || step.identity?.text || step.identity?.testId || step.identity?.id;
+    const targetKind = step.identity?.role === "textbox" ? "box" : step.identity?.role === "combobox" ? "menu" : step.identity?.role || "control";
+    const target = targetName ? `The “${targetName}” ${targetKind}` : "";
+    const branch = step.when?.present ? `Only when “${step.when.present}” is on the page.` : step.when?.value ? `Only for “${step.when.value}”.` : "";
+    const check = step.expect?.match ? `The ${step.expect.kind === "url" ? "address" : "page"} shows “${step.expect.match}”`
+      : step.expect?.state ? `The control is ${step.expect.state}`
+      : step.expect?.kind === "settled" ? "The page finishes loading"
+      : step.readBack ? `Reads ${step.readBack.source || "the value"}${step.readBack.match ? `: ${step.readBack.match}` : ""}`
+      : step.action === "verify" || step.expect ? "The saved check" : "Nothing extra";
+    return `<section data-step-panel="${esc(step.id)}"${step !== selected ? " hidden" : ""}>
+      <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
+      <h2>${esc(workflowStepTitle(step, inputs))}</h2>
+      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(step.label || step.action || step.id)}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}></div>
+      ${step.intent ? `<p>${esc(step.intent)}</p>` : ""}${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
+      <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" ? doc.startUrl || "The saved page" : "No saved target"))}</dd>
+        ${input ? `<dt>${step.action === "select" ? "Picks" : "Types"}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : step.value ? `<dt>Value</dt><dd>${esc(step.value)}</dd>` : ""}
+        <dt>Then checks</dt><dd>${esc(check)}</dd>
+        <dt><label for="wf-miss-${index}">If it misses</label></dt><dd><select id="wf-miss-${index}" data-step-heal="${esc(step.id)}">
+          <option value="" ${step.heal ? "" : "selected"}>Use workflow setting</option><option value="auto" ${step.heal === "auto" ? "selected" : ""}>Heal it</option><option value="ask" ${step.heal === "ask" ? "selected" : ""}>Ask me</option><option value="never" ${step.heal === "never" ? "selected" : ""}>Stop the run</option>
+        </select></dd></dl>
+      <div class="wf-actions"><button type="button" data-try-step="${esc(step.id)}">${icon("play")}Try this step</button><button type="button" data-run-from="${esc(step.id)}" data-step-n="${index + 1}">Run from here</button></div>
+      <div class="try-slot" data-try-slot="${esc(step.id)}"></div>
+      <details class="wf-technical"><summary>${icon("chevron")}Technical details</summary><pre>${esc(JSON.stringify(step, null, 2))}</pre></details>
+    </section>`;
   }).join("");
-  const headerChips = (doc.inputs || []).flatMap((input) => {
-    if (input.type === "secret") return [`<span class="chip secret">secret</span>`];
-    if (input.type === "file") return [`<span class="chip">file</span>`];
-    if (input.type === "choice") return [];
-    return [`<span class="chip">{{${esc(input.name)}}}</span>`];
+  const runs = [...(meta.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 5);
+  const history = runs.map((run) => {
+    const kind = runKind(run);
+    const completed = (run.steps || []).filter((step) => step.status === "passed").length;
+    const detail = run.failure?.reason ? ownerStopMessage(run.failure.reason)
+      : kind === "paused" ? "Waiting for you"
+      : run.steps?.length ? `${completed} steps completed` : "No step results saved";
+    return `<li><button type="button" data-open-run="${esc(run.id)}">${workflowRunStatus(run)}<span>${esc(detail)}</span><time>${esc(typeof run.at === "number" ? formatWhen(run.at) : "Time not recorded")}</time></button></li>`;
   }).join("");
-  const choice = (doc.inputs || []).find((input) => input.type === "choice" && input.choices?.length);
-  const routeHead = choice?.choices
-    ? `<p id="route-branch" data-routes="${esc(choice.choices.join("|"))}">Routes: ${esc(choice.choices.join(" / "))}</p>`
-    : "";
+  const choice = inputs.find((input) => input.type === "choice" && input.choices?.length);
+  const paths = choice?.choices ? `<p id="route-branch">Paths: ${esc(choice.choices.join(" / "))}</p>` : "";
+  let site = "";
+  try { site = doc.startUrl ? new URL(doc.startUrl).hostname : ""; } catch { /* Relative addresses have no hostname. */ }
   return `<section id="workflow-detail" data-workflow="${esc(doc.id)}">
-    <p class="crumb"><button type="button" class="link" data-screen="library">Library</button> <span aria-hidden="true">/</span> ${esc(doc.name)}</p>
-    <header class="wf-head">
-      <div>
-        <h2>${esc(doc.name)}</h2>
-        ${doc.summary ? `<p class="lede" id="workflow-summary">${esc(doc.summary)}</p>` : ""}
-        ${doc.intent ? `<p class="meta" id="workflow-intent">${esc(doc.intent)}</p>` : ""}
-        <p class="meta">${esc(meta.lastLabel || "Not run yet")}</p>
-        <div class="chips">${headerChips}</div>
-        ${routeHead}
-        ${shareMenu(doc, meta.share)}
-      </div>
-      <button type="button" data-guide="${esc(doc.id)}">Guide me</button>
-      <button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">Run</button>
+    <div class="workflow-overview"><div class="wf-toolbar"><button type="button" class="link" data-screen="library" aria-label="Back to all workflows">${icon("back")}</button><span>Workflows</span><span class="wf-toolbar-spacer"></span><details id="workflow-options"><summary aria-label="More actions for this workflow">${icon("more")}</summary><div class="wf-options-panel">${shareMenu(doc, meta.share)}<div id="workflow-tools"></div></div></details><button type="button" data-screen="capture">${icon("record")}Record</button></div>
+    <div class="wf-body"><header class="wf-head"><h2>${esc(doc.name)}</h2>${doc.summary ? `<p id="workflow-summary">${esc(doc.summary)}</p>` : ""}${doc.intent ? `<p id="workflow-intent">${esc(doc.intent)}</p>` : ""}
+      <p class="wf-metadata">${site ? `${workflowStepKind({ action: "navigate", id: "" }).glyph}<span>${esc(site)}</span><span>·</span>` : ""}<span>${doc.steps.length} steps</span><span>·</span>${runs[0] ? `<span>Last run ${workflowRunStatus(runs[0])}</span><span>${esc(typeof runs[0].at === "number" ? formatWhen(runs[0].at) : "Time not recorded")}</span>` : `<span>Not run yet</span>`}</p>
+      <div class="wf-actions"><button type="button" class="primary" data-screen="replay" data-workflow="${esc(doc.id)}">${icon("play")}Run…</button><button type="button" id="workflow-edit-inputs"${inputs.length ? "" : " disabled"}>Edit inputs…</button><button type="button" data-guide="${esc(doc.id)}">Guide me</button></div>${paths}
     </header>
-    <h3 class="section">Steps</h3>
-    <div id="workflow-steps">${cards || `<div class="empty"><strong>No steps yet</strong>Record a capture to fill this workflow.</div>`}</div>
+    <div id="workflow-steps">${rows ? `<table class="wf-steps" aria-label="Steps. Select a step to see it in the inspector."><thead><tr><th class="wf-number" scope="col">#</th><th class="wf-kind" scope="col"><span class="sr-only">Kind</span></th><th scope="col">Step</th><th class="wf-uses" scope="col">Uses input</th><th class="wf-check" scope="col"><span class="sr-only">Checks</span></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><strong>No steps yet</strong><p>Record a task to add steps.</p><button type="button" data-screen="capture">Record a task</button></div>`}</div>
+    <section class="wf-recent"><h3>Recent runs</h3>${history ? `<ul>${history}</ul>` : `<p class="quiet">No runs yet. Run this workflow to see what happened.</p>`}</section>
+    </div></div>
+    <aside id="workflow-inspector" aria-label="Step inspector"><div class="wf-toolbar"><h3>Inspector</h3><span class="wf-toolbar-spacer"></span><button type="button" id="workflow-search" aria-label="Search workflows and runs">${icon("search")}</button></div><div class="wf-inspector-body">${panels || `<p class="quiet">Select a step once this workflow has steps.</p>`}
+      <p id="workflow-step-help" class="quiet">Select a step to see what it does. Try this step finds its target without clicking or typing. Run from here skips earlier steps.</p>
+      <section id="workflow-inputs" tabindex="-1"><h3>Inputs <span>· ${inputs.length}${inputs.length ? ", asked before each run" : ""}</span></h3>${inputs.length ? `<ul>${inputs.map((input) => `<li data-workflow-input="${esc(input.name)}"${input.name === (selected?.input || mustacheName(selected?.value) || mustacheName(selected?.label)) ? ` class="selected"` : ""}>${inputToken(input)}</li>`).join("")}</ul>` : `<p class="quiet">This workflow needs no inputs.</p>`}</section>
+    </div></aside>
   </section>`;
 }
 

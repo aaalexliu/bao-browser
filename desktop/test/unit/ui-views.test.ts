@@ -420,7 +420,7 @@ test("Workflows list shows the latest run without input chips or placeholder pic
   assert.match(split, /library data is at \/legacy; using \/fresh/);
 });
 
-test("workflow steps are cards with identity, inputs, expect, and human styling", () => {
+test("workflow detail has compact ordered steps, one inspector, and no placeholder pictures", () => {
   const html = workflowDetail({
     id: "wf",
     name: "fixture apply",
@@ -432,24 +432,24 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
       { id: "e", action: "confirm", label: "confirm before applying", human: true, intent: "you press Apply" },
     ],
   });
-  assert.match(html, /class="step-card human"/);
-  assert.match(html, /textbox · Note/);
+  assert.match(html, /data-step-row="a" class="selected"/);
+  assert.match(html, /Waits for you/);
+  assert.match(html, /The “Note” box/);
   assert.match(html, /\{\{note\}\}/);
-  assert.match(html, /secret/);
-  assert.match(html, />file</);
-  assert.match(html, /badge expect">expect/);
-  assert.match(html, /badge expect">verify/);
+  assert.match(html, /Upload file/);
+  assert.match(html, /Then checks the page/);
+  assert.equal((html.match(/id="workflow-step-help"/g) || []).length, 1);
   assert.match(html, /data-screen="replay"/);
   assert.match(html, /you press Apply/);
   assert.match(html, /id="workflow-steps"/);
   const steps = html.slice(html.indexOf("workflow-steps"));
   assert.ok(steps.indexOf("Type {{note}}") < steps.indexOf("re-read the status"));
   assert.ok(steps.indexOf("re-read the status") < steps.indexOf("confirm before applying"));
-  assert.match(html, /class="crumb"/);
+  assert.match(html, /aria-label="Back to all workflows"/);
   assert.match(html, /data-screen="library"/);
   assert.equal(html.includes("id=\"library\""), false);
   assert.equal(html.includes("<img"), false);
-  assert.match(html, /class="ph"/);
+  assert.doesNotMatch(html, /class="ph"/);
   assert.match(html, /data-testid="share-menu"/);
   assert.match(html, /data-testid="share-copy" data-copy="bao:\/\/workflow\/wf"/);
   assert.match(html, /data-testid="share-publish" disabled/);
@@ -469,7 +469,7 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
     ],
     steps: [{ id: "u", action: "type", label: "Type {{username}}", input: "username", when: { input: "route", value: "Log in first" } }],
   });
-  assert.match(routed, /id="route-branch"[^>]*>Routes: Log in first \/ Already signed in</);
+  assert.match(routed, /id="route-branch"[^>]*>Paths: Log in first \/ Already signed in</);
   assert.match(routed, /\{\{username\}\}/);
   assert.equal(routed.includes(">{{route}}<"), false);
   assert.equal(routed.includes('data-testid="deeplink"'), false);
@@ -482,8 +482,8 @@ test("workflow steps are cards with identity, inputs, expect, and human styling"
     name: "fixture apply",
     steps: [{ id: "signed-in", action: "click", label: "Click signed in" }],
   }, { shots: { "signed-in": "/api/runs/run-1/shots/signed-in-after.png" } });
-  assert.match(cropped, /<img src="\/api\/runs\/run-1\/shots\/signed-in-after\.png"/);
-  assert.match(cropped, /class="thumb has-shot"/);
+  assert.match(cropped, /data-shot="\/api\/runs\/run-1\/shots\/signed-in-after\.png"/);
+  assert.match(cropped, /class="wf-picture"/);
 });
 
 test("a failed run says the phase, the change, what bao tried, and shows the grid", () => {

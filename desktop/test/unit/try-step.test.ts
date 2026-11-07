@@ -75,5 +75,6 @@ test("Try on a fixture step matches with no actions and no model call", async ()
   });
   assert.match(page, /data-try-step="save"/);
   assert.match(page, /data-run-from="save" data-step-n="2"/);
-  assert.match(page, /Run from step 3/);
+  assert.match(page, /data-run-from="apply" data-step-n="3"/);
+  assert.match(page, /Run from here/);
 });

@@ -233,6 +233,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.waitForSelector("#workflow-detail");
     await checkTitle("Bao");
     await checkDetailFocus("Workflow detail");
+    await page.locator("#workflow-options > summary").click();
     await page.locator("#workflow-edit summary").click();
     await page.locator("#edit-json").focus();
     pendingHeal = true;
@@ -407,7 +408,7 @@ test("Workflows list keeps long names, search recovery, warnings and actions rea
       await page.keyboard.press("Enter");
       await page.locator("#workflow-detail").waitFor();
       assert.equal(await page.locator("#workflow-detail h2").innerText(), longName);
-      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await page.getByRole("button", { name: "Run…", exact: true }).click();
       await page.locator("#run").waitFor();
       assert.equal(await page.locator("#wf").inputValue(), "long");
       await page.setViewportSize({ width: 1280, height: 860 });

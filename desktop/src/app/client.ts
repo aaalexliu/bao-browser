@@ -6,7 +6,6 @@ import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
-import { formatWhen } from "../v1/time";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import type { inspectRunView } from "../mcp/run-view";
@@ -48,7 +47,6 @@ import {
   runKind,
   reviewItems,
   runViewer,
-  statusLabel,
   runField,
   hostAccessPanel,
   siteTrustPanel,
@@ -285,8 +283,9 @@ function render(focusDetail = true): void {
   const runsPlace = shellScreens[shellScreen(screen)].place === "runs";
   document.getElementById("app")!.dataset.runsDetail = screen === "run" ? "true" : "false";
   document.getElementById("app")!.dataset.workflowsList = screen === "library" ? "true" : "false";
+  document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
-  document.getElementById("content")!.classList.toggle("workflows-content", screen === "library");
+  document.getElementById("content")!.classList.toggle("workflows-content", screen === "library" || screen === "workflow");
   if (railHtmlKey !== railHtml) {
     railEl().innerHTML = railHtml;
     railHtmlKey = railHtml;
@@ -1358,20 +1357,36 @@ async function loadTrail(id: string, hostId: string): Promise<void> {
 }
 
 async function openEditor(id: string): Promise<void> {
-  const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
+  const host = document.getElementById("workflow-host");
+  if (!host) return;
+  let doc: WorkflowV2;
+  try {
+    const response = await fetch("/api/workflows/" + encodeURIComponent(id));
+    if (!response.ok) throw new Error("Workflow unavailable");
+    doc = await response.json() as WorkflowV2;
+  } catch {
+    if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
+    host.innerHTML = `<section class="wf-load-error"><h2>This workflow can’t open</h2><p>Try again, or open Workflows to check its file.</p><button type="button" id="workflow-retry">Try again</button><button type="button" id="workflow-back">Open Workflows</button></section>`;
+    document.getElementById("workflow-retry")!.onclick = () => void openEditor(id);
+    document.getElementById("workflow-back")!.onclick = () => navigate("library");
+    return;
+  }
   const [listed, shareRes] = await Promise.all([
-    fetch("/api/workflows/" + encodeURIComponent(id) + "/versions").then((res) => res.json()) as Promise<{
+    fetch("/api/workflows/" + encodeURIComponent(id) + "/versions").then((res) => res.ok ? res.json() : {}).catch(() => ({})) as Promise<{
       versions?: { n: number; role: string; source: string; createdAt: number }[];
     }>,
-    fetch("/api/workflows/" + encodeURIComponent(id) + "/share").then((res) => res.ok ? res.json() : undefined),
+    fetch("/api/workflows/" + encodeURIComponent(id) + "/share").then((res) => res.ok ? res.json() : undefined).catch(() => undefined),
   ]);
-  const host = document.getElementById("workflow-host");
-  if (!host || !host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
-  const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  const lastLabel = last ? `Last run · ${statusLabel(runKind(last))}${typeof last.at === "number" ? ` · ${formatWhen(last.at)}` : ""}` : "Not run yet";
+  if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
+  const runs = (state.runs || []).filter((run) => run.workflowId === id);
+  const last = runs.slice().sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const shots = last?.id ? await stepCrops(last.id) : {};
   if (!host.isConnected || screen !== "workflow" || openWorkflow !== id) return;
-  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, lastLabel, shots, share: shareRes }) + versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
+  const selectedStep = host.querySelector<HTMLElement>("[data-workflow-step][aria-pressed=true]")?.dataset.workflowStep;
+  const sidebarToggle = document.getElementById("sidebar-toggle");
+  host.innerHTML = workflowDetail(doc, { lastRunId: last?.id, shots, share: shareRes, runs, selectedStep });
+  if (sidebarToggle) host.querySelector(".wf-toolbar")!.prepend(sidebarToggle);
+  host.querySelector("#workflow-tools")!.innerHTML = versionsPanel(listed.versions || []) + `<details class="card" id="workflow-edit"><summary>Edit workflow</summary>
     <div class="row">
       <button type="button" data-rename="${esc(id)}">Rename</button>
       <button type="button" data-export="${esc(id)}">Export</button>
@@ -1459,6 +1474,29 @@ async function openEditor(id: string): Promise<void> {
       render();
     };
   });
+  host.querySelectorAll<HTMLButtonElement>("[data-workflow-step]").forEach((button) => {
+    button.onclick = () => {
+      const stepId = button.dataset.workflowStep;
+      host.querySelectorAll<HTMLButtonElement>("[data-workflow-step]").forEach((pick) => {
+        const selected = pick.dataset.workflowStep === stepId;
+        pick.setAttribute("aria-pressed", String(selected));
+        pick.closest("tr")!.classList.toggle("selected", selected);
+      });
+      host.querySelectorAll<HTMLElement>("[data-step-panel]").forEach((panel) => { panel.hidden = panel.dataset.stepPanel !== stepId; });
+      host.querySelectorAll<HTMLElement>("[data-workflow-input]").forEach((row) => { row.classList.toggle("selected", row.dataset.workflowInput === button.dataset.stepInput); });
+      if (matchMedia("(max-width: 820px)").matches) document.getElementById("workflow-inspector")?.scrollIntoView({ block: "start" });
+    };
+  });
+  document.getElementById("workflow-search")!.onclick = openPalette;
+  document.getElementById("workflow-edit-inputs")!.onclick = () => {
+    const inputs = document.getElementById("workflow-inputs")!;
+    inputs.scrollIntoView({ block: "nearest" });
+    inputs.querySelector<HTMLButtonElement>("[data-edit-input]")?.focus();
+  };
+  host.querySelectorAll<HTMLButtonElement>("[data-open-run]").forEach((button) => {
+    button.onclick = () => { selectRun(button.dataset.openRun || ""); renderKey = ""; render(); };
+  });
+  host.querySelectorAll<HTMLButtonElement>("[data-screen=capture]").forEach((button) => { button.onclick = () => navigate("capture"); });
   bindTokens(host, id);
   host.querySelectorAll("[data-screen=library]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
@@ -1603,7 +1641,8 @@ function openTokenEditor(token: HTMLButtonElement, id: string): void {
     <p class="quiet" data-secret-note ${secret ? "" : "hidden"}>A secret stays masked. The value is not stored.</p>
     <button type="button" data-save-input>Save</button>`;
   document.getElementById("input-editor")?.remove();
-  token.closest(".step-copy")?.appendChild(editor);
+  token.after(editor);
+  editor.querySelector<HTMLInputElement>("[name=label]")?.focus();
   const typeSel = editor.querySelector("[name=type]") as HTMLSelectElement;
   const defaultRow = editor.querySelector("[data-default-row]") as HTMLElement;
   const secretNote = editor.querySelector("[data-secret-note]") as HTMLElement;
@@ -2357,7 +2396,7 @@ function mountShots(root: ParentNode = document): void {
         return;
       }
       const img = new Image();
-      img.alt = "";
+      img.alt = node.dataset.shotAlt || "";
       img.onload = () => {
         if (!node.isConnected) return;
         if (img.naturalWidth === 96 && img.naturalHeight === 54) {

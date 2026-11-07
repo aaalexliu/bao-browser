@@ -48,19 +48,18 @@ function doc(): WorkflowV2 {
   };
 }
 
-test("step text renders tokens and the run form uses the same default", () => {
+test("the selected step and input summary offer tokens with the run form's default", () => {
   const workflow = doc();
   const html = workflowDetail(workflow);
-  const note = html.slice(html.indexOf('data-step-card="type"'), html.indexOf('data-step-card="secret"'));
-  const headline = note.slice(note.indexOf("<strong>"), note.indexOf("</strong>"));
+  const headline = html.slice(html.indexOf('data-step-panel="type"'), html.indexOf('data-step-panel="secret"'));
   assert.match(headline, /class="token"/);
   assert.match(headline, /data-edit-input="note"/);
   assert.match(headline, /token-label">Note/);
   assert.match(headline, /token-meta">text/);
   assert.match(headline, /token-meta">ada/);
   assert.match(headline, /token-meta">required/);
-  assert.equal(headline.includes("{{note}}"), false);
-  const secret = html.slice(html.indexOf('data-step-card="secret"'));
+  assert.match(headline, /<h2>Type Note<\/h2>/);
+  const secret = html.slice(html.indexOf('data-step-panel="secret"'));
   assert.match(secret, /class="token secret"/);
   assert.match(secret, /token-label">Password/);
   assert.match(secret, /token-meta">secret/);
