@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import { closeRetainedChrome, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState } from "../../src/v1/sync";
 
@@ -42,7 +42,7 @@ if (args.includes(${JSON.stringify(blockCommand)})) {
 `, { mode: 0o700 });
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, HOME: root, BAO_HOME: home,
-    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_TEST_BROWSER: pinTestBrowser(),
+    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
     BAO_AGENT_BROWSER: executable, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot,
     ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
     ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
@@ -64,7 +64,7 @@ if (args.includes(${JSON.stringify(blockCommand)})) {
       for (const c of clients) await c.close();
       for (const name of await readdir(copies).catch(() => [])) {
         const copy = path.join(copies, name);
-        for (const pid of pidsForDataDir(copy)) process.kill(pid, "SIGTERM");
+        await closeRetainedChrome(copy);
         await until(() => pidsForDataDir(copy).length === 0);
       }
       await rm(copies, { recursive: true, force: true });
@@ -295,7 +295,12 @@ test("keep-open finishes the run and the next session reclaims only that home's 
     const next = f.start();
     await next.request("initialize");
     assert.equal((await next.call("open")).isError, false);
-    assert.equal(pidsForDataDir(copy).length, 0);
+    const remaining = pidsForDataDir(copy);
+    const commands = remaining.map((pid) => {
+      try { return execFileSync("ps", ["-o", "pid=,ppid=,command=", "-p", String(pid)], { encoding: "utf8" }).trim(); }
+      catch { return `${pid} exited`; }
+    });
+    assert.equal(remaining.length, 0, `kept Chrome must exit before refresh: ${commands.join("; ")}`);
     await assert.rejects(access(copy), /ENOENT/);
     assert.notEqual(await f.copy(), copy);
     assert.ok(pidsForDataDir(unrelatedCopy).length, "another Bao home stays open");

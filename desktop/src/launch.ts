@@ -275,14 +275,21 @@ export function guiChromeLaunchArgs(
     "--stdout", "/dev/null", "--stderr", stderrFile, "--env", `HOME=${childHome}`, "--args", ...args];
 }
 
-function ownedChromeRunning(child: ChildProcess, pid: number): boolean {
-  if (child.spawnfile !== "/usr/bin/open") return child.exitCode == null && child.signalCode == null;
-  try { return process.kill(pid, 0); }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+function ownedChromeBrowserCommand(exe: string, userDataDir: string, pid: number): string | undefined {
+  try {
+    const command = defaultPs(pid).trim();
+    if (guiChromeBrowserPid(exe, userDataDir, [{ pid, ppid: 0, command }]) === pid) return command;
+  } catch {}
+  return undefined;
 }
 
-export function stopOwnedChrome(child: ChildProcess, pid: number): void {
-  if (!ownedChromeRunning(child, pid)) return;
+function ownedChromeRunning(child: ChildProcess, pid: number, userDataDir: string): boolean {
+  if (child.spawnfile !== "/usr/bin/open") return child.exitCode == null && child.signalCode == null;
+  return ownedChromeBrowserCommand(ACCOUNT_CHROME_MAC, userDataDir, pid) !== undefined;
+}
+
+export function stopOwnedChrome(child: ChildProcess, pid: number, userDataDir: string): void {
+  if (!ownedChromeRunning(child, pid, userDataDir)) return;
   if (child.spawnfile === "/usr/bin/open") {
     try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
   } else child.kill("SIGTERM");
@@ -584,7 +591,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     });
     // Discovery reports existing and future targets without attaching to them.
     await cdp.send("Target.setDiscoverTargets", { discover: true });
-    if (closing || !ownedChromeRunning(child, pid)) throw new Error("Chrome closed during startup");
+    if (closing || !ownedChromeRunning(child, pid, opts.userDataDir)) throw new Error("Chrome closed during startup");
     return { portFile, closed, close, isClosed: () => !!closing, keepOpen() {
       released = true;
       cdp?.close();
@@ -676,15 +683,16 @@ export function formatShutdown(trace: ShutdownTrace): string {
 
 async function releaseProfileProcesses(userDataDir: string, child: ChildProcess, pid: number, browserCloseSent: boolean): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const deadline = Date.now() + (browserCloseSent ? 4000 : 0);
-  while (Date.now() < deadline && ownedChromeRunning(child, pid)) {
+  while (Date.now() < deadline && ownedChromeRunning(child, pid, userDataDir)) {
     await delay(50);
   }
-  if (ownedChromeRunning(child, pid)) stopOwnedChrome(child, pid);
+  if (ownedChromeRunning(child, pid, userDataDir)) stopOwnedChrome(child, pid, userDataDir);
   const killAt = Date.now() + 1500;
-  while (Date.now() < killAt && ownedChromeRunning(child, pid)) {
+  while (Date.now() < killAt && ownedChromeRunning(child, pid, userDataDir)) {
     await delay(50);
   }
-  if (ownedChromeRunning(child, pid)) {
+  const exe = child.spawnfile === "/usr/bin/open" ? ACCOUNT_CHROME_MAC : child.spawnfile;
+  if (ownedChromeRunning(child, pid, userDataDir) || guiChromeBrowserPid(exe, userDataDir, listProcesses()) !== undefined) {
     console.error(`bao shutdown browser still shutting down profile=${userDataDir}`);
     return { childExit: child.exitCode, signal: child.signalCode, killedPids: [] };
   }
@@ -696,6 +704,31 @@ async function releaseProfileProcesses(userDataDir: string, child: ChildProcess,
     } catch {}
   }
   return { childExit: child.exitCode, signal: child.signalCode, killedPids };
+}
+
+export async function closeRetainedChrome(userDataDir: string): Promise<void> {
+  const exe = resolveNormalChrome();
+  const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
+  if (!pid) return;
+  let cdp: CdpSocket | undefined;
+  let sent = false;
+  try {
+    const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
+    const command = ownedChromeBrowserCommand(exe, userDataDir, pid);
+    const port = command?.match(/(?:^|\s)--remote-debugging-port=(\d+)(?:\s|$)/)?.[1];
+    if (Number(port) === endpoint.port) {
+      cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 3000 });
+      await cdp.send("Browser.close", {}, undefined, 3000);
+      sent = true;
+    }
+  } catch {} finally { cdp?.close(); }
+  if (!sent && ownedChromeBrowserCommand(exe, userDataDir, pid)) {
+    try { process.kill(pid, "SIGTERM"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  }
+  const deadline = Date.now() + 4000;
+  while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await delay(50);
+  if (pidsForDataDir(userDataDir).length) console.error(`bao reclaim browser still shutting down profile=${userDataDir}`);
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */
@@ -748,6 +781,7 @@ export interface ProcessRow {
 
 export function guiChromeBrowserPid(exe: string, userDataDir: string, rows: readonly ProcessRow[]): number | undefined {
   return rows.find((row) => row.command.startsWith(`${exe} `)
+    && !/(?:^|\s)--type(?:=|\s|$)/.test(row.command)
     && userDataDirArg(row.command) === userDataDir)?.pid;
 }
 

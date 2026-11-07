@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, ownedChromeLaunchArgs, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
+const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
 const owned = "/tmp/bao-owned-profile";
 /** No BAO_TEST_BROWSER: the product launch. The test lane sets it in process.env. */
@@ -39,23 +40,45 @@ for (const waiterExit of ["exit", "signal"] as const) {
       }
     });
     await once(browser, "spawn");
+    t.mock.method(processes, "execFileSync", () => {
+      if (browser.exitCode != null || browser.signalCode != null) throw new Error("browser exited");
+      return `${ACCOUNT_CHROME_MAC} --user-data-dir=${owned}`;
+    });
     const exited = once(browser, "exit");
-    stopOwnedChrome(waiter, browser.pid!);
+    stopOwnedChrome(waiter, browser.pid!, owned);
     await exited;
     assert.equal(browser.signalCode, "SIGTERM");
-    assert.doesNotThrow(() => stopOwnedChrome(waiter, browser.pid!));
+    assert.doesNotThrow(() => stopOwnedChrome(waiter, browser.pid!, owned));
   });
 }
+
+test("a reused GUI PID belonging to another executable receives no signal", { timeout: 5000 }, async (t) => {
+  const waiter = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open", exitCode: 0 });
+  const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  t.after(async () => {
+    if (unrelated.exitCode == null && unrelated.signalCode == null) {
+      const exited = once(unrelated, "exit");
+      unrelated.kill("SIGTERM");
+      await exited;
+    }
+  });
+  await once(unrelated, "spawn");
+  const kill = t.mock.method(process, "kill", () => true);
+  stopOwnedChrome(waiter, unrelated.pid!, owned);
+  assert.equal(kill.mock.callCount(), 0);
+  assert.equal(unrelated.exitCode, null);
+  assert.equal(unrelated.signalCode, null);
+});
 
 test("direct shutdown signals its child only while it is running", (t) => {
   const child = Object.assign(new ChildProcess(), { spawnfile: "/pinned/chromium" });
   const kill = t.mock.method(child, "kill", () => true);
-  stopOwnedChrome(child, 31415);
+  stopOwnedChrome(child, 31415, owned);
   assert.deepEqual(kill.mock.calls.map((call) => call.arguments), [["SIGTERM"]]);
   Object.assign(child, { exitCode: 0 });
-  stopOwnedChrome(child, 31415);
+  stopOwnedChrome(child, 31415, owned);
   Object.assign(child, { exitCode: null, signalCode: "SIGTERM" });
-  stopOwnedChrome(child, 31415);
+  stopOwnedChrome(child, 31415, owned);
   assert.equal(kill.mock.callCount(), 1);
 });
 
@@ -68,6 +91,7 @@ test("GUI browser selection rejects storage helpers and other profiles", () => {
     { pid: 202, ppid: 200, command: `${helpers}/Google Chrome Helper (GPU).app/Contents/MacOS/Google Chrome Helper (GPU) --type=gpu-process ${profile}` },
     { pid: 203, ppid: 200, command: `${helpers}/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=utility --utility-sub-type=network.mojom.NetworkService ${profile}` },
     { pid: 204, ppid: 1, command: `${helpers}/chrome_crashpad_handler --monitor-self ${profile}` },
+    { pid: 205, ppid: 200, command: `${chrome} --type=utility ${profile}` },
     { pid: 300, ppid: 1, command: `${chrome} --user-data-dir=${owned}-other` },
   ];
   const browser = { pid: 200, ppid: 1, command: `${chrome} ${profile} --remote-debugging-port=9333` };

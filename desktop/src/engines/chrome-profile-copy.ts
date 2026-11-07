@@ -3,7 +3,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../launch";
+import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../launch";
 
 export interface ChromeProfileChoice {
   directory: string;
@@ -84,7 +84,11 @@ export async function copyChromeProfile(options: {
     let active = false;
     try { process.kill(lease.pid, 0); active = true; } catch (error) { active = (error as NodeJS.ErrnoException).code !== "ESRCH"; }
     if (active && lease.retained !== true) throw new Error("a Chrome profile copy is still open; end that run before refreshing it");
-    if (pidsForDataDir(dir).length) continue;
+    await closeRetainedChrome(dir);
+    if (pidsForDataDir(dir).length) {
+      if (lease.retained !== true) await writeFile(path.join(dir, "lease.json"), JSON.stringify({ ...lease, retained: true }), { mode: 0o600 });
+      continue;
+    }
     await rm(dir, { recursive: true, force: true });
   }
   const userDataDir = path.join(root, `run-${randomUUID()}`);
