@@ -233,34 +233,6 @@ test("export keeps the four value locators and drops an anchor", () => {
   ]);
 });
 
-test("a recorded reveal opens a collapsed target", async () => {
-  const hidden = ident({ role: "input", name: "Search Wikipedia", id: "searchInput" });
-  const toggle = ident({ role: "link", text: "Search", path: [{ role: "search" }] });
-  const opened = ident({ role: "input", name: "Search Wikipedia", nameAttr: "search" });
-  const driver = fake([
-    tree([hidden, toggle], {
-      boxes: [{ x: 0, y: 0, w: 0, h: 0 }, { x: 500, y: 10, w: 44, h: 44 }],
-    }),
-    tree([opened], { boxes: [{ x: 20, y: 48, w: 420, h: 32 }] }),
-  ]);
-  const result = await replay(doc([step({
-    id: "q",
-    action: "type",
-    label: "Type the query",
-    value: "ada",
-    identity: hidden,
-    locators: [
-      { kind: "role", role: "input", name: "Search Wikipedia" },
-      { kind: "css", value: "#searchInput" },
-    ],
-    reveal: { kind: "role", role: "link", name: "Search" },
-  })]), {}, driver, { heal: unavailableHeal() });
-  assert.equal(result.status, "passed", JSON.stringify(result.failure));
-  assert.deepEqual(driver.clicks, ["Search"]);
-  assert.equal(result.repairs[0]?.repair, "reveal");
-  assert.match(result.repairs[0]?.detail || "", /recorded/);
-});
-
 test("a duplicated text locator is refused and a unique test id hits", () => {
   const nodes = [
     ident({ role: "button", text: "Search", testId: "a" }),

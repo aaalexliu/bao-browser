@@ -138,15 +138,7 @@ function copyLocators(list: StepLocator[] | undefined): StepLocator[] | undefine
   if (!list) return undefined;
   return list.map((locator) => {
     const anchor = locator.anchor ? { ...locator.anchor } : undefined;
-    switch (locator.kind) {
-      case "anchor":
-        return anchor ? { ...locator, anchor } : { ...locator };
-      case "role":
-      case "text":
-      case "testid":
-      case "css":
-      case "xpath":
-        return { ...locator, anchor };
-    }
+    if (locator.kind === "anchor") return anchor ? { ...locator, anchor } : { ...locator };
+    return { ...locator, anchor };
   });
 }

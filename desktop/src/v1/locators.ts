@@ -65,17 +65,9 @@ export function scoreLocator(
 }
 
 function locatorLabel(locator: StepLocator): string {
-  switch (locator.kind) {
-    case "role":
-      return ["role", locator.role, locator.name].filter(Boolean).join(" ");
-    case "anchor":
-      return ["anchor", locator.relation, locator.role].filter(Boolean).join(" ");
-    case "text":
-    case "testid":
-    case "css":
-    case "xpath":
-      return [locator.kind, locator.value].filter(Boolean).join(" ");
-  }
+  if (locator.kind === "role") return ["role", locator.role, locator.name].filter(Boolean).join(" ");
+  if (locator.kind === "anchor") return ["anchor", locator.relation, locator.role].filter(Boolean).join(" ");
+  return [locator.kind, locator.value].filter(Boolean).join(" ");
 }
 
 export function matchLocator(
