@@ -6,6 +6,8 @@ import test from "node:test";
 import { chromium } from "playwright";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
+import * as bao from "../../src/engines/bao-profile";
+import * as launches from "../../src/launch";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { ownerWall, ownerCanResume, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
@@ -40,7 +42,11 @@ test("owner wait classifies only URL/title and bounds every call below the MCP t
   for (const value of [0, -1, 120001, Infinity, NaN, "60000", 1.5]) assert.throws(() => ownerWaitTimeout(value));
 });
 
-for (const check of ["signin", "captcha"]) test(`pass-through ${check} waits privately then continues in the same window and Library run`, { timeout: 15000 }, async (t) => {
+for (const { browser, check, bare } of [
+  { browser: "copy", check: "signin", bare: false }, { browser: "copy", check: "captcha", bare: false },
+  { browser: "bao", check: "signin", bare: false }, { browser: "bao", check: "captcha", bare: false },
+  { browser: "bao", check: "signin", bare: true },
+] as const) test(`pass-through ${browser} ${check} ${bare ? "bare open" : "URL"} waits privately then continues in the same window and Library run`, { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-owner-proxy-"));
   const fixture = await startExperianFixture({ loopbackHttp: true });
   const sourceRoot = path.join(root, "source");
@@ -61,6 +67,21 @@ for (const check of ["signin", "captcha"]) test(`pass-through ${check} waits pri
       close: async () => { await browser.close(); await copy.close(); },
     };
   });
+  const importCalls: string[] = [];
+  let startSite: string | undefined;
+  const openBao = bao.openBaoChromeForProxy;
+  const launch = launches.launchOwnedChromeEndpoint;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
+  t.mock.method(bao, "openBaoChromeForProxy", async (options: Parameters<typeof openBao>[0]) => {
+    startSite = options.site;
+    const chrome = await openBao(options);
+    copyDir = bao.baoAgentProfileDir(options.home);
+    closeBrowser = chrome.close;
+    return { ...chrome, importLogin: async (site: string, preferSource = false) => {
+      importCalls.push(site);
+      return chrome.importLogin(site, preferSource);
+    } };
+  });
   const log = path.join(root, "native.jsonl");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
@@ -76,7 +97,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
  if(command==='tab') console.log(JSON.stringify({data:{tabs:tabs.filter(t=>t.type==='page').map(t=>({targetId:t.id,url:t.url,title:t.url,active:t.id===tab.id}))}}));
  else if(command==='open'){
   const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
-  try {const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tab.id,flatten:true}); await cdp.send('Page.navigate',{url:args.at(-1)},sessionId); await new Promise(r=>setTimeout(r,250));console.log('Opened');} finally{cdp.close();}
+  try {const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:tab.id,flatten:true}); await cdp.send('Page.enable',{},sessionId); const loaded=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('fixture navigation timed out')),5000);cdp.on('Page.loadEventFired',sessionId,()=>{clearTimeout(timer);resolve();});}); await cdp.send('Page.navigate',{url:args.at(-1)==='fixture.test' ? ${JSON.stringify(fixture.url('/owner/start?check=signin'))} : args.at(-1)},sessionId); await loaded; console.log('Opened');} finally{cdp.close();}
  }else console.log(command+' native output');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 `, { mode: 0o700 });
@@ -87,7 +108,13 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
   let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
   const outcome = (result: Awaited<ReturnType<AgentBrowserProxy["execute"]>>) => (JSON.parse(result[0]!.stdout) as { outcome: string }).outcome;
   try {
-    assert.equal(outcome(await proxy.execute("open", [fixture.url(`/owner/start?check=${check}`)])), "halted");
+    assert.equal(outcome(await proxy.execute("open", [bare ? "fixture.test" : fixture.url(`/owner/start?check=${check}`)], browser)), "halted");
+    if (bare) {
+      assert.equal(startSite, "https://fixture.test/");
+      assert.equal(importCalls[0], new URL(fixture.url("/")).origin);
+      const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string; args: string[] });
+      assert.equal(commands.find((entry) => entry.command === "open")!.args.at(-1), "fixture.test");
+    }
     const library = new Library(home);
     const initial = library.listRuns()[0]!;
     assert.equal(initial.status, "needs_human");
@@ -96,12 +123,16 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
     const page = observer.contexts()[0]!.pages().find((page) => page.url().includes("/owner/"))!;
     assert.ok(page);
+    page.setDefaultTimeout(5000);
     assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you/);
+    assert.equal(importCalls.length, browser === "bao" && check === "signin" ? 1 : 0, "only an explicit open's login wall can apply its source snapshot");
+    const importsBefore = importCalls.length;
     const before = await readFile(log, "utf8");
     for (const command of ["snapshot", "screenshot", "fill", "press", "tab", "open"]) {
       assert.equal(outcome(await proxy.execute(command, ["fixture-private-credential"])), "halted");
     }
     assert.equal(await readFile(log, "utf8"), before, "no native commands while the owner types");
+    assert.equal(importCalls.length, importsBefore, "owner input never triggers a login import");
     const begin = Date.now();
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"])), "waiting");
     assert.ok(Date.now() - begin < 3000);
@@ -129,6 +160,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     }
     await page.goto(fixture.url("/owner/check"));
     await proxy.execute("snapshot");
+    assert.equal(importCalls.length, importsBefore, "later walls never retry the original open");
     await page.evaluate(() => { document.body.innerHTML = "<h1>Dashboard</h1>"; });
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["30"])), "waiting", "unchanged metadata stays private");
     await page.evaluate(() => { document.title = "Dashboard"; });
@@ -151,11 +183,13 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
       finally {
         try { await fixture.close(); }
         finally {
-          await rm(root, { recursive: true, force: true });
-          if (copyDir) {
-            assert.deepEqual(pidsForDataDir(copyDir), [], "no process owns this test copy");
-            await assert.rejects(readFile(path.join(copyDir, "Default", "Preferences")), /ENOENT/, "the copy was removed");
-          }
+          try {
+            if (copyDir) {
+              await launches.closeRetainedChrome(copyDir);
+              assert.deepEqual(pidsForDataDir(copyDir), [], "no process owns this test profile");
+              if (browser === "copy") await assert.rejects(readFile(path.join(copyDir, "Default", "Preferences")), /ENOENT/, "the copy was removed");
+            }
+          } finally { await rm(root, { recursive: true, force: true }); }
         }
       }
     }

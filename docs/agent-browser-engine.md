@@ -13,7 +13,7 @@
 {"command":"close","args":[]}
 ```
 
-Bao fixes one session in a private socket directory, installed Google Chrome, a visible window, and a fresh marked copy of the profile selected in Settings. An unset profile selects `Default`. The page-engine choice does not affect this tool. Extensions stay disabled. Bao launches Chrome itself, then attaches the pinned native agent-browser through `--cdp`.
+Bao fixes one session in a private socket directory, installed Google Chrome, and a visible window. On `open`, `browser: "copy"` (the default) starts a fresh marked copy of the profile selected in Settings. `browser: "bao"` uses Bao's lasting profile and imports missing site sign-ins from that selected Chrome profile. An unset source profile selects `Default`. Close the session before changing browser. The page-engine choice does not affect this tool. Extensions stay disabled. Bao launches Chrome itself, then attaches the pinned native agent-browser through `--cdp`.
 
 Bao picks a nonzero debugging port. Port zero makes headed Chrome set `navigator.webdriver` to true. Bao accepts only the WebSocket endpoint its own Chrome child prints to stderr, then writes that endpoint to the copy's `DevToolsActivePort` file. A port-bind race stops startup rather than attaching to another browser.
 
@@ -22,6 +22,20 @@ Pass-through startup connects only to Chrome's browser-level CDP endpoint and di
 `desktop/test/unit/agent-browser-startup.test.ts` covers startup with a stalled restored renderer. `desktop/test/unit/chrome-startup.test.ts` covers launch flags, a stale endpoint file, a port-bind race, browser-only startup commands, and headed `navigator.webdriver` before and after a Runtime-domain attach.
 
 Ordinary calls return native stdout and stderr as separate MCP text blocks. Sign-in and human-check handoffs return Bao's wait status instead. [Browser tool cards](mcp-viewer.md#browser-tool-cards) describes the visual result and receipt handoff in MCP Apps hosts. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. It does not save a replayable workflow. Workflows from the retired live driver fail with `this workflow used the retired live driver`; replay on the pass-through is a later layer.
+
+### Lasting Bao profile
+
+```json
+{"command":"open","args":["https://claude.ai/"],"browser":"bao"}
+```
+
+Bao stores this profile at `<Bao home>/agent-browser-profile`. It keeps cookies and site data after `close` and agent exit. It uses Chrome's mock keychain so a background agent can read Bao's saved cookies without OS Keychain access. The older replay/login-import profile stays separate.
+
+When the requested site has no saved state, Bao copies the selected Chrome source's cookie database into a temporary browser profile, reads that site's cookies through CDP, and reuses the login importer's cookie and storage helpers. It does not copy or restore source tabs. The temporary cookie profile closes after import. Every explicit open checks the selected source again, including startup. Cookies merge by name, domain, path, and partition: a source cookie replaces Bao's cookie only when its last-update time is later. Bao-only cookies stay. Bao protects live cookie changes that have not reached its disk database and keeps existing localStorage values. Empty and storage-only sources skip cookie-extraction Chrome. If that open reaches a recognized sign-in wall on another origin, Bao imports that origin and retries the requested open only when the import changed state. The same open never imports an origin twice. Bot checks, later actions, and screenshot capture never trigger that retry. It never enters credentials or answers a browser or OS prompt.
+
+IndexedDB transfer still has no passing real-browser proof. The initial site's import uses the existing disk-copy helper; later site imports into an open browser transfer cookies and localStorage only. A cookie or storage record alone does not prove the site accepts a login.
+
+Keep-window-open also applies to this profile. The next Bao-profile session closes that kept window before reopening the same saved profile. It also reclaims a window whose owning MCP process has exited or whose explicit close is still finishing. Another active session must close before a second session can use it.
 
 ### Session end
 
@@ -33,7 +47,7 @@ Kept Chrome has no Bao owner and keeps a local debugging port open, even after y
 
 ### Wait for owner input in the same session
 
-When the active tab's URL or title signals sign-in, a verification code, Imperva, or hCaptcha, Bao returns `outcome: "halted"`. It keeps that tab, profile copy, MCP process, and Library run. The page shows a **Bao is waiting for you** banner, and the Library run says **needs you**. The owner signs in or clears the check in that tab.
+When the active tab's URL or title signals sign-in, a verification code, Imperva, or hCaptcha, Bao returns `outcome: "halted"`. It keeps that tab, browser profile, MCP process, and Library run. The page shows a **Bao is waiting for you** banner, and the Library run says **needs you**. The owner signs in or clears the check in that tab.
 
 ```json
 {"command":"wait_for_owner","args":["60000"]}
@@ -72,5 +86,7 @@ Bao takes a separate page screenshot through CDP on the active tab after each or
 Version and platform checksums live in `desktop/packaging/agent-browser-pin.json`. [Mac packaging](mac-build.md#fresh-setup) stages and signs the executable. For a checkout, run `node desktop/packaging/stage-agent-browser.mjs <temporary-directory>` and set `BAO_AGENT_BROWSER` to its `agent-browser` file. Installed builds use the bundled file.
 
 `BAO_AGENT_BROWSER_PROFILE_ROOT` supplies a synthetic source root for fixtures. With `BAO_TEST_BROWSER`, the proxy requires that explicit source and launches only the pinned test browser, with mock-keychain and media-denial flags. Never supply a real profile to a test.
+
+`bao-profile.test.ts` covers selected-site cookie/localStorage import, cookie freshness, sign-in redirects, signed-out visits, concurrent startup, renewed Bao logins across clean exits, kept-window reclaim, and the explicit browser choice. It does not prove IndexedDB login reuse or real-site authentication.
 
 Focused coverage lives in `agent-browser-proxy.test.ts`, `agent-browser-proxy-close.test.ts`, `agent-browser-startup.test.ts`, and `agent-browser-session-end.test.ts` under `desktop/test/unit/`. The native `experian-proxy.test.ts` case uses a loopback Experian-shaped fixture and runs in required CI with a staged binary; local runs need `AGENT_BROWSER_PROXY_BINARY`. The separate opt-in native fixture is `desktop/test/live/agent-browser-proxy.test.ts`. Set `AGENT_BROWSER_PROXY_BINARY` to the staged executable. `AGENT_BROWSER_PROXY_ARTIFACTS` retains its output comparison and recording receipts. The fixture checks native output, durable page screenshots, partial/final runs, and cleanup on close, disconnect, and SIGTERM. It does not prove real-site login survival.

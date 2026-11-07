@@ -81,7 +81,7 @@ Saved workflows whose driver is `cdp-live` must remain readable. Their Workflows
 
 Open the running app's Library and Runs, not a component preview. Read the page before taking a screenshot, then open the image. Capture before and after for a UI change.
 
-Check the run's saved command arguments, native results, start/end times, and page screenshots under `shots/runs/<runId>/`. Missing pictures must have a reason, not an older picture relabeled as current. Explicit close and closing the owned Chrome window during a live session must finish the run and remove only its marked profile copy. Disconnect or MCP stop must do the same by default. With keep-open on, confirm that disconnect or stop finishes the run but keeps the window and copy until the next session reclaims them. Confirm the source profile and unrelated tabs remain unchanged.
+Check the run's saved command arguments, native results, start/end times, and page screenshots under `shots/runs/<runId>/`. Missing pictures must have a reason, not an older picture relabeled as current. For both browser choices, check explicit close, closing the owned Chrome window during a live session, disconnect, and MCP stop against the [profile lifecycle and cleanup contract](agent-browser-engine.md#session-end). Check keep-open with each choice too. Confirm the source profile and unrelated tabs remain unchanged.
 
 Historical live-driver workflows, runs, pictures, and videos stay local and readable. Their existence is not evidence that replay still works. Do not alter or delete historical records to make a new test pass.
 

@@ -161,8 +161,15 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
     await page.locator("#sidebar-toggle").click();
     await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
     for (const theme of ["light", "dark"]) {
-      await page.evaluate((theme) => { document.documentElement.dataset.theme = theme; }, theme);
-      assert.equal(await page.locator("#app").evaluate((el) => getComputedStyle(el).backgroundColor), await page.locator("#content").evaluate((el) => getComputedStyle(el).backgroundColor));
+      const colors = await page.evaluate((theme) => {
+        localStorage.setItem("bao-theme", theme);
+        document.documentElement.dataset.theme = theme;
+        return {
+          app: getComputedStyle(document.getElementById("app")!).backgroundColor,
+          content: getComputedStyle(document.getElementById("content")!).backgroundColor,
+        };
+      }, theme);
+      assert.equal(colors.app, colors.content);
     }
   } finally {
     await browser?.close();

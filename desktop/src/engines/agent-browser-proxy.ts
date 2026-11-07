@@ -7,6 +7,7 @@ import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { AgentBrowserRun, type RecordedAgentBrowserCommand } from "./agent-browser-record";
 import { agentBrowserExecutable } from "./agent-browser";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
+import { openBaoChromeForProxy } from "./bao-profile";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
@@ -28,8 +29,20 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
   }
 }
 
+export const AGENT_BROWSERS = ["copy", "bao"] as const;
+export type AgentBrowser = typeof AGENT_BROWSERS[number];
+
+function webSite(value: string | undefined): string | undefined {
+  try {
+    if (!value) return undefined;
+    const url = new URL(value.includes("://") || /^(about|file|data|chrome|javascript):/i.test(value) ? value : `https://${value}`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
+  } catch { return undefined; }
+}
+
 interface Session {
-  chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>>;
+  browser: AgentBrowser;
+  chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>>;
   stateDir: string;
   executable: string;
   flags: string[];
@@ -60,9 +73,15 @@ export class AgentBrowserProxy {
     return () => { this.pendingCloses--; };
   }
 
-  async execute(command: unknown, args: unknown = [], visual = false): Promise<AgentBrowserCommandResult[]> {
+  async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false): Promise<AgentBrowserCommandResult[]> {
     this.latest = undefined;
     validateAgentBrowserCommand(command, args);
+    if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
+      throw new Error("browser is only accepted on open and must be copy or bao");
+    }
+    if (this.session && browser !== undefined && browser !== this.session.browser) {
+      throw new Error("close the current session before choosing a different browser");
+    }
     if (command === "close") {
       if (this.session) this.session.closing = true;
       if (this.disconnected) {
@@ -89,9 +108,10 @@ export class AgentBrowserProxy {
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     const step = recording.begin(command as string, args);
     this.latest = { runId: recording.id, step };
+    const starting = !this.session;
     if (!this.session) {
       try {
-        const session = await (this.starting = this.start(recording));
+        const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? "copy", webSite(args[0])));
         this.session = session;
         void session.chrome.closed.then(() => session.closing ? undefined : this.remove(session)).catch(() => undefined);
       } catch (error) {
@@ -109,6 +129,10 @@ export class AgentBrowserProxy {
     let failure: unknown;
     try {
       if (this.disconnected) throw new Error("agent-browser client disconnected");
+      if (command === "open") {
+        const site = webSite(args[0]);
+        if (!starting && site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
+      }
       if (command === "wait_for_owner") {
         results.push(...await this.waitForOwner(session, args));
         return results;
@@ -121,7 +145,7 @@ export class AgentBrowserProxy {
         ? { stdout: "", stderr: "", exitCode: 0 }
         : await this.run(session, command as string, args));
       if (command !== "close" && results[0]!.exitCode === 0) {
-        await this.detectOwnerWall(session);
+        await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         if (session.ownerWait) {
           results.splice(0, results.length, ...this.ownerResult("halted"));
           return results;
@@ -175,13 +199,14 @@ export class AgentBrowserProxy {
     if (result!.exitCode !== 0) throw new Error("agent-browser close failed");
   }
 
-  private async start(recording: AgentBrowserRun): Promise<Session> {
+  private async start(recording: AgentBrowserRun, browser: AgentBrowser, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
-    const chrome = await openCopiedChromeForProxy({
+    const options = {
       sourceRoot: this.options.sourceRoot ?? chromeProfilesRoot(), directory: this.options.directory || "Default", home: this.options.home,
       detached: this.options.keepOpen?.() === true,
-    });
+    };
+    const chrome = browser === "bao" ? await openBaoChromeForProxy({ ...options, site }) : await openCopiedChromeForProxy(options);
     let stateDir: string | undefined;
     try {
       stateDir = await mkdtemp(path.join(tmpdir(), "bao-proxy-"));
@@ -189,7 +214,7 @@ export class AgentBrowserProxy {
       await writeFile(config, "{}", { mode: 0o600 });
       const endpoint = await readDevToolsActivePort(chrome.target.portFile);
       return {
-        chrome, stateDir, executable, abort: new AbortController(), recording,
+        chrome, browser, stateDir, executable, abort: new AbortController(), recording,
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
           "--idle-timeout", "0"],
         env: {
@@ -224,11 +249,20 @@ export class AgentBrowserProxy {
     } finally { cdp.close(); }
   }
 
-  private async detectOwnerWall(session: Session): Promise<void> {
+  private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
     if (session.ownerWait) return;
-    const active = await this.activePage(session);
+    let active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
+    if (openedSite && ownerWall(active.page) === "login_wall" && "importLogin" in session.chrome) {
+      if (await session.chrome.importLogin(new URL(active.page.url).origin, true)) {
+        const retry = await this.run(session, "open", [openedSite]);
+        if (retry.exitCode !== 0) throw new Error(`Bao sign-in retry failed: ${retry.stderr || retry.stdout || `exit ${retry.exitCode}`}`);
+        active = await this.activePage(session);
+        if (!active) throw new Error("no active Bao page metadata");
+        if (!ownerWall(active.page)) return;
+      }
+    }
     session.ownerWait = active;
     session.recording.ownerWaiting(true);
     await this.ownerBanner(session, active.targetId, true);
