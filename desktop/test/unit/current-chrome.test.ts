@@ -592,7 +592,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   await writeFile(executable, "", { mode: 0o700 });
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false,
-    closeTargetFails: false, hold: false, closes: 0, kept: 0,
+    closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
     onSnapshot: undefined as ((resume: () => void) => void) | undefined };
   let disconnected!: () => void;
   const cdp = {
@@ -602,7 +602,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     async send(method: string) {
       if (method === "Target.getTargets") {
         if (state.cleanupFails) throw new Error("cleanup failed");
-        return { targetInfos: [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
+        return { targetInfos: state.taskGone ? [] : [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
       }
       if (method === "Target.closeTarget") {
         state.closes++;
@@ -614,9 +614,12 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       return {};
     },
   } as unknown as CdpSocket;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ endpoint: { port: 9222, browserPath: "/browser" },
-    cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: () => Promise<T>) => operation() }));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    if (state.closed) throw new Error("reconnect startup reached");
+    return { endpoint: { port: 9222, browserPath: "/browser" },
+      cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
+      withConsent: <T>(operation: () => Promise<T>) => operation() };
+  });
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => ({ target: { portFile: "unused" },
     closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
     close: async () => { state.closes++; cdp.close(); }, keepOpen: async () => { state.kept++; } }));
@@ -631,7 +634,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
         state.trackingFails = false;
         callback(Object.assign(new Error("tracking failed"), { code: 1 }), "", "tracking failed");
       } else if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
-      else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: [{ active: true, targetId: "task" }] } }) : "native output", "");
+      else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: state.noActivePage ? [] : [{ active: true, targetId: "task" }] } }) : "native output", "");
     });
     return new EventEmitter();
   });
@@ -664,7 +667,7 @@ for (const keepOpen of [false, true]) test(`idle backstop releases an owned sess
   assert.match(f.library.listRuns()[0]!.envelope!.reason!, /ended without finish_task/);
 });
 
-test("idle backstop resets on commands, preserves confirmation holds, and only detaches current Chrome", async (t) => {
+for (const reset of ["finish", "close"] as const) test(`current idle expiry preserves browser choice until explicit ${reset}`, async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
@@ -682,6 +685,50 @@ test("idle backstop resets on commands, preserves confirmation holds, and only d
   assert.equal(f.state.closes, 0);
   assert.equal(f.state.closed, true);
   assert.equal(f.library.listRuns()[0]!.status, "failed");
+  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
+  await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
+  if (reset === "finish") await f.proxy.finishTask({ outcome: "failed", reason: "Task expired" });
+  else await f.proxy.execute("close");
+  await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+});
+
+for (const missing of ["task", "active-page"] as const) test(`closing the waiting current ${missing} releases the session for reconnect`, async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  if (missing === "task") {
+    await f.proxy.execute("wait_for_owner", ["1"]);
+    f.state.taskGone = true;
+  } else f.state.noActivePage = true;
+  const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  assert.equal(JSON.parse(result!.stdout).outcome, "closed");
+  assert.equal(f.proxy.hasSession(), false);
+  assert.equal(f.state.closed, true);
+  assert.equal(f.state.closes, missing === "task" ? 0 : 1);
+  assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
+  await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
+  await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
+});
+
+for (const keepOpen of [false, true]) test(`a copied session whose waiting tab closed still expires with keep-open=${keepOpen}`, async (t) => {
+  const f = await lifecycleFixture(t, keepOpen);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  await f.proxy.execute("open", [], "copy");
+  await f.proxy.execute("wait_for_owner", ["1"]);
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  f.state.taskGone = true;
+  const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  assert.equal(JSON.parse(result!.stdout).outcome, "closed");
+  assert.equal(f.proxy.hasSession(), true);
+  t.mock.timers.tick(599_999);
+  assert.equal(f.state.closed, false);
+  t.mock.timers.tick(1);
+  while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(f.state.closes, keepOpen ? 0 : 1);
+  assert.equal(f.state.kept, keepOpen ? 1 : 0);
+  assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
 });
 
 test("idle backstop never interrupts an active agent command", async (t) => {

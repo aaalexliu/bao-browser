@@ -205,9 +205,8 @@ export class AgentBrowserProxy {
           if (command === "close") this.latest = { runId: recording.id, step, lastPicture: recording.lastPicture };
         }
       } finally {
-        if (step?.native.isError) session.workflow.unavailable("a browser command failed");
         commandDone();
-        if (command === "close") await this.remove(session);
+        if (command === "close" || session.kind === "current" && session.abort.signal.aborted && !session.removing && !this.disconnected) await this.remove(session);
         else this.armIdle(session);
       }
     }
@@ -531,7 +530,7 @@ export class AgentBrowserProxy {
 
   private armIdle(session: Session): void {
     clearTimeout(session.idleTimer);
-    if (this.session !== session || session.removing || session.ownerWait || session.abort.signal.aborted) return;
+    if (this.session !== session || session.removing || session.ownerWait || this.disconnected) return;
     session.idleTimer = setTimeout(() => {
       if (this.options.hasHold?.()) { this.armIdle(session); return; }
       session.outcome = { outcome: "failed", reason: "Session ended without finish_task after 10 minutes of inactivity." };
@@ -540,7 +539,6 @@ export class AgentBrowserProxy {
         .catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`))
         .finally(() => {
           if (this.session === session) this.session = undefined;
-          this.currentEnded = false;
         });
     }, SESSION_IDLE_MS);
     session.idleTimer.unref();
