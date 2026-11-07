@@ -59,7 +59,6 @@ import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, type BrowserChoice } from "../browser-choice";
-import { baoAgentProfileDir } from "../engines/bao-profile";
 import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
@@ -216,7 +215,7 @@ export async function startApp(opts: {
   const librarySplits = showOnce(opts.home, opts.libraryNotices || []);
   const sites = new SiteStore(path.join(opts.home, "login-sites.json"));
   const chromeUserData = opts.chromeUserData ?? defaultChromeUserData();
-  const baoProfile = opts.baoProfile ?? baoAgentProfileDir(opts.home);
+  const baoProfile = opts.baoProfile ?? path.join(opts.home, "chrome-profile");
   const profileSourceRoot = opts.chromeProfilesRoot ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? systemChromeProfilesRoot() : undefined);
   let profileCopy: { bytes: number; copyMs: number; status: "open" | "deleted" } | undefined;
   let signIn: { close(): Promise<void> } | undefined;
@@ -1785,7 +1784,7 @@ export async function startApp(opts: {
     try {
       profile = baoProfile;
       mkdirSync(profile, { recursive: true });
-      context = await launchOwnedChrome({ userDataDir: profile, keychain: "mock", headless: productHeadless() });
+      context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless() });
       await context.exposeBinding("__baoRecord", async (_source, payload: TrailEvent) => {
         await watchShot(recordCaptured(payload));
       });
@@ -2374,7 +2373,6 @@ export async function startApp(opts: {
     mkdirSync(baoProfile, { recursive: true });
     const opened = await launchOwnedChrome({
       userDataDir: baoProfile,
-      keychain: "mock",
       headless: productHeadless(),
     });
     const live = opened.pages()[0] || await opened.newPage();
@@ -2496,7 +2494,7 @@ export async function startApp(opts: {
       return site.page;
     }
     mkdirSync(baoProfile, { recursive: true });
-    const opened = await launchOwnedChrome({ userDataDir: baoProfile, keychain: "mock", headless: productHeadless() });
+    const opened = await launchOwnedChrome({ userDataDir: baoProfile, headless: productHeadless() });
     const live = opened.pages()[0] || await opened.newPage();
     if (startUrl.startsWith("http")) await navigateOwned(live, startUrl, { waitUntil: "domcontentloaded" });
     watch = { context: opened, page: live, profile: baoProfile };
@@ -2586,10 +2584,10 @@ async function runWorkflow(
     return runRecorded(library, workflow, args, notices, replays, runId, prompts, undefined, fromStep, undefined, browser);
   }
   if (gate) {
-    const gated = await gateSavedLogin(library, workflow, args, notices, replays, runId, prompts, gate, fromStep, browser);
+    const gated = await gateSavedLogin(library, workflow, args, notices, replays, runId, prompts, gate, fromStep);
     if (gated) return gated;
   }
-  return runRecorded(library, workflow, args, notices, replays, runId, prompts, gate?.baoProfile, fromStep, undefined, browser);
+  return runRecorded(library, workflow, args, notices, replays, runId, prompts, gate?.baoProfile, fromStep);
 }
 
 async function gateSavedLogin(
@@ -2602,7 +2600,6 @@ async function gateSavedLogin(
   prompts: PersonPrompts | undefined,
   gate: LoginGate,
   fromStep?: string,
-  browser?: RunBrowser,
 ) {
   await gate.closeSignIn();
   const origin = httpOrigin(workflow.startUrl);
@@ -2624,7 +2621,7 @@ async function gateSavedLogin(
         throw err;
       }
     },
-    run: () => runRecorded(library, workflow, args, notices, replays, runId, prompts, gate.baoProfile, fromStep, undefined, browser),
+    run: () => runRecorded(library, workflow, args, notices, replays, runId, prompts, gate.baoProfile, fromStep),
   });
   if (isNeedsSignIn(outcome)) {
     library.saveRun({
@@ -2953,7 +2950,6 @@ async function openReplay(
   const existing = replays.get(id);
   const sameDir = Boolean(existing?.kind === "owned" && fixedDir && path.resolve(existing.profile) === path.resolve(fixedDir));
   if (existing && existing.choice === (browser?.choice ?? "owned") && !existing.page.isClosed() && (!fixedDir || sameDir)) {
-    if (existing.kind === "owned") await existing.importLogin?.(site);
     return existing;
   }
   if (existing) {
@@ -2962,14 +2958,6 @@ async function openReplay(
     replays.delete(id);
   }
   if (browser) {
-    if (browser.choice === "bao") {
-      const shared = [...replays.values()].find((session) => session.choice === "bao" && !session.page.isClosed());
-      if (shared?.kind === "owned") {
-        await shared.importLogin?.(site);
-        replays.set(id, shared);
-        return shared;
-      }
-    }
     const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile });
     replays.set(id, session);
     return session;
@@ -2989,7 +2977,6 @@ async function openReplay(
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   const context = await launchOwnedChrome({
     userDataDir: profile,
-    keychain: fixedDir ? "mock" : undefined,
     headless: productHeadless(),
     videoDir,
   });

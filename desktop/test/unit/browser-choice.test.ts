@@ -10,11 +10,10 @@ import { TOOLS } from "../../src/mcp/server";
 import { openWorkflowBrowser, navigateWorkflowBrowser } from "../../src/engines/workflow-browser";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import * as profiles from "../../src/engines/chrome-profile-copy";
-import { launchOwnedChromeEndpoint } from "../../src/launch";
+import { launchOwnedChrome, launchOwnedChromeEndpoint } from "../../src/launch";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
-import { baoAgentProfileDir } from "../../src/engines/bao-profile";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const workflow = (startUrl: string, id = "choice"): WorkflowV2 => ({ schema: "bao.workflow/v2", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
@@ -36,22 +35,6 @@ test("agent and workflow tools offer the same named browser choices and Bao defa
       assert.ok(schema.properties.browser.description.includes(value.description));
     }
   }
-});
-
-test("Bao carries over only a lone legacy profile", async (t) => {
-  const home = await mkdtemp(path.join(tmpdir(), "bao-choice-migrate-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  const legacy = path.join(home, "chrome-profile");
-  await mkdir(legacy);
-  await writeFile(path.join(legacy, "account"), "legacy sign-in");
-  const profile = baoAgentProfileDir(home);
-  assert.equal(await readFile(path.join(profile, "account"), "utf8"), "legacy sign-in");
-  await assert.rejects(readFile(path.join(legacy, "account")), { code: "ENOENT" });
-  await mkdir(legacy);
-  await writeFile(path.join(legacy, "account"), "leave untouched");
-  assert.equal(baoAgentProfileDir(home), profile);
-  assert.equal(await readFile(path.join(profile, "account"), "utf8"), "legacy sign-in");
-  assert.equal(await readFile(path.join(legacy, "account"), "utf8"), "leave untouched");
 });
 
 test("replay copies drop only saved tabs in the selected profile; agent copies keep them", async (t) => {
@@ -84,7 +67,7 @@ test("replay copies drop only saved tabs in the selected profile; agent copies k
   }
 });
 
-test("the running app marks Bao default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: 90_000 }, async (t) => {
+test("the running app marks Bao default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: 150_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-ui-"));
   const sourceRoot = path.join(root, "source");
   await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
@@ -129,6 +112,8 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   await page.getByRole("button", { name: "Read account", exact: true }).click();
   await page.getByRole("button", { name: "Run…", exact: true }).click();
   const choices = page.getByRole("group", { name: "Browser for this run" });
+  assert.match(await choices.innerText(), /Bao's own Chrome profile with your Login sites/);
+  assert.match(await choices.innerText(), /different keychains/);
   assert.equal(await choices.getByRole("radio").count(), 3);
   assert.equal(await choices.getByRole("radio", { name: "Bao profile (default)" }).isChecked(), true);
   await choices.getByRole("radio", { name: "Fresh Chrome copy" }).check();
@@ -153,14 +138,23 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
     assert.match(await mac.innerText(), /No Chrome option needs Automation or Screen Recording/);
   }
   const agent = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
-  try {
-    await navigateWorkflowBrowser(agent, site);
-    assert.equal(await agent.page.locator("h1").innerText(), "Signed in as fixture", "an agent can reclaim the completed app run without quitting the app");
-  } finally { await agent.close(); }
+  t.after(() => agent.close());
+  await navigateWorkflowBrowser(agent, site);
+  assert.equal(await agent.page.locator("h1").innerText(), "Signed out", "an agent opens after an app run without sharing app sign-ins or leases");
+  await agent.context.addCookies([{ name: "agent-only", value: "fixture", url: site, expires: Date.now() / 1000 + 3600 }]);
+  assert.equal((await post("/api/replay", { id: "choice", browser: "bao", args: {} })).status, "passed", "an active agent does not block the app's saved-login probe or run");
+  if (agent.kind === "owned") await agent.keepOpen?.();
+  await post("/api/login-sites", { origin: site }, "DELETE");
+  app.library.save(workflow(site, "guide"));
+  app.library.save(workflow(site, "after-guide"));
+  assert.equal((await post("/api/replay", { id: "guide", guide: true, args: {} })).status, "passed");
+  assert.equal((await post("/api/replay", { id: "after-guide", browser: "bao", args: {} })).status, "passed", "an ungated Bao run reuses the app's Guide profile");
+  assert.equal(agent.page.isClosed(), false, "app runs do not reclaim even a retained agent window");
+  await post("/api/login-sites", { origin: site, probeUrl: site, signedInText: "Signed in as fixture" }, "PUT");
   for (const id of ["before-window-close", "after-window-close"]) {
     app.library.save(workflow(site, id));
     assert.equal((await post("/api/replay", { id, browser: "bao", args: {} })).status, "passed");
-    const endpoint = await readDevToolsActivePort(path.join(baoAgentProfileDir(home), "DevToolsActivePort"));
+    const endpoint = await readDevToolsActivePort(path.join(home, "chrome-profile", "DevToolsActivePort"));
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
     try { await cdp.send("Browser.close").catch(() => undefined); } finally { cdp.close(); }
   }
@@ -172,19 +166,26 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
     const result = await response.json() as { status: string };
     assert.equal(result.status, "passed", "each copy run starts from source state, not the last replay's localStorage");
   }
-  const signedOut = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
-  await signedOut.context.clearCookies();
+  const signedOut = await launchOwnedChrome({ userDataDir: path.join(home, "chrome-profile"), headless: true });
+  await signedOut.clearCookies();
   await signedOut.close();
   assert.equal((await post("/api/replay", { id: "choice", browser: "bao", args: {} })).status, "needs-sign-in", "Bao app runs still honor the saved-login gate");
   await post("/api/login-import/sign-in", { site, consent: true, probeUrl: `${site}signin` });
   await post("/api/login-sites/recheck", { origin: site });
   await app.close();
   appClosed = true;
-  const reopened = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
+  await agent.close();
+  const reopened = await launchOwnedChrome({ userDataDir: path.join(home, "chrome-profile"), headless: true });
   try {
-    await navigateWorkflowBrowser(reopened, site);
-    assert.equal(await reopened.page.locator("h1").innerText(), "Signed in as fixture", "app replay and a later session use the same lasting sign-in");
+    const account = reopened.pages()[0] || await reopened.newPage();
+    await account.goto(site);
+    assert.equal(await account.locator("h1").innerText(), "Signed in as fixture", "app tools and later app sessions keep their own lasting sign-in");
+    assert.equal((await reopened.cookies(site)).some((cookie) => cookie.name === "agent-only"), false, "agent sign-ins do not reach the app profile");
   } finally { await reopened.close(); }
+  const reopenedAgent = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
+  try {
+    assert.equal((await reopenedAgent.context.cookies(site)).some((cookie) => cookie.name === "agent-only" && cookie.value === "fixture"), true, "app runs leave the agent profile's saved state intact");
+  } finally { await reopenedAgent.close(); }
   await browser.close();
   await rm(root, { recursive: true, force: true });
 });

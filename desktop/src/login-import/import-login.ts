@@ -230,7 +230,7 @@ export async function importInOwnedChrome(opts: {
   const items = await readLocalStorage(profileDir, origins);
   const indexedDbOrigins = copyIndexedDb(profileDir, opts.baoProfile, origins);
   const headless = opts.headless ?? productHeadless();
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, keychain: "mock", headless, channel: "chrome" });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const cdp = await ctx.newCDPSession(page);
@@ -259,7 +259,7 @@ export async function probeOwnedProfile(opts: {
 }): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" | "login-wall" }> {
   assertNotDailyChrome(opts.baoProfile);
   const headless = opts.headless ?? productHeadless();
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, keychain: "mock", headless, channel: "chrome" });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const obs = await observePage(page, opts.config.probeUrl || opts.config.origin, opts.config.signedInSelector, opts.config.signedInText);
@@ -275,7 +275,7 @@ export async function probeOwnedProfile(opts: {
 export async function openOwnedSignIn(opts: { baoProfile: string; url: string; headless: boolean }): Promise<{ close(): Promise<void>; url: string }> {
   assertNotDailyChrome(opts.baoProfile);
   const headless = opts.headless || (process.platform !== "darwin" && !process.env.DISPLAY);
-  const ctx: BrowserContext = await launchOwnedChrome({ userDataDir: opts.baoProfile, keychain: "mock", headless, channel: "chrome" });
+  const ctx: BrowserContext = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
   const page = ctx.pages()[0] || await ctx.newPage();
   await page.goto(opts.url, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
   const shot = process.env.BAO_SIGNIN_SHOT;
