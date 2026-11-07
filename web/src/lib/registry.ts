@@ -1,9 +1,10 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Ajv from "ajv/dist/2020.js";
 import { getPng, putPng } from "./blobstore";
-import { isPng } from "./png";
+import { isPicture } from "./png";
+import { syncPicture } from "./sync-pictures";
 import { query } from "./db";
-import { buildPushBody, stripUnsafe, type SyncShot } from "./guard";
+import type { SyncShot } from "./guard";
 import { applyImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
 import { permissionPreview, type PermissionPreview } from "./permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
@@ -279,8 +280,7 @@ export async function pushVersion(
   assertId(id);
   const errors = workflowErrors(body.document);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
-  const sanitized = buildPushBody(body.document, { baseVersion: Number(body.baseVersion ?? 0), heal: body.heal });
-  const { document, heal } = sanitized;
+  const { document, heal } = body;
   const doc = document as { id?: string; name?: string };
   if (doc.id !== id) throw new HttpError("id", 400);
   const user = await mustUser(principal.userId);
@@ -414,9 +414,9 @@ export async function pushRun(principal: Principal, workflowId: string, body: {
   }
   for (const shot of body.shots ?? []) {
     if (!shot.stepId || !shot.png) continue;
-    const bytes = Buffer.from(shot.png, "base64");
-    if (!isPng(bytes)) continue;
-    const key = `runs/${id}/${shot.stepId}.png`;
+    const bytes = await syncPicture(Buffer.from(shot.png, "base64"));
+    if (!bytes) continue;
+    const key = `runs/${id}/${shot.stepId}.jpg`;
     await putPng(key, bytes);
     await query(
       `INSERT INTO run_shots (run_id, step_id, blob_key) VALUES ($1, $2, $3)
@@ -443,7 +443,7 @@ export async function listRuns(principal: Principal, workflowId: string) {
     const visible = [];
     for (const shot of shots) {
       const bytes = await getPng(shot.blob_key);
-      if (!bytes || !isPng(bytes)) continue;
+      if (!bytes || !isPicture(bytes)) continue;
       visible.push({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` });
     }
     out.push({
@@ -557,12 +557,12 @@ export async function recordReview(
 ) {
   const preview = await previewPublication(principal, id);
   if (preview.documentHash !== documentHash) throw new HttpError("replay the public preview, then review that hash", 409);
-  const real = shots.filter((shot) => shot.stepId && shot.png && isPng(Buffer.from(shot.png, "base64")));
+  const real = shots.filter((shot) => shot.stepId && shot.png && isPicture(Buffer.from(shot.png, "base64")));
   if (real.length) await writeShots(id, preview.version, real);
   await query(
     `INSERT INTO reviews (workflow_id, document_hash, samples) VALUES ($1, $2, $3::jsonb)
      ON CONFLICT (workflow_id, document_hash) DO UPDATE SET at = now(), samples = EXCLUDED.samples`,
-    [id, documentHash, JSON.stringify(publicSamples(samples))],
+    [id, documentHash, JSON.stringify(publicSamples(samples, preview.document))],
   );
   await query(`UPDATE workflows SET reviewed_hash = $2 WHERE id = $1`, [id, documentHash]);
   return { ok: true };
@@ -975,9 +975,9 @@ async function insertOwned(
 async function writeShots(workflowId: string, version: number, shots: ShotIn[]) {
   for (const shot of shots) {
     if (!shot.stepId || !shot.png) throw new HttpError("screenshot", 400);
-    const bytes = Buffer.from(shot.png, "base64");
-    if (!isPng(bytes)) continue;
-    const key = `shots/${workflowId}/v${version}/${shot.stepId}.png`;
+    const bytes = await syncPicture(Buffer.from(shot.png, "base64"));
+    if (!bytes) continue;
+    const key = `shots/${workflowId}/v${version}/${shot.stepId}.jpg`;
     await putPng(key, bytes);
     await query(
       `INSERT INTO workflow_shots (workflow_id, version, step_id, blob_key) VALUES ($1, $2, $3, $4)
@@ -991,7 +991,7 @@ async function shotUrls(workflowId: string, version: number) {
   const visible = [];
   for (const shot of await listShotRows(workflowId, version)) {
     const bytes = await getPng(shot.blob_key);
-    if (!bytes || !isPng(bytes)) continue;
+    if (!bytes || !isPicture(bytes)) continue;
     visible.push({ stepId: shot.step_id, url: `/api/blobs/${shot.blob_key}` });
   }
   return visible;
@@ -1007,7 +1007,7 @@ async function listShotRows(workflowId: string, version: number) {
 async function copyRealShots(workflowId: string, fromVersion: number, toVersion: number) {
   for (const row of await listShotRows(workflowId, fromVersion)) {
     const bytes = await getPng(row.blob_key);
-    if (!bytes || !isPng(bytes)) continue;
+    if (!bytes || !isPicture(bytes)) continue;
     await writeShots(workflowId, toVersion, [{ stepId: row.step_id, png: bytes.toString("base64") }]);
   }
 }
@@ -1023,7 +1023,7 @@ async function pickThumbnail(document: unknown, workflowId: string, version: num
     const key = byId.get(String(step.id ?? ""));
     if (!key) continue;
     const bytes = await getPng(key);
-    if (!bytes || !isPng(bytes)) continue;
+    if (!bytes || !isPicture(bytes)) continue;
     return `/api/blobs/${key}`;
   }
   return "";
@@ -1136,7 +1136,7 @@ async function readable(principal: Principal, id: string) {
 
 function answered(document: unknown, answers: Record<string, unknown>) {
   try {
-    return stripUnsafe(applyImportAnswers(document, answers));
+    return applyImportAnswers(document, answers);
   } catch (err) {
     throw new HttpError(err instanceof Error ? err.message : "answer the import questions", 400);
   }

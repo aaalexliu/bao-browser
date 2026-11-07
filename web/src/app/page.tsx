@@ -31,7 +31,7 @@ export default async function LibraryPage({
         <button type="submit">Search</button>
       </form>
       {query.share ? (
-        <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission || "view"}). Personal values were cleared.</p>
+        <p className="notice">Share link <a href={`/share/${query.share}`}>/share/{query.share}</a> ({query.permission || "view"}). Personal values remain; saved credential defaults are omitted.</p>
       ) : null}
       <div className="grid" data-testid="library">
         {workflows.map((workflow) => (

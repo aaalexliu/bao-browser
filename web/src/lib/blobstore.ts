@@ -6,7 +6,7 @@ export async function putPng(key: string, bytes: Buffer): Promise<void> {
     const { put } = await import("@vercel/blob");
     await put(key, bytes, {
       access: "private",
-      contentType: "image/png",
+      contentType: key.endsWith(".jpg") ? "image/jpeg" : "image/png",
       addRandomSuffix: false,
       allowOverwrite: true,
       ...(process.env.BLOB_READ_WRITE_TOKEN ? { token: process.env.BLOB_READ_WRITE_TOKEN } : {}),

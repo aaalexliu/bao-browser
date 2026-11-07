@@ -286,7 +286,11 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
     const runners = {
       extension: async () => { calls.extension += 1; return { outcome: "ok", via: "extension" }; },
       live: async () => { calls.live += 1; throw new Error("retired live runner called"); },
-      playwright: async () => { calls.playwright += 1; return { outcome: "ok", via: "playwright" }; },
+      playwright: async (_id: string, inputs: Record<string, unknown>) => {
+        calls.playwright += 1;
+        assert.equal(inputs.routing, "021000021");
+        return { outcome: "ok", via: "playwright", readBack: inputs.routing };
+      },
     };
     const denied = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, autoAllow: true });
     denied.start();
@@ -315,13 +319,14 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
     try {
       const mark = directory.lookups;
       await waitFor(() => directory.lookups > mark);
-      const pending = tool(server.origin, agent.token, "run_workflow", { id: "books", permissionMode: "deny", autoApprove: true });
+      const pending = tool(server.origin, agent.token, "run_workflow", { id: "books", permissionMode: "deny", autoApprove: true, inputs: { routing: "021000021" } });
       await waitFor(() => asked.view().phase === "approval");
       assert.equal(calls.playwright, 0);
       asked.allow();
       const allowed = await pending;
       assert.equal(allowed.json.outcome, "ok");
       assert.equal(allowed.json.via, "playwright");
+      assert.equal(allowed.json.readBack, "021000021");
       assert.equal(calls.playwright, 1);
     } finally {
       await asked.stop();

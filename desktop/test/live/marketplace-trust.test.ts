@@ -105,7 +105,7 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
     assert.equal(await page.locator("h2", { hasText: /^Sites$/ }).count(), 0);
     assert.equal(await page.getByTestId("domains").count(), 0);
     assert.equal(await page.locator("[data-secret=true]").innerText(), "Password · secret");
-    assert.equal(await page.getByTestId("secret-note").innerText(), "You enter this on your device.");
+    assert.equal(await page.getByTestId("setup-questions").innerText(), "This workflow asks for nothing.");
     assert.equal(await page.getByTestId("inputs").locator("input").count(), 0);
     assert.equal(await page.locator("input[type=password]").count(), 0);
     assert.equal(await page.getByTestId("perm-driver").innerText(), "Browser");

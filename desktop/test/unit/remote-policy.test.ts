@@ -3,6 +3,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { redactAudit } from "../../../web/src/lib/audit-redact";
+import { argsForJob, splitResult } from "../../../web/src/lib/relay-job";
+import { stepNeedsSecretValue } from "../../../shared/saved-secrets";
+import type { ReplayArgs, WorkflowV2 } from "../../src/v1/schema";
 import { policyAllowsRemoteRun, REMOTE_POLICY } from "../../../web/src/lib/remote-policy";
 
 const shot = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -18,6 +21,18 @@ test("the remote policy requires a local approval and refuses a remote confirm",
   assert.equal(policyAllowsRemoteRun({ ...REMOTE_POLICY, version: 2 }), false);
   assert.equal(policyAllowsRemoteRun(null), false);
   assert.equal(policyAllowsRemoteRun("allow"), false);
+});
+
+test("relay routing numbers reach replay inputs and results unchanged", () => {
+  const job = argsForJob({ id: "routing", inputs: { routing: "021000021", zip: "941031234", order: "123456789" } });
+  assert.ok("args" in job);
+  const inputs = job.args.inputs as ReplayArgs;
+  assert.deepEqual(inputs, { routing: "021000021", zip: "941031234", order: "123456789" });
+  const workflow = { inputs: [{ name: "routing", type: "text" }], steps: [{ id: "route", action: "type", input: "routing", value: "{{routing}}" }] } as WorkflowV2;
+  assert.equal(stepNeedsSecretValue(workflow.steps[0]!, workflow, inputs), false);
+  const result = splitResult({ outcome: "ok", outputs: inputs, readBack: "021000021" });
+  assert.deepEqual(result.stored.outputs, inputs);
+  assert.equal(result.callerText.readBack, "021000021");
 });
 
 test("an audit row retains owner data and evidence but drops credentials", () => {
@@ -42,7 +57,7 @@ test("an audit row retains owner data and evidence but drops credentials", () =>
   assert.equal(text.includes("bao_at_secret"), false);
   assert.equal(text.includes("resume-secret"), true);
   assert.equal(text.includes("iVBORw0KGgo"), true);
-  assert.equal(text.includes("sk-fixtureTokenValue"), false);
+  assert.equal(text.includes("sk-fixtureTokenValue"), true);
   assert.equal(cleaned.email, "ada@fixture.test");
   assert.equal(cleaned.path, "/Users/ada/note.txt");
   assert.equal(cleaned.outcome, "ok");

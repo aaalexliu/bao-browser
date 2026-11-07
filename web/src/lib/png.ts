@@ -26,6 +26,10 @@ export function isPlaceholderSwatch(png: Buffer): boolean {
   return png.readUInt32BE(16) === 96 && png.readUInt32BE(20) === 54;
 }
 
+export function isPicture(bytes: Buffer): boolean {
+  return isPng(bytes) || bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
 export function isPng(png: Buffer): boolean {
   if (png.length < 24 || png.toString("ascii", 12, 16) !== "IHDR") return false;
   return png.readUInt32BE(16) >= 2 && png.readUInt32BE(20) >= 2;

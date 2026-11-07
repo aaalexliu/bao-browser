@@ -1,4 +1,3 @@
-import { scrubSaved } from "../../../shared/saved-secrets";
 import { redactForRelease, type ReleaseChange } from "./publish";
 
 export interface ImportQuestion {
@@ -26,12 +25,13 @@ interface InputRow {
 export function importQuestions(document: unknown): ImportQuestion[] {
   const inputs = (document as { inputs?: InputRow[] }).inputs ?? [];
   return inputs.filter((input) => input.askOnImport === true).map((input) => {
-    const example = input.example || input.default;
+    const onDevice = input.type === "secret" || input.type === "file";
+    const example = onDevice ? undefined : input.example || input.default;
     return {
       name: input.name,
       type: input.type,
       label: input.label || input.name,
-      required: input.required !== false,
+      required: !onDevice && input.required !== false,
       choices: input.choices,
       prompt: input.label || input.name,
       hint: example ? `For example, ${example}.` : "The sharer asked for this.",
@@ -46,11 +46,11 @@ export function missingAnswers(questions: ImportQuestion[], answers: Record<stri
     .map((question) => question.name);
 }
 
-export function publicSamples(inputs: Record<string, unknown>): Record<string, string> {
+export function publicSamples(inputs: Record<string, unknown>, document?: unknown): Record<string, string> {
   const out: Record<string, string> = {};
-  const clean = scrubSaved(inputs, { args: inputs });
-  for (const [key, value] of Object.entries(clean)) {
-    if (/password|secret|cookie|token/i.test(key)) continue;
+  const secretNames = new Set(((document as { inputs?: InputRow[] } | undefined)?.inputs ?? []).filter((input) => input.type === "secret").map((input) => input.name));
+  for (const [key, value] of Object.entries(inputs)) {
+    if (secretNames.has(key) || /password|secret|cookie|token/i.test(key)) continue;
     if (typeof value === "string" && value.trim()) out[key] = value;
   }
   return out;

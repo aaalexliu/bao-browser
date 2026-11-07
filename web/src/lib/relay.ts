@@ -181,7 +181,7 @@ export function createRelay(opts: {
     if (pathname === "/api/agent/tokens" && method === "POST") return mint(req, principal);
     const tokenRevoke = pathname.match(/^\/api\/agent\/tokens\/([^/]+)\/revoke$/);
     if (tokenRevoke && method === "POST") return revokeMint(principal, decodeURIComponent(tokenRevoke[1] || ""));
-    if (pathname === "/api/agent/audit" && method === "GET") return audit(principal);
+    if (pathname === "/api/agent/audit" && method === "GET") return audit(req, principal);
     const stream = pathname.match(/^\/api\/agent\/jobs\/([^/]+)\/stream$/);
     if (stream && method === "GET") return events(req, decodeURIComponent(stream[1] || ""));
     return json({ error: "not found" }, 404);
@@ -535,15 +535,31 @@ export function createRelay(opts: {
     return json({ ok: true }, 200);
   }
 
-  async function audit(principal: SignedIn | null): Promise<Response> {
+  async function audit(req: Request, principal: SignedIn | null): Promise<Response> {
     if (!principal?.userId || principal.deviceId) throw new RelayError("sign in", 401);
+    const cursor = new URL(req.url).searchParams.get("cursor");
+    let before: string[] | null = null;
+    if (cursor) {
+      try {
+        const value: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString());
+        if (!Array.isArray(value) || value.length !== 2 || value.some((item) => typeof item !== "string") || !Number.isFinite(Date.parse(value[0]))) throw new Error("cursor");
+        before = value;
+      } catch {
+        throw new RelayError("cursor", 400);
+      }
+    }
     const rows = await sql(
       `SELECT id, token_id, device_id, tool, workflow_id, status, outcome,
-              created_at, claimed_at, finished_at, args, result
-       FROM agent_jobs WHERE user_id = $1 ORDER BY created_at`,
-      [principal.userId],
+              created_at, created_at::text AS cursor_at, claimed_at, finished_at, args, result
+       FROM agent_jobs WHERE user_id = $1
+       ${before ? "AND (created_at, id) < ($2::timestamptz, $3)" : ""}
+       ORDER BY created_at DESC, id DESC LIMIT 51`,
+      before ? [principal.userId, ...before] : [principal.userId],
     );
-    return json({ jobs: rows }, 200);
+    const page = rows.slice(0, 50);
+    const last = page.at(-1);
+    const nextCursor = rows.length > 50 && last ? Buffer.from(JSON.stringify([last.cursor_at, last.id])).toString("base64url") : null;
+    return json({ jobs: page.map(({ cursor_at: _cursorAt, ...row }) => row), nextCursor }, 200);
   }
 
   async function events(req: Request, jobId: string): Promise<Response> {

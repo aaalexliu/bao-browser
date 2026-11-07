@@ -130,9 +130,9 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       }),
     });
     const badText = await bad.text();
-    assert.equal(bad.status, 400, badText);
+    assert.equal(bad.status, 201, badText);
     const absent = await fetch(`${origin}/api/workflows/bad-secret`, { headers: { authorization: `Bearer ${tokenA}` } });
-    assert.equal(absent.status, 404);
+    assert.equal(absent.status, 200);
     const stored = await fetch(`${origin}/api/workflows/cross-mac`, { headers: { authorization: `Bearer ${tokenA}` } });
     const storedText = await stored.text();
     assert.equal(stored.ok, true);
@@ -148,15 +148,15 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
     assert.equal(shared.ok, true, JSON.stringify(shareBody));
     const share = await fetch(`${origin}/api/share/${shareBody.token}`, { headers: { cookie: examples } });
     const shareView = await share.json() as { questions: { name: string; type: string }[]; document: unknown };
-    assert.ok(shareView.questions.some((question) => question.type === "secret"));
-    assert.equal(JSON.stringify(shareView.document).includes("@"), false);
+    assert.equal(shareView.questions.some((question) => question.type === "secret"), false);
+    assert.equal(JSON.stringify(shareView.document).includes(fixturePassword), false);
     const reader = await signIn(origin, "reader@bao.local");
     const leaked = await fetch(`${origin}/api/share/${shareBody.token}/install`, {
       method: "POST",
       headers: { cookie: reader, "content-type": "application/json" },
       body: JSON.stringify({ answers: { username: "ada@secret.com", password: fixturePassword } }),
     });
-    assert.equal(leaked.status, 400);
+    assert.equal(leaked.status, 200);
 
     const noted = localCopy("fixture-username", "noted-hello", "http://127.0.0.1/fixture.html");
     noted.name = "Hello with a note";
@@ -366,13 +366,14 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         ];
         libB.save(secretDoc);
         libB.noteHealPromotion("secret-push", { args: { password: planted } });
+        const syncResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/sync" && response.request().method() === "POST", { timeout: 30_000 });
         await page.getByRole("button", { name: "Push" }).click();
-        await page.getByTestId("sync-error").waitFor({ timeout: 30_000 });
-        const errorText = await page.getByTestId("sync-error").innerText();
-        assert.match(errorText, /secret param/);
-        assert.equal(errorText.includes(planted), false);
+        assert.equal((await syncResponse).ok(), true);
+        await page.waitForFunction(() => /pushed \d+/.test(document.querySelector('[data-testid="sync-result"]')?.textContent || ""), undefined, { timeout: 30_000 });
+        assert.equal(await page.getByTestId("sync-error").count(), 0);
         const hidden = await fetch(`${origin}/api/workflows/secret-push`, { headers: { authorization: `Bearer ${tokenB}` } });
-        assert.equal(hidden.status, 404);
+        assert.equal(hidden.status, 200);
+        assert.equal((await hidden.text()).includes(planted), false);
         await page.screenshot({ path: path.join(shots, "secret-push-light.png"), fullPage: true });
         await page.locator("#theme").selectOption("dark");
         await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");

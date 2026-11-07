@@ -68,12 +68,30 @@ test("public samples retain personal values but drop credentials", () => {
     email: "ada@acme.com",
     note: "/Users/ada/note.txt",
     password: "fixture-pass-value",
-  });
+    zip: "941031234",
+    routing: "021000021",
+    pin: "private-pin",
+  }, { inputs: [{ name: "pin", type: "secret" }] });
   assert.equal(samples.query, "Ada Lovelace");
   assert.equal(samples.username, "grace");
   assert.equal(samples.email, "ada@acme.com");
   assert.equal(samples.note, "/Users/ada/note.txt");
   assert.equal(samples.password, undefined);
+  assert.equal(samples.pin, undefined);
+  assert.equal(samples.zip, "941031234");
+  assert.equal(samples.routing, "021000021");
+});
+
+test("secret and file import questions need no answer or example", () => {
+  const document = { inputs: [
+    { name: "pin", type: "secret", askOnImport: true, required: true, default: "[secret stripped]", example: "hidden" },
+    { name: "upload", type: "file", askOnImport: true, required: true, default: "/Users/ada/file.txt" },
+  ] };
+  const questions = importQuestions(document);
+  assert.equal(questions.length, 2);
+  assert.ok(questions.every((question) => !question.required && question.example === undefined));
+  assert.deepEqual(missingAnswers(questions, {}), []);
+  assert.deepEqual(applyImportAnswers(document, {}), document);
 });
 
 test("bao links open a workflow or an unsaved import", () => {

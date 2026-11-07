@@ -1,12 +1,5 @@
 import { isSealedArtifact, scrubSaved, STRIPPED_SECRET, type SavedContext } from "../../../shared/saved-secrets";
-import { isPng } from "./png";
-
-export class SyncRejected extends Error {
-  constructor(reason: string) {
-    super(reason);
-    this.name = "SyncRejected";
-  }
-}
+import { isPicture } from "./png";
 
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization)$/i;
 
@@ -44,10 +37,6 @@ export function buildPushBody(
     category: opts.category,
   };
   if (opts.heal !== undefined) body.heal = stripUnsafe(opts.heal, secrets, { workflow: document as SavedContext["workflow"] });
-  const blob = JSON.stringify(body);
-  for (const secret of secrets) {
-    if (secret && blob.includes(secret)) throw new SyncRejected("secret param");
-  }
   return body;
 }
 
@@ -82,7 +71,7 @@ function stepShots(
   steps.forEach((step, index) => {
     const id = String(step.id ?? index);
     const png = byId.get(id);
-    if (png && isPng(png)) shots.push({ stepId: id, png: png.toString("base64") });
+    if (png && isPicture(png)) shots.push({ stepId: id, png: png.toString("base64") });
   });
   return shots;
 }
@@ -95,8 +84,7 @@ export function stripUnsafe(value: unknown, secrets: string[] = [], context?: Sa
     const next: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(current)) {
       if (DROP_KEY.test(key)) continue;
-      const args = /^(args|params|values)$/.test(key) && child && typeof child === "object" && !Array.isArray(child) ? child as Record<string, unknown> : undefined;
-      next[key] = walk(args ? scrubSaved(args, { ...context, secrets, args }) : child);
+      next[key] = walk(child);
     }
     if (next.type === "secret") {
       delete next.default;

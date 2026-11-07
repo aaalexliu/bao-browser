@@ -6,7 +6,37 @@ import test from "node:test";
 import { query } from "../../../web/src/lib/db";
 import { getPng } from "../../../web/src/lib/blobstore";
 import { redactedPng } from "../../../web/src/lib/png";
+import { buildPushBody } from "../../../web/src/lib/guard";
+import sharp from "sharp";
+import { createRelay, MemoryDirectory } from "../../../web/src/lib/relay";
+import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createShare, getShare, installShare, listRuns, previewPublication, pull, pushRun, pushVersion, recordReview } from "../../../web/src/lib/registry";
+
+test("audit pages newest 50 rows without losing timestamp precision or owner scope", async () => {
+  for (let i = 0; i < 55; i++) {
+    await query(`INSERT INTO agent_jobs (id, token_id, user_id, device_id, tool, status, policy, args, created_at)
+      VALUES ($1, 'token', 'audit-owner', 'device', 'run_workflow', 'queued', '{}', '{}', '2026-01-01'::timestamptz + $2 * interval '1 microsecond')`, [`audit-${String(i).padStart(2, "0")}`, i]);
+  }
+  await query(`INSERT INTO agent_jobs (id, token_id, user_id, device_id, tool, status, policy, args)
+    VALUES ('other-owner-job', 'token', 'someone-else', 'device', 'run_workflow', 'queued', '{}', '{}')`);
+  const relay = createRelay({ store: new MemoryJobStore(), directory: new MemoryDirectory(), enabled: () => true });
+  try {
+    const principal = { userId: "audit-owner" };
+    const first = await relay.handle(new Request("http://localhost/api/agent/audit"), principal);
+    assert.equal(first.status, 200);
+    const page = await first.json() as { jobs: { id: string }[]; nextCursor: string };
+    assert.equal(page.jobs.length, 50);
+    assert.equal(page.jobs[0]!.id, "audit-54");
+    assert.equal(page.jobs[49]!.id, "audit-05");
+    assert.ok(page.nextCursor);
+    const second = await relay.handle(new Request(`http://localhost/api/agent/audit?cursor=${page.nextCursor}`), principal);
+    const tail = await second.json() as { jobs: { id: string }[]; nextCursor: string | null };
+    assert.deepEqual(tail.jobs.map((job) => job.id), ["audit-04", "audit-03", "audit-02", "audit-01", "audit-00"]);
+    assert.equal(tail.nextCursor, null);
+  } finally {
+    relay.close();
+  }
+});
 
 const home = mkdtempSync(path.join(tmpdir(), "bao-owner-sync-"));
 delete process.env.DATABASE_URL;
@@ -42,10 +72,14 @@ test("registry sync, share, release, and run pictures retain owner data without 
   await query("INSERT INTO users (id, email, name) VALUES ('owner', 'owner@fixture.test', 'Owner'), ('reader', 'reader@fixture.test', 'Reader')");
   const png = redactedPng(1);
   const shots = [{ stepId: "pass", png: png.toString("base64") }];
-  const pushed = await pushVersion(owner, source.id, {
-    baseVersion: 0, document: source, shots,
+  const direct = { ...source, id: "direct-push" };
+  await pushVersion(owner, direct.id, { baseVersion: 0, document: direct });
+  assert.deepEqual((await pull(owner, direct.id)).document, direct);
+  checkDocument((await previewPublication(owner, direct.id)).document);
+  const pushed = await pushVersion(owner, source.id, buildPushBody(source, {
+    baseVersion: 0, crops: [{ stepId: "pass", png }],
     heal: { workflowId: source.id, args: { password: credentials[0], email: "ada@fixture.test" }, screenshot: shots[0]!.png },
-  });
+  }));
   assert.equal(pushed.version, 1);
   const synced = await pull(owner, source.id);
   checkDocument(synced.document);
@@ -54,7 +88,7 @@ test("registry sync, share, release, and run pictures retain owner data without 
   assert.equal(heal.args.email, "ada@fixture.test");
   assert.equal(heal.args.password.includes(credentials[0]!), false);
   assert.equal(heal.screenshot, shots[0]!.png);
-  assert.deepEqual(await getPng(`shots/${source.id}/v1/pass.png`), png);
+  assert.equal((await sharp((await getPng(`shots/${source.id}/v1/pass.jpg`))!).metadata()).format, "jpeg");
 
   const shared = await createShare(owner, source.id, "fork");
   const share = await getShare(shared.token);
@@ -63,7 +97,7 @@ test("registry sync, share, release, and run pictures retain owner data without 
   const installed = await installShare(reader, shared.token, { email: "grace@fixture.test", password: "other-password" });
   const copy = (await pull(reader, installed.id)).document;
   assert.equal(JSON.stringify(copy).includes("grace@fixture.test"), true);
-  assert.equal(JSON.stringify(copy).includes("other-password"), false);
+  assert.equal(JSON.stringify(copy).includes("other-password"), true);
 
   const preview = await previewPublication(owner, source.id);
   checkDocument(preview.document);
@@ -78,7 +112,7 @@ test("registry sync, share, release, and run pictures retain owner data without 
   const runs = await listRuns(owner, source.id);
   assert.equal(runs.length, 1);
   assert.equal(runs[0]!.shots.length, 1);
-  assert.deepEqual(await getPng("runs/owner-run/pass.png"), png);
+  assert.equal((await sharp((await getPng("runs/owner-run/pass.jpg"))!).metadata()).format, "jpeg");
   assert.equal(source.inputs[2]!.default, credentials[0]);
   await assert.rejects(() => pull(reader, source.id), /not found/);
 });

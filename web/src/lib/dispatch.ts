@@ -252,7 +252,7 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
       const key = parts.slice(1).join("/");
       const bytes = await readBlob(principal, key, url.searchParams.get("share"));
       return new NextResponse(new Uint8Array(bytes), {
-        headers: { "content-type": "image/png", "cache-control": "private, no-store" },
+        headers: { "content-type": key.endsWith(".jpg") ? "image/jpeg" : "image/png", "cache-control": "private, no-store" },
       });
     }
     if (parts[0] === "me" && method === "GET") {

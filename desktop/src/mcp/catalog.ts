@@ -22,6 +22,7 @@ import { Library } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
 import { permissionPreview, type PermissionPreview } from "../../../web/src/lib/permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
@@ -291,15 +292,17 @@ export async function reviewWorkflow(
   const outcome = await runWorkflow(library, { id, inputs, startUrl: opts.startUrl, document: replayDoc }, opts);
   if (outcome.outcome !== "ok") return { ...outcome, reviewed: false, documentHash };
   const state = loadState(library.root);
+  const fitted = await fitPictureBody({
+    documentHash,
+    shots: outcome.runId ? stepShots(library, replayDoc, outcome.runId) : [],
+    samples: publicSamples(inputs, replayDoc),
+  });
+  if (fitted.tooLarge) return { ...outcome, reviewed: false, documentHash, reason: "review exceeds transport limit" };
   const recorded = await remoteFetch<{ ok?: boolean }>(
     state,
     "POST",
     `/api/workflows/${encodeURIComponent(id)}/review`,
-    {
-      documentHash,
-      shots: outcome.runId ? stepShots(library, replayDoc, outcome.runId) : [],
-      samples: publicSamples(inputs),
-    },
+    fitted.body,
     opts,
   );
   if (!recorded?.ok) return { ...outcome, reviewed: false, documentHash, reason: "review was not recorded" };

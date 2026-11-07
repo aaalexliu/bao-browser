@@ -5,8 +5,9 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
-import { buildPushBody, buildRunBody, SyncRejected } from "../../../web/src/lib/guard";
-import { isPng } from "../../../web/src/lib/png";
+import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
+import { isPicture } from "../../../web/src/lib/png";
+import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
@@ -239,12 +240,16 @@ async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Pro
   }
   if (mode !== "push" && snapshot) applyCatchUp(library, state, snapshot);
   let refused = "";
+  let omittedPictures = 0;
+  let refusedIds = new Set<string>();
   if (mode !== "pull" && categoryOn(state, "workflows")) {
     const outgoing = await pushLocal(library, state);
     pushed = outgoing.pushed;
     refused = outgoing.refused;
+    omittedPictures += outgoing.omittedPictures;
+    refusedIds = outgoing.refusedIds;
   }
-  if (mode !== "pull" && categoryOn(state, "run history")) await pushRuns(library, state);
+  if (mode !== "pull" && categoryOn(state, "run history")) omittedPictures += await pushRuns(library, state, refusedIds);
   if (mode !== "pull" && snapshot && categoryOn(state, "settings")) {
     await pushSettings(library, state);
   }
@@ -254,6 +259,7 @@ async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Pro
   state.lastResult = refused
     ? `Push refused: ${refused}`
     : `pushed ${pushed}, pulled ${pulled}, conflicts ${state.conflicts.length}`;
+  if (omittedPictures) state.lastResult += `; ${omittedPictures} pictures omitted for transport limits`;
   saveState(library.root, state);
   return syncStatus(library);
 }
@@ -540,17 +546,23 @@ async function pullRemote(library: Library, state: SyncState): Promise<{ pulled:
   return { pulled, conflicts };
 }
 
-async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: number; conflicts: number; refused: string }> {
+async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: number; conflicts: number; refused: string; omittedPictures: number; refusedIds: Set<string> }> {
+  const refusedIds = new Set<string>();
+  let omittedPictures = 0;
   let pushed = 0;
   let conflicts = 0;
   let refused = "";
   for (const doc of library.list().workflows) {
     const result = await pushDocument(library, state, doc);
+    omittedPictures += result.omittedPictures ?? 0;
     if (result.kind === "pushed") pushed += 1;
     if (result.kind === "conflict") conflicts += 1;
-    if (result.kind === "refused") refused = result.message || "invalid workflow";
+    if (result.kind === "refused") {
+      refused = result.message || "invalid workflow";
+      refusedIds.add(doc.id);
+    }
   }
-  return { pushed, conflicts, refused };
+  return { pushed, conflicts, refused, omittedPictures, refusedIds };
 }
 
 async function pushDocument(
@@ -558,29 +570,24 @@ async function pushDocument(
   state: SyncState,
   doc: WorkflowV2,
   baseVersion?: number,
-): Promise<{ kind: "pushed" | "conflict" | "skip" | "refused"; message?: string }> {
+): Promise<{ kind: "pushed" | "conflict" | "skip" | "refused"; message?: string; omittedPictures?: number }> {
   const hash = docHash(doc);
   const known = state.workflows[doc.id];
   if (baseVersion === undefined && known && known.hash === hash) return { kind: "skip" };
   const heal = library.readKeptHeal(doc.id);
-  let body: ReturnType<typeof buildPushBody>;
-  try {
-    body = buildPushBody(doc, {
-      baseVersion: baseVersion ?? known?.version ?? 0,
-      heal,
-      category: categoryFor(doc),
-      crops: workflowShots(library, doc),
-    });
-  } catch (err) {
-    if (err instanceof SyncRejected) return { kind: "refused", message: err.message };
-    throw err;
-  }
+  const { body, omittedPictures, tooLarge } = await fitPictureBody(buildPushBody(doc, {
+    baseVersion: baseVersion ?? known?.version ?? 0,
+    heal,
+    category: categoryFor(doc),
+    crops: workflowShots(library, doc),
+  }));
+  if (tooLarge) return { kind: "refused", message: "workflow exceeds transport limit", omittedPictures };
   try {
     const result = await request<{ version: number }>(state, "POST", `/api/workflows/${encodeURIComponent(doc.id)}/versions`, body);
     state.workflows[doc.id] = { version: result.version, hash };
     state.outbox = (state.outbox ?? []).filter((item) => item.id !== doc.id);
     library.clearKeptHeal(doc.id);
-    return { kind: "pushed" };
+    return { kind: "pushed", omittedPictures };
   } catch (err) {
     const conflict = err as Error & { status?: number; current?: PullBody; draft?: { version?: number } };
     if (conflict.status === 409 && conflict.current?.document) {
@@ -589,29 +596,34 @@ async function pushDocument(
       state.outbox = (state.outbox ?? []).filter((item) => item.id !== doc.id);
       return { kind: "conflict" };
     }
-    if (conflict.status === 400) return { kind: "refused", message: conflict.message };
+    if (conflict.status === 400 || conflict.status === 413) return { kind: "refused", message: conflict.message, omittedPictures };
     throw err;
   }
 }
 
-async function pushRuns(library: Library, state: SyncState): Promise<void> {
+async function pushRuns(library: Library, state: SyncState, refusedIds: Set<string>): Promise<number> {
+  let omittedPictures = 0;
   for (const run of library.listRuns()) {
-    if (run.kind === "capture" || state.pushedRuns.includes(run.id)) continue;
+    if (run.kind === "capture" || state.pushedRuns.includes(run.id) || !state.workflows[run.workflowId] || refusedIds.has(run.workflowId)) continue;
     const steps = (run.steps as { id?: string; status?: string }[]) ?? [];
-    const body = buildRunBody({
+    const fitted = await fitPictureBody(buildRunBody({
       id: run.id,
       status: run.status,
       at: run.at,
       steps,
-    }, { crops: runCrops(library, run.id, steps) });
+    }, { crops: runCrops(library, run.id, steps) }));
+    omittedPictures += fitted.omittedPictures;
+    if (fitted.tooLarge) continue;
     try {
-      await request(state, "POST", `/api/workflows/${encodeURIComponent(run.workflowId)}/runs`, body);
+      await request(state, "POST", `/api/workflows/${encodeURIComponent(run.workflowId)}/runs`, fitted.body);
     } catch (err) {
       const status = (err as { status?: number }).status;
-      if (status !== 404 && status !== 403) throw err;
+      if (status !== 404 && status !== 403 && status !== 413) throw err;
+      continue;
     }
     state.pushedRuns.push(run.id);
   }
+  return omittedPictures;
 }
 
 function adoptIfNeeded(library: Library, state: SyncState, id: string, remote: PullBody): "pulled" | "conflict" | "skip" {
@@ -729,7 +741,7 @@ function docHash(doc: WorkflowV2): string {
 function readCrop(file: string): Buffer | undefined {
   if (!existsSync(file)) return;
   const png = readFileSync(file);
-  return isPng(png) ? png : undefined;
+  return isPicture(png) ? png : undefined;
 }
 
 function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {

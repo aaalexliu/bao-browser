@@ -8,6 +8,8 @@ import { Library } from "../../src/v1/store";
 import { syncStatus } from "../../src/v1/sync";
 import { isElementCrop, redactedPng } from "../../src/v1/redacted-png";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
+import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
+import sharp from "sharp";
 
 test("a push retains owner data and screenshots while stripping credentials", () => {
   const secret = "SuperSecret";
@@ -30,7 +32,7 @@ test("a push retains owner data and screenshots while stripping credentials", ()
   assert.equal(blob.includes(secret), false);
   assert.equal(hasCookieKey(body), false);
   assert.equal(blob.includes("fixture-token"), false);
-  assert.equal(blob.includes("sk-ownerFixtureToken"), false);
+  assert.equal(blob.includes("sk-ownerFixtureToken"), true);
   assert.equal(blob.includes("ada@fixture.test"), true);
   assert.equal(blob.includes("+1 415-555-0123"), true);
   assert.equal(blob.includes("/Users/ada/note.txt"), true);
@@ -60,6 +62,47 @@ test("push and run payloads retain secret-step pictures and full-page pictures w
   );
   assert.equal(stripe.shots.length, 1);
   assert.deepEqual(buildPushBody({ steps: [{ id: "bad" }] }, { baseVersion: 0, crops: [{ stepId: "bad", png: Buffer.from("not an image") }] }).shots, []);
+});
+
+test("known-secret values strip without refusing or corrupting metadata and bindings", () => {
+  const body = buildPushBody({
+    inputs: [{ name: "password", type: "secret", default: "pass" }],
+    steps: [{ id: "pass", input: "password", value: "{{password}}" }],
+    args: { password: "pass" },
+  }, { baseVersion: 0 });
+  const document = body.document as { steps: { id: string; input: string; value: string }[]; args: { password: string } };
+  assert.equal(document.args.password, "[secret stripped]");
+  assert.deepEqual(document.steps, [{ id: "pass", input: "password", value: "{{password}}" }]);
+});
+
+test("many-picture workflow, heal, run and review bodies obey transport limits", async () => {
+  const pixels = Buffer.alloc(720 * 480 * 3);
+  let seed = 1;
+  for (let i = 0; i < pixels.length; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    pixels[i] = seed >>> 24;
+  }
+  const png = await sharp(pixels, { raw: { width: 720, height: 480, channels: 3 } }).resize(1440, 960).jpeg({ quality: 80 }).toBuffer();
+  const steps = Array.from({ length: 60 }, (_, i) => ({ id: `step-${i}` }));
+  const crops = steps.map((step) => ({ stepId: step.id, png }));
+  const sources = [
+    buildPushBody({ steps }, { baseVersion: 0, crops, heal: { screenshot: png.toString("base64") } }),
+    buildRunBody({ id: "long-run", status: "passed", at: 1, steps }, { crops }),
+    { documentHash: "review", shots: crops.map((crop) => ({ stepId: crop.stepId, png: crop.png.toString("base64") })) },
+  ];
+  for (const source of sources) {
+    const fitted = await fitPictureBody(source);
+    assert.equal(fitted.tooLarge, false);
+    assert.ok(Buffer.byteLength(JSON.stringify(fitted.body)) < 4_000_000);
+    assert.ok(fitted.omittedPictures > 0);
+    assert.ok(fitted.body.shots.length > 0);
+    for (const shot of fitted.body.shots) {
+      const meta = await sharp(Buffer.from(shot.png, "base64")).metadata();
+      assert.equal(meta.format, "jpeg");
+      assert.ok(meta.width! <= 720 && meta.height! <= 480);
+    }
+  }
+  assert.deepEqual((await fitPictureBody({ shots: [{ stepId: "broken", png: "broken" }] })).body.shots, []);
 });
 
 test("sync status does not return the device token", () => {

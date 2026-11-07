@@ -1,10 +1,7 @@
-import { scrubSaved } from "../../../shared/saved-secrets";
-
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|password|secret|passwd)$/i;
 
 export function redactAudit(value: unknown): unknown {
-  const args = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-  return walk(scrubSaved(value, { args }));
+  return walk(value);
 }
 
 function walk(value: unknown): unknown {

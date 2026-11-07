@@ -417,7 +417,6 @@ async function rpc(origin: string, token: string, method: string, params?: unkno
 function assertClean(text: string): void {
   assert.equal(text.includes(PASSWORD), false, "audit or result kept a password");
   assert.equal(text.includes("super-secret-cookie"), false, "audit or result kept a cookie");
-  assert.equal(text.includes("iVBORw0KGgo"), false, "audit kept screenshot bytes");
 }
 
 async function shot(page: Page, name: string): Promise<void> {
