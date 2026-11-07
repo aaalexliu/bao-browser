@@ -493,7 +493,9 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
   try {
     await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
     await assert.rejects(proxy.execute("snapshot", [], "current"), /only accepted on open/);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+    assert.deepEqual(await proxy.execute("open", [], "current"), [
+      { stdout: "", stderr: "injected tab failure\n", exitCode: 1 },
+    ]);
     throwConsent = true;
     await assert.rejects(proxy.execute("open"), /injected consent failure/);
     await assert.rejects(proxy.execute("open"), /Native tab list failed.*injected tab failure/);
@@ -554,13 +556,20 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     assert.equal(runs[0]!.status, "failed");
     const steps = library.readRun(runs[0]!.id).steps as unknown as RecordedAgentBrowserCommand[];
     const opens = steps.filter(step => step.native.command === "open");
-    assert.equal(opens.length, 4);
-    for (const step of opens.slice(0, 3)) {
-      assert.equal(step.status, "failed");
-      assert.equal(step.afterShot, undefined);
-    }
-    assert.match(opens[2]!.native.error!, /injected tab failure/);
-    for (const step of [opens[3]!, steps.find(step => step.native.command === "snapshot")!]) {
+    // Consent and metadata precheck failures leave no command receipt.
+    assert.deepEqual(steps.map(step => step.native.command), ["open", "open", "snapshot", "close"]);
+    assert.equal(opens.length, 2);
+    assert.equal(opens[0]!.status, "failed");
+    assert.equal(opens[0]!.afterShot, undefined);
+    assert.equal(opens[0]!.native.isError, true);
+    assert.deepEqual(opens[0]!.native.results, [
+      { stdout: "", stderr: "injected tab failure\n", exitCode: 1 },
+    ]);
+    assert.deepEqual(opens[1]!.native.results, [
+      { stdout: "native output\n", stderr: "", exitCode: 0 },
+      { stdout: "native output\n", stderr: "", exitCode: 0 },
+    ]);
+    for (const step of [opens[1]!, steps.find(step => step.native.command === "snapshot")!]) {
       assert.equal(step.status, "passed");
       assert.ok(step.afterShot);
       await access(path.join(home, "shots", "runs", runs[0]!.id, step.afterShot));
