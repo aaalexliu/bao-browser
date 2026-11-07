@@ -28,7 +28,7 @@ export interface WorkflowInput {
   required?: boolean;
   /** Saved value used when the run supplies no override. */
   default?: string;
-  /** Asked again on import. Personal defaults are cleared either way. */
+  /** Asked again on import; see docs/bao.md for local and registry answer retention. */
   askOnImport?: boolean;
   /** Why a default was removed. The value itself is not stored. */
   cleared?: "email" | "name" | "path" | "phone" | "ssn";
