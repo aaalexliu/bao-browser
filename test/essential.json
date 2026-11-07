@@ -8,15 +8,15 @@
     "names": [
       "a missing session and an expired session are not logged in",
       "auth precondition uses the pathname, so a next query is still logged out",
-      "the recorder drops a password value and keeps a secret slot",
-      "property: a password never survives interpret or a logged-out replay",
+      "the recorder keeps a password value in a secret slot",
+      "property: interpret retains passwords without changing logged-out replay waits",
       "a logged-out replay is an auth miss and does not call a model",
       "a secret from the parameter form fills the masked field and stops before Apply",
       "login and auth recovery reject every stripped credential before filling or submitting",
       "the human handoff signs in and replay stops at confirm",
       "an Apply click runs before a later explicit human confirm",
       "the local fixture redirects logged-out and expired sessions and hides the secret",
-      "a headed-off replay of both login paths leaves the secret out of the library",
+      "a headed-off replay of both login paths stops at confirm",
       "a person signs in on the fixture after the banner, and replay stops at confirm"
     ]
   },
@@ -27,7 +27,7 @@
       "desktop/test/unit/auth-login.test.ts"
     ],
     "names": [
-      "recording a password field stores a secret slot and not the value"
+      "recording a password field saves its value in a secret slot"
     ]
   },
   "experian": {
@@ -51,16 +51,9 @@
       "desktop/test/unit/run-pass.test.ts",
       "desktop/test/unit/save-workflow.test.ts",
       "desktop/test/unit/saved-secret-regressions.test.ts",
-      "desktop/test/unit/saved-secrets-allowlist.test.ts",
-      "desktop/test/unit/saved-secrets-bindings.test.ts",
       "desktop/test/unit/saved-secrets-capture.test.ts",
-      "desktop/test/unit/saved-secrets-context.test.ts",
       "desktop/test/unit/saved-secrets-eval.test.ts",
-      "desktop/test/unit/saved-secrets-model.test.ts",
-      "desktop/test/unit/saved-secrets-sealed.test.ts",
-      "desktop/test/unit/saved-secrets-sync.test.ts",
       "desktop/test/unit/saved-secrets-writers.test.ts",
-      "desktop/test/unit/saved-secrets.test.ts",
       "desktop/test/unit/sync-guard.test.ts",
       "desktop/test/unit/sync-panel.test.ts",
       "desktop/test/unit/sync-refuse.test.ts"

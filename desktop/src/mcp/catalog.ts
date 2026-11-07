@@ -9,18 +9,20 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
+import { reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
-import { expectedText, replay, type RunResult } from "../v1/replay";
+import { expectedText, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
-import { Library } from "../v1/store";
+import { Library, secretInputNames } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
@@ -182,7 +184,29 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   outputs?: WorkflowV2["outputs"];
 }> {
   const found = await locateWorkflow(library, id, auth);
-  const workflow = stripSecretDefaults(found.document);
+  const workflow = scrubSaved(found.document);
+  const checks: { step: WorkflowStep; field: "postcondition" | "expect"; value: string }[] = [];
+  const collect = (steps: WorkflowStep[]): void => {
+    for (const step of steps) {
+      if (step.action !== "note" && step.action !== "verify") {
+        for (const field of ["postcondition", "expect"] as const) {
+          const check = step[field];
+          if (check && (check.kind === "text" || check.kind === "value") && check.match) {
+            checks.push({ step, field, value: check.match });
+          }
+        }
+      }
+      if (step.forEach) collect(step.forEach.steps);
+    }
+  };
+  collect(workflow.steps);
+  const projected = scrubSaved(checks.map(({ value }) => ({ op: "type", value })), { workflow: found.document });
+  checks.forEach(({ step, field, value }, index) => {
+    if (projected[index]?.value === STRIPPED_SECRET && value !== STRIPPED_SECRET) delete step[field];
+  });
+  for (const input of workflow.inputs) {
+    if (input.type === "secret") delete input.default;
+  }
   return {
     workflow,
     inputs: inputSchema(workflow),
@@ -233,11 +257,13 @@ export async function runWorkflow(
     return placed ? { ...outcome, source, lastGreen } : { ...outcome, lastGreen };
   };
   const given: ReplayArgs = {
-    ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
-    ...(resumed?.publicInputs ?? {}),
+    ...reusableInputs(workflow, {
+      ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
+      ...(resumed?.publicInputs ?? {}),
+    }),
     ...(request.inputs ?? {}),
   };
-  const inputs = given;
+  const inputs = withInputDefaults(workflow, given);
   const missing = missingHuman(workflow, inputs);
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, inputs));
   const secrets = secretStrings(workflow, inputs);
@@ -338,7 +364,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   })[];
 } {
   const file = reportPath(library, runId);
-  if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
+  if (existsSync(file)) return publicOutcome(library, JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome);
   const stored = library.readRun(runId);
   const envelope = stored.envelope;
   const status = envelope?.status ?? stored.status;
@@ -372,7 +398,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
       } : {}),
     }] : [];
   });
-  return {
+  return publicOutcome(library, {
     outcome,
     reason,
     runId: stored.id,
@@ -400,7 +426,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
         line: lastClass.line,
       },
     } : {}),
-  };
+  }, stored.inputs);
 }
 
 interface LiveRun {
@@ -551,7 +577,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-  return storeOutcome(library, outcome, live.secrets, live.inputs);
+  return storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets);
 }
 
 async function cancelWorkflow(library: Library, token: string, control?: RunControl): Promise<WorkflowOutcome> {
@@ -592,6 +618,8 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
   library.saveRun({
     id: live.runId,
     workflowId: live.workflow.id,
+    secretInputNames: secretInputNames(live.workflow),
+    inputs: Object.fromEntries(Object.entries(publicInputs(live.workflow, live.inputs)).map(([key, value]) => [key, String(value)])),
     status: status === "timed-out" ? TIMED_OUT_STATUS : "stopped",
     at: Date.now(),
     heals: [],
@@ -608,7 +636,7 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
       deadline: result.deadline,
     },
   });
-  return storeOutcome(library, result, live.secrets, live.inputs);
+  return storeOutcome(library, result, live.workflow, live.inputs, live.secrets);
 }
 
 async function releaseBrowser(
@@ -690,7 +718,7 @@ function rememberRun(
     }, resumeToken);
     result.resume_token = result.resume;
   }
-  return storeOutcome(library, result, secrets, inputs);
+  return storeOutcome(library, result, workflow, inputs, secrets);
 }
 
 function saveWorkflowRun(
@@ -718,6 +746,7 @@ function saveWorkflowRun(
     pageClasses: run.pageClasses,
     trail: run.trail,
     inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
+    secretInputNames: secretInputNames(workflow),
     ...(run.outputs ? { outputs: run.outputs } : {}),
     ...(run.pageLeftOpen ? { pageLeftOpen: true } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {
@@ -756,7 +785,7 @@ function remember(
   result.ask = reason;
   result.deadline = deadline ? formatClock(deadline) : "No timeout";
   result.resume_token = result.resume;
-  return storeOutcome(library, result, secretStrings(workflow, inputs), inputs);
+  return storeOutcome(library, result, workflow, inputs);
 }
 
 function baseOutcome(
@@ -818,18 +847,10 @@ function inputSchema(doc: { inputs?: WorkflowV2["inputs"] }): InputField[] {
   }));
 }
 
-function stripSecretDefaults(doc: WorkflowV2): WorkflowV2 {
-  const copy = structuredClone(doc);
-  for (const input of copy.inputs) {
-    if (input.type === "secret") delete input.default;
-  }
-  return copy;
-}
-
 function publicInputs(workflow: WorkflowV2, inputs: ReplayArgs): Record<string, string | number> {
   const out: Record<string, string | number> = {};
   for (const input of workflow.inputs) {
-    if (input.type === "secret" || input.type === "file") continue;
+    if (input.type === "file") continue;
     const value = inputs[input.name];
     if (typeof value === "string" || typeof value === "number") out[input.name] = value;
   }
@@ -846,8 +867,15 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
   return out;
 }
 
-function storeOutcome(library: Library, outcome: WorkflowOutcome, secrets: string[], inputs: ReplayArgs): WorkflowOutcome {
-  const parsed = library.scrub(outcome, outcome.workflowId, inputs, secrets);
+function publicOutcome<T extends Pick<WorkflowOutcome, "workflowId">>(library: Library, outcome: T, inputs?: ReplayArgs): T {
+  let workflow: WorkflowV2 | undefined;
+  try { workflow = library.read(outcome.workflowId); }
+  catch { workflow = undefined; }
+  return scrubSaved(outcome, { workflow, args: inputs });
+}
+
+function storeOutcome(library: Library, outcome: WorkflowOutcome, workflow: WorkflowV2, inputs: ReplayArgs, secrets = secretStrings(workflow, inputs)): WorkflowOutcome {
+  const parsed = scrubSaved(outcome, { workflow, args: inputs, secrets });
   writeReport(library, parsed);
   return parsed;
 }
@@ -856,7 +884,7 @@ function writeReport(library: Library, outcome: WorkflowOutcome): void {
   if (!outcome.runId) return;
   const file = reportPath(library, outcome.runId);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(library.scrub(outcome, outcome.workflowId), null, 2));
+  writeFileSync(file, JSON.stringify(outcome, null, 2));
 }
 
 function reportPath(library: Library, runId: string): string {
@@ -884,7 +912,7 @@ function writeResume(
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };
-  writeFileSync(file, JSON.stringify(library.scrub(body, workflowId)));
+  writeFileSync(file, JSON.stringify(body));
   return token;
 }
 

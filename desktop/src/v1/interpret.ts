@@ -8,7 +8,7 @@ import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
-import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, secretSavedField, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -134,14 +134,15 @@ export function interpret(events: readonly TrailEvent[], meta: InterpretMeta): W
 }
 
 function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { doc: WorkflowV2; groups: TrailEvent[][] } {
-  const secrets = secretStrings(events, meta.secrets ?? []);
+  const merged = retainedEvents(events);
+  const secrets = secretStrings(merged, meta.secrets ?? []);
   const seen: InterpretMeta = { ...meta, secrets };
-  const kept = seen.preserveActions ? events.filter(keep) : mergeTyping(withoutChooserClicks(events.filter(keep)));
+  const kept = seen.preserveActions ? events.filter(keep) : merged;
   const inputs: WorkflowInput[] = [];
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
-    if ([event.value, event.key].some(hasStrippedSecret)) step.unresolved = { reason: NEEDS_SECRET_VALUE };
+    if ([event.value, event.key].some(hasStrippedSecret) || step.action === "key" && event.sensitive && !step.key) step.unresolved = { reason: NEEDS_SECRET_VALUE };
     const skip = step.sensitive ? undefined : event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
     if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
@@ -165,9 +166,8 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     ...(captured.outputs ? { outputs: captured.outputs } : {}),
   };
   const shaped = shapeFilesDates(drafted, captured.pieces.map((piece) => piece.events), meta.zone || "UTC");
-  const saved = scrubSaved(shaped.doc, { secrets });
-  assertFileSlots(saved);
-  return { doc: saved, groups: shaped.groups as TrailEvent[][] };
+  assertFileSlots(shaped.doc);
+  return { doc: shaped.doc, groups: shaped.groups as TrailEvent[][] };
 }
 
 /** A password field's typed text is a secret even when the caller did not list it. */
@@ -223,7 +223,7 @@ export function trailDrops(events: readonly TrailEvent[]): TrailDrop[] {
     const prev = merged[merged.length - 1];
     if (prev && isType(prev) && isType(event) && sameTarget(prev, event)) {
       dropped.push({ id: event.id, reason: "merged into the previous type" });
-      prev.value = event.sensitive ? undefined : event.valueMode === "full" ? event.value : mergeTypedValue(prev.value || "", event.value || "");
+      prev.value = event.valueMode === "full" ? event.value : mergeTypedValue(prev.value || "", event.value || "");
       prev.sensitive = prev.sensitive || event.sensitive;
       prev.ts = event.ts;
       continue;
@@ -304,17 +304,11 @@ function mergeTyping(events: TrailEvent[]): TrailEvent[] {
   const out: TrailEvent[] = [];
   for (const event of events) {
     const prev = out[out.length - 1];
-    if (prev && isType(prev) && isType(event) && sameTarget(prev, event) && !event.sensitive && !prev.sensitive) {
-      prev.value = event.valueMode === "full" ? event.value : mergeTypedValue(prev.value || "", event.value || "");
-      prev.afterUrl = event.afterUrl || prev.afterUrl;
-      prev.afterText = event.afterText || prev.afterText;
-      prev.ts = event.ts;
-      continue;
-    }
     if (prev && isType(prev) && isType(event) && sameTarget(prev, event)) {
-      prev.value = event.sensitive ? undefined : event.value;
+      prev.value = event.valueMode === "full" ? event.value : mergeTypedValue(prev.value || "", event.value || "");
       prev.sensitive = prev.sensitive || event.sensitive;
       prev.afterUrl = event.afterUrl || prev.afterUrl;
+      prev.afterText = event.afterText || prev.afterText;
       prev.ts = event.ts;
       continue;
     }
@@ -387,7 +381,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   event = normalizeFile(event);
   const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const secretEntry = isType(event) && isSecret(event, meta.secrets ?? []);
-  const identity = secretEntry ? secretEntryIdentity(event.identity) : stripSecretValue(event.identity, meta.secrets ?? []);
+  const identity = secretEntry ? secretEntryIdentity(event.identity) : structuredClone(event.identity);
   const captured = (value: string | undefined) => value !== undefined && [event.value, event.identity?.text, event.identity?.value].includes(value);
   const locators = secretEntry ? event.locators?.filter((locator) =>
     !(locator.kind === "text" && captured(locator.value) || locator.kind === "role" && captured(locator.name)),
@@ -459,7 +453,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (event.op === "note") {
-    const text = scrub(event.afterText, meta.secrets ?? []);
+    const text = savedText(event.afterText);
     return {
       id: `${meta.id}-${index}`,
       index,
@@ -470,7 +464,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (event.op === "expect") {
-    const match = scrub(event.afterText, meta.secrets ?? []);
+    const match = savedText(event.afterText);
     return {
       id: `${meta.id}-${index}`,
       index,
@@ -482,7 +476,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (event.op === "verify") {
-    const match = scrub(event.afterText, meta.secrets ?? []);
+    const match = savedText(event.afterText);
     const check = observed(event, undefined, false, known, meta.secrets ?? []);
     return {
       id: `${meta.id}-${index}`,
@@ -495,7 +489,6 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       postcondition: check.postcondition,
     };
   }
-  if ((event.op === "keypress" || event.op === "key") && event.sensitive) return { ...step, action: "key", label: "Press [redacted]", sensitive: true, unresolved: { reason: "redacted key" } };
   const gate = inferGate(event, meta.secrets ?? []);
   if (gate) step.gate = gate;
   if (event.op === "keypress" || event.op === "key") {
@@ -537,7 +530,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
     const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(secret ? { ...event, identity } : event, secret);
     const input = addInput(inputs, kind, named);
-    if (!secret && event.value !== undefined && !event.rawPath) input.default = event.value;
+    if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity)) input.default = event.value;
     return {
       ...step,
       action: "type",
@@ -588,7 +581,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   let promptInput: string | undefined;
   if (event.dialogType === "prompt" && event.dialogValue) {
     const input = addInput(inputs, "text", "prompt");
-    const typed = scrub(event.dialogValue, meta.secrets ?? []) || event.dialogValue;
+    const typed = savedText(event.dialogValue) || event.dialogValue;
     input.default = typed;
     promptInput = input.name;
     if (typed && !meta.secrets?.includes(typed)) known.push({ name: input.name, value: typed });
@@ -609,7 +602,7 @@ function observed(
   known: readonly KnownTyped[],
   secrets: string[],
 ): Pick<WorkflowStep, "postcondition" | "expect" | "confidence"> {
-  const identity = stripSecretValue(event.identity, secrets);
+  const identity = structuredClone(event.identity);
   const step = applyExpect(
     { id: "x", index: 0, action: "click", label: "x", surface: "dom", timeoutMs: 8000, identity },
     { ...event, identity },
@@ -635,10 +628,8 @@ function normalizeFile(event: TrailEvent): TrailEvent {
   return { ...event, op: act.op, value: undefined, rawPath: undefined, fileName: act.fileName };
 }
 
-function scrub(value: string | undefined, secrets: string[]): string | undefined {
-  if (!value) return value;
-  const saved = scrubSaved({ op: "type", value }, { secrets }).value;
-  return saved === STRIPPED_SECRET && value !== STRIPPED_SECRET ? undefined : saved;
+function savedText(value: string | undefined): string | undefined {
+  return hasStrippedSecret(value) ? undefined : value;
 }
 
 /** Place Order, Buy, Pay, Submit order, Reserve. Bare Submit and JS Confirm stay clicks. */
@@ -669,7 +660,7 @@ function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | 
 function isSecret(event: TrailEvent, secrets: string[]): boolean {
   if (event.sensitive || secretSavedField(event.identity)) return true;
   if (fixedSavedChoice(event)) return false;
-  return !!event.value && (secrets.includes(event.value) || scrubSaved({ op: "type", value: event.value }).value === STRIPPED_SECRET);
+  return !!event.value && secrets.includes(event.value);
 }
 
 function openMatch(url: string): string {
@@ -719,11 +710,6 @@ function secretEntryIdentity(identity: Identity | undefined): Identity | undefin
   if (!identity) return undefined;
   const { text, value, ...structure } = identity;
   return structure;
-}
-
-function stripSecretValue(identity: Identity | undefined, secrets: string[]): Identity | undefined {
-  if (!identity) return undefined;
-  return scrubSaved({ identity }, { secrets }).identity;
 }
 
 /** 7, 7, +, 5, =  becomes digits {{a}}, click +, digits {{b}}, click = with a numeric postcondition. */

@@ -3,9 +3,9 @@
 // A note becomes the step's intent. Two demonstrations merge into one workflow,
 // with a branch only where the steps differ.
 
+import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
 import { looksLikePath, validateWorkflow, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
-import { scrubSaved, secretSavedField } from "../../../shared/saved-secrets";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -130,7 +130,6 @@ export function projectTeach(
   spoken?: ReadonlyMap<string, Spoken>,
 ): { cards: TeachCard[]; workflow: WorkflowV2; baseline: WorkflowV2 } {
   const { workflow: baseline, groups } = explain(events, meta);
-  const secrets = [...secretValues(events), ...(meta.secrets ?? [])];
   const drafts: Draft[] = baseline.steps.map((step, index) => {
     const group = groups[index] || [];
     const event = group[0];
@@ -185,7 +184,7 @@ export function projectTeach(
     inputs,
     steps,
   };
-  const saved = scrubSaved({ cards: drafts.map((draft) => draft.card), workflow, baseline }, { workflow, secrets });
+  const saved = { cards: drafts.map((draft) => draft.card), workflow, baseline };
   const errors = validateWorkflow(saved.workflow);
   if (errors.length) throw new Error(errors.join(", "));
   return saved;
@@ -416,7 +415,6 @@ export function teachSummaryFrom(
   };
 }
 
-/** One labelled case for the intent harness. Secrets stay out of the file. */
 export function teachIntentCase(
   id: string,
   events: readonly TrailEvent[],
@@ -426,7 +424,6 @@ export function teachIntentCase(
 ): TeachIntentCase {
   const projected = projectTeach(events, decisions, { ...meta, id: meta.id || id }, spoken);
   const raw = publicTrail(events);
-  const hidden = [...secretValues(events), ...(meta.secrets ?? [])];
   const human = projected.cards.flatMap((card) => {
     if (card.dropped || card.merged || !card.human) return [];
     const gate: "login" | "confirm" = card.action === "login" ? "login" : "confirm";
@@ -443,7 +440,7 @@ export function teachIntentCase(
   const texts = projected.workflow.inputs
     .filter((input) => input.type === "text" || input.type === "number")
     .map((input) => input.default || "");
-  return scrubSaved<TeachIntentCase>({
+  return {
     schema: "bao.intent-case/v1",
     id,
     name: meta.name || projected.workflow.name,
@@ -465,19 +462,18 @@ export function teachIntentCase(
       outcome: decision.outcome ? fileText(decision.outcome, events) : undefined,
     })),
     workflow: projected.workflow,
-  }, { workflow: projected.workflow, secrets: hidden });
+  };
 }
 
 export function publicTrail(events: readonly TrailEvent[]): TrailEvent[] {
-  const secrets = secretValues(events);
-  return scrubSaved(events.map((event) => {
+  return events.map((event) => {
     const copy: TrailEvent = { ...event };
     delete copy.rawPath;
     if (copy.note) copy.note = fileText(copy.note, events);
     if (copy.intent) copy.intent = fileText(copy.intent, events);
     if (copy.detail) copy.detail = fileText(copy.detail, events);
     return copy;
-  }), { secrets });
+  });
 }
 
 function applyDecision(
@@ -557,7 +553,7 @@ function applyDecision(
   }
   if (decision.kind === "constant") {
     const literal = draft.events.map((event) => event.value).filter(Boolean).pop();
-    if (!literal || draft.card.values.some((value) => value.role === "secret") || looksLikePath(literal)) return;
+    if (!literal || looksLikePath(literal)) return;
     delete draft.step.input;
     delete draft.step.sensitive;
     draft.step.value = literal;
@@ -572,14 +568,14 @@ function applyDecision(
     draft.step.input = name;
     draft.step.value = `{{${name}}}`;
     draft.step.sensitive = secret || undefined;
-    const literal = secret ? undefined : draft.events.map((event) => event.value).filter((value) => value && !looksLikePath(value)).pop();
+    const literal = draft.events.map((event) => event.value).filter((value) => value && !looksLikePath(value)).pop();
     const prior = overrides.get(current) || inputs.find((input) => input.name === current);
     overrides.set(name, {
       name,
       type: secret ? "secret" : prior?.type === "file" ? "file" : prior?.type === "number" ? "number" : "text",
       required: true,
       label: name,
-      default: secret ? undefined : literal || (prior?.type === "secret" ? undefined : prior?.default),
+      default: oneTimeCodeField(draft.step.identity) ? undefined : literal ?? prior?.default,
     });
     draft.card.values = [{
       role: secret ? "secret" : "input",
@@ -632,11 +628,6 @@ function inputsFor(steps: WorkflowStep[], existing: WorkflowInput[], overrides: 
     const override = overrides.get(name);
     const found = existing.find((input) => input.name === name);
     const input = override || found || { name, type: "text" as const, required: true, label: name };
-    if (input.type === "secret") {
-      const copy = { ...input };
-      delete copy.default;
-      return copy;
-    }
     return { ...input };
   });
 }
@@ -735,15 +726,6 @@ function detailFor(correction: TeachCorrection): string {
   return "added a check";
 }
 
-function secretValues(events: readonly TrailEvent[]): string[] {
-  const out: string[] = [];
-  for (const event of events) {
-    const secret = event.sensitive || secretSavedField(event.identity);
-    if (secret && event.value && !out.includes(event.value)) out.push(event.value);
-  }
-  return out;
-}
-
 function fileText(value: string, events: readonly TrailEvent[]): string {
   let out = value;
   for (const event of events) {
@@ -826,9 +808,7 @@ function unionInputs(left: WorkflowInput[], right: WorkflowInput[]): WorkflowInp
   const out = left.map((input) => ({ ...input }));
   for (const input of right) {
     if (out.some((item) => item.name === input.name)) continue;
-    const copy = { ...input };
-    if (copy.type === "secret") delete copy.default;
-    out.push(copy);
+    out.push({ ...input });
   }
   return out;
 }

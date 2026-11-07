@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import type { Step, Workflow } from "../../../shared/types";
 import { clickViewport } from "./input";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE } from "../../../shared/saved-secrets";
 
 export interface ReplayClick {
   label: string;
@@ -9,7 +10,7 @@ export interface ReplayClick {
 }
 
 export interface ReplayOptions {
-  /** Values for sensitive steps, in order. Not read from the workflow. */
+  /** Optional overrides for sensitive steps, in order. */
   secrets?: string[];
 }
 
@@ -30,6 +31,7 @@ export async function replayWorkflow(page: Page, workflow: Workflow, opts?: Repl
 
 async function replayResolved(page: Page, step: Step, secrets: string[]): Promise<ReplayClick> {
   if (step.unresolved) throw new Error(`refusing unresolved step: ${step.label}`);
+  if (hasStrippedSecret(step.key)) throw new Error(NEEDS_SECRET_VALUE);
   if (step.action === "keypress" && !step.target) {
     if (!step.key) throw new Error(`page key missing on ${step.label}`);
     for (const key of step.key.split(",")) await page.keyboard.press(key);
@@ -50,7 +52,8 @@ async function replayResolved(page: Page, step: Step, secrets: string[]): Promis
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   if (step.action === "input") {
-    const value = step.sensitive ? secrets.shift() : step.value;
+    const value = step.sensitive ? secrets.shift() ?? step.value : step.value;
+    if (hasStrippedSecret(value)) throw new Error(NEEDS_SECRET_VALUE);
     if (step.sensitive && value === undefined) throw new Error(`no secret supplied for ${step.label}`);
     await loc.fill(value ?? "");
     return { label: step.label, x, y };

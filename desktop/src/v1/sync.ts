@@ -5,11 +5,13 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
+import { redactSavedValue } from "../../../shared/outbound-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
-import { scrubSaved } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
+import { retainLocalDefaults } from "./local-defaults";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
@@ -291,11 +293,12 @@ export async function resolveConflict(
     copyVersion?: number;
     copy?: unknown;
   }>(state, "POST", `/api/workflows/${encodeURIComponent(id)}/conflict`, { action });
-  const chosen = action === "keep-mine" ? migrate(JSON.parse(readFileSync(note.file, "utf8"))) : migrate(result.document);
+  const local = migrate(JSON.parse(readFileSync(note.file, "utf8")));
+  const chosen = action === "keep-mine" ? local : retainLocalDefaults(migrate(result.document), local);
   library.save(chosen);
   state.workflows[chosen.id] = { version: result.version, hash: docHash(library.read(chosen.id)) };
   if (action === "keep-both" && result.copy && result.copyId && result.copyVersion) {
-    const copy = migrate(result.copy);
+    const copy = retainLocalDefaults(migrate(result.copy), local);
     library.save(copy);
     state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(library.read(copy.id)) };
   }
@@ -639,7 +642,7 @@ function adoptIfNeeded(library: Library, state: SyncState, id: string, remote: P
     return "conflict";
   }
   if (!local || remoteNewer) {
-    writeRemote(library, state, remote);
+    writeRemote(library, state, remote, local);
     return "pulled";
   }
   return "skip";
@@ -656,7 +659,7 @@ function stash(
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, toJson(local));
-  const theirs = scrubSaved(migrate(remote.document));
+  const theirs = migrate(remote.document);
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {
@@ -692,8 +695,8 @@ function enqueueDirty(library: Library, state: SyncState): void {
   state.outbox = outbox;
 }
 
-function writeRemote(library: Library, state: SyncState, remote: PullBody): void {
-  const doc = migrate(remote.document);
+function writeRemote(library: Library, state: SyncState, remote: PullBody, local?: WorkflowV2): void {
+  const doc = retainLocalDefaults(migrate(remote.document), local);
   library.save(doc);
   state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }
@@ -742,11 +745,13 @@ function readCrop(file: string): Buffer | undefined {
 }
 
 function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
-  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret").map((input) => input.name));
+  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret"
+    || redactSavedValue(input.default ?? "") === STRIPPED_SECRET).map((input) => input.name));
   const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of doc.steps) {
-    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
+    if (step.sensitive || (step.input && secrets.has(step.input))
+      || redactSavedValue(step.value ?? "") === STRIPPED_SECRET) continue;
     const names = [
       ...runs.map((run) => path.join(library.root, "shots", "runs", run.id, shotFile(step.id, "after"))),
       path.join(library.root, "shots", "workflows", doc.id, workflowShotName(step.id)),

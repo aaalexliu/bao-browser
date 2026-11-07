@@ -12,7 +12,6 @@ import { launchOwnedChrome, navigateOwned, productHeadless } from "../launch";
 import { osHit, osNodes } from "../proxy/os";
 import type { TrailEvent } from "../v1/interpret";
 import type { Identity } from "../v1/schema";
-import { scrubSaved } from "../../../shared/saved-secrets";
 
 export const LIVE_SOURCE = { agent: "live-model", vendor: "cursor", adapter: "stdio" } as const;
 
@@ -38,7 +37,7 @@ let seq = 0;
 
 export function typeTrailEvent(text: string, identity: Identity | undefined, secrets: string[]): TrailEvent {
   const sensitive = identity?.role === "password" || secrets.some((secret) => secret && text === secret);
-  return scrubSaved({
+  return {
     id: `live-${++seq}`,
     ts: Date.now(),
     kind: "act",
@@ -47,7 +46,7 @@ export function typeTrailEvent(text: string, identity: Identity | undefined, sec
     identity,
     value: text,
     sensitive: sensitive || undefined,
-  }, { secrets });
+  };
 }
 
 export class LiveSession {
@@ -285,7 +284,7 @@ export class LiveSession {
   }
 
   private write(event: TrailEvent): void {
-    appendFileSync(this.trailPath, JSON.stringify(scrubSaved(event, { secrets: this.secrets })) + "\n");
+    appendFileSync(this.trailPath, JSON.stringify(event) + "\n");
   }
 }
 

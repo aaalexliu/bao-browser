@@ -1,5 +1,4 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { scrubSaved } from "../../../shared/saved-secrets";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import type { OsTarget } from "../../../shared/types";
@@ -68,7 +67,7 @@ export function chromeHelper(): MacOsHelper {
 
 export async function logAx(file: string, event: AxClick): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true });
-  await appendFile(file, `${JSON.stringify(scrubSaved(event))}\n`);
+  await appendFile(file, `${JSON.stringify(event)}\n`);
 }
 
 function target(role: string, name: string): OsTarget {

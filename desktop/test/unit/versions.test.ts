@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { buildPushBody } from "../../../web/src/lib/guard";
 import { versionsPanel, workflowConflicts } from "../../src/app/views";
+import { testChromium as chromium } from "../../src/test-browser.js";
+import { BrowserDriver } from "../../src/v1/browser-driver";
 import { keepPatch, unavailableHeal } from "../../src/v1/heal";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { draftVersion, listVersions, noteConflict, promoteVersion, restoreVersion } from "../../src/v1/versions";
+import { loadState, syncAll } from "../../src/v1/sync";
+import { draftVersion, listVersions, noteConflict, promoteVersion, restoreVersion, versionDocument } from "../../src/v1/versions";
 
 const AT = Date.parse("2026-10-22T04:50:16.442Z");
 
@@ -216,6 +221,243 @@ test("a conflict draft uses the cloud version numbers and device names", () => {
   assert.match(html, /data-version="3"/);
   assert.match(html, /data-testid="version-device">Ada&#39;s Mac/);
   assert.match(html, /data-testid="version-device">Home Mac/);
+});
+
+test("a 409 history replacement retains each version's own local defaults for restore", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-history-defaults-"));
+  const library = new Library(home);
+  const first = workflow("wf-history-defaults", "open");
+  first.inputs = [
+    { name: "token", type: "text", default: "sk-AdaFixture111" },
+    { name: "rows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" },
+  ];
+  library.save(first);
+  listVersions(library, first.id);
+  const firstSnapshot = library.read(first.id);
+  const second = structuredClone(first);
+  second.inputs[0]!.default = "sk-SecondFixture333";
+  second.inputs[1]!.default = "name,token\r\nAda,[secret stripped]\r\nGrace,sk-SecondTable444\r\n";
+  const secondDraft = draftVersion(library, second, "edit");
+  promoteVersion(library, first.id, secondDraft.n);
+  const secondSnapshot = library.read(first.id);
+  const mine = library.read(first.id);
+  mine.name = "Current local edit";
+  mine.inputs[0]!.default = "sk-CurrentFixture555";
+  mine.inputs[1]!.default = "name,token\r\nAda,[secret stripped]\r\nGrace,sk-CurrentTable666\r\n";
+  library.save(mine);
+  const cloud = [firstSnapshot, secondSnapshot, { ...secondSnapshot, name: "Remote rename" }]
+    .map((doc) => buildPushBody(doc, { baseVersion: 0 }).document as WorkflowV2);
+  let conflicts = 0;
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/api/sync/snapshot") {
+        res.writeHead(404).end("{}");
+      } else if (req.url === "/api/devices") {
+        res.end(JSON.stringify({ devices: [], categories: [] }));
+      } else if (req.method === "POST" && req.url === `/api/workflows/${first.id}/versions`) {
+        conflicts += 1;
+        res.writeHead(409).end(JSON.stringify({
+          error: "conflict", current: { version: 3, document: cloud[2], deviceName: "Other Mac" },
+          draft: { version: 4 },
+        }));
+      } else if (req.url === `/api/workflows/${first.id}/versions`) {
+        res.end(JSON.stringify({ versions: cloud.map((document, index) => ({
+          version: index + 1, kind: "version", document, created_at: AT, device_name: "Other Mac",
+        })) }));
+      } else {
+        res.writeHead(404).end("{}");
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  writeFileSync(path.join(home, "sync.json"), JSON.stringify({
+    server: `http://127.0.0.1:${address.port}`, deviceToken: "device-token", backedUp: true,
+    workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+  }));
+  try {
+    await syncAll(library, "push");
+    assert.equal(conflicts, 1);
+    assert.equal(loadState(home).conflicts.length, 1);
+    assert.deepEqual(listVersions(library, first.id).map((row) => [row.n, row.role]),
+      [[1, "past"], [2, "past"], [3, "past"], [4, "draft"]]);
+    assert.deepEqual(versionDocument(library, first.id, 1).inputs, first.inputs);
+    assert.deepEqual(versionDocument(library, first.id, 2).inputs, second.inputs);
+    assert.deepEqual(versionDocument(library, first.id, 3).inputs, cloud[2]!.inputs);
+    assert.deepEqual(versionDocument(library, first.id, 4).inputs, mine.inputs);
+    assert.deepEqual(library.read(first.id).inputs, mine.inputs);
+    const restored = restoreVersion(library, first.id, 1);
+    assert.equal(restored.n, 5);
+    assert.equal(restored.role, "draft");
+    assert.equal(restored.source, "restore");
+    assert.deepEqual(restored.document.inputs, first.inputs);
+    assert.deepEqual(library.read(first.id).inputs, mine.inputs);
+    promoteVersion(library, first.id, restored.n);
+    assert.deepEqual(library.read(first.id).inputs, first.inputs);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("conflict history restores cloud v2 from promoted local n3, not unpromoted n2, and submits its password", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-misaligned-"));
+  const library = new Library(home);
+  const submitted: string[] = [];
+  const server = createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/submit") {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk: string) => { body += chunk; });
+      req.on("end", () => {
+        submitted.push(new URLSearchParams(body).get("password") ?? "");
+        res.setHeader("content-type", "text/html");
+        res.end("<!doctype html><p>Saved fixture</p>");
+      });
+      return;
+    }
+    res.setHeader("content-type", "text/html");
+    res.end('<!doctype html><form method="post" action="/submit"><label>Password <input id="password" name="password" type="password" data-testid="password"></label><button data-testid="save" type="submit">Save fixture</button></form>');
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const first = workflow("wf-misaligned", "save");
+    first.startUrl = `http://127.0.0.1:${address.port}/`;
+    first.inputs = [{ name: "password", type: "secret", default: "Old-password-v1!" }];
+    first.steps = [
+      {
+        id: "password", index: 0, action: "type", label: "Fill password", surface: "dom",
+        identity: ident({ role: "textbox", id: "password", testId: "password" }),
+        input: "password", sensitive: true, timeoutMs: 5000,
+        postcondition: { kind: "element", timeoutMs: 5000 },
+      },
+      {
+        ...first.steps[0]!, id: "save", index: 1, label: "Save fixture",
+        identity: ident({ testId: "save", name: "Save fixture" }), timeoutMs: 5000,
+        postcondition: { kind: "text", match: "Saved fixture", timeoutMs: 5000 },
+      },
+    ];
+    library.save(first);
+    listVersions(library, first.id);
+    const firstSnapshot = library.read(first.id);
+    const abandoned = structuredClone(firstSnapshot);
+    abandoned.inputs[0]!.default = "Abandoned-password!";
+    const abandonedDraft = draftVersion(library, abandoned, "edit");
+    assert.equal(abandonedDraft.n, 2);
+    const second = structuredClone(firstSnapshot);
+    second.inputs[0]!.default = "New-password-v2!";
+    const promotedDraft = draftVersion(library, second, "edit");
+    assert.equal(promotedDraft.n, 3);
+    promoteVersion(library, first.id, promotedDraft.n);
+    const secondSnapshot = library.read(first.id);
+    const projection = buildPushBody(secondSnapshot, { baseVersion: 1 }).document as WorkflowV2;
+    const cloud = Object.fromEntries(Object.entries(projection).reverse()) as unknown as WorkflowV2;
+    cloud.inputs = cloud.inputs.map((input) => Object.fromEntries(Object.entries(input).reverse()) as typeof input);
+    cloud.heal = undefined;
+    const current = structuredClone(secondSnapshot);
+    current.name = "Later local revision";
+    current.inputs[0]!.default = "Current-password!";
+    const currentDraft = draftVersion(library, current, "edit");
+    promoteVersion(library, first.id, currentDraft.n);
+    assert.equal(listVersions(library, first.id).find((row) => row.n === 2)?.role, "draft");
+    assert.equal(listVersions(library, first.id).find((row) => row.n === 3)?.role, "past");
+    noteConflict(library, {
+      mine: library.read(first.id), theirs: cloud, mineDevice: "Home Mac", theirsDevice: "Other Mac",
+      remoteVersion: 2, draftVersion: 5,
+      history: [
+        { version: 1, kind: "version", document: buildPushBody(firstSnapshot, { baseVersion: 0 }).document },
+        { version: 2, kind: "version", document: cloud },
+      ],
+    });
+    assert.equal(versionDocument(library, first.id, 2).inputs[0]?.default, "New-password-v2!");
+    assert.equal(library.read(first.id).inputs[0]?.default, "Current-password!");
+    const restored = restoreVersion(library, first.id, 2);
+    assert.equal(restored.role, "draft");
+    assert.equal(restored.document.inputs[0]?.default, "New-password-v2!");
+    promoteVersion(library, first.id, restored.n);
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const live = library.read(first.id);
+    await page.goto(live.startUrl);
+    const result = await replay(live, {}, new BrowserDriver(page), { heal: unavailableHeal() });
+    assert.equal(result.status, "passed");
+    assert.equal(result.modelCalls, 0);
+    assert.deepEqual(submitted, ["New-password-v2!"]);
+  } finally {
+    await browser?.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("conflict history leaves cloud defaults unchanged without a complete promoted projection match", () => {
+  for (const difference of ["draft only", "name", "updatedAt", "startUrl", "step", "input"] as const) {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-no-match-"));
+    const library = new Library(home);
+    const first = workflow("wf-no-match", "open");
+    first.updatedAt = AT;
+    first.inputs = [{ name: "password", type: "secret", default: "Local-password!" }];
+    library.save(first);
+    listVersions(library, first.id);
+    const snapshot = library.read(first.id);
+    const cloud = buildPushBody(snapshot, { baseVersion: 0 }).document as WorkflowV2;
+    if (difference === "draft only") {
+      const abandoned = structuredClone(snapshot);
+      abandoned.name = "Unpromoted edit";
+      abandoned.inputs[0]!.default = "Abandoned-password!";
+      const draft = draftVersion(library, abandoned, "edit");
+      assert.equal(draft.n, 2);
+      Object.assign(cloud, buildPushBody(draft.document, { baseVersion: 0 }).document);
+    } else if (difference === "name") cloud.name = "Remote rename";
+    else if (difference === "updatedAt") cloud.updatedAt = AT + 1;
+    else if (difference === "startUrl") cloud.startUrl = "https://example.com/other";
+    else if (difference === "step") cloud.steps[0]!.label = "Remote step";
+    else cloud.inputs.push({ name: "extra", type: "text", default: "remote" });
+    const expected = structuredClone(cloud);
+    noteConflict(library, {
+      mine: snapshot, theirs: cloud, mineDevice: "Home Mac", theirsDevice: "Other Mac",
+      remoteVersion: 1, draftVersion: 3,
+      history: [{ version: 1, kind: "version", document: cloud }],
+    });
+    assert.deepEqual(versionDocument(library, first.id, 1), expected, difference);
+    assert.equal(versionDocument(library, first.id, 1).inputs[0]?.default, undefined, difference);
+    const restored = restoreVersion(library, first.id, 1);
+    assert.deepEqual(restored.document.inputs, expected.inputs, difference);
+    assert.equal(library.read(first.id).inputs[0]?.default, "Local-password!", difference);
+  }
+});
+
+test("conflict history leaves cloud defaults unchanged when two promoted projections match", (t) => {
+  t.mock.method(Date, "now", () => AT);
+  const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-ambiguous-"));
+  const library = new Library(home);
+  const first = workflow("wf-ambiguous", "open");
+  first.updatedAt = AT;
+  first.inputs = [{ name: "password", type: "secret", default: "First-password!" }];
+  library.save(first);
+  listVersions(library, first.id);
+  const second = library.read(first.id);
+  second.inputs[0]!.default = "Second-password!";
+  const draft = draftVersion(library, second, "edit");
+  promoteVersion(library, first.id, draft.n);
+  assert.deepEqual(listVersions(library, first.id).map((row) => row.role), ["past", "live"]);
+  const snapshot = library.read(first.id);
+  const cloud = buildPushBody(snapshot, { baseVersion: 0 }).document as WorkflowV2;
+  const expected = structuredClone(cloud);
+  noteConflict(library, {
+    mine: snapshot, theirs: cloud, mineDevice: "Home Mac", theirsDevice: "Other Mac",
+    remoteVersion: 2, draftVersion: 3,
+    history: [{ version: 2, kind: "version", document: cloud }],
+  });
+  assert.deepEqual(versionDocument(library, first.id, 2), expected);
+  assert.equal(versionDocument(library, first.id, 2).inputs[0]?.default, undefined);
+  const restored = restoreVersion(library, first.id, 2);
+  assert.deepEqual(restored.document.inputs, expected.inputs);
+  assert.equal(library.read(first.id).inputs[0]?.default, "Second-password!");
 });
 
 test("a saved version uses the real save time, not the epoch", () => {

@@ -16,6 +16,7 @@ import { DEFAULT_PROMOTE_AFTER } from "../v1/promote";
 import { outputsHtml, type OutputValue } from "../v1/data-steps";
 import { datePreview } from "../v1/dates";
 import { tokenFields, type TokenInput } from "../v1/input-token";
+import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
@@ -947,17 +948,19 @@ function skipMark(ms: number, left?: string): string {
   return `<span class="skip-marker" data-skipped="${ms}"${style}>${esc(skipLabel(ms))}</span>`;
 }
 
-/** The re-run form asks for a secret again. The stored mask is not a value. */
-export function secretInput(name: string, label: string, hadSecret: boolean): string {
-  const hint = hadSecret ? "Last run used a secret" : "";
-  return `<label>${esc(label)} <input name="${esc(name)}" type="password" autocomplete="off" placeholder="${esc(hint)}"></label>`;
+export function secretInput(name: string, label: string, value: string): string {
+  return `<label>${esc(label)} <input name="${esc(name)}" type="password" autocomplete="off" value="${esc(value)}"></label>`;
 }
 
 /** The run form. Defaults come from the same token fields the step text shows. */
 export function runField(input: TokenInput, previous?: string, now = new Date()): string {
+  if (input.fresh) {
+    input = { ...input, default: undefined, relative: undefined };
+    previous = undefined;
+  }
   const shown = tokenFields(input);
   const label = esc(shown.label);
-  if (shown.masked) return secretInput(input.name, shown.label, Boolean(previous));
+  if (shown.masked) return secretInput(input.name, shown.label, previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default);
   if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || shown.default)}"></label>`;
   if (input.type === "choice") {
     const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
@@ -983,7 +986,7 @@ export function runField(input: TokenInput, previous?: string, now = new Date())
     }
     return `<label class="date-field">${label} <input name="${esc(input.name)}" type="text" value="${esc(expr)}" autocomplete="off" data-date="${esc(expr)}"> <span class="date-preview" data-resolved="${esc(preview)}">Resolves to ${esc(preview)}</span></label>`;
   }
-  const text = previous && previous !== "••••" ? previous : shown.default;
+  const text = previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default;
   return `<label>${label} <textarea name="${esc(input.name)}" rows="2">${esc(text)}</textarea></label>`;
 }
 
@@ -991,7 +994,7 @@ function storedInputsLine(inputs: Record<string, string> | undefined): string {
   const rows = Object.entries(inputs || {});
   if (!rows.length) return "";
   const bits = rows.map(([key, value]) => `${esc(key)}: ${esc(value)}`);
-  return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}. A secret is asked again and is not kept in the run.</p>`;
+  return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}.</p>`;
 }
 
 export function reviewItems(runs: RunSummary[] | undefined): StepReview[] {
@@ -2177,11 +2180,11 @@ export function captureView(state: ShellState, draft: { name: string; startUrl: 
         <p class="quiet">Trail is the evidence for a capture, not a place in the sidebar.</p>
         <label>Trail <select id="trail-id">${ids}</select></label>
         <button id="load-trail" type="button">Load</button>
-        <div id="trail-view">Password values are not stored.</div>
+        <div id="trail-view">Typed values are saved in the local Library for replay.</div>
       </div>` : ""}
       <p id="capture-error" role="alert"${draft.error ? "" : " hidden"}>${esc(draft.error)}</p>
     </div>
-    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : state.teach?.phase === "review" ? `<button type="button" id="capture-teach-discard"${draft.busy ? " disabled" : ""}>Discard Teach review</button>` : ""}</footer>
+    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Typed values are saved for replay.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : state.teach?.phase === "review" ? `<button type="button" id="capture-teach-discard"${draft.busy ? " disabled" : ""}>Discard Teach review</button>` : ""}</footer>
   </section>`;
 }
 
@@ -2192,7 +2195,7 @@ export function captureStream(state: ShellState, picking = false): string {
     const field = kind === "type" ? step.field || (step.sensitive ? "Password" : "") : "";
     const label = field ? `Type the ${field.charAt(0).toLowerCase()}${field.slice(1)}` : step.label;
     const newest = index === steps.length - 1 && Boolean(step.ts && Date.now() - step.ts < 15_000);
-    const detail = field ? `<div class="sub"><span class="cap-token">${step.sensitive ? icon("lock") : ""}${esc(field)}</span>${step.sensitive ? `<span class="mask" aria-label="hidden">••••••••</span><span>Not saved. Bao uses your Chrome login.</span>` : ""}</div>` : "";
+    const detail = field ? `<div class="sub"><span class="cap-token">${step.sensitive ? icon("lock") : ""}${esc(field)}</span>${step.sensitive ? `<span class="mask" aria-label="hidden">••••••••</span><span>Saved in your local Library.</span>` : ""}</div>` : "";
     return `<li${newest ? ` class="new"` : ""}><span class="no">${index + 1}</span>${icon(kind)}<div><span class="lab">${esc(label)}</span>${detail}</div>${newest ? `<span class="just">Just now</span>` : ""}</li>`;
   }).join("");
   const waiting = state.capturePaused ? "Recording is paused" : picking ? "Pick list is on" : "Ready for your next step";

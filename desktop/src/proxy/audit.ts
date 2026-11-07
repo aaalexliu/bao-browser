@@ -124,23 +124,6 @@ export class AuditTrail {
     return { version: 1, events: this.events };
   }
 
-  /** T1: a typed secret must not remain in earlier snapshots either. */
-  redactSecret(secret: string): void {
-    if (!secret) return;
-    const walk = (v: unknown): unknown => {
-      if (typeof v === "string") return v.split(secret).join("");
-      if (Array.isArray(v)) return v.map(walk);
-      if (v && typeof v === "object") {
-        const out: Record<string, unknown> = {};
-        for (const [k, child] of Object.entries(v as Record<string, unknown>)) out[k] = walk(child);
-        return out;
-      }
-      return v;
-    };
-    for (let i = 0; i < this.events.length; i++) {
-      this.events[i] = walk(this.events[i]) as AuditEvent;
-    }
-  }
 }
 
 /**
@@ -173,7 +156,7 @@ function targetOf(e: AuditEvent): Step["target"] {
     selectors: e.resolved.selectors,
     reach: "light",
     unique: e.resolved.unique,
-    text: e.sensitive ? undefined : e.resolved.text,
+    text: e.resolved.text,
   };
 }
 
@@ -242,7 +225,7 @@ export function deriveWorkflow(
             identifier: e.os.identifier,
             path: e.os.path,
           },
-          value: e.sensitive ? undefined : e.os.value,
+          value: e.os.value,
           key: e.os.key,
         },
         sensitive: e.sensitive || undefined,
@@ -262,9 +245,9 @@ export function deriveWorkflow(
       steps.push({
         ...base,
         action: "input",
-        label: e.sensitive ? "Type (withheld)" : "Type",
+        label: "Type",
         sensitive: e.sensitive || undefined,
-        value: e.sensitive ? undefined : typedText(e.raw),
+        value: typedText(e.raw),
         target: e.resolved ? targetOf(e) : undefined,
         unresolved: e.resolved ? undefined : e.unresolved,
       });

@@ -7,7 +7,6 @@ import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import { pageApi } from "../../src/eval/page";
-import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 
 const fields = [
   { id: "native", type: "password", autocomplete: "off", value: "native-private", secret: true },
@@ -47,7 +46,7 @@ test("eval page identities retain native type and autocomplete on each lookup", 
   }
 });
 
-test("eval MCP saves structural secrets without changing tool replies or dispatched values", { timeout: 60_000 }, async (t) => {
+test("eval MCP retains typed secrets without changing tool replies or dispatched values", { timeout: 60_000 }, async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-saved-secrets-eval-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const dispatched: string[] = [];
@@ -76,7 +75,7 @@ test("eval MCP saves structural secrets without changing tool replies or dispatc
   }
   assert.deepEqual(dispatched, fields.filter((field) => field.type !== "password").map((field) => field.value));
   const bytes = readFileSync(path.join(home, "trail.jsonl"), "utf8");
-  assert.equal(bytes.includes("current-private"), false, "saved trail must not contain the dispatched password value");
+  assert.equal(bytes.includes("current-private"), true, "saved trail retains the dispatched password value");
   const events = bytes.trim().split("\n").map((line) => JSON.parse(line));
   const typed = events.filter((event) => event.op === "type");
   assert.equal(typed.length, fields.length);
@@ -86,7 +85,7 @@ test("eval MCP saves structural secrets without changing tool replies or dispatc
     assert.equal(event.identity.id, field.id);
     assert.equal(event.identity.inputType, field.type);
     assert.equal(event.identity.autocomplete, field.autocomplete);
-    assert.equal(event.value, field.type === "password" ? undefined : field.secret ? STRIPPED_SECRET : field.value);
-    if (field.type !== "password") assert.equal(event.args.text, field.secret ? STRIPPED_SECRET : field.value);
+    assert.equal(event.value, field.type === "password" ? undefined : field.value);
+    if (field.type !== "password") assert.equal(event.args.text, field.value);
   }
 });

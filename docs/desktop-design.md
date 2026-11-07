@@ -223,8 +223,8 @@ stay.
 | `waitForUser` | Authoring | — | Same pause. Still the right step for CAPTCHA and for any OS surface we do not record. |
 | `download` flag on a click | `chrome.downloads` in the extension | `Page.downloadWillBegin` after `Browser.setDownloadBehavior` | Same flag. Desktop sets the download directory on the owned profile so a save dialog does not appear. A dialog the user actually has to handle is an `os*` step, not a download flag. |
 
-Sensitive steps stay sensitive. Masking happens before the step is written.
-Desktop does not get a new copy of the secret just because CDP can read the DOM.
+Sensitive steps stay sensitive. Current value retention follows
+[saved-file secret handling](permissions.md#secret-text-in-saved-files).
 
 ### Browser-plane events that need new step kinds
 

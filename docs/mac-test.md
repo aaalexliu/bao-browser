@@ -2,6 +2,8 @@
 
 Bao is already installed. For a rebuild, see [Build Bao on a Mac](mac-build.md).
 
+For desktop clients, see [Desktop client checks](desktop-clients-test.md).
+
 ## Open
 
 Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
@@ -19,7 +21,7 @@ Check helper presence and the chosen route against [Which grant each job needs](
 5. Drag a throwaway file from Finder onto **Drop a file here**.
 6. Click **Stop and save**.
 
-The new workflow opens. The password is not in it. The file path is not in it.
+The new workflow opens with the password. The file path is not in it.
 
 ## Replay
 

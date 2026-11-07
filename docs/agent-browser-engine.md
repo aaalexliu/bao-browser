@@ -121,7 +121,7 @@ Each step stores its exact command and argv, native stdout/stderr and exit codes
 
 Bao takes a separate page screenshot through CDP on the active tab after each ordinary command, with a three-second deadline. Owner handoffs and every `wait_for_owner` call omit page pictures and native screenshot copies. This does not change native refs or screenshot history. Native screenshot files, including relative and default paths, are copied into `shots/runs/<runId>/` before the private state directory disappears. After `close`, the step records the missing page rather than reusing a picture. A recording or screenshot failure logs a warning without changing native command forwarding.
 
-**Raw command arguments, results, and screenshots can contain credentials. This route does not redact them. Do not send data you do not want saved locally.** Saved-workflow secret stripping is a separate contract in [permissions](permissions.md#secret-text-in-saved-files).
+**Raw command arguments, results, and screenshots can contain credentials. This route does not redact them. Do not send data you do not want saved locally.** Saved-workflow input persistence is a separate contract in [permissions](permissions.md#secret-text-in-saved-files).
 
 ## Native executable and tests
 

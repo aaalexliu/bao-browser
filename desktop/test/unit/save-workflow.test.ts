@@ -252,7 +252,7 @@ test("the model prompt is redacted before it is sent", async () => {
   const typed = saved.steps.find((step) => step.action === "type")!;
   assert.equal(typed.label, `Type ${SECRET}`);
   assert.equal(typed.value, "{{password}}");
-  assert.equal(saved.inputs.find((input) => input.name === "password")!.default, undefined);
+  assert.equal(saved.inputs.find((input) => input.name === "password")!.default, SECRET);
 });
 
 test("edited title and summary are what gets stored", () => {

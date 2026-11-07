@@ -61,7 +61,7 @@ test("personal defaults remain in shared copies and only author marks create que
   assert.equal(doc.inputs.find((input) => input.name === "email")?.default, "ada@acme.com");
 });
 
-test("public samples keep main's filtering and trimmed string values", () => {
+test("public samples keep trimmed ordinary values and omit token/card/SSN shapes", () => {
   const samples = publicSamples({
     query: "  Ada Lovelace  ",
     username: "grace",
@@ -83,11 +83,9 @@ test("public samples keep main's filtering and trimmed string values", () => {
   assert.deepEqual(samples, {
     query: "Ada Lovelace",
     username: "grace",
-    zip: "941031234",
-    routing: "021000021",
-    card: "4111111111111111",
     pin: "private-pin",
   });
+  for (const key of ["zip", "routing", "card"]) assert.equal(Object.hasOwn(samples, key), false);
 });
 
 test("secret and file import questions need no answer or example", () => {
@@ -99,10 +97,12 @@ test("secret and file import questions need no answer or example", () => {
   assert.equal(questions.length, 2);
   assert.ok(questions.every((question) => !question.required && question.example === undefined));
   assert.deepEqual(missingAnswers(questions, {}), []);
-  assert.deepEqual(applyImportAnswers(document, {}), document);
-  const answered = applyImportAnswers(document, { pin: "not-for-the-registry", upload: "/Users/grace/import.txt" }) as typeof document;
-  assert.equal(answered.inputs[0]!.default, "[secret stripped]");
-  assert.equal(answered.inputs[1]!.default, "/Users/grace/import.txt");
+  assert.deepEqual(applyImportAnswers(document, {}), { inputs: [document.inputs[0], { name: "upload", type: "file", askOnImport: true, required: true }] });
+  const answered = applyImportAnswers(document, { pin: "  local-pin-value  ", upload: "/Users/grace/import.txt" }) as typeof document;
+  assert.equal(answered.inputs[0]!.default, "  local-pin-value  ");
+  assert.equal(answered.inputs[1]!.default, undefined);
+  assert.equal(document.inputs[0]!.default, "[secret stripped]");
+  assert.equal(document.inputs[1]!.default, "/Users/ada/file.txt");
 });
 
 test("bao links open a workflow or an unsaved import", () => {
@@ -202,7 +202,7 @@ test("bao open round trip fills non-secret inputs", { timeout: 30_000 }, async (
   }
 });
 
-test("a secret key in a run link is refused", { timeout: 30_000 }, async () => {
+test("a secret input in a run link prefills the local form", { timeout: 30_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-open-secret-"));
   const app = await startApp({ home, port: 0 });
   try {
@@ -211,11 +211,10 @@ test("a secret key in a run link is refused", { timeout: 30_000 }, async () => {
     const link = `bao://run/local-one?inputs=${inputs}`;
     const cli = path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js");
     const opened = await runCli(cli, ["open", link], home);
-    assert.notEqual(opened.status, 0);
-    assert.match(`${opened.stdout}\n${opened.stderr}`, /Secret inputs are re-asked on this device\. Remove Password from the link\./);
+    assert.equal(opened.status, 0, opened.stderr);
     const state = await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { opened: { inputs?: Record<string, string> } | null };
-    assert.equal(state.opened, null);
-    assert.equal(`${opened.stdout}\n${opened.stderr}`.includes("nope"), false);
+    assert.equal(state.opened?.inputs?.password, "nope");
+    assert.equal(`${opened.stdout}\n${opened.stderr}`.includes("nope"), true);
   } finally {
     await app.close();
   }

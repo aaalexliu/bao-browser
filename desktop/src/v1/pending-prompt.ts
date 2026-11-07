@@ -4,7 +4,6 @@
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { scrubSaved } from "../../../shared/saved-secrets";
 import type { HumanAsk } from "./human-ask";
 import type { StoredRun } from "./store";
 
@@ -26,7 +25,7 @@ export function writePendingPrompt(home: string, prompt: PendingPrompt): void {
   mkdirSync(home, { recursive: true });
   const file = pendingPromptPath(home);
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(scrubSaved(prompt)));
+  writeFileSync(tmp, JSON.stringify(prompt));
   renameSync(tmp, file);
 }
 

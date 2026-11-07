@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canonical } from "../../src/v1/canonical";
+import { NEEDS_SECRET_VALUE } from "../../../shared/saved-secrets";
 import { condense, condenseWithGroups, droppedNoEffectIds } from "../../src/v1/condense";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { applyHybrid } from "../../src/v1/hybrid";
@@ -30,7 +31,7 @@ test("condense retains each redacted key and named key without inventing a liter
     { id: "backspace", ts: 4, kind: "act", op: "key", key: "Backspace" },
   ];
   const result = condenseWithGroups(events, { id: "redacted-keys", startUrl: "https://example.test/" });
-  assert.deepEqual(result.workflow.steps.map((step) => [step.action, step.key, step.unresolved?.reason]), [["key", undefined, "redacted key"], ["key", undefined, "redacted key"], ["key", "Enter", undefined], ["key", "Backspace", undefined]]);
+  assert.deepEqual(result.workflow.steps.map((step) => [step.action, step.key, step.unresolved?.reason]), [["key", undefined, NEEDS_SECRET_VALUE], ["key", undefined, NEEDS_SECRET_VALUE], ["key", "Enter", undefined], ["key", "Backspace", undefined]]);
   assert.deepEqual(result.groups.map((group) => group.map((event) => event.id)), events.map((event) => [event.id]));
 });
 
@@ -63,6 +64,24 @@ test("ground-truth trails condense through noise and replay twice", async () => 
       assert.equal(run.status, stopsForPurchase ? "paused" : "passed", `${item.id} ${run.reason || run.status}`);
       assert.equal(run.oracle, null, `${item.id} ${run.oracle}`);
     }
+  }
+});
+
+test("parameter scoring permits local secret defaults but rejects secrets elsewhere", () => {
+  const item = INTENT_CASES.find((entry) => entry.secrets.length > 0);
+  assert.ok(item);
+  const workflow = deterministicWorkflow(item);
+  const secret = item.secrets[0]!;
+  assert.equal(workflow.inputs.some((input) => input.type === "secret" && input.default === secret), true);
+  assert.deepEqual(scoreParams(workflow, item), { recall: 1, secret: 1, leaked: [] });
+  for (const leaked of [
+    { ...workflow, summary: secret },
+    { ...workflow, steps: workflow.steps.map((step, index) => index === 0 ? { ...step, value: secret } : step) },
+    { ...workflow, inputs: [...workflow.inputs, { name: "leaked", type: "text" as const, required: false, label: "Leaked", default: secret }] },
+  ]) {
+    const score = scoreParams(leaked, item);
+    assert.equal(score.secret, 0);
+    assert.ok(score.leaked.includes(secret));
   }
 });
 

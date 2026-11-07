@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
-import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
+import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { loadState, saveState } from "../../src/v1/sync";
@@ -223,6 +223,51 @@ test("describe omits secret defaults and a missing secret does not launch a brow
   assert.match(outcome.reason || "", /Password/);
   assert.match(outcome.resume || "", /^r_[a-f0-9]+$/);
   assert.equal(JSON.stringify(outcome).includes("SuperSecret"), false);
+  doc.inputs.find((input) => input.name === "password")!.default = "SuperSecretFixture";
+  library.save(doc);
+  const withDefault = await describeWorkflow(library, "sign-in");
+  assert.equal(withDefault.workflow.inputs.find((input) => input.name === "password")?.default, undefined);
+  assert.equal(library.read(doc.id).inputs.find((input) => input.name === "password")?.default, "SuperSecretFixture");
+});
+
+test("MCP rerun and saved resume require fresh OTP input while keeping local history", async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-otp-rerun-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const library = new Library(home);
+  const doc = workflow("otp-rerun", "OTP rerun");
+  doc.inputs.push(
+    { name: "code", type: "secret", label: "Verification code", default: "123456" },
+    { name: "attachment", type: "file", label: "Attachment" },
+  );
+  doc.steps.unshift({
+    id: "code", index: 0, action: "type", label: "Verification code", input: "code", value: "{{code}}",
+    surface: "dom", timeoutMs: 0,
+    identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login one-time-code", path: [] },
+  });
+  doc.steps.forEach((step, index) => { step.index = index; });
+  library.save(doc);
+  library.savePublicInputs(doc.id, { code: "234567", query: "Ada" });
+  const rerun = await runWorkflow(library, { id: doc.id, rerun: true });
+  assert.equal(rerun.outcome, "needs_human");
+  assert.match(rerun.reason || "", /Enter Verification code/);
+  const token = "r_1234567890abcdef";
+  mkdirSync(path.join(library.root, "resumes"), { recursive: true });
+  const writeResume = () => writeFileSync(path.join(library.root, "resumes", `${token}.json`), JSON.stringify({
+    workflowId: doc.id, stepId: "code", kind: "input", publicInputs: { code: "345678", query: "Ada" },
+  }));
+  writeResume();
+  const resumed = await runWorkflow(library, { resume: token });
+  assert.equal(resumed.outcome, "needs_human");
+  assert.match(resumed.reason || "", /Enter Verification code/);
+  for (const request of [{ id: doc.id, rerun: true }, { resume: token }]) {
+    writeResume();
+    const fresh = await runWorkflow(library, { ...request, inputs: { code: "654321" } });
+    assert.equal(fresh.outcome, "needs_human");
+    assert.match(fresh.reason || "", /Choose Attachment/);
+  }
+  assert.deepEqual(library.readPublicInputs(doc.id), { code: "234567", query: "Ada" });
+  assert.equal(library.read(doc.id).inputs.find((input) => input.name === "code")?.default, "123456");
+  assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
 });
 
 for (const [driver, reason] of [["cdp-live", CDP_LIVE_SERVER_REFUSAL], ["extension", EXTENSION_NOT_CONNECTED]] as const) {
@@ -261,6 +306,63 @@ test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeo
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+for (const replaceOnResume of [false, true]) {
+  test(`a live MCP run retains fresh OTP input across repeated pauses${replaceOnResume ? " and accepts a replacement" : ""}`, { timeout: 60_000 }, async (t) => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-otp-live-"));
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    const library = new Library(home);
+    const server = createServer((_req, res) => {
+      res.setHeader("content-type", "text/html");
+      res.end('<!doctype html><p id="status">Waiting</p><button onclick="document.getElementById(\'status\').textContent = \'Signed in\'">Sign in</button><input id="code" aria-label="Verification code" autocomplete="one-time-code">');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    let token = "";
+    try {
+      const doc: WorkflowV2 = {
+        schema: "bao.workflow/v2", version: 2, id: "otp-live", name: "Live OTP", createdAt: 1,
+        startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+        inputs: [{ name: "code", type: "text", label: "Verification code", default: "123456" }],
+        steps: [
+          {
+            id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
+            postcondition: { kind: "text", match: "Signed in", timeoutMs: 5000 },
+          },
+          {
+            id: "code", index: 1, action: "type", label: "Verification code", surface: "dom", timeoutMs: 5000,
+            input: "code", value: "{{code}}",
+            identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "one-time-code", path: [] },
+            postcondition: { kind: "value", match: "{{code}}", timeoutMs: 5000 },
+          },
+        ],
+      };
+      library.save(doc);
+      const first = await runWorkflow(library, { id: doc.id, inputs: { code: "654321" } });
+      token = first.resume_token || "";
+      assert.equal(first.outcome, "needs_signin", first.reason);
+      assert.ok(token);
+      const again = await runWorkflow(library, {
+        resume: token, ...(replaceOnResume ? { inputs: { code: "765432" } } : {}),
+      });
+      assert.equal(again.outcome, "needs_signin", again.reason);
+      assert.equal(again.runId, first.runId);
+      assert.equal(again.resume_token, token);
+      await withHeldPage(token, async (page) => {
+        await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      });
+      const done = await runWorkflow(library, { resume: token });
+      assert.equal(done.outcome, "ok", done.reason);
+      assert.equal(done.status, "completed");
+      assert.equal(done.runId, first.runId);
+      token = "";
+      assert.equal(library.readRun(done.runId!).inputs?.code, replaceOnResume ? "765432" : "654321");
+      assert.equal(library.read(doc.id).inputs[0]?.default, "123456");
+    } finally {
+      if (token) await runWorkflow(library, { resume: token, cancel: true }).catch(() => undefined);
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+}
 
 function clickWorkflow(startUrl: string): WorkflowV2 {
   return {

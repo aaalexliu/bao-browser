@@ -137,7 +137,7 @@ test("three corrections change the workflow and the eval pair measures them", ()
   assert.equal(validate(pair.workflow), true);
   assert.deepEqual(validateWorkflow(pair.workflow), []);
   const blob = JSON.stringify(pair);
-  assert.equal(blob.includes(secret), false);
+  assert.equal(blob.includes(secret), true);
   assert.equal(blob.includes("/tmp/secret-folder"), false);
   assert.equal(pair.workflow.steps.some((step) => step.identity?.id === "note-input" && step.action === "click"), false);
   const typed = pair.workflow.steps.find((step) => step.input === "note");
@@ -148,7 +148,7 @@ test("three corrections change the workflow and the eval pair measures them", ()
   assert.equal(confirm?.provenance, undefined);
   const secretInput = pair.workflow.inputs.find((input) => input.type === "secret");
   assert.ok(secretInput);
-  assert.equal(secretInput?.default, undefined);
+  assert.equal(secretInput?.default, secret);
   assert.ok(pair.workflow.inputs.some((input) => input.type === "file"));
   const measured = measureIntentPair(pair);
   assert.equal(measured.corrections, 3);
@@ -230,10 +230,10 @@ test("failed runs keep step details but no longer offer Teach repair", () => {
   assert.match(runs, /data-heal="heal" data-run="run"/);
 });
 
-test("marking a secret constant is refused, and a check is a verify step", () => {
+test("marking a secret constant keeps its value, and a check is a verify step", () => {
   const constant = projectTeach(fixtureEvents(), decide([], { kind: "constant", cardId: "type-secret" }, 1), meta);
-  assert.equal(constant.workflow.inputs.some((input) => input.type === "secret"), true);
-  assert.equal(JSON.stringify(constant.workflow).includes(secret), false);
+  assert.equal(constant.workflow.inputs.some((input) => input.type === "secret"), false);
+  assert.ok(constant.workflow.steps.some((step) => step.value === secret));
   const checked = projectTeach(
     fixtureEvents(),
     decide([], { kind: "verify", cardId: "click-apply", outcome: "Applied" }, 2),
@@ -382,7 +382,7 @@ test("a teach correction is an intent case the harness loads", () => {
   const doc = teachIntentCase("case-note", fixtureEvents(), decisions, meta);
   assert.equal(doc.schema, "bao.intent-case/v1");
   assert.deepEqual(doc.secrets, []);
-  assert.equal(JSON.stringify(doc).includes(secret), false);
+  assert.equal(JSON.stringify(doc).includes(secret), true);
   assert.ok(doc.secretIds.includes("type-secret"));
   assert.equal(doc.human.find((mark) => mark.id === "click-apply")?.gate, "confirm");
   assert.equal(doc.replays.length, 2);

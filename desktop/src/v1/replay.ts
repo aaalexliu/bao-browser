@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, scrubSaved, stepNeedsSecretValue } from "../../../shared/saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import type { ApplyGate as BaseApplyGate, RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -283,6 +283,12 @@ type ApplyGate = BaseApplyGate & { onPause?: (ask: HumanAsk) => void };
 
 let seq = 0;
 
+export function withInputDefaults(workflow: WorkflowV2, args: ReplayArgs): ReplayArgs {
+  const defaults = Object.fromEntries(workflow.inputs.flatMap((input) => input.type !== "file" && !oneTimeCodeInput(workflow, input.name) && input.default !== undefined
+    ? [[input.name, input.type === "number" && !hasStrippedSecret(input.default) ? Number(input.default) : input.default]] : []));
+  return { ...defaults, ...args };
+}
+
 export async function replay(
   workflow: WorkflowV2,
   args: ReplayArgs,
@@ -293,6 +299,7 @@ export async function replay(
   const now = opts.now ?? (() => 0);
   const settings = opts.settings ?? {};
   const heal = opts.heal;
+  args = withInputDefaults(workflow, args);
   const secrets = opts.secrets ?? secretValues(workflow, args);
   const steps: RunResult["steps"] = workflow.steps.map((step) => ({ id: step.id, status: "pending" }));
   const heals: HealRecord[] = [];
@@ -399,7 +406,7 @@ export async function replay(
     gate.onPause = (ask) => {
       stamp({ id: step.id, status: "paused", reason: ask.kind === "login" ? "sign in" : "confirm" });
       const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: ask.kind === "login" ? "signin" : "confirm", ask });
-      opts.onPause?.(scrubSaved(paused, { workflow, args, secrets }));
+      opts.onPause?.(structuredClone(paused));
     };
     try {
     if (skipReason) {
@@ -455,7 +462,7 @@ export async function replay(
       beginHandoff(driver, gate, step.id);
       stamp({ id: step.id, status: "paused", reason: decision.class === "login_wall" ? "sign in" : "bot check" });
       const paused = finish({ runId, status: "paused", steps, pausedStepId: step.id, pausedKind: "wall", ask });
-      opts.onPause?.(scrubSaved(paused, { workflow, args, secrets }));
+      opts.onPause?.(structuredClone(paused));
       if (!opts.holdForPerson) return { result: paused };
       const timeout = actWaitMs(undefined, settings.actTimeoutMs);
       const start = Date.now();
@@ -767,7 +774,7 @@ export async function replay(
   };
   // Per-step finally fills snapshots and shot refs before this copy detaches the result.
   try {
-    return scrubSaved(await execute(), { workflow, args, secrets });
+    return structuredClone(await execute());
   } finally {
     endFilesRun(runId);
   }
@@ -1999,7 +2006,7 @@ async function takeReadBack(
     expected,
     actual,
     pass,
-  }, { workflow, args, secrets });
+  });
   if (pass) return undefined;
   return fail(driver, step, "expect", `read-back expected "${expected}", read "${actual}"`, undefined, secrets);
 }
@@ -2057,9 +2064,9 @@ async function fail(
   phase: ReplayPhase,
   reason: string,
   brokenAttr: string | undefined,
-  secrets: string[],
+  _secrets: string[],
 ): Promise<StepFailure> {
-  const snapshot = scrubSaved(await driver.snapshot(), { secrets });
+  const snapshot = await driver.snapshot();
   return {
     stepId: step.id,
     index: step.index,

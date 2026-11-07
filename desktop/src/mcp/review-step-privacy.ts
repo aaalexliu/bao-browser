@@ -1,5 +1,6 @@
 import { FILE_BINDING } from "../../../shared/bindings";
-import { secretSavedField } from "../../../shared/saved-secrets";
+import { redactSavedValue } from "../../../shared/outbound-secrets";
+import { secretSavedField, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 import type { StoredRun } from "../v1/store";
 
@@ -14,8 +15,10 @@ function* fields(value: unknown, excluded?: unknown): Generator<unknown> {
 }
 
 /** Marketplace review uploads only. Local run evidence does not use this classifier. */
-export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run: Pick<StoredRun, "receipts" | "failure" | "envelope" | "steps">): boolean {
-  const privateInputs = new Set(workflow.inputs.filter((input) => input.type === "secret" || input.type === "file").map((input) => input.name));
+export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run: Pick<StoredRun, "inputs" | "receipts" | "failure" | "envelope" | "steps">): boolean {
+  const privateInputs = new Set(workflow.inputs.filter((input) => input.type === "secret" || input.type === "file"
+    || redactSavedValue(input.default ?? "") === STRIPPED_SECRET
+    || redactSavedValue(run.inputs?.[input.name] ?? "") === STRIPPED_SECRET).map((input) => input.name));
   const names = new Set(workflow.inputs.map((input) => input.name));
   const scopes: { step: WorkflowStep; nodes: unknown[] }[] = [];
   const walk = (steps: WorkflowStep[]): void => {
@@ -40,7 +43,8 @@ export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run:
     && (privateInputs.has(value) || tokens(value).some((token) => !publicInputs.has(token))));
   const hidden = (item: WorkflowStep): boolean => {
     const scope = scopes.find((candidate) => candidate.step === item);
-    return !scope || structural(scope.nodes) || bound(scope.nodes) || Boolean(item.forEach?.steps.some(hidden));
+    return !scope || structural(scope.nodes) || bound(scope.nodes)
+      || redactSavedValue(item.value ?? "") === STRIPPED_SECRET || Boolean(item.forEach?.steps.some(hidden));
   };
   const recorded = [...(run.receipts || []), run.failure].some((item) =>
     item !== null && typeof item === "object" && "stepId" in item && item.stepId === step.id)

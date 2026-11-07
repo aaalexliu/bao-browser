@@ -1,6 +1,7 @@
 // Login redirect check. The pathname is the page, so a `next` query is not a match.
 
 import type { Precondition, ReplayArgs, WorkflowV2 } from "./schema";
+import { oneTimeCodeInput } from "../../../shared/saved-secrets";
 
 export function urlPath(url: string | undefined): string {
   if (!url) return "";
@@ -42,7 +43,7 @@ export function secretInputName(workflow: WorkflowV2, preferred?: string): strin
 export function secretArg(workflow: WorkflowV2, args: ReplayArgs, preferred?: string): string {
   const name = secretInputName(workflow, preferred);
   if (!name) return "";
-  const value = args[name];
+  const value = args[name] ?? (oneTimeCodeInput(workflow, name) ? undefined : workflow.inputs.find((input) => input.name === name)?.default);
   return typeof value === "string" ? value : "";
 }
 

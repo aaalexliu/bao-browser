@@ -128,9 +128,10 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     assert.equal(saved.workflow.steps.some((item) => item.intent === "alpha note"), true);
     assert.equal(saved.events.some((event) => event.op === "note" && event.afterText === "alpha note"), true);
     assert.equal(saved.decisions.some((decision) => decision.detail === "renamed intent"), true);
-    const blob = JSON.stringify(saved);
-    assert.equal(blob.includes("demo-pass"), false);
-    assert.equal(blob.includes("SuperSecretPassword!"), false);
+    assert.equal(saved.workflow.inputs.find((input) => input.type === "secret")?.default, "demo-pass");
+    assert.equal(saved.events.find((event) => event.op === "type" && event.sensitive)?.value, "demo-pass");
+    assert.equal(JSON.stringify(saved.workflow.steps).includes("demo-pass"), false);
+    assert.equal(JSON.stringify(saved).includes("SuperSecretPassword!"), false);
   } finally {
     await app.close();
   }

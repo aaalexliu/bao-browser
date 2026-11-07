@@ -289,7 +289,7 @@ test("an installed bundle serves extension settings and imports synthetic localS
   assert.equal(wrapped.stdout.includes("/checkout/desktop"), false);
   const shared = spawnSync(process.execPath, ["-e", `
     const assert = require('node:assert/strict');
-    const { scrubSaved, STRIPPED_SECRET } = require('../shared/saved-secrets.js');
+    const { STRIPPED_SECRET, stepNeedsSecretValue } = require('../shared/saved-secrets.js');
     const { stripUnsafe } = require('../web/src/lib/guard.js');
     const { Library } = require('./src/v1/store.js');
     const library = new Library(process.env.BAO_FAKE_HOME);
@@ -297,10 +297,10 @@ test("an installed bundle serves extension settings and imports synthetic localS
       const metadata = { label: value, source: { agent: value }, locators: [{ kind: 'text', value }], ax: value };
       const record = { op: 'type', value, metadata, sealed: { kind: 'read-back', expected: value, actual: value, hash: 'signed' } };
       const original = structuredClone(record);
-      const expected = { ...record, value: STRIPPED_SECRET };
-      assert.deepEqual(scrubSaved(record, { secrets: [value] }), expected);
-      assert.deepEqual(stripUnsafe(record, [value]), expected);
-      assert.deepEqual(library.scrub(record, undefined, undefined, [value]), expected);
+      assert.deepEqual(stripUnsafe(record), { ...record, value: value === 'short-password' ? value : STRIPPED_SECRET });
+      library.saveTrail('staged-input', [record]);
+      assert.deepEqual(library.readTrail('staged-input'), [record]);
+      assert.equal(stepNeedsSecretValue({ action: 'type', value: STRIPPED_SECRET }, { inputs: [] }, {}), true);
       assert.deepEqual(record, original);
     }
     const owners = Object.keys(require.cache).filter(file => file.endsWith('/saved-secrets.js'));
