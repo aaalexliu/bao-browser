@@ -155,7 +155,7 @@ test("a marketplace listing installs and runs without a Bao approval", { timeout
     });
     client.send({ jsonrpc: "2.0", method: "notifications/initialized" });
     const tools = await client.call({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    assert.deepEqual(toolNames(tools), ["search_workflows", "describe_workflow", "run_workflow", "get_run"]);
+    assert.deepEqual(toolNames(tools), ["search_workflows", "describe_workflow", "run_workflow", "get_run", "agent_browser"]);
 
     const ran = await client.call({
       jsonrpc: "2.0",

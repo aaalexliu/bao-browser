@@ -86,7 +86,7 @@ The mint response includes that object as `mcp`, with the real origin and token.
 
 A workflow can run on `driver: extension` or `driver: playwright`. Absent stays Playwright, so an old workflow is unchanged. `validateWorkflow` rejects any other driver string. How to load it is [extension.md](extension.md).
 
-The link is native messaging, host name `com.bao.desktop`. `bao serve` writes the per-user host manifest and a `0600` token. The extension id is the only `allowed_origins` entry. The extension never sees the token. Replay opens a new window and drives that tab. Record and replay ask at runtime. Allow all sites is the default and requests `http://*/*` and `https://*/*`. Only this site requests one origin. The manifest keeps those as optional host permissions and has no install-time `<all_urls>`. Settings → Technical details → Chrome sites shows all sites, per site, or none. Revoke removes the grant. A requested secret fill can follow the workflow across origins. Chrome's host grants and Bao's target checks still apply.
+The extension uses Chrome native messaging. [Extension setup and behavior](extension.md) owns the host manifest, Chrome host grants, replay window, and cross-origin secret-fill rules.
 
 The spike used a throwaway Chrome for Testing profile and public pages. It did not open a real Chrome profile.
 
@@ -203,7 +203,7 @@ Local fixture only. `GET /freeze` redirects to `/login` when the `bao_freeze` co
 
 The credit-freeze workflow's precondition is `{ kind: "url", match: "/freeze", phase: "auth" }`. A replay that lands on `/login` fails that check in phase `auth`. It does not call a model, including when a heal provider is available. Cheap repairs still run for locate misses. Auth is not one of those.
 
-The login step has two paths. With no secret, replay shows the same confirm-style banner, title "Sign in on the site window", and waits. With the password supplied on the upfront secret input, replay fills the masked field and does not show that banner. Either way it continues on `/freeze`, clicks Frozen, re-reads `Status: none`, and pauses on the confirm step. The workflow has no Apply click. A confirm step with no postcondition pauses and does not write a `human-confirm` trail event. While that event is absent, replay refuses Apply clicks from the step, from a repair, and from a heal. The fixture counts Apply posts. The count stayed 0.
+The login step has two paths. With no secret, replay shows the same confirm-style banner, title "Sign in on the site window", and waits. With the password supplied on the upfront secret input, replay fills the masked field and does not show that banner. Either way it continues on `/freeze`, clicks Frozen, re-reads `Status: none`, and pauses on the confirm step. The workflow has no Apply click; its confirm identity reserves that control for the person. See [workflow step semantics](workflow-schema.md#steps) for confirm, resume, and repair rules.
 
 A password field recorded in a capture session becomes a `secret` input with no default. The page script does not read the field's value. Interpret drops a leaked password string. Saved runs are masked. Screenshots cover `input[type=password]` with a black bar before the PNG is taken, and the accessibility snapshot is omitted while that field is on the page.
 
