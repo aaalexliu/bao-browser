@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,7 +12,7 @@ import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import { Library } from "../../src/v1/store";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const names = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "agent_browser"];
+const names = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser"];
 const retired = ["live_session_start", "live_snapshot", "live_click", "live_type", "live_key", "live_select", "live_scroll", "live_navigate", "live_read", "live_screenshot", "live_tabs", "live_switch_tab", "live_stop"];
 const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "saved", name: "Saved workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] };
 
@@ -107,13 +107,17 @@ interface Mcp {
 }
 
 // The child gets its own HOME, so it never reads or writes the person's library.
-function startMcp(prefix: string, cmd = "mcp"): Mcp {
+function startMcp(prefix: string, cmd = "mcp", setup?: (user: string, home: string) => void, automatic = false): Mcp {
   const root = mkdtempSync(path.join(tmpdir(), prefix));
-  const home = path.join(root, "library");
   const user = path.join(root, "user");
+  const home = automatic
+    ? path.join(user, ...(process.platform === "darwin" ? ["Library", "Application Support", "bao"] : [".local", "share", "bao"]))
+    : path.join(root, "library");
   mkdirSync(user);
+  setup?.(user, home);
   const child = spawn(process.execPath, [cli, cmd], {
-    env: { ...process.env, HOME: user, BAO_HOME: home, BAO_HEAL_CURSOR_ACCOUNT: "0" },
+    cwd: root,
+    env: { ...process.env, HOME: user, BAO_HOME: automatic ? undefined : home, BAO_HEAL_CURSOR_ACCOUNT: "0" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const messages: Reply[] = [];
@@ -175,13 +179,55 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
     assert.deepEqual(JSON.parse(search.text), { damagedWorkflows: [], hits: [], library: { active: { path: legacy.home }, inactive: [] } });
     assert.match(first.result?.instructions || "", /Use Bao's tools to find and read runs and workflows, not filesystem browsing/);
     assert.match(first.result?.instructions || "", /Bao does not use or search those roots/);
-    for (const tool of TOOLS.filter((item) => item.name !== "agent_browser")) {
-      assert.match(tool.description, /not (by browsing folders|folder browsing)/, tool.name);
+    for (const client of [legacy, unsupported]) {
+      const run = { id: "run-capture", workflowId: "agent-browser", kind: "capture" as const, at: 1_700_000_000_000, steps: [], heals: [], status: "passed" };
+      new Library(client.home).saveRun(run);
+      const history = await client.request("tools/call", { name: "list_runs", arguments: {} });
+      assert.equal(history.result?.isError, false);
+      assert.equal(history.result?._meta, undefined);
+      const data = JSON.parse(history.result?.content?.[0]?.text || "null");
+      assert.deepEqual(data.library, { active: { path: client.home }, inactive: [] });
+      assert.equal(data.runs.length, 1);
+      assert.deepEqual(data.runs[0], { id: run.id, workflowId: run.workflowId, name: "Browser capture", status: "passed", at: run.at, kind: "capture", stepCount: 0, modelCalls: null, healCount: 0 });
+      const receipt = await client.request("tools/call", { name: "get_run", arguments: { run_id: data.runs[0].id } });
+      assert.equal(receipt.result?.isError, false);
+      assert.equal(receiptPayload(client.home, receipt).run_id, run.id);
+      for (const name of ["inspect_run", "open_step_pictures"]) assert.equal((await client.tool(name)).text, "unknown tool");
     }
-    assert.equal((await legacy.tool("list_runs")).isError, true);
     assert.equal((await legacy.request("resources/list")).error?.code, -32601);
     assert.equal((await legacy.request("resources/read", { uri: VIEWER_URI })).error?.code, -32601);
   } finally { legacy.child.kill(); unsupported.child.kill(); }
+});
+
+test("catalog errors identify the active Library and unsearched legacy data for every client", async () => {
+  const updatedAt = new Date("2026-10-28T12:00:00.000Z");
+  let inactivePath = "";
+  const mcp = startMcp("bao-mcp-error-identity-", "mcp", (user, home) => {
+    new Library(home).save(workflow);
+    inactivePath = path.join(path.dirname(user), ".bao-mcp");
+    const library = new Library(inactivePath);
+    library.save({ ...workflow, id: "inactive-only" });
+    inactivePath = realpathSync(inactivePath);
+    utimesSync(path.join(library.root, "workflows", "inactive-only.json"), updatedAt, updatedAt);
+  }, true);
+  try {
+    for (const capabilities of [{}, { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } }]) {
+      await mcp.request("initialize", { capabilities });
+      for (const [name, args, message] of [
+        ["describe_workflow", { id: "inactive-only" }, "workflow not found"],
+        ["run_workflow", { id: "inactive-only" }, "workflow not found"],
+        ["get_run", { run_id: "missing" }, "run not found"],
+        ["list_runs", { offset: -1 }, "Invalid viewer page"],
+      ] as const) {
+        const result = await mcp.tool(name, args);
+        assert.equal(result.isError, true, name);
+        assert.deepEqual(JSON.parse(result.text), { error: message, library: {
+          active: { path: process.platform === "darwin" ? "~/Library/Application Support/bao" : "~/.local/share/bao" },
+          inactive: [{ path: inactivePath, state: "not_used_or_searched", contents: { workflows: 1 }, lastUpdated: updatedAt.toISOString() }],
+        } }, name);
+      }
+    }
+  } finally { mcp.child.kill(); }
 });
 
 test("UI clients negotiate one bundled resource, read history/receipt, and keep images out of model results", async () => {
@@ -193,7 +239,8 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     assert.deepEqual(init.result?.capabilities, { tools: {}, resources: {}, extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } });
     const tools = (await mcp.request("tools/list")).result?.tools || [];
     assert.deepEqual(tools.map((tool) => tool.name), [...TOOL_NAMES, ...VIEWER_TOOLS.map((tool) => tool.name)]);
-    for (const name of TOOL_NAMES) assert.deepEqual(tools.find((tool) => tool.name === name)?._meta?.ui?.visibility, ["model"], `${name} cannot be called by the read-only iframe`);
+    for (const name of TOOL_NAMES) assert.deepEqual(tools.find((tool) => tool.name === name)?._meta?.ui?.visibility, name === "list_runs" ? ["model", "app"] : ["model"]);
+    assert.equal(tools.find((tool) => tool.name === "list_runs")?._meta?.ui?.resourceUri, VIEWER_URI);
     assert.deepEqual(tools.find((tool) => tool.name === "open_step_pictures")?._meta?.ui?.visibility, ["app"]);
     const resources = await mcp.request("resources/list");
     assert.equal(resources.result?.resources?.length, 1);
@@ -210,6 +257,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     const history = await mcp.request("tools/call", { name: "list_runs", arguments: {} });
     assert.equal(history.result?._meta?.baoViewer?.runs?.[0]?.id, run.id);
     assert.match(history.result?.content?.[0]?.text || "", /run-ui/);
+    assert.deepEqual(JSON.parse(history.result?.content?.[0]?.text || "null").library, { active: { path: mcp.home }, inactive: [] });
     const receipt = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
     const plainReceipt = await legacy.request("tools/call", { name: "get_run", arguments: { run_id: run.id } });
     assert.deepEqual(receiptPayload(mcp.home, receipt), receiptPayload(legacy.home, plainReceipt));

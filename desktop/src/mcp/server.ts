@@ -4,8 +4,8 @@ import { frameRpc, takeRpcChunk } from "./frame";
 import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy } from "../engines/agent-browser-proxy";
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
-import { callViewerTool, isViewerTool, VIEWER_TOOLS } from "./viewer-tools";
-import { inspectRunView } from "./run-view";
+import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
+import { inspectRunView, listRunViews } from "./run-view";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -31,12 +31,12 @@ const CATALOG_TOOLS = [
   },
   {
     name: "describe_workflow",
-    description: "Read a workflow through Bao, not by browsing folders. Steps, input schema, declared outputs, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. Source is this Mac, the device name, or marketplace.",
+    description: "Steps, input schema, declared outputs, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. Source is this Mac, the device name, or marketplace.",
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
   },
   {
     name: "run_workflow",
-    description: "Replay a saved workflow from the active Library on this device in Bao's own Chrome. Use Bao's tools to find workflows, not folder browsing. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. A listing that has not been allowed returns needs_approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: "Replay a saved workflow on this device in Bao's own Chrome. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. A listing that has not been allowed returns needs_approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -50,9 +50,10 @@ const CATALOG_TOOLS = [
   },
   {
     name: "get_run",
-    description: "Read a run from the active Library through Bao, not by browsing folders. Pass its run id to read the outcome, including declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
+    description: "Read one replay outcome by run id, including declared outputs when the workflow has them. A bot check or a session that expired is needs_human, with the reason and pageClass.",
     inputSchema: { type: "object", properties: { run_id: { type: "string" } }, required: ["run_id"] },
   },
+  LIST_RUNS_TOOL,
 ] as const;
 
 const AGENT_BROWSER_TOOL = {
@@ -72,7 +73,7 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export const INSTRUCTIONS = [
   "For direct agent-browser control, use agent_browser with its native command and args array. Start with open, inspect the returned tab list, and select the signed-in tab with tab <id>. Bao uses a marked profile copy in visible installed Google Chrome. close removes the copy. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report that the owner closed the window. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact or save a workflow. It needs no running Bao app. Bao does not block final clicks.",
-  "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, and get_run work on saved workflows and runs. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
+  "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. Workflows from the retired live driver cannot replay. Replay on the pass-through is not yet available.",
 ].join("\n");
 
 interface Context {
@@ -170,7 +171,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.method === "notifications/initialized") return;
   if (msg.method === "tools/list") {
     const tools = ctx.ui ? [
-      ...TOOLS.map((tool) => ({ ...tool, _meta: { ui: { visibility: ["model"], ...(tool.name === "get_run" ? { resourceUri: VIEWER_URI } : {}) } } })),
+      ...TOOLS.map((tool) => ({ ...tool, _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
       ...VIEWER_TOOLS,
     ] : TOOLS;
     send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
@@ -189,11 +190,14 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
     const name = msg.params?.name || "";
     const args = msg.params?.arguments || {};
     try {
-      const result = ctx.ui && isViewerTool(name)
-        ? callViewerTool(ctx.library, name, args)
-        : name === "agent_browser"
-        ? await proxyTool(args, ctx.proxy)
-        : { content: [{ type: "text", text: JSON.stringify(await callTool(ctx.library, ctx.identity, name, args)) }], isError: false };
+      let result;
+      if (ctx.ui && isViewerTool(name)) result = callViewerTool(ctx.library, name, args);
+      else if (name === "agent_browser") result = await proxyTool(args, ctx.proxy);
+      else {
+        const data = await callTool(ctx.library, ctx.identity, name, args);
+        result = { content: [{ type: "text", text: JSON.stringify(data) }], isError: false,
+          ...(ctx.ui && name === "list_runs" ? { _meta: { baoViewer: data } } : {}) };
+      }
       if (ctx.ui && name === "get_run") {
         try {
           send({ jsonrpc: "2.0", id: msg.id, result: { ...result, _meta: { baoViewer: inspectRunView(ctx.library, args) } } });
@@ -209,7 +213,8 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
       send({
         jsonrpc: "2.0",
         id: msg.id,
-        result: { content: [{ type: "text", text: message }], isError: true },
+        result: { content: [{ type: "text", text: CATALOG_TOOLS.some((tool) => tool.name === name)
+          ? JSON.stringify(withLibrary({ error: message }, ctx.identity)) : message }], isError: true },
       });
     }
     return;
@@ -249,6 +254,7 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
     return withLibrary(result, identity);
   }
   if (name === "get_run") return withLibrary(getRun(library, String(args.run_id || "")), identity);
+  if (name === "list_runs") return withLibrary(listRunViews(library, args), identity);
   throw new Error("unknown tool");
 }
 
