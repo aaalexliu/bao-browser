@@ -712,11 +712,6 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
   while (Date.now() < killAt && ownedChromeRunning(owner)) {
     await delay(50);
   }
-  const exe = owner.kind === "gui" ? owner.executable : owner.child.spawnfile;
-  if (ownedChromeRunning(owner) || guiChromeBrowserPid(exe, userDataDir, listProcesses()) !== undefined) {
-    console.error(`bao shutdown browser still shutting down profile=${userDataDir}`);
-    return { childExit: child.exitCode, signal: child.signalCode, killedPids: [] };
-  }
   const killedPids: number[] = [];
   for (const pid of pidsForDataDir(userDataDir)) {
     try {
@@ -726,7 +721,7 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
   }
   const orphansExitAt = Date.now() + 1500;
   while (pidsForDataDir(userDataDir).length && Date.now() < orphansExitAt) await delay(50);
-  if (pidsForDataDir(userDataDir).length) console.error(`bao shutdown processes still shutting down profile=${userDataDir}`);
+  if (pidsForDataDir(userDataDir).length) throw new Error(`bao shutdown processes still shutting down profile=${userDataDir}`);
   return { childExit: child.exitCode, signal: child.signalCode, killedPids };
 }
 

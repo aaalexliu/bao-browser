@@ -262,6 +262,26 @@ test("owned shutdown waits for exact-profile orphan processes to exit", { timeou
   assert.equal(pidsForDataDir(profile).length, 0, "close must await process exit, not just signal delivery");
 });
 
+test("owned shutdown terminates a stalled exact-profile browser before returning", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-shutdown-stalled-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  t.after(async () => {
+    for (const pid of pidsForDataDir(profile)) {
+      try { process.kill(pid, "SIGKILL"); } catch {}
+    }
+    await until(() => pidsForDataDir(profile).length === 0);
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const pids = pidsForDataDir(profile);
+  assert.ok(pids.length);
+  for (const pid of pids) process.kill(pid, "SIGSTOP");
+  await chrome.close();
+  assert.equal(pidsForDataDir(profile).length, 0, "close must not succeed while its owned browser is still alive");
+});
+
 test("retained reclaim terminates its exact browser even when CDP acknowledges close without exiting", { timeout: 30_000 }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-ack-"));
