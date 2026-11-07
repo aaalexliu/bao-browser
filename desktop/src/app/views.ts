@@ -70,9 +70,9 @@ export function runHealField(driver: string | undefined, mode: string, globalHea
     </select></label>`;
   }
   return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal">
-      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${esc(globalHeal)})</option>
-      <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto self-heal</option>
-      <option value="approve" ${mode === "approve" ? "selected" : ""}>Approve before applying</option>
+      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${globalHeal === "approve" ? "Ask me" : "Heal it"})</option>
+      <option value="auto" ${mode === "auto" ? "selected" : ""}>Heal it</option>
+      <option value="approve" ${mode === "approve" ? "selected" : ""}>Ask me</option>
     </select></label>`;
 }
 
@@ -282,7 +282,7 @@ export function maskSecrets(text: string, secrets: string[]): string {
   return out;
 }
 
-function icon(name: string): string {
+export function icon(name: string): string {
   if (name === "warning") return `<svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><path d="M6.13 1.5a1 1 0 0 1 1.74 0l5.6 9.95a1 1 0 0 1-.87 1.5H1.4a1 1 0 0 1-.87-1.5Z" fill="currentColor"/><path d="M7 5v3.2" fill="none" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="10.4" r=".9" fill="var(--bg)"/></svg>`;
   if (name === "back" || name === "chevron") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${name === "back" ? "M10 3 5 8l5 5" : "m6 3.5 4.5 4.5L6 12.5"}"/></svg>`;
   if (name === "more") return `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor"/></svg>`;
@@ -1416,7 +1416,7 @@ export function hostAccessPanel(access: unknown): string {
 
 export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[]): string {
   const rows = sites.map((site) => `<label>${esc(site.origin)}
-      <select data-site-trust="${htmlEsc(controlKey(site.origin))}">
+      <select data-setting="siteTrust" data-site-trust="${htmlEsc(controlKey(site.origin))}">
         <option value="ask" ${site.mode === "ask" ? "selected" : ""}>Always ask</option>
         <option value="allow" ${site.mode === "allow" ? "selected" : ""}>Allow</option>
       </select>
@@ -1424,7 +1424,7 @@ export function siteTrustPanel(sites: { origin: string; mode: "ask" | "allow" }[
   const body = rows || `<p class="quiet">No sites yet. A site shows up here from a workflow's start address.</p>`;
   return `<section id="site-trust">
     <h3>Site trust</h3>
-    <p class="quiet">Always ask waits before an ordinary click or type on that site. Allow runs those. Confirm and Apply still wait for you. This is separate from when a step misses.</p>
+    <p class="quiet">Always ask waits before an ordinary click or type on that site. Allow runs those. Confirm and Apply still wait for you. This is separate from When a page changes.</p>
     ${body}
   </section>`;
 }

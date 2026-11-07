@@ -263,6 +263,6 @@ A `login` step waits. Replay does not type the password and does not press Log i
 
 A confirm step uses the same bar. Replay does not press the site button. Place order and Reserve are that pause.
 
-Settings → When a step misses defaults to **Auto self-heal**. Check Settings → Model for the active model. `BAO_HEAL_FIXTURE=1` is a local stand-in (`bao-heal-fixture`). Do not cause a miss while Model reads **cursor account**.
+Settings → Runs and heals → When a page changes defaults to **Heal it**. Check Settings → AI help for the active model. `BAO_HEAL_FIXTURE=1` is a local stand-in (`bao-heal-fixture`). Do not cause a miss while Model reads **cursor account**.
 
 A date field is stored as a relative input. `+14d` replays as that day. A download step saves under the run directory. An `open` step can hand the file to Preview. A bot check pauses the run before any heal. The status is **needs you**. Model calls stay at 0.

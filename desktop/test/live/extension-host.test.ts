@@ -278,6 +278,7 @@ test("extension replay asks for one origin and does not error with no host permi
     const settings = await ui.newPage();
     await settings.goto(`http://127.0.0.1:${app.port}/`, { waitUntil: "domcontentloaded", timeout: 20_000 });
     await settings.locator("#rail button[data-place='settings']").click();
+    await settings.locator("#settings-advanced > summary").click();
     await settings.locator("#host-access-status").waitFor({ timeout: 10_000 });
     await settings.waitForFunction(() => (document.getElementById("host-access-status")?.textContent || "").includes("all sites"), undefined, { timeout: 10_000 });
     await settings.locator("#host-access").screenshot({ path: path.join(shotDir, "settings-host.png") });

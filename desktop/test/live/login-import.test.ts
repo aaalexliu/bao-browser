@@ -154,6 +154,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     assertNoValue(no, "bot-body");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Needs sign-in"));
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-out-bot-light.png"), fullPage: true });
+    ui.once("dialog", (dialog) => dialog.accept());
     await ui.click("[data-remove]");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("No sites yet"));
 

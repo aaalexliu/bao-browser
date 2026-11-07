@@ -1,12 +1,13 @@
 import type { Settings } from "../v1/store";
 import { controlKey } from "../v1/visible-copy";
 import type { SavedSite } from "./logins-view";
-import { esc, htmlEsc, type ShellState } from "./views";
+import { esc, htmlEsc, icon as shellIcon, type ShellState } from "./views";
 
 interface SettingsView {
   settings?: Partial<Settings>;
   helper?: ShellState["helper"];
   model?: ShellState["model"];
+  relay?: { paired?: boolean };
   sites: SavedSite[];
 }
 
@@ -41,11 +42,11 @@ export function settingsIndex(view: SettingsView): string {
   const summaries = [
     "Heal policy, waits",
     mac ? view.helper?.accessibility ? "Accessibility allowed" : "Optional for native apps" : "Mac only",
-    view.settings?.remoteMcp ? "On" : "Off",
+    view.settings?.remoteMcp ? view.relay?.paired ? "On, paired" : "On, not paired" : "Off",
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     modelLabel(view.model),
   ];
-  return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">☰</button><div><h1>Settings</h1><p class="settings-subtitle">Saved as you change them</p></div></header>
+  return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${shellIcon("sidebar")}</button><div><h1>Settings</h1><p class="settings-subtitle">Grouped rows save on change</p></div></header>
     <nav class="settings-index" aria-label="Settings sections">${sections.map(([id, glyph, title], i) => `<a href="#set-${id}" data-settings-jump="${id}"${i === 0 ? ' aria-current="true"' : ""}>${icon(glyph)}<span><b>${title}</b><span class="settings-subtitle">${esc(summaries[i])}</span></span></a>`).join("")}</nav>`;
 }
 
@@ -71,8 +72,8 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
     ${group("runs", "Runs and heals", row(
       `<span id="heal-label">When a page changes</span><p>Heal it finds the moved button and keeps going. Ask me stops and shows you first.</p>`,
       `<fieldset class="settings-segmented" aria-labelledby="heal-label"><legend class="settings-sr">When a page changes</legend>${[["auto", "Heal it"], ["approve", "Ask me"]].map(([value, label]) => `<input type="radio" name="heal" id="heal-${value}" value="${value}" data-setting="heal"${(settings.heal || "auto") === value ? " checked" : ""}><label for="heal-${value}">${label}</label>`).join("")}</fieldset>`)
-      + row(`<label for="promote-after">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p>`, `<input id="promote-after" data-setting="promoteAfter" type="number" min="1" max="20" value="${settings.promoteAfter ?? 3}" aria-describedby="keep-unit"><span id="keep-unit">runs</span>`)
-      + row(`<label for="act-minutes">Wait for you up to</label><p>How long a run waits for a code, a login, or a button only you press.</p>`, `<select id="act-minutes" data-setting="actTimeoutMin">${waits.map((minutes) => `<option value="${minutes}"${minutes === wait ? " selected" : ""}>${minutes < 60 || minutes % 60 ? `${minutes} minutes` : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}</option>`).join("")}<option value="custom">Other…</option></select><input id="act-custom" data-setting="actTimeoutMin" type="number" min="1" max="1440" value="${wait}" aria-label="Wait in minutes" hidden>`))}
+      + row(`<label for="promote-after">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p>`, `<input id="promote-after" data-setting="promoteAfter" type="number" required min="1" max="20" value="${settings.promoteAfter ?? 3}" aria-describedby="keep-unit"><span id="keep-unit">runs</span>`)
+      + row(`<label for="act-minutes">Wait for you up to</label><p>How long a run waits for a code, a login, or a button only you press.</p>`, `<select id="act-minutes" data-setting="actTimeoutMin">${waits.map((minutes) => `<option value="${minutes}"${minutes === wait ? " selected" : ""}>${minutes < 60 || minutes % 60 ? `${minutes} minutes` : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}</option>`).join("")}<option value="custom">Other…</option></select><input id="act-custom" data-setting="actTimeoutMin" type="number" required min="1" max="1440" value="${wait}" aria-label="Wait in minutes" hidden>`))}
     ${group("perm", "Mac permissions", row(
       `<b>Accessibility</b><p>${mac ? "Lets Bao's helper click and type in native Mac apps. Chrome agents do not need it." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
       `<span class="settings-permission${view.helper?.accessibility && mac ? " allowed" : ""}">${view.helper?.accessibility && mac ? "✓ " : ""}${accessibility}</span>`, "hand")
@@ -80,10 +81,11 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
         `<span class="settings-permission">${mac ? "Not checked" : "Mac only"}</span>${mac ? '<a class="button" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open System Settings</a>' : ""}`, "eye"))}
     ${group("remote", "Remote access", row(
       `<label id="remote-label" for="remote-mcp">Let AI agents run my workflows</label><p id="remote-help">An agent on another device can ask to run a workflow on this ${mac ? "Mac" : "computer"}. Off until you turn it on.</p>`,
-      `<input class="settings-switch" id="remote-mcp" type="checkbox" role="switch" data-setting="remoteMcp" aria-describedby="remote-help"${settings.remoteMcp ? " checked" : ""}>`))}
+      `<span id="remote-state">${settings.remoteMcp ? view.relay?.paired ? "On, paired" : "On, not paired" : "Off"}</span><input class="settings-switch" id="remote-mcp" type="checkbox" role="switch" data-setting="remoteMcp" aria-describedby="remote-help remote-state"${settings.remoteMcp ? " checked" : ""}>`)
+      + row(`<b>Connect another device</b><p id="relay-status">${view.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not paired. Enter a pairing code from your other device."}</p>`, `<div class="settings-pairing"><label>Pairing code <input id="relay-code" type="text" autocomplete="off" spellcheck="false"></label><div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${view.relay?.paired ? "" : " disabled"}>Revoke</button></div></div>`))}
     ${group("logins", "Logins", sites + row(`<p>Bring in one site's login from your Chrome, so runs start signed in.</p>`, `<button type="button" data-screen="logins">Import a login…</button>`))}
     ${group("ai", "AI help", row(`<b>Use AI to suggest heals</b><p>Only when a page changes. Saved steps run without AI.</p>`, `<span id="settings-model">${esc(modelLabel(view.model))}</span>`))}
     <p id="settings-feedback" role="status"></p>
-    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary>${advanced}</details>
+    <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below. Other settings save as you change them.</p>${advanced}</details>
   </section>`;
 }

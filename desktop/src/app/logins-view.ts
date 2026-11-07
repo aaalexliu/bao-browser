@@ -121,7 +121,7 @@ function savedLogins(sites: SavedSite[]): string {
       ${badge}
       <span class="quiet">${when}</span>
       <button type="button" data-recheck="${key}">Re-check</button>
-      <button type="button" data-remove="${key}">Remove</button>
+      <button type="button" data-remove="${key}">Remove…</button>
     </div>`;
   }).join("");
   return `<div class="card" id="saved-logins"><h3>Saved sites</h3>${rows}</div>`;
@@ -211,7 +211,7 @@ export function syncPanel(sync: {
   return `<div class="card" id="sync-panel" data-testid="sync">
     <h3>Sync</h3>
     <p>Sync carries saved workflows and pictures. Passwords and credential values stay on this Mac. The first sync copies the library into a backup before anything is sent.</p>
-    <label>Server <input id="sync-server" value="${htmlEsc(row.server || "")}" placeholder="Pairing server"></label>
+    <label>Server <input id="sync-server" data-setting="syncServer" value="${htmlEsc(row.server || "")}" placeholder="Pairing server"></label>
     <label>Pairing code <input id="pair-code" autocomplete="off"></label>
     <label>Invite secret <input id="invite-secret" type="password" autocomplete="off" placeholder="${row.inviteSaved ? "Saved on this Mac" : "Paste once"}"></label>
     <p class="quiet">Paste the invite secret once, next to the pairing code. It stays in this Mac's sync file and is not sent on later syncs.</p>

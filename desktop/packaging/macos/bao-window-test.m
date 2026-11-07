@@ -142,6 +142,22 @@ int main(int argc, const char *argv[]) {
         opened = nil;
         assert(policy(owner, @"file:///tmp/test", WKNavigationTypeLinkActivated, NO) == WKNavigationActionPolicyCancel);
         assert(!opened);
+        for (NSString *external in @[@"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                                     @"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                                     @"http://example.com/", @"mailto:test@example.com"]) {
+            for (NSNumber *kind in @[@(WKNavigationTypeOther), @(WKNavigationTypeFormSubmitted), @(WKNavigationTypeBackForward), @(WKNavigationTypeReload)]) {
+                opened = nil;
+                assert(policy(owner, external, kind.integerValue, NO) == WKNavigationActionPolicyCancel);
+                assert(!opened);
+            }
+            assert(policy(owner, external, WKNavigationTypeLinkActivated, NO) == WKNavigationActionPolicyCancel);
+            assert([opened.absoluteString isEqualToString:external]);
+        }
+        for (NSString *denied in @[@"file:///tmp/test", @"javascript:alert(1)", @"bao:settings"]) {
+            opened = nil;
+            assert(policy(owner, denied, WKNavigationTypeLinkActivated, NO) == WKNavigationActionPolicyCancel);
+            assert(!opened);
+        }
         assert(policy(owner, @"blob:http://127.0.0.1:47879/workflow", WKNavigationTypeOther, YES) == WKNavigationActionPolicyDownload);
         assert(policy(owner, @"blob:https://example.com/workflow", WKNavigationTypeOther, YES) == WKNavigationActionPolicyCancel);
         install_menus(owner);

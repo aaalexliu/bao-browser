@@ -581,10 +581,6 @@ test("Settings pairs and revokes without putting the token in /api/state", { tim
     assert.equal(state.relay?.deviceId, pairedBody.deviceId);
     assert.equal(state.settings?.remotePermission, "deny");
     assert.equal(JSON.stringify(state).includes("bao_rt_"), false);
-    const js = await fetch(`http://127.0.0.1:${app.port}/app.js`).then((res) => res.text());
-    assert.match(js, /Let a remote agent run workflows on this Mac/);
-    assert.match(js, /id="relay-pair"/);
-    assert.match(js, /id="remote-permission"/);
     const link = JSON.parse(readFileSync(relayPath(home), "utf8")) as { token: string };
     const mark = directory.lookups;
     const on = await fetch(`http://127.0.0.1:${app.port}/api/settings`, {

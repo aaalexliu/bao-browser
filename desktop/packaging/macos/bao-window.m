@@ -174,7 +174,7 @@
     }
     // A redirect or script must not open another app without a clicked link.
     if (action.navigationType == WKNavigationTypeLinkActivated &&
-        [@[@"https", @"http", @"mailto"] containsObject:url.scheme.lowercaseString]) {
+        [@[@"https", @"http", @"mailto", @"x-apple.systempreferences"] containsObject:url.scheme.lowercaseString]) {
         [NSWorkspace.sharedWorkspace openURL:url];
     }
     decide(WKNavigationActionPolicyCancel);

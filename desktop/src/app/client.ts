@@ -491,22 +491,18 @@ function settings(): string {
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
     <p class="quiet">AI help uses the connected Cursor account or a model key set when Bao starts. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
-    <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
-    <section id="remote-mcp-setting"><h3>Connect another device</h3>
-      <p class="quiet" id="relay-status">${state.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not connected. Enter a pairing code from your other device."}</p>
-      <label>Pairing code <input id="relay-code" type="text" autocomplete="off" spellcheck="false"></label>
-      <div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${state.relay?.paired ? "" : " disabled"}>Revoke</button></div>
-      <label>Remote requests <select id="remote-permission"><option value="ask"${state.settings?.remotePermission !== "deny" ? " selected" : ""}>Ask on this computer</option><option value="deny"${state.settings?.remotePermission === "deny" ? " selected" : ""}>Deny remote runs</option></select></label>
+    <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}"></label>
+    <section id="remote-mcp-setting"><h3>Remote requests</h3>
+      <label>Remote requests <select id="remote-permission" data-setting="remotePermission"><option value="ask"${state.settings?.remotePermission !== "deny" ? " selected" : ""}>Ask on this computer</option><option value="deny"${state.settings?.remotePermission === "deny" ? " selected" : ""}>Deny remote runs</option></select></label>
     </section>
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
-    <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <p id="settings-helper">${esc(state.helper?.label || "helper off")}. Chrome agents need no Accessibility, Automation, or Screen Recording permission.</p>`);
+    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Chrome agents need no Accessibility, Automation, or Screen Recording permission.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
 }
 
 function importSheet(): string {
@@ -543,7 +539,12 @@ function navigate(next: Screen): void {
   if (screen === "runs") selectDefaultRun();
   renderKey = "";
   if (screen === "logins") void loadSaved();
-  if (screen === "settings") { void loadHostAccess(); void loadSaved(); }
+  if (screen === "settings") {
+    settingsSection = "runs";
+    settingsFeedback = "";
+    void loadHostAccess();
+    void loadSaved();
+  }
   if (screen === "replay") {
     debugStepId = "";
     runFromN = 0;
@@ -581,7 +582,7 @@ function bindSettings(): void {
       }
       if (!input.reportValidity()) return;
       const key = input.dataset.setting!;
-      const value = input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
+      const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
       try {
         const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ [key]: value }) });
         const body = await response.json() as { error?: string };
@@ -896,21 +897,6 @@ function bind(): void {
     await refresh();
     const feedback = document.getElementById("engine-feedback");
     if (feedback) feedback.textContent = "Engine choice saved. It applies to the next run.";
-  };
-  const save = document.getElementById("save-settings");
-  if (save) save.onclick = async () => {
-    await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
-        syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
-        remotePermission: (document.getElementById("remote-permission") as HTMLSelectElement | null)?.value === "deny" ? "deny" : "ask",
-        siteTrust: readSiteTrust(),
-      }),
-    });
-    renderKey = "";
-    await refresh();
   };
   document.querySelectorAll("[data-heal-filter]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
@@ -1951,11 +1937,13 @@ function bindLogins(): void {
   });
   document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
     btn.onclick = async () => {
+      const origin = expandControlKey(btn.dataset.remove || "");
+      if (!window.confirm(`Remove the saved login for ${origin}?`)) return;
       readLoginForm();
       await fetch("/api/login-sites", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ origin: expandControlKey(btn.dataset.remove || "") }),
+        body: JSON.stringify({ origin }),
       });
       await loadSaved();
     };
