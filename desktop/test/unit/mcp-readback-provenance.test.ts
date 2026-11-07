@@ -11,7 +11,7 @@ import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { inspectRunView } from "../../src/mcp/run-view";
 import { UI_EXTENSION, VIEWER_MIME } from "../../src/mcp/viewer";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
-import { verifyReceiptChain } from "../../src/v1/receipt";
+import { verifyReceiptChain, type Receipt } from "../../src/v1/receipt";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { laneChildEnv } from "../runtime";
 
@@ -22,6 +22,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function object(value: unknown): Record<string, unknown> {
   assert.ok(isRecord(value));
   return value;
+}
+
+function isTextReceipt(value: unknown): value is Receipt {
+  return isRecord(value) && value.kind === "read-back" && value.source === "text"
+    && typeof value.ts === "number" && typeof value.runId === "string" && typeof value.workflowId === "string" && typeof value.stepId === "string"
+    && typeof value.expected === "string" && typeof value.actual === "string" && typeof value.pass === "boolean"
+    && typeof value.prev === "string" && typeof value.hash === "string";
+}
+
+function assertChain(value: unknown): void {
+  assert.ok(Array.isArray(value) && value.length > 0 && value.every(isTextReceipt));
+  assert.equal(verifyReceiptChain(value), true);
 }
 
 function mcp() {
@@ -121,7 +133,7 @@ async function fixture(t: test.TestContext) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
-  const running = app = await startApp({ home: process.env.BAO_HOME, port: 0, extensionHost: false, chromeUserData: process.env.BAO_AGENT_BROWSER_PROFILE_ROOT });
+  const running = app = await startApp({ home: path.join(home, "library"), port: 0, extensionHost: false, chromeUserData: path.join(home, "profiles") });
   running.library.updateSettings({ pageEngine: "old" });
   rpc = mcp();
   await rpc.initialize();
@@ -146,8 +158,7 @@ async function fixture(t: test.TestContext) {
       assert.equal(typeof outcome.runId, "string");
       const run = running.library.readRun(String(outcome.runId));
       assert.equal(run.modelCalls, 0);
-      assert.ok(run.receipts);
-      assert.equal(verifyReceiptChain(run.receipts), true);
+      assertChain(run.receipts);
       assert.equal(run.inputs?.entry, value);
       const file = path.join(running.library.root, "runs", `${run.id}.json`);
       return { workflow, run, file };
@@ -168,7 +179,7 @@ async function assertViews(f: Awaited<ReturnType<typeof fixture>>, runId: string
   assert.equal(outbound.includes(STRIPPED_SECRET), hidden);
   assert.ok(outbound.includes("Safe ordinary note"));
   assert.deepEqual(readFileSync(file), original);
-  assert.equal(verifyReceiptChain(f.app.library.readRun(runId).receipts || []), true);
+  assertChain(f.app.library.readRun(runId).receipts);
   assert.ok(f.typed.includes(value));
 }
 
