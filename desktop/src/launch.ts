@@ -724,6 +724,9 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
       killedPids.push(pid);
     } catch {}
   }
+  const orphansExitAt = Date.now() + 1500;
+  while (pidsForDataDir(userDataDir).length && Date.now() < orphansExitAt) await delay(50);
+  if (pidsForDataDir(userDataDir).length) console.error(`bao shutdown processes still shutting down profile=${userDataDir}`);
   return { childExit: child.exitCode, signal: child.signalCode, killedPids };
 }
 

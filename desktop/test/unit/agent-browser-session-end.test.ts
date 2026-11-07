@@ -120,7 +120,7 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     send(method, params, id);
   });
   return {
-    request, send, pid: child.pid,
+    request, send, pid: child.pid, diagnostics: () => stderr,
     call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } }),
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
@@ -225,6 +225,43 @@ test("retained-profile reclaim removes orphan renderers only for its exact profi
   assert.equal(children[2]!.child.signalCode, null, "a different profile is never signaled");
 });
 
+test("owned shutdown waits for exact-profile orphan processes to exit", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-shutdown-orphan-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  const orphan = spawn(process.execPath, ["-e", "console.log('ready'); setInterval(() => {}, 1000)", "--", `--user-data-dir=${profile}`, "--type=renderer"], { stdio: ["ignore", "pipe", "inherit"] });
+  const exited = new Promise<void>(resolve => orphan.once("exit", () => resolve()));
+  const kill = process.kill.bind(process);
+  let signalTimer: ReturnType<typeof setTimeout> | undefined;
+  t.after(async () => {
+    clearTimeout(signalTimer);
+    t.mock.restoreAll();
+    if (orphan.exitCode === null && orphan.signalCode === null) orphan.kill("SIGKILL");
+    await exited;
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  await new Promise<void>((resolve, reject) => {
+    orphan.stdout!.once("data", () => resolve());
+    orphan.once("error", reject);
+    void exited.then(() => reject(new Error("orphan exited before readiness")));
+  });
+  let signaled = false;
+  t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+    if (pid === orphan.pid && signal === "SIGKILL") {
+      signaled = true;
+      // Model a signal that the OS accepts before the process has exited.
+      signalTimer = setTimeout(() => kill(pid, signal), 500);
+      return true;
+    }
+    return kill(pid, signal);
+  });
+  await chrome.close();
+  assert.equal(signaled, true, "shutdown must reclaim the orphan");
+  assert.equal(pidsForDataDir(profile).length, 0, "close must await process exit, not just signal delivery");
+});
+
 test("retained reclaim terminates its exact browser even when CDP acknowledges close without exiting", { timeout: 30_000 }, async (t) => {
   pinTestBrowser();
   const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-ack-"));
@@ -326,7 +363,7 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
       const steps = f.library.readRun(run.id).steps as unknown as { status: string }[];
       assert.ok(steps.some(step => step.status === "failed"), "recovered command errors remain in the receipt");
     }
-    assert.equal(pidsForDataDir(copy).length, 0);
+    assert.equal(pidsForDataDir(copy).length, 0, c.diagnostics());
     assert.equal(f.library.list().workflows.length, 0, "failed tasks cannot save a replayable workflow");
   });
 }
