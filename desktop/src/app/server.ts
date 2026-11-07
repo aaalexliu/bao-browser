@@ -112,7 +112,7 @@ import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { DesktopMcpInstaller } from "./desktop-mcp-config";
-import { Library } from "../v1/store";
+import { Library, secretInputNames } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
@@ -2358,6 +2358,7 @@ export async function startApp(opts: {
       heals: [],
       steps: result.steps,
       modelCalls: 0,
+      secretInputNames: secretInputNames(workflow),
     });
     return { ...result, workflowId: workflow.id };
   }
@@ -2637,6 +2638,7 @@ async function gateSavedLogin(
     library.saveRun({
       id: outcome.runId,
       workflowId: workflow.id,
+      secretInputNames: secretInputNames(workflow),
       status: outcome.status,
       at: Date.now(),
       heals: [],
@@ -2683,6 +2685,7 @@ function persistedRun(
     modelCalls: result.modelCalls,
     pageClasses: result.pageClasses,
     inputs: maskedInputs(workflow, args),
+    secretInputNames: secretInputNames(workflow),
     ...(result.outputs ? { outputs: result.outputs } : {}),
     ...(result.pageLeftOpen ? { pageLeftOpen: true } : {}),
     ...(needsHuman ? {
@@ -2739,6 +2742,7 @@ function rememberHostGrant(
   const saved = {
     id: runId,
     workflowId: workflow.id,
+    secretInputNames: secretInputNames(workflow),
     status: "needs_human",
     at: Date.now(),
     heals: [],

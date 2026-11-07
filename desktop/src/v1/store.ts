@@ -76,6 +76,8 @@ export interface StoredRun {
   modelCalls?: number;
   /** File values are names, not paths. */
   inputs?: Record<string, string>;
+  /** Secret inputs at execution. Empty is authoritative; absent is legacy. */
+  secretInputNames?: string[];
   video?: string;
   videoStartedAt?: number;
   videoTruncated?: boolean;
@@ -108,6 +110,10 @@ export interface StoredRun {
     deadline?: string | null;
     resume_token?: string;
   };
+}
+
+export function secretInputNames(workflow: Pick<WorkflowV2, "inputs">): string[] {
+  return workflow.inputs.filter((input) => input.type === "secret").map((input) => input.name);
 }
 
 const DEFAULT_SETTINGS: Settings = {

@@ -23,7 +23,7 @@ import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { originOf, trustMode } from "../v1/site-trust";
-import { Library } from "../v1/store";
+import { Library, secretInputNames } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
@@ -629,6 +629,8 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
   library.saveRun({
     id: live.runId,
     workflowId: live.workflow.id,
+    secretInputNames: secretInputNames(live.workflow),
+    inputs: Object.fromEntries(Object.entries(publicInputs(live.workflow, live.inputs)).map(([key, value]) => [key, String(value)])),
     status: status === "timed-out" ? TIMED_OUT_STATUS : "stopped",
     at: Date.now(),
     heals: [],
@@ -757,6 +759,7 @@ function saveWorkflowRun(
     pageClasses: run.pageClasses,
     trail: run.trail,
     inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
+    secretInputNames: secretInputNames(workflow),
     ...(run.outputs ? { outputs: run.outputs } : {}),
     ...(run.pageLeftOpen ? { pageLeftOpen: true } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {

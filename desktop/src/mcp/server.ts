@@ -5,7 +5,7 @@ import { Library } from "../v1/store";
 import { AGENT_BROWSER_COMMANDS, AGENT_BROWSERS, AgentBrowserProxy, type AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
-import { inspectRunView, listRunViews } from "./run-view";
+import { inspectMcpRunView, listRunViews } from "./run-view";
 import { BROWSER_RESULT_SCHEMA, browserToolResult } from "./tool-card";
 import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
 
@@ -235,7 +235,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
       }
       if (ctx.ui && name === "get_run") {
         try {
-          send({ jsonrpc: "2.0", id: msg.id, result: { ...result, _meta: { baoViewer: inspectRunView(ctx.library, args) } } });
+          send({ jsonrpc: "2.0", id: msg.id, result: { ...result, _meta: { baoViewer: inspectMcpRunView(ctx.library, args) } } });
         } catch {
           // A missing/oversized viewer record must not change the existing text receipt.
           send({ jsonrpc: "2.0", id: msg.id, result });

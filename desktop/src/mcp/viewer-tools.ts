@@ -1,5 +1,5 @@
 import type { Library } from "../v1/store";
-import { inspectRunView, openBrowserPicture, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
+import { inspectMcpRunView, openBrowserPicture, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
 import { VIEWER_URI } from "./viewer";
 
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
@@ -43,6 +43,6 @@ export function callViewerTool(library: Library, name: string, args: Record<stri
       _meta: { baoPictures: data }, isError: false,
     };
   }
-  const data = inspectRunView(library, args);
+  const data = inspectMcpRunView(library, args);
   return { content: [{ type: "text", text: JSON.stringify(data) }], _meta: { baoViewer: data }, isError: false };
 }

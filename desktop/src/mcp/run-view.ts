@@ -1,8 +1,9 @@
 import { findNodeAtLocation, parseTree } from "jsonc-parser";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
 import { shotFile, shotFormat } from "../v1/shots";
-import { Library, type StoredRun } from "../v1/store";
+import { Library, secretInputNames, type StoredRun } from "../v1/store";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
 export const VIEW_PICTURE_BYTES = 512 * 1024;
@@ -71,7 +72,23 @@ function readViewerRun(library: Library, runId: string): StoredRun {
 
 export function inspectRunView(library: Library, args: Record<string, unknown>) {
   const run = readViewerRun(library, viewerId(args.run_id));
+  return runView(run, workflowFor(library, run), args, text);
+}
+
+export function inspectMcpRunView(library: Library, args: Record<string, unknown>) {
+  const run = readViewerRun(library, viewerId(args.run_id));
   const workflow = workflowFor(library, run);
+  const names = run.secretInputNames ?? (workflow ? secretInputNames(workflow) : []);
+  const secrets = new Set(names.map((name) => run.inputs?.[name]).filter((value): value is string => typeof value === "string" && value.length > 0));
+  return runView(run, workflow, args, (value) => text(typeof value === "string" && secrets.has(value) ? STRIPPED_SECRET : value));
+}
+
+function runView(
+  run: StoredRun,
+  workflow: WorkflowV2 | undefined,
+  args: Record<string, unknown>,
+  readBackText: (value: unknown) => string | undefined,
+) {
   const stepOffset = offset(args.step_offset);
   const workflowOffset = offset(args.workflow_offset);
   const recording = run.kind === "capture" && (run.envelope?.status || run.status) === "recording";
@@ -83,13 +100,13 @@ export function inspectRunView(library: Library, args: Record<string, unknown>) 
     const definition = workflow?.steps.find((candidate) => candidate.id === step.id);
     const native = record(step.native);
     const readBacks = results.filter((result) => result.stepId === step.id).map((receipt) =>
-      `Read back ${text(receipt.source, 60) || "value"}: expected ${text(receipt.expected) || ""}, saw ${text(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
+      `Read back ${text(receipt.source, 60) || "value"}: expected ${readBackText(receipt.expected) || ""}, saw ${readBackText(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
     return {
       id: text(step.id, 128), index: stepOffset + index + 1,
       label: text(definition?.label, 160) || (run.kind === "capture" ? text(native.command, 40) || "Captured command" : text(step.id, 128)),
       action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
       reason: text(step.reason),
-      result: readBacks.length ? readBacks.join("\n") : text(step.readBack),
+      result: readBacks.length ? readBacks.join("\n") : readBackText(step.readBack),
       durationMs: typeof step.startedAt === "number" && typeof step.endedAt === "number" ? Math.max(0, step.endedAt - step.startedAt) : null,
       picturesAllowed: isViewerId(step.id),
     };
