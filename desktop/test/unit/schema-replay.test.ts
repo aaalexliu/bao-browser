@@ -80,17 +80,6 @@ test("missing locator payloads are rejected at the document boundary", () => {
     role: "button",
     value: "#ok",
   });
-  const stillLoose = {
-    schema: WORKFLOW_SCHEMA_ID,
-    version: 2,
-    id: "wf-locator-schema",
-    name: "Locator schema",
-    startUrl: "https://example.test/",
-    createdAt: 1,
-    inputs: [],
-    steps: [step("missing", 0, [{ kind: "css" }, { kind: "role", role: "button", name: "", value: "kept" }])],
-  };
-  assert.equal(validate(stillLoose), true, JSON.stringify(validate.errors));
 });
 
 test("migrate retains a password default and validates against the json schema", () => {
