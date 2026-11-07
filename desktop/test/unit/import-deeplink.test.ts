@@ -85,7 +85,7 @@ test("public samples keep trimmed ordinary values and omit token/card/SSN shapes
     username: "grace",
     pin: "private-pin",
   });
-  for (const key of ["zip", "routing", "card"]) assert.equal(samples[key], undefined);
+  for (const key of ["zip", "routing", "card"]) assert.equal(Object.hasOwn(samples, key), false);
 });
 
 test("secret and file import questions need no answer or example", () => {
