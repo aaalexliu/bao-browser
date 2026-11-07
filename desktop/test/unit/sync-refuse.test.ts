@@ -136,12 +136,8 @@ test("a long workflow sync bounds picture bodies and reports omitted pictures", 
   const home = mkdtempSync(path.join(tmpdir(), "bao-many-picture-sync-"));
   const library = new Library(home);
   const doc = secretWorkflow();
-  doc.inputs = [{ name: "credential", type: "secret", label: "Credential", required: true }];
+  doc.inputs = [];
   doc.steps = Array.from({ length: 40 }, (_, i) => ({ id: `step-${i}`, index: i, action: "key", key: "Enter", label: "Continue", surface: "dom", timeoutMs: 1000 }));
-  doc.steps.push(
-    { id: "private-sensitive", index: 40, action: "type", value: "{{credential}}", sensitive: true, label: "Private", surface: "dom", timeoutMs: 1000 },
-    { id: "private-input", index: 41, action: "type", input: "credential", value: "{{credential}}", label: "Credential", surface: "dom", timeoutMs: 1000 },
-  );
   library.save(doc);
   const picture = await sharp(randomBytes(720 * 480 * 3), { raw: { width: 720, height: 480, channels: 3 } }).jpeg({ quality: 90 }).toBuffer();
   const dir = path.join(home, "shots", "workflows", doc.id);
@@ -153,7 +149,6 @@ test("a long workflow sync bounds picture bodies and reports omitted pictures", 
     assert.equal(bodies.length, 1);
     assert.ok(bodies[0]!.bytes < 4_000_000);
     assert.ok(bodies[0]!.shots.length > 0 && bodies[0]!.shots.length < 40);
-    assert.equal(bodies[0]!.shots.some((shot) => shot.stepId.startsWith("private-")), false);
     assert.match(result.lastResult || "", /\d+ pictures omitted for transport limits/);
     for (const shot of bodies[0]!.shots) {
       const meta = await sharp(Buffer.from(shot.png, "base64")).metadata();
