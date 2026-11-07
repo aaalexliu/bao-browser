@@ -6,14 +6,31 @@ export const RETIRED_LIVE_TOOL = {
 
 export class McpVersionError extends Error {}
 
+export const MCP_UPDATE_POLL_MS = 2000;
+
 export function createMcpVersionCheck(entry: string): () => Promise<void> {
-  const loaded = statSync(entry);
+  const identity = (): string => {
+    const { dev, ino, size, mtimeMs } = statSync(entry);
+    return `${dev}:${ino}:${size}:${mtimeMs}`;
+  };
+  const loaded = identity();
+  let replacement: string | undefined;
+  let seenAt = 0;
   return async () => {
-    let installed: ReturnType<typeof statSync>;
-    try { installed = statSync(entry); }
-    catch { return; }
-    if (installed.dev !== loaded.dev || installed.ino !== loaded.ino || installed.size !== loaded.size || installed.mtimeMs !== loaded.mtimeMs) {
-      throw new McpVersionError("Bao was updated. Reconnecting its MCP server to load the installed tools.");
+    let installed: string;
+    try { installed = identity(); }
+    catch { replacement = undefined; return; }
+    if (installed === loaded) {
+      replacement = undefined;
+      return;
+    }
+    if (installed !== replacement) {
+      replacement = installed;
+      seenAt = performance.now();
+      return;
+    }
+    if (performance.now() - seenAt >= MCP_UPDATE_POLL_MS) {
+      throw new McpVersionError("Bao was updated. This Bao tool server is stopping so your agent app can start the updated one. If Bao tools do not come back, restart the Bao connection in your agent app.");
     }
   };
 }

@@ -7,7 +7,7 @@ import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI,
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
 import { inspectRunView, listRunViews } from "./run-view";
 import { BROWSER_RESULT_SCHEMA, browserToolResult } from "./tool-card";
-import { createMcpVersionCheck, McpVersionError } from "./version";
+import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -105,6 +105,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const ctx: Context = { library, identity, proxy, ui: false, checkVersion: createMcpVersionCheck(__filename), stop: () => stop() };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
+  let pending = 0;
   process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
@@ -127,9 +128,13 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
           });
         } catch {}
       }
+      pending++;
       chain = chain.then(() => handle(msg, ctx)).catch((err: unknown) => {
         process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      }).finally(releaseClose);
+      }).finally(() => {
+        releaseClose?.();
+        pending--;
+      });
     }
   });
   // End proxy ownership immediately; queued catalog work can outlast cleanup.
@@ -154,12 +159,12 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   };
   const versionPoll = setInterval(() => {
     void ctx.checkVersion().catch((error: unknown) => {
-      if (error instanceof McpVersionError) {
+      if (error instanceof McpVersionError && pending === 0 && !ctx.proxy.hasSession()) {
         process.stderr.write(`${error.message}\n`);
         stop();
       }
     });
-  }, 2000);
+  }, MCP_UPDATE_POLL_MS);
   versionPoll.unref();
   process.stdin.on("end", end);
   process.on("SIGTERM", stop);
