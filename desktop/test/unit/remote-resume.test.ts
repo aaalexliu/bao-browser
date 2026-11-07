@@ -133,6 +133,9 @@ test("production remote confirms continue locally once and reject non-held order
     library.save({ ...workflow, id: "auto-order", steps: [confirm, finish] });
     const automatic = await tool("run_workflow", { id: "auto-order" });
     assert.equal(automatic.outcome, "needs_human");
+    assert.equal(remote.view().canDetectCompletion, true);
+    assert.equal(remote.view().stepNumber, 1);
+    assert.equal(remote.view().stepCount, 2);
     await withHeldPage(String(automatic.resume), async (page) => {
       const events = page as unknown as { listenerCount(event: string): number };
       const counts = [events.listenerCount("console"), events.listenerCount("response")];
@@ -193,6 +196,9 @@ test("production remote confirms continue locally once and reject non-held order
     assert.equal(followups, 3, "local Continue skipped a later human step");
     assert.equal(remote.view().stepId, "second-confirm");
     assert.equal(remote.view().stepLabel, confirm.label);
+    assert.equal(remote.view().stepNumber, 2);
+    assert.equal(remote.view().stepCount, 3);
+    assert.equal(remote.view().canDetectCompletion, false);
     remote.continue(String(two.resume), confirm.id);
     await new Promise((resolve) => setTimeout(resolve, 700));
     assert.equal(remote.view().stepId, "second-confirm", "stale local Continue completed a later confirm");
@@ -220,6 +226,23 @@ test("production remote confirms continue locally once and reject non-held order
     remote.continue(String(twoManual.resume), "second-confirm");
     await waitFor(() => remote.view().phase === "idle");
     assert.equal(followups, 5);
+
+    for (const release of ["kill", "expiry"] as const) {
+      library.updateSettings({ actTimeoutMs: release === "expiry" ? 3000 : 120 * 60 * 1000 });
+      const released = await tool("run_workflow", { id: "two-manual-confirms" });
+      remote.continue(String(released.resume), confirm.id);
+      await waitFor(() => remote.view().stepId === "second-confirm");
+      if (release === "kill") remote.kill();
+      await waitFor(() => remote.view().phase === "idle");
+      await waitFor(() => !existsSync(path.join(home, "resumes", `${released.resume}.json`)));
+      await waitFor(() => library.readRun(String(released.runId)).status === (release === "kill" ? "stopped" : "timed-out"));
+      const afterRelease = await tool("resume_workflow", { resume: released.resume });
+      assert.equal(afterRelease.outcome, "failed", `${release} returned a cached waiting outcome: ${JSON.stringify(afterRelease)}`);
+      assert.match(String(afterRelease.reason), /not held/);
+      assert.equal(library.readRun(String(released.runId)).status, release === "kill" ? "stopped" : "timed-out");
+      assert.equal(followups, 5, `${release} ran a downstream action`);
+    }
+    library.updateSettings({ actTimeoutMs: 120 * 60 * 1000 });
 
     const racing = await tool("run_workflow", { id: "manual-order" });
     const results = await Promise.all([

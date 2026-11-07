@@ -293,11 +293,17 @@ export async function withHeldPage(token: string, run: (page: Page) => Promise<v
   await run(live.page);
 }
 
-export function heldConfirmStep(token: string): { stepId: string; stepLabel: string } | undefined {
+export function heldConfirmStep(token: string): { stepId: string; stepLabel: string; stepNumber: number; stepCount: number; canDetectCompletion: boolean } | undefined {
   const live = liveRuns.get(token);
   if (!live || live.kind !== "confirm" || live.continuing) return undefined;
-  const step = live.workflow.steps.find((step) => step.id === live.stepId);
-  return { stepId: live.stepId, stepLabel: step?.label || live.stepId };
+  const index = live.workflow.steps.findIndex((step) => step.id === live.stepId);
+  return {
+    stepId: live.stepId,
+    stepLabel: live.workflow.steps[index]?.label || "the site interaction",
+    stepNumber: index + 1,
+    stepCount: live.workflow.steps.length,
+    canDetectCompletion: live.confirmPending === true,
+  };
 }
 
 export async function heldConfirmReady(token: string): Promise<boolean> {

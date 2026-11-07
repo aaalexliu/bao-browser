@@ -30,6 +30,9 @@ export interface RemoteView {
   resumeToken?: string;
   stepId?: string;
   stepLabel?: string;
+  stepNumber?: number;
+  stepCount?: number;
+  canDetectCompletion?: boolean;
 }
 
 export interface RemoteRunners {
@@ -116,7 +119,10 @@ export function createRemoteAgent(opts: {
     wake?.();
     clearTimeout(deadlineTimer);
     clearTimeout(confirmTimer);
-    if (heldResume) await runWorkflow(opts.library, { resume: heldResume, cancel: true });
+    if (heldResume) {
+      locallyMoved.delete(heldResume);
+      await runWorkflow(opts.library, { resume: heldResume, cancel: true });
+    }
     heldResume = undefined;
     await releaseContext();
   }
@@ -252,6 +258,7 @@ export function createRemoteAgent(opts: {
         continue;
       }
       if (effect.type === "release-held") {
+        locallyMoved.delete(effect.resume);
         clearTimeout(deadlineTimer);
         const open = context;
         heldResume = undefined;
@@ -261,6 +268,7 @@ export function createRemoteAgent(opts: {
         continue;
       }
       if (effect.type === "abort-run") {
+        if (heldResume) locallyMoved.delete(heldResume);
         generation += 1;
         opts.stop();
         clearTimeout(deadlineTimer);

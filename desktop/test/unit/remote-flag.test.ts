@@ -24,9 +24,20 @@ test("BAO_REMOTE_MCP is off unless it is exactly 1", async () => {
   assert.deepEqual(await closed.json(), { error: "remote_disabled" });
 });
 
-test("the remote agent banner stays empty while it is off", () => {
+test("the remote banner names the held step and offers only available completion paths", () => {
   assert.equal(remoteBanner({ phase: "idle" }), "");
   assert.equal(remoteBanner(undefined), "");
+  for (const canDetectCompletion of [false, true]) {
+    const html = remoteBanner({
+      phase: "waiting", workflowName: "Order", resumeToken: "held-token",
+      stepId: "internal-order-9", stepLabel: 'Confirm "Place order"', stepNumber: 2, stepCount: 3,
+      canDetectCompletion,
+    });
+    const instruction = html.match(/<p class="instruction">([^<]*)<\/p>/)?.[1];
+    assert.equal(instruction, 'Order is waiting for you to complete Confirm &quot;Place order&quot; (step 2 of 3). Complete it in the Bao window. '
+      + (canDetectCompletion ? "Bao continues when it detects completion. If it stays here, choose Continue after you finish." : "Choose Continue after you finish."));
+    assert.match(html, /data-resume="held-token" data-step="internal-order-9"/);
+  }
 });
 
 test("this Mac dials the websocket only when relay.json is present", async () => {
