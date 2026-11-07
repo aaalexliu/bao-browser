@@ -266,6 +266,9 @@ test("plain Replay uses the current saved secret while pinned and run-link input
       assert.ok(runId);
       await page.click('#rail [data-place="runs"]');
       await page.locator(`[data-open-run="${runId}"]`).first().click();
+      const evidence = page.locator("#run-evidence");
+      await evidence.waitFor();
+      if (await evidence.getAttribute("open") === null) await evidence.locator(":scope > summary").click();
       await page.locator("#rerun-run").waitFor();
     }
     await openPlain();

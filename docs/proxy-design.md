@@ -146,7 +146,7 @@ Resolution runs at capture, before the action is performed, against the tree tha
 
 A click that does not resolve to exactly one DOM node or one accessibility node is unresolved. The batch stops, the same way Claude's guide says to stop a batch on the first failure. The workflow is marked not replayable. Bbox may be stored. It is not the replay strategy. Spike 2 already showed why: GTK 4 reported both the name field and OK at screen origin `(0, 0)`.
 
-`type` into a field spike 1 would have masked (password, card, SSN) stores `sensitive: true` and drops the value, same rule as the extension. The audit log drops it too.
+`type` into a field spike 1 would have masked (password, card, SSN) stores `sensitive: true`. Value retention in the workflow and audit log follows [saved-file secret handling](permissions.md#secret-text-in-saved-files).
 
 ## Interpret
 
@@ -178,12 +178,12 @@ The trail is an append-only list, `desktop/src/proxy/audit.ts`, version 1. Each 
 - `kind`: `read` or `act`
 - `op`: `navigate`, `screenshot`, `dom`, `ax`, `click`, `type`, `keypress`, or the vendor action name when this spike does not perform it
 - `source.agent`, `source.vendor`, `source.adapter`
-- `raw`: the vendor payload after redaction by [`shared/mask.ts`](../shared/mask.ts). A secret is omitted, not replaced with a mask string.
+- `raw`: the vendor payload, including supplied text for type actions. See [saved-file secret handling](permissions.md#secret-text-in-saved-files).
 - `before` and `after`: snapshot refs. `screenshot` is `sha256:` of the PNG. `dom` and `ax` are the small snapshots. The PNG bytes stay in the computer-call transcript
 - `resolved`: tag, ranked selectors, unique, text. Null when the hit missed
 - `unresolved.reason` when the act was stored and not performed
 - `provenance` for a pixel the vendor sent. Replay does not read it
-- `sensitive` when a typed value was withheld
+- `sensitive` when the executor identifies a sensitive typed value
 - `checked` when the act was a checkbox, so derive can emit `setChecked`
 
 Reads are not workflow steps. `deriveWorkflow` walks act events only. `trimTrail` drops a screenshot read whose image hash equals the previous screenshot read. DOM and AX events between those two stay. Deriving again from the trimmed trail produces the same steps. That is the seam a later interpret pass uses to drop retries and name reads versus writes. This spike does not run that pass. It only trims duplicate screenshots.
