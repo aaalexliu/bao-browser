@@ -112,7 +112,7 @@ test("get_run bounds every native output stream without changing stored evidence
         { stdout: "c".repeat(1000), stderr: "", exitCode: 0, stdoutTruncated: false, stdoutLength: 1000, stderrTruncated: false, stderrLength: 0 },
       ] },
     });
-    assert.equal(result.nativeOutputNote, `For full native output, open bao://receipt/${capture.id} or use inspect_run.`);
+    assert.equal(result.nativeOutputNote, `For full native output, open bao://receipt/${capture.id}.`);
     assert.deepEqual(library.readRun(capture.id).steps, steps);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

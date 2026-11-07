@@ -128,6 +128,10 @@
     (void)app;
     for (NSURL *url in urls) {
         if (![url.scheme.lowercaseString isEqualToString:@"bao"]) continue;
+        if ([url.host.lowercaseString isEqualToString:@"import"]) {
+            [self showWindow:nil];
+            continue;
+        }
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"/api/open" relativeToURL:self.serverURL]];
         request.HTTPMethod = @"POST";
         request.timeoutInterval = 10;

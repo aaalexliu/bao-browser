@@ -402,7 +402,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     outputs: stored.outputs,
     pageLeftOpen: stored.pageLeftOpen,
     status,
-    ...(stored.kind === "capture" ? { nativeOutputNote: `For full native output, open ${receiptLink(stored.id)} or use inspect_run.` } : {}),
+    ...(stored.kind === "capture" ? { nativeOutputNote: `For full native output, open ${receiptLink(stored.id)}.` } : {}),
     step,
     ask: recording ? undefined : envelope?.ask || (outcome !== "ok" ? reason : undefined),
     deadline: envelope?.deadline,

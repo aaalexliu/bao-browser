@@ -47,6 +47,24 @@ function launcherSkip(): string | false {
 
 const MACOS = path.join(process.cwd(), "desktop/packaging/macos");
 
+test("the native URL handler excludes imports and forwards receipt, workflow and run links", { skip: launcherSkip() }, () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-native-links-"));
+  try {
+    const bin = path.join(root, "bao-open-links-test");
+    execFileSync("cc", [
+      "-fobjc-arc", "-Wall", "-Wextra", "-Werror",
+      "-framework", "Foundation", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications",
+      path.join(MACOS, "bao-open-links-test.m"), path.join(MACOS, "bao-notify.m"), "-o", bin,
+    ], { stdio: "inherit", timeout: 60_000 });
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: root, CFFIXED_USER_HOME: root, BAO_HOME: root, BAO_HEAL_CURSOR_ACCOUNT: "0" };
+    for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "CURSOR_API_KEY"]) delete env[key];
+    const out = execFileSync(bin, { env, encoding: "utf8", timeout: 20_000 });
+    assert.equal(out, "ok native URL import exclusion and receipt, workflow, run forwarding\n");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the native window keeps navigation, reopen, editing, downloads and server lifetime inside Bao", { skip: launcherSkip() }, () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-native-window-"));
   try {
