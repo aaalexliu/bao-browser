@@ -29,8 +29,10 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
   const site = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const launch = launches.launchOwnedChromeEndpoint;
   let launchCount = 0;
+  const launchOptions: Parameters<typeof launch>[0][] = [];
   t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
     launchCount++;
+    launchOptions.push(options);
     return launch({ ...options, headless: true });
   });
   let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
@@ -69,6 +71,13 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       { origin: "https://storage.test", key: "identity", value: "storage-only" },
     ].sort((a, b) => a.origin.localeCompare(b.origin)), "the closed synthetic source contains both saved storage records");
     chrome = await openBaoChromeForProxy({ sourceRoot, directory: "Default", home, site });
+    assert.equal(launchOptions.length, 2);
+    assert.equal(launchOptions[0]!.headless, false, "source Chrome keeps OS-keychain access");
+    assert.deepEqual(launchOptions[0]!.appendArgs, ["--no-startup-window"], "sign-in extraction creates no window");
+    assert.equal(launchOptions[0]!.keychain, undefined);
+    assert.equal(launchOptions[1]!.headless, false, "the lasting Bao browser still opens its window");
+    assert.equal(launchOptions[1]!.appendArgs, undefined);
+    assert.equal(launchOptions[1]!.keychain, "mock");
     let page = await inspect();
     try {
       const { cookies } = await page.cdp.send<{ cookies: { name: string; value: string }[] }>("Storage.getCookies");
@@ -84,6 +93,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.equal(await chrome.importLogin("https://storage.test/"), true);
       assert.equal(await chrome.importLogin("https://storage.test/another-path"), false);
       assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
+      assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--no-startup-window"], "later sign-in refreshes also create no window");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
     assert.notDeepEqual(launches.pidsForDataDir(baoAgentProfileDir(home)), []);
