@@ -197,16 +197,56 @@ test("the real signup-email tie is broken by the recorded test id and css path",
   assert.equal(result.steps[0]?.status, "passed");
 });
 
-test("Reserve Now is a confirm step and a prompt keeps the text it returned", () => {
+test("a recorded purchase-labelled click replays on the page without a human gate", { timeout: 20_000 }, async () => {
+  const { testChromium: chromium } = await import("../../src/test-browser.js");
+  const { BrowserDriver } = await import("../../src/v1/browser-driver.js");
+  const { condense } = await import("../../src/v1/condense.js");
+  const { recorderSource } = await import("../../src/v1/recorder.js");
+  const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+  try {
+    const context = await browser.newContext();
+    let resolveRecorded: (event: TrailEvent) => void;
+    const recorded = new Promise<TrailEvent>((resolve) => { resolveRecorded = resolve; });
+    await context.exposeBinding("__baoRecord", (_source, event: TrailEvent) => {
+      if (event.op === "click") resolveRecorded({ ...event, id: "buy", ts: 1, kind: "act" });
+    });
+    await context.addInitScript(recorderSource());
+    const page = await context.newPage();
+    const url = `data:text/html,${encodeURIComponent(`<!doctype html>
+      <button id="buy" onclick="document.getElementById('status').textContent='Order placed'">Place Order</button>
+      <p id="status">Ready</p>`)}`;
+    await page.goto(url);
+    await page.locator("#buy").click();
+    assert.equal(await page.locator("#status").textContent(), "Order placed");
+    const event = await recorded;
+    const doc = condense([event], { id: "wf-purchase", name: "Purchase", startUrl: url });
+    assert.equal(doc.steps[0]?.action, "click");
+    assert.equal(doc.steps[0]?.human, undefined);
+    assert.equal(doc.steps[0]?.confirm, undefined);
+    assert.equal(doc.steps[0]?.gate, undefined);
+    assert.equal(doc.steps[0]?.postcondition?.match, "Order placed");
+
+    const replayPage = await browser.newPage();
+    await replayPage.goto(url);
+    const result = await replay(doc, {}, new BrowserDriver(replayPage), { heal: unavailableHeal() });
+    assert.equal(result.status, "passed");
+    assert.equal(result.trail.some((item) => item.kind === "human-confirm"), false);
+    assert.equal(await replayPage.locator("#status").textContent(), "Order placed");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Reserve Now stays a click and a prompt keeps the text it returned", () => {
   const events: TrailEvent[] = [
     { id: "r", ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: "Reserve Now", name: "Reserve Now" }) },
     { id: "p", ts: 2, kind: "act", op: "click", dialogType: "prompt", dialogValue: "proof-prompt", dialogDecision: "accept", afterText: "You entered: proof-prompt", identity: dom({ role: "button", text: "Click for JS Prompt" }) },
   ];
   const doc = interpret(events, { id: "wf-gate", name: "Gate", startUrl: "https://example.test/" });
-  assert.equal(doc.steps[0]?.action, "confirm");
-  assert.equal(doc.steps[0]?.human, true);
-  assert.equal(doc.steps[0]?.confirm, true);
-  assert.equal(doc.steps[0]?.gate, "confirm");
+  assert.equal(doc.steps[0]?.action, "click");
+  assert.equal(doc.steps[0]?.human, undefined);
+  assert.equal(doc.steps[0]?.confirm, undefined);
+  assert.equal(doc.steps[0]?.gate, undefined);
   assert.equal(doc.steps[1]?.action, "click");
   assert.equal(doc.steps[1]?.value, "{{prompt}}");
   assert.equal(doc.inputs.find((input) => input.name === "prompt")?.default, "proof-prompt");
@@ -214,29 +254,33 @@ test("Reserve Now is a confirm step and a prompt keeps the text it returned", ()
   assert.equal(doc.steps[1]?.postcondition?.match, "You entered: {{prompt}}");
 });
 
-test("Place Order, Buy, Pay, Submit order, and Reserve pause; Submit and JS Confirm stay clicks", () => {
-  const pause = ["Place Order", "Buy", "Buy now", "Pay", "Pay now", "Submit order", "Reserve", "Reserve Now"];
-  for (const name of pause) {
-    const doc = interpret([
-      { id: name, ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: name, name }) },
-    ], { id: "wf-buy", name: "Buy", startUrl: "https://example.test/" });
-    assert.equal(doc.steps[0]?.action, "confirm", name);
-    assert.equal(doc.steps[0]?.confirm, true, name);
-    assert.equal(doc.steps[0]?.human, true, name);
-    assert.equal(doc.steps[0]?.gate, "confirm", name);
+test("purchase and confirm labels stay ordinary clicks on every recorded control", () => {
+  const names = ["Place Order", "Buy", "Buy now", "Pay", "Pay now", "Submit order", "Reserve", "Reserve Now", "Submit", "Confirm", "Click for JS Confirm", "Add to Cart"];
+  for (const name of names) {
+    for (const control of [{ role: "button" }, { role: "input", tag: "input" }, { role: "tab" }, { role: "link", tag: "a" }]) {
+      for (const preserveActions of [false, true]) {
+        const doc = interpret([
+          { id: name, ts: 1, kind: "act", op: "click", identity: dom({ ...control, text: name, name }) },
+        ], { id: "wf-click", name: "Click", startUrl: "https://example.test/", preserveActions });
+        assert.equal(doc.steps[0]?.action, "click", name);
+        assert.equal(doc.steps[0]?.confirm, undefined, name);
+        assert.equal(doc.steps[0]?.human, undefined, name);
+        assert.equal(doc.steps[0]?.gate, undefined, name);
+      }
+    }
   }
-  for (const name of ["Submit", "Click for JS Confirm", "Add to Cart"]) {
-    const doc = interpret([
-      { id: name, ts: 1, kind: "act", op: "click", identity: dom({ role: "button", text: name, name }) },
-    ], { id: "wf-click", name: "Click", startUrl: "https://example.test/" });
-    assert.equal(doc.steps[0]?.action, "click", name);
-    assert.equal(doc.steps[0]?.confirm, undefined, name);
-  }
-  const tab = interpret([
-    { id: "tab-pay", ts: 1, kind: "act", op: "click", identity: dom({ role: "tab", text: "Pay", name: "Pay" }) },
-  ], { id: "wf-tab", name: "Tab", startUrl: "https://example.test/" });
-  assert.equal(tab.steps[0]?.action, "click");
-  assert.equal(tab.steps[0]?.confirm, undefined);
+});
+
+test("an explicit recorded confirm and an explicit confirm gate keep their meaning", () => {
+  const doc = interpret([
+    { id: "confirm", ts: 1, kind: "act", op: "confirm", afterText: "Order placed" },
+    { id: "gated", ts: 2, kind: "act", op: "click", gate: "confirm", identity: dom({ role: "button", name: "Buy now" }) },
+  ], { id: "wf-confirm", name: "Confirm", startUrl: "https://example.test/" });
+  assert.equal(doc.steps[0]?.action, "confirm");
+  assert.equal(doc.steps[0]?.human, true);
+  assert.equal(doc.steps[0]?.postcondition?.match, "Order placed");
+  assert.equal(doc.steps[1]?.action, "click");
+  assert.equal(doc.steps[1]?.gate, "confirm");
 });
 
 test("zero executed steps and a failed final check are not passes", () => {

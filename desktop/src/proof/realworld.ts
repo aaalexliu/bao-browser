@@ -257,7 +257,7 @@ const TASKS: Task[] = [
     title: "Booking, stop before reserve",
     site: "automationintesting.online",
     openUrl: "https://automationintesting.online/",
-    expect: "needs_human",
+    expect: "completed",
     record: recordP3,
     args: (workflow, run) => argsFor(workflow, { byDefault: run === 1 ? P3_A : P3_B }),
     score: scoreP3,
@@ -324,7 +324,7 @@ const TASKS: Task[] = [
     title: "Shadow-DOM shop, stop before place order",
     site: "shop.polymer-project.org",
     openUrl: "https://shop.polymer-project.org/",
-    expect: "needs_human",
+    expect: "completed",
     record: recordP9,
     args: (workflow, run) => argsFor(workflow, {
       byDefault: run === 1 ? P9_A : P9_B,
@@ -532,7 +532,7 @@ async function recordP2(session: Session, files: RunFiles): Promise<void> {
   await session.waitFor("Thanks for submitting the form");
 }
 
-async function recordP3(session: Session): Promise<void> {
+export async function recordP3(session: Pick<Session, "open" | "waitFor" | "drive" | "view">): Promise<void> {
   await session.open("https://automationintesting.online/");
   await session.waitFor("Shady Meadows");
   await session.drive({ click: "a[href*='/reservation/1']" });
@@ -554,7 +554,6 @@ async function recordP3(session: Session): Promise<void> {
     await session.drive({ fill: { selector: "#email", value: "bao-guest@example.com" } });
     await session.drive({ fill: { selector: "#phone", value: "5550001111" } });
   }
-  await session.drive({ click: "#doReservation, button:text-is('Reserve Now')" });
 }
 
 async function recordP4(session: Session): Promise<void> {
@@ -675,7 +674,7 @@ async function recordP8(session: Session): Promise<void> {
   await sleep(400);
 }
 
-async function recordP9(session: Session): Promise<void> {
+export async function recordP9(session: Pick<Session, "open" | "waitFor" | "drive">): Promise<void> {
   await session.open("https://shop.polymer-project.org/");
   await session.waitFor("Men's T-Shirts");
   await session.drive({ goto: "https://shop.polymer-project.org/list/mens_tshirts" });
@@ -697,7 +696,6 @@ async function recordP9(session: Session): Promise<void> {
   await session.drive({ fill: { selector: "shop-app >> #shipState", value: "CA" } });
   await session.drive({ fill: { selector: "shop-app >> #shipZip", value: "94105" } });
   await session.drive({ fill: { selector: "shop-app >> #ccName", value: "Bao" } });
-  await session.drive({ click: "shop-app >> shop-checkout >> input[value='Place Order']" });
 }
 
 async function recordP13(session: Session): Promise<void> {
@@ -1036,13 +1034,11 @@ function scoreP2(input: ScoreInput): { pass: boolean; cause: string; detail: str
   return { pass: true, cause: "", detail: `modal matched inputs including ${dob}` };
 }
 
-function scoreP3(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
+export function scoreP3(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const nights = input.run === 1 ? 2 : 3;
   const text = evidence(input);
   const summary = text.match(/[£$](\d+)\s*x\s*(\d+)\s*nights?\s*[£$](\d+)([\s\S]*?)\bTotal\s*[£$](\d+)/i);
-  const confirm = input.workflow.steps.some((step) => step.action === "confirm");
   const pressed = input.workflow.steps.some((step) => step.action === "click" && /reserve now/i.test(step.label));
-  const halted = input.replay.status === "paused" && (input.replay.pausedKind === "confirm" || confirm);
   if (!summary) return { pass: false, cause: "date picker", detail: `summary did not show ${nights} nights` };
   const rate = Number(summary[1]);
   const gotNights = Number(summary[2]);
@@ -1052,8 +1048,11 @@ function scoreP3(input: ScoreInput): { pass: boolean; cause: string; detail: str
   if (gotNights !== nights) return { pass: false, cause: "date picker", detail: `summary showed ${gotNights} nights, wanted ${nights}` };
   if (room !== nights * rate) return { pass: false, cause: "pass check", detail: `room ${room} !== ${nights} × ${rate}` };
   if (gotTotal !== room + fees) return { pass: false, cause: "pass check", detail: `total ${gotTotal} !== room ${room} + fees ${fees}` };
-  if (pressed || !halted) return { pass: false, cause: "missing step type", detail: pressed ? "Reserve Now was a click, not a confirm gate" : "replay did not halt on a confirm gate" };
-  return { pass: true, cause: "", detail: `${nights} nights, total ${gotTotal}, halted before Reserve Now` };
+  if (pressed) return { pass: false, cause: "missing step type", detail: "Reserve Now was clicked" };
+  if (input.expect !== "completed" || input.replay.status !== "passed") {
+    return { pass: false, cause: "pass check", detail: "booking preparation did not complete" };
+  }
+  return { pass: true, cause: "", detail: `${nights} nights, total ${gotTotal}, completed before Reserve Now` };
 }
 
 function scoreP4(_input: ScoreInput): { pass: boolean; cause: string; detail: string } {
@@ -1168,28 +1167,18 @@ function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: str
 }
 
 export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
-  if (input.expect !== "needs_human") {
-    return { pass: false, cause: "missing step type", detail: "Place Order is scored as needs_human" };
-  }
   const text = evidence(input);
   const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(step.label));
-  const confirm = input.workflow.steps.some((step) => step.action === "confirm" && step.confirm === true && /place order/i.test(`${step.label} ${step.identity?.name || ""} ${step.identity?.text || ""}`));
-  const shadow = input.workflow.steps.some((step) => /shop-app/i.test(JSON.stringify(step.identity || {})));
   if (pressed) return { pass: false, cause: "missing step type", detail: "Place Order was clicked" };
-  if (!confirm) return { pass: false, cause: shadow ? "shadow DOM" : "missing step type", detail: shadow ? "clicks landed on the shadow host and there is no confirm gate" : "no confirm gate before Place Order" };
   if (!/YouTube Organic Cotton/i.test(text) || !/\$29\.50/.test(text)) {
     return { pass: false, cause: "shadow DOM", detail: "the cart did not show the YouTube shirt at $29.50" };
   }
-  if (input.replay.status !== "paused" || input.replay.pausedKind !== "confirm") {
-    return { pass: false, cause: "missing step type", detail: `replay status was ${input.replay.status || "empty"} / ${input.replay.pausedKind || "no pause"}` };
-  }
-  const ask = input.replay.ask?.instruction || "";
-  if (!/place order/i.test(ask) || !/needs you/i.test(text)) {
-    return { pass: false, cause: "missing step type", detail: "the pause did not show needs you at Place Order" };
+  if (input.expect !== "completed" || input.replay.status !== "passed") {
+    return { pass: false, cause: "pass check", detail: "checkout preparation did not complete" };
   }
   const ship = input.run === 1 ? "2 Market" : "3 Market";
   if (!text.includes(ship)) return { pass: false, cause: "pass check", detail: `the replay address was not ${ship}` };
-  return { pass: true, cause: "", detail: `cart total $29.50 and the run paused at Place Order (${ship})` };
+  return { pass: true, cause: "", detail: `cart total $29.50 and the run completed before Place Order (${ship})` };
 }
 
 function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: string } {

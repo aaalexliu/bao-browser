@@ -198,10 +198,7 @@ export interface WorkflowStep {
   sensitive?: boolean;
   /** A confirm or login step is done by the person. Replay does not click or type it. */
   human?: boolean;
-  /**
-   * Place Order, Buy, Pay, Submit order, and Reserve.
-   * Replay pauses with the act prompt and does not click.
-   */
+  /** Saved confirm marker. Replay pauses with the act prompt and does not click. */
   confirm?: true;
   /** Recorded purpose of the step. The hybrid condenser writes it. Repairs compare it to the live label. It is not replayed. */
   intent?: string;
