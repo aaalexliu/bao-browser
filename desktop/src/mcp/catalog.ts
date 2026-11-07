@@ -9,7 +9,7 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
-import { reusableInputs } from "../../../shared/saved-secrets";
+import { reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
@@ -189,6 +189,25 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
 }> {
   const found = await locateWorkflow(library, id, auth);
   const workflow = scrubSaved(found.document);
+  const checks: { step: WorkflowStep; field: "postcondition" | "expect"; value: string }[] = [];
+  const collect = (steps: WorkflowStep[]): void => {
+    for (const step of steps) {
+      if (step.action !== "note" && step.action !== "verify") {
+        for (const field of ["postcondition", "expect"] as const) {
+          const check = step[field];
+          if (check && (check.kind === "text" || check.kind === "value") && check.match) {
+            checks.push({ step, field, value: check.match });
+          }
+        }
+      }
+      if (step.forEach) collect(step.forEach.steps);
+    }
+  };
+  collect(workflow.steps);
+  const projected = scrubSaved(checks.map(({ value }) => ({ op: "type", value })), { workflow: found.document });
+  checks.forEach(({ step, field, value }, index) => {
+    if (projected[index]?.value === STRIPPED_SECRET && value !== STRIPPED_SECRET) delete step[field];
+  });
   for (const input of workflow.inputs) {
     if (input.type === "secret") delete input.default;
   }
