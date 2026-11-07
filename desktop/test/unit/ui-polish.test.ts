@@ -115,7 +115,7 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
     await page.getByRole('button', { name: 'Record', exact: true }).click();
     const mcp = page.locator(".card").filter({ has: page.getByRole("heading", { name: "Agent and MCP" }) });
     assert.match(await mcp.innerText(), /agent_browser/);
-    assert.match(await mcp.innerText(), /do not save replayable workflows/);
+    assert.match(await mcp.innerText(), /Supported single-page tasks save replayable workflows when the session ends/);
     assert.match(await mcp.innerText(), /Watch.*Runs/);
   } finally {
     await browser.close();

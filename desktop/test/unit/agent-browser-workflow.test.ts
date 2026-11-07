@@ -24,8 +24,14 @@ async function fixture(ui = false) {
   const actions: { target: string; name: string }[] = [];
   let reordered = false;
   let missing = false;
+  let ownerReady = false;
   const server = createServer((req, res) => {
     const url = new URL(req.url!, "http://fixture");
+    if (url.pathname === "/owner-ready") { res.end(JSON.stringify(ownerReady)); return; }
+    if (url.pathname === "/signin") {
+      res.end(`<!doctype html><title>Sign in</title><p>Synthetic owner handoff</p><script>setInterval(async()=>{if(await(await fetch('/owner-ready')).json())location.replace('/')},100)</script>`);
+      return;
+    }
     if (url.pathname === "/action") {
       actions.push({ target: url.searchParams.get("target")!, name: url.searchParams.get("name")! });
       res.end("ok");
@@ -74,6 +80,7 @@ async function fixture(ui = false) {
     root, home, url, actions, call, request, library: new Library(home),
     reorder() { reordered = true; },
     removeChosen() { missing = true; },
+    resumeOwner(ready = true) { ownerReady = ready; },
     async disconnect() { child.stdin.end(); await exited; },
     async close() {
       if (child.exitCode === null) await call("close").catch(() => undefined);
@@ -146,6 +153,61 @@ test("native ref capture saves a discoverable workflow that replays with new inp
     assert.deepEqual(f.actions, [{ target: "chosen", name: "Ada" }, { target: "chosen", name: "Grace" }], "a missing recorded target must not click the remaining namesake");
     await passed(f, "close");
     assert.equal(f.library.list().workflows.length, 1, "repeated close does not save another workflow");
+  } finally { await f.close(); }
+});
+
+test("selecting the active native tab preserves workflow eligibility", { skip: !binary, timeout: 60_000 }, async () => {
+  const f = await fixture();
+  try {
+    await passed(f, "open", [f.url]);
+    const tabs = await passed(f, "tab", ["list", "--json"]);
+    const data = JSON.parse(tabs) as { data: { tabs: { tabId: string; active: boolean }[] } };
+    const active = data.data.tabs.find((tab) => tab.active);
+    assert.ok(active, tabs);
+    await passed(f, "tab", [active.tabId]);
+    await passed(f, "click", ['[data-testid="chosen"]']);
+    assert.match(await passed(f, "close"), /Saved workflow:/);
+    assert.equal(f.library.list().workflows.length, 1);
+  } finally { await f.close(); }
+});
+
+test("harmless native failures preserve raw failed receipts and save only successful actions", { skip: !binary, timeout: 60_000 }, async () => {
+  const f = await fixture();
+  try {
+    await passed(f, "open", [f.url]);
+    assert.equal((await f.call("snapshot", ["-s", "#missing"])).isError, true);
+    assert.equal((await f.call("click", ["#missing"])).isError, true);
+    await passed(f, "click", ['[data-testid="chosen"]']);
+    assert.match(await passed(f, "close"), /Saved workflow:/);
+    const workflow = f.library.list().workflows[0]!;
+    assert.deepEqual(workflow.steps.map((step) => step.action), ["click"]);
+    assert.equal(workflow.steps[0]!.identity?.testId, "chosen");
+    const capture = f.library.listRuns()[0]!;
+    assert.equal(capture.status, "failed");
+    assert.equal((capture.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.isError).length, 2);
+    await passed(f, "open", [f.url]);
+    await passed(f, "click", ['[data-testid="chosen"]']);
+    assert.equal((await f.call("click", ["#missing"])).isError, true);
+    assert.match(await passed(f, "close"), /task ended with a failed action/);
+    assert.equal(f.library.list().workflows.length, 1, "an unrecovered action failure must not publish a partial workflow");
+  } finally { await f.close(); }
+});
+
+test("completed owner handoffs save workflows but unfinished waits do not", { skip: !binary, timeout: 60_000 }, async () => {
+  const f = await fixture();
+  try {
+    assert.match(await passed(f, "open", [f.url + "signin"]), /halted/);
+    f.resumeOwner();
+    assert.match(await passed(f, "wait_for_owner", ["5000"]), /ready/);
+    await passed(f, "snapshot", ["-i"]);
+    await passed(f, "click", ['[data-testid="chosen"]']);
+    assert.match(await passed(f, "close"), /Saved workflow:/);
+    const workflow = f.library.list().workflows[0]!;
+    assert.deepEqual(workflow.steps.map((step) => step.action), ["click"]);
+    f.resumeOwner(false);
+    assert.match(await passed(f, "open", [f.url + "signin"]), /halted/);
+    assert.match(await passed(f, "close"), /owner wait did not finish/);
+    assert.equal(f.library.list().workflows.length, 1);
   } finally { await f.close(); }
 });
 

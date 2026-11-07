@@ -109,7 +109,6 @@ export class AgentBrowserProxy {
     if (this.session && command !== "close" && command !== "wait_for_owner") {
       await this.detectOwnerWall(this.session);
       if (this.session.ownerWait) {
-        this.session.workflow.unavailable("it needed owner input");
         return this.ownerResult("halted");
       }
     }
@@ -142,7 +141,6 @@ export class AgentBrowserProxy {
         if (!starting && site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
       }
       if (command === "wait_for_owner") {
-        session.workflow.unavailable("it needed owner input");
         results.push(...await this.waitForOwner(session, args));
         return results;
       }
@@ -168,6 +166,7 @@ export class AgentBrowserProxy {
       return results;
     } catch (error) {
       failure = error;
+      session.workflow.unavailable("a browser command was interrupted");
       throw error;
     } finally {
       try {
@@ -306,6 +305,7 @@ export class AgentBrowserProxy {
   private ownerClosed(session: Session): AgentBrowserCommandResult[] {
     session.abort.abort();
     session.ownerWait = undefined;
+    session.workflow.unavailable("the owner wait did not finish");
     session.recording.finish("session_closed");
     return this.ownerResult("closed");
   }
@@ -426,7 +426,8 @@ export class AgentBrowserProxy {
       session.abort.abort();
       await session.commandDone;
       session.recording.finish();
-      this.workflowOutcome = session.workflow.finish(session.recording.status);
+      if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
+      this.workflowOutcome = session.workflow.finish();
       try {
         const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
         if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) process.kill(pid, "SIGTERM");

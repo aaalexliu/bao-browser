@@ -195,7 +195,7 @@ function viewerMain(): void {
       const runId = card.runId;
       root.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
     }
-    root.append(el("footer", "Recorded browser session · View only. Browser captures do not create a replayable workflow."));
+    root.append(el("footer", "Recorded browser session · View only. Supported single-page tasks save a workflow when the session ends."));
     document.title = `${card.command} · Bao`;
   }
   function render(): void {
@@ -290,7 +290,7 @@ function viewerMain(): void {
         root.append(pages);
         const workflow = el("details"); workflow.open = true;
         workflow.append(el("summary", "Workflow steps"));
-        if (!view.workflow) workflow.append(el("p", "No saved workflow is available for this run. Browser captures do not create one.", "muted"));
+        if (!view.workflow) workflow.append(el("p", "No saved workflow is linked to this run. Check the closing tool result for the saved workflow or capture-only reason.", "muted"));
         else {
           const list = el("ol"); list.start = view.workflow.offset + 1;
           for (const step of view.workflow.steps) list.append(el("li", `${step.label || "Step"} · ${step.action}`));

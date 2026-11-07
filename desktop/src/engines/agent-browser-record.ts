@@ -41,7 +41,6 @@ export class AgentBrowserRun {
   }
 
   get id(): string { return this.run.id; }
-  get status(): string { return this.run.status; }
 
   async actionPicture(step: RecordedAgentBrowserCommand, bytes: Buffer, target: NonNullable<RecordedAgentBrowserCommand["target"]>): Promise<void> {
     step.beforeShot = await this.picture(step, bytes, "before");

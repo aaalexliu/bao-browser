@@ -95,6 +95,7 @@ export class AgentBrowserWorkflow {
   private targetId: string | undefined;
   private reason: string | undefined;
   private finished: string | undefined;
+  private failedAction = false;
   private pending: { event: TrailEvent; before: Observation } | undefined;
 
   constructor(private readonly home: string, runId: string, private readonly activePage: () => Promise<BrowserPage>) {
@@ -104,9 +105,13 @@ export class AgentBrowserWorkflow {
   unavailable(reason: string): void { this.reason ??= reason; }
 
   async record(command: string, args: string[], id: string, perform: () => Promise<AgentBrowserCommandResult>, ownerWaiting: () => boolean): Promise<AgentBrowserCommandResult> {
-    if (command === "close") return perform();
+    if (command === "close") {
+      const result = await perform();
+      if (result.exitCode !== 0) this.unavailable("the closing command failed");
+      return result;
+    }
     if (command === "scroll") this.unavailable("it used stateful scroll");
-    if (command === "tab" && args.length && args[0] !== "list") this.unavailable("it used a second tab");
+    if (command === "tab" && ["new", "close"].includes(args[0] ?? "")) this.unavailable("it used a second tab");
     const action = ["open", "click", "fill", "press"].includes(command);
     const expectedArgs = command === "fill" ? 2 : 1;
     if (action && args.length !== expectedArgs) this.unavailable(`${command} options cannot be replayed`);
@@ -122,7 +127,7 @@ export class AgentBrowserWorkflow {
       try {
         page = await this.activePage();
         if (this.targetId && page.targetId !== this.targetId) this.unavailable("it used a second tab");
-        if (command !== "open") {
+        if (action) {
           cdp = await connectCdp(page.port, page.browserPath, { timeoutMs: 3000 });
           ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }, undefined, 3000));
           await cdp.send("Runtime.enable", {}, sessionId, 3000);
@@ -136,13 +141,13 @@ export class AgentBrowserWorkflow {
           before = armed.result.value;
           if (!before) throw new Error("page observation unavailable");
           if (command === "press") captured = before.target;
-          if (action) this.updatePending(before.before);
+          this.updatePending(before.before);
         }
       } catch { this.unavailable("its replay target could not be recorded"); }
 
       const result = await perform();
-      if (result.exitCode !== 0) this.unavailable("a browser command failed");
-      if (ownerWaiting()) this.unavailable("it needed owner input");
+      if (action) this.failedAction = result.exitCode !== 0;
+      if (result.exitCode !== 0 && (command === "snapshot" || command === "screenshot" || command === "tab" && args[0] === "list")) return result;
       if (this.reason || !page) return result;
       try {
         const afterPage = await this.activePage();
@@ -151,22 +156,29 @@ export class AgentBrowserWorkflow {
           return result;
         }
         this.targetId = afterPage.targetId;
-        if (command === "open") {
+        if (!cdp) {
           cdp = await connectCdp(afterPage.port, afterPage.browserPath, { timeoutMs: 3000 });
           ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }, undefined, 3000));
         }
         if (!cdp || !sessionId) throw new Error("page observation unavailable");
-        const observed = await cdp.send<{ result: { value?: Observation } }>("Runtime.evaluate", {
-          expression: `(() => { ${PAGE_FUNCTIONS} return (${readObservation.toString()})(dumpPage, leafTexts); })()`, returnByValue: true,
-        }, sessionId, 3000);
-        const after = observed.result.value;
-        if (!after) throw new Error("page observation unavailable");
+        let after: Observation | undefined;
+        if (!ownerWaiting()) {
+          const observed = await cdp.send<{ result: { value?: Observation } }>("Runtime.evaluate", {
+            expression: `(() => { ${PAGE_FUNCTIONS} return (${readObservation.toString()})(dumpPage, leafTexts); })()`, returnByValue: true,
+          }, sessionId, 3000);
+          after = observed.result.value;
+          if (!after) throw new Error("page observation unavailable");
+        }
+        if (result.exitCode !== 0) {
+          if (action && (!before || !after || JSON.stringify(before.before) !== JSON.stringify(after))) this.unavailable("a failed action changed the page");
+          return result;
+        }
         if (command === "open") {
-          const url = new URL(args[0]!).href;
+          const url = /^[a-z][a-z\d+.-]*:\/\//i.test(args[0]!) ? new URL(args[0]!).href : after?.page.url ?? new URL(`https://${args[0]!}`).href;
           if (!this.startUrl) this.startUrl = url;
           else {
             this.pending = undefined;
-            this.events.push({ id, toolCallId: id, ts: Date.now(), kind: "act", op: "navigate", value: url, afterUrl: after.page.url });
+            this.events.push({ id, toolCallId: id, ts: Date.now(), kind: "act", op: "navigate", value: url, afterUrl: after?.page.url });
           }
         } else if (action && before) {
           const target = captured && durableTarget(captured, before.before.page);
@@ -184,14 +196,14 @@ export class AgentBrowserWorkflow {
             };
             this.events.push(event);
             this.pending = { event, before: before.before };
-            this.updatePending(after);
+            if (after) this.updatePending(after);
           }
-        } else this.updatePending(after);
+        } else if (after) this.updatePending(after);
         this.persist();
       } catch { this.unavailable("its replay outcome could not be recorded"); }
       return result;
     } finally {
-      if (cdp && sessionId) {
+      if (cdp && sessionId && action) {
         await cdp.send("Runtime.evaluate", { expression: "window.__baoWorkflowCleanup?.()" }, sessionId, 1000).catch(() => undefined);
         await cdp.send("Runtime.removeBinding", { name: binding }, sessionId, 1000).catch(() => undefined);
       }
@@ -199,9 +211,9 @@ export class AgentBrowserWorkflow {
     }
   }
 
-  finish(status: string): string {
+  finish(): string {
     if (this.finished) return this.finished;
-    if (status !== "passed") this.unavailable(`the capture finished as ${status}`);
+    if (this.failedAction) this.unavailable("the task ended with a failed action");
     if (!this.startUrl || !this.events.length) this.unavailable("it contained no replayable actions");
     if (!this.reason) {
       try {
