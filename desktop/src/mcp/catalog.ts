@@ -297,7 +297,7 @@ export async function reviewWorkflow(
     `/api/workflows/${encodeURIComponent(id)}/review`,
     {
       documentHash,
-      shots: outcome.runId ? redactedStepShots(library, replayDoc, outcome.runId) : [],
+      shots: outcome.runId ? stepShots(library, replayDoc, outcome.runId) : [],
       samples: publicSamples(inputs),
     },
     opts,
@@ -314,10 +314,10 @@ export async function reviewWorkflow(
   return { ...outcome, reviewed: true, documentHash };
 }
 
-function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string; redacted: true }[] {
+function stepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string }[] {
   const dir = path.join(library.root, "shots", "runs", runId);
   const run = library.readRun(runId);
-  const shots: { stepId: string; png: string; redacted: true }[] = [];
+  const shots: { stepId: string; png: string }[] = [];
   for (const step of workflow.steps) {
     if (privateReviewStep(workflow, step, run)) continue;
     const after = path.join(dir, shotFile(step.id, "after"));
@@ -326,7 +326,7 @@ function redactedStepShots(library: Library, workflow: WorkflowV2, runId: string
     if (!existsSync(file)) continue;
     const png = readFileSync(file);
     if (png.length < 32 || png[0] !== 0x89 || png[1] !== 0x50) continue;
-    shots.push({ stepId: step.id, png: png.toString("base64"), redacted: true });
+    shots.push({ stepId: step.id, png: png.toString("base64") });
   }
   return shots;
 }

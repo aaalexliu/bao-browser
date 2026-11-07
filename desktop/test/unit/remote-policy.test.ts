@@ -1,4 +1,4 @@
-// Remote policy and the audit redaction. No database.
+// Remote policy and credential stripping. No database.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -20,7 +20,7 @@ test("the remote policy requires a local approval and refuses a remote confirm",
   assert.equal(policyAllowsRemoteRun("allow"), false);
 });
 
-test("an audit row drops cookies, secrets, resume tokens, and screenshot bytes", () => {
+test("an audit row retains owner data and evidence but drops credentials", () => {
   const cleaned = redactAudit({
     outcome: "ok",
     workflowId: "hello-bao",
@@ -32,24 +32,30 @@ test("an audit row drops cookies, secrets, resume tokens, and screenshot bytes",
     resume_token: "resume-secret",
     screenshot: shot,
     nested: `prefix ${shot}`,
+    email: "ada@fixture.test",
+    path: "/Users/ada/note.txt",
+    query: "sk-fixtureTokenValue",
   }) as Record<string, unknown>;
   const text = JSON.stringify(cleaned);
   assert.equal(text.includes("fixture-pass-value"), false);
   assert.equal(text.includes("super-secret-cookie"), false);
   assert.equal(text.includes("bao_at_secret"), false);
-  assert.equal(text.includes("resume-secret"), false);
-  assert.equal(text.includes("iVBORw0KGgo"), false);
+  assert.equal(text.includes("resume-secret"), true);
+  assert.equal(text.includes("iVBORw0KGgo"), true);
+  assert.equal(text.includes("sk-fixtureTokenValue"), false);
+  assert.equal(cleaned.email, "ada@fixture.test");
+  assert.equal(cleaned.path, "/Users/ada/note.txt");
   assert.equal(cleaned.outcome, "ok");
   assert.equal(cleaned.workflowId, "hello-bao");
   assert.equal((cleaned.inputs as { note?: string }).note, "hello");
-  assert.equal(cleaned.nested, "redacted");
-  assert.equal("screenshot" in cleaned, false);
-  assert.equal("resume" in cleaned, false);
+  assert.equal(cleaned.nested, `prefix ${shot}`);
+  assert.equal(cleaned.screenshot, shot);
+  assert.equal(cleaned.resume, "resume-secret");
 
-  const forCaller = redactAudit({ resume: "abc", screenshot: shot }, { keepResume: true, keepScreenshot: true }) as {
+  const forCaller = redactAudit({ resume: "abc", screenshot: shot }) as {
     resume: string;
     screenshot: string;
   };
   assert.equal(forCaller.resume, "abc");
-  assert.equal(forCaller.screenshot, "redacted");
+  assert.equal(forCaller.screenshot, shot);
 });

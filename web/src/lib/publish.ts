@@ -1,5 +1,4 @@
-// Release hashes cover the whole-value sanitized copy, never a substring rewrite.
-// Personal input questions belong to import-sheet.ts, not a second redaction pass.
+// Release hashes cover the credential-stripped copy. Personal values stay in it.
 
 import { createHash } from "node:crypto";
 import { stripUnsafe } from "./guard";

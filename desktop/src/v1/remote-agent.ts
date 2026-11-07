@@ -15,7 +15,6 @@ import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
 import type { WorkflowV2 } from "./schema";
 import { Library } from "./store";
-import { scrubSaved } from "../../../shared/saved-secrets";
 
 /** This Mac dials out only when its own setting is on, or BAO_REMOTE_MCP=1 is set for the process. */
 export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -274,7 +273,7 @@ export function createRemoteAgent(opts: {
         continue;
       }
       if (effect.type === "send-result") {
-        const fitted = fitResult(effect.jobId, presentResult(effect.result));
+        const fitted = fitResult(effect.jobId, redactAudit(effect.result) as Record<string, unknown>);
         rememberResult(opts.library.root, effect.jobId, fitted);
         socket?.send(JSON.stringify({ type: "result", jobId: effect.jobId, result: fitted }));
         continue;
@@ -357,7 +356,7 @@ export function createRemoteAgent(opts: {
     const id = stringArg(job.args.run_id);
     try {
       const stored = opts.library.readRun(id);
-      const outputs = redactAudit(stored.outputs ?? []) as unknown;
+      const outputs = stored.outputs ?? [];
       return { outcome: "ok", runId: stored.id, status: stored.status, outputs };
     } catch {
       return { outcome: "failed", reason: "run not found", runId: id };
@@ -620,18 +619,6 @@ function apply(slot: Slot, event: SlotEvent, current: AssignedJob | null): { slo
   return { slot: { phase: "idle" }, effects: [{ type: "send-ready" }] };
 }
 
-function presentResult(result: Record<string, unknown>): Record<string, unknown> {
-  const shot = typeof result.screenshot === "string" ? result.screenshot : "";
-  const resume = typeof result.resume === "string" ? result.resume : undefined;
-  const resumeToken = typeof result.resume_token === "string" ? result.resume_token : undefined;
-  const clean = redactAudit(result) as Record<string, unknown>;
-  delete clean.screenshot;
-  if (resume !== undefined) clean.resume = resume;
-  if (resumeToken !== undefined) clean.resume_token = resumeToken;
-  if (shot.startsWith("iVBORw0KGgo")) clean.screenshot = shot;
-  return clean;
-}
-
 function fitResult(jobId: string, result: Record<string, unknown>): Record<string, unknown> {
   const fitted = { ...result };
   const bytes = Buffer.byteLength(JSON.stringify({ type: "result", jobId, result: fitted }));
@@ -645,7 +632,7 @@ function rememberResult(root: string, jobId: string, result: Record<string, unkn
   mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, `${jobId}.json`);
   const tmp = `${dest}.tmp`;
-  writeFileSync(tmp, JSON.stringify(scrubSaved(result)), { mode: 0o600 });
+  writeFileSync(tmp, JSON.stringify(result), { mode: 0o600 });
   renameSync(tmp, dest);
 }
 

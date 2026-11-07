@@ -1,6 +1,4 @@
 // Job is the row. Settle is the only write from queued or running into done.
-// A screenshot, resume, or resume_token cannot be stored on that row.
-
 import { redactAudit } from "./audit-redact";
 import { REMOTE_POLICY, type RemotePolicy } from "./remote-policy";
 import { isToolName, JOB_ID, type ToolName } from "./relay-tools";
@@ -17,9 +15,6 @@ export type UserId = string & { readonly __brand: "UserId" };
 export type DeviceId = string & { readonly __brand: "DeviceId" };
 export type JobId = string & { readonly __brand: "JobId" };
 
-declare const redacted: unique symbol;
-export type Redacted = Record<string, unknown> & { readonly [redacted]: typeof redacted };
-
 export type Png = string & { readonly __brand: "Png" };
 
 export type DeviceScope = {
@@ -28,13 +23,9 @@ export type DeviceScope = {
   deviceId: DeviceId;
 };
 
-/** What agent_jobs.result holds. screenshot and resume cannot be set. */
 export type DurableResult = {
   outcome: Outcome;
   reason?: string;
-  screenshot?: never;
-  resume?: never;
-  resume_token?: never;
 } & Record<string, unknown>;
 
 export type RelayEvent = {
@@ -51,7 +42,7 @@ type JobBase = {
   tool: ToolName;
   workflowId: string | null;
   policy: RemotePolicy;
-  args: Redacted;
+  args: Record<string, unknown>;
   events: RelayEvent[];
   createdAt: string;
 };
@@ -110,20 +101,8 @@ export interface JobStore {
 
 const CDP_METHOD = /^(Network|Runtime|Target|Storage|Page|Fetch|DOM|Input|Browser|Security|Emulation|Debugger|HeapProfiler|Profiler|CSS|Overlay|Performance|Log|Console|WebAuthn|Cast|Bluetooth|SystemInfo)\./;
 const CONTROL_KEY = /^(permissionMode|permission_mode|autoApprove|skipPermissions|skip_all_permission_checks|remoteMayApproveConfirm|policy|deviceId)$/i;
-const SECRET_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|password|secret|passwd)$/i;
-const RESUME_KEY = /^(resume|resume_token)$/i;
-const SHOT_KEY = /^(screenshot|png|image|image_data)$/i;
-
 export function durableResult(outcome: Outcome, fields: Record<string, unknown> = {}): DurableResult {
-  const clean = redactAudit(fields) as Record<string, unknown>;
-  delete clean.screenshot;
-  delete clean.resume;
-  delete clean.resume_token;
-  delete clean.png;
-  delete clean.image;
-  delete clean.image_data;
-  clean.outcome = outcome;
-  return clean as DurableResult;
+  return { ...redactAudit(fields) as Record<string, unknown>, outcome };
 }
 
 export function takePng(raw: unknown): Png | null {
@@ -134,43 +113,35 @@ export function takePng(raw: unknown): Png | null {
 }
 
 export function argsForJob(raw: Record<string, unknown>):
-  | { args: Redacted; workflowId: string | null; requestedDevice: string }
+  | { args: Record<string, unknown>; workflowId: string | null; requestedDevice: string }
   | { error: "cdp is not a relay command" } {
   if (cdpCommand(raw)) return { error: "cdp is not a relay command" };
   const requestedDevice = typeof raw.deviceId === "string" ? raw.deviceId : "";
-  const walked = walkArgs(raw, 0);
+  const walked = walkArgs(redactAudit(raw), 0);
   const args = (walked && typeof walked === "object" && !Array.isArray(walked) ? walked : {}) as Record<string, unknown>;
   return {
-    args: args as Redacted,
+    args,
     workflowId: workflowIdOf(args),
     requestedDevice,
   };
 }
 
-export function splitResult(raw: unknown): { stored: DurableResult; callerText: Redacted; image: Png | null } {
+export function splitResult(raw: unknown): { stored: DurableResult; callerText: Record<string, unknown>; image: Png | null } {
   const record = asRecord(raw);
   if (cdpCommand(record)) {
     const failed = durableResult("failed", { reason: "cdp is not a relay command" });
     return {
       stored: failed,
-      callerText: failed as unknown as Redacted,
+      callerText: failed,
       image: null,
     };
   }
   const image = takePng(record);
   const outcome = isOutcome(record.outcome) ? record.outcome : "failed";
-  const resume = typeof record.resume === "string" ? record.resume : undefined;
-  const resumeToken = typeof record.resume_token === "string" ? record.resume_token : undefined;
   const stored = durableResult(outcome, record);
-  const caller = redactAudit(record) as Record<string, unknown>;
-  delete caller.screenshot;
-  delete caller.png;
-  delete caller.image;
-  delete caller.image_data;
-  caller.outcome = outcome;
-  if (resume !== undefined) caller.resume = resume;
-  if (resumeToken !== undefined) caller.resume_token = resumeToken;
-  return { stored, callerText: caller as Redacted, image };
+  const caller = { ...stored };
+  if (image) delete caller.screenshot;
+  return { stored, callerText: caller, image };
 }
 
 export function jobPolicy(): RemotePolicy {
@@ -200,15 +171,11 @@ function walkCdp(value: unknown, depth: number): string | null {
 }
 
 function walkArgs(value: unknown, depth: number): unknown {
-  if (typeof value === "string") {
-    if (value.startsWith("iVBORw0KGgo") || value.includes("iVBORw0KGgo")) return "redacted";
-    return value;
-  }
   if (Array.isArray(value)) return value.map((item) => walkArgs(item, depth + 1));
   if (!value || typeof value !== "object" || depth > 8) return value;
   const next: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (CONTROL_KEY.test(key) || SECRET_KEY.test(key) || RESUME_KEY.test(key) || SHOT_KEY.test(key)) continue;
+    if (CONTROL_KEY.test(key)) continue;
     next[key] = walkArgs(child, depth + 1);
   }
   return next;
@@ -563,7 +530,7 @@ function mapJob(row: JobColumns): Job | null {
     tool,
     workflowId: row.workflow_id,
     policy: policy as RemotePolicy,
-    args: asRecord(jsonValue(row.args)) as Redacted,
+    args: asRecord(jsonValue(row.args)),
     events: asEvents(row.events),
     createdAt: instant(row.created_at),
   };

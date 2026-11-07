@@ -45,9 +45,9 @@ test("a finish on the second store wakes a wait on the first", async () => {
   assert.equal(woke?.outcome, "ok");
   if (woke?.status === "done") {
     assert.equal(woke.result.title, "Books");
-    assert.equal("screenshot" in woke.result, false);
-    assert.equal("resume" in woke.result, false);
-    assert.equal("resume_token" in woke.result, false);
+    assert.equal(woke.result.screenshot, "iVBORw0KGgoAAA");
+    assert.equal(woke.result.resume, "resume-secret");
+    assert.equal(woke.result.resume_token, "tok");
   }
 
   const stranger = await second.settle(

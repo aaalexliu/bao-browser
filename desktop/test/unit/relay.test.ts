@@ -174,7 +174,7 @@ test("a dropped socket receives the running job again and the call finishes", as
   }
 });
 
-test("secrets and CDP stay off the relay, and a screenshot is not stored", async () => {
+test("relay keeps pictures and owner data while credentials and CDP stay out", async () => {
   const store = new MemoryJobStore();
   const { server, directory } = await up(store);
   try {
@@ -192,6 +192,7 @@ test("secrets and CDP stay off the relay, and a screenshot is not stored", async
           password: "s3cret",
           cookie: "sid=1",
           title: "Books",
+          email: "ada@fixture.test",
           screenshot: PNG,
         },
       }));
@@ -210,11 +211,12 @@ test("secrets and CDP stay off the relay, and a screenshot is not stored", async
       id: "books",
       permissionMode: "allow",
       autoApprove: true,
-      inputs: { password: "s3cret", name: "ada", permissionMode: "allow" },
+      inputs: { password: "s3cret", name: "ada", email: "ada@fixture.test", path: "/Users/ada/books.csv", permissionMode: "allow" },
       cookie: "sid=1",
     });
     assert.equal(call.json.outcome, "ok");
     assert.equal(call.json.title, "Books");
+    assert.equal(call.json.email, "ada@fixture.test");
     assert.equal(call.json.screenshot, undefined);
     assert.equal(call.image, PNG);
     const args = delivered[0] || {};
@@ -223,13 +225,16 @@ test("secrets and CDP stay off the relay, and a screenshot is not stored", async
     assert.equal(dumped.includes("sid=1"), false);
     assert.equal(dumped.includes("permissionMode"), false);
     assert.equal((args.inputs as { name?: string } | undefined)?.name, "ada");
+    assert.equal((args.inputs as { email?: string } | undefined)?.email, "ada@fixture.test");
+    assert.equal((args.inputs as { path?: string } | undefined)?.path, "/Users/ada/books.csv");
     const job = store.snapshot().find((item) => item.tool === "run_workflow" && item.status === "done");
     assert.ok(job);
     const stored = JSON.stringify({ args: job.args, result: job.result, events: job.events });
     assert.equal(stored.includes("s3cret"), false);
     assert.equal(stored.includes("sid=1"), false);
-    assert.equal(stored.includes("iVBORw0KGgo"), false);
-    assert.equal(stored.includes(PNG), false);
+    assert.equal(stored.includes("iVBORw0KGgo"), true);
+    assert.equal(stored.includes(PNG), true);
+    assert.equal(stored.includes("ada@fixture.test"), true);
     const stream = await fetch(`${server.origin}/api/agent/jobs/${job.id}/stream`, {
       headers: { authorization: `Bearer ${agent.token}` },
     });

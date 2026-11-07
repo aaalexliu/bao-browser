@@ -16,6 +16,7 @@ import {
   durableResult,
   jobPolicy,
   splitResult,
+  takePng,
   PgJobStore,
   type DoneJob,
   type DurableResult,
@@ -25,7 +26,6 @@ import {
   type Outcome,
   type Png,
   type QueuedJob,
-  type Redacted,
   type RunningJob,
 } from "./relay-job";
 import { acceptUpgrade, bearerHeader, rejectUpgrade, type LiteSocket } from "./ws-lite";
@@ -454,7 +454,7 @@ export function createRelay(opts: {
     });
   }
 
-  function queuedJob(agent: AgentPrincipal, tool: ToolName, args: Redacted, workflowId: string | null): QueuedJob {
+  function queuedJob(agent: AgentPrincipal, tool: ToolName, args: Record<string, unknown>, workflowId: string | null): QueuedJob {
     const at = new Date(now()).toISOString();
     return {
       id: freshId(),
@@ -474,7 +474,7 @@ export function createRelay(opts: {
     };
   }
 
-  async function insertDone(agent: AgentPrincipal, tool: ToolName, args: Redacted, outcome: Outcome, workflowId: string | null): Promise<void> {
+  async function insertDone(agent: AgentPrincipal, tool: ToolName, args: Record<string, unknown>, outcome: Outcome, workflowId: string | null): Promise<void> {
     const at = new Date(now()).toISOString();
     const job: DoneJob = {
       id: freshId(),
@@ -958,12 +958,10 @@ function bearer(req: Request): string {
 
 function toolResponse(id: Rpc["id"], text: Record<string, unknown> | DurableResult, image: Png | null, isError: boolean): Response {
   const body = { ...text } as Record<string, unknown>;
-  delete body.screenshot;
-  delete body.png;
-  delete body.image;
-  delete body.image_data;
+  const shot = image ?? takePng(body);
+  if (shot) delete body.screenshot;
   const content: Record<string, unknown>[] = [{ type: "text", text: JSON.stringify(body) }];
-  if (image) content.push({ type: "image", data: image, mimeType: "image/png" });
+  if (shot) content.push({ type: "image", data: shot, mimeType: "image/png" });
   return rpc(id, { content, isError });
 }
 

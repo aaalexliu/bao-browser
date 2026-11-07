@@ -13,7 +13,7 @@ import type { Page } from "playwright";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { pinTestBrowser } from "../../src/launch";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
-import { isElementCrop } from "../../../web/src/lib/png";
+import { isPng } from "../../../web/src/lib/png";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -85,7 +85,7 @@ test("a marketplace listing previews permissions and waits for Allow", { timeout
       },
     });
     await shotContext.close();
-    assert.equal(isElementCrop(png), true);
+    assert.equal(isPng(png), true);
 
     await pairDevice(seller, { code: await pairCode(origin, sellerCookie), server: origin, name: "Listing Mac" });
     const pushed = await syncAll(seller, "push");

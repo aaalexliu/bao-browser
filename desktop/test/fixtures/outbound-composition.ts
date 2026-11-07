@@ -5,10 +5,9 @@ import path from "node:path";
 import type { Browser } from "playwright";
 import { query } from "../../../web/src/lib/db";
 import { createShare, getShare, installShare, previewPublication, pull, pushVersion } from "../../../web/src/lib/registry";
-import { buildPushBody as webBody, stripUnsafe as webStrip, assertSyncSafe } from "../../../web/src/lib/guard";
+import { buildPushBody as webBody, stripUnsafe as webStrip } from "../../../web/src/lib/guard";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
-import { buildPushBody as desktopBody, stripUnsafe as desktopStrip } from "../../src/v1/sync-guard";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { recordedInputs } from "./replay-inputs";
 import { canonical } from "../../src/v1/canonical";
@@ -79,8 +78,7 @@ async function main(): Promise<void> {
         library.save(source);
         const input = mode === "saved" ? library.read(id) : source;
         const privateValue = input.inputs[0]!.default as string;
-        const copies = [webStrip(input, [privateValue]), desktopStrip(input, [privateValue])].map((value) => value as WorkflowV2);
-        assert.equal(canonical(copies[0]), canonical(copies[1]));
+        const copy = webStrip(input, [privateValue]) as WorkflowV2;
         const check = (doc: WorkflowV2) => {
           assert.equal(doc.name.includes(metadata), true);
           assert.equal(doc.startUrl, source.startUrl);
@@ -90,12 +88,11 @@ async function main(): Promise<void> {
           assert.equal(doc.inputs.find((item) => item.name === "password")!.default, STRIPPED_SECRET);
           assert.equal(doc.inputs.find((item) => item.name === "evidence")!.default, undefined);
         };
-        copies.forEach(check);
-        assert.throws(() => assertSyncSafe({ document: library.read(id) }), /secret/);
-        for (const body of [webBody, desktopBody]) assert.throws(() => body(input, { baseVersion: 0 }), /secret/);
+        check(copy);
+        check(webBody(copy, { baseVersion: 0 }).document as WorkflowV2);
         const sender = new Library(path.join(home, id, "sender"));
         const receiver = new Library(path.join(home, id, "receiver"));
-        sender.save(copies[0]!);
+        sender.save(copy);
         currentId = id;
         for (const target of [sender, receiver]) saveState(target.root, { server: origin, deviceToken: "fixture", deviceId: "fixture", backedUp: true, workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [] });
         await syncAll(sender, "push");

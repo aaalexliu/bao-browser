@@ -20,7 +20,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
     <article>
       <h1>Import</h1>
       <p>{doc.name || share.workflowId}</p>
-      <p className="notice">Nothing is saved until you answer these. Personal values were cleared. An email or a file path typed here is dropped, and secrets are not stored.</p>
+      <p className="notice">Answer the questions the author marked before saving. Personal values, including emails and file paths, stay in the copy. Saved passwords and credential values are removed.</p>
       <div className="chips" data-testid="domains">
         {share.domains.map((domain) => <span className="chip" key={domain}>{domain}</span>)}
       </div>

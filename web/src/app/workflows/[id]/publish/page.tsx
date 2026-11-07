@@ -38,24 +38,7 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
           <p>Publish is blocked. The clean replay failed on <strong data-testid="gate-step">{preview.gateStep}</strong>.</p>
         </div>
       ) : null}
-      <h2>Cleared before listing</h2>
-      {preview.changes.length ? (
-        <table className="diff">
-          <thead>
-            <tr><th>Field</th><th>Before</th><th>Public</th><th>Why</th></tr>
-          </thead>
-          <tbody>
-            {preview.changes.map((change, index) => (
-              <tr key={`${change.path}-${index}`}>
-                <td className="mono">{change.path}</td>
-                <td><code>{change.before}</code></td>
-                <td><code>{change.after || "removed"}</code></td>
-                <td>{change.reason}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : <p>No personal values or secrets were in this copy.</p>}
+      <p>Listing keeps personal values and pictures. Saved passwords and credential values are removed.</p>
       <form className="row" action={`/api/workflows/${id}/publish`} method="post">
         <button className="primary" type="submit" data-testid="list-it" disabled={!preview.reviewed || Boolean(preview.gateStep)}>
           {preview.reviewed ? "List it" : "Replay on a device before listing"}
@@ -64,7 +47,7 @@ export default async function PublishPage({ params }: { params: Promise<{ id: st
         {preview.gateStep ? <button type="submit" data-testid="replay-again">Replay again</button> : null}
       </form>
       {preview.reviewed ? null : (
-        <p className="notice">Run <span className="mono">bao sync review {id}</span>. The device replays the redacted copy and only then can this page list it.</p>
+        <p className="notice">Run <span className="mono">bao sync review {id}</span>. The device replays this copy and only then can this page list it.</p>
       )}
     </article>
   );

@@ -5,11 +5,10 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
-import { assertSyncSafe, buildPushBody, buildRunBody, SyncRejected } from "../../../web/src/lib/guard";
-import { isElementCrop } from "../../../web/src/lib/png";
+import { buildPushBody, buildRunBody, SyncRejected } from "../../../web/src/lib/guard";
+import { isPng } from "../../../web/src/lib/png";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
-import { scrubSaved } from "../../../shared/saved-secrets";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -245,8 +244,8 @@ async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Pro
     pushed = outgoing.pushed;
     refused = outgoing.refused;
   }
-  if (mode !== "pull" && !refused && categoryOn(state, "run history")) await pushRuns(library, state);
-  if (mode !== "pull" && !refused && snapshot && categoryOn(state, "settings")) {
+  if (mode !== "pull" && categoryOn(state, "run history")) await pushRuns(library, state);
+  if (mode !== "pull" && snapshot && categoryOn(state, "settings")) {
     await pushSettings(library, state);
   }
   await refreshAccount(state);
@@ -441,7 +440,7 @@ function applyCatchUp(library: Library, state: SyncState, snapshot: SyncSnapshot
     for (const heal of snapshot.heals ?? []) {
       const id = String(heal.id || "");
       if (!safeKey(id) || existsSync(path.join(dir, `${id}.json`))) continue;
-      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(library.scrub({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, safeKey(String(heal.workflowId || "")) ? heal.workflowId : undefined), null, 2));
+      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, workflowId: heal.workflowId, heal: heal.heal ?? null }, null, 2));
     }
   }
   if (categoryOn(state, "settings") && snapshot.settings && snapshot.settingsUpdatedAt && snapshot.settingsUpdatedAt !== state.settingsCloudAt) {
@@ -549,7 +548,7 @@ async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: 
     const result = await pushDocument(library, state, doc);
     if (result.kind === "pushed") pushed += 1;
     if (result.kind === "conflict") conflicts += 1;
-    if (result.kind === "refused") refused = result.message || "secret param";
+    if (result.kind === "refused") refused = result.message || "invalid workflow";
   }
   return { pushed, conflicts, refused };
 }
@@ -566,12 +565,11 @@ async function pushDocument(
   const heal = library.readKeptHeal(doc.id);
   let body: ReturnType<typeof buildPushBody>;
   try {
-    assertSyncSafe({ document: doc, heal });
     body = buildPushBody(doc, {
       baseVersion: baseVersion ?? known?.version ?? 0,
       heal,
       category: categoryFor(doc),
-      crops: elementCrops(library, doc),
+      crops: workflowShots(library, doc),
     });
   } catch (err) {
     if (err instanceof SyncRejected) return { kind: "refused", message: err.message };
@@ -591,7 +589,7 @@ async function pushDocument(
       state.outbox = (state.outbox ?? []).filter((item) => item.id !== doc.id);
       return { kind: "conflict" };
     }
-    if (conflict.status === 400 || err instanceof SyncRejected) return { kind: "refused", message: conflict.message };
+    if (conflict.status === 400) return { kind: "refused", message: conflict.message };
     throw err;
   }
 }
@@ -648,8 +646,8 @@ function stash(
 ): void {
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, toJson(scrubSaved(local)));
-  const theirs = scrubSaved(migrate(remote.document));
+  writeFileSync(file, toJson(local));
+  const theirs = migrate(remote.document);
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {
@@ -731,15 +729,13 @@ function docHash(doc: WorkflowV2): string {
 function readCrop(file: string): Buffer | undefined {
   if (!existsSync(file)) return;
   const png = readFileSync(file);
-  return isElementCrop(png) ? png : undefined;
+  return isPng(png) ? png : undefined;
 }
 
-function elementCrops(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
-  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret").map((input) => input.name));
+function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
   const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of doc.steps) {
-    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
     const names = [
       ...runs.map((run) => path.join(library.root, "shots", "runs", run.id, shotFile(step.id, "after"))),
       path.join(library.root, "shots", "workflows", doc.id, workflowShotName(step.id)),

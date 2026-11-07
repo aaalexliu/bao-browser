@@ -7,25 +7,9 @@ import { deflateSync } from "node:zlib";
 import { Library } from "../../src/v1/store";
 import { syncStatus } from "../../src/v1/sync";
 import { isElementCrop, redactedPng } from "../../src/v1/redacted-png";
-import { assertSyncSafe, buildPushBody, SyncRejected } from "../../src/v1/sync-guard";
+import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 
-test("a secret-tagged param or a cookie is rejected", () => {
-  assert.throws(
-    () => assertSyncSafe({ inputs: [{ name: "password", type: "secret", value: "SuperSecret" }] }),
-    (err: unknown) => err instanceof SyncRejected && /secret/.test(err.message),
-  );
-  assert.throws(
-    () => assertSyncSafe({
-      document: { inputs: [{ name: "password", type: "secret" }] },
-      args: { password: "SuperSecret" },
-    }),
-    (err: unknown) => err instanceof SyncRejected && /secret/.test(err.message),
-  );
-  assert.throws(() => assertSyncSafe({ cookie: "session=abc" }), /cookie/);
-  assert.throws(() => assertSyncSafe({ "Set-Cookie": "session=abc" }), /cookie/);
-});
-
-test("a push body drops secret values, cookies, and screenshot bytes", () => {
+test("a push retains owner data and screenshots while stripping credentials", () => {
   const secret = "SuperSecret";
   const body = buildPushBody(
     {
@@ -33,6 +17,9 @@ test("a push body drops secret values, cookies, and screenshot bytes", () => {
       inputs: [{ name: "password", type: "secret", default: secret }],
       steps: [{ id: "pass", sensitive: true, value: secret }],
       cookie: "session=abc",
+      authorization: "Bearer fixture-token",
+      args: { password: secret },
+      params: { token: "sk-ownerFixtureToken", email: "ada@fixture.test", phone: "+1 415-555-0123", file: "/Users/ada/note.txt" },
     },
     {
       baseVersion: 1,
@@ -42,12 +29,17 @@ test("a push body drops secret values, cookies, and screenshot bytes", () => {
   const blob = JSON.stringify(body);
   assert.equal(blob.includes(secret), false);
   assert.equal(hasCookieKey(body), false);
-  assert.equal(JSON.stringify(body.heal).includes("screenshot"), false);
+  assert.equal(blob.includes("fixture-token"), false);
+  assert.equal(blob.includes("sk-ownerFixtureToken"), false);
+  assert.equal(blob.includes("ada@fixture.test"), true);
+  assert.equal(blob.includes("+1 415-555-0123"), true);
+  assert.equal(blob.includes("/Users/ada/note.txt"), true);
+  assert.equal(JSON.stringify(body.heal).includes("not-a-real-image"), true);
   assert.equal((body.heal as { snapshot?: { dom?: string } }).snapshot?.dom, "button");
 });
 
-test("a push sends the element crop and leaves the stripe fixture behind", () => {
-  const crop = tinyPng(32, 24);
+test("push and run payloads retain secret-step pictures and full-page pictures without redaction markers", () => {
+  const crop = tinyPng(1200, 900);
   const sent = buildPushBody(
     {
       inputs: [{ name: "password", type: "secret" }],
@@ -55,15 +47,19 @@ test("a push sends the element crop and leaves the stripe fixture behind", () =>
     },
     { baseVersion: 1, crops: [{ stepId: "go", png: crop }, { stepId: "pass", png: crop }] },
   );
-  assert.equal(sent.shots.length, 1);
-  assert.equal(sent.shots[0]?.stepId, "go");
-  assert.equal(sent.shots[0]?.redacted, true);
-  assert.equal(isElementCrop(Buffer.from(sent.shots[0]?.png || "", "base64")), true);
+  assert.equal(sent.shots.length, 2);
+  assert.deepEqual(sent.shots.map((shot) => shot.stepId), ["go", "pass"]);
+  assert.equal("redacted" in sent.shots[0]!, false);
+  assert.deepEqual(Buffer.from(sent.shots[0]!.png, "base64"), crop);
+  assert.equal(isElementCrop(crop), false);
+  const run = buildRunBody({ id: "run", status: "passed", at: 1, steps: [{ id: "pass" }] }, { crops: [{ stepId: "pass", png: crop }] });
+  assert.deepEqual(run.shots, [sent.shots[1]]);
   const stripe = buildPushBody(
     { steps: [{ id: "go" }] },
     { baseVersion: 0, crops: [{ stepId: "go", png: redactedPng(1) }] },
   );
-  assert.equal(stripe.shots.length, 0);
+  assert.equal(stripe.shots.length, 1);
+  assert.deepEqual(buildPushBody({ steps: [{ id: "bad" }] }, { baseVersion: 0, crops: [{ stepId: "bad", png: Buffer.from("not an image") }] }).shots, []);
 });
 
 test("sync status does not return the device token", () => {
