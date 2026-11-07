@@ -267,7 +267,7 @@ function pickAccountSettings(document: unknown): Record<string, unknown> {
   if (picked.backupSchedule !== "off" && picked.backupSchedule !== "daily" && picked.backupSchedule !== "weekly") {
     delete picked.backupSchedule;
   }
-  if (picked.heal !== "auto" && picked.heal !== "approve") delete picked.heal;
+  if (picked.heal !== "auto" && picked.heal !== "approve" && picked.heal !== "never") delete picked.heal;
   return picked;
 }
 

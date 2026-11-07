@@ -817,7 +817,7 @@ export async function startApp(opts: {
         }
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown; healSource?: unknown };
+        const body = await readBody(req) as { heal?: Settings["heal"]; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown; healSource?: unknown };
         const patch: Partial<Settings> = {};
         if (body.healSource !== undefined) {
           const source = body.healSource as Partial<{ kind: string; provider: string; key: string }> | null;
@@ -851,7 +851,7 @@ export async function startApp(opts: {
         if ((patch.pageEngine ?? library.settings().pageEngine) === "agent-browser" && !(patch.chromeProfile ?? library.settings().chromeProfile)) {
           return json(res, { error: "choose a Chrome profile for agent-browser" }, 400);
         }
-        if (body.heal === "auto" || body.heal === "approve") patch.heal = body.heal;
+        if (body.heal === "auto" || body.heal === "approve" || body.heal === "never") patch.heal = body.heal;
         if (typeof body.promoteAfter === "number" && body.promoteAfter >= 1 && body.promoteAfter <= 20) {
           patch.promoteAfter = Math.round(body.promoteAfter);
         }
