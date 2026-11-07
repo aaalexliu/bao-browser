@@ -342,18 +342,25 @@ const runOutcomes = {
   failed: "failed", "timed-out": "failed", timeout: "failed", stopped: "failed",
 } as const satisfies Record<NonNullable<WorkflowOutcome["status"]> | "recording", OutcomeName | "recording">;
 
-export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "outcome" | "status" | "receipts"> & {
-  outcome: OutcomeName | "recording";
-  status?: WorkflowOutcome["status"] | "recording";
-  receipts: (WorkflowReceipt & Partial<Pick<RecordedAgentBrowserCommand, "label" | "target" | "native">>)[];
+export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "outcome" | "status" | "receipts" | "stops"> & {
+  outcome: OutcomeName | "recording" | "unknown";
+  status?: string;
+  stops: { stepId: string; outcome: OutcomeName | "unknown"; reason: string }[];
+  nativeOutputNote?: string;
+  receipts: (WorkflowReceipt & Partial<Pick<RecordedAgentBrowserCommand, "label" | "target">> & {
+    native?: Omit<RecordedAgentBrowserCommand["native"], "results"> & {
+      results: (RecordedAgentBrowserCommand["native"]["results"][number] & {
+        stdoutTruncated: boolean; stdoutLength: number; stderrTruncated: boolean; stderrLength: number;
+      })[];
+    };
+  })[];
 } {
   const file = reportPath(library, runId);
   if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
   const stored = library.readRun(runId);
   const envelope = stored.envelope;
-  const status = envelope?.status || stored.status;
-  if (!Object.hasOwn(runOutcomes, status)) throw new Error(`Unknown run status: ${status}`);
-  const outcome = runOutcomes[status as keyof typeof runOutcomes];
+  const status = envelope?.status ?? stored.status;
+  const outcome = Object.hasOwn(runOutcomes, status) ? runOutcomes[status as keyof typeof runOutcomes] : "unknown";
   const recording = stored.kind === "capture" && status === "recording";
   const failure = recording ? undefined : stored.failure as RunResult["failure"];
   const stoppedStep = recording ? undefined : (stored.steps as { id?: string; status?: string; reason?: string }[])
@@ -368,7 +375,18 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
       ...(stored.kind === "capture" ? {
         ...(receipt.label !== undefined ? { label: receipt.label } : {}),
         ...(receipt.target !== undefined ? { target: receipt.target } : {}),
-        ...(receipt.native !== undefined ? { native: receipt.native } : {}),
+        ...(receipt.native !== undefined ? { native: {
+          ...receipt.native,
+          results: receipt.native.results.map((result) => ({
+            ...result,
+            stdout: result.stdout.slice(0, 1000),
+            stderr: result.stderr.slice(0, 1000),
+            stdoutTruncated: result.stdout.length > 1000,
+            stdoutLength: result.stdout.length,
+            stderrTruncated: result.stderr.length > 1000,
+            stderrLength: result.stderr.length,
+          })),
+        } } : {}),
       } : {}),
     }] : [];
   });
@@ -383,7 +401,8 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     link: stored.kind === "capture" ? receiptLink(stored.id) : linkFor(stored.workflowId),
     outputs: stored.outputs,
     pageLeftOpen: stored.pageLeftOpen,
-    status: status as WorkflowOutcome["status"] | "recording",
+    status,
+    ...(stored.kind === "capture" ? { nativeOutputNote: `For full native output, open ${receiptLink(stored.id)} or use inspect_run.` } : {}),
     step,
     ask: recording ? undefined : envelope?.ask || (outcome !== "ok" ? reason : undefined),
     deadline: envelope?.deadline,

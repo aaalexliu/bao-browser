@@ -34,7 +34,10 @@ for (const [status, outcome] of [
       assert.equal(result.run_id, capture.id);
       assert.equal(result.link, `bao://receipt/${capture.id}`);
       assert.deepEqual(result.receipts, [{
-        id: command.id, status: command.status, readBack: "", label: command.label, target: command.target, native: command.native,
+        id: command.id, status: command.status, readBack: "", label: command.label, target: command.target, native: {
+          ...command.native,
+          results: [{ stdout: "Clicked Milk\n", stderr: "native detail", exitCode: 0, stdoutTruncated: false, stdoutLength: 13, stderrTruncated: false, stderrLength: 13 }],
+        },
       }]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
@@ -50,7 +53,10 @@ test("get_run preserves failed capture command errors and stop reason", () => {
     assert.equal(result.outcome, "failed");
     assert.equal(result.reason, "Target moved");
     assert.deepEqual(result.stops, [{ stepId: command.id, outcome: "failed", reason: "Target moved" }]);
-    assert.deepEqual(result.receipts, [{ id: failed.id, status: failed.status, readBack: "", label: failed.label, target: failed.target, native: failed.native }]);
+    assert.deepEqual(result.receipts, [{ id: failed.id, status: failed.status, readBack: "", label: failed.label, target: failed.target, native: {
+      ...failed.native,
+      results: [{ stdout: "", stderr: "Target moved", exitCode: 1, stdoutTruncated: false, stdoutLength: 0, stderrTruncated: false, stderrLength: 12 }],
+    } }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -67,12 +73,47 @@ test("get_run leaves saved-workflow receipts and links unchanged", () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("get_run does not silently call an unknown capture state failed", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "bao-capture-unknown-"));
+for (const kind of ["capture", "replay"] as const) {
+  for (const status of ["new-state", "", "toString"]) {
+    for (const enveloped of [false, true]) {
+      test(`get_run returns unknown for ${kind} status ${JSON.stringify(status)}, envelope=${enveloped}`, () => {
+        const root = mkdtempSync(path.join(tmpdir(), "bao-capture-unknown-"));
+        try {
+          const library = new Library(root);
+          library.saveRun({ ...capture, kind, status: enveloped ? "passed" : status,
+            ...(enveloped ? { envelope: { status } } : {}),
+            steps: [{ ...command, status: "failed", reason: "Target moved" }],
+          });
+          const result = getRun(library, capture.id);
+          assert.equal(result.outcome, "unknown");
+          assert.equal(result.status, status);
+          assert.deepEqual(result.stops, [{ stepId: command.id, outcome: "unknown", reason: "Target moved" }]);
+        } finally { rmSync(root, { recursive: true, force: true }); }
+      });
+    }
+  }
+}
+
+test("get_run bounds every native output stream without changing stored evidence", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "bao-capture-output-"));
   try {
     const library = new Library(root);
-    library.saveRun({ ...capture, status: "new-state" });
-    assert.throws(() => getRun(library, capture.id), /Unknown run status: new-state/);
+    const results = [
+      { stdout: "a".repeat(1001), stderr: "b".repeat(2000), exitCode: 1 },
+      { stdout: "c".repeat(1000), stderr: "", exitCode: 0 },
+    ];
+    const steps = [command, { ...command, id: "command-2", native: { ...command.native, results } }];
+    library.saveRun({ ...capture, steps });
+    const result = getRun(library, capture.id);
+    assert.deepEqual(result.receipts[1], {
+      id: "command-2", status: "passed", readBack: "", label: command.label, target: command.target,
+      native: { ...command.native, results: [
+        { stdout: "a".repeat(1000), stderr: "b".repeat(1000), exitCode: 1, stdoutTruncated: true, stdoutLength: 1001, stderrTruncated: true, stderrLength: 2000 },
+        { stdout: "c".repeat(1000), stderr: "", exitCode: 0, stdoutTruncated: false, stdoutLength: 1000, stderrTruncated: false, stderrLength: 0 },
+      ] },
+    });
+    assert.equal(result.nativeOutputNote, `For full native output, open bao://receipt/${capture.id} or use inspect_run.`);
+    assert.deepEqual(library.readRun(capture.id).steps, steps);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
