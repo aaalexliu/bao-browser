@@ -417,7 +417,7 @@ function capture(): string {
 }
 
 async function captureAction(action: "start" | "save" | "discard"): Promise<void> {
-  if (captureBusy || state.teach?.phase === "live") return;
+  if (captureBusy || (state.teach && state.teach.phase !== "idle")) return;
   if (action === "discard" && !confirm("Discard this recording? The steps you recorded are deleted. You can’t undo this.")) return;
   captureBusy = true;
   captureError = "";
@@ -1101,7 +1101,7 @@ function bind(): void {
   };
   const recStop = document.getElementById("rec-stop");
   if (recStop) recStop.onclick = async () => {
-    if (state.teach?.phase === "live") return;
+    if (state.teach && state.teach.phase !== "idle") return;
     if (screen === "capture") return captureAction("save");
     await fetch("/api/sessions/stop", { method: "POST" });
     renderKey = "";

@@ -400,7 +400,7 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     assert.equal(await page.locator("#start-url").inputValue(), "/fixture?draft=keep", "command completion preserves the Capture draft");
     assert.equal(await page.locator("#start-url").evaluate((node, original) => node === original, draftInput), true, "command completion retains the input element");
     await page.route("**/api/replay", (route) => route.fulfill({ json: { id: "raw-failed" } }));
-    await page.locator("#rail [data-place=workflows]").click();
+    await page.getByRole("button", { name: "Back to Workflows", exact: true }).click();
     await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
     await page.locator(`#main [data-screen=replay][data-workflow="${workflow.id}"]`).click();
     await page.locator("#wf").selectOption(workflow.id);

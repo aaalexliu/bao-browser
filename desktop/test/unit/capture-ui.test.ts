@@ -24,6 +24,52 @@ test("capture renders the recording name, ordered stream, controls and paused st
   assert.equal(recordBar({}, true), "");
 });
 
+test("capture routes a pending Teach review back to Teach without changing its steps", { timeout: 30_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-capture-teach-review-"));
+  const oldHome = process.env.HOME;
+  const oldDrive = process.env.BAO_DRIVE;
+  process.env.HOME = home;
+  process.env.BAO_DRIVE = "1";
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.setDefaultTimeout(10_000);
+  const url = `http://127.0.0.1:${app.port}`;
+  const getState = async () => (await page.request.get(`${url}/api/state`)).json();
+  try {
+    await page.goto(url);
+    await page.locator(".runs-record").click();
+    await page.getByRole("button", { name: "Teach", exact: true }).click();
+    await page.locator("#teach-url").fill(`${url}/fixture`);
+    await page.locator("#teach-start").click();
+    await page.locator("#teach-stop").waitFor();
+    const action = await page.request.post(`${url}/api/sessions/drive`, { data: { click: "#apply-btn" } });
+    assert.equal(action.ok(), true, await action.text());
+    await page.locator("#teach-stop").click();
+    await page.locator("#teach-review").waitFor();
+    const pending = (await getState()).teach;
+    assert.equal(pending.phase, "review");
+    assert.ok(pending.review.workflow.steps.length > 0);
+    await page.locator("#rail [data-place=workflows]").click();
+    await page.getByRole("button", { name: "Record", exact: true }).click();
+    await page.getByText("Save or discard your pending Teach review before starting a capture.", { exact: true }).waitFor();
+    assert.equal(await page.locator("#start, #stop, #capture-discard, #record-bar").count(), 0);
+    const current = await getState();
+    assert.equal(current.recording, false);
+    assert.equal(current.teach.phase, "review");
+    assert.deepEqual(current.teach.review, pending.review);
+    await page.getByRole("button", { name: "Teach", exact: true }).click();
+    await page.locator("#teach-review").waitFor();
+    assert.equal(await page.locator("#teach-save").isVisible(), true);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    if (oldDrive === undefined) delete process.env.BAO_DRIVE; else process.env.BAO_DRIVE = oldDrive;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("the running capture saves its name and steps, pauses, recovers errors and discards", { timeout: 90_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-capture-ui-"));
   const oldHome = process.env.HOME;
