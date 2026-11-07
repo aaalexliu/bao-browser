@@ -19,7 +19,7 @@ The native window keeps the title **Bao** but hides the title text and makes the
 
 Node is not copied into the app. The machine that builds Bao already has Node 24, and a second runtime inside the bundle would be another binary to sign. `codesign --deep` on `Bao.app` would change the helper CDHash and drop the grant. Leave the helper's signature alone.
 
-If Node 24 is not found, Bao shows a native alert that says to install it. If the server never accepts a connection, Bao shows an alert and does not open the window. Opening Bao starts no Chrome or Chromium process. Its UI runs in a native `WKWebView` owned by Bao.app. Closing the window keeps Bao open; clicking its Dock icon reopens that window. Quit Bao stops the local server. Clicked external HTTP and HTTPS links open in the default browser; `mailto` links open in the default mail app. Redirects and scripts cannot open another app.
+If Node 24 is not found, Bao shows a native alert that says to install it. If the server never accepts a connection, Bao shows an alert and does not open the window. Opening Bao starts no Chrome or Chromium process. Its UI runs in a native `WKWebView` owned by Bao.app. Closing the window keeps Bao open; clicking its Dock icon reopens that window. Quit Bao stops the local server. Clicked external HTTP and HTTPS links open in the default browser; `mailto` links open in the default mail app. Clicked `x-apple.systempreferences` links open System Settings. Redirects and scripts cannot open another app.
 
 The default home is `~/Library/Application Support/bao`. Do not delete it. The default port is `4787`. Leave `BAO_HOME` and `BAO_PORT` unset for the installed app.
 
@@ -263,6 +263,6 @@ A `login` step waits. Replay does not type the password and does not press Log i
 
 A confirm step uses the same bar. Replay does not press the site button. Place order and Reserve are that pause.
 
-Settings → When a step misses defaults to **Auto self-heal**. Check Settings → Model for the active model. `BAO_HEAL_FIXTURE=1` is a local stand-in (`bao-heal-fixture`). Do not cause a miss while Model reads **cursor account**.
+Settings → Runs and heals → When a page changes defaults to **Heal it**. Check Settings → AI help for the active model. `BAO_HEAL_FIXTURE=1` is a local stand-in (`bao-heal-fixture`). Do not cause a miss while Model reads **cursor account**.
 
 A date field is stored as a relative input. `+14d` replays as that day. A download step saves under the run directory. An `open` step can hand the file to Preview. A bot check pauses the run before any heal. The status is **needs you**. Model calls stay at 0.

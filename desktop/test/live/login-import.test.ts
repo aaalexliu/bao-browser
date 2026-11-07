@@ -81,7 +81,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     await ui.evaluate(() => localStorage.removeItem("bao-theme"));
     await ui.reload();
     await ui.click("#rail button[data-place=settings]");
-    await ui.click("#screen-list button[data-screen=logins]");
+    await ui.click("#settings button[data-screen=logins]");
     await ui.fill("#login-site", `${origin}/account`);
     await ui.click("#show-profiles");
     try {
@@ -154,6 +154,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
     assertNoValue(no, "bot-body");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("Needs sign-in"));
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-out-bot-light.png"), fullPage: true });
+    ui.once("dialog", (dialog) => dialog.accept());
     await ui.click("[data-remove]");
     await ui.waitForFunction(() => (document.querySelector("#saved-logins")?.textContent || "").includes("No sites yet"));
 
@@ -178,7 +179,7 @@ test("import cookies, localStorage, and IndexedDB, then block a dead session", {
   try {
     await keyUi.goto(`http://127.0.0.1:${keyApp.port}/`);
     await keyUi.click("#rail button[data-place=settings]");
-    await keyUi.click("#screen-list button[data-screen=logins]");
+    await keyUi.click("#settings button[data-screen=logins]");
     await keyUi.fill("#login-site", `${origin}/account`);
     await keyUi.click("#show-profiles");
     await keyUi.waitForSelector("[data-import-profile=Default]");
@@ -256,7 +257,7 @@ test("import a public demo login, then block the run after the cookie is cleared
     await ui.evaluate(() => localStorage.removeItem("bao-theme"));
     await ui.reload();
     await ui.click("#rail button[data-place=settings]");
-    await ui.click("#screen-list button[data-screen=logins]");
+    await ui.click("#settings button[data-screen=logins]");
     await ui.fill("#login-site", probe);
     await ui.click("#show-profiles");
     await ui.waitForSelector("[data-import-profile=Default]");
@@ -365,7 +366,7 @@ test("a public page's localStorage and IndexedDB come back in bao's profile", { 
     await ui.evaluate(() => localStorage.removeItem("bao-theme"));
     await ui.reload();
     await ui.click("#rail button[data-place=settings]");
-    await ui.click("#screen-list button[data-screen=logins]");
+    await ui.click("#settings button[data-screen=logins]");
     await ui.fill("#login-site", `${origin}/`);
     await ui.click("#show-profiles");
     await ui.waitForSelector("[data-import-profile=Default]");

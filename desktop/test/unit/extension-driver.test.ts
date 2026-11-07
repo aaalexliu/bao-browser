@@ -236,14 +236,15 @@ test("the run form disables healing for a retired workflow and keeps the choice 
   for (const driver of [undefined, "playwright", "extension"]) {
     const field = runHealField(driver, "approve", "auto");
     assert.match(field, /<select id="wf-heal" data-testid="run-heal">/);
-    assert.match(field, /Use the global setting \(auto\)/);
-    assert.match(field, /Auto self-heal/);
-    assert.match(field, /value="approve" selected>Approve before applying/);
+    assert.match(field, /Use the global setting \(Heal it\)/);
+    assert.match(field, /value="auto"[^>]*>Heal it/);
+    assert.match(field, /value="approve" selected>Ask me/);
+    assert.match(runHealField(driver, "", "approve"), /Use the global setting \(Ask me\)/);
   }
   const live = runHealField("cdp-live", "approve", "auto");
   assert.match(live, /<select id="wf-heal" data-testid="run-heal" disabled>/);
   assert.match(live, /value="" selected>Unavailable - retired live driver</);
-  assert.doesNotMatch(live, /Approve before applying|Auto self-heal|global setting/);
+  assert.doesNotMatch(live, /Ask me|Heal it|global setting/);
 });
 
 test("the bridge accepts the token file and drops a bad token", async () => {

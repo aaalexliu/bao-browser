@@ -947,8 +947,9 @@ test("the window names the library directory it is using", async () => {
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${app.port}/`);
     await page.locator("#rail [data-place=settings]").click();
+    await page.locator("#settings-advanced > summary").click();
     await page.locator("#settings-home").waitFor();
-    assert.equal(await page.locator("#settings-home").innerText(), home);
+    assert.equal(await page.locator("#settings-home").innerText(), `Library: ${home}`);
   } finally {
     await browser?.close();
     await app.close();

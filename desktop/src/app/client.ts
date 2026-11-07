@@ -4,12 +4,13 @@ import { formatWait } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
 import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
+import { settingsIndex, settingsScreen } from "./settings-view";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import type { inspectRunView } from "../mcp/run-view";
-import type { DamagedWorkflow } from "../v1/store";
+import type { DamagedWorkflow, Settings } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
@@ -17,7 +18,6 @@ import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
   remoteBanner,
-  remoteMcpSetting,
   commandItems,
   esc,
   healDetail,
@@ -85,7 +85,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean>; keepAgentBrowserOpen?: boolean };
+  settings?: Partial<Settings>;
   profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
@@ -111,6 +111,8 @@ let state: ShellState & {
   home?: string;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
+let settingsSection = "runs";
+let settingsFeedback = "";
 let screen: Screen = screenFromQuery(location.search) || "runs";
 let lastWf = "";
 let deeplinkInputs: Record<string, string> = {};
@@ -277,6 +279,15 @@ function render(focusDetail = true): void {
   if (screen === "logins") readLoginForm();
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
+  const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
+  const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
+  const customWait = document.getElementById("act-custom") as HTMLInputElement | null;
+  const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft], #settings [data-setting]")].filter((input) => {
+    if (input.id === "act-minutes" && input.value === "custom") return customWait === focused || customWait?.validity.valid === false;
+    return input.dataset.settingsEdited === "true" || (input instanceof HTMLSelectElement
+      ? input.value !== (([...input.options].find((option) => option.defaultSelected) ?? input.options[0])?.value ?? "")
+      : input.type === "checkbox" || input.type === "radio" ? input.checked !== input.defaultChecked : input.value !== input.defaultValue);
+  }).map((input) => [input.id, input instanceof HTMLInputElement && (input.type === "checkbox" || input.type === "radio") ? input.checked : input.value, input.dataset.settingsEdited === "true"] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
@@ -288,12 +299,13 @@ function render(focusDetail = true): void {
   document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
   document.getElementById("content")!.classList.toggle("workflows-content", screen === "library" || screen === "workflow");
+  document.getElementById("content")!.classList.toggle("settings-content", screen === "settings");
   if (railHtmlKey !== railHtml) {
     railEl().innerHTML = railHtml;
     railHtmlKey = railHtml;
   }
   const list = document.getElementById("screen-list")!;
-  const listHtml = shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError);
+  const listHtml = screen === "settings" ? settingsIndex({ ...state, sites: login.saved }) : shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError);
   if (listHtmlKey !== listHtml) {
     list.innerHTML = listHtml;
     listHtmlKey = listHtml;
@@ -338,6 +350,10 @@ function render(focusDetail = true): void {
       libraryRecovery.visible = !recovery.hidden;
       libraryRecovery.open = recovery.open;
     }
+    mainEl().querySelectorAll<HTMLInputElement>('input[type="number"][data-setting]').forEach((input) => {
+      input.onblur = null;
+      input.onchange = null;
+    });
     mainEl().innerHTML = body;
     const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
     if (nextRecovery && libraryRecovery) {
@@ -358,7 +374,15 @@ function render(focusDetail = true): void {
     }
     if (screen === "replay") void fillArgs(replayId);
   }
+  for (const id of settingsDetails) document.getElementById(id)?.setAttribute("open", "");
+  for (const [id, value, edited] of settingsDrafts) {
+    const input = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+    if (input instanceof HTMLInputElement && typeof value === "boolean") input.checked = value;
+    else if (input && typeof value === "string") input.value = value;
+    if (input && edited) input.dataset.settingsEdited = "true";
+  }
   bind();
+  if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
   applySearch();
   paintPalette();
   paintLive();
@@ -454,25 +478,21 @@ function fromLine(): string {
 }
 
 function settings(): string {
-  const heal = state.settings?.heal || "auto";
-  const promoteAfter = state.settings?.promoteAfter ?? 3;
-  const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
-  const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
-  return `<section id="settings"><h2>Settings</h2>
-    ${libraryHome}
+  const libraryHome = state.home ? `<p class="meta" id="settings-home">Library: ${esc(state.home)}</p>` : "";
+  return settingsScreen({ ...state, sites: login.saved }, `${libraryHome}
     ${desktopMcpSettings()}
     <div class="card" id="page-engine-settings">
       <h3>Page engine</h3>
-      <label>Run engine <select id="page-engine">
+      <label>Run engine <select id="page-engine" data-settings-draft>
         <option value="old" ${state.settings?.pageEngine !== "agent-browser" ? "selected" : ""}>Current engine (default)</option>
         <option value="agent-browser" ${state.settings?.pageEngine === "agent-browser" ? "selected" : ""}>agent-browser (trial)</option>
       </select></label>
-      <label>Chrome profile for agent-browser <select id="chrome-profile" ${state.settings?.pageEngine !== "agent-browser" ? "disabled" : ""}>
+      <label>Chrome profile for agent-browser <select id="chrome-profile" data-settings-draft ${state.settings?.pageEngine !== "agent-browser" ? "disabled" : ""}>
         <option value="">Choose a Chrome profile</option>
         ${chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${state.settings?.chromeProfile === profile.directory ? "selected" : ""}>${esc(profile.name)}${profile.email ? ` - ${esc(profile.email)}` : ""} (${esc(profile.directory)})</option>`).join("")}
       </select></label>
-      <label class="extensions-choice"><input id="chrome-profile-extensions" type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
+      <label class="extensions-choice"><input id="chrome-profile-extensions" data-settings-draft type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
       <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. No remote-debugging switch, Accessibility, or Automation is needed.</p>
       ${state.profileCopy ? `<p class="meta">Last copy: ${(state.profileCopy.bytes / 1024 / 1024).toFixed(1)} MiB in ${(state.profileCopy.copyMs / 1000).toFixed(1)} seconds. ${state.profileCopy.status === "deleted" ? "Copy deleted." : "Run open."}</p>` : ""}
@@ -481,42 +501,22 @@ function settings(): string {
     </div>
     <div class="card" id="agent-window-settings">
       <h3>Agent window</h3>
-      <label><input id="keep-agent-browser-open" type="checkbox" aria-describedby="agent-browser-lifetime-help" ${state.settings?.keepAgentBrowserOpen === true ? "checked" : ""}> Keep window open after agent finishes</label>
+      <label><input id="keep-agent-browser-open" data-settings-draft type="checkbox" aria-describedby="agent-browser-lifetime-help" ${state.settings?.keepAgentBrowserOpen === true ? "checked" : ""}> Keep window open after agent finishes</label>
       <p class="quiet" id="agent-browser-lifetime-help">Off by default. Bao closes the marked Chrome window and deletes its private profile copy when the agent disconnects or Bao MCP stops. Turn this on to finish a task by hand. The next agent session closes the kept window and deletes its copy before opening a fresh one. The agent's close command, or closing the window by hand during a live session, still closes Chrome and deletes its copy. Kept Chrome has no Bao owner and keeps a local debugging port open, even after you close its window, until you quit that Chrome or the next agent session reclaims its copy. Other local processes can use that port to read the copy's cookies or control its signed-in pages. Your original Chrome stays untouched.</p>
       <button id="save-agent-browser-lifetime" type="button">Save window choice</button>
       <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
-    <label>When a step misses <select id="heal">
-      <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
-      <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
-    </select></label>
-    <p class="quiet">Auto is the default. A step can override it with auto, ask, or never. Healing runs when the Cursor CLI is logged in, when a model key is set, or when this build is started with the fixture healer. A real change is the only miss that is healed. A temporary blocker or an outage stops the run. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
-    <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
-    <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
-    <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
-    ${remoteMcpSetting(state.settings?.remoteMcp === true, {
-      paired: state.relay?.paired === true,
-      permission: state.settings?.remotePermission,
-    })}
+    <p class="quiet">AI help uses the connected Cursor account or a model key set when Bao starts. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
+    <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}" aria-describedby="circuit-limit-error"></label><span id="circuit-limit-error" role="status" hidden></span>
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
-    <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
     <label>Theme <select id="theme">
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <div class="card">
-      <h3>Model</h3>
-      <p id="settings-model">${esc(state.model?.label || "no model")}</p>
-    </div>
-    <div class="card">
-      <h3>Mac</h3>
-      <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
-      <p>Chrome agents need no Accessibility, Automation, or Screen Recording permission.</p>
-    </div>
-  </section>`;
+    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Chrome agents need no Accessibility, Automation, or Screen Recording permission.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
 }
 
 function importSheet(): string {
@@ -553,7 +553,12 @@ function navigate(next: Screen): void {
   if (screen === "runs") selectDefaultRun();
   renderKey = "";
   if (screen === "logins") void loadSaved();
-  if (screen === "settings") void loadHostAccess();
+  if (screen === "settings") {
+    settingsSection = "runs";
+    settingsFeedback = "";
+    void loadHostAccess();
+    void loadSaved();
+  }
   if (screen === "replay") {
     debugStepId = "";
     runFromN = 0;
@@ -566,8 +571,100 @@ function navigate(next: Screen): void {
   document.getElementById("content")!.scrollTop = 0;
 }
 
+function paintSettingsValidation(): void {
+  document.querySelectorAll<HTMLInputElement>('#settings input[type="number"][data-setting]').forEach((input) => {
+    const invalid = input.dataset.settingsEdited === "true" && !input.validity.valid;
+    input.setAttribute("aria-invalid", String(invalid));
+    const error = document.getElementById(`${input.id}-error`);
+    if (error) {
+      error.textContent = invalid ? input.validationMessage : "";
+      error.hidden = !invalid || input.hidden;
+    }
+  });
+}
+
+function bindSettings(): void {
+  document.querySelectorAll<HTMLAnchorElement>("[data-settings-jump]").forEach((link) => {
+    if (link.dataset.settingsJump === settingsSection) link.setAttribute("aria-current", "true");
+    else link.removeAttribute("aria-current");
+    link.onclick = (event) => {
+      event.preventDefault();
+      settingsSection = link.dataset.settingsJump || "runs";
+      document.querySelectorAll("[data-settings-jump]").forEach((item) => item.removeAttribute("aria-current"));
+      link.setAttribute("aria-current", "true");
+      document.getElementById(`set-${settingsSection}`)?.focus({ preventScroll: true });
+      document.getElementById(`set-${settingsSection}`)?.scrollIntoView({ block: "start" });
+    };
+  });
+  const feedback = document.getElementById("settings-feedback");
+  if (feedback) feedback.textContent = settingsFeedback;
+  const custom = document.getElementById("act-custom") as HTMLInputElement | null;
+  const wait = document.getElementById("act-minutes") as HTMLSelectElement | null;
+  if (custom && wait) custom.hidden = wait.value !== "custom";
+  paintSettingsValidation();
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-setting]").forEach((input) => {
+    const save = async () => {
+      if (input.value === "custom") {
+        const custom = document.getElementById("act-custom") as HTMLInputElement;
+        custom.hidden = false;
+        paintSettingsValidation();
+        custom.focus();
+        return;
+      }
+      if (!input.validity.valid) {
+        paintSettingsValidation();
+        return;
+      }
+      delete input.dataset.settingsEdited;
+      const key = input.dataset.setting!;
+      const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
+      settingsFeedback = "Saving…";
+      const status = document.getElementById("settings-feedback");
+      if (status) status.textContent = settingsFeedback;
+      try {
+        const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ [key]: value }) });
+        const body = await response.json() as { error?: string };
+        settingsFeedback = response.ok ? "Saved." : body.error || "Could not save. Try again.";
+        if (response.ok) await refresh();
+      } catch {
+        settingsFeedback = "Could not save. Check that Bao is running, then try again.";
+      } finally {
+        const status = document.getElementById("settings-feedback");
+        if (status) status.textContent = settingsFeedback;
+      }
+    };
+    if (input instanceof HTMLInputElement && input.type === "number") {
+      input.oninput = () => {
+        input.dataset.settingsEdited = "true";
+        paintSettingsValidation();
+      };
+      const commit = () => {
+        if (input.dataset.settingsEdited === "true") void save();
+      };
+      input.onblur = commit;
+      input.onchange = commit;
+      input.onkeydown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          if (!input.reportValidity()) {
+            paintSettingsValidation();
+            return;
+          }
+          if (Number(input.value) === Number(input.defaultValue)) {
+            input.value = input.defaultValue;
+            delete input.dataset.settingsEdited;
+            return;
+          }
+          commit();
+        }
+      };
+    } else input.onchange = save;
+  });
+}
+
 function bind(): void {
   bindDesktopMcp();
+  bindSettings();
   const retry = document.getElementById("retry-state");
   if (retry) retry.onclick = () => { void refresh().catch(() => document.getElementById("retry-state")?.focus()); };
   document.querySelectorAll<HTMLElement>("#runs-welcome [data-screen]").forEach((button) => {
@@ -619,6 +716,8 @@ function bind(): void {
       navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
   });
+  const importLogin = document.querySelector<HTMLButtonElement>('#settings [data-screen="logins"]');
+  if (importLogin) importLogin.onclick = () => navigate("logins");
   document.querySelectorAll("#main [data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
@@ -836,10 +935,12 @@ function bind(): void {
   const engineChoice = document.getElementById("page-engine") as HTMLSelectElement | null;
   const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;
   const extensionsChoice = document.getElementById("chrome-profile-extensions") as HTMLInputElement | null;
-  if (engineChoice) engineChoice.onchange = () => {
-    if (profileChoice) profileChoice.disabled = engineChoice.value !== "agent-browser";
-    if (extensionsChoice) extensionsChoice.disabled = engineChoice.value !== "agent-browser" || !profileChoice?.value;
+  const updateEngineControls = () => {
+    if (profileChoice) profileChoice.disabled = engineChoice?.value !== "agent-browser";
+    if (extensionsChoice) extensionsChoice.disabled = engineChoice?.value !== "agent-browser" || !profileChoice?.value;
   };
+  updateEngineControls();
+  if (engineChoice) engineChoice.onchange = updateEngineControls;
   if (profileChoice) profileChoice.onchange = () => {
     if (!extensionsChoice) return;
     extensionsChoice.checked = state.settings?.chromeProfileExtensions?.[profileChoice.value] === true;
@@ -862,25 +963,6 @@ function bind(): void {
     await refresh();
     const feedback = document.getElementById("engine-feedback");
     if (feedback) feedback.textContent = "Engine choice saved. It applies to the next run.";
-  };
-  const save = document.getElementById("save-settings");
-  if (save) save.onclick = async () => {
-    await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        heal: (document.getElementById("heal") as HTMLSelectElement).value,
-        promoteAfter: Number((document.getElementById("promote-after") as HTMLInputElement).value),
-        actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
-        circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
-        syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
-        remoteMcp: (document.getElementById("remote-mcp") as HTMLInputElement | null)?.checked === true,
-        remotePermission: (document.getElementById("remote-permission") as HTMLSelectElement | null)?.value === "deny" ? "deny" : "ask",
-        siteTrust: readSiteTrust(),
-      }),
-    });
-    renderKey = "";
-    await refresh();
   };
   document.querySelectorAll("[data-heal-filter]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
@@ -1055,11 +1137,15 @@ function bindRemote(): void {
   const pair = document.getElementById("relay-pair");
   if (pair) pair.onclick = async () => {
     const code = (document.getElementById("relay-code") as HTMLInputElement | null)?.value || "";
-    await fetch("/api/remote/pair", {
+    const response = await fetch("/api/remote/pair", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code }),
     });
+    if (response.ok) {
+      const input = document.getElementById("relay-code") as HTMLInputElement | null;
+      if (input) input.value = input.defaultValue;
+    }
     renderKey = "";
     await refresh();
   };
@@ -1082,7 +1168,7 @@ function bindAsk(): void {
   if (yes) yes.onclick = () => void answerImport({ accept: true });
   const no = document.getElementById("import-no");
   if (no) no.onclick = () => void answerImport({ accept: false });
-  document.querySelectorAll("[data-import-profile]").forEach((btn) => {
+  document.querySelectorAll("#act #import-pick [data-import-profile]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => void answerImport({ accept: true, profile: (btn as HTMLButtonElement).dataset.importProfile });
   });
 }
@@ -1840,7 +1926,7 @@ async function loadSaved(): Promise<void> {
 }
 
 function bindLogins(): void {
-  if (screen !== "logins") return;
+  if (screen !== "logins" && screen !== "settings") return;
   const show = document.getElementById("show-profiles");
   if (show) show.onclick = async () => {
     readLoginForm();
@@ -1866,7 +1952,7 @@ function bindLogins(): void {
     login.selected = profiles.some((profile) => profile.directory === body.preferred) ? (body.preferred || "") : preferredDirectory(profiles);
     await loadSaved();
   };
-  document.querySelectorAll<HTMLButtonElement>("[data-import-profile]").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#main [data-import-profile]").forEach((btn) => {
     btn.onclick = () => {
       readLoginForm();
       login.selected = btn.dataset.importProfile || "";
@@ -1904,7 +1990,7 @@ function bindLogins(): void {
     renderKey = "";
     render();
   };
-  document.querySelectorAll<HTMLButtonElement>("[data-recheck]").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#main [data-recheck]").forEach((btn) => {
     btn.onclick = async () => {
       readLoginForm();
       btn.disabled = true;
@@ -1919,13 +2005,15 @@ function bindLogins(): void {
       await loadSaved();
     };
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#main [data-remove]").forEach((btn) => {
     btn.onclick = async () => {
+      const origin = expandControlKey(btn.dataset.remove || "");
+      if (!window.confirm(`Remove the saved login for ${origin}?`)) return;
       readLoginForm();
       await fetch("/api/login-sites", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ origin: expandControlKey(btn.dataset.remove || "") }),
+        body: JSON.stringify({ origin }),
       });
       await loadSaved();
     };
@@ -1948,6 +2036,11 @@ async function postSync(url: string, body: unknown): Promise<void> {
   const payload = await res.json().catch(() => ({})) as { error?: string; id?: string; name?: string; steps?: string[] };
   if (!res.ok) {
     banner = { id: "sync", title: "Sync", body: payload.error || "Sync failed" };
+  } else if (url === "/api/sync/pair") {
+    for (const id of ["pair-code", "invite-secret"]) {
+      const input = document.getElementById(id) as HTMLInputElement | null;
+      if (input) input.value = input.defaultValue;
+    }
   } else if (Array.isArray(payload.steps) && payload.id) {
     conflictCopy = { id: payload.id, name: payload.name || payload.id, steps: payload.steps };
   } else if (url.endsWith("/conflict")) {

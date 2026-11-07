@@ -143,7 +143,8 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await primary.waitFor({ state: "attached" });
     if (!await primary.isVisible()) await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await primary.click();
-    if (place === "workflows" && screen !== "library") {
+    if (screen === "logins") await page.locator('#settings [data-screen="logins"]').click();
+    else if (place === "workflows" && screen !== "library") {
       if (screen === "capture") {
         await page.getByRole("button", { name: "Record", exact: true }).click();
       } else {
@@ -151,7 +152,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
         await page.locator("#palette-input").fill(screen === "teach" ? "Teach" : "Replay");
         await page.locator(`#palette-list [data-command="${screen}"]`).click();
       }
-    } else if (screen !== "library") await page.locator(`#screen-list [data-screen="${screen}"]`).click();
+    } else if (screen !== "library" && screen !== "settings") await page.locator(`#screen-list [data-screen="${screen}"]`).click();
     if (screen === "capture") {
       await page.waitForResponse((response) => response.url().endsWith("/api/state"));
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -170,10 +171,14 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       assert.equal(listBounds?.width, width === 1200 ? 340 : width === 720 ? 296 : 320);
       for (const [screen, place, heading] of routes) {
         await navigate(screen, place);
-        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : screen === "runs" ? workflow.name : heading);
+        if (screen === "settings") await page.locator("#set-runs").waitFor();
+        else await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : screen === "runs" ? workflow.name : heading);
         await checkTitle("Bao");
-        assert.equal(await page.locator("#screen-list [aria-current=page]").count(), screen === "library" ? 0 : 1);
-        if (screen !== "library") {
+        assert.equal(await page.locator("#screen-list [aria-current=page]").count(), screen === "library" || screen === "settings" ? 0 : 1);
+        if (screen === "settings") {
+          assert.equal(await page.locator('#screen-list [data-settings-jump="runs"]').getAttribute("aria-current"), "true");
+          assert.equal(await page.locator("#screen-list [aria-current]").count(), 1);
+        } else if (screen !== "library") {
           const label = screen === "live" ? "Live" : screen === "replay" ? "Replay" : heading;
           assert.equal(await page.locator("#screen-list").getByRole("button", { name: new RegExp(`^${label}(?: |$)`) }).getAttribute("aria-current"), "page");
         }
@@ -456,7 +461,7 @@ test("the palette takes focus from the modal sidebar without a queued close stea
     const dialog = page.locator("#sidebar-dialog");
     const input = page.locator("#palette-input");
     const commands = [
-      ["Settings", "settings", "#page-engine-settings", "main"],
+      ["Settings", "settings", "#set-runs", "main"],
       [`Open ${workflow.name}`, `open-${workflow.id}`, "#workflow-detail", "main"],
       [`Run ${workflow.name}`, `run-${workflow.id}`, "#run", "main"],
       ["Toggle appearance", "theme", "#run", "BODY"],

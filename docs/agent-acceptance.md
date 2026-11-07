@@ -27,7 +27,7 @@ The app identifier is `dev.bao.desktop`. The server's cwd should point inside Ba
 
 Check the running app in light and dark at the default window size, 720 px, 320 px, and 200% zoom. Runs opens first. The sidebar contains exactly Runs, Workflows, and Settings. At narrow widths, Show sidebar opens Places; Escape closes it and returns focus.
 
-Workflows opens a full-width list beside the sidebar, with no middle pane. Record opens Capture. Capture’s Teach button and the command list keep Teach reachable; the command list also opens Replay. Other screens retain the second-pane screens: Runs, Live, and Heals under Runs; Library, Capture, Teach, and Replay under Workflows; Settings and Logins under Settings. Every screen remains reachable by keyboard and the command list. Opening a workflow or run keeps its place selected and moves focus to the content pane.
+Workflows opens a full-width list beside the sidebar, with no middle pane. Record opens Capture. Capture’s Teach button and the command list keep Teach reachable; the command list also opens Replay. Other screens retain the second-pane screens: Runs, Live, and Heals under Runs; Library, Capture, Teach, and Replay under Workflows. Settings shows a section index for Runs and heals, Mac permissions, Remote access, Logins, and AI help. Open Logins with Import a login… or the command list. Every screen remains reachable by keyboard and the command list. Opening a workflow or run keeps its place selected and moves focus to the content pane.
 
 Use isolated historical fixtures for display checks, not as proof of recording or replay:
 

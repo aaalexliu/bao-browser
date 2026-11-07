@@ -92,7 +92,7 @@ project, database, or blob store.
 5. In Storage, create a Private Blob store and connect it to the project. This sets `BLOB_STORE_ID` for saved pictures. Do not create a public store.
 6. In Marketplace, choose Neon and the free plan. Read and accept the plan. Neon injects `DATABASE_URL`. Do not install the sunset Vercel Postgres or KV products.
 7. Redeploy so functions see `DATABASE_URL`, `BLOB_STORE_ID`, and the owner variables.
-8. Sign in with the owner email and invite secret. In Settings → Sync, paste the production domain, Devices pairing code, and invite secret once. Pair, then Sync.
+8. Sign in with the owner email and invite secret. In Settings → Technical details → Sync, paste the production domain, Devices pairing code, and invite secret once. Pair, then Sync.
 
 Variable names, with empty values, are in [`web/.env.example`](web/.env.example).
 [web/README.md](web/README.md) has the click-through guide.
