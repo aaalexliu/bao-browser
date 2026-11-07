@@ -179,8 +179,6 @@ export class AgentBrowserProxy {
       }
       return results;
     } catch (error) {
-      step ??= recording.begin(command as string, args);
-      this.latest = { runId: recording.id, step };
       failure = error;
       throw error;
     } finally {
