@@ -4,7 +4,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { buildPushBody } from "../../../web/src/lib/guard";
+import { buildPushBody } from "../../../shared/sync-guard";
 import { retainLocalDefaults } from "./local-defaults";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";

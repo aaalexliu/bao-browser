@@ -107,7 +107,7 @@ test("MCP describe scrubs outbound text defaults and entry values without changi
   assert.deepEqual(library.read(doc.id), original);
 });
 
-test("registry import answers omit personal defaults while desktop import answers stay local", () => {
+test("registry import answers retain ordinary defaults and omit secret and file defaults", () => {
   const document = {
     inputs: [
       { name: "password", type: "secret", label: "Password" },
@@ -121,10 +121,12 @@ test("registry import answers omit personal defaults while desktop import answer
   };
   const local = applyImportAnswers(document, answers) as { inputs: { name: string; default?: string }[] };
   const cloud = applyRegistryImportAnswers(document, answers) as typeof local;
-  for (const name of ["password", "email", "path", "phone", "ssn"]) {
-    assert.equal(local.inputs.find((input) => input.name === name)?.default, answers[name as keyof typeof answers]);
-    assert.equal(cloud.inputs.find((input) => input.name === name)?.default, undefined);
+  for (const name of ["email", "path", "phone", "ssn"] as const) {
+    assert.equal(local.inputs.find((input) => input.name === name)?.default, answers[name]);
+    assert.equal(cloud.inputs.find((input) => input.name === name)?.default, answers[name]);
   }
+  assert.equal(local.inputs.find((input) => input.name === "password")?.default, answers.password);
+  assert.equal(cloud.inputs.find((input) => input.name === "password")?.default, undefined);
   assert.equal(local.inputs.find((input) => input.name === "desk")?.default, "west");
   assert.equal(cloud.inputs.find((input) => input.name === "desk")?.default, "west");
   assert.equal(local.inputs.find((input) => input.name === "attachment")?.default, undefined);

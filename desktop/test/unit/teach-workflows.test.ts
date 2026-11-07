@@ -214,9 +214,9 @@ test("teach a new workflow, correct three cards, replay twice, and blur secrets"
     const blurred = await page.evaluate(blurSensitiveFields);
     assert.ok(blurred >= 1);
     assert.match(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), /blur/);
-    assert.equal(await page.locator("[data-bao-blur]").count(), blurred);
+    assert.equal(await page.locator("[data-bao-blur-cover]").count(), blurred);
     await page.evaluate(unblurSensitiveFields);
-    assert.equal(await page.locator("[data-bao-blur]").count(), 0);
+    assert.equal(await page.locator("[data-bao-blur-cover]").count(), 0);
 
     await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });
     await post(app.port, "/api/sessions/drive", { click: "#save-note" });

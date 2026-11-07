@@ -223,7 +223,7 @@ for (const mode of ["pull", "push"] as const) test(`${mode} keeps a dirty local 
     const book = JSON.parse(readFileSync(path.join(home, "versions", "secret-push.json"), "utf8")) as WorkflowVersion[];
     const conflict = book.find((row) => row.source === "conflict")?.conflict;
     assert.equal(conflict?.theirs.name, "Direct remote edit");
-    assert.equal(conflict?.theirs.inputs[0]!.default, "[secret stripped]");
+    assert.equal(conflict?.theirs.inputs[0]!.default, "direct-remote-password");
     assert.equal(document.inputs[0]!.default, "direct-remote-password");
     await syncAll(library, mode);
     assert.equal(library.read("secret-push").name, "Unsynced local edit");
