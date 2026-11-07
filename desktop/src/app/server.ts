@@ -126,7 +126,7 @@ import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolve
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
-import { stripUnsafe } from "../../../web/src/lib/guard";
+import { stripUnsafe } from "../v1/sync-guard";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";

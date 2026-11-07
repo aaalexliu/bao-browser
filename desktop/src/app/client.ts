@@ -1664,10 +1664,12 @@ async function fillArgs(id: string): Promise<void> {
   if (!form || screen !== "replay") return;
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-  const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
+  const pinnedArgs = (pinnedRunId && pinnedInputs) || pinned?.inputs;
+  const prev = { ...(pinnedArgs || last?.inputs || {}), ...deeplinkInputs };
   form.innerHTML = doc.inputs.map((input) => {
     const fresh = oneTimeCodeInput(doc, input.name);
-    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, prev[input.name], doc.steps || []);
+    const previous = input.type === "secret" ? deeplinkInputs[input.name] ?? pinnedArgs?.[input.name] : prev[input.name];
+    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, previous, doc.steps || []);
   }).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;

@@ -3,6 +3,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { retainLocalDefaults } from "./local-defaults";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
@@ -372,7 +373,7 @@ export function noteConflict(
     history?: CloudVersionRow[];
   },
 ): WorkflowVersion {
-  const cloud = cloudRows(input.history ?? []);
+  const cloud = cloudRows(input.history ?? [], readBook(library, input.mine.id));
   const versions = cloud.length
     ? [...cloud, ...localDrafts(library, input.mine.id, cloud)]
     : seed(library, input.mine.id).filter((item) => item.source !== "conflict");
@@ -400,12 +401,14 @@ export function noteConflict(
   return row;
 }
 
-function cloudRows(history: CloudVersionRow[]): WorkflowVersion[] {
+function cloudRows(history: CloudVersionRow[], local: WorkflowVersion[]): WorkflowVersion[] {
+  const localByVersion = new Map(local.map((item) => [item.n, item.document]));
   const rows: WorkflowVersion[] = [];
   for (const item of history) {
     if (item.kind === "conflict" || item.document === undefined) continue;
     const document = migrate(item.document);
     if (validateWorkflow(document).length) continue;
+    retainLocalDefaults(document, localByVersion.get(item.version));
     rows.push({
       n: item.version,
       role: "past",

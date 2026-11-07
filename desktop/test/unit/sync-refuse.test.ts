@@ -311,6 +311,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       { name: "otp", type: "text", default: "123456" },
       { name: "rows", type: "table", default: `name,token\nAda,${token}\nGrace,${card}\nReplaced row,${token}\nRemoved row,${card}` },
       { name: "unstripped", type: "text", default: "local text" },
+      { name: "mixedRows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" },
       ...tableNames.map((name) => ({ name, type: "table" as const, default: originalTable })),
     ];
     const literal = (id: string, value: string): WorkflowStep => ({
@@ -392,6 +393,8 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
         { name: "Replaced row", token: STRIPPED_SECRET },
         { name: "Removed row", token: STRIPPED_SECRET },
       ]);
+      assert.equal(updated.inputs.find((input) => input.name === "mixedRows")?.default,
+        "name,token\nAda,[secret stripped]\nGrace,[secret stripped]\n");
       const pushedTable = updated.inputs.find((input) => input.name === "unchangedRows")!.default!;
       assert.equal(pushedTable, `Display Name,Token\nAda,${STRIPPED_SECRET}\nGrace,${STRIPPED_SECRET}\n`);
       const remoteTables = {
@@ -453,6 +456,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
           { name: "New remote row", token: "new remote value" },
         ]);
         assert.equal(defaults.unchangedRows, originalTable);
+        assert.equal(defaults.mixedRows, "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n");
         for (const [name, value] of Object.entries(remoteTables)) {
           assert.equal(defaults[name], value);
           assert.ok(defaults[name]!.includes(STRIPPED_SECRET));

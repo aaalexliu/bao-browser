@@ -14,6 +14,7 @@ import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, withInputDefaults, type Driver, type ReplayOptions } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testChromium } from "../../src/test-browser";
+import { applyHermeticApp } from "../runtime";
 
 const secret = "BaoSecretFixture9kQ7m";
 const field: Identity = { surface: "dom", role: "textbox", id: "credential", nameAttr: "credential", path: [] };
@@ -190,6 +191,129 @@ test("past-input route filters current OTP fields without changing saved history
   } finally {
     await app.close();
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("plain Replay uses the current saved secret while pinned and run-link inputs stay explicit", { timeout: 90_000 }, async () => {
+  const envKeys = ["BAO_HOME", "BAO_CHROME_USER_DATA", "BAO_HEADED", "BAO_HEAL_CURSOR_ACCOUNT", "BAO_OS_HELPER", "BAO_EXTENSION_HOST", "BAO_CURSOR_AGENT", "BAO_BROWSER"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const dirs = applyHermeticApp("replay-secret-default");
+  const submissions: Record<string, string>[] = [];
+  const fixture = createServer((req, res) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    res.setHeader("content-type", "text/html");
+    if (url.pathname === "/submit") {
+      submissions.push(Object.fromEntries(url.searchParams));
+      res.end("<!doctype html><p>Submitted</p>");
+      return;
+    }
+    res.end(`<!doctype html><form action="/submit">
+      <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+      <label>Display name <input id="display" name="display"></label>
+      <label>Code <input id="code" name="code" autocomplete="one-time-code"></label>
+      <button type="submit">Submit</button></form>`);
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const app = await startApp({ home: dirs.home, port: 0, extensionHost: false, chromeProfilesRoot: dirs.chromeUserData });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage();
+  try {
+    const address = fixture.address();
+    assert.ok(address && typeof address !== "string");
+    const workflow: WorkflowV2 = {
+      schema: "bao.workflow/v2", version: 2, id: "replay-secret-default", name: "Replay secret default", createdAt: 1,
+      startUrl: `http://127.0.0.1:${address.port}/`,
+      inputs: [
+        { name: "password", type: "secret", label: "Password", default: "old-password" },
+        { name: "display", type: "text", label: "Display name", default: "Saved display" },
+        { name: "code", type: "text", label: "Code", default: "111111" },
+      ],
+      steps: [
+        ...["password", "display", "code"].map((name, index): WorkflowStep => ({
+          id: name, index, action: "type", label: name, surface: "dom", timeoutMs: 5000, heal: "never",
+          input: name, value: `{{${name}}}`,
+          identity: { surface: "dom", role: "textbox", id: name, path: [], ...(name === "code" ? { autocomplete: "one-time-code" } : {}) },
+        })),
+        {
+          id: "submit", index: 3, action: "click", label: "Submit", surface: "dom", timeoutMs: 5000, heal: "never",
+          identity: { surface: "dom", role: "button", name: "Submit", path: [] },
+          postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 },
+        },
+      ],
+    };
+    app.library.save(workflow);
+    const base = `http://127.0.0.1:${app.port}`;
+    const password = page.locator('#args [name="password"]');
+    const display = page.locator('#args [name="display"]');
+    const code = page.locator('#args [name="code"]');
+    async function openPlain(): Promise<void> {
+      await page.goto(base);
+      await page.click('#rail [data-place="workflows"]');
+      await page.click('#screen-list [data-screen="library"]');
+      await page.click(`[data-screen="replay"][data-workflow="${workflow.id}"]`);
+      await password.waitFor();
+    }
+    async function submit(): Promise<void> {
+      const [response] = await Promise.all([
+        page.waitForResponse((item) => item.url() === `${base}/api/replay` && item.request().method() === "POST"),
+        page.click("#run"),
+      ]);
+      const run = await response.json() as { status: string; modelCalls: number; failure?: unknown };
+      assert.equal(response.ok(), true, JSON.stringify(run));
+      assert.equal(run.status, "passed", JSON.stringify(run.failure));
+      assert.equal(run.modelCalls, 0);
+      await page.locator("#rerun-run").waitFor();
+    }
+    await openPlain();
+    assert.equal(await password.inputValue(), "old-password");
+    assert.equal(await code.inputValue(), "");
+    await display.fill("Previous display");
+    await code.fill("123456");
+    await submit();
+    assert.deepEqual(submissions, [{ password: "old-password", display: "Previous display", code: "123456" }]);
+
+    const edited = await fetch(`${base}/api/workflows/${workflow.id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inputEdit: { name: "password", default: "new-password" } }),
+    });
+    assert.equal(edited.status, 200);
+    assert.equal((await edited.json() as WorkflowV2).inputs.find((input) => input.name === "password")?.default, "new-password");
+    await page.click("#rerun-run");
+    await password.waitFor();
+    assert.equal(await password.inputValue(), "old-password");
+    assert.equal(await display.inputValue(), "Previous display");
+    assert.equal(await code.inputValue(), "");
+
+    await openPlain();
+    assert.equal(await password.inputValue(), "new-password");
+    assert.equal(await display.inputValue(), "Previous display");
+    assert.equal(await code.inputValue(), "");
+    await code.fill("234567");
+    await submit();
+    assert.deepEqual(submissions[1], { password: "new-password", display: "Previous display", code: "234567" });
+
+    const explicit = { password: "link-password", display: "Link display", code: "345678" };
+    const opened = await fetch(`${base}/api/open`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ link: `bao://run/${workflow.id}?inputs=${encodeURIComponent(JSON.stringify(explicit))}` }),
+    });
+    assert.equal(opened.status, 200);
+    await page.waitForFunction(() => document.querySelector<HTMLInputElement>('#args [name="password"]')?.value === "link-password");
+    assert.equal(await display.inputValue(), "Link display");
+    assert.equal(await code.inputValue(), "345678");
+    await submit();
+    assert.deepEqual(submissions[2], explicit);
+    assert.equal(submissions.length, 3);
+    assert.equal(app.library.read(workflow.id).inputs.find((input) => input.name === "password")?.default, "new-password");
+  } finally {
+    await browser.close();
+    await app.close();
+    await new Promise<void>((resolve, reject) => fixture.close((error) => error ? reject(error) : resolve()));
+    for (const key of envKeys) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+    rmSync(path.dirname(dirs.home), { recursive: true, force: true });
   }
 });
 

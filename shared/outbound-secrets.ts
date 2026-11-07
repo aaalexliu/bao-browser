@@ -75,7 +75,7 @@ function missingBoundValue(value: unknown, table: boolean): boolean {
   return table ? typeof value === "string" && value.trim() === STRIPPED_SECRET : hasStrippedSecret(value);
 }
 
-function redactSavedValue(value: string): string {
+export function redactSavedValue(value: string): string {
   if (value === STRIPPED_SECRET) return value;
   if (TOKENS.test(value) || /^\s*\d{3}-?\d{2}-?\d{4}\s*$/.test(value) || /^\d{3}[- ]\d{2}[- ]\d{4}$/.test(value)) return STRIPPED_SECRET;
   if (!/^\d(?:[ -]?\d){12,18}$/.test(value)) return value;

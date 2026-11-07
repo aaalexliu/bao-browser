@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,7 +10,9 @@ import { keepPatch, unavailableHeal } from "../../src/v1/heal";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { draftVersion, listVersions, noteConflict, promoteVersion, restoreVersion } from "../../src/v1/versions";
+import { loadState, syncAll } from "../../src/v1/sync";
+import { stripUnsafe } from "../../src/v1/sync-guard";
+import { draftVersion, listVersions, noteConflict, promoteVersion, restoreVersion, versionDocument } from "../../src/v1/versions";
 
 const AT = Date.parse("2026-10-22T04:50:16.442Z");
 
@@ -216,6 +219,82 @@ test("a conflict draft uses the cloud version numbers and device names", () => {
   assert.match(html, /data-version="3"/);
   assert.match(html, /data-testid="version-device">Ada&#39;s Mac/);
   assert.match(html, /data-testid="version-device">Home Mac/);
+});
+
+test("a 409 history replacement retains each version's own local defaults for restore", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-history-defaults-"));
+  const library = new Library(home);
+  const first = workflow("wf-history-defaults", "open");
+  first.inputs = [
+    { name: "token", type: "text", default: "sk-AdaFixture111" },
+    { name: "rows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" },
+  ];
+  library.save(first);
+  listVersions(library, first.id);
+  const second = structuredClone(first);
+  second.inputs[0]!.default = "sk-SecondFixture333";
+  second.inputs[1]!.default = "name,token\r\nAda,[secret stripped]\r\nGrace,sk-SecondTable444\r\n";
+  const secondDraft = draftVersion(library, second, "edit");
+  promoteVersion(library, first.id, secondDraft.n);
+  const mine = library.read(first.id);
+  mine.name = "Current local edit";
+  mine.inputs[0]!.default = "sk-CurrentFixture555";
+  mine.inputs[1]!.default = "name,token\r\nAda,[secret stripped]\r\nGrace,sk-CurrentTable666\r\n";
+  library.save(mine);
+  const cloud = [first, second, { ...second, name: "Remote rename" }].map((doc) => stripUnsafe(doc) as WorkflowV2);
+  let conflicts = 0;
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/api/sync/snapshot") {
+        res.writeHead(404).end("{}");
+      } else if (req.url === "/api/devices") {
+        res.end(JSON.stringify({ devices: [], categories: [] }));
+      } else if (req.method === "POST" && req.url === `/api/workflows/${first.id}/versions`) {
+        conflicts += 1;
+        res.writeHead(409).end(JSON.stringify({
+          error: "conflict", current: { version: 3, document: cloud[2], deviceName: "Other Mac" },
+          draft: { version: 4 },
+        }));
+      } else if (req.url === `/api/workflows/${first.id}/versions`) {
+        res.end(JSON.stringify({ versions: cloud.map((document, index) => ({
+          version: index + 1, kind: "version", document, created_at: AT, device_name: "Other Mac",
+        })) }));
+      } else {
+        res.writeHead(404).end("{}");
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  writeFileSync(path.join(home, "sync.json"), JSON.stringify({
+    server: `http://127.0.0.1:${address.port}`, deviceToken: "device-token", backedUp: true,
+    workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+  }));
+  try {
+    await syncAll(library, "push");
+    assert.equal(conflicts, 1);
+    assert.equal(loadState(home).conflicts.length, 1);
+    assert.deepEqual(listVersions(library, first.id).map((row) => [row.n, row.role]),
+      [[1, "past"], [2, "past"], [3, "past"], [4, "draft"]]);
+    assert.deepEqual(versionDocument(library, first.id, 1).inputs, first.inputs);
+    assert.deepEqual(versionDocument(library, first.id, 2).inputs, second.inputs);
+    assert.deepEqual(versionDocument(library, first.id, 3).inputs, cloud[2]!.inputs);
+    assert.deepEqual(versionDocument(library, first.id, 4).inputs, mine.inputs);
+    assert.deepEqual(library.read(first.id).inputs, mine.inputs);
+    const restored = restoreVersion(library, first.id, 1);
+    assert.equal(restored.n, 5);
+    assert.equal(restored.role, "draft");
+    assert.equal(restored.source, "restore");
+    assert.deepEqual(restored.document.inputs, first.inputs);
+    assert.deepEqual(library.read(first.id).inputs, mine.inputs);
+    promoteVersion(library, first.id, restored.n);
+    assert.deepEqual(library.read(first.id).inputs, first.inputs);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test("a saved version uses the real save time, not the epoch", () => {

@@ -5,13 +5,14 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
-import { INPUT_BINDING } from "../../../shared/bindings";
+import { redactSavedValue } from "../../../shared/outbound-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
-import { migrate, toJson, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { retainLocalDefaults } from "./local-defaults";
+import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -694,58 +695,6 @@ function enqueueDirty(library: Library, state: SyncState): void {
   state.outbox = outbox;
 }
 
-function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
-  const projected = local ? stripUnsafe(local) as WorkflowV2 : undefined;
-  const inputs = new Map(local?.inputs.map((input) => [input.name, input]));
-  const projectedInputs = new Map(projected?.inputs.map((input) => [input.name, input]));
-  for (const input of doc.inputs) {
-    if (input.type === "file" || oneTimeCodeInput(doc, input.name)) continue;
-    const saved = inputs.get(input.name);
-    const stripped = projectedInputs.get(input.name);
-    if (saved?.type !== input.type || saved.default === undefined || !stripped) continue;
-    if (input.default === stripped.default && !hasStrippedSecret(saved.default)) input.default = saved.default;
-  }
-  const steps = new Map<string, WorkflowStep>();
-  const projectedSteps = new Map<string, WorkflowStep>();
-  const remember = (items: WorkflowStep[], target: Map<string, WorkflowStep>): void => {
-    for (const step of items) {
-      target.set(step.id, step);
-      if (step.forEach) remember(step.forEach.steps, target);
-    }
-  };
-  remember(local?.steps ?? [], steps);
-  remember(projected?.steps ?? [], projectedSteps);
-  const defaults = Object.fromEntries(doc.inputs.flatMap((input) => input.default === undefined ? [] : [[input.name, input.default] as const]));
-  const restore = (items: WorkflowStep[]): void => {
-    for (const step of items) {
-      const saved = steps.get(step.id);
-      const stripped = projectedSteps.get(step.id);
-      for (const field of ["value", "key"] as const) {
-        const value = saved?.[field];
-        if (stripped && step[field] === stripped[field]
-          && (hasStrippedSecret(step[field]) || step[field] === undefined)
-          && value !== undefined && !hasStrippedSecret(value) && !value.includes("{{")) {
-          step[field] = value;
-        }
-      }
-      const bound = new Set([...(step.input ? [step.input] : []),
-        ...[...(step.value ?? "").matchAll(INPUT_BINDING)].map((match) => match[1]!),
-        ...(step.forEach?.over.kind === "input" ? [step.forEach.over.name] : [])]);
-      if (step.unresolved?.reason === NEEDS_SECRET_VALUE
-        && (step.value !== undefined || step.key !== undefined || bound.size > 0)
-        && [...bound].every((name) => defaults[name] !== undefined && defaults[name] !== "")
-        && !stepNeedsSecretValue({ ...step, unresolved: undefined }, doc, defaults)) {
-        if (stripped?.unresolved?.reason === NEEDS_SECRET_VALUE && saved?.unresolved
-          && saved.unresolved.reason !== NEEDS_SECRET_VALUE) step.unresolved = saved.unresolved;
-        else delete step.unresolved;
-      }
-      if (step.forEach) restore(step.forEach.steps);
-    }
-  };
-  restore(doc.steps);
-  return doc;
-}
-
 function writeRemote(library: Library, state: SyncState, remote: PullBody, local?: WorkflowV2): void {
   const doc = retainLocalDefaults(migrate(remote.document), local);
   library.save(doc);
@@ -796,11 +745,13 @@ function readCrop(file: string): Buffer | undefined {
 }
 
 function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
-  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret").map((input) => input.name));
+  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret"
+    || redactSavedValue(input.default ?? "") === STRIPPED_SECRET).map((input) => input.name));
   const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of doc.steps) {
-    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
+    if (step.sensitive || (step.input && secrets.has(step.input))
+      || redactSavedValue(step.value ?? "") === STRIPPED_SECRET) continue;
     const names = [
       ...runs.map((run) => path.join(library.root, "shots", "runs", run.id, shotFile(step.id, "after"))),
       path.join(library.root, "shots", "workflows", doc.id, workflowShotName(step.id)),

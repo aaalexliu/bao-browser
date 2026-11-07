@@ -1,5 +1,5 @@
 import { isSealedArtifact, STRIPPED_SECRET } from "../../../shared/saved-secrets";
-import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
+import { redactSavedValue, scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
 import { isElementCrop } from "./png";
 
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|args|params)$/i;
@@ -30,7 +30,7 @@ export function buildPushBody(
   opts: { baseVersion: number; heal?: unknown; category?: string; crops?: { stepId: string; png: Buffer }[] },
 ): SyncPush {
   const secrets = collectSecretStrings(document, opts.heal);
-  const copy = stripUnsafe(document, secrets) as { inputs?: { name?: string; type?: string }[]; steps?: { id?: string; sensitive?: boolean; input?: string }[] };
+  const copy = stripUnsafe(document, secrets) as { inputs?: { name?: string; type?: string; default?: string }[]; steps?: { id?: string; sensitive?: boolean; input?: string; value?: string }[] };
   const body: SyncPush = {
     baseVersion: opts.baseVersion,
     document: copy,
@@ -64,15 +64,17 @@ export function buildRunBody(
 }
 
 function stepShots(
-  steps: { id?: string; sensitive?: boolean; input?: string }[],
+  steps: { id?: string; sensitive?: boolean; input?: string; value?: string }[],
   crops: { stepId: string; png: Buffer }[] | undefined,
-  inputs: { name?: string; type?: string }[] = [],
+  inputs: { name?: string; type?: string; default?: string }[] = [],
 ): SyncShot[] {
-  const secrets = new Set(inputs.filter((input) => input.type === "secret").map((input) => input.name));
-  const byId = new Map((crops ?? []).map((crop) => [crop.stepId, crop.png]));
+  const secrets = new Set((inputs || []).filter((input) => input.name && (input.type === "secret"
+    || redactSavedValue(input.default ?? "") === STRIPPED_SECRET)).map((input) => String(input.name)));
+  const byId = new Map((crops || []).map((crop) => [crop.stepId, crop.png]));
   const shots: SyncShot[] = [];
   steps.forEach((step, index) => {
-    if (step.sensitive || (step.input && secrets.has(step.input))) return;
+    if (step.sensitive || redactSavedValue(step.value ?? "") === STRIPPED_SECRET) return;
+    if (step.input && secrets.has(step.input)) return;
     const id = String(step.id ?? index);
     const png = byId.get(id);
     if (png && isElementCrop(png)) shots.push({ stepId: id, png: png.toString("base64") });
