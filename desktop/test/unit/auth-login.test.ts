@@ -12,6 +12,7 @@ import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { startApp } from "../../src/app/server";
 import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { scrubSaved } from "../../../shared/outbound-secrets";
 import { Library } from "../../src/v1/store";
 import { guideShotName, workflowShotName } from "../../src/v1/shots";
 
@@ -142,7 +143,7 @@ test("a secret from the parameter form fills the masked field and stops before A
   assert.equal(result.trail.some((event) => event.kind === "human-confirm"), false);
 });
 
-test("login and auth recovery reject every stripped credential before filling or submitting", async () => {
+test("login and auth recovery hand off stripped credentials without filling or submitting", async () => {
   for (const recovery of [false, true]) {
     for (const source of ["username argument", "username default", "password", "preferred password", "code"]) {
       const workflow = freezeWorkflow();
@@ -163,36 +164,49 @@ test("login and auth recovery reject every stripped credential before filling or
         args.alternate = STRIPPED_SECRET;
       }
       if (source === "code") args.code = STRIPPED_SECRET;
-      const driver = secretDriver();
+      const driver = humanDriver();
       const fills: string[] = [];
       driver.fill = async (_node, text) => { fills.push(text); };
       let proposed = 0;
       const result = await replay(workflow, args, driver, {
         heal: { available: () => true, propose: async () => { proposed += 1; return null; } },
       });
-      assert.equal(result.status, "failed", `${recovery} / ${source}`);
-      assert.equal(result.failure?.reason, NEEDS_SECRET_VALUE, `${recovery} / ${source}`);
+      const automatedEntry = recovery && source === "preferred password";
+      assert.equal(result.status, automatedEntry ? "failed" : "paused", `${recovery} / ${source}`);
+      assert.equal(result.failure?.reason, automatedEntry ? NEEDS_SECRET_VALUE : undefined, `${recovery} / ${source}`);
+      assert.equal(driver.loginLabel, automatedEntry ? "" : workflow.steps[0]!.label, `${recovery} / ${source}`);
       assert.deepEqual(fills, []);
-      assert.deepEqual(driver.clicks, []);
+      assert.deepEqual(driver.clicks, automatedEntry ? [] : ["frozen"]);
       assert.equal(proposed, 0);
     }
   }
 });
 
-test("the human handoff signs in and replay stops at confirm", async () => {
-  const workflow = freezeWorkflow();
-  const driver = humanDriver();
-  const result = await replay(workflow, { username: "ada" }, driver, {
-    heal: { available: () => true, propose: async () => { throw new Error("heal"); } },
-  });
-  assert.equal(driver.loginLabel, "Sign in on the site window");
-  assert.equal(driver.fills, 0);
-  assert.equal(result.status, "paused");
-  assert.equal(result.steps[0]?.phase, "auth");
-  assert.equal(result.steps.at(-1)?.status, "paused");
-  assert.equal(result.heals.length, 0);
-  assert.equal(driver.clicks.includes("apply"), false);
-  assert.equal(driver.confirmLabel, "Confirm before Apply");
+test("outbound-stripped login and owner Teach steps hand off, but automated entry still stops", async () => {
+  for (const action of ["login", "confirm", "type"] as const) {
+    const local = freezeWorkflow();
+    local.inputs.find((input) => input.name === "password")!.default = SECRET;
+    local.steps[0]!.action = action;
+    local.steps[0]!.human = action !== "type";
+    local.steps[0]!.identity = ident({ id: "password", role: "password" });
+    const workflow = scrubSaved(local);
+    assert.equal(workflow.inputs.find((input) => input.name === "password")?.default, STRIPPED_SECRET);
+    assert.equal(workflow.steps[0]?.unresolved?.reason, NEEDS_SECRET_VALUE);
+    const driver = humanDriver();
+    if (action !== "login") driver.tree = async () => tree([], { url: workflow.startUrl });
+    const result = await replay(workflow, { username: "ada" }, driver, {
+      yieldHuman: true,
+      heal: { available: () => true, propose: async () => { throw new Error("heal"); } },
+    });
+    assert.equal(result.status, action === "type" ? "failed" : "paused", action);
+    assert.equal(result.pausedKind, action === "login" ? "signin" : action === "confirm" ? "confirm" : undefined, action);
+    assert.equal(result.failure?.reason, action === "type" ? NEEDS_SECRET_VALUE : undefined, action);
+    assert.equal(driver.loginLabel, action === "login" ? "Sign in on the site window" : "", action);
+    assert.equal(driver.confirmLabel, action === "confirm" ? "Sign in on the site window" : "", action);
+    assert.equal(driver.fills, 0, action);
+    assert.deepEqual(driver.clicks, [], action);
+    assert.equal(result.heals.length, 0, action);
+  }
 });
 
 test("an Apply click runs before a later explicit human confirm", async () => {
@@ -314,7 +328,7 @@ test("a headed-off replay of both login paths stops at confirm", async () => {
   }
 });
 
-test("a person signs in on the fixture after the banner, and replay stops at confirm", async () => {
+test("an imported stripped password reaches sign-in handoff, and the person continues to confirm", async () => {
   const previous = { drive: process.env.BAO_DRIVE, cursor: process.env.BAO_HEAL_CURSOR };
   process.env.BAO_DRIVE = "1";
   delete process.env.BAO_HEAL_CURSOR;
@@ -324,11 +338,15 @@ test("a person signs in on the fixture after the banner, and replay stops at con
     const workflow = freezeWorkflow();
     workflow.startUrl = `http://127.0.0.1:${app.port}/freeze`;
     workflow.steps[0]!.timeoutMs = 20000;
+    workflow.inputs.find((input) => input.name === "password")!.default = SECRET;
+    const outbound = scrubSaved(workflow);
+    assert.equal(outbound.inputs.find((input) => input.name === "password")?.default, STRIPPED_SECRET);
+    assert.equal(outbound.steps[0]?.unresolved?.reason, NEEDS_SECRET_VALUE);
     const base = `http://127.0.0.1:${app.port}`;
     const imported = await fetch(`${base}/api/workflows/import`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(workflow),
+      body: JSON.stringify(outbound),
     });
     assert.equal(imported.status, 200);
     const pending = fetch(`${base}/api/replay`, {

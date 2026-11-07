@@ -407,7 +407,7 @@ export async function replay(
       continue;
     }
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
-    if (stepNeedsSecretValue(step, workflow, args)) {
+    if (step.action !== "login" && step.action !== "confirm" && stepNeedsSecretValue(step, workflow, args)) {
       const failure = await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets);
       stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
       return finish({ runId, status: "failed", steps, failure });
@@ -522,11 +522,7 @@ export async function replay(
     }
     repairs.push(...outcome.repairs);
     if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
-      const needsValue = Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
-      const recovered = !needsValue && await recoverAuth(workflow, step, args, driver, secrets, gate);
-      if (needsValue) {
-        outcome = { ok: false, repairs: [], failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
-      }
+      const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
       if (recovered) {
         noteAuth(trail, step.id, true);
         precondition = { phase: "auth", reason: "redirected to login", recovered: true, stepId: step.id };
@@ -804,7 +800,7 @@ async function runStep(
   appending = false,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
-  if (stepNeedsSecretValue(step, workflow, args)) {
+  if (step.action !== "login" && step.action !== "confirm" && stepNeedsSecretValue(step, workflow, args)) {
     return { ok: false, repairs, failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
   }
   if (step.action === "note") return { ok: true, repairs };
@@ -1310,12 +1306,11 @@ async function runLogin(
   secrets: string[],
   gate: ApplyGate,
 ): Promise<StepOutcome> {
-  if (Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret)) {
-    return { ok: false, repairs: [], failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
-  }
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
-  const human = !secretArg(workflow, args, step.input);
+  const human = !secretArg(workflow, args, step.input)
+    || stepNeedsSecretValue(step, workflow, args)
+    || Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
   if (loginSatisfied(workflow, step, seen, args) && !miss) {
     if (gate.humanReady) endHandoff(driver, gate, step.id);
     return { ok: true, repairs: [] };
@@ -1434,7 +1429,8 @@ async function recoverAuth(
   _secrets: string[],
   gate: ApplyGate,
 ): Promise<boolean> {
-  const human = !secretArg(workflow, args, step.input);
+  const human = !secretArg(workflow, args, step.input)
+    || Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
   return settleLogin(workflow, step, args, driver, gate, human);
 }
 
