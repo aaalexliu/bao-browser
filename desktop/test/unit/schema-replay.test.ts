@@ -90,7 +90,7 @@ test("sensitive key events without a value fail before dispatch or healing while
     assert.equal(doc.steps[0]?.unresolved?.reason, key ? undefined : NEEDS_SECRET_VALUE);
     const keys: string[] = [];
     let modelCalls = 0;
-    const d = driver([]);
+    const d = driver([], { url: doc.startUrl });
     d.key = async (value) => { keys.push(value); };
     const result = await replay(doc, {}, d, {
       settings: { heal: "auto" },

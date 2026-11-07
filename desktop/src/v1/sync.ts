@@ -5,12 +5,13 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
+import { INPUT_BINDING } from "../../../shared/bindings";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
-import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
-import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
+import { migrate, toJson, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -640,7 +641,7 @@ function adoptIfNeeded(library: Library, state: SyncState, id: string, remote: P
     return "conflict";
   }
   if (!local || remoteNewer) {
-    writeRemote(library, state, remote);
+    writeRemote(library, state, remote, local);
     return "pulled";
   }
   return "skip";
@@ -694,18 +695,47 @@ function enqueueDirty(library: Library, state: SyncState): void {
 }
 
 function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
+  const inputs = new Map(local?.inputs.map((input) => [input.name, input]));
   for (const input of doc.inputs) {
-    if (input.type !== "secret" || oneTimeCodeInput(doc, input.name)) continue;
-    const saved = local?.inputs.find((candidate) => candidate.name === input.name && candidate.type === "secret");
-    if (saved?.default !== undefined && !hasStrippedSecret(saved.default)) input.default = saved.default;
+    if (input.type === "file" || oneTimeCodeInput(doc, input.name)) continue;
+    if (!hasStrippedSecret(input.default) && !(input.type === "secret" && input.default === undefined)) continue;
+    const saved = inputs.get(input.name);
+    if (saved?.type === input.type && saved.default !== undefined && !hasStrippedSecret(saved.default)) input.default = saved.default;
   }
+  const steps = new Map<string, WorkflowStep>();
+  const remember = (items: WorkflowStep[]): void => {
+    for (const step of items) {
+      steps.set(step.id, step);
+      if (step.forEach) remember(step.forEach.steps);
+    }
+  };
+  remember(local?.steps ?? []);
+  const defaults = Object.fromEntries(doc.inputs.flatMap((input) => input.default === undefined ? [] : [[input.name, input.default] as const]));
+  const restore = (items: WorkflowStep[]): void => {
+    for (const step of items) {
+      const saved = steps.get(step.id);
+      for (const field of ["value", "key"] as const) {
+        const value = saved?.[field];
+        if (hasStrippedSecret(step[field]) && value !== undefined && !hasStrippedSecret(value) && !value.includes("{{")) {
+          step[field] = value;
+        }
+      }
+      const bound = new Set([...(step.input ? [step.input] : []),
+        ...[...(step.value ?? "").matchAll(INPUT_BINDING)].map((match) => match[1]!),
+        ...(step.forEach?.over.kind === "input" ? [step.forEach.over.name] : [])]);
+      if (step.unresolved?.reason === NEEDS_SECRET_VALUE
+        && (step.value !== undefined || step.key !== undefined || bound.size > 0)
+        && [...bound].every((name) => defaults[name] !== undefined && defaults[name] !== "")
+        && !stepNeedsSecretValue({ ...step, unresolved: undefined }, doc, defaults)) delete step.unresolved;
+      if (step.forEach) restore(step.forEach.steps);
+    }
+  };
+  restore(doc.steps);
   return doc;
 }
 
-function writeRemote(library: Library, state: SyncState, remote: PullBody): void {
-  const doc = migrate(remote.document);
-  const local = library.list().workflows.find((workflow) => workflow.id === doc.id);
-  retainLocalDefaults(doc, local);
+function writeRemote(library: Library, state: SyncState, remote: PullBody, local?: WorkflowV2): void {
+  const doc = retainLocalDefaults(migrate(remote.document), local);
   library.save(doc);
   state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }

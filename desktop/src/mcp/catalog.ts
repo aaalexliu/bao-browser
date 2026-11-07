@@ -188,7 +188,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   outputs?: WorkflowV2["outputs"];
 }> {
   const found = await locateWorkflow(library, id, auth);
-  const workflow = structuredClone(found.document);
+  const workflow = scrubSaved(found.document);
   for (const input of workflow.inputs) {
     if (input.type === "secret") delete input.default;
   }
@@ -505,7 +505,7 @@ async function replayInBrowser(
       runId,
       shotDir,
       settings: library.settings(),
-      heal: await healFromSource(library.settings().healSource, healProvider),
+      heal: await healFromSource(library.settings().healSource, healProvider, secrets),
       now: () => Date.now(),
       yieldHuman: true,
       trail,
@@ -546,12 +546,12 @@ async function replayInBrowser(
 }
 
 async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs): Promise<WorkflowOutcome> {
-  live.inputs = { ...reusableInputs(live.workflow, live.inputs), ...extra };
+  live.inputs = { ...live.inputs, ...extra };
   const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page), {
     runId: live.runId,
     shotDir: live.shotDir,
     settings: library.settings(),
-    heal: await healFromSource(library.settings().healSource, healProvider),
+    heal: await healFromSource(library.settings().healSource, healProvider, live.secrets),
     now: () => Date.now(),
     fromStepId: live.stepId,
     yieldHuman: true,
@@ -861,7 +861,7 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
 function publicOutcome(library: Library, outcome: WorkflowOutcome, inputs?: ReplayArgs): WorkflowOutcome {
   let workflow: WorkflowV2 | undefined;
   try { workflow = library.read(outcome.workflowId); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  catch { workflow = undefined; }
   return scrubSaved(outcome, { workflow, args: inputs });
 }
 

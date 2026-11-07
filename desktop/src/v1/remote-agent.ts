@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSyn
 import path from "node:path";
 import type { BrowserContext } from "playwright";
 import { redactAudit } from "../../../web/src/lib/audit-redact";
+import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
 import { devicePermission, policyAllowsRemoteRun, type RemotePolicy } from "../../../web/src/lib/remote-policy";
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
@@ -273,7 +274,8 @@ export function createRemoteAgent(opts: {
         continue;
       }
       if (effect.type === "send-result") {
-        const fitted = fitResult(effect.jobId, redactAudit(effect.result) as Record<string, unknown>);
+        const clean = scrubSaved(effect.result, outboundContext(effect.jobId, effect.result));
+        const fitted = fitResult(effect.jobId, redactAudit(clean) as Record<string, unknown>);
         rememberResult(opts.library.root, effect.jobId, fitted);
         socket?.send(JSON.stringify({ type: "result", jobId: effect.jobId, result: fitted }));
         continue;
@@ -324,6 +326,26 @@ export function createRemoteAgent(opts: {
         });
       }
     }
+  }
+
+  function outboundContext(jobId: string, result: Record<string, unknown>): SavedContext {
+    const job = current?.id === jobId ? current : null;
+    const runId = stringArg(result.runId) || stringArg(result.run_id) || (job?.tool === "get_run" ? stringArg(job.args.run_id) : "");
+    let stored: ReturnType<Library["readRun"]> | undefined;
+    if (runId) {
+      try { stored = opts.library.readRun(runId); } catch {}
+    }
+    const workflowId = stored?.workflowId || stringArg(result.workflowId) || job?.workflowId || stringArg(job?.args.id);
+    let workflow: WorkflowV2 | undefined;
+    if (workflowId) {
+      try { workflow = opts.library.read(workflowId); } catch {}
+    }
+    const inputs = job?.args.inputs;
+    const args = [
+      ...(stored?.inputs ? [stored.inputs] : []),
+      ...(inputs && typeof inputs === "object" && !Array.isArray(inputs) ? [inputs as Record<string, unknown>] : []),
+    ];
+    return { workflow, args };
   }
 
   async function execute(job: AssignedJob): Promise<Record<string, unknown>> {

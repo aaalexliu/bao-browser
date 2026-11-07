@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
-import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
+import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { loadState, saveState } from "../../src/v1/sync";
@@ -306,6 +306,63 @@ test("run_workflow still replays a Playwright workflow in Bao's Chrome", { timeo
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+for (const replaceOnResume of [false, true]) {
+  test(`a live MCP run retains fresh OTP input across repeated pauses${replaceOnResume ? " and accepts a replacement" : ""}`, { timeout: 60_000 }, async (t) => {
+    const home = mkdtempSync(path.join(tmpdir(), "bao-otp-live-"));
+    t.after(() => rmSync(home, { recursive: true, force: true }));
+    const library = new Library(home);
+    const server = createServer((_req, res) => {
+      res.setHeader("content-type", "text/html");
+      res.end('<!doctype html><p id="status">Waiting</p><button onclick="document.getElementById(\'status\').textContent = \'Signed in\'">Sign in</button><input id="code" aria-label="Verification code" autocomplete="one-time-code">');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    let token = "";
+    try {
+      const doc: WorkflowV2 = {
+        schema: "bao.workflow/v2", version: 2, id: "otp-live", name: "Live OTP", createdAt: 1,
+        startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+        inputs: [{ name: "code", type: "text", label: "Verification code", default: "123456" }],
+        steps: [
+          {
+            id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
+            postcondition: { kind: "text", match: "Signed in", timeoutMs: 5000 },
+          },
+          {
+            id: "code", index: 1, action: "type", label: "Verification code", surface: "dom", timeoutMs: 5000,
+            input: "code", value: "{{code}}",
+            identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "one-time-code", path: [] },
+            postcondition: { kind: "value", match: "{{code}}", timeoutMs: 5000 },
+          },
+        ],
+      };
+      library.save(doc);
+      const first = await runWorkflow(library, { id: doc.id, inputs: { code: "654321" } });
+      token = first.resume_token || "";
+      assert.equal(first.outcome, "needs_signin", first.reason);
+      assert.ok(token);
+      const again = await runWorkflow(library, {
+        resume: token, ...(replaceOnResume ? { inputs: { code: "765432" } } : {}),
+      });
+      assert.equal(again.outcome, "needs_signin", again.reason);
+      assert.equal(again.runId, first.runId);
+      assert.equal(again.resume_token, token);
+      await withHeldPage(token, async (page) => {
+        await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      });
+      const done = await runWorkflow(library, { resume: token });
+      assert.equal(done.outcome, "ok", done.reason);
+      assert.equal(done.status, "completed");
+      assert.equal(done.runId, first.runId);
+      token = "";
+      assert.equal(library.readRun(done.runId!).inputs?.code, replaceOnResume ? "765432" : "654321");
+      assert.equal(library.read(doc.id).inputs[0]?.default, "123456");
+    } finally {
+      if (token) await runWorkflow(library, { resume: token, cancel: true }).catch(() => undefined);
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+}
 
 function clickWorkflow(startUrl: string): WorkflowV2 {
   return {

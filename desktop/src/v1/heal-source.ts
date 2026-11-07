@@ -4,6 +4,7 @@ import { llmHealFromEnv, unavailableHeal, type HealProvider, type HealSource } f
 export async function healFromSource(
   source: HealSource | undefined,
   fallback: () => HealProvider | Promise<HealProvider>,
+  secrets: string[] = [],
 ): Promise<HealProvider> {
   if (!source) return fallback();
   if (source.kind === "none") return unavailableHeal();
@@ -12,8 +13,8 @@ export async function healFromSource(
       ...process.env,
       OPENAI_API_KEY: source.provider === "openai" ? source.key : undefined,
       ANTHROPIC_API_KEY: source.provider === "anthropic" ? source.key : undefined,
-    }, fetch);
+    }, fetch, secrets);
   }
   await readCursorAccount();
-  return cursorPrintHeal(process.env);
+  return cursorPrintHeal(process.env, secrets);
 }

@@ -7,10 +7,12 @@ import { workflowShotName } from "../../src/v1/shots";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { WorkflowV2 } from "../../src/v1/schema";
-import type { WorkflowVersion } from "../../src/v1/versions";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import type { SyncPush } from "../../../web/src/lib/guard";
+import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { loadState, syncAll } from "../../src/v1/sync";
+import { loadState, resolveConflict, syncAll } from "../../src/v1/sync";
+import type { WorkflowVersion } from "../../src/v1/versions";
 
 const planted = "SuperSecretValue99";
 
@@ -248,7 +250,7 @@ test("password defaults sync without leaving or disappearing from this device", 
       } else if (req.url === "/api/devices") {
         res.end(JSON.stringify({ devices: [], categories: [] }));
       } else if (req.method === "POST") {
-        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as SyncPush;
         assert.equal(JSON.stringify(body).includes(planted), false);
         remote = body.document;
         res.end(JSON.stringify({ version }));
@@ -285,6 +287,154 @@ test("password defaults sync without leaving or disappearing from this device", 
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
+  test(`${mode} restores stripped local values without undoing remote edits or removals`, async () => {
+    const token = "sk-localSavedToken123456789";
+    const card = "4111111111111111";
+    const home = mkdtempSync(path.join(tmpdir(), `bao-defaults-${mode}-`));
+    const library = new Library(home);
+    const local = secretWorkflow();
+    local.version = 3;
+    local.filesDates = 1;
+    local.inputs = [
+      { name: "password", type: "secret", default: planted },
+      { name: "token", type: "text", default: token },
+      { name: "card", type: "text", default: card },
+      { name: "changed", type: "text", default: token },
+      { name: "changedSecret", type: "secret", default: planted },
+      { name: "cleared", type: "text", default: token },
+      { name: "removed", type: "text", default: token },
+      { name: "file", type: "file", default: token },
+      { name: "otp", type: "text", default: "123456" },
+      { name: "rows", type: "table", default: "name\nAda" },
+    ];
+    const literal = (id: string, value: string): WorkflowStep => ({
+      id, index: 0, action: "type", label: id, surface: "dom", timeoutMs: 1000,
+      identity: { surface: "dom", role: "textbox", path: [] }, value,
+    });
+    local.steps.push(
+      { ...literal("token-input", "{{token}}"), input: "token" },
+      literal("literal", token),
+      { ...literal("key", ""), action: "key", value: undefined, key: token },
+      literal("remote-value", token),
+      { ...literal("remote-key", ""), action: "key", value: undefined, key: token },
+      literal("removed-step", token),
+      { ...literal("unrelated", token), unresolved: { reason: "no identity" } },
+      literal("unavailable", STRIPPED_SECRET),
+      { ...literal("otp-step", "{{otp}}"), input: "otp", identity: { surface: "dom", role: "textbox", path: [], autocomplete: "one-time-code" } },
+      { ...literal("loop", ""), action: "for_each", value: undefined,
+        forEach: { over: { kind: "input", name: "rows" }, steps: [literal("nested", card), literal("nested-removed", token)] } },
+    );
+    local.steps.forEach((step, index) => {
+      step.index = index;
+      step.forEach?.steps.forEach((child, childIndex) => { child.index = childIndex; });
+    });
+    library.save(local);
+    let remote: WorkflowV2;
+    let version = 1;
+    let pushes = 0;
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        res.setHeader("content-type", "application/json");
+        if (req.url === "/api/sync/snapshot") {
+          res.writeHead(404).end("{}");
+        } else if (req.url === "/api/devices") {
+          res.end(JSON.stringify({ devices: [], categories: [] }));
+        } else if (req.url?.endsWith("/conflict")) {
+          res.end(JSON.stringify({ version, document: remote, copyId: "remote-copy", copyVersion: 1, copy: { ...remote, id: "remote-copy" } }));
+        } else if (req.method === "POST") {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as SyncPush;
+          remote = body.document as WorkflowV2;
+          pushes += 1;
+          res.end(JSON.stringify({ version }));
+        } else if (req.url === "/api/workflows") {
+          res.end(JSON.stringify({ workflows: [{ id: local.id }] }));
+        } else {
+          res.end(JSON.stringify({ version, document: remote }));
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    writeFileSync(path.join(home, "sync.json"), JSON.stringify({
+      server: `http://127.0.0.1:${address.port}`, deviceToken: "device-token", backedUp: true,
+      workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+    }));
+    try {
+      await syncAll(library, "push");
+      assert.equal(pushes, 1);
+      const updated = remote!;
+      assert.equal(updated.inputs.find((input) => input.name === "token")?.default, STRIPPED_SECRET);
+      assert.equal(updated.inputs.find((input) => input.name === "card")?.default, STRIPPED_SECRET);
+      assert.equal(updated.steps.find((step) => step.id === "literal")?.value, STRIPPED_SECRET);
+      assert.equal(updated.steps.find((step) => step.id === "key")?.key, STRIPPED_SECRET);
+      updated.name = "Remote edit";
+      updated.inputs = updated.inputs.filter((input) => input.name !== "removed");
+      updated.inputs.find((input) => input.name === "changed")!.default = "remote text";
+      updated.inputs.find((input) => input.name === "changedSecret")!.default = "remote password";
+      delete updated.inputs.find((input) => input.name === "cleared")!.default;
+      updated.inputs.find((input) => input.name === "otp")!.default = STRIPPED_SECRET;
+      updated.steps = updated.steps.filter((step) => step.id !== "removed-step");
+      updated.steps.find((step) => step.id === "remote-value")!.value = "remote literal";
+      const remoteKey = updated.steps.find((step) => step.id === "remote-key")!;
+      remoteKey.action = "key";
+      remoteKey.value = undefined;
+      remoteKey.key = "Enter";
+      updated.steps.find((step) => step.id === "unrelated")!.unresolved = { reason: "no identity" };
+      const nested = updated.steps.find((step) => step.id === "loop")!.forEach!;
+      nested.steps = nested.steps.filter((step) => step.id !== "nested-removed");
+      updated.steps.forEach((step, index) => { step.index = index; });
+      version = 2;
+      if (mode !== "pull") library.save({ ...library.read(local.id), name: "Local edit" });
+      await syncAll(library, "pull");
+      if (mode !== "pull") {
+        assert.equal(loadState(home).conflicts.length, 1);
+        assert.equal(library.read(local.id).name, "Local edit");
+        await resolveConflict(library, local.id, mode);
+      }
+      for (const id of mode === "keep-both" ? [local.id, "remote-copy"] : [local.id]) {
+        const saved = library.read(id);
+        const defaults = Object.fromEntries(saved.inputs.map((input) => [input.name, input.default]));
+        assert.equal(saved.name, "Remote edit");
+        assert.equal(defaults.password, planted);
+        assert.equal(defaults.token, token);
+        assert.equal(defaults.card, card);
+        assert.equal(defaults.changed, "remote text");
+        assert.equal(defaults.changedSecret, "remote password");
+        assert.equal(defaults.cleared, undefined);
+        assert.equal("removed" in defaults, false);
+        assert.equal(defaults.file, STRIPPED_SECRET);
+        assert.equal(defaults.otp, STRIPPED_SECRET);
+        const steps = new Map(saved.steps.map((step) => [step.id, step]));
+        assert.equal(steps.get("literal")?.value, token);
+        assert.equal(steps.get("literal")?.unresolved, undefined);
+        assert.equal(steps.get("key")?.key, token);
+        assert.equal(steps.get("key")?.unresolved, undefined);
+        assert.equal(steps.get("token-input")?.unresolved, undefined);
+        assert.equal(steps.get("pass")?.unresolved, undefined);
+        assert.equal(steps.get("remote-value")?.value, "remote literal");
+        assert.equal(steps.get("remote-key")?.key, "Enter");
+        assert.equal(steps.has("removed-step"), false);
+        assert.equal(steps.get("unrelated")?.unresolved?.reason, "no identity");
+        assert.equal(steps.get("unavailable")?.unresolved?.reason, NEEDS_SECRET_VALUE);
+        const children = steps.get("loop")!.forEach!.steps;
+        assert.equal(children.length, 1);
+        assert.equal(children[0]!.value, card);
+        assert.equal(children[0]!.unresolved, undefined);
+        assert.equal(loadState(home).workflows[id]!.version, id === local.id ? 2 : 1);
+      }
+      assert.equal(loadState(home).conflicts.length, 0);
+      await syncAll(library, "push");
+      assert.equal(pushes, 1);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+}
 
 function secretWorkflow(): WorkflowV2 {
   return {

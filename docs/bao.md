@@ -279,7 +279,7 @@ Locator versions live on the workflow versions, in the one Versions panel. A ver
 
 ### 2026-10-22 — Trace-style run viewer
 
-Step-picture formats, framing, and missing-picture behavior are in [Bao desktop v1](v1.md#install-and-run). Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••`. That display mask does not clear the saved password. Replay can use its saved default. OTP still asks for a fresh code. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
+Step-picture formats, framing, and missing-picture behavior are in [Bao desktop v1](v1.md#install-and-run). Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. The local Run page shows stored inputs as `name: value`, including password and OTP values. Replay can use a saved password default, but it never reuses an OTP from a prior run. Supply a fresh code at runtime. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
 
 ### 2026-10-22 — Try a step, input tokens, and per-site trust
 
@@ -457,7 +457,7 @@ On the workflow page, mark which inputs are asked on import. Share copies the `b
 
 Local import answers become defaults in the recipient's private Library, including password and email answers. File inputs still use the file picker and do not keep an absolute path as a default. Cloud registry imports still scrub answers and reject secret answers. A non-personal sample is shown as an example.
 
-Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered. `bao://run/<id>?inputs=<json>` opens the local run form with matching inputs filled in, including secret inputs. File inputs are skipped. OTP still asks for a fresh code. A run link can contain a password, so treat the link as sensitive.
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered. `bao://run/<id>?inputs=<json>` opens the local run form with matching inputs filled in, including secret inputs. File inputs are skipped. A fresh OTP supplied explicitly in the link or at runtime is allowed; saved defaults and prior runs never supply it. A run link can contain a password, so treat the link as sensitive.
 
 ```bash
 npm run bao -- open bao://workflow/<id>

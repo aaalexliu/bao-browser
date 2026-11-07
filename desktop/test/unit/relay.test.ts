@@ -3,10 +3,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import fc from "fast-check";
 import { startApp } from "../../src/app/server";
 import { workflowDriver } from "../../src/extension/protocol";
 import { createRemoteAgent, remoteRunAllowed } from "../../src/v1/remote-agent";
@@ -680,6 +681,85 @@ function workflow(id: string, driver?: WorkflowV2["driver"]): WorkflowV2 {
     steps: [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 0 }],
     ...(driver ? { driver } : {}),
   };
+}
+
+for (const mode of ["extension", "playwright", "cached", "get_run"] as const) {
+  test(`${mode} relay payloads scrub generated typed values without rewriting local evidence`, async (t) => {
+    const root = mkdtempSync(path.join(tmpdir(), "bao-relay-outbound-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const library = new Library(root);
+    let cachedResult: Record<string, unknown> = {};
+    class CachedStore extends MemoryJobStore {
+      override async claim(...args: Parameters<MemoryJobStore["claim"]>) {
+        if (mode === "cached") {
+          mkdirSync(path.join(root, "relay-results"), { recursive: true });
+          writeFileSync(path.join(root, "relay-results", `${args[1]}.json`), JSON.stringify(cachedResult));
+        }
+        return super.claim(...args);
+      }
+    }
+    const { server, directory } = await up(new CachedStore());
+    t.after(() => server.close());
+    directory.addDevice("dev-a", "user-a");
+    const paired = await claim(server.origin, "user-a", "dev-a");
+    const token = await directory.mintAgent("user-a", paired.deviceId);
+    assert.ok(token);
+    saveRelay(root, { server: server.origin, token: paired.token, tokenId: paired.tokenId, deviceId: paired.deviceId });
+    library.updateSettings({ remoteMcp: true });
+    let runnerCalls = 0;
+    const runner = async (_id: string, inputs: Record<string, string | number>) => {
+      runnerCalls += 1;
+      assert.equal(inputs.credential, cachedResult.reason);
+      return cachedResult;
+    };
+    const remote = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, autoAllow: true, runners: { extension: runner, playwright: runner } });
+    remote.start();
+    try {
+      await waitFor(() => directory.lookups > 0);
+      for (const seed of fc.sample(fc.integer({ min: 1, max: 1000000 }), { seed: 739, numRuns: 3 })) {
+        const secret = `relay-password-${seed}`;
+        const doc = workflow(`outbound-${seed}`, mode === "extension" ? "extension" : undefined);
+        doc.inputs = [{ name: "credential", type: "secret", label: "Credential", default: `default-${secret}` }];
+        const runId = `run-${seed}`;
+        const outputs = [
+          { name: secret, type: "text" as const, value: secret },
+          { name: "token", type: "text" as const, value: "sk-relayOutboundToken" },
+          { name: "card", type: "text" as const, value: "4111111111111111" },
+          { name: "prose", type: "text" as const, value: `prefix ${secret} suffix` },
+          { name: "plain", type: "text" as const, value: "Keep this text" },
+        ];
+        library.save(doc);
+        library.saveRun({ id: runId, workflowId: doc.id, status: "passed", at: 1, heals: [], steps: [], inputs: { credential: secret }, outputs });
+        const runFile = path.join(root, "runs", `${runId}.json`);
+        const before = readFileSync(runFile, "utf8");
+        const original = library.read(doc.id);
+        cachedResult = {
+          outcome: "ok", workflowId: doc.id, runId, outputs, reason: secret,
+          receipts: [{ id: "read", status: "passed", readBack: secret }],
+          screenshot: PNG, resume: "local-resume-token", resume_token: "local-resume-token",
+        };
+        const raw = structuredClone(cachedResult);
+        const done = await tool(server.origin, token.token, mode === "get_run" ? "get_run" : "run_workflow", mode === "get_run" ? { run_id: runId } : { id: doc.id, inputs: { credential: secret } });
+        assert.equal(done.json.outcome, "ok");
+        const sent = done.json.outputs as { name: string; value: string }[];
+        assert.deepEqual(sent.map((output) => output.value), ["[secret stripped]", "[secret stripped]", "[secret stripped]", `prefix ${secret} suffix`, "Keep this text"]);
+        assert.equal(sent[0]?.name, secret);
+        if (mode !== "get_run") {
+          assert.equal((done.json.receipts as { readBack: string }[])[0]?.readBack, "[secret stripped]");
+          assert.equal(done.json.reason, secret);
+          assert.equal(done.json.resume, "local-resume-token");
+          assert.equal(done.json.resume_token, "local-resume-token");
+          assert.equal(done.image, PNG);
+        }
+        assert.equal(readFileSync(runFile, "utf8"), before);
+        assert.deepEqual(library.read(doc.id), original);
+        assert.deepEqual(cachedResult, raw);
+      }
+      assert.equal(runnerCalls, mode === "cached" || mode === "get_run" ? 0 : 3);
+    } finally {
+      await remote.stop();
+    }
+  });
 }
 
 function principalOf(req: IncomingMessage): { userId: string } | null {

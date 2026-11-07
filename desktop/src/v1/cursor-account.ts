@@ -223,16 +223,16 @@ export async function askCursorAgent(
   }
 }
 
-export function cursorPrintHeal(env: NodeJS.ProcessEnv, agent: CursorAgentRun = realCursorAgent()): HealProvider {
+export function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: CursorAgentRun = realCursorAgent()): HealProvider {
   const bin = findAgentBin(env);
   return {
     available() {
       return cursorAccountModelLabel(env) === "cursor account" && !!bin;
     },
-    async propose(failure, step) {
+    async propose(failure, step, context) {
       if (!bin || cursorAccountModelLabel(env) !== "cursor account") return null;
       const prompt = [
-        buildPrompt(failure, step),
+        buildPrompt(failure, step, secrets, context),
         "Do not edit files. Do not call tools. Reply with the JSON object only.",
       ].join("\n");
       const asked = await askCursorAgent(prompt, env, agent);
@@ -254,10 +254,10 @@ function chainHeal(providers: HealProvider[]): HealProvider {
     available() {
       return providers.some((provider) => provider.available());
     },
-    async propose(failure, step) {
+    async propose(failure, step, context) {
       for (const provider of providers) {
         if (!provider.available()) continue;
-        const proposal = await provider.propose(failure, step);
+        const proposal = await provider.propose(failure, step, context);
         if (proposal) return proposal;
       }
       return null;
@@ -267,14 +267,15 @@ function chainHeal(providers: HealProvider[]): HealProvider {
 
 export async function cursorAccountHeal(
   env: NodeJS.ProcessEnv = process.env,
+  secrets: string[] = [],
   agent: CursorAgentRun = realCursorAgent(),
 ): Promise<HealProvider> {
   await readCursorAccount(env, agent);
-  const providers: HealProvider[] = [cursorPrintHeal(env, agent)];
+  const providers: HealProvider[] = [cursorPrintHeal(env, secrets, agent)];
   if (env.BAO_HEAL_CURSOR === "1") {
     const dir = env.BAO_HEAL_DIR || resolveHome({ env });
-    providers.push(cursorHeal(dir, env));
+    providers.push(cursorHeal(dir, env, secrets));
   }
-  providers.push(llmHealFromEnv(env, fetch));
+  providers.push(llmHealFromEnv(env, fetch, secrets));
   return chainHeal(providers);
 }

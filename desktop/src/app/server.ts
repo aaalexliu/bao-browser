@@ -2791,7 +2791,7 @@ async function runExtension(
     if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
     throw err;
   }
-  const heal = await healFromSource(library.settings().healSource, healProvider);
+  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
@@ -2871,7 +2871,7 @@ async function runRecorded(
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
-  const heal = await healFromSource(library.settings().healSource, healProvider);
+  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const clip = replayClips.get(session.profile);
   if (clip) clip.runId = runId;
@@ -3004,7 +3004,7 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
   };
 }
 
-async function healProvider(): Promise<HealProvider> {
+async function healProvider(secrets: string[] = []): Promise<HealProvider> {
   if (process.env.BAO_HEAL_FIXTURE === "1") {
     return scriptedHeal({
       patch: { identity: { surface: "dom", role: "button", testId: "login", path: [] } },
@@ -3017,7 +3017,7 @@ async function healProvider(): Promise<HealProvider> {
   if (cursorResponse && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
     return cursorSessionHeal(() => readFileSync(cursorResponse, "utf8"));
   }
-  return cursorAccountHeal(process.env);
+  return cursorAccountHeal(process.env, secrets);
 }
 
 interface PendingImport {
