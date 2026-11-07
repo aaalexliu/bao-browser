@@ -8,7 +8,7 @@ Do not open the listen address in a browser. The product is the [Bao window](#la
 
 Double-click `/Applications/Bao.app` in Finder. No Terminal window, and no `BAO_NODE`.
 
-The native window keeps the title **Bao** but hides the title text and makes the title bar transparent. The page fills the window behind the standard Mac window buttons. Drag the blank top-left sidebar strip to move the window. Double-click that strip to zoom or restore, unless the macOS title-bar double-click setting selects Minimize or Do Nothing. The strip covers the top-left 212 by 52 points, not the full window width. Browser views keep their normal sidebar spacing; only the native window reserves room for the buttons and drag strip.
+The native window keeps the title **Bao** but hides the title text and makes the title bar transparent. The page fills the window behind the standard Mac window buttons. Drag the blank top-left sidebar strip to move the window. Double-click that strip to zoom or restore, unless the macOS title-bar double-click setting selects Minimize or Do Nothing. The strip covers the top-left 212 by 52 points, not the full window width. Both browser and native views leave 52 px above the sidebar navigation. At narrow widths, the native window also leaves 52 px above the list header for the window buttons and drag strip.
 
 `bao-main.c` finds Node 24 or newer on its own:
 
@@ -214,7 +214,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. With the helper present, the footer reads **helper available**, regardless of optional grants. Chrome agents need no Mac privacy grant.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. Check helper presence in Settings against [Which grant each job needs](permissions.md#which-grant-each-job-needs).
 
 ## Logs
 
@@ -239,7 +239,7 @@ The nested helper in the restored app must still be the signed `dev.bao.oshelper
 
 [What Bao asks permission for](permissions.md) owns the optional feature requirements and status-check policy.
 
-Quit Bao from the Dock and open it from Finder again. No new privacy sheet. With the helper present, the footer shows **helper available**; missing optional grants do not create a warning or onboarding card. Do not grant permissions to make this check pass. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for the helper label and API capability contract.
+Quit Bao from the Dock and open it from Finder again. No new privacy sheet. Check helper presence in Settings. Do not grant permissions to make this check pass. See [Which grant each job needs](permissions.md#which-grant-each-job-needs) for the helper label and API capability contract.
 
 An agent can check the local server. This is not a page to open:
 
@@ -263,6 +263,6 @@ A `login` step waits. Replay does not type the password and does not press Log i
 
 A confirm step uses the same bar. Replay does not press the site button. Place order and Reserve are that pause.
 
-Settings → When a step misses defaults to **Auto self-heal**. With the Cursor CLI logged in, the footer reads **cursor account**. `BAO_HEAL_FIXTURE=1` is a local stand-in (`bao-heal-fixture`). Do not cause a miss while Model reads **cursor account**.
+Settings → When a step misses defaults to **Auto self-heal**. Check Settings → Model for the active model. `BAO_HEAL_FIXTURE=1` is a local stand-in (`bao-heal-fixture`). Do not cause a miss while Model reads **cursor account**.
 
 A date field is stored as a relative input. `+14d` replays as that day. A download step saves under the run directory. An `open` step can hand the file to Preview. A bot check pauses the run before any heal. The status is **needs you**. Model calls stay at 0.
