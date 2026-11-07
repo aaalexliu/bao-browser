@@ -295,6 +295,9 @@ export function createRemoteAgent(opts: {
         const token = stringArg(job.args.resume);
         opts.clearStop();
         if (opts.runners?.resume) return opts.runners.resume(token);
+        if (!["signin", "confirm", "wall"].includes(resumeInfo(token)?.kind || "")) {
+          return { outcome: "failed", reason: "This run is not held for a human interaction. Use run_workflow to start a new run." };
+        }
         return publicOutcome(await runWorkflow(opts.library, { resume: token }, undefined, {
           prompts: opts.prompts,
           onContext: (next) => { context = next; },
