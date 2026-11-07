@@ -120,6 +120,9 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         source: url.searchParams.get("source") || undefined,
         site: url.searchParams.get("site") || undefined,
         category: url.searchParams.get("category") || undefined,
+      }, {
+        extensionLinked: url.searchParams.get("extensionLinked") === "true",
+        pageEngine: url.searchParams.get("pageEngine") === "agent-browser" ? "agent-browser" : "old",
       });
       return NextResponse.json({ hits });
     }

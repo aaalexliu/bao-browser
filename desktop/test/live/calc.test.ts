@@ -12,7 +12,6 @@ import { AtspiDriver } from "../../src/v1/os-driver";
 import { osNodes } from "../../src/proxy/os";
 import { replay } from "../../src/v1/replay";
 import { unavailableHeal } from "../../src/v1/heal";
-import type { WorkflowV2 } from "../../src/v1/schema";
 
 const bin = process.env.BAO_OS_HELPER || "";
 const screen = process.env.BAO_SCREEN || "1400x900";
@@ -41,7 +40,7 @@ test("calculator capture replays with two number pairs", { skip: process.env.BAO
   assert.ok(after.texts.includes("12"), after.texts.join(","));
   const workflow = interpret(events, { id: "wf-calc", name: "Calculator", startUrl: "desktop://baocalc" });
   if (process.env.BAO_WRITE_EXAMPLES === "1") {
-    writeFileSync("examples/workflows/calculator.json", JSON.stringify({ ...workflow, provenance: "fixture" } satisfies WorkflowV2, null, 2));
+    writeFileSync("examples/workflows/calculator.json", JSON.stringify(workflow, null, 2));
   }
   assert.equal(workflow.inputs.map((input) => input.type).join(","), "number,number");
   for (const [a, b, expect, x, y] of [[7, 7, "14", 80, 60], [5, 7, "12", 240, 180]] as const) {

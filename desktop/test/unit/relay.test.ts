@@ -322,13 +322,25 @@ test("the device enforces ask or deny, and the driver follows the workflow", asy
       await asked.stop();
     }
 
-    const auto = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, autoAllow: true });
+    let extensionLinked = true;
+    const auto = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, runners, extensionLinked: () => extensionLinked, autoAllow: true });
     auto.start();
     try {
       const mark = directory.lookups;
       await waitFor(() => directory.lookups > mark);
+      const found = await tool(server.origin, agent.token, "search_workflows", { query: "" });
+      assert.ok((found.json.hits as { id: string }[]).some((hit) => hit.id === "ext"));
       const ext = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(ext.json.via, "extension");
+      library.save({ ...library.read("ext"), provenance: "fixture" });
+      const hidden = await tool(server.origin, agent.token, "search_workflows", { query: "" });
+      assert.equal((hidden.json.hits as { id: string }[]).some((hit) => hit.id === "ext"), false);
+      const fixture = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
+      assert.equal(fixture.json.via, "extension");
+      extensionLinked = false;
+      const disconnected = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
+      assert.equal(disconnected.json.reason, "extension is not connected");
+      assert.equal(calls.extension, 2);
       const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
       assert.equal(live.json.outcome, "failed", JSON.stringify(live.json));
       assert.equal(live.json.reason, "this workflow used the retired live driver");

@@ -42,28 +42,26 @@ test("search excludes retired and fixture workflows while preserving readable re
     assert.deepEqual(validateWorkflow(library.read(fixture.id)), []);
     assert.equal(workflowReplayRefusal(library, normal), null);
     assert.equal(workflowReplayRefusal(library, retired), CDP_LIVE_SERVER_REFUSAL);
-    assert.equal(workflowReplayRefusal(library, fixture), "this workflow is test fixture content");
-    for (const doc of [retired, fixture]) {
-      const outcome = await runWorkflow(library, { id: doc.id });
-      assert.equal(outcome.outcome, "failed");
-      assert.equal(outcome.reason, workflowReplayRefusal(library, doc));
-    }
+    assert.equal(workflowReplayRefusal(library, fixture), null);
+    const outcome = await runWorkflow(library, { id: retired.id });
+    assert.equal(outcome.outcome, "failed");
+    assert.equal(outcome.reason, CDP_LIVE_SERVER_REFUSAL);
     assert.equal(existsSync(path.join(home, "chrome-profile")), false);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });
 
-test("remote search excludes ineligible documents and cannot reintroduce an excluded local workflow", async () => {
+test("remote search preserves local exclusions without document fetches", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-cat-"));
   const documents = [
     workflow("remote-owner", "Blueberries owner"),
-    { ...workflow("remote-retired", "Blueberries retired"), driver: "cdp-live" as const },
-    { ...workflow("remote-fixture", "Blueberries sample"), provenance: "fixture" as const },
     workflow("local-retired", "Blueberries synced owner"),
     workflow("local-fixture", "Blueberries synced sample"),
   ];
+  const requests: string[] = [];
   const server = createServer((req, res) => {
+    requests.push(req.url || "");
     res.setHeader("content-type", "application/json");
     if (req.url?.startsWith("/api/catalog?")) {
       res.end(JSON.stringify({ hits: documents.map((doc) => ({ ...hit(doc.id, "mine", 10, doc.name), source: "mine" })) }));
@@ -76,13 +74,37 @@ test("remote search excludes ineligible documents and cannot reintroduce an excl
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const library = new Library(home);
-    library.save({ ...documents[3]!, driver: "cdp-live" });
-    library.save({ ...documents[4]!, provenance: "fixture" });
+    library.save({ ...documents[1]!, driver: "cdp-live" });
+    library.save({ ...documents[2]!, provenance: "fixture" });
     const { port } = server.address() as AddressInfo;
     saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
-    assert.deepEqual((await searchWorkflows(library, "Blueberries")).map((item) => item.id), ["remote-owner"]);
+    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, true)).map((item) => item.id), ["remote-owner"]);
+    assert.equal(requests.length, 1);
+    assert.equal(new URL(requests[0]!, "http://localhost").searchParams.get("extensionLinked"), "true");
+    library.updateSettings({ pageEngine: "agent-browser" });
+    await searchWorkflows(library, "Blueberries");
+    assert.equal(requests.length, 2);
+    assert.equal(new URL(requests[1]!, "http://localhost").searchParams.get("pageEngine"), "agent-browser");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("search uses the caller's extension connection and selected engine", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-"));
+  try {
+    const library = new Library(home);
+    const extension = { ...workflow("extension", "Blueberries extension"), driver: "extension" as const };
+    library.save(extension);
+    assert.deepEqual(await searchWorkflows(library, "Blueberries"), []);
+    assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, true)).map((hit) => hit.id), [extension.id]);
+    assert.equal(workflowReplayRefusal(library, extension), EXTENSION_NOT_CONNECTED);
+    assert.equal(workflowReplayRefusal(library, extension, true), null);
+    library.updateSettings({ pageEngine: "agent-browser" });
+    assert.deepEqual(await searchWorkflows(library, "Blueberries", {}, true), []);
+    assert.match(workflowReplayRefusal(library, extension, true)!, /pass-through/);
+  } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });

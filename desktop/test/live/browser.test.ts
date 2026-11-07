@@ -8,7 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
-import type { StepLocator, WorkflowV2 } from "../../src/v1/schema";
+import type { StepLocator } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -93,7 +93,7 @@ test("capture login, upload, and drop, then replay with two input sets", async (
     }
     if (process.env.BAO_WRITE_EXAMPLES === "1") {
       const { writeFileSync: writeExample } = await import("node:fs");
-      writeExample("examples/workflows/browser-form.json", JSON.stringify({ ...app.library.read(workflow.id), provenance: "fixture" } satisfies WorkflowV2, null, 2));
+      writeExample("examples/workflows/browser-form.json", JSON.stringify(app.library.read(workflow.id), null, 2));
     }
     const saved = app.library.read(workflow.id);
     const login = saved.steps.find((step) => step.identity?.testId === "login" || step.identity?.id === "login-btn");
