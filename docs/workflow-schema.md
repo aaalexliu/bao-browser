@@ -8,6 +8,8 @@ The contract is `schema/workflow-v2.schema.json`, id `bao.workflow/v2`. A docume
 
 The schema still accepts `driver: "cdp-live"` so historical workflows remain readable. That driver is retired. App and MCP replay, step Try, and promotion checks refuse it before opening Chrome with `this workflow used the retired live driver`. Replacing an existing retired workflow through edits, imports, conflict resolution, or version promotion preserves its `cdp-live` tag; removing or changing the tag cannot enable replay. `desktop/test/unit/retired-live-driver.test.ts` covers these boundaries. The `agent_browser` pass-through records runs, not replayable workflows.
 
+Library fixture writers set workflow-level `provenance: "fixture"`. These records stay readable in Library, but agent workflow search excludes them. Explicit replay and review still accept fixtures. Search also excludes workflows the caller cannot replay for their driver or selected engine. Search and replay share that refusal check; relay search uses the current extension connection state. The registry filters candidates before its five-hit limit. Search does not infer fixture status from a workflow's name or require a past green replay.
+
 ## Inputs
 
 Collected before replay starts. The CLI and MCP pass the same JSON object the form edits.

@@ -49,11 +49,15 @@ test("retired tools fail without contacting an app or starting Chrome", async ()
 test("MCP rejects retired workflow replay with a clear reason", async () => {
   await fixture(async (client, library) => {
     library.save({ ...workflow, driver: "cdp-live" });
+    library.save({ ...workflow, id: "owner", name: "Saved owner workflow" });
+    library.save({ ...workflow, id: "fixture", provenance: "fixture" });
     await client.handshake();
     const result = await client.call("run_workflow", { id: workflow.id });
     const outcome = JSON.parse(result.text) as { outcome: string; reason: string };
     assert.equal(outcome.outcome, "failed");
     assert.equal(outcome.reason, "this workflow used the retired live driver");
+    const search = await client.call("search_workflows", { query: "Saved" });
+    assert.deepEqual((JSON.parse(search.text) as { hits: { id: string }[] }).hits.map((hit) => hit.id), ["owner"]);
     assert.deepEqual(library.listRuns(), []);
   });
 });

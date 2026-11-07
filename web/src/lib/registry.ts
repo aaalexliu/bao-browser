@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import Ajv from "ajv/dist/2020";
+import Ajv from "ajv/dist/2020.js";
 import { getPng, putPng } from "./blobstore";
 import { isElementCrop } from "./png";
 import { query } from "./db";
@@ -12,6 +12,7 @@ import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
 import schema from "./workflow-v2.schema.json";
 import { assertInviteSecret, assertOwnerEmail, assertOwnerSignIn, assertProductionAuth, magicLinkVisible } from "./owner";
 import { SEED_WORKFLOWS } from "./seeds";
+import { workflowSearchEligible, type WorkflowSearchContext } from "./catalog-eligibility";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateWorkflow = ajv.compile(schema);
@@ -744,8 +745,8 @@ export async function reportWorkflow(principal: Principal, id: string, reason: s
   return { ok: true };
 }
 
-export async function catalog(principal: Principal | null, q: string, filters: { source?: string; site?: string; category?: string }) {
-  const hits: RankInput[] = [];
+export async function catalog(principal: Principal | null, q: string, filters: { source?: string; site?: string; category?: string }, context: WorkflowSearchContext = { extensionLinked: false }) {
+  const hits: Awaited<ReturnType<typeof toHit>>[] = [];
   if (principal && filters.source !== "public") {
     const mine = await ownedRows(principal.userId);
     hits.push(...await Promise.all(mine.map((row) => toHit(row, "mine"))));
@@ -768,7 +769,7 @@ export async function catalog(principal: Principal | null, q: string, filters: {
       hits.push(await toHit(row, "public"));
     }
   }
-  return rankHits(hits, q, filters).slice(0, SEARCH_LIMIT);
+  return rankHits(hits.filter((hit) => workflowSearchEligible(hit, context)), q, filters).slice(0, SEARCH_LIMIT);
 }
 
 export async function readBlob(principal: Principal | null, key: string, shareToken: string | null): Promise<Buffer> {
@@ -1062,6 +1063,8 @@ async function ownedRows(userId: string) {
 }
 
 async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<RankInput & {
+  driver?: string | null;
+  provenance?: string;
   inputs: unknown;
   passRate: { passed: number; total: number };
   author: string;
@@ -1084,10 +1087,12 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     [row.id, ver],
   );
   const parsed = json(versions[0]?.document);
-  const document = parsed && typeof parsed === "object" ? parsed as { inputs?: unknown; steps?: { label?: string }[] } : { steps: [] };
+  const document = parsed && typeof parsed === "object" ? parsed as { driver?: string | null; provenance?: string; inputs?: unknown; steps?: { label?: string }[] } : { steps: [] };
   const steps = (document.steps ?? []).map((step) => step.label || "");
   return {
     id: row.id,
+    driver: document.driver,
+    provenance: document.provenance,
     title: row.name,
     summary: row.summary || steps.join(", "),
     site: row.site,

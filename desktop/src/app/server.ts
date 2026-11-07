@@ -355,6 +355,7 @@ export async function startApp(opts: {
   };
   const remote = createRemoteAgent({
     library,
+    extensionLinked: () => Boolean(extensionLink?.connected()),
     prompts,
     stop: () => { stopRun = true; },
     clearStop: () => { stopRun = false; },

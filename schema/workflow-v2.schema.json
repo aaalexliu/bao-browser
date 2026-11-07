@@ -13,6 +13,10 @@
     "startUrl": { "type": "string" },
     "createdAt": { "type": "number" },
     "updatedAt": { "type": "number" },
+    "provenance": {
+      "const": "fixture",
+      "description": "Test content, excluded from agent workflow search."
+    },
     "heal": { "enum": ["auto", "approve"] },
     "replayed": { "type": "boolean" },
     "readBack": { "$ref": "#/$defs/readBack" },

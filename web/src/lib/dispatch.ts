@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { actor, answersFrom, fail, formPost, readBody, requireUser, session } from "./http";
 import { plainReplayReason } from "./review-gate";
+import { catalogContext } from "./catalog-eligibility";
 import { registryRelay } from "./relay";
 import { remoteDisabled, remoteMcpEnabled } from "./remote-flag";
 import {
@@ -120,7 +121,7 @@ export async function dispatch(method: string, req: Request, parts: string[]): P
         source: url.searchParams.get("source") || undefined,
         site: url.searchParams.get("site") || undefined,
         category: url.searchParams.get("category") || undefined,
-      });
+      }, catalogContext(url.searchParams));
       return NextResponse.json({ hits });
     }
     if (parts[0] === "marketplace" && parts.length === 1 && method === "GET") {

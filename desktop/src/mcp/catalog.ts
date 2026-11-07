@@ -6,7 +6,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { replayRefusal } from "../cdp-live/launch-guard";
+import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
@@ -133,13 +133,21 @@ export function compareSearchHits(a: SearchHit, b: SearchHit): number {
   return b.score - a.score || sourceRank(a.source) - sourceRank(b.source) || a.title.localeCompare(b.title);
 }
 
+export function workflowReplayRefusal(library: Library, workflow: WorkflowV2): string | null {
+  return replayRefusal(workflow.driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
+}
+
 export async function searchWorkflows(
   library: Library,
   query: string,
   filters: { source?: string; site?: string; category?: string } = {},
+  context: Pick<WorkflowSearchContext, "extensionLinked" | "relay"> = { extensionLinked: false },
 ): Promise<SearchHit[]> {
+  const replayContext = { ...context, pageEngine: library.settings().pageEngine };
   const thisDevice = loadState(library.root).deviceName || "";
-  const local = library.list().workflows.map((doc) => ({
+  const workflows = library.list().workflows;
+  const excluded = new Set(workflows.filter((doc) => !workflowSearchEligible(doc, replayContext)).map((doc) => doc.id));
+  const local = workflows.filter((doc) => !excluded.has(doc.id)).map((doc) => ({
     id: doc.id,
     title: doc.name,
     summary: summaryOf(doc),
@@ -152,7 +160,7 @@ export async function searchWorkflows(
     local: true,
   }));
   const rankedLocal = rankHits(local, query, filters);
-  const remote = await remoteHits(library, query, filters);
+  const remote = (await remoteHits(library, query, filters, replayContext)).filter((hit) => !excluded.has(hit.id));
   const byId = new Map<string, DraftHit>();
   for (const hit of [...rankedLocal.map((item) => draftFromLocal(item)), ...remote]) {
     const prev = byId.get(hit.id);
@@ -213,8 +221,7 @@ export async function runWorkflow(
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
-  const driver = (request.document ?? placed!.document).driver;
-  const refusal = replayRefusal(driver, { extensionLinked: false, pageEngine: library.settings().pageEngine });
+  const refusal = workflowReplayRefusal(library, request.document ?? placed!.document);
   if (refusal) return emptyOutcome(id, "failed", refusal);
   if (placed && (placed.bucket === "public" || placed.forkedFrom)) {
     const listingId = placed.forkedFrom || placed.document.id;
@@ -1044,7 +1051,7 @@ async function remoteWorkflow(library: Library, id: string, auth?: RemoteAuth): 
   return null;
 }
 
-async function remoteHits(library: Library, query: string, filters: { source?: string; site?: string; category?: string }): Promise<DraftHit[]> {
+async function remoteHits(library: Library, query: string, filters: { source?: string; site?: string; category?: string }, context: WorkflowSearchContext): Promise<DraftHit[]> {
   const state = loadState(library.root);
   if (!state.server || !state.deviceToken) return [];
   const params = new URLSearchParams();
@@ -1052,6 +1059,9 @@ async function remoteHits(library: Library, query: string, filters: { source?: s
   if (filters.source) params.set("source", filters.source);
   if (filters.site) params.set("site", filters.site);
   if (filters.category) params.set("category", filters.category);
+  params.set("extensionLinked", String(context.extensionLinked));
+  if (context.pageEngine) params.set("pageEngine", context.pageEngine);
+  if (context.relay) params.set("relay", "true");
   // fetch encodes "+" as "%2B", and the server then searches for a literal plus.
   const qs = params.toString().replace(/\+/g, "%20");
   const body = await remoteFetch<{ hits?: RemoteCatalogHit[] }>(state, "GET", `/api/catalog?${qs}`);

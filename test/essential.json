@@ -154,10 +154,11 @@
   },
   "web": {
     "kind": "web",
-    "reason": "Safety: authenticated relay boundaries and bounded relay-job lifecycle.",
+    "reason": "Safety: authenticated relay boundaries, bounded relay jobs, and runnable workflow search.",
     "tests": [
       "web/src/lib/relay.boundary.test.ts",
-      "web/src/lib/relay-job.test.ts"
+      "web/src/lib/relay-job.test.ts",
+      "web/src/lib/catalog.test.ts"
     ]
   }
 }
