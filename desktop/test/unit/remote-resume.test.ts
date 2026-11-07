@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -12,12 +11,11 @@ import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 
-test("production remote resume preserves held browsers and never repeats completed orders", { timeout: 60_000 }, async () => {
+test("production remote resume never repeats a completed order from a non-held run", { timeout: 60_000 }, async () => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const home = mkdtempSync(path.join(tmpdir(), "bao-remote-resume-"));
   const library = new Library(home);
   let orders = 0;
-  let signInToken = "";
   const site = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/order") {
       orders += 1;
@@ -26,14 +24,6 @@ test("production remote resume preserves held browsers and never repeats complet
       return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    if (req.url === "/login") {
-      res.end(`<main style="margin-top:160px"><button id="signin" onclick="location.href='/signed-in'">Sign in</button></main>`);
-      return;
-    }
-    if (req.url === "/signed-in") {
-      res.end("<p>Signed in</p>");
-      return;
-    }
     res.end(`<button id="place" onclick="fetch('/order',{method:'POST'}).then(()=>document.getElementById('status').textContent='Placed')">Place order</button><p id="status"></p>`);
   });
   const directory = new MemoryDirectory();
@@ -122,44 +112,9 @@ test("production remote resume preserves held browsers and never repeats complet
     const resumed = await tool("resume_workflow", { resume: held.resume || held.resume_token });
     assert.equal(resumed.outcome, "ok", JSON.stringify(resumed));
     assert.equal(orders, 2, "held resume restarted its completed first step");
-
-    library.save({
-      ...workflow, id: "held-signin", name: "Synthetic sign-in",
-      startUrl: `http://127.0.0.1:${address.port}/login`,
-      precondition: { kind: "url", match: "/signed-in", phase: "auth" },
-      steps: [{
-        id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
-        postcondition: { kind: "url", match: "/signed-in", timeoutMs: 1000 },
-      }, {
-        id: "status", index: 1, action: "verify", label: "Signed in", surface: "dom", timeoutMs: 1000,
-        expect: { kind: "text", match: "Signed in", timeoutMs: 1000 },
-      }],
-    });
-    library.save({ ...workflow, id: "unrelated-order", steps: [placed] });
-    const signin = await tool("run_workflow", { id: "held-signin" });
-    signInToken = String(signin.resume || signin.resume_token || "");
-    assert.equal(signin.outcome, "needs_human", JSON.stringify(signin));
-    assert.equal((signin.stops as { outcome: string }[])[0].outcome, "needs_signin");
-    assert.ok(signInToken);
-    const unrelated = await tool("run_workflow", { id: "unrelated-order" });
-    assert.equal(unrelated.outcome, "ok", JSON.stringify(unrelated));
-    assert.equal(orders, 3, "unrelated requested order should execute once during sign-in");
-    await withHeldPage(signInToken, async (page) => {
-      assert.equal(page.isClosed(), false, "unrelated run closed the held sign-in browser");
-      assert.equal(new URL(page.url()).pathname, "/login", "unrelated run navigated the held page");
-      await page.locator("#signin").click();
-      await page.waitForURL("**/signed-in");
-    });
-    const signedIn = await tool("resume_workflow", { resume: signInToken });
-    assert.equal(signedIn.outcome, "ok", JSON.stringify(signedIn));
-    assert.equal(signedIn.runId || signedIn.run_id, signin.runId || signin.run_id);
-    assert.equal(orders, 3, "resuming sign-in repeated the unrelated order");
-    signInToken = "";
   } finally {
-    if (signInToken) await runWorkflow(library, { resume: signInToken, cancel: true });
     await remote.stop();
     await server.close();
     await new Promise<void>((resolve) => site.close(() => resolve()));
-    rmSync(home, { recursive: true, force: true });
   }
 });

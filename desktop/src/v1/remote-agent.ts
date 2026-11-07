@@ -326,7 +326,7 @@ export function createRemoteAgent(opts: {
   async function run(job: AssignedJob): Promise<Record<string, unknown>> {
     const id = job.workflowId || stringArg(job.args.id);
     opts.clearStop();
-    context = undefined;
+    await releaseContext();
     let workflow: WorkflowV2;
     try {
       workflow = opts.library.read(id);
