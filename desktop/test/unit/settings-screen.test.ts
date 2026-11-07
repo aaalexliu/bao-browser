@@ -385,8 +385,6 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
         await held;
         if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
         const input = page.locator(selector);
-        const original = await input.elementHandle();
-        assert.ok(original);
         const writesBefore = writes.length;
         await input.fill(value);
         if (!value) await input.press("Tab");
@@ -394,8 +392,7 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
         assert.ok(focusAfterEdit);
         if (!value) assert.notEqual(focusAfterEdit, selector.slice(1));
         release?.();
-        await page.waitForFunction((element) => !element?.isConnected, original);
-        await original.dispose();
+        await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
         assert.equal(await input.inputValue(), value);
         assert.equal(await input.evaluate((element) => (element as HTMLInputElement).validity.valueMissing), !value);
         assert.equal(await page.evaluate(() => document.activeElement?.id), focusAfterEdit);
