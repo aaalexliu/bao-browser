@@ -351,34 +351,6 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
       </button>`).join("")}</nav>${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : ""}`;
 }
 
-/** Settings control for the outbound relay. Unchecked until this Mac opts in. */
-export function remoteMcpSetting(on: boolean, relay?: { paired?: boolean; permission?: string }): string {
-  const checked = on ? " checked" : "";
-  const permission = relay?.permission === "deny" ? "deny" : "ask";
-  const paired = relay?.paired === true;
-  const ask = permission === "ask" ? " selected" : "";
-  const deny = permission === "deny" ? " selected" : "";
-  const revoke = paired ? "" : " disabled";
-  const status = paired
-    ? "Paired with the relay. The token stays on this Mac."
-    : "Not paired. A short code from the registry pairs this Mac.";
-  return `<section id="remote-mcp-setting">
-    <h3>Remote agent</h3>
-    <label class="remote-choice"><input id="remote-mcp" type="checkbox"${checked}> Let a remote agent run workflows on this Mac</label>
-    <p class="quiet">This stays off until you check it, or this Bao process has BAO_REMOTE_MCP=1. The registry needs that same variable. A paired Mac dials the relay over a WebSocket. Without a relay token, remote jobs do not run. A run still waits for Allow on this Mac unless you choose Deny. That choice is enforced here, not by the remote client.</p>
-    <label>Remote runs <select id="remote-permission">
-      <option value="ask"${ask}>Ask before each run</option>
-      <option value="deny"${deny}>Deny remote runs</option>
-    </select></label>
-    <label>Pairing code <input id="relay-code" type="text" autocomplete="off" spellcheck="false"></label>
-    <div class="row">
-      <button id="relay-pair" type="button">Pair</button>
-      <button id="relay-revoke" type="button"${revoke}>Revoke</button>
-    </div>
-    <p class="quiet" id="relay-status">${status}</p>
-  </section>`;
-}
-
 /** Shown while a cloud agent is asking this Mac to run something. */
 export function remoteBanner(remote: RemoteView | undefined): string {
   if (!remote || remote.phase === "idle") return "";

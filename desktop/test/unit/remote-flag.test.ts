@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { remoteBanner, remoteMcpSetting } from "../../src/app/views";
+import { remoteBanner } from "../../src/app/views";
 import { createRemoteAgent, desktopRemoteEnabled } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import { Library } from "../../src/v1/store";
@@ -24,10 +24,7 @@ test("BAO_REMOTE_MCP is off unless it is exactly 1", async () => {
   assert.deepEqual(await closed.json(), { error: "remote_disabled" });
 });
 
-test("the remote agent setting is unchecked and the banner stays empty while it is off", () => {
-  const off = remoteMcpSetting(false);
-  assert.match(off, /id="remote-mcp" type="checkbox">/);
-  assert.match(remoteMcpSetting(true), /id="remote-mcp" type="checkbox" checked>/);
+test("the remote agent banner stays empty while it is off", () => {
   assert.equal(remoteBanner({ phase: "idle" }), "");
   assert.equal(remoteBanner(undefined), "");
 });

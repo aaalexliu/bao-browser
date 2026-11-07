@@ -4,12 +4,13 @@ import { formatWait } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
 import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
+import { settingsIndex, settingsScreen } from "./settings-view";
 import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
 import type { inspectRunView } from "../mcp/run-view";
-import type { DamagedWorkflow } from "../v1/store";
+import type { DamagedWorkflow, Settings } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
@@ -17,7 +18,6 @@ import type { PublicImportResult, PublicPreview } from "../login-import/types";
 import {
   actBar,
   remoteBanner,
-  remoteMcpSetting,
   commandItems,
   esc,
   healDetail,
@@ -85,7 +85,7 @@ interface OpenedState {
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
-  settings?: { heal?: string; promoteAfter?: number; actTimeoutMs?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: "ask" | "deny"; siteTrust?: Record<string, "ask" | "allow">; hostAccess?: "all" | "site" | "none"; pageEngine?: "old" | "agent-browser"; chromeProfile?: string; chromeProfileExtensions?: Record<string, boolean>; keepAgentBrowserOpen?: boolean };
+  settings?: Partial<Settings>;
   profileCopy?: { bytes: number; copyMs: number; status: "open" | "deleted" };
   relay?: { paired?: boolean; deviceId?: string };
   sync?: {
@@ -111,6 +111,8 @@ let state: ShellState & {
   home?: string;
 } = {};
 let conflictCopy: { id: string; name: string; steps: string[] } | null = null;
+let settingsSection = "runs";
+let settingsFeedback = "";
 let screen: Screen = screenFromQuery(location.search) || "runs";
 let lastWf = "";
 let deeplinkInputs: Record<string, string> = {};
@@ -277,6 +279,8 @@ function render(focusDetail = true): void {
   if (screen === "logins") readLoginForm();
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
+  const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
+  const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
@@ -288,12 +292,13 @@ function render(focusDetail = true): void {
   document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
   document.getElementById("content")!.classList.toggle("workflows-content", screen === "library" || screen === "workflow");
+  document.getElementById("content")!.classList.toggle("settings-content", screen === "settings");
   if (railHtmlKey !== railHtml) {
     railEl().innerHTML = railHtml;
     railHtmlKey = railHtml;
   }
   const list = document.getElementById("screen-list")!;
-  const listHtml = shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError);
+  const listHtml = screen === "settings" ? settingsIndex({ ...state, sites: login.saved }) : shellList(screen, state, screen === "run" ? openRun : "", !initialConnectionError);
   if (listHtmlKey !== listHtml) {
     list.innerHTML = listHtml;
     listHtmlKey = listHtml;
@@ -358,6 +363,8 @@ function render(focusDetail = true): void {
     }
     if (screen === "replay") void fillArgs(replayId);
   }
+  for (const id of settingsDetails) document.getElementById(id)?.setAttribute("open", "");
+  if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
   bind();
   applySearch();
   paintPalette();
@@ -454,13 +461,9 @@ function fromLine(): string {
 }
 
 function settings(): string {
-  const heal = state.settings?.heal || "auto";
-  const promoteAfter = state.settings?.promoteAfter ?? 3;
-  const actMin = Math.round((state.settings?.actTimeoutMs ?? 120 * 60 * 1000) / 60000);
   const circuit = state.settings?.circuitLimit ?? 3;
-  const libraryHome = state.home ? `<p class="meta" id="settings-home">${esc(state.home)}</p>` : "";
-  return `<section id="settings"><h2>Settings</h2>
-    ${libraryHome}
+  const libraryHome = state.home ? `<p class="meta" id="settings-home">Library: ${esc(state.home)}</p>` : "";
+  return settingsScreen({ ...state, sites: login.saved }, `${libraryHome}
     ${desktopMcpSettings()}
     <div class="card" id="page-engine-settings">
       <h3>Page engine</h3>
@@ -487,18 +490,14 @@ function settings(): string {
       <p id="agent-browser-lifetime-feedback" role="status"></p>
     </div>
     ${hostAccessPanel(state.settings?.hostAccess)}
-    <label>When a step misses <select id="heal">
-      <option value="auto" ${heal === "auto" ? "selected" : ""}>Auto self-heal</option>
-      <option value="approve" ${heal === "approve" ? "selected" : ""}>Approve before applying</option>
-    </select></label>
-    <p class="quiet">Auto is the default. A step can override it with auto, ask, or never. Healing runs when the Cursor CLI is logged in, when a model key is set, or when this build is started with the fixture healer. A real change is the only miss that is healed. A temporary blocker or an outage stops the run. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
-    <label>Real runs before a heal is kept <input id="promote-after" type="number" min="1" max="20" value="${promoteAfter}"></label>
-    <label>Minutes to wait when you need to act <input id="act-minutes" type="number" min="1" max="1440" value="${actMin}"></label>
+    <p class="quiet">AI help uses the connected Cursor account or a model key set when Bao starts. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" type="number" min="1" max="50" value="${circuit}"></label>
-    ${remoteMcpSetting(state.settings?.remoteMcp === true, {
-      paired: state.relay?.paired === true,
-      permission: state.settings?.remotePermission,
-    })}
+    <section id="remote-mcp-setting"><h3>Connect another device</h3>
+      <p class="quiet" id="relay-status">${state.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not connected. Enter a pairing code from your other device."}</p>
+      <label>Pairing code <input id="relay-code" type="text" autocomplete="off" spellcheck="false"></label>
+      <div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${state.relay?.paired ? "" : " disabled"}>Revoke</button></div>
+      <label>Remote requests <select id="remote-permission"><option value="ask"${state.settings?.remotePermission !== "deny" ? " selected" : ""}>Ask on this computer</option><option value="deny"${state.settings?.remotePermission === "deny" ? " selected" : ""}>Deny remote runs</option></select></label>
+    </section>
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     <button id="save-settings" class="primary" type="button">Save</button>
     ${syncPanel(state.sync, conflictCopy)}
@@ -507,16 +506,7 @@ function settings(): string {
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <div class="card">
-      <h3>Model</h3>
-      <p id="settings-model">${esc(state.model?.label || "no model")}</p>
-    </div>
-    <div class="card">
-      <h3>Mac</h3>
-      <p id="settings-helper">${esc(state.helper?.label || "helper off")}</p>
-      <p>Chrome agents need no Accessibility, Automation, or Screen Recording permission.</p>
-    </div>
-  </section>`;
+    <p id="settings-helper">${esc(state.helper?.label || "helper off")}. Chrome agents need no Accessibility, Automation, or Screen Recording permission.</p>`);
 }
 
 function importSheet(): string {
@@ -553,7 +543,7 @@ function navigate(next: Screen): void {
   if (screen === "runs") selectDefaultRun();
   renderKey = "";
   if (screen === "logins") void loadSaved();
-  if (screen === "settings") void loadHostAccess();
+  if (screen === "settings") { void loadHostAccess(); void loadSaved(); }
   if (screen === "replay") {
     debugStepId = "";
     runFromN = 0;
@@ -566,8 +556,50 @@ function navigate(next: Screen): void {
   document.getElementById("content")!.scrollTop = 0;
 }
 
+function bindSettings(): void {
+  document.querySelectorAll<HTMLAnchorElement>("[data-settings-jump]").forEach((link) => {
+    if (link.dataset.settingsJump === settingsSection) link.setAttribute("aria-current", "true");
+    else link.removeAttribute("aria-current");
+    link.onclick = (event) => {
+      event.preventDefault();
+      settingsSection = link.dataset.settingsJump || "runs";
+      document.querySelectorAll("[data-settings-jump]").forEach((item) => item.removeAttribute("aria-current"));
+      link.setAttribute("aria-current", "true");
+      document.getElementById(`set-${settingsSection}`)?.focus({ preventScroll: true });
+      document.getElementById(`set-${settingsSection}`)?.scrollIntoView({ block: "start" });
+    };
+  });
+  const feedback = document.getElementById("settings-feedback");
+  if (feedback) feedback.textContent = settingsFeedback;
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-setting]").forEach((input) => {
+    input.onchange = async () => {
+      if (input.value === "custom") {
+        const custom = document.getElementById("act-custom") as HTMLInputElement;
+        custom.hidden = false;
+        custom.focus();
+        return;
+      }
+      if (!input.reportValidity()) return;
+      const key = input.dataset.setting!;
+      const value = input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
+      try {
+        const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ [key]: value }) });
+        const body = await response.json() as { error?: string };
+        settingsFeedback = response.ok ? "Saved." : body.error || "Could not save. Try again.";
+        if (response.ok) await refresh();
+      } catch {
+        settingsFeedback = "Could not save. Check that Bao is running, then try again.";
+      } finally {
+        const status = document.getElementById("settings-feedback");
+        if (status) status.textContent = settingsFeedback;
+      }
+    };
+  });
+}
+
 function bind(): void {
   bindDesktopMcp();
+  bindSettings();
   const retry = document.getElementById("retry-state");
   if (retry) retry.onclick = () => { void refresh().catch(() => document.getElementById("retry-state")?.focus()); };
   document.querySelectorAll<HTMLElement>("#runs-welcome [data-screen]").forEach((button) => {
@@ -619,6 +651,8 @@ function bind(): void {
       navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
   });
+  const importLogin = document.querySelector<HTMLButtonElement>('#settings [data-screen="logins"]');
+  if (importLogin) importLogin.onclick = () => navigate("logins");
   document.querySelectorAll("#main [data-screen=replay]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       lastWf = (btn as HTMLButtonElement).dataset.workflow || lastWf;
@@ -869,12 +903,8 @@ function bind(): void {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        heal: (document.getElementById("heal") as HTMLSelectElement).value,
-        promoteAfter: Number((document.getElementById("promote-after") as HTMLInputElement).value),
-        actTimeoutMin: Number((document.getElementById("act-minutes") as HTMLInputElement).value),
         circuitLimit: Number((document.getElementById("circuit-limit") as HTMLInputElement).value),
         syncServer: (document.getElementById("sync-server") as HTMLInputElement | null)?.value,
-        remoteMcp: (document.getElementById("remote-mcp") as HTMLInputElement | null)?.checked === true,
         remotePermission: (document.getElementById("remote-permission") as HTMLSelectElement | null)?.value === "deny" ? "deny" : "ask",
         siteTrust: readSiteTrust(),
       }),
@@ -1840,7 +1870,7 @@ async function loadSaved(): Promise<void> {
 }
 
 function bindLogins(): void {
-  if (screen !== "logins") return;
+  if (screen !== "logins" && screen !== "settings") return;
   const show = document.getElementById("show-profiles");
   if (show) show.onclick = async () => {
     readLoginForm();

@@ -29,6 +29,7 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     const chatgpt = desktopMcpFile(home, 'chatgpt');
     await page.goto(origin);
     await page.locator('[data-screen="settings"]').click();
+    await page.locator('#settings-advanced > summary').click();
     let releasePreview!: () => void;
     const previewReady = new Promise<void>((resolve) => { releasePreview = resolve; });
     await page.route('**/api/desktop-mcp/preview', async (route) => { await previewReady; await route.continue(); });

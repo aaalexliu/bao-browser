@@ -46,13 +46,34 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
         assert.equal(await page.locator("#onboarding, #perm-dot, #automation-ask").count(), 0);
         assert.doesNotMatch(await page.locator("#rail").innerText(), /needs permission|AX press|live Chrome|Accessibility|Automation|Screen Recording/);
         await page.locator('#rail [data-place="settings"]').click();
-        const mac = page.locator(".card").filter({ has: page.locator("#settings-helper") });
-        assert.match(await mac.innerText(), /Chrome agents need no Accessibility, Automation, or Screen Recording permission/);
-        assert.doesNotMatch(await mac.innerText(), /bao mcp-ax|bao remote-debugging/);
+        const mac = page.locator("#set-perm + .settings-group");
+        assert.match(await mac.innerText(), /Accessibility/);
+        assert.match(await mac.innerText(), /Screen Recording/);
+        assert.doesNotMatch(await mac.innerText(), /bao mcp-ax|bao remote-debugging|click and type in Chrome/);
+        if (process.platform === "darwin") {
+          assert.match(await mac.innerText(), /Chrome agents do not need it/);
+          assert.match(await mac.innerText(), /Chrome screenshots do not need it/);
+          assert.match(await mac.innerText(), /Not checked/);
+          assert.equal(await mac.locator('a[href^="x-apple.systempreferences:"]').count(), 1);
+        } else {
+          assert.match(await mac.innerText(), /does not apply on Linux/);
+          assert.equal(await mac.locator("a").count(), 0);
+        }
         assert.equal(await mac.locator("button").count(), 0);
         assert.equal(await page.locator("#automation-ask, #perm-dot, #onboarding").count(), 0);
       }
     }
+    await page.route("**/api/state", async (route) => {
+      const response = await route.fetch();
+      const current = await response.json() as Record<string, unknown>;
+      await route.fulfill({ json: { ...current, helper: { label: "helper off", platform: "linux", capabilities: [] } } });
+    });
+    await page.reload();
+    await page.locator('#rail [data-place="settings"]').click();
+    const linux = page.locator("#set-perm + .settings-group");
+    assert.equal(await linux.getByText("Mac only", { exact: true }).count(), 2);
+    assert.equal(await linux.locator("a, button").count(), 0);
+    assert.doesNotMatch(await linux.innerText(), /AT-SPI|Not allowed|Open System Settings/);
     assert.equal(calls.length > 0, process.platform === "darwin");
     assert.ok(calls.every((args) => args.length === 1 && args[0] === "permissions-ax"), JSON.stringify(calls));
   } finally {

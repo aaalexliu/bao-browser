@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, passGrid, plainFailure, promotionLine, rail, recordBar, remoteMcpSetting, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, passGrid, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { actSurfaceText, attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
 import { notices, runsList, teachReview, trailPane, consolePane, tryResult, type RunSummary } from "../../src/app/views";
@@ -141,13 +141,6 @@ test("OS notification delivery uses the same stop copy", { skip: process.platfor
     if (original == null) delete process.env.BAO_NOTIFY_SOCK;
     else process.env.BAO_NOTIFY_SOCK = original;
   }
-});
-
-test("Remote agent keeps the checkbox and its text in one spaced row", () => {
-  const off = remoteMcpSetting(false);
-  assert.match(off, /<label class="remote-choice"><input id="remote-mcp" type="checkbox"> Let a remote agent run workflows on this Mac<\/label>/);
-  const on = remoteMcpSetting(true);
-  assert.match(on, /<label class="remote-choice"><input id="remote-mcp" type="checkbox" checked> Let a remote agent run workflows on this Mac<\/label>/);
 });
 
 test("confirm act bar names the button and has no approve control", () => {

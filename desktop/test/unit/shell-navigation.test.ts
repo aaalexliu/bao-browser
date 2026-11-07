@@ -456,7 +456,7 @@ test("the palette takes focus from the modal sidebar without a queued close stea
     const dialog = page.locator("#sidebar-dialog");
     const input = page.locator("#palette-input");
     const commands = [
-      ["Settings", "settings", "#page-engine-settings", "main"],
+      ["Settings", "settings", "#set-runs", "main"],
       [`Open ${workflow.name}`, `open-${workflow.id}`, "#workflow-detail", "main"],
       [`Run ${workflow.name}`, `run-${workflow.id}`, "#run", "main"],
       ["Toggle appearance", "theme", "#run", "BODY"],

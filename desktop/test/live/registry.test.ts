@@ -334,7 +334,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         await page.getByText("bao://workflow/cross-mac").waitFor();
         await page.getByRole("button", { name: "Re-run with past inputs" }).waitFor();
         await page.locator("#rail button[data-place=settings]").click();
-        await page.locator("#screen-list button[data-screen=settings]").click();
+        await page.locator("#settings-advanced > summary").click();
         await page.getByRole("heading", { name: "Devices" }).waitFor();
         await page.getByTestId("devices").getByText("Mac A", { exact: true }).waitFor();
         await page.getByText("Conflicts", { exact: true }).waitFor();
@@ -346,8 +346,8 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         assert.match(await page.getByTestId("my-copy").innerText(), /Edited on the second Mac/);
         assert.match(await page.getByTestId("sync-result").innerText(), /conflicts 1/);
         assert.equal(await page.locator("#theme-toggle").count(), 0);
-        await page.locator(".card", { has: page.locator("#settings-model") }).waitFor();
-        await page.locator(".card", { has: page.locator("#settings-helper") }).waitFor();
+        await page.locator("#settings-model").waitFor();
+        await page.locator("#settings-helper").waitFor();
         assert.equal(await page.getByText("Two permissions on the Mac").count(), 0);
         const deviceTime = await page.getByTestId("device-row").first().innerText();
         assert.match(deviceTime, /just now|min ago|hour ago|day ago/);
