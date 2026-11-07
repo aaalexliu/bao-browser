@@ -233,6 +233,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(inbox.includes("textedit write"), false);
     await page.click("[data-heal]");
     await page.waitForSelector("article#heal-detail");
+    await page.locator(".heal-technical > summary").click();
     const detail = await page.locator("#heal-detail").innerText();
     assert.match(detail, /fixture login/);
     assert.equal(detail.includes("textedit write"), false);
@@ -248,6 +249,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(app.library.readRun(healed.runId).decisions?.[0]?.decision, "keep");
     await page.waitForSelector("[data-revert]");
     await page.click("[data-revert]");
+    await page.locator('#heal-revert-confirm [value="revert"]').click();
     await page.waitForFunction(() => document.body.innerText.includes("Patch reverted"));
     const reverted = app.library.read("wf-heal");
     assert.equal(reverted.steps[0]?.identity?.testId, "missing-login");
