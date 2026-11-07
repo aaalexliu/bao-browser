@@ -169,7 +169,13 @@ export function llmHealFromEnv(
           }),
         });
         const raw = await res.text();
-        const body = JSON.parse(raw) as { choices?: { message?: { content?: string } }[] };
+        let body: { choices?: { message?: { content?: string } }[] };
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          return null;
+        }
+        if (!body) return null;
         const name = env.BAO_OPENAI_MODEL || "gpt-4.1-mini";
         return {
           patch: patchFromText(body.choices?.[0]?.message?.content || ""),
@@ -192,7 +198,13 @@ export function llmHealFromEnv(
         }),
       });
       const raw = await res.text();
-      const body = JSON.parse(raw) as { content?: { type: string; text?: string }[] };
+      let body: { content?: { type: string; text?: string }[] };
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        return null;
+      }
+      if (!body) return null;
       const name = env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
       return {
         patch: patchFromText(body.content?.filter((block) => block.type === "text").map((block) => block.text || "").join("\n") || ""),

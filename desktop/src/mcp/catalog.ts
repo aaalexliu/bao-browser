@@ -13,6 +13,7 @@ import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } fro
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
+import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
@@ -497,7 +498,7 @@ async function replayInBrowser(
       runId,
       shotDir,
       settings: library.settings(),
-      heal: healProvider(),
+      heal: await healFromSource(library.settings().healSource, healProvider, secrets),
       now: () => Date.now(),
       yieldHuman: true,
       trail,
@@ -543,7 +544,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
     runId: live.runId,
     shotDir: live.shotDir,
     settings: library.settings(),
-    heal: healProvider(),
+    heal: await healFromSource(library.settings().healSource, healProvider, live.secrets),
     now: () => Date.now(),
     fromStepId: live.stepId,
     yieldHuman: true,

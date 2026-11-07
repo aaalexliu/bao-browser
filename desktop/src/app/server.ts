@@ -62,6 +62,7 @@ import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } fr
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
+import { healFromSource } from "../v1/heal-source";
 import { cursorSessionHeal, effectiveMode, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
@@ -2796,7 +2797,7 @@ async function runExtension(
     if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
     throw err;
   }
-  const heal = await healProvider(library.settings().healSource, secretList);
+  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
@@ -2876,7 +2877,7 @@ async function runRecorded(
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
-  const heal = await healProvider(library.settings().healSource, secretList);
+  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const clip = replayClips.get(session.profile);
   if (clip) clip.runId = runId;
@@ -3009,8 +3010,7 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
   };
 }
 
-async function healProvider(source: Settings["healSource"], secrets: string[] = []): Promise<HealProvider> {
-  if (source) return cursorAccountHeal(process.env, secrets, undefined, source);
+async function healProvider(secrets: string[] = []): Promise<HealProvider> {
   if (process.env.BAO_HEAL_FIXTURE === "1") {
     return scriptedHeal({
       patch: { identity: { surface: "dom", role: "button", testId: "login", path: [] } },

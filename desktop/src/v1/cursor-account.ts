@@ -7,8 +7,6 @@ import {
   cursorHeal,
   llmHealFromEnv,
   patchFromText,
-  unavailableHeal,
-  type HealSource,
   type HealProposal,
   type HealProvider,
 } from "./heal";
@@ -225,7 +223,7 @@ export async function askCursorAgent(
   }
 }
 
-function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: CursorAgentRun): HealProvider {
+export function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: CursorAgentRun = realCursorAgent()): HealProvider {
   const bin = findAgentBin(env);
   return {
     available() {
@@ -267,23 +265,12 @@ function chainHeal(providers: HealProvider[]): HealProvider {
   };
 }
 
-/** A saved source is exclusive. Unset keeps CLI print, file handoff, then vendor-key detection. */
 export async function cursorAccountHeal(
   env: NodeJS.ProcessEnv = process.env,
   secrets: string[] = [],
   agent: CursorAgentRun = realCursorAgent(),
-  source?: HealSource,
 ): Promise<HealProvider> {
-  if (source?.kind === "none") return unavailableHeal();
-  if (source?.kind === "api-key") {
-    return llmHealFromEnv({
-      ...env,
-      OPENAI_API_KEY: source.provider === "openai" ? source.key : undefined,
-      ANTHROPIC_API_KEY: source.provider === "anthropic" ? source.key : undefined,
-    }, fetch, secrets);
-  }
   await readCursorAccount(env, agent);
-  if (source?.kind === "cursor-account") return cursorPrintHeal(env, secrets, agent);
   const providers: HealProvider[] = [cursorPrintHeal(env, secrets, agent)];
   if (env.BAO_HEAL_CURSOR === "1") {
     const dir = env.BAO_HEAL_DIR || resolveHome({ env });
