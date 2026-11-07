@@ -11,10 +11,15 @@ import { cookieMatchesHost, findCookieDb, summarizeDb, summarySql, withCookieDb,
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
 import { copyIndexedDb, matchingIndexedDbOrigins, readLocalStorage, setLocalStorageItems, type StorageItem } from "../login-import/storage";
 
-interface LoginCookie extends DecryptedCookie { updated: bigint }
+interface LoginCookie extends DecryptedCookie { updated: bigint; signature: string }
 
 interface LoginState {
   cookies: LoginCookie[];
+  storage: StorageItem[];
+}
+
+interface SourceLoginState {
+  cookies?: LoginCookie[];
   storage: StorageItem[];
 }
 
@@ -65,13 +70,22 @@ async function connect(portFile: string): Promise<CdpSocket> {
   return connectCdp(endpoint.port, endpoint.browserPath);
 }
 
-async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string): Promise<LoginState> {
+async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cookies?: LoginCookie[]): Promise<SourceLoginState> {
+  try { return await readSourceLogin(options, site, destination, cookies); }
+  catch {
+    console.error("Bao source sign-in import unavailable; keeping saved Bao state.");
+    return { cookies: [], storage: [] };
+  }
+}
+
+async function readSourceLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cachedCookies?: LoginCookie[]): Promise<SourceLoginState> {
   const profile = path.join(options.sourceRoot, options.directory);
   const origins = [new URL(site).origin];
   const storage = await readLocalStorage(profile, origins);
   if (destination && !matchingIndexedDbOrigins(path.join(destination, "Default"), origins).length) copyIndexedDb(profile, destination, origins);
+  if (cachedCookies) return { cookies: cachedCookies, storage };
   const db = findCookieDb(profile);
-  if (!db || withCookieDb(db.file, (sqlite) => summarizeDb(sqlite, new URL(site).hostname, "include", Date.now()).willImport) === 0) return { cookies: [], storage };
+  if (!db || withCookieDb(db.file, (sqlite) => summarizeDb(sqlite, new URL(site).hostname, "include", Date.now()).willImport) === 0) return { storage };
   const temporary = await mkdtemp(path.join(tmpdir(), "bao-login-source-"));
   let source: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let cdp: CdpSocket | undefined;
@@ -89,9 +103,9 @@ async function readChromeLogin(options: { sourceRoot: string; directory: string 
     source = await launchOwnedChromeEndpoint({ userDataDir: temporary, childHome: userInfo().homedir, headless: false, loadExtensions: false });
     cdp = await connect(source.portFile);
     const { cookies } = await cdp.send<{ cookies: ChromeCookie[] }>("Storage.getCookies");
-    const wanted = cookies.filter((cookie) => cookieMatchesHost(cookie.domain, new URL(site).hostname) && (cookie.session || cookie.expires > Date.now() / 1000));
+    const wanted = cookies.filter((cookie) => cookie.session || cookie.expires > Date.now() / 1000);
     return { storage, cookies: wanted.map((cookie, id) => ({
-      id, updated: updates.get(cookieKey(cookie)) ?? 0n, name: cookie.name, value: cookie.value, hostKey: cookie.domain, path: cookie.path,
+      id, updated: updates.get(cookieKey(cookie)) ?? 0n, signature: cookieSignature(cookie), name: cookie.name, value: cookie.value, hostKey: cookie.domain, path: cookie.path,
       secure: cookie.secure, httpOnly: cookie.httpOnly,
       sameSite: cookie.sameSite === "Strict" ? 2 : cookie.sameSite === "Lax" ? 1 : cookie.sameSite === "None" ? 0 : -1,
       expiresUnix: cookie.session ? undefined : cookie.expires, expired: false, partitionKey: cookie.partitionKey, botVendor: null,
@@ -192,7 +206,21 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
   try {
     if (reclaim) await closeRetainedChrome(profile);
     if (!ownsProfile() || pidsForDataDir(profile).length) throw busy();
-    const login = options.site ? await readChromeLogin(options, options.site, profile) : undefined;
+    const snapshots = new Map<string, Promise<LoginState>>();
+    let sourceCookies: LoginCookie[] | undefined;
+    const snapshot = (site: string, destination?: string) => {
+      const url = new URL(site);
+      let login = snapshots.get(url.origin);
+      if (!login) {
+        login = readChromeLogin(options, site, destination, sourceCookies).then((source) => {
+          sourceCookies ??= source.cookies;
+          return { cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)), storage: source.storage };
+        });
+        snapshots.set(url.origin, login);
+      }
+      return login;
+    };
+    const login = options.site ? await snapshot(options.site, profile) : undefined;
     if (!ownsProfile()) throw busy();
     launchAttempted = true;
     chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, keychain: "mock", headless: false,
@@ -218,11 +246,13 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
       } finally { cdp.close(); }
     };
     await liveCookies(true);
-    const mergeLogin = async (login: LoginState): Promise<boolean> => {
+    const mergeLogin = async (login: LoginState, preferSource = false): Promise<boolean> => {
+      if (!login.cookies.length && !login.storage.length) return false;
       const live = await liveCookies();
       const cookies = login.cookies.filter((cookie) => {
         const key = cookieKey({ ...cookie, domain: cookie.hostKey });
-        return !live.has(key) || cookie.updated > observed.get(key)!.updated;
+        const current = live.get(key);
+        return !current || (preferSource ? cookie.signature !== cookieSignature(current) : cookie.updated > observed.get(key)!.updated);
       });
       if (!cookies.length && !login.storage.length) return false;
       const changed = await seedLogin(browser.portFile, { cookies, storage: login.storage });
@@ -238,9 +268,10 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
         retain();
         browser.keepOpen();
       },
-      async importLogin(site: string): Promise<boolean> {
+      async importLogin(site: string, preferSource = false): Promise<boolean> {
         if (!ownsProfile()) throw busy();
-        return mergeLogin(await readChromeLogin(options, site));
+        if (!preferSource) { snapshots.clear(); sourceCookies = undefined; }
+        return mergeLogin(await snapshot(site), preferSource);
       },
     };
   } catch (error) {

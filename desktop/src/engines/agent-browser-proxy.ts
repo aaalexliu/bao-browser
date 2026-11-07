@@ -254,9 +254,8 @@ export class AgentBrowserProxy {
     let active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
-    if (openedSite && ownerWall(active.page) === "login_wall" && new URL(active.page.url).origin !== new URL(openedSite).origin
-      && "importLogin" in session.chrome) {
-      if (await session.chrome.importLogin(new URL(active.page.url).origin)) {
+    if (openedSite && ownerWall(active.page) === "login_wall" && "importLogin" in session.chrome) {
+      if (await session.chrome.importLogin(new URL(active.page.url).origin, true)) {
         await this.run(session, "open", [openedSite]);
         active = await this.activePage(session);
         if (!active) throw new Error("no active Bao page metadata");

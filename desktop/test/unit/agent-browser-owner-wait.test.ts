@@ -77,9 +77,9 @@ for (const { browser, check, bare } of [
     const chrome = await openBao(options);
     copyDir = bao.baoAgentProfileDir(options.home);
     closeBrowser = chrome.close;
-    return { ...chrome, importLogin: async (site: string) => {
+    return { ...chrome, importLogin: async (site: string, preferSource = false) => {
       importCalls.push(site);
-      return chrome.importLogin(site);
+      return chrome.importLogin(site, preferSource);
     } };
   });
   const log = path.join(root, "native.jsonl");
@@ -125,7 +125,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     assert.ok(page);
     page.setDefaultTimeout(5000);
     assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you/);
-    assert.equal(importCalls.length, bare ? 1 : 0, "only a new redirect-wall origin gets a second import");
+    assert.equal(importCalls.length, browser === "bao" && check === "signin" ? 1 : 0, "only an explicit open's login wall can apply its source snapshot");
     const importsBefore = importCalls.length;
     const before = await readFile(log, "utf8");
     for (const command of ["snapshot", "screenshot", "fill", "press", "tab", "open"]) {
