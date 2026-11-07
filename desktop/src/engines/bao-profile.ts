@@ -90,7 +90,7 @@ async function readSourceLogin(options: { sourceRoot: string; directory: string 
   let source: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let cdp: CdpSocket | undefined;
   try {
-    const state = JSON.parse(await readFile(path.join(options.sourceRoot, "Local State"), "utf8"));
+    const state = JSON.parse(await readFile(path.join(options.sourceRoot, "Local State"), "utf8")) as Record<string, unknown>;
     state.profile = { last_used: "Default", last_active_profiles: ["Default"] };
     await writeFile(path.join(temporary, "Local State"), JSON.stringify(state));
     const target = path.join(temporary, "Default", ...(db.kind === "network" ? ["Network"] : []), "Cookies");
@@ -182,7 +182,7 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     const marker = readFileSync(keptWindow, "utf8");
-    const lease: { pid: number; retained?: boolean } = JSON.parse(marker);
+    const lease = JSON.parse(marker) as { pid: number; retained?: boolean };
     let ownerAlive = true;
     if (Number.isSafeInteger(lease.pid) && lease.pid > 1) {
       try { process.kill(lease.pid, 0); }

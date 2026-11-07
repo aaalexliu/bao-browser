@@ -1,6 +1,6 @@
 # What Bao asks permission for
 
-The current [agent-browser pass-through](agent-browser-engine.md#pick-an-engine-and-profile) uses a marked profile copy and page screenshots through CDP. It needs no Accessibility, Automation, or Screen Recording grant. The older daily-Chrome driver is retired. Bao no longer shows its permission card, footer warnings, or Automation Allow button. The helper's optional native-app and remote-debugging CLI features remain below. A grant for one feature does not grant another.
+The current [agent-browser pass-through](agent-browser-engine.md#direct-mcp-commands) defines its browser choices and takes page screenshots through CDP. It needs no Accessibility, Automation, or Screen Recording grant. The older daily-Chrome driver is retired. Bao no longer shows its permission card, footer warnings, or Automation Allow button. The helper's optional native-app and remote-debugging CLI features remain below. A grant for one feature does not grant another.
 
 ## The Chrome remote-debugging toggle
 
@@ -37,7 +37,7 @@ These belong to the Bao extension in Chrome, not to the remote-debugging connect
 
 ## Agent Chrome control
 
-The current [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) uses a marked profile copy. It does not attach to daily Chrome or use a host allowlist. Bao does not block final clicks. The older live driver and its policy modes are retired. Saved workflows with `driver: "cdp-live"` fail before opening Chrome, with `this workflow used the retired live driver`.
+See the [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) for browser choices. It does not attach to daily Chrome or use a host allowlist. Bao does not block final clicks. The older live driver and its policy modes are retired. Saved workflows with `driver: "cdp-live"` fail before opening Chrome, with `this workflow used the retired live driver`.
 
 ## What stays on this Mac
 
