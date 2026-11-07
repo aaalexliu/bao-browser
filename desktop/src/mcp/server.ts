@@ -81,6 +81,7 @@ export const INSTRUCTIONS = [
 
 interface Context {
   checkVersion(): Promise<void>;
+  canStopForUpdate(currentRequest?: boolean): boolean;
   stop(): void;
   library: Library;
   identity: LibraryIdentity;
@@ -102,10 +103,12 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   const library = new Library(home);
   const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile,
     keepOpen: () => library.settings().keepAgentBrowserOpen === true });
-  const ctx: Context = { library, identity, proxy, ui: false, checkVersion: createMcpVersionCheck(__filename), stop: () => stop() };
+  let pending = 0;
+  const ctx: Context = { library, identity, proxy, ui: false, checkVersion: createMcpVersionCheck(__filename),
+    canStopForUpdate: (currentRequest = false) => pending === (currentRequest ? 1 : 0) && !proxy.hasSession() && !hasHeldRuns(),
+    stop: () => stop() };
   let buf = Buffer.alloc(0);
   let chain = Promise.resolve();
-  let pending = 0;
   process.stdin.on("data", (chunk: Buffer) => {
     buf = Buffer.concat([buf, chunk]);
     while (true) {
@@ -159,7 +162,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   };
   const versionPoll = setInterval(() => {
     void ctx.checkVersion().catch((error: unknown) => {
-      if (error instanceof McpVersionError && pending === 0 && !ctx.proxy.hasSession() && !hasHeldRuns()) {
+      if (error instanceof McpVersionError && ctx.canStopForUpdate()) {
         process.stderr.write(`${error.message}\n`);
         stop();
       }
@@ -190,15 +193,14 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   }
   if (msg.method === "notifications/initialized") return;
   if ((msg.method === "tools/list" || msg.method === "tools/call") &&
-      !(msg.method === "tools/call" && (
-        (msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close") ||
-        (msg.params?.name === "run_workflow" && msg.params.arguments?.cancel === true)
-      ))) {
+      !(msg.method === "tools/call" && msg.params?.name === "agent_browser" && msg.params.arguments?.command === "close")) {
     try { await ctx.checkVersion(); }
     catch (error) {
-      send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
-      if (error instanceof McpVersionError) ctx.stop();
-      return;
+      if (!(error instanceof McpVersionError) || ctx.canStopForUpdate(true)) {
+        send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
+        if (error instanceof McpVersionError) ctx.stop();
+        return;
+      }
     }
   }
   if (msg.method === "tools/list") {

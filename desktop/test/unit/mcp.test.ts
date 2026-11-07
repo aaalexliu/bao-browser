@@ -482,13 +482,13 @@ test("update polling preserves a long in-flight call and an idle browser session
   }
 });
 
-test("a held replay blocks update polling and remains cancellable after replacement", { timeout: 60_000 }, async () => {
+test("a held replay blocks update stops and supports resume and cancel after replacement", { timeout: 60_000 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-mcp-held-"));
   const entry = path.join(root, "server.js");
   writeFileSync(entry, "loaded");
   const fixture = createServer((_req, res) => {
     res.setHeader("content-type", "text/html");
-    res.end('<!doctype html><button data-testid="apply">Apply</button>');
+    res.end('<!doctype html><p>Fixture owner handoff</p>');
   });
   await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
   const address = fixture.address();
@@ -507,24 +507,33 @@ test("a held replay blocks update polling and remains cancellable after replacem
     library.updateSettings({ pageEngine: "old" });
     library.save({
       ...workflow,
-      id: "held-confirm",
+      id: "held-signin",
       startUrl: `http://127.0.0.1:${address.port}/`,
       steps: [{
-        id: "apply", index: 0, action: "confirm", human: true, label: "Confirm Apply", surface: "dom", timeoutMs: 1000,
-        identity: { surface: "dom", role: "button", testId: "apply", text: "Apply", path: [] },
+        id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 1000,
       }],
     });
     await initialize(mcp);
-    const first = await mcp.request("tools/call", { name: "run_workflow", arguments: { id: "held-confirm" } }, 20_000);
+    const first = await mcp.request("tools/call", { name: "run_workflow", arguments: { id: "held-signin" } }, 20_000);
     assert.equal(first.error, undefined);
     assert.equal(first.result?.isError, false);
     const paused = JSON.parse(first.result?.content?.[0]?.text || "{}") as { status?: string; resume_token?: string; run_id?: string };
     token = paused.resume_token || "";
-    assert.equal(paused.status, "needs_human");
+    assert.equal(paused.status, "needs_signin");
+    assert.ok(paused.run_id);
     assert.ok(token);
     writeFileSync(entry, "replacement installed");
     await new Promise((resolve) => setTimeout(resolve, 6500));
     assert.equal(mcp.child.exitCode, null, "held replay prevents poll shutdown");
+    assert.deepEqual((await mcp.request("tools/list")).result?.tools, TOOLS);
+    const resumed = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token } }, 15_000);
+    assert.equal(resumed.error, undefined);
+    assert.equal(resumed.result?.isError, false);
+    const waiting = JSON.parse(resumed.result?.content?.[0]?.text || "{}");
+    assert.equal(waiting.status, "needs_signin");
+    assert.equal(waiting.run_id, paused.run_id);
+    assert.equal(waiting.resume_token, token);
+    assert.equal(mcp.child.exitCode, null, "resume preserves the held run and process");
     const reply = await mcp.request("tools/call", { name: "run_workflow", arguments: { resume: token, cancel: true } }, 15_000);
     assert.equal(reply.error, undefined);
     assert.equal(reply.result?.isError, false);
