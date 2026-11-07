@@ -109,6 +109,9 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     await page.waitForSelector("#workflow-detail");
     await page.locator('#rail button[data-place="runs"]').click();
     await page.locator('#runs [data-open-run="run-detail"]').first().click();
+    await page.waitForSelector("#run-receipt");
+    assert.equal(await page.locator("#live-run").count(), 0, "a restored hold opens its receipt");
+    await page.locator('#rail button[data-place="runs"]').click();
     await page.waitForSelector("#live-film img");
     assert.equal(await page.locator('#runs [data-open-run="run-detail"][aria-current="true"]').count(), 1);
     assert.equal(await page.locator("#act-bar").count(), 0, "the live detail owns the handoff, not a second banner");

@@ -534,6 +534,7 @@ export async function startApp(opts: {
           loginWait,
           humanConfirm,
           activeRun,
+          runExecuting: Boolean(activeRun && activeRun.id === ownedRunId),
           activeAsk: currentAsk(),
           capturePaused: capture.paused,
           recordingSince: capture.recording ? recordingSince : 0,
