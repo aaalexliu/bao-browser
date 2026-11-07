@@ -62,6 +62,7 @@ import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } fr
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
+import { healFromSource } from "../v1/heal-source";
 import { cursorSessionHeal, effectiveMode, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal, type HealProvider, type HealRecord } from "../v1/heal";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromProposal, type PageProposal } from "../v1/data-steps";
@@ -816,8 +817,15 @@ export async function startApp(opts: {
         }
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown; healSource?: unknown };
         const patch: Partial<Settings> = {};
+        if (body.healSource !== undefined) {
+          const source = body.healSource as Partial<{ kind: string; provider: string; key: string }> | null;
+          if (source?.kind === "none" || source?.kind === "cursor-account") patch.healSource = { kind: source.kind };
+          else if (source?.kind === "api-key" && (source.provider === "openai" || source.provider === "anthropic") && typeof source.key === "string" && source.key.trim()) {
+            patch.healSource = { kind: "api-key", provider: source.provider, key: source.key.trim() };
+          } else return json(res, { error: "Choose None, Cursor account, or an API provider with a key." }, 400);
+        }
         if (body.keepAgentBrowserOpen !== undefined) {
           if (typeof body.keepAgentBrowserOpen !== "boolean") return json(res, { error: "keepAgentBrowserOpen must be a boolean" }, 400);
           patch.keepAgentBrowserOpen = body.keepAgentBrowserOpen;
@@ -2772,7 +2780,7 @@ async function runExtension(
     if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
     throw err;
   }
-  const heal = await healProvider(secretList);
+  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
@@ -2851,7 +2859,7 @@ async function runRecorded(
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
-  const heal = await healProvider(secretList);
+  const heal = await healFromSource(library.settings().healSource, () => healProvider(secretList), secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const clip = replayClips.get(session.profile);
   if (clip) clip.runId = runId;

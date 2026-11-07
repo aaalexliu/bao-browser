@@ -1,7 +1,3 @@
-// Heal through the Cursor account when `agent` is already logged in.
-// The prompt goes on stdin. This file never reads or passes an API key.
-// File handoff stays the fallback when print mode cannot run.
-
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -227,7 +223,7 @@ export async function askCursorAgent(
   }
 }
 
-function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: CursorAgentRun): HealProvider {
+export function cursorPrintHeal(env: NodeJS.ProcessEnv, secrets: string[], agent: CursorAgentRun = realCursorAgent()): HealProvider {
   const bin = findAgentBin(env);
   return {
     available() {
@@ -269,7 +265,6 @@ function chainHeal(providers: HealProvider[]): HealProvider {
   };
 }
 
-/** CLI print first. `BAO_HEAL_CURSOR=1` waits for heal-response.json when print cannot run. Vendor keys are last. */
 export async function cursorAccountHeal(
   env: NodeJS.ProcessEnv = process.env,
   secrets: string[] = [],

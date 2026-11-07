@@ -37,6 +37,14 @@ function modelLabel(model: SettingsView["model"]): string {
   return !label || label === "no model" ? "None" : label === "cursor account" ? "Cursor account" : label === "model ready" ? "Connected" : label === "fixture model" ? "Test model" : label;
 }
 
+function sourceKind(view: SettingsView): "none" | "cursor-account" | "api-key" {
+  return view.settings?.healSource?.kind ?? (view.model?.label === "cursor account" ? "cursor-account" : view.model?.label === "model ready" ? "api-key" : "none");
+}
+
+function sourceLabel(view: SettingsView): string {
+  return view.settings?.healSource ? { none: "None", "cursor-account": "Cursor account", "api-key": "API key" }[view.settings.healSource.kind] : modelLabel(view.model);
+}
+
 function remoteLabel(view: SettingsView): string {
   return view.settings?.remoteMcp ? view.relay?.paired ? "On, paired" : "On, not paired" : "Off";
 }
@@ -48,7 +56,7 @@ export function settingsIndex(view: SettingsView): string {
     mac ? view.helper?.accessibility ? "Accessibility allowed" : "Optional for native apps" : "Mac only",
     remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
-    modelLabel(view.model),
+    sourceLabel(view),
   ];
   return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${shellIcon("sidebar")}</button><div><h1>Settings</h1><p class="settings-subtitle">Grouped rows save on change</p></div></header>
     <nav class="settings-index" aria-label="Settings sections">${sections.map(([id, glyph, title], i) => `<a href="#set-${id}" data-settings-jump="${id}"${i === 0 ? ' aria-current="true"' : ""}>${icon(glyph)}<span><b>${title}</b><span class="settings-subtitle">${esc(summaries[i])}</span></span></a>`).join("")}</nav>`;
@@ -88,7 +96,12 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
       `<span id="remote-state">${remoteLabel(view)}</span><input class="settings-switch" id="remote-mcp" type="checkbox" role="switch" data-setting="remoteMcp" aria-describedby="remote-help remote-state"${settings.remoteMcp ? " checked" : ""}>`)
       + row(`<b>Connect another device</b><p id="relay-status">${view.relay?.paired ? "Connected. Revoke to disconnect this computer." : "Not paired. Enter a pairing code from your other device."}</p>`, `<div class="settings-pairing"><label>Pairing code <input id="relay-code" data-settings-draft type="text" autocomplete="off" spellcheck="false"></label><div class="row"><button id="relay-pair" type="button">Pair</button><button id="relay-revoke" type="button"${view.relay?.paired ? "" : " disabled"}>Revoke</button></div></div>`))}
     ${group("logins", "Logins", sites + row(`<p>Bring in one site's login from your Chrome, so runs start signed in.</p>`, `<button type="button" data-screen="logins">Import a login…</button>`))}
-    ${group("ai", "AI help", row(`<b>Use AI to suggest heals</b><p>Only when a page changes. Saved steps run without AI.</p>`, `<span id="settings-model">${esc(modelLabel(view.model))}</span>`))}
+    ${group("ai", "AI help", row(`<label for="ai-source">Use AI to suggest heals</label><p id="ai-help">Only when a page changes. Saved steps run without AI.</p>`, `<select id="ai-source" data-settings-draft aria-describedby="ai-help">${[["none", "None"], ["cursor-account", "Cursor account"], ["api-key", "API key…"]].map(([value, label]) => `<option value="${value}"${sourceKind(view) === value ? " selected" : ""}>${label}</option>`).join("")}</select>`)
+      + `<form id="ai-key-form" class="settings-ai-key"${sourceKind(view) === "api-key" ? "" : " hidden"}>
+        <label for="ai-provider">Provider</label><select id="ai-provider" data-settings-draft><option value="openai">OpenAI</option><option value="anthropic"${settings.healSource?.kind === "api-key" && settings.healSource.provider === "anthropic" ? " selected" : ""}>Anthropic</option></select>
+        <label for="ai-key">API key</label><input id="ai-key" name="ai-key" data-settings-draft type="password" autocomplete="off" required value="${settings.healSource?.kind === "api-key" ? htmlEsc(settings.healSource.key) : ""}">
+        <button type="submit">Save API key</button>
+      </form>`)}
     <p id="settings-feedback" role="status"></p>
     <details class="settings-advanced" id="settings-advanced"><summary>Technical details</summary><p class="quiet">Engine and window choices use the Save buttons below. Sync and remote pairing details save when you press Pair. Other settings save as you change them.</p>${advanced}</details>
   </section>`;

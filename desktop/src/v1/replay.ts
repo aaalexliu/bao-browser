@@ -678,7 +678,7 @@ export async function replay(
       beforeShot: failure.beforeShot || beforeShot,
       identity: failure.identity,
     };
-    if (!proposal) {
+    if (!proposal?.patch) {
       heals.push(record);
       stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
       noteTrajectory(trajectory, step, outcome.acted, false, clock() - started);

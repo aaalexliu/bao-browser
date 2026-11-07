@@ -193,8 +193,8 @@ test("a capture-only workflow is not green in search, describe, or run_workflow"
   assert.equal(library.readRun("recording").kind, "capture");
 });
 
-for (const driver of ["playwright", "extension"] as const) {
-  test(`the selected native engine refuses ordinary ${driver} MCP replay before launching Chrome`, async () => {
+for (const driver of [undefined, "extension"] as const) {
+  test(`the selected native engine refuses ordinary ${driver ?? "undeclared"} MCP replay before launching Chrome`, async () => {
     const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
     library.save({ ...workflow("wf-native", "Native workflow"), driver });
     library.updateSettings({ pageEngine: "agent-browser", chromeProfile: "Default" });

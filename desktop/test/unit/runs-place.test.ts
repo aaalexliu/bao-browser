@@ -220,7 +220,7 @@ test("Runs first load opens the top Needs-you run, else newest, without replacin
     await page.locator('#rail [data-place=runs]').click();
     await page.locator('#run-receipt').waitFor();
     assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
-    await page.locator('#screen-list [data-screen=runs]').click();
+    await page.locator('#rail [data-place=runs]').click();
     await page.locator('#run-receipt').waitFor();
     assert.equal(await page.locator('#runs [aria-current=true]').getAttribute("data-open-run"), "waiting");
     await page.locator('#runs [data-open-run=newest]').click();
@@ -445,9 +445,13 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     await page.setViewportSize({ width: 640, height: 430 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "a 1280×860 window at 200% must reflow within its 640×430 CSS viewport");
     await page.setViewportSize({ width: 1280, height: 860 });
-    await page.locator("#screen-list [data-screen=heals]").click();
+    await page.keyboard.press("Meta+k");
+    await page.locator("#palette-input").fill("Heals");
+    await page.locator('#palette-list [data-command="heals"]').click();
     await page.locator("#heal-inbox").waitFor();
-    await page.locator("#screen-list [data-screen=live]").click();
+    await page.keyboard.press("Meta+k");
+    await page.locator("#palette-input").fill("Live");
+    await page.locator('#palette-list [data-command="live"]').click();
     await page.locator("#live-session").waitFor();
   } finally {
     await browser.close(); await app.close();

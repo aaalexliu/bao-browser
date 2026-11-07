@@ -79,10 +79,17 @@ export interface HealRecord {
   identity?: IdentityView;
 }
 
+export type HealAttempt = HealProposal | (Omit<HealProposal, "patch"> & { patch?: undefined });
+
 export interface HealProvider {
   available(): boolean;
-  propose(failure: StepFailure, step: WorkflowStep, context?: SavedContext): Promise<HealProposal | null>;
+  propose(failure: StepFailure, step: WorkflowStep, context?: SavedContext): Promise<HealAttempt | null>;
 }
+
+export type HealSource =
+  | { kind: "none" }
+  | { kind: "cursor-account" }
+  | { kind: "api-key"; provider: "openai" | "anthropic"; key: string };
 
 export interface HealSettings {
   /** Global default. Absent means auto. */
@@ -154,45 +161,48 @@ export function llmHealFromEnv(
     async propose(failure, step, context) {
       if (!openai && !anthropic) return null;
       const prompt = buildPrompt(failure, step, secrets, context);
-      if (openai) {
-        const res = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+      const provider = openai ? "openai" : "anthropic";
+      const name = openai
+        ? env.BAO_OPENAI_MODEL || "gpt-4.1-mini"
+        : env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
+      const attempt: HealAttempt = { model: { provider, name, version: name }, prompt, rawResponse: "" };
+      try {
+        const res = await fetchImpl(openai
+          ? "https://api.openai.com/v1/chat/completions"
+          : "https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { authorization: `Bearer ${openai}`, "content-type": "application/json" },
+          headers: openai
+            ? { authorization: `Bearer ${openai}`, "content-type": "application/json" }
+            : { "x-api-key": anthropic || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({
-            model: env.BAO_OPENAI_MODEL || "gpt-4.1-mini",
+            model: name,
+            ...(!openai ? { max_tokens: 800 } : {}),
             messages: [{ role: "user", content: prompt }],
           }),
         });
-        const raw = await res.text();
-        const name = env.BAO_OPENAI_MODEL || "gpt-4.1-mini";
-        return {
-          patch: patchFromText(raw),
-          model: { provider: "openai", name, version: name },
-          prompt,
-          rawResponse: raw,
+        attempt.rawResponse = await res.text();
+        if (!res.ok) return attempt;
+        const body = JSON.parse(attempt.rawResponse) as {
+          choices?: { message?: { content?: string } }[];
+          content?: { type: string; text?: string }[];
         };
+        let text: unknown;
+        if (openai) {
+          if (!Array.isArray(body?.choices)) return attempt;
+          text = body.choices[0]?.message?.content;
+        } else {
+          if (!Array.isArray(body?.content)) return attempt;
+          const blocks = body.content.filter((block) => block?.type === "text");
+          if (blocks.some((block) => typeof block.text !== "string")) return attempt;
+          text = blocks.map((block) => block.text).join("\n");
+        }
+        if (typeof text !== "string") return attempt;
+        const patch = patchFromText(text);
+        if (!patch.identity) return attempt;
+        return { ...attempt, patch };
+      } catch {
+        return attempt;
       }
-      const res = await fetchImpl("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": anthropic || "",
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5",
-          max_tokens: 800,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const raw = await res.text();
-      const name = env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
-      return {
-        patch: patchFromText(raw),
-        model: { provider: "anthropic", name, version: name },
-        prompt,
-        rawResponse: raw,
-      };
     },
   };
 }

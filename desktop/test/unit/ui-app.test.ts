@@ -88,7 +88,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.locator("#settings-helper").waitFor();
     await page.waitForFunction(() => Boolean(document.getElementById("settings-helper")?.innerText.trim()));
     assert.match(await page.locator("#settings-helper").innerText(), /^(?:Mac helper (?:un)?available|The Mac helper is only available on macOS)\./);
-    assert.match(await page.locator("#settings-model").innerText(), /^(None|Test model|Connected|Cursor account)$/);
+    assert.match(await page.getByRole("combobox", { name: "Use AI to suggest heals" }).inputValue(), /^(none|cursor-account|api-key)$/);
     await page.click("#rail button[data-place=workflows]");
 
     // Open the replay window before exercising the handoffs.
@@ -148,7 +148,6 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(confirmRun.modelCalls, 0);
     assert.equal((await (await fetch(`http://127.0.0.1:${app.port}/api/state`)).json()).replaying, false);
     await page.click("#rail button[data-place=runs]");
-    await page.click("#screen-list button[data-screen=runs]");
     await page.click(`[data-open-run="${confirmRun.runId}"]`);
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#model-calls");
@@ -178,7 +177,6 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(failed.failure?.identity?.candidates?.[1]?.score, 70);
     assert.match(failed.failure?.identity?.changed || "", /Upload file/);
     await page.click("#rail button[data-place=runs]");
-    await page.click("#screen-list button[data-screen=runs]");
     await page.click(`[data-open-run="${failed.runId}"]`);
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#why-stopped");
@@ -225,8 +223,10 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(healed.status, "passed", JSON.stringify(healed));
     const before = JSON.stringify(app.library.readRun(healed.runId).heals);
     await page.click("#rail button[data-place=runs]");
-    assert.match(await page.locator("#screen-list").innerText(), /Heals/);
-    await page.click("#screen-list button[data-screen=heals]");
+    assert.match(await page.locator("#screen-list").innerText(), /Heal to keep/);
+    await page.keyboard.press("Meta+k");
+    await page.locator("#palette-input").fill("Heals");
+    await page.locator('#palette-list [data-command="heals"]').click();
     await page.waitForSelector("[data-heal]");
     const inbox = await page.locator("#heal-inbox").innerText();
     assert.match(inbox, /fixture login/);
