@@ -142,7 +142,7 @@ test("past-input route filters current OTP fields without changing saved history
   const app = await startApp({ home, port: 0 });
   try {
     const workflow = doc({
-      id: "otp", index: 0, action: "type", label: "Code", surface: "dom",
+      id: "otp", index: 0, action: "type", label: "Code", surface: "dom", timeoutMs: 1000,
       input: "code", value: "{{code}}", identity: { ...field },
     });
     workflow.inputs = [

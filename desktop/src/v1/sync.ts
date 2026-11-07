@@ -11,7 +11,6 @@ import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
-import { parseTable, tableToCsv } from "../../../shared/table";
 import { migrate, toJson, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
@@ -704,25 +703,7 @@ function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
     const saved = inputs.get(input.name);
     const stripped = projectedInputs.get(input.name);
     if (saved?.type !== input.type || saved.default === undefined || !stripped) continue;
-    if (input.type === "table" && typeof input.default === "string") {
-      const rows = parseTable(input.default);
-      const savedRows = parseTable(saved.default);
-      const strippedRows = parseTable(stripped.default);
-      let restored = false;
-      rows.forEach((row, index) => {
-        for (const column of Object.keys(row)) {
-          const value = savedRows[index]?.[column];
-          if (hasStrippedSecret(row[column]) && row[column] === strippedRows[index]?.[column]
-            && value !== undefined && !hasStrippedSecret(value)) {
-            row[column] = value;
-            restored = true;
-          }
-        }
-      });
-      if (restored) input.default = tableToCsv(Object.keys(rows[0]!), rows);
-    } else if ((hasStrippedSecret(input.default) && input.default === stripped.default
-      || input.type === "secret" && input.default === undefined && stripped.default === undefined)
-      && !hasStrippedSecret(saved.default)) input.default = saved.default;
+    if (input.default === stripped.default && !hasStrippedSecret(saved.default)) input.default = saved.default;
   }
   const steps = new Map<string, WorkflowStep>();
   const projectedSteps = new Map<string, WorkflowStep>();

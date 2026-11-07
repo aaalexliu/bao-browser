@@ -297,6 +297,8 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
     const library = new Library(home);
     const local = secretWorkflow();
     local.version = 3;
+    const originalTable = `Display Name,Token\r\nAda,${token}\r\nGrace,${card}\r\n`;
+    const tableNames = ["unchangedRows", "renamedRows", "deletedRows", "reorderedRows"];
     local.inputs = [
       { name: "password", type: "secret", default: planted },
       { name: "token", type: "text", default: token },
@@ -309,6 +311,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       { name: "otp", type: "text", default: "123456" },
       { name: "rows", type: "table", default: `name,token\nAda,${token}\nGrace,${card}\nReplaced row,${token}\nRemoved row,${card}` },
       { name: "unstripped", type: "text", default: "local text" },
+      ...tableNames.map((name) => ({ name, type: "table" as const, default: originalTable })),
     ];
     const literal = (id: string, value: string): WorkflowStep => ({
       id, index: 0, action: "type", label: id, surface: "dom", timeoutMs: 1000,
@@ -389,6 +392,14 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
         { name: "Replaced row", token: STRIPPED_SECRET },
         { name: "Removed row", token: STRIPPED_SECRET },
       ]);
+      const pushedTable = updated.inputs.find((input) => input.name === "unchangedRows")!.default!;
+      assert.equal(pushedTable, `Display Name,Token\nAda,${STRIPPED_SECRET}\nGrace,${STRIPPED_SECRET}\n`);
+      const remoteTables = {
+        renamedRows: `Display Name,Token\nRemote Ada,${STRIPPED_SECRET}\nGrace,${STRIPPED_SECRET}\n`,
+        deletedRows: `Display Name,Token\nGrace,${STRIPPED_SECRET}\n`,
+        reorderedRows: `Display Name,Token\nGrace,${STRIPPED_SECRET}\nAda,${STRIPPED_SECRET}\n`,
+      };
+      for (const [name, value] of Object.entries(remoteTables)) updated.inputs.find((input) => input.name === name)!.default = value;
       updated.name = "Remote edit";
       updated.inputs = updated.inputs.filter((input) => input.name !== "removed");
       updated.inputs.find((input) => input.name === "changed")!.default = "remote text";
@@ -437,10 +448,17 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
         assert.equal(defaults.otp, STRIPPED_SECRET);
         assert.equal(defaults.unstripped, STRIPPED_SECRET);
         assert.deepEqual(parseTable(defaults.rows), [
-          { name: "Remote Ada", token },
+          { name: "Remote Ada", token: STRIPPED_SECRET },
           { name: "Remote Grace", token: "remote table value" },
           { name: "New remote row", token: "new remote value" },
         ]);
+        assert.equal(defaults.unchangedRows, originalTable);
+        for (const [name, value] of Object.entries(remoteTables)) {
+          assert.equal(defaults[name], value);
+          assert.ok(defaults[name]!.includes(STRIPPED_SECRET));
+          assert.equal(defaults[name]!.includes(token), false);
+          assert.equal(defaults[name]!.includes(card), false);
+        }
         const steps = new Map(saved.steps.map((step) => [step.id, step]));
         assert.equal(steps.get("literal")?.value, token);
         assert.equal(steps.get("literal")?.unresolved, undefined);

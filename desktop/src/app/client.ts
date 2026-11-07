@@ -1542,7 +1542,7 @@ async function openEditor(id: string): Promise<void> {
   };
   const exp = host.querySelector("[data-export]") as HTMLButtonElement;
   exp.onclick = async () => {
-    const body = await (await fetch("/api/workflows/" + encodeURIComponent(id) + "/export")).json();
+    const body = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json();
     (document.getElementById("import-json") as HTMLTextAreaElement).value = JSON.stringify(body, null, 2);
   };
   document.getElementById("import")!.onclick = async () => {

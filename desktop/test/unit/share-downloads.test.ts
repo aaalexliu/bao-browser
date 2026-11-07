@@ -26,7 +26,7 @@ const fileBytes = `{
   "version": 2
 }`;
 
-test("Share and editor export released JSON while local workflow JSON stays raw", { timeout: 60_000 }, async () => {
+test("Share omits credentials while editor export and import preserve local JSON", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-share-download-"));
   const app = await startApp({ home, port: 0 });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
@@ -36,11 +36,14 @@ test("Share and editor export released JSON while local workflow JSON stays raw"
     doc.inputs = [
       { name: "password", type: "secret", label: "Password", required: true, default: password },
       { name: "email", type: "text", label: "Email", default: "ada@example.test" },
+      { name: "name", type: "text", label: "Name", default: "Ada Lovelace" },
+      { name: "path", type: "text", label: "Path", default: "/Users/fixture/report.txt" },
+      { name: "phone", type: "text", label: "Phone", default: "415-555-0123" },
       { name: "query", type: "text", label: "Query", default: "café notes" },
     ];
     doc.steps.push(
-      { id: "password", index: 1, action: "type", label: "Password", surface: "dom", input: "password", value: "{{password}}" },
-      { id: "copy", index: 2, action: "type", label: "Copy", surface: "dom", value: password },
+      { id: "password", index: 1, action: "type", label: "Password", surface: "dom", timeoutMs: 1000, input: "password", value: "{{password}}" },
+      { id: "copy", index: 2, action: "type", label: "Copy", surface: "dom", timeoutMs: 1000, value: password },
     );
     app.library.save(doc);
     const base = `http://127.0.0.1:${app.port}`;
@@ -54,10 +57,10 @@ test("Share and editor export released JSON while local workflow JSON stays raw"
     const releasedBytes = Buffer.from(await released.arrayBuffer());
     const releasedDoc = JSON.parse(releasedBytes.toString()) as WorkflowV2;
     assert.equal(releasedBytes.includes(password), false);
-    assert.equal(releasedBytes.includes("ada@example.test"), false);
-    assert.deepEqual(releasedDoc.inputs.map((input) => input.default), [undefined, undefined, "café notes"]);
-    assert.equal(releasedDoc.inputs[0]?.askOnImport, true);
-    assert.equal(releasedDoc.inputs[1]?.askOnImport, true);
+    assert.deepEqual(releasedDoc.inputs.map((input) => input.default), [
+      undefined, "ada@example.test", "Ada Lovelace", "/Users/fixture/report.txt", "415-555-0123", "café notes",
+    ]);
+    assert.equal(releasedDoc.inputs.some((input) => input.askOnImport), false);
     assert.equal(releasedDoc.steps[1]?.value, "{{password}}");
     assert.equal(releasedDoc.steps[2]?.value, "[secret stripped]");
     const guide = await fetch(base + endpoint + "/guide");
@@ -121,7 +124,10 @@ test("Share and editor export released JSON while local workflow JSON stays raw"
     assert.deepEqual(JSON.parse(await page.locator("#edit-json").inputValue()), doc);
     await page.locator("[data-export]").click();
     await page.waitForFunction(() => (document.getElementById("import-json") as HTMLTextAreaElement).value.length > 0);
-    assert.deepEqual(JSON.parse(await page.locator("#import-json").inputValue()), releasedDoc);
+    assert.deepEqual(JSON.parse(await page.locator("#import-json").inputValue()), doc);
+    const imported = page.waitForResponse((response) => response.url() === base + "/api/workflows/import" && response.request().method() === "POST");
+    await page.locator("#import").click();
+    assert.equal((await imported).status(), 200);
     assert.equal(await (await fetch(base + endpoint)).text(), rawBytes);
     assert.deepEqual(app.library.read(doc.id), doc);
   } finally {

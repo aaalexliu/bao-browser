@@ -125,7 +125,8 @@ import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link"
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
-import { applyImportAnswers, importQuestions, prepareImport } from "../../../web/src/lib/import-sheet";
+import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
+import { stripUnsafe } from "../../../web/src/lib/guard";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -707,9 +708,9 @@ export async function startApp(opts: {
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/export")) {
         const id = decodeURIComponent(url.pathname.split("/")[3] || "");
-        const released = prepareImport(library.read(id));
+        const released = stripUnsafe(library.read(id));
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        res.end(JSON.stringify(released.document, null, 2));
+        res.end(JSON.stringify(released, null, 2));
         return;
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/versions")) {

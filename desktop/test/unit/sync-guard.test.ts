@@ -70,6 +70,11 @@ for (const build of [buildPushBody]) {
       assert.equal(pushed.startUrl, doc.startUrl);
       assert.equal(doc.inputs[0]!.default, password);
     }
+    const document = { inputs: [{ name: "password", type: "secret" }] };
+    const heal = { args: { password: "still-refused" } };
+    const projected = build(document, { baseVersion: 0, heal });
+    assert.deepEqual(projected.heal, {});
+    assert.deepEqual(projected.document, document);
   });
 }
 
