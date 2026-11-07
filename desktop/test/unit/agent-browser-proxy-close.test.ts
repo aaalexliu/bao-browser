@@ -211,7 +211,7 @@ if (command === 'tab' && args.includes('--json')) {
   }
 });
 
-test("a slow copied browser releases the proxy without deleting its live profile", { timeout: 60_000, skip: process.platform === "win32" }, async (t) => {
+test("a stalled copied browser exits before the proxy deletes its profile and reopens", { timeout: 60_000, skip: process.platform === "win32" }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-slow-close-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -240,12 +240,6 @@ if (command === 'tab' && args.includes('--json')) {
     copies.push(options.userDataDir);
     return chrome;
   });
-  const traces: string[] = [];
-  const log = console.error.bind(console);
-  t.mock.method(console, "error", (...args: unknown[]) => {
-    traces.push(args.map(String).join(" "));
-    log(...args);
-  });
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   let stoppedPid: number | undefined;
   try {
@@ -258,17 +252,16 @@ if (command === 'tab' && args.includes('--json')) {
     process.kill(stoppedPid, "SIGSTOP");
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
     assert.equal(chromes[0]!.isClosed(), true);
-    assert.ok(launch.pidsForDataDir(copy).includes(stoppedPid), "Chrome must outlive the bounded shutdown period");
-    await access(path.join(copy, "Default", "Preferences"));
+    assert.equal(launch.pidsForDataDir(copy).length, 0, "close must await every exact-profile process, including a stopped browser");
+    await assert.rejects(access(copy), /ENOENT/, "the stopped browser's copy is removed only after its processes exit");
     await assert.rejects(access(stateDir), /ENOENT/);
-    assert.ok(traces.some((trace) => trace.includes("browser still shutting down") && trace.includes(copy)));
     assert.ok(new Library(home).listRuns().every((run) => run.status === "passed"));
     const reopened = await proxy.execute("open");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
     assert.notEqual(copies[0], copies[1]);
-    assert.ok(launch.pidsForDataDir(copy).includes(stoppedPid), "refreshing the copy must not terminate the old browser");
-    await access(path.join(copy, "Default", "Preferences"));
+    assert.equal(launch.pidsForDataDir(copy).length, 0, "reopening must not restore the stopped browser");
+    await assert.rejects(access(copy), /ENOENT/);
   } finally {
     if (stoppedPid) {
       try { process.kill(stoppedPid, "SIGCONT"); }

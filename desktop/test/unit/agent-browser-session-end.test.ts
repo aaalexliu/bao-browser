@@ -299,6 +299,30 @@ test("retained reclaim terminates its exact browser even when CDP acknowledges c
   assert.equal(pidsForDataDir(profile).length, 0, "a close acknowledgement is not proof that Chrome exited");
 });
 
+test("retained reclaim terminates a stalled exact-profile browser before returning", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-stalled-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  t.after(async () => {
+    for (const pid of pidsForDataDir(profile)) {
+      try { process.kill(pid, "SIGKILL"); } catch {}
+    }
+    await until(() => pidsForDataDir(profile).length === 0);
+    await chrome.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  t.mock.method(cdpSocket, "connectCdp", async () => ({
+    async send() { return {}; },
+    close() {},
+  }));
+  const pids = pidsForDataDir(profile);
+  assert.ok(pids.length);
+  for (const pid of pids) process.kill(pid, "SIGSTOP");
+  await closeRetainedChrome(profile);
+  assert.equal(pidsForDataDir(profile).length, 0, "reclaim must not succeed while its retained browser is still alive");
+});
+
 for (const keepOpen of [false, true]) {
   test(`finish_task finalizes without close or disconnect, honors keep-open=${keepOpen}, and accepts another task`, { timeout: 60_000 }, async (t) => {
     const f = await fixture();

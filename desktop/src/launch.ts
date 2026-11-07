@@ -746,17 +746,18 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
     const deadline = Date.now() + 4000;
     while (ownedChromeBrowserCommand(exe, userDataDir, pid) && Date.now() < deadline) await delay(50);
     if (ownedChromeBrowserCommand(exe, userDataDir, pid)) {
-      console.error(`bao reclaim browser still shutting down profile=${userDataDir}`);
-      return;
+      console.error(`bao reclaim browser still shutting down pid=${pid} profile=${userDataDir}`);
     }
   }
-  for (const orphan of pidsForDataDir(userDataDir)) {
-    try { process.kill(orphan, "SIGKILL"); }
+  const killedPids = pidsForDataDir(userDataDir);
+  for (const pid of killedPids) {
+    try { process.kill(pid, "SIGKILL"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
   }
   const deadline = Date.now() + 1500;
   while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await delay(50);
-  if (pidsForDataDir(userDataDir).length) console.error(`bao reclaim processes still shutting down profile=${userDataDir}`);
+  const remainingPids = pidsForDataDir(userDataDir);
+  if (remainingPids.length) throw new Error(`bao reclaim processes still shutting down pids=${remainingPids.join(",")} killedPids=${killedPids.join(",")} profile=${userDataDir}`);
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */
