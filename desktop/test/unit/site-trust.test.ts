@@ -104,6 +104,6 @@ test("always ask does not dispatch an ordinary step, and a confirm step still st
   assert.match(panel, /Always ask/);
   assert.match(panel, /Allow/);
   assert.match(panel, /value="ask" selected/);
-  assert.match(panel, /separate from when a step misses/);
+  assert.match(panel, /separate from When a page changes/);
   assert.equal(panel.includes('id="heal"'), false);
 });
