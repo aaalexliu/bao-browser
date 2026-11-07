@@ -81,6 +81,8 @@ export function createRemoteAgent(opts: {
   let socket: LiteSocket | null = null;
   let chain: Promise<void> = Promise.resolve();
   let generation = 0;
+  let heldResume: string | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
   function view(): RemoteView {
     if (slot.phase === "idle") return { phase: "idle" };
@@ -100,6 +102,9 @@ export function createRemoteAgent(opts: {
     generation += 1;
     socket?.close();
     wake?.();
+    clearTimeout(deadlineTimer);
+    if (heldResume) await runWorkflow(opts.library, { resume: heldResume, cancel: true });
+    heldResume = undefined;
     await releaseContext();
   }
 
@@ -207,6 +212,9 @@ export function createRemoteAgent(opts: {
       if (effect.type === "abort-run") {
         generation += 1;
         opts.stop();
+        clearTimeout(deadlineTimer);
+        if (heldResume) void runWorkflow(opts.library, { resume: heldResume, cancel: true }).catch(() => undefined);
+        heldResume = undefined;
         const open = context;
         setTimeout(() => { void open?.close().catch(() => undefined); }, 400);
         continue;
@@ -219,13 +227,28 @@ export function createRemoteAgent(opts: {
           enqueue(() => {
             if (gen !== generation) return;
             const resume = typeof result.resume === "string" ? result.resume : "";
-            const waiting = resume && ["confirm", "signin", "wall"].includes(resumeKind(resume) || "") ? { resume } : null;
+            const info = resumeInfo(resume);
+            const waiting = resume && info?.kind === "confirm" ? { resume } : null;
+            clearTimeout(deadlineTimer);
+            heldResume = waiting?.resume;
+            if (heldResume && typeof info?.deadline === "number") {
+              const token = heldResume;
+              deadlineTimer = setTimeout(() => enqueue(() => {
+                if (heldResume !== token) return;
+                void runWorkflow(opts.library, { resume: token }).catch(() => undefined);
+                transition({ type: "kill" });
+              }), Math.max(0, info.deadline - Date.now()));
+              deadlineTimer.unref();
+            }
             transition({ type: "run-finished", jobId: job.id, result, waiting });
           });
         }).catch((err) => {
           if (gen !== generation) return;
           enqueue(() => {
             if (gen !== generation) return;
+            clearTimeout(deadlineTimer);
+            if (heldResume) void runWorkflow(opts.library, { resume: heldResume, cancel: true }).catch(() => undefined);
+            heldResume = undefined;
             transition({
               type: "run-finished",
               jobId: job.id,
@@ -252,8 +275,12 @@ export function createRemoteAgent(opts: {
         return readRun(job);
       case "resume_workflow": {
         const token = stringArg(job.args.resume);
+        opts.clearStop();
         if (opts.runners?.resume) return opts.runners.resume(token);
-        return publicOutcome(await runWorkflow(opts.library, { resume: token }, undefined, { prompts: opts.prompts }));
+        return publicOutcome(await runWorkflow(opts.library, { resume: token }, undefined, {
+          prompts: opts.prompts,
+          onContext: (next) => { context = next; },
+        }));
       }
       case "run_workflow":
         return run(job);
@@ -317,13 +344,12 @@ export function createRemoteAgent(opts: {
     try { return opts.library.read(id).name || id; } catch { return id; }
   }
 
-  function resumeKind(token: string | undefined): string | undefined {
+  function resumeInfo(token: string | undefined): { kind?: string; deadline?: number | null } | undefined {
     if (!token) return undefined;
     const file = path.join(opts.library.root, "resumes", `${token}.json`);
     if (!existsSync(file)) return undefined;
     try {
-      const parsed = JSON.parse(readFileSync(file, "utf8")) as { kind?: string };
-      return parsed.kind;
+      return JSON.parse(readFileSync(file, "utf8")) as { kind?: string; deadline?: number | null };
     } catch {
       return undefined;
     }

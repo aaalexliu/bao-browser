@@ -3,13 +3,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { workflowDriver } from "../../src/extension/protocol";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
+import { replay, type Driver } from "../../src/v1/replay";
 import { relayPath, saveRelay } from "../../src/v1/relay-link";
 import { remoteDriverKind } from "../../src/v1/remote-run";
 import type { WorkflowV2 } from "../../src/v1/schema";
@@ -357,12 +358,30 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
 test("remote resume observes an explicit human step and unblocks queued runs after it completes", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-relay-confirm-"));
   const library = new Library(root);
-  library.save(workflow("books"));
+  const confirming: WorkflowV2 = { ...workflow("books"), steps: [{
+    id: "confirm", index: 0, action: "confirm", human: true, surface: "dom", label: "Place order",
+    postcondition: { kind: "text", match: "Placed", timeoutMs: 0 },
+  }] };
+  library.save(confirming);
   library.save(workflow("next"));
   const token = "confirm-token";
   let interacted = false;
+  let clears = 0;
   const resumed: string[] = [];
   const ran: string[] = [];
+  const driver: Driver = {
+    tree: async () => ({ nodes: [], texts: interacted ? ["Placed"] : [], values: [] }),
+    snapshot: async () => ({}),
+    click: async () => { assert.fail("Bao must not press the human target"); },
+    fill: async () => {}, key: async () => {}, upload: async () => {}, drop: async () => {},
+    digits: async () => {}, check: async () => {}, notify: async () => {},
+  };
+  async function confirm(humanReady: boolean): Promise<Record<string, unknown>> {
+    const result = await replay(confirming, {}, driver, { yieldHuman: true, humanReady });
+    assert.ok(result.status === "passed" || result.status === "paused", JSON.stringify(result));
+    return result.status === "passed" ? { outcome: "ok", workflowId: "books" }
+      : { outcome: "needs_human", resume: token, workflowId: "books" };
+  }
   mkdirSync(path.join(root, "resumes"));
   writeFileSync(path.join(root, "resumes", `${token}.json`), JSON.stringify({ kind: "confirm" }));
   const { server, directory } = await up();
@@ -377,15 +396,15 @@ test("remote resume observes an explicit human step and unblocks queued runs aft
       library,
       prompts: {},
       stop() {},
-      clearStop() {},
+      clearStop() { clears += 1; },
       runners: {
         playwright: async (id) => {
           ran.push(id);
-          return id === "books" ? { outcome: "needs_human", resume: token, workflowId: id } : { outcome: "ok", workflowId: id };
+          return id === "books" ? confirm(false) : { outcome: "ok", workflowId: id };
         },
         resume: async (value) => {
           resumed.push(value);
-          return interacted ? { outcome: "ok", workflowId: "books" } : { outcome: "needs_human", resume: token, workflowId: "books" };
+          return confirm(true);
         },
       },
     });
@@ -410,6 +429,7 @@ test("remote resume observes an explicit human step and unblocks queued runs aft
       assert.equal((await queued).json.outcome, "ok");
       assert.deepEqual(resumed, [token, token]);
       assert.deepEqual(ran, ["books", "next"]);
+      assert.equal(clears, 4);
     } finally {
       await remote.stop();
     }
@@ -417,6 +437,59 @@ test("remote resume observes an explicit human step and unblocks queued runs aft
     await server.close();
   }
 });
+
+for (const pause of ["signin", "wall", "deadline", "kill"] as const) {
+  test(`remote ${pause} pause releases the slot`, async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "bao-relay-release-"));
+    const library = new Library(root);
+    library.save(workflow("books"));
+    library.save(workflow("next"));
+    const token = "held-token";
+    const file = path.join(root, "resumes", `${token}.json`);
+    const { server, directory } = await up();
+    let stops = 0;
+    let clears = 0;
+    try {
+      directory.addDevice("dev-a", "user-a");
+      const paired = await claim(server.origin, "user-a", "dev-a");
+      const agent = await directory.mintAgent("user-a", paired.deviceId);
+      assert.ok(agent);
+      saveRelay(root, { server: server.origin, token: paired.token, deviceId: paired.deviceId, tokenId: paired.tokenId });
+      library.updateSettings({ remoteMcp: true });
+      const remote = createRemoteAgent({
+        library, prompts: {}, stop() { stops += 1; }, clearStop() { clears += 1; },
+        runners: { playwright: async (id) => {
+          if (id !== "books") return { outcome: "ok" };
+          mkdirSync(path.dirname(file), { recursive: true });
+          writeFileSync(file, JSON.stringify({ workflowId: id, kind: pause === "signin" || pause === "wall" ? pause : "confirm", deadline: pause === "deadline" ? Date.now() + 1000 : null }));
+          return { outcome: "needs_human", resume: token };
+        } },
+      });
+      remote.start();
+      try {
+        await waitFor(() => directory.lookups > 0);
+        const paused = await tool(server.origin, agent.token, "run_workflow", { id: "books" });
+        assert.equal(paused.json.outcome, "needs_human");
+        if (pause === "deadline" || pause === "kill") {
+          assert.equal(remote.view().phase, "waiting");
+          if (pause === "kill") remote.kill();
+          await waitFor(() => remote.view().phase === "idle");
+          assert.equal(existsSync(file), false);
+          assert.equal(stops, 1);
+        } else {
+          assert.equal(remote.view().phase, "idle");
+        }
+        const next = await tool(server.origin, agent.token, "run_workflow", { id: "next" });
+        assert.equal(next.json.outcome, "ok");
+        assert.equal(clears, 2);
+      } finally {
+        await remote.stop();
+      }
+    } finally {
+      await server.close();
+    }
+  });
+}
 
 test("a websocket round trip delivers the job without a long-poll", async () => {
   const { server, directory } = await up();

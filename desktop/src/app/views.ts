@@ -363,7 +363,7 @@ export function remoteBanner(remote: RemoteView | undefined): string {
   }
   return `<section id="remote-agent" data-testid="remote-waiting" data-phase="waiting">
     <p class="kicker">Workflow waiting</p>
-    <p class="instruction">${esc(name)} is waiting for a site interaction or a step assigned to you. Complete it in the Bao window, then resume the run.</p>
+    <p class="instruction">${esc(name)} is waiting for a site interaction or a step assigned to you. Complete it in the Bao window. The agent then continues the run.</p>
     <div class="row"><button id="remote-kill" data-testid="remote-kill" type="button">Kill</button></div>
   </section>`;
 }

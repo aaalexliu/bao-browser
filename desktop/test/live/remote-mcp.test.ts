@@ -170,9 +170,6 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
       id: "hello-bao",
       inputs: { password: PASSWORD, cookie: COOKIE, reference: "021000021" },
     });
-    await page.waitForSelector("[data-testid=remote-allow]", { timeout: 20_000 });
-    await shot(page, "remote-approval.png");
-    await page.click("[data-testid=remote-allow]");
     const hello = await running;
     const helloMs = Date.now() - runStarted;
     evidence.helloMs = helloMs;
@@ -186,52 +183,53 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
     const video = await page.video()?.path();
     if (video) {
       const { copyFileSync } = await import("node:fs");
-      copyFileSync(video, path.join(ARTIFACTS, "remote-allow.webm"));
+      copyFileSync(video, path.join(ARTIFACTS, "remote-run.webm"));
     }
     page = await context.newPage();
     await page.goto(`http://127.0.0.1:${appA.port}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
-    const beforeDeny = (await site.state()).hello;
-    const denying = tool(origin, tokenA.token, "run_workflow", {
-      id: "hello-bao",
-      inputs: { password: PASSWORD, cookie: COOKIE },
-    });
-    await page.waitForSelector("[data-testid=remote-deny]", { timeout: 20_000 });
-    await shot(page, "remote-deny.png");
-    await page.click("[data-testid=remote-deny]");
-    const denied = await denying;
-    assert.equal(denied.json.outcome, "denied", JSON.stringify(denied.json));
-    assert.equal((await site.state()).hello, beforeDeny);
-
-    const wall = await allowRun(origin, tokenA.token, page, "bot-wall", "Bot wall");
+    const wall = await tool(origin, tokenA.token, "run_workflow", { id: "bot-wall" });
     assert.equal(wall.json.outcome, "needs_human", JSON.stringify(wall.json));
     assert.equal((wall.json.pageClass as { class?: string } | undefined)?.class, "bot_wall");
-    const login = await allowRun(origin, tokenA.token, page, "login-wall", "Login wall");
+    await finishHuman(wall, "#solve");
+    const login = await tool(origin, tokenA.token, "run_workflow", { id: "login-wall" });
     assert.equal(login.json.outcome, "needs_human", JSON.stringify(login.json));
     assert.equal((login.json.pageClass as { class?: string } | undefined)?.class, "login_wall");
 
+    await finishHuman(login, "#signin");
+
+    async function finishHuman(paused: ToolBody, selector: string): Promise<void> {
+      const token = String(paused.json.resume || paused.json.resume_token || "");
+      assert.ok(token);
+      const port = Number(readFileSync(path.join(homeA, "chrome-profile", "DevToolsActivePort"), "utf8").split("\n")[0]);
+      const owned = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+      try {
+        const sitePage = owned.contexts()[0]?.pages().find((candidate) => candidate.url().startsWith(site.origin));
+        assert.ok(sitePage, "held site page missing");
+        await sitePage.click(selector);
+        if (selector !== "#place-order") await sitePage.waitForURL(`${site.origin}/ready`);
+        const resumed = await tool(origin, tokenA.token, "resume_workflow", { resume: token });
+        assert.equal(resumed.json.outcome, "ok", JSON.stringify(resumed.json));
+      } finally {
+        await owned.close().catch(() => undefined);
+      }
+    }
+
     const beforePlace = (await site.state()).placed;
-    const confirming = allowRun(origin, tokenA.token, page, "place-order", "Place Order");
-    await page.waitForSelector("[data-testid=remote-confirm]", { timeout: 30_000 });
-    await shot(page, "remote-confirm.png");
-    const paused = await confirming;
+    const paused = await tool(origin, tokenA.token, "run_workflow", { id: "place-order" });
+    await page.waitForSelector("[data-testid=remote-waiting]", { timeout: 30_000 });
+    await shot(page, "remote-waiting.png");
     assert.equal(paused.json.outcome, "needs_human", JSON.stringify(paused.json));
     const resumeToken = String(paused.json.resume || paused.json.resume_token || "");
     assert.ok(resumeToken, "confirm did not return a resume token");
     const remoteResume = await tool(origin, tokenA.token, "resume_workflow", { resume: resumeToken, approved: true });
     assert.equal(remoteResume.json.outcome, "needs_human", JSON.stringify(remoteResume.json));
-    assert.match(String(remoteResume.json.reason || ""), /Mac/);
+    assert.equal(remoteResume.json.resume, resumeToken);
     assert.equal((await site.state()).placed, beforePlace);
-    const approvedText = await page.evaluate(async () => {
-      const res = await fetch("/api/remote/confirm", { method: "POST" });
-      return await res.text();
-    });
-    evidence.approve = approvedText;
-    const approved = JSON.parse(approvedText) as { outcome?: string; reason?: string };
-    assert.equal(approved.outcome, "ok", approvedText);
+    await finishHuman(paused, "#place-order");
     assert.equal((await site.state()).placed, beforePlace + 1);
 
-    const killing = allowRun(origin, tokenA.token, page, "slow-bao", "Slow Bao");
+    const killing = tool(origin, tokenA.token, "run_workflow", { id: "slow-bao" });
     await page.waitForSelector("[data-testid=remote-kill]", { timeout: 20_000 });
     await waitFor(async () => (await site.state()).phase === "working", 20_000, "slow run did not start");
     await shot(page, "remote-running.png");
@@ -294,7 +292,7 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
       assert.ok(job.tool);
     }
     const outcomes = jobs.map((job) => String(job.outcome));
-    for (const outcome of ["ok", "denied", "needs_human", "cancelled", "forbidden", "device_offline"]) {
+    for (const outcome of ["ok", "needs_human", "cancelled", "forbidden", "device_offline"]) {
       assert.ok(outcomes.includes(outcome), `audit missing ${outcome}: ${outcomes.join(",")}`);
     }
     const forbidden = jobs.filter((job) => job.outcome === "forbidden");
@@ -370,17 +368,6 @@ function click(id: string, index: number, label: string, css: string, testId: st
     locators: [{ kind: "css", value: css }],
     postcondition: { kind: "text", match, timeoutMs },
   };
-}
-
-async function allowRun(origin: string, token: string, page: Page, id: string, title: string): Promise<ToolBody> {
-  await page.locator("#remote-agent").waitFor({ state: "hidden", timeout: 5_000 }).catch(() => undefined);
-  const pending = tool(origin, token, "run_workflow", { id, inputs: { password: PASSWORD, cookie: COOKIE } });
-  await page.waitForFunction((name) => {
-    const el = document.querySelector("[data-testid=remote-approval] .instruction");
-    return !!el && (el.textContent || "").includes(name);
-  }, title, { timeout: 20_000 });
-  await page.click("[data-testid=remote-allow]");
-  return pending;
 }
 
 async function waitOnline(origin: string, token: string): Promise<void> {
@@ -631,8 +618,9 @@ async function startFixture(): Promise<{ origin: string; state: () => Promise<{ 
       "/hello": `<button id="go" data-testid="go">Go</button><p id="status"></p><script>
         document.getElementById("go").onclick = () => { document.getElementById("status").textContent = "Hello Bao"; fetch("/hello", { method: "POST" }); };
       </script>`,
-      "/wall": `<h1>Verify you are human</h1><p>This fixture has no checkout button and no challenge widget.</p>`,
-      "/login": `<h1>Sign in</h1><form><input type="password" id="password" name="password"></form>`,
+      "/wall": `<h1>Verify you are human</h1><button id="solve" onclick="location.href='/ready'">Finish check</button>`,
+      "/login": `<h1>Sign in</h1><input type="password" id="password" name="password"><button id="signin" onclick="location.href='/ready'">Sign in</button>`,
+      "/ready": `<h1>Signed in</h1><button id="checkout" data-testid="checkout" onclick="document.body.textContent='Paid'">Checkout</button>`,
       "/confirm": `<button id="arm" data-testid="arm">Arm</button><button id="place-order">Place Order</button><p id="status"></p><script>
         document.getElementById("arm").onclick = () => { document.getElementById("status").textContent = "Ready"; };
         document.getElementById("place-order").onclick = () => { document.getElementById("status").textContent = "Placed"; fetch("/placed", { method: "POST" }); };

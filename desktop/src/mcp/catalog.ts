@@ -528,6 +528,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
     trail: live.trail,
   });
   if (run.status === "paused" && run.pausedKind && run.ask) {
+    if (live.stepId === run.ask.stepId && live.kind === run.pausedKind) run.ask.deadline = live.deadline;
     live.stepId = run.pausedStepId || run.ask.stepId;
     live.kind = run.pausedKind;
     live.deadline = run.ask.deadline;
@@ -669,12 +670,12 @@ function rememberRun(
     };
   }
   if (outcome !== "ok") {
-    result.resume = resumeToken || writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
+    result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
       kind: run.pausedKind,
       deadline: run.ask?.deadline ?? null,
       ask: run.ask?.instruction,
       runId: run.runId,
-    });
+    }, resumeToken);
     result.resume_token = result.resume;
   }
   return storeOutcome(library, result, secrets, inputs);
@@ -866,8 +867,8 @@ function writeResume(
   inputs: Record<string, string | number>,
   stepId: string,
   extra: { kind?: ResumeFile["kind"]; deadline?: number | null; ask?: string; runId?: string } = {},
+  token = `r_${randomBytes(16).toString("hex")}`,
 ): string {
-  const token = `r_${randomBytes(16).toString("hex")}`;
   const file = path.join(library.root, "resumes", `${token}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   const body: ResumeFile = { workflowId, stepId, publicInputs: inputs, ...extra };

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,11 +55,40 @@ test("requested Apply, Send, Place Order and Pay clicks run without a trust appr
   assert.equal(result.modelCalls, 0);
 });
 
+for (const locatorOnly of [false, true]) {
+  test(`heal cannot press the credit-freeze workflow's reserved Apply ${locatorOnly ? "locator" : "identity"}`, async () => {
+    const workflow = JSON.parse(readFileSync(path.resolve("examples/workflows/credit-freeze.json"), "utf8")) as WorkflowV2;
+    workflow.steps = workflow.steps.map((step) => ({ ...step, timeoutMs: 0 }));
+    if (locatorOnly) {
+      const confirm = workflow.steps.find((step) => step.action === "confirm")!;
+      delete confirm.identity;
+      confirm.locators = [{ kind: "role", role: "button", name: "Apply" }];
+    }
+    const driver = counting();
+    driver.tree = async () => ({ url: workflow.startUrl, nodes: [ident("Apply")], texts: [], values: [] });
+    let proposals = 0;
+    const result = await replay(workflow, {}, driver, {
+      yieldHuman: true,
+      heal: {
+        available: () => true,
+        propose: async () => {
+          proposals += 1;
+          return { patch: { identity: ident("Apply") }, model: { provider: "fixture", name: "fixture" }, prompt: "", rawResponse: "" };
+        },
+      },
+    });
+    assert.equal(proposals, 1);
+    assert.equal(result.status, "failed");
+    assert.deepEqual(driver.clicks, []);
+    assert.match(result.failure?.reason || "", /recorded human confirm/);
+  });
+}
+
 test("a requested click does not consume an explicit human workflow pause", async () => {
   const driver = counting();
   const workflow = doc([
     click("Apply", 0),
-    { ...click("Pay", 1), action: "confirm", human: true, label: "You press Pay" },
+    { ...click("Apply", 1), action: "confirm", human: true, label: "You press Apply" },
   ]);
   const result = await replay(workflow, {}, driver, { yieldHuman: true });
   assert.equal(result.status, "paused");
