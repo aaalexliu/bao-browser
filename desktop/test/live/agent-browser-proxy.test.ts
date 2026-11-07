@@ -135,6 +135,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       const expected = await native(command, args);
       const output = [expected.stdout, expected.stderr].filter(Boolean);
       const content = actual.content.map((item) => item.text);
+      if (command === "close") assert.equal(content.pop(), "Not saved as a workflow: it used stateful scroll.");
       assert.deepEqual(command === "open" ? content.slice(0, -1) : content, output, command);
       if (command === "open") {
         assert.ok(content.at(-1)!.includes(url), "open returns the site's tabs");
@@ -146,7 +147,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
     }
     await assert.rejects(access(proxyCopy), /ENOENT/);
     const library = new Library(home);
-    assert.equal(library.list().workflows.length, 0, "the pass-through does not save a workflow");
+    assert.equal(library.list().workflows.length, 0, "stateful scroll keeps this session capture-only");
     const saved = library.listRuns();
     assert.equal(saved.length, 1);
     assert.equal(saved[0]!.status, "passed");

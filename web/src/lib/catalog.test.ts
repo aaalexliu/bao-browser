@@ -16,11 +16,12 @@ test("web and desktop search eligibility agree with the caller contract", () => 
   const cases = [
     { workflow: {}, expected: [true, true, false, false, true, true, false, false] },
     { workflow: { driver: null }, expected: [true, true, false, false, true, true, false, false] },
-    { workflow: { driver: "playwright" }, expected: [true, true, false, false, true, true, false, false] },
+    { workflow: { driver: "playwright" }, expected: [true, true, true, true, true, true, true, true] },
     { workflow: { driver: "extension" }, expected: [false, true, false, false, false, true, false, true] },
     { workflow: { driver: "cdp-live" }, expected: [false, false, false, false, false, false, false, false] },
     { workflow: { provenance: "fixture" }, expected: [false, false, false, false, false, false, false, false] },
     { workflow: { driver: "extension", provenance: "fixture" }, expected: [false, false, false, false, false, false, false, false] },
+    { workflow: { driver: "playwright", provenance: "fixture" }, expected: [false, false, false, false, false, false, false, false] },
   ];
   for (const { workflow, expected } of cases) {
     for (const [index, context] of contexts.entries()) {
@@ -45,6 +46,7 @@ test("catalog filters every source before limiting and respects caller replay su
         ...Array.from({ length: 5 }, (_, i) => ({ id: `retired-${i}`, driver: "cdp-live" })),
         { id: "fixture", provenance: "fixture" },
         { id: "extension", driver: "extension" },
+        { id: "playwright", driver: "playwright" },
         { id: "normal" },
       ];
       for (const document of documents) {
@@ -58,13 +60,15 @@ test("catalog filters every source before limiting and respects caller replay su
       }
       const principal = { userId: "owner" };
       const unlinked = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams()));
-      assert.deepEqual(unlinked.map((hit) => hit.id), [`${source}-normal`]);
+      assert.deepEqual(unlinked.map((hit) => hit.id).sort(), [`${source}-normal`, `${source}-playwright`]);
       const linked = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true")));
-      assert.deepEqual(linked.map((hit) => hit.id).sort(), [`${source}-extension`, `${source}-normal`]);
-      assert.deepEqual(await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true&pageEngine=agent-browser"))), []);
+      assert.deepEqual(linked.map((hit) => hit.id).sort(), [`${source}-extension`, `${source}-normal`, `${source}-playwright`]);
+      const trial = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true&pageEngine=agent-browser")));
+      assert.deepEqual(trial.map((hit) => hit.id), [`${source}-playwright`]);
       const relay = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("extensionLinked=true&pageEngine=agent-browser&relay=true")));
-      assert.deepEqual(relay.map((hit) => hit.id), [`${source}-extension`]);
-      assert.deepEqual(await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("pageEngine=agent-browser&relay=true"))), []);
+      assert.deepEqual(relay.map((hit) => hit.id).sort(), [`${source}-extension`, `${source}-playwright`]);
+      const unlinkedRelay = await catalog(principal, "Blueberries", { source }, catalogContext(new URLSearchParams("pageEngine=agent-browser&relay=true")));
+      assert.deepEqual(unlinkedRelay.map((hit) => hit.id), [`${source}-playwright`]);
     }
   } finally {
     if (previousDir === undefined) delete process.env.BAO_PG_DIR;

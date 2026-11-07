@@ -411,7 +411,7 @@ function capture(): string {
     </div>
     <div class="card">
       <h3>Agent and MCP</h3>
-      <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Pass-through sessions do not save replayable workflows.</p>
+      <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Supported single-page tasks save replayable workflows when the session ends. Other sessions stay in Runs with a reason.</p>
     </div>
     <div class="card">
       <h3>Steps</h3>

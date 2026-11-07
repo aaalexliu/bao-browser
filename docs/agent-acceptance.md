@@ -73,9 +73,9 @@ Follow [Agent quickstart](agent-quickstart.md#mcp) using the [standard MCP tools
 
 Against a local fixture and synthetic source profile, call `agent_browser` with `open`, inspect the native tab list, select the task tab, and use `snapshot`, `fill`, `click`, `press`, or `scroll`. Check each response before continuing. On a sign-in or human-check `halted` response, call `wait_for_owner` in the same session. Repeat `waiting`; on `ready`, take a fresh snapshot. A `closed` result ends that session. End normal work with `close`.
 
-Bao returns native output for ordinary commands and owner-wait status for handoffs. It records ordinary commands and page screenshots in Runs, but reads only URL/title and omits page pictures during owner waits. It does not create a replayable workflow or block final clicks. Raw evidence can contain credentials. Do not claim saved-workflow redaction protects pass-through evidence. [Pass-through behavior](agent-browser-engine.md) owns the command, copy, recording, and cleanup contract.
+Bao returns native output for ordinary commands and owner-wait status for handoffs. It records ordinary commands and page screenshots in Runs, but reads only URL/title and omits page pictures during owner waits. Successful single-document tasks save a replayable workflow at session end; unsupported tasks report why they remain capture-only. It does not block final clicks. Raw evidence can contain credentials. Do not claim saved-workflow redaction protects pass-through evidence. [Pass-through behavior](agent-browser-engine.md) owns the command, copy, recording, and cleanup contract.
 
-Saved workflows whose driver is `cdp-live` must remain readable. Their Workflows row and Replay form must say the workflow used the retired live driver. Replay and MCP must refuse before opening a browser with `this workflow used the retired live driver`. No pass-through replay layer exists yet.
+Saved workflows whose driver is `cdp-live` must remain readable. Their Workflows row and Replay form must say the workflow used the retired live driver. Replay and MCP must refuse before opening a browser with `this workflow used the retired live driver`. Workflows saved from pass-through tasks use the current replay engine, not native pass-through replay.
 
 ## Inspect evidence and cleanup
 

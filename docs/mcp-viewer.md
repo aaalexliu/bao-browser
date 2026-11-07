@@ -6,7 +6,7 @@ Bao's local stdio MCP server can show run history and receipts in an MCP Apps ho
 
 The host must advertise `io.modelcontextprotocol/ui` with `text/html;profile=mcp-app` in its initialize capabilities. Bao then lists and serves `ui://bao/runs/v1.html` through `resources/list` and `resources/read`.
 
-- `agent_browser` shows an annotated page picture and a short caption in capable hosts. Its exact native stdout/stderr, snapshot refs, and thrown errors remain in `content` blocks after the caption. A final short `content` block carries `run_id` and `step_id` for content-only hosts. `structuredContent` carries only command, status, run and step identity, and optional error metadata, not a second copy of native output.
+- `agent_browser` shows an annotated page picture and a short caption in capable hosts. Its exact native stdout/stderr, snapshot refs, and thrown errors remain in `content` blocks after the caption. A short `content` block carries `run_id` and `step_id` for content-only hosts. When a session ends with a workflow outcome, a final text block carries the save notice described in [Workflow reuse](agent-browser-engine.md#workflow-reuse). `structuredContent` carries only command, status, run and step identity, and optional error metadata, not a second copy of native output.
 - `get_run` keeps its existing text receipt and adds a compact viewer in capable hosts.
 - `list_runs` adds the viewer to the [catalog history result](bao.md#mcp) and lets the app page through history.
 - `inspect_run` reads one run's receipt and workflow steps, twenty steps per page. The host exposes this reader to the app, not the model.
@@ -23,7 +23,7 @@ Read errors keep the loaded receipt or history visible. For a failed read, try *
 
 The same resource renders direct-browser results without changing native commands. Open, snapshot, tab, key, scroll, and screenshot calls show the recorded page with a page label. Click and fill try to capture the requested target and its rectangle before sending the command. Their card marks that target on the **Before click** or **Before fill** picture. This identifies the action; it does not claim that the site finished its work. Take a later snapshot to check the result.
 
-Visual connections record JPEG page pictures at CSS-pixel size, including on Retina displays. Run, step, phase, and target geometry go to the iframe in `_meta.baoToolCard`, without image bytes. After mount, the iframe calls the app-only `open_browser_picture` reader for one bounded picture. The original command output stays intact once, in `content` blocks after the caption, followed by run and step identity. It is not copied into the visible caption. Tool inspectors belong to the host and may still expose raw data.
+Visual connections record JPEG page pictures at CSS-pixel size, including on Retina displays. Run, step, phase, and target geometry go to the iframe in `_meta.baoToolCard`, without image bytes. After mount, the iframe calls the app-only `open_browser_picture` reader for one bounded picture. The original command output stays intact once, in `content` blocks ordered as described in [Host contract](#host-contract). It is not copied into the visible caption. Tool inspectors belong to the host and may still expose raw data.
 
 The [MCP catalog contract](bao.md#mcp) defines `get_run` text receipts, native-output limits, and links to full output in Bao desktop. The compact viewer uses the separate projection described under [Run evidence](#run-evidence).
 

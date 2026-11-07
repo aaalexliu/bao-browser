@@ -14,6 +14,6 @@ export function catalogContext(params: URLSearchParams): WorkflowSearchContext {
 
 export function workflowSearchEligible(workflow: { driver?: string | null; provenance?: string }, context: WorkflowSearchContext): boolean {
   if (workflow.provenance === "fixture" || workflow.driver === "cdp-live") return false;
-  if (context.pageEngine === "agent-browser" && !(context.relay && workflow.driver === "extension")) return false;
+  if (context.pageEngine === "agent-browser" && workflow.driver !== "playwright" && !(context.relay && workflow.driver === "extension")) return false;
   return workflow.driver !== "extension" || context.extensionLinked;
 }

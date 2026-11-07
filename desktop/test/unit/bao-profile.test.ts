@@ -14,6 +14,9 @@ import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao
 import * as launches from "../../src/launch";
 import { TOOLS } from "../../src/mcp/server";
 import { readLocalStorage } from "../../src/login-import/storage";
+import { Library } from "../../src/v1/store";
+import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { browserToolResult } from "../../src/mcp/tool-card";
 
 launches.pinTestBrowser();
 
@@ -461,6 +464,15 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     if (!olderSource) await writeSource(scenario === "signed-out wall" ? "anonymous" : "fresh");
     if (scenario === "failed wall retry") {
       await assert.rejects(proxy.execute("open", [opened], "bao"), /Bao sign-in retry failed: synthetic daemon retry failure/);
+      const capture = new Library(home).readRun(proxy.lastCommand!.runId);
+      const step = (capture.steps as RecordedAgentBrowserCommand[])[0]!;
+      assert.equal(step.status, "failed");
+      assert.equal(step.native.isError, true);
+      assert.match(step.native.error!, /Bao sign-in retry failed/);
+      assert.deepEqual(step.native.results, [{ stdout: "Opened\n", stderr: "", exitCode: 0 }]);
+      const card = browserToolResult("open", step.native.results, proxy.lastCommand, proxy.activeRunId, step.native.error);
+      assert.equal(card.isError, true);
+      assert.ok(card.content.some((item) => item.text === "Opened\n"), "the UI fallback retains exact native output beside the error");
       return;
     }
     if (native) {
