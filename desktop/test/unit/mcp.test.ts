@@ -1,16 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { once } from "node:events";
 import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { McpClient } from "../../src/eval/mcp-client";
 import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
-import { MCP_VERSION, TOOL_NAMES, TOOLS } from "../../src/mcp/server";
-import { createMcpVersionCheck, McpVersionError, mcpVersion } from "../../src/mcp/version";
+import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
+import { createMcpVersionCheck, McpVersionError } from "../../src/mcp/version";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
 import { VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import type { BrowserToolCard } from "../../src/mcp/tool-card";
@@ -356,104 +354,26 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
   } finally { mcp.child.kill(); legacy.child.kill(); }
 });
 
-test("MCP version checks preserve standalone use and detect app and installed-code changes", async () => {
+test("MCP version checks wait for missing entries and detect installed-code changes", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
   const entry = path.join(home, "server.js");
   writeFileSync(entry, "original");
-  let status = 200;
-  let body: unknown = { version: MCP_VERSION };
-  const app = createServer((_req, res) => {
-    res.writeHead(status, { "content-type": "application/json" });
-    res.end(JSON.stringify(body));
-  });
-  const check = createMcpVersionCheck(MCP_VERSION, entry, ["--home", home], process.env);
+  const check = createMcpVersionCheck(entry);
   try {
-    await check();
-    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
-    const address = app.address();
-    assert.ok(address && typeof address !== "string");
-    writeFileSync(path.join(home, "server.json"), JSON.stringify({ port: address.port }));
-    await check();
-    assert.notEqual(mcpVersion({ tools: TOOLS }), mcpVersion({ tools: [...TOOLS, { name: "new_tool" }] }));
-    body = { version: "another-contract" };
-    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && !error.restart && error.message === "The running Bao app is a different version from this tool server. Quit and reopen Bao.");
-    status = 404;
-    body = { error: "not found" };
-    await check();
-    status = 503;
-    await check();
-    status = 200;
-    await check();
-    await new Promise<void>((resolve) => app.close(() => resolve()));
     await check();
     const loaded = statSync(entry);
     renameSync(entry, `${entry}.old`);
     await check();
     writeFileSync(entry, "original");
     utimesSync(entry, loaded.atime, loaded.mtime);
-    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && error.restart && /Bao was updated/.test(error.message));
-    const rebuilt = createMcpVersionCheck(MCP_VERSION, entry, ["--home", home], process.env);
+    await assert.rejects(check, (error: unknown) => error instanceof McpVersionError && /Bao was updated/.test(error.message));
+    const rebuilt = createMcpVersionCheck(entry);
     utimesSync(entry, loaded.atime, new Date(loaded.mtimeMs + 1000));
-    await assert.rejects(rebuilt, (error: unknown) => error instanceof McpVersionError && error.restart);
+    await assert.rejects(rebuilt, (error: unknown) => error instanceof McpVersionError);
     rmSync(entry);
     await check();
   } finally {
-    if (app.listening) await new Promise<void>((resolve) => app.close(() => resolve()));
     rmSync(home, { recursive: true, force: true });
-  }
-});
-
-test("an app mismatch or invalid listener leaves standalone MCP tools and close usable without restarting", async () => {
-  let status = 200;
-  let body = JSON.stringify({ version: MCP_VERSION });
-  const app = createServer((_req, res) => {
-    res.writeHead(status, { "content-type": "application/json" });
-    res.end(body);
-  });
-  await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
-  const address = app.address();
-  assert.ok(address && typeof address !== "string");
-  const mcp = startMcp("bao-mcp-update-");
-  try {
-    mkdirSync(mcp.home, { recursive: true });
-    new Library(mcp.home).save({ ...workflow, driver: "cdp-live" });
-    writeFileSync(path.join(mcp.home, "server.json"), JSON.stringify({ port: address.port }));
-    await initialize(mcp);
-    assert.deepEqual((await mcp.request("tools/list")).result?.tools, TOOLS);
-    for (const [nextStatus, nextBody] of [
-      [200, JSON.stringify({ version: "updated-app-contract" })],
-      [404, JSON.stringify({ error: "not found" })],
-      [503, JSON.stringify({ error: "unavailable" })],
-      [200, "not json"],
-      [200, JSON.stringify({ unrelated: true })],
-    ] as const) {
-      status = nextStatus;
-      body = nextBody;
-      await new Promise((resolve) => setTimeout(resolve, 2200));
-      assert.equal(mcp.child.exitCode, null);
-      assert.deepEqual((await mcp.request("tools/list")).result?.tools, TOOLS);
-      const search = await mcp.tool("search_workflows", { query: "Saved" });
-      assert.equal(search.isError, false);
-      assert.equal((JSON.parse(search.text) as { hits: { id: string }[] }).hits[0]?.id, workflow.id);
-      assert.equal((await mcp.tool("describe_workflow", { id: workflow.id })).isError, false);
-      const replay = await mcp.tool("run_workflow", { id: workflow.id });
-      assert.equal(JSON.parse(replay.text).reason, "this workflow used the retired live driver");
-      const run = await mcp.tool("get_run", { run_id: "missing" });
-      assert.doesNotMatch(run.text, /different version|MCP version/);
-      const close = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "close", args: [] } });
-      assert.equal(close.error, undefined);
-      assert.equal(close.result?.isError, false);
-    }
-    status = 200;
-    body = JSON.stringify({ version: MCP_VERSION });
-    assert.deepEqual((await mcp.request("tools/list")).result?.tools, TOOLS);
-  } finally {
-    if (mcp.child.exitCode === null) {
-      const exited = once(mcp.child, "exit");
-      mcp.child.kill();
-      await exited;
-    }
-    await new Promise<void>((resolve) => app.close(() => resolve()));
   }
 });
 

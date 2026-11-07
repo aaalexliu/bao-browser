@@ -3,7 +3,6 @@
 
 import { spawn } from "node:child_process";
 import { inspectRunView } from "../mcp/run-view";
-import { MCP_VERSION } from "../mcp/server";
 import { RETIRED_LIVE_TOOL } from "../mcp/version";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -431,9 +430,6 @@ export async function startApp(opts: {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", "http://127.0.0.1");
-      if (req.method === "GET" && url.pathname === "/api/mcp/version") {
-        return json(res, { version: MCP_VERSION });
-      }
       if (req.method === "POST" && url.pathname === "/api/live") {
         return json(res, RETIRED_LIVE_TOOL, 410);
       }

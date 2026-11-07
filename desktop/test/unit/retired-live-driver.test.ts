@@ -4,7 +4,6 @@ import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { MCP_VERSION } from "../../src/mcp/server";
 import { RETIRED_LIVE_TOOL } from "../../src/mcp/version";
 import { libraryTable, runDriverField, type WorkflowSummary } from "../../src/app/views";
 import { Library } from "../../src/v1/store";
@@ -33,7 +32,6 @@ test("Library and Replay explain retired workflows; replay and live API never op
     assert.equal(state.settings.liveChromeProfile, undefined);
     assert.match(libraryTable(state.workflows, []), /This workflow used the retired live driver/);
     assert.match(runDriverField(workflow.driver), /This workflow used the retired live driver/);
-    assert.deepEqual(await fetch(`${origin}/api/mcp/version`).then((res) => res.json()), { version: MCP_VERSION });
     for (const op of ["live_session_start", "live_snapshot", "live_stop", "__live_replay"]) {
       const retired = await fetch(`${origin}/api/live`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, url: workflow.startUrl }) });
       assert.equal(retired.status, 410);
