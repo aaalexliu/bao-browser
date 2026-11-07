@@ -757,7 +757,7 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
   const deadline = Date.now() + 1500;
   while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await delay(50);
   const remainingPids = pidsForDataDir(userDataDir);
-  if (remainingPids.length) throw new Error(`bao reclaim processes still shutting down pids=${remainingPids.join(",")} killedPids=${killedPids.join(",")} profile=${userDataDir}`);
+  if (remainingPids.length) console.error(`bao reclaim processes still shutting down pids=${remainingPids.join(",")} killedPids=${killedPids.join(",")} profile=${userDataDir}`);
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */

@@ -701,7 +701,8 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
     f.state.taskGone = true;
   } else f.state.noActivePage = true;
   const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
-  assert.equal(JSON.parse(result!.stdout).outcome, "closed");
+  const receipt = JSON.parse(result!.stdout) as { outcome: string };
+  assert.equal(receipt.outcome, "closed");
   assert.equal(f.proxy.hasSession(), false);
   assert.equal(f.state.closed, true);
   assert.equal(f.state.closes, missing === "task" ? 0 : 1);
@@ -721,7 +722,8 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   f.state.taskGone = true;
   const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
-  assert.equal(JSON.parse(result!.stdout).outcome, "closed");
+  const receipt = JSON.parse(result!.stdout) as { outcome: string };
+  assert.equal(receipt.outcome, "closed");
   assert.equal(f.proxy.hasSession(), true);
   t.mock.timers.tick(599_999);
   assert.equal(f.state.closed, false);
