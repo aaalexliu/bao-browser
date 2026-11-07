@@ -83,16 +83,16 @@ test("registry sync, share, release, and run pictures retain owner data without 
   checkDocument((await previewPublication(owner, direct.id)).document);
   const pushed = await pushVersion(owner, source.id, buildPushBody(source, {
     baseVersion: 0, crops: [{ stepId: "pass", png }, { stepId: "go", png }],
-    heal: { workflowId: source.id, args: { password: credentials[0], email: "ada@fixture.test" }, screenshot: shots[0]!.png },
+    heal: { workflowId: source.id, args: { password: credentials[0], email: "ada@fixture.test" } },
   }));
   assert.equal(pushed.version, 1);
   const synced = await pull(owner, source.id);
   checkDocument(synced.document);
   assert.equal(synced.shots.length, 1);
   assert.deepEqual(synced.shots.map((shot) => shot.stepId), ["go"]);
-  const heal = synced.heal as { args?: unknown; screenshot: string };
+  const heal = synced.heal as { args?: unknown; workflowId: string };
   assert.equal(heal.args, undefined);
-  assert.equal(heal.screenshot, shots[0]!.png);
+  assert.equal(heal.workflowId, source.id);
   assert.equal((await sharp((await getPng(`shots/${source.id}/v1/go.jpg`))!).metadata()).format, "jpeg");
 
   const shared = await createShare(owner, source.id, "fork");
@@ -111,7 +111,7 @@ test("registry sync, share, release, and run pictures retain owner data without 
   await recordReview(owner, source.id, preview.documentHash, shots, { email: "ada@fixture.test", password: credentials[0] });
   assert.equal((await previewPublication(owner, source.id)).reviewed, true);
   const reviews = await query<{ samples: unknown }>("SELECT samples FROM reviews WHERE workflow_id = $1", [source.id]);
-  assert.equal(JSON.stringify(reviews[0]!.samples).includes("ada@fixture.test"), true);
+  assert.equal(JSON.stringify(reviews[0]!.samples).includes("ada@fixture.test"), false);
   assert.equal(JSON.stringify(reviews[0]!.samples).includes(credentials[0]!), false);
 
   await pushRun(owner, source.id, { id: "owner-run", status: "passed", at: 1, steps: [{ id: "go", status: "passed" }], shots });

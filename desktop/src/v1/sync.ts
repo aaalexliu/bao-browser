@@ -8,6 +8,7 @@ import path from "node:path";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isPicture } from "../../../web/src/lib/png";
 import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
+import { scrubSaved } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
@@ -655,7 +656,7 @@ function stash(
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, toJson(local));
-  const theirs = migrate(remote.document);
+  const theirs = scrubSaved(migrate(remote.document));
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {

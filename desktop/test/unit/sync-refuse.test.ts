@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { workflowShotName } from "../../src/v1/shots";
@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { WorkflowV2 } from "../../src/v1/schema";
+import type { WorkflowVersion } from "../../src/v1/versions";
 import { Library } from "../../src/v1/store";
 import { loadState, syncAll } from "../../src/v1/sync";
 
@@ -156,6 +157,73 @@ test("a long workflow sync bounds picture bodies and reports omitted pictures", 
       assert.equal(meta.format, "jpeg");
       assert.ok(meta.width! <= 720 && meta.height! <= 480);
     }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+for (const mode of ["pull", "push"] as const) test(`${mode} keeps a dirty local edit when a direct push adds a secret default`, async () => {
+  let version = 0;
+  let document = secretWorkflow();
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      const current = { version, document, shots: [], deviceName: "Remote Mac" };
+      if (req.url === "/api/workflows/secret-push/versions" && req.method === "POST") {
+        const body = JSON.parse(Buffer.concat(chunks).toString()) as { baseVersion: number; document: WorkflowV2 };
+        if (body.baseVersion !== version) {
+          res.writeHead(409);
+          res.end(JSON.stringify({ error: "conflict", current, draft: { version: version + 1 } }));
+          return;
+        }
+        document = body.document;
+        version++;
+        res.writeHead(201);
+        res.end(JSON.stringify({ version }));
+      } else if (req.url === "/api/workflows/secret-push/versions") {
+        res.end(JSON.stringify({ versions: [{ version, document, device_name: "Remote Mac", created_at: "2026-01-01T00:00:00Z" }] }));
+      } else if (req.url === "/api/workflows/secret-push") res.end(JSON.stringify(current));
+      else if (req.url === "/api/workflows") res.end(JSON.stringify({ workflows: [{ id: "secret-push" }] }));
+      else if (req.url === "/api/sync/snapshot") {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: "not found" }));
+      } else res.end(JSON.stringify({ devices: [], categories: [] }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as { port: number };
+  const home = mkdtempSync(path.join(tmpdir(), "bao-secret-conflict-"));
+  const library = new Library(home);
+  const origin = `http://127.0.0.1:${address.port}`;
+  library.save(secretWorkflow());
+  writeFileSync(path.join(home, "sync.json"), JSON.stringify({ server: origin, deviceToken: "fixture", backedUp: true }));
+  try {
+    await syncAll(library, "push");
+    const local = library.read("secret-push");
+    local.name = "Unsynced local edit";
+    library.save(local);
+    const remote = secretWorkflow();
+    remote.name = "Direct remote edit";
+    remote.inputs[0]!.default = "direct-remote-password";
+    const pushed = await fetch(`${origin}/api/workflows/secret-push/versions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseVersion: version, document: remote }),
+    });
+    assert.equal(pushed.status, 201);
+    const view = await syncAll(library, mode);
+    assert.equal(view.conflicts.length, 1);
+    assert.equal(view.conflicts[0]!.remoteVersion, 2);
+    assert.equal(library.read("secret-push").name, "Unsynced local edit");
+    const book = JSON.parse(readFileSync(path.join(home, "versions", "secret-push.json"), "utf8")) as WorkflowVersion[];
+    const conflict = book.find((row) => row.source === "conflict")?.conflict;
+    assert.equal(conflict?.theirs.name, "Direct remote edit");
+    assert.equal(conflict?.theirs.inputs[0]!.default, "[secret stripped]");
+    assert.equal(document.inputs[0]!.default, "direct-remote-password");
+    await syncAll(library, mode);
+    assert.equal(library.read("secret-push").name, "Unsynced local edit");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

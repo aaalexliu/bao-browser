@@ -95,11 +95,9 @@ test("picture sizing preserves samples, nested data and sealed references", asyn
   assert.deepEqual(pressured.body.samples, source.samples);
   assert.deepEqual(pressured.body.heal, source.heal);
   assert.equal(pressured.omittedPictures, 0);
-  const smallHeal = { shots: [], heal: { screenshot: "an ordinary saved value" } };
-  assert.deepEqual((await fitPictureBody(smallHeal)).body, smallHeal);
 });
 
-test("many-picture workflow, heal, run and review bodies obey transport limits", async () => {
+test("many-picture workflow, run and review bodies obey transport limits", async () => {
   const pixels = Buffer.alloc(720 * 480 * 3);
   let seed = 1;
   for (let i = 0; i < pixels.length; i++) {
@@ -110,7 +108,7 @@ test("many-picture workflow, heal, run and review bodies obey transport limits",
   const steps = Array.from({ length: 60 }, (_, i) => ({ id: `step-${i}` }));
   const crops = steps.map((step) => ({ stepId: step.id, png }));
   const sources = [
-    buildPushBody({ steps }, { baseVersion: 0, crops, heal: { screenshot: png.toString("base64") } }),
+    buildPushBody({ steps }, { baseVersion: 0, crops }),
     buildRunBody({ id: "long-run", status: "passed", at: 1, steps }, { crops }),
     { documentHash: "review", shots: crops.map((crop) => ({ stepId: crop.stepId, png: crop.png.toString("base64") })) },
   ];

@@ -295,7 +295,7 @@ export async function reviewWorkflow(
   const fitted = await fitPictureBody({
     documentHash,
     shots: outcome.runId ? stepShots(library, replayDoc, outcome.runId) : [],
-    samples: publicSamples(inputs, replayDoc),
+    samples: publicSamples(inputs),
   });
   if (fitted.tooLarge) return { ...outcome, reviewed: false, documentHash, reason: "review exceeds transport limit" };
   const recorded = await remoteFetch<{ ok?: boolean }>(

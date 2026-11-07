@@ -562,7 +562,7 @@ export async function recordReview(
   await query(
     `INSERT INTO reviews (workflow_id, document_hash, samples) VALUES ($1, $2, $3::jsonb)
      ON CONFLICT (workflow_id, document_hash) DO UPDATE SET at = now(), samples = EXCLUDED.samples`,
-    [id, documentHash, JSON.stringify(publicSamples(samples, preview.document))],
+    [id, documentHash, JSON.stringify(publicSamples(samples))],
   );
   await query(`UPDATE workflows SET reviewed_hash = $2 WHERE id = $1`, [id, documentHash]);
   return { ok: true };

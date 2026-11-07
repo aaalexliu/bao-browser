@@ -61,25 +61,33 @@ test("personal defaults remain in shared copies and only author marks create que
   assert.equal(doc.inputs.find((input) => input.name === "email")?.default, "ada@acme.com");
 });
 
-test("public samples retain personal values but drop credentials", () => {
+test("public samples keep main's filtering and trimmed string values", () => {
   const samples = publicSamples({
-    query: "Ada Lovelace",
+    query: "  Ada Lovelace  ",
     username: "grace",
     email: "ada@acme.com",
     note: "/Users/ada/note.txt",
+    relativeHome: "~/note.txt",
+    windowsPath: "C:\\Users\\ada\\note.txt",
+    phone: "+1 415-555-0123",
+    ssn: "123-45-6789",
     password: "fixture-pass-value",
+    apiToken: "fixture-token",
+    empty: "  ",
+    number: 42,
     zip: "941031234",
     routing: "021000021",
+    card: "4111111111111111",
+    pin: "  private-pin  ",
+  });
+  assert.deepEqual(samples, {
+    query: "Ada Lovelace",
+    username: "grace",
+    zip: "941031234",
+    routing: "021000021",
+    card: "4111111111111111",
     pin: "private-pin",
-  }, { inputs: [{ name: "pin", type: "secret" }] });
-  assert.equal(samples.query, "Ada Lovelace");
-  assert.equal(samples.username, "grace");
-  assert.equal(samples.email, "ada@acme.com");
-  assert.equal(samples.note, "/Users/ada/note.txt");
-  assert.equal(samples.password, undefined);
-  assert.equal(samples.pin, undefined);
-  assert.equal(samples.zip, "941031234");
-  assert.equal(samples.routing, "021000021");
+  });
 });
 
 test("secret and file import questions need no answer or example", () => {
