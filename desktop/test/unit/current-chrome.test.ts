@@ -242,6 +242,34 @@ test("consent poll errors preserve effects and native results on either side of 
   }
 });
 
+test("startup reports a missing checkbox without launching a read after the deadline", async (t) => {
+  const f = await fixture();
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  const budgets: (number | undefined)[] = [];
+  const exec = f.deps.helper!.exec;
+  f.deps.helper!.exec = async (args, timeout) => {
+    if (args[0] !== "checkbox-read") return exec(args, timeout);
+    budgets.push(timeout);
+    const duration = [30_000, 29_650][budgets.length - 1];
+    if (duration === undefined) throw new Error("os helper produced no result for checkbox-read");
+    t.mock.timers.tick(duration);
+    return { ok: true, found: false };
+  };
+  try {
+    const checking = assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), {
+      message: "Chrome's remote-debugging checkbox did not appear",
+    });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    t.mock.timers.tick(250);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    t.mock.timers.tick(250);
+    await checking;
+    assert.deepEqual(budgets, [30_000, 30_000]);
+    assert.equal(f.state.connected, false);
+    await assert.rejects(access(f.options.axLog), /ENOENT/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test("startup waits for loading controls and delayed LaunchServices result files", async (t) => {
   const f = await fixture();
   let now = Date.now();

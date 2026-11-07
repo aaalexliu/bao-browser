@@ -88,6 +88,7 @@ export class AgentBrowserProxy {
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
       throw new Error("browser is only accepted on open and must be copy, bao, or current");
     }
+    if (browser !== undefined && this.session?.removing) await this.session.removing;
     if (this.session?.kind === "current" && this.session.chrome.isClosed()) await this.remove(this.session);
     if (browser !== undefined && (this.session?.kind === "current" || this.starting)) throw new Error("choose the browser only on the first open of a session");
     if (this.session && browser !== undefined && browser !== this.session.browser) {

@@ -93,9 +93,9 @@ export async function openCurrentChrome(options: {
     const deadline = Date.now() + 60_000;
     for (;;) {
       options.signal?.throwIfAborted();
-      const box = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], Math.max(1, Math.min(30_000, deadline - Date.now())));
-      if (box.found) break;
       if (Date.now() >= deadline) throw new Error("Chrome's remote-debugging checkbox did not appear");
+      const box = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 30_000);
+      if (box.found) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     const checkbox = await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 30_000);

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import fs, { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
@@ -11,7 +12,7 @@ import { Library } from "../../src/v1/store";
 
 launch.pinTestBrowser();
 
-test("window close and proxy cleanup await the owned shutdown before reopening", { timeout: 30_000 }, async (t) => {
+test("window close awaits owned cleanup before browser choice and reopening", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-close-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
@@ -38,9 +39,32 @@ if (command === 'tab' && args.includes('--json')) {
     copies.push(options.userDataDir);
     return chrome;
   });
+  let releaseDelete!: () => void;
+  let notifyDelete!: () => void;
+  const deleting = new Promise<void>(resolve => { notifyDelete = resolve; });
+  const deletionAllowed = new Promise<void>(resolve => { releaseDelete = resolve; });
+  const remove = fs.rm;
+  let held = false;
+  t.mock.method(fs, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
+    if (file === copies[0] && !held) {
+      held = true;
+      notifyDelete();
+      await deletionAllowed;
+    }
+    return remove(file, options);
+  });
+  let currentStarts = 0;
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    currentStarts++;
+    await assert.rejects(access(copies[0]!), /ENOENT/);
+    throw new Error("current startup reached");
+  });
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   try {
     await proxy.execute("open");
+    for (const browser of ["copy", "current"]) {
+      await assert.rejects(proxy.execute("open", [], browser), /choose the browser only on the first open/);
+    }
     const chrome = chromes[0]!;
     const endpoint = await readDevToolsActivePort(chrome.portFile);
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -51,9 +75,24 @@ if (command === 'tab' && args.includes('--json')) {
       await cdp.send("Target.closeTarget", { targetId: pages[0]!.targetId });
       await chrome.closed;
     } finally { cdp.close(); }
+    await deleting;
+    assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
+    await assert.rejects(proxy.execute("open", [], "invalid"), /browser must be copy or current/);
+    let settled = false;
+    const switching = proxy.execute("open", [], "current").then(
+      () => { settled = true; return undefined; },
+      (error: unknown) => { settled = true; return error; },
+    );
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(settled, false, "browser choice waits for profile deletion");
+    assert.equal(currentStarts, 0);
+    releaseDelete();
+    const startupError = await switching;
+    assert.ok(startupError instanceof Error);
+    assert.equal(startupError.message, "current startup reached");
+    assert.equal(currentStarts, 1);
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "close after manual window close succeeds");
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "repeated close succeeds");
-    assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
     const reopened = await proxy.execute("open");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
@@ -67,6 +106,7 @@ if (command === 'tab' && args.includes('--json')) {
       assert.equal(targetInfos.filter(target => target.type === "page").length, 1);
     } finally { cdp2.close(); }
   } finally {
+    releaseDelete();
     await proxy.close().catch(() => undefined);
     for (const chrome of chromes) await chrome.close().catch(() => undefined);
     for (const copy of copies) {
