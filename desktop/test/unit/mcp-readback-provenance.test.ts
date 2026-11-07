@@ -103,7 +103,9 @@ function mcp() {
 async function fixture(t: test.TestContext) {
   const before = { ...process.env };
   const home = mkdtempSync(path.join(tmpdir(), "bao-readback-provenance-"));
-  const cache = before.PLAYWRIGHT_BROWSERS_PATH || path.join(before.HOME || "", "Library/Caches/ms-playwright");
+  const cache = before.PLAYWRIGHT_BROWSERS_PATH || (process.platform === "darwin"
+    ? path.join(before.HOME || "", "Library/Caches/ms-playwright")
+    : path.join(before.XDG_CACHE_HOME || path.join(before.HOME || "", ".cache"), "ms-playwright"));
   const browser = before.BAO_TEST_BROWSER || chromium.executablePath();
   const env = laneChildEnv("hermetic", { ...before, PLAYWRIGHT_BROWSERS_PATH: cache });
   for (const key of Object.keys(process.env)) delete process.env[key];
