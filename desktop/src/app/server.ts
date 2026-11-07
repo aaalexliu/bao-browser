@@ -1293,8 +1293,8 @@ export async function startApp(opts: {
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/continue") {
-        const body = await readBody(req) as { resume?: string };
-        if (typeof body.resume === "string") remote.continue(body.resume);
+        const body = await readBody(req) as { resume?: string; stepId?: string };
+        if (typeof body.resume === "string" && typeof body.stepId === "string") remote.continue(body.resume, body.stepId);
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/kill") {

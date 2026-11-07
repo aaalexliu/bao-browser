@@ -9,7 +9,7 @@ import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets"
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
 import { EXTENSION_NOT_CONNECTED, replayRefusal } from "../cdp-live/launch-guard";
-import { describeWorkflow, heldConfirmReady, runWorkflow, searchWorkflows, type WorkflowOutcome } from "../mcp/catalog";
+import { describeWorkflow, heldConfirmReady, heldConfirmStep, runWorkflow, searchWorkflows, type WorkflowOutcome } from "../mcp/catalog";
 import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
@@ -28,6 +28,8 @@ export interface RemoteView {
   workflowName?: string;
   jobId?: string;
   resumeToken?: string;
+  stepId?: string;
+  stepLabel?: string;
 }
 
 export interface RemoteRunners {
@@ -76,7 +78,7 @@ export function createRemoteAgent(opts: {
 }): {
   view(): RemoteView;
   kill(): void;
-  continue(resume: string): void;
+  continue(resume: string, stepId: string): void;
   start(): void;
   stop(): Promise<void>;
 } {
@@ -90,11 +92,12 @@ export function createRemoteAgent(opts: {
   let heldResume: string | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+  const locallyMoved = new Map<string, Record<string, unknown>>();
 
   function view(): RemoteView {
     if (slot.phase === "idle") return { phase: "idle" };
     return { phase: slot.phase, workflowId: slot.workflowId, workflowName: slot.workflowName, jobId: slot.jobId,
-      ...(slot.phase === "waiting" ? { resumeToken: slot.resume } : {}),
+      ...(slot.phase === "waiting" ? { resumeToken: slot.resume, ...heldConfirmStep(slot.resume) } : {}),
     };
   }
 
@@ -120,8 +123,11 @@ export function createRemoteAgent(opts: {
 
   return { view, kill, continue: continueHeld, start, stop: stopLoop };
 
-  function continueHeld(resume: string, completion: "observed" | "owner" = "owner"): void {
-    enqueue(() => transition({ type: "continue-held", resume, completion }));
+  function continueHeld(resume: string, stepId: string, completion: "observed" | "owner" = "owner"): void {
+    enqueue(() => {
+      if (heldConfirmStep(resume)?.stepId !== stepId) return;
+      transition({ type: "continue-held", resume, completion });
+    });
   }
 
   function enqueue(work: () => void): void {
@@ -143,8 +149,9 @@ export function createRemoteAgent(opts: {
   function watchConfirm(token: string): void {
     if (stopped || confirmTimer) return;
     const timer = setTimeout(() => {
+      const stepId = heldConfirmStep(token)?.stepId;
       void heldConfirmReady(token).then((ready) => {
-        if (ready) continueHeld(token, "observed");
+        if (ready && stepId) continueHeld(token, stepId, "observed");
       }).catch(() => undefined).finally(() => {
         if (confirmTimer === timer) confirmTimer = undefined;
         if (slot.phase === "waiting") watchConfirm(slot.resume);
@@ -267,11 +274,11 @@ export function createRemoteAgent(opts: {
         clearTimeout(deadlineTimer);
         const gen = generation;
         void runWorkflow(opts.library, { resume: effect.resume }, undefined, { prompts: opts.prompts, confirmCompleted: effect.completion === "owner" })
-          .then((result) => finish(effect.jobId, publicOutcome(result), gen, true))
+          .then((result) => finish(effect.jobId, publicOutcome(result), gen, effect.resume))
           .catch(async (err) => {
             if (gen !== generation) return;
             await runWorkflow(opts.library, { resume: effect.resume, cancel: true }).catch(() => undefined);
-            finish(effect.jobId, { outcome: "failed", reason: err instanceof Error ? err.message : String(err) }, gen, true);
+            finish(effect.jobId, { outcome: "failed", reason: err instanceof Error ? err.message : String(err) }, gen, effect.resume);
           });
         continue;
       }
@@ -320,16 +327,17 @@ export function createRemoteAgent(opts: {
     return { workflow, args };
   }
 
-  function finish(jobId: string, result: Record<string, unknown>, gen: number, local?: true, request?: AssignedJob): void {
+  function finish(jobId: string, result: Record<string, unknown>, gen: number, localToken?: string, request?: AssignedJob): void {
     enqueue(() => {
       if (gen !== generation) return;
+      if (localToken) locallyMoved.set(localToken, result);
       const resume = typeof result.resume === "string" ? result.resume : "";
       const info = resumeInfo(resume);
       const waiting = resume && info?.kind === "confirm" ? { resume } : null;
       clearTimeout(deadlineTimer);
       heldResume = waiting?.resume;
       if (heldResume && typeof info?.deadline === "number") armDeadline(heldResume, info.deadline);
-      transition({ type: "run-finished", jobId, result, waiting, local }, request);
+      transition({ type: "run-finished", jobId, result, waiting, local: localToken ? true : undefined }, request);
     });
   }
 
@@ -359,6 +367,11 @@ export function createRemoteAgent(opts: {
         return readRun(job);
       case "resume_workflow": {
         const token = stringArg(job.args.resume);
+        const moved = locallyMoved.get(token);
+        if (moved) {
+          locallyMoved.delete(token);
+          return moved;
+        }
         opts.clearStop();
         if (opts.runners?.resume) return opts.runners.resume(token);
         if (!["signin", "confirm", "wall"].includes(resumeInfo(token)?.kind || "")) {

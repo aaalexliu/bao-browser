@@ -293,13 +293,20 @@ export async function withHeldPage(token: string, run: (page: Page) => Promise<v
   await run(live.page);
 }
 
+export function heldConfirmStep(token: string): { stepId: string; stepLabel: string } | undefined {
+  const live = liveRuns.get(token);
+  if (!live || live.kind !== "confirm" || live.continuing) return undefined;
+  const step = live.workflow.steps.find((step) => step.id === live.stepId);
+  return { stepId: live.stepId, stepLabel: step?.label || live.stepId };
+}
+
 export async function heldConfirmReady(token: string): Promise<boolean> {
   const live = liveRuns.get(token);
   if (!live || live.kind !== "confirm" || live.continuing || !live.confirmPending) return false;
   const stepId = live.stepId;
   const post = live.workflow.steps.find((step) => step.id === stepId)?.postcondition;
   if (!post) return false;
-  const tree = await new BrowserDriver(live.page).tree();
+  const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
   return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && holds(post, tree, live.inputs);
 }
 
@@ -464,6 +471,7 @@ interface LiveRun {
   deadline: number | null;
   ask: string;
   prompts?: PersonPrompts;
+  observer?: BrowserDriver;
   confirmPending?: boolean;
   continuing?: Promise<WorkflowOutcome>;
 }
@@ -607,7 +615,7 @@ async function observeConfirm(live: LiveRun): Promise<void> {
   const post = live.workflow.steps.find((step) => step.id === live.stepId)?.postcondition;
   if (!post || ((post.kind === "element" || post.kind === "absent") ? !post.identity : !post.match?.trim())) return;
   try {
-    live.confirmPending = !holds(post, await new BrowserDriver(live.page).tree(), live.inputs);
+    live.confirmPending = !holds(post, await (live.observer ??= new BrowserDriver(live.page)).tree(), live.inputs);
   } catch { /* The owner can use Continue if the page cannot be read. */ }
 }
 

@@ -212,8 +212,10 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
         assert.ok(sitePage, "held site page missing");
         await sitePage.click(selector);
         if (selector !== "#place-order") await sitePage.waitForURL(`${site.origin}/ready`);
+        else await page!.waitForSelector("#remote-agent", { state: "hidden", timeout: 30_000 });
         const resumed = await tool(origin, tokenA.token, "resume_workflow", { resume: token });
         assert.equal(resumed.json.outcome, "ok", JSON.stringify(resumed.json));
+        if (selector === "#place-order") assert.equal(resumed.json.runId, paused.json.runId);
       } finally {
         await owned.close().catch(() => undefined);
       }

@@ -1251,7 +1251,7 @@ function bindRemote(): void {
     await fetch("/api/remote/continue", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ resume: resume.dataset.resume }),
+      body: JSON.stringify({ resume: resume.dataset.resume, stepId: resume.dataset.step }),
     });
     await refresh();
   };
