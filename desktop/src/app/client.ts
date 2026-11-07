@@ -170,7 +170,7 @@ document.addEventListener("pointerdown", () => {
 }, true);
 document.addEventListener("keydown", (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
-  if (!["Tab", "Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Escape"].includes(event.key)) return;
+  if (!["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) return;
   keyboardInput = true;
   mainEl().dataset.keyboardFocus = "true";
 }, true);

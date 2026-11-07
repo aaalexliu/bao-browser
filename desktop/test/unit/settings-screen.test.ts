@@ -68,7 +68,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
       await settings.click();
       await page.locator("#settings").waitFor();
       assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none", `${theme}: pointer opening has no focus box`);
-      for (const key of ["Shift", "Meta", "Control", "Alt", "CapsLock", "Meta+Tab", "Meta+c", "Meta+h", "Meta+Shift+4", "Control+c", "Alt+c", "a"]) {
+      for (const key of ["Escape", "Enter", "Space", "Shift", "Meta", "Control", "Alt", "CapsLock", "Meta+Tab", "Meta+c", "Meta+h", "Meta+Shift+4", "Control+c", "Alt+c", "a"]) {
         await page.keyboard.press(key);
         await checkMain(false);
       }
@@ -78,6 +78,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
       await page.keyboard.press("ArrowDown");
       await checkMain(true);
       await page.reload();
+      await page.keyboard.press("Tab");
       await settings.focus();
       await page.keyboard.press("Enter");
       await page.locator("#settings").waitFor();
@@ -99,6 +100,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
       await settings.click();
       await page.waitForFunction(() => !(document.querySelector("#sidebar-dialog") as HTMLDialogElement).open);
       assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none");
+      await page.keyboard.press("Tab");
       await page.locator("#sidebar-toggle").focus();
       await page.keyboard.press("Enter");
       await settings.focus();
@@ -109,13 +111,13 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
       for (const keyboard of [false, true]) {
         await page.keyboard.press("Meta+k");
         await page.locator("#palette-input").fill("Open Focus fixture");
-        if (keyboard) await page.keyboard.press("Enter");
+        if (keyboard) { await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter"); }
         else await page.locator("#palette-list [data-command]").first().click();
         await page.locator("#workflow-detail").waitFor();
         await checkMain(keyboard);
         await page.goto(`${url}/?screen=runs`);
         const receipt = page.locator('[data-open-run="focus-run"]').first();
-        if (keyboard) { await receipt.focus(); await page.keyboard.press("Enter"); }
+        if (keyboard) { await page.keyboard.press("Tab"); await receipt.focus(); await page.keyboard.press("Enter"); }
         else await receipt.click();
         await page.locator("#run-receipt").waitFor();
         await checkMain(keyboard);
@@ -129,7 +131,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
           await page.waitForRequest("**/api/state");
           await retry.waitFor();
           runFailure = "";
-          if (keyboard) { await retry.focus(); await page.keyboard.press("Enter"); }
+          if (keyboard) { await page.keyboard.press("Tab"); await retry.focus(); await page.keyboard.press("Enter"); }
           else await retry.click();
           await page.locator("#run-receipt").waitFor();
           await checkMain(keyboard);
@@ -138,7 +140,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
         await page.goto(`${url}/?screen=live`);
         const openWorkflow = page.locator('#detail-bar [data-open-workflow="focus-fixture"]');
         await openWorkflow.waitFor();
-        if (keyboard) { await openWorkflow.focus(); await page.keyboard.press("Enter"); }
+        if (keyboard) { await page.keyboard.press("Tab"); await openWorkflow.focus(); await page.keyboard.press("Enter"); }
         else await openWorkflow.click();
         await page.locator("#workflow-detail").waitFor();
         await checkMain(keyboard);
