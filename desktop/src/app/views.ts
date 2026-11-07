@@ -70,7 +70,7 @@ export function runHealField(driver: string | undefined, mode: string, globalHea
     </select></label>`;
   }
   return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal">
-      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${globalHeal === "approve" ? "Ask me" : "Heal it"})</option>
+      <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${globalHeal === "never" ? "Stop" : globalHeal === "approve" ? "Ask me" : "Heal it"})</option>
       <option value="auto" ${mode === "auto" ? "selected" : ""}>Heal it</option>
       <option value="approve" ${mode === "approve" ? "selected" : ""}>Ask me</option>
     </select></label>`;

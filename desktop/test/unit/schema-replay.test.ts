@@ -6,7 +6,7 @@ import Ajv from "ajv/dist/2020";
 import fc from "fast-check";
 import { canonical } from "../../src/v1/canonical";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
-import { buildPrompt, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal } from "../../src/v1/heal";
+import { buildPrompt, effectiveMode, keepPatch, revertPatch, scriptedHeal, stepPolicy, unavailableHeal, type GlobalHealMode, type HealProposal } from "../../src/v1/heal";
 import { Library } from "../../src/v1/store";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { tmpdir } from "node:os";
@@ -297,6 +297,53 @@ test("replay stops with a structured failure when healing is off", async () => {
   assert.deepEqual(result.failure!.snapshot.dom, { value: "SuperSecretPassword!", text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
   assert.equal(d.clicks, 0);
 });
+
+test("global Stop inherits the existing workflow and step policy precedence", () => {
+  const doc = workflow(id({ testId: "missing" }));
+  assert.equal(effectiveMode(doc, {}), "auto");
+  for (const global of ["auto", "approve", "never"] as const) {
+    assert.equal(effectiveMode(doc, { heal: global }), global);
+    assert.equal(stepPolicy({}, doc, { heal: global }), global);
+    for (const override of ["auto", "approve"] as const) {
+      assert.equal(effectiveMode({ ...doc, heal: override }, { heal: global }), override);
+    }
+    for (const [step, expected] of [["auto", "auto"], ["ask", "approve"], ["never", "never"]] as const) {
+      assert.equal(stepPolicy({ heal: step }, doc, { heal: global }), expected);
+      assert.equal(stepPolicy({ heal: step }, { ...doc, heal: "approve" }, { heal: global }), expected);
+    }
+  }
+});
+
+for (const mode of ["never", "auto", "approve"] satisfies GlobalHealMode[]) {
+  test(`global ${mode} controls a changed step with an available healer`, async () => {
+    const doc = workflow(id({ testId: "missing" }));
+    doc.steps.push({ id: "after-miss", index: 1, action: "note", label: "After the changed step", surface: "dom", timeoutMs: 0 });
+    const d = driver([id({ testId: "real" })]);
+    let checks = 0;
+    let calls = 0;
+    const result = await replay(doc, {}, d, {
+      settings: { heal: mode },
+      heal: {
+        available: () => { checks += 1; return true; },
+        propose: async () => {
+          calls += 1;
+          return { patch: { identity: id({ testId: "real" }) }, model: { provider: "fixture", name: "test" }, prompt: "fixture", rawResponse: "{}" };
+        },
+      },
+    });
+    assert.equal(result.status, mode === "never" ? "failed" : mode === "approve" ? "paused" : "passed");
+    assert.equal(checks, mode === "never" ? 0 : 1);
+    assert.equal(calls, mode === "never" ? 0 : 1);
+    assert.equal(result.heals.length, mode === "never" ? 0 : 1);
+    assert.equal(d.clicks, mode === "auto" ? 1 : 0);
+    assert.equal(result.steps.find((step) => step.id === "after-miss")?.status, mode === "auto" ? "passed" : "pending");
+    if (mode === "never") {
+      assert.equal(result.failure?.stepId, "s0");
+      assert.equal(result.steps[0]?.triage, "never");
+      assert.deepEqual(d.notices, []);
+    }
+  });
+}
 
 test("auto heal applies a patch, records the audit, and does not edit the workflow", async () => {
   const proposal: HealProposal = {

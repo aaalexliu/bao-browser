@@ -6,6 +6,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { MacOsHelper } from "../../src/proxy/os-macos";
 import { testChromium } from "../../src/test-browser";
+import type { WorkflowV2 } from "../../src/v1/schema";
 
 interface StateFixture extends Record<string, unknown> {
   sync?: Record<string, unknown>;
@@ -124,7 +125,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.locator("#set-runs").waitFor();
     assert.deepEqual(await page.locator(".settings-heading").allTextContents(), ["Runs and heals", "Mac permissions", "Remote access", "Logins", "AI help"]);
     assert.equal(await page.getByText("Before each run", { exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "Stop", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("radio", { name: "Stop", exact: true }).count(), 1);
     assert.equal(await page.getByRole("combobox", { name: "Use AI to suggest heals" }).inputValue(), "none");
     assert.deepEqual(await page.locator("#ai-source option").allTextContents(), ["None", "Cursor account", "API key…"]);
     assert.equal(await page.locator("#save-settings").count(), 0);
@@ -548,6 +549,74 @@ test("a clean focused number adopts external updates without writing back", { ti
     await app.close();
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("Settings Stop survives restart and stops a changed fixture step without a heal", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-stop-"));
+  const previousHome = process.env.HOME;
+  const previousFixture = process.env.BAO_HEAL_FIXTURE;
+  process.env.HOME = home;
+  process.env.BAO_HEAL_FIXTURE = "1";
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const options = { home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") };
+  let app = await startApp(options);
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    await page.locator('label[for="heal-never"]').click();
+    await eventually(() => app.library.settings().heal === "never");
+    await app.close();
+    app = await startApp(options);
+    assert.equal(app.library.settings().heal, "never");
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    assert.equal(await page.getByRole("radio", { name: "Stop", exact: true }).isChecked(), true);
+    for (const mode of ["never", "auto", "approve"] as const) {
+      await page.locator('#rail [data-place="settings"]').click();
+      await page.locator(`label[for="heal-${mode}"]`).click();
+      await eventually(() => app.library.settings().heal === mode);
+      const workflow: WorkflowV2 = {
+        schema: "bao.workflow/v2", version: 2, id: `global-${mode}`, name: `Changed button ${mode}`,
+        startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
+        steps: [
+          { id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 },
+          { id: "after-miss", index: 1, action: "note", label: "After the changed button", surface: "dom", timeoutMs: 0 },
+        ],
+      };
+      app.library.save(workflow);
+      await page.locator('#rail [data-place="workflows"]').click();
+      await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
+      await page.locator(`#main [data-screen="replay"][data-workflow="${workflow.id}"]`).click();
+      assert.match(await page.locator("#wf-heal option:checked").innerText(), new RegExp(mode === "never" ? "Stop" : mode === "approve" ? "Ask me" : "Heal it"));
+      const [response] = await Promise.all([
+        page.waitForResponse((res) => res.url().endsWith("/api/replay") && res.request().method() === "POST"),
+        page.locator("#run").click(),
+      ]);
+      assert.equal(response.ok(), true);
+      const run = await response.json() as { runId: string; status: string; modelCalls: number; failure?: { stepId: string } };
+      assert.equal(run.status, mode === "never" ? "failed" : mode === "approve" ? "paused" : "passed");
+      assert.equal(run.modelCalls, mode === "never" ? 0 : 1);
+      const saved = app.library.readRun(run.runId);
+      assert.equal(saved.heals.length, mode === "never" ? 0 : 1);
+      assert.equal((saved.steps as { id: string; status: string }[]).find((step) => step.id === "after-miss")?.status, mode === "auto" ? "passed" : "pending");
+      if (mode === "never") {
+        assert.equal(run.failure?.stepId, "changed");
+        await page.locator('#rail [data-place="runs"]').click();
+        await page.locator(`[data-open-run="${run.runId}"]`).first().click();
+        await page.locator("#main").getByText("Click the missing login button", { exact: false }).first().waitFor();
+      }
+    }
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousFixture === undefined) delete process.env.BAO_HEAL_FIXTURE;
+    else process.env.BAO_HEAL_FIXTURE = previousFixture;
     await rm(home, { recursive: true, force: true });
   }
 });
