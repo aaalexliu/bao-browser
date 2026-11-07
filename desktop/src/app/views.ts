@@ -20,6 +20,7 @@ import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-gra
 import { controlKey, visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
+import type { Identity } from "../v1/schema";
 
 /** Chromium app mode uses the document title as the window title. */
 export function productWindowTitle(): string {
@@ -146,6 +147,8 @@ export interface FailureView {
   snapshot?: { screenshot?: string; screenshotRef?: string; dom?: SnapshotNode[]; ax?: string };
 }
 
+type HealTarget = Partial<Pick<Identity, "name" | "text" | "testId" | "id" | "role" | "path">>;
+
 export interface HealView {
   id: string;
   workflowId?: string;
@@ -155,8 +158,8 @@ export interface HealView {
   prompt?: string;
   rawResponse?: string;
   model?: { name?: string; version?: string; provider?: string };
-  proposedPatch?: { identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string }; label?: string };
-  failedStep?: { id?: string; index?: number; label?: string; action?: string; identity?: { name?: string; text?: string; testId?: string; id?: string; role?: string } };
+  proposedPatch?: { identity?: HealTarget; label?: string };
+  failedStep?: { id?: string; index?: number; label?: string; action?: string; identity?: HealTarget };
   postconditionPassed?: boolean;
   snapshot?: { screenshot?: string; screenshotRef?: string };
   beforeShot?: string;
@@ -298,8 +301,8 @@ export function icon(name: string): string {
   return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${strokes[name] || ""}</svg>`;
 }
 
-function baoMark(): string {
-  return `<svg class="bao-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="bao-mark-bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient><radialGradient id="bao-mark-dough" cx="42%" cy="32%" r="78%"><stop stop-color="#FFFDF8"/><stop offset=".66" stop-color="#FFF1DE"/><stop offset="1" stop-color="#F8DEBE"/></radialGradient></defs><rect x="4" y="4" width="92" height="92" rx="24" fill="url(#bao-mark-bg)"/><g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27C39.2 24.3 42.8 23 41 20.3M50 26C48.2 23.3 51.8 22 50 19.3M59 27C57.2 24.3 60.8 23 59 20.3"/></g><path d="M50 34C70 34 79 48 79 62C79 78 65 84 50 84C35 84 21 78 21 62C21 48 30 34 50 34Z" fill="url(#bao-mark-dough)" stroke="#EBD3B2" stroke-width="1.4"/><ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2"/><path d="M36 60Q41 52.5 46 60M54 60Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M44 72Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>`;
+function baoMark(id = "bao-mark"): string {
+  return `<svg class="bao-mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}-bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FFB86B"/><stop offset="1" stop-color="#E8813A"/></linearGradient><radialGradient id="${id}-dough" cx="42%" cy="32%" r="78%"><stop stop-color="#FFFDF8"/><stop offset=".66" stop-color="#FFF1DE"/><stop offset="1" stop-color="#F8DEBE"/></radialGradient></defs><rect x="4" y="4" width="92" height="92" rx="24" fill="url(#${id}-bg)"/><g stroke="#FFE6C4" stroke-width="2" stroke-linecap="round" fill="none" opacity=".6"><path d="M41 27C39.2 24.3 42.8 23 41 20.3M50 26C48.2 23.3 51.8 22 50 19.3M59 27C57.2 24.3 60.8 23 59 20.3"/></g><path d="M50 34C70 34 79 48 79 62C79 78 65 84 50 84C35 84 21 78 21 62C21 48 30 34 50 34Z" fill="url(#${id}-dough)" stroke="#EBD3B2" stroke-width="1.4"/><ellipse cx="50" cy="36.5" rx="6.5" ry="3.9" fill="#FCEED8" stroke="#EBD3B2"/><path d="M36 60Q41 52.5 46 60M54 60Q59 52.5 64 60" stroke="#3A302A" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M44 72Q50 77 56 72" stroke="#3A302A" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>`;
 }
 
 export function shellAttentionCount(state: ShellState): number {
@@ -1121,41 +1124,85 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
 
 export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = [], extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
   const recorded = heal.failedStep?.identity;
+  const hasProposal = !!heal.proposedPatch;
   const proposed = heal.proposedPatch?.identity;
   const before = imageRef(run.id, heal.beforeShot);
   const after = imageRef(run.id, heal.snapshot?.screenshot) || imageRef(run.id, heal.snapshot?.screenshotRef);
-  const slider = before || after
-    ? `<div class="compare" id="shot-compare" data-before="${esc(before)}" data-after="${esc(after)}">${placeholder(heal.failedStep?.action, heal.failedStep?.label || "Recorded step")}<input id="shot-slider" type="range" min="0" max="100" value="50" aria-label="Screenshot comparison"></div>`
-    : `<div class="compare" id="shot-compare">${placeholder(heal.failedStep?.action, heal.failedStep?.label || "No picture stored")}</div>`;
+  const picture = (src: string, label: string) => `<div class="heal-shot">${src
+    ? `<img src="${esc(src)}" alt="${esc(label)}" data-heal-shot><span class="heal-missing" hidden>Picture unavailable</span>`
+    : `<span class="heal-missing">No picture stored</span>`}</div>`;
+  const step = heal.failedStep?.index === undefined ? "Target" : `Step ${heal.failedStep.index + 1}`;
+  const oldTarget = healTargetDescription(recorded, heal.failedStep?.label);
+  const newTarget = healTargetDescription(proposed, heal.proposedPatch?.label);
+  const promotion = extra.promotion || (run.promotion?.healId === heal.id ? run.promotion : undefined);
+  const need = promotion?.need && promotion.need > 0 ? promotion.need : DEFAULT_PROMOTE_AFTER;
+  const clean = promotion?.replays ?? 0;
+  const status = promotion?.status || "provisional";
+  const targetName = recorded?.name || recorded?.text;
+  const location = proposed?.path?.at(-1);
+  const move = targetName && location?.name ? `“${targetName}” moved into the ${location.name} ${location.role}.` : "The recorded target moved.";
+  const outcome = heal.postconditionPassed === true && run.status === "passed" ? "Bao found it there and finished."
+    : heal.postconditionPassed === false ? "The new target did not pass its check. Review it before keeping it."
+    : "Review the new target before keeping it.";
   const prompt = maskSecrets(heal.prompt || "", secrets);
   const raw = maskSecrets(heal.rawResponse || "", secrets);
   const candidates = heal.identity?.candidates?.map((candidate, index) =>
     `#${index + 1} ${esc(candidate.label)} ${candidate.score}`).join("  ") || "No other candidates stored on this record.";
   const post = heal.postconditionPassed === undefined ? "not run" : heal.postconditionPassed ? "passed" : "failed";
   const decisions = (run.decisions || []).filter((item) => item.healId === heal.id);
+  const lastDecision = decisions.at(-1)?.decision;
+  const reviewState = lastDecision || (status === "promoted" ? "keep" : status === "reverted" ? "revert" : hasProposal ? "pending" : "no-proposal");
+  const note = lastDecision === "keep" ? "Saved this target as a draft. Replay still uses the live version until you promote it."
+    : lastDecision === "revert" ? "Saved the recorded target as a draft. Replay still uses the live version until you promote it."
+    : reviewState === "keep" ? "Bao kept this target."
+    : reviewState === "revert" ? "Bao reverted this target to the saved step."
+    : !hasProposal ? "No new target was proposed. You can save the recorded target as a draft with Revert."
+    : `Bao keeps a heal after ${need} clean runs. Keep it now if the new target looks right.`;
   const decisionLine = decisions.map((item) => `${item.decision} at ${formatClock(item.ts)}`).join(", ");
   const model = heal.model ? `${heal.model.name || ""} ${heal.model.version || ""}`.trim() : "no model";
   const name = extra.workflowName || healWorkflowName(heal, run, new Map());
-  return `<article id="heal-detail" data-heal="${esc(heal.id)}" data-run="${esc(run.id)}">
-    <header class="row"><h3>${esc(heal.intent || heal.failedStep?.label || "Heal")}</h3><span class="quiet">${esc(heal.mode || "")} · ${esc(model)}</span></header>
-    <p id="heal-workflow">${esc(name)}</p>
-    ${promotionLine(extra.promotion || (run.promotion?.healId === heal.id ? run.promotion : undefined))}
-    <p class="quiet">candidate → you keep or revert. The heal record is not edited.</p>
-    <div class="split">
-      <div><h4>Recorded</h4><p>${targetLines(recorded, heal.failedStep?.label)}</p></div>
-      <div><h4>Proposed</h4><p>${targetLines(proposed, heal.proposedPatch?.label)}</p></div>
+  return `<article id="heal-detail" data-heal="${esc(heal.id)}" data-run="${esc(run.id)}" aria-label="Target review: ${esc(name)}">
+    <p class="heal-kicker"><span class="heal-state">${hasProposal ? runStatusGlyph("healed") : ""}${reviewState === "keep" ? "Target kept" : reviewState === "revert" ? "Target reverted" : hasProposal ? "Heal to keep" : "No proposed target"}</span><span class="heal-dot" aria-hidden="true"></span><span id="heal-workflow">${esc(name)}</span>${heal.ts === undefined ? "" : `<span class="heal-dot" aria-hidden="true"></span><span>${esc(formatWhen(heal.ts))}</span>`}</p>
+    <h2>${esc(step)}${hasProposal ? " moved" : " needs review"}</h2>
+    <p class="heal-lead">${hasProposal ? `${esc(move)} ${esc(outcome)}` : "Bao could not propose a new target for this step."}</p>
+    <div class="heal-comparison">
+      <figure>${picture(before, "Page at the start of the failed step")}<figcaption><b>Before</b> · start of step</figcaption></figure>
+      <figure>${picture(after, "Page when the step failed")}<figcaption><b>Now</b>${heal.ts === undefined ? "" : ` · ${esc(new Date(heal.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }))}`}</figcaption></figure>
     </div>
-    ${slider}
-    <p id="heal-candidates">Candidates ${candidates}</p>
-    <p>Postcondition after patch: ${esc(post)}</p>
-    <details id="heal-prompt"><summary>Prompt</summary><pre>${esc(prompt)}</pre></details>
-    <details id="heal-response"><summary>Raw response</summary><pre>${esc(raw)}</pre></details>
-    <div class="row">
-      <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep</button>
-      <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert</button>
+    <dl class="heal-facts">
+      <dt>Old target</dt><dd>${esc(oldTarget)}</dd>
+      <dt>New target</dt><dd>${hasProposal ? esc(newTarget) : "No target proposed"}</dd>
+      <dt>Clean runs</dt><dd id="promotion" data-status="${esc(status)}"><span class="heal-count">${promotion ? `${clean} of ${need}` : "Not recorded"}</span>${promotion ? `<div class="heal-segments" aria-hidden="true">${Array.from({ length: need }, (_, index) => `<i${index < clean ? ' class="passed"' : ""}></i>`).join("")}</div>` : ""}</dd>
+    </dl>
+    <p class="heal-note">${esc(note)}</p>
+    <div class="heal-actions">
+      <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}"${hasProposal ? "" : " disabled"}>Keep new target</button>
+      <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert…</button>
     </div>
-    <p class="quiet">Keep saves a draft version. Replay keeps using the live version until you promote it. Revert puts the failed step back on the live workflow. Both are appended. ${esc(decisionLine)}</p>
+    <p id="heal-decision-status" role="status"></p>
+    <details class="heal-technical"><summary><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Technical details</summary>
+      <div class="heal-code"><p>Recorded: ${targetLines(recorded, heal.failedStep?.label)}</p><p>Proposed: ${targetLines(proposed, heal.proposedPatch?.label)}</p>
+        <p>${esc(heal.mode || "")} · ${esc(model)}</p><p id="heal-candidates">Candidates ${candidates}</p><p>Postcondition after patch: ${esc(post)}</p>
+        <details id="heal-prompt"><summary>Prompt</summary><pre>${esc(prompt)}</pre></details>
+        <details id="heal-response"><summary>Raw response</summary><pre>${esc(raw)}</pre></details>
+        <p>Keep saves a draft version. Replay keeps using the live version until you promote it. Revert saves the recorded target as a draft too. Both are appended. The heal record is not edited. ${esc(decisionLine)}</p>
+      </div>
+    </details>
+    <dialog id="heal-revert-confirm" aria-labelledby="heal-revert-title" aria-describedby="heal-revert-body">
+      <form method="dialog">${baoMark("heal-confirm-mark")}<h3 id="heal-revert-title">Revert ${esc(step.toLowerCase())}?</h3>
+        <p id="heal-revert-body">Bao saves the recorded target as a draft. Replay keeps using the live version until you promote it.</p>
+        <div class="heal-confirm-actions"><button type="submit" value="revert">Revert ${esc(step.toLowerCase())}</button><button type="submit" value="cancel" autofocus>Cancel</button></div>
+      </form>
+    </dialog>
   </article>`;
+}
+
+function healTargetDescription(identity: HealTarget | undefined, label?: string): string {
+  if (!identity) return label || "Target not recorded";
+  const name = identity.name || identity.text;
+  const target = name ? `“${name}”${identity.role ? ` ${identity.role}` : ""}` : label || identity.testId || identity.id || identity.role || "Target not recorded";
+  const parent = identity.path?.at(-1);
+  return parent ? `${target} in ${parent.name ? `“${parent.name}” ` : ""}${parent.role}` : target;
 }
 
 export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], promotions: PromotionView[] = [], splits: string[] = [], home = "", damagedWorkflows: import("../v1/store").DamagedWorkflow[] = []): string {
