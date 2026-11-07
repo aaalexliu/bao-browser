@@ -261,6 +261,7 @@ export interface WorkflowV2 {
   updatedAt?: number;
   /** Test content stays readable but is never suggested to agents. */
   provenance?: "fixture";
+  imported?: true;
   /** Declared results. Replay fills them. run_workflow and get_run return the values. */
   outputs?: WorkflowOutput[];
   /** Absent means the global setting, whose default is auto. */
@@ -327,6 +328,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
   if (doc.provenance !== undefined && doc.provenance !== "fixture") errors.push("provenance");
+  if (doc.imported !== undefined && doc.imported !== true) errors.push("imported");
   if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension" && doc.driver !== "cdp-live") errors.push("driver");
   const names = new Set<string>();
   for (const input of doc.inputs) {
