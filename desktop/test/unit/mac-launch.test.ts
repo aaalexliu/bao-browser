@@ -168,8 +168,6 @@ test("the Mac test card does not send anyone to the listen address", () => {
   assert.equal(card.includes("AXSize"), false);
   assert.equal(card.includes("CDP"), false);
   assert.match(card, /mac-build\.md/);
-  assert.match(card, /helper available/);
-  assert.match(card, /no Mac permission warning/);
   assert.doesNotMatch(card, /AX press ready|live Chrome ready/);
   assert.equal(card.includes("allow Accessibility and Screen Recording"), false);
   const guide = readFileSync(path.join(process.cwd(), "docs/v1.md"), "utf8");

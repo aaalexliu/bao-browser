@@ -259,11 +259,10 @@ int main(int argc, const char *argv[]) {
             __block BOOL shellChecked = NO;
             NSString *shellCheck = @"(() => {"
                 "const rail = document.querySelector('#rail');"
-                "const brand = document.createElement('div'); brand.className = 'brand'; rail.append(brand);"
-                "const native = document.documentElement.dataset.baoNative === 'true' && getComputedStyle(rail).paddingTop === '52px' && getComputedStyle(brand).display === 'none';"
+                "const native = document.documentElement.dataset.baoNative === 'true' && getComputedStyle(rail).paddingTop === '52px' && !rail.querySelector('.brand');"
                 "delete document.documentElement.dataset.baoNative;"
-                "const browser = getComputedStyle(rail).paddingTop === '10px' && getComputedStyle(brand).display === 'flex';"
-                "document.documentElement.dataset.baoNative = 'true'; brand.remove();"
+                "const browser = getComputedStyle(rail).paddingTop === '52px' && !rail.querySelector('.brand');"
+                "document.documentElement.dataset.baoNative = 'true';"
                 "return native && browser; })()";
             [owner.webView evaluateJavaScript:shellCheck completionHandler:^(id value, NSError *error) {
                 assert(!error && [value boolValue]);

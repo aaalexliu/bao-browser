@@ -1,6 +1,6 @@
 // Desktop window. Talks only to this machine's bao server.
 
-import { attentionCount, formatWait, pendingHealCount } from "../v1/human-ask";
+import { formatWait } from "../v1/human-ask";
 import { activePolling, createStatePoller } from "./state-poll";
 import { shellScreen, shellScreens, type Screen } from "./shell-navigation";
 import { bindDesktopMcp, desktopMcpSettings } from "./desktop-mcp-view";
@@ -42,6 +42,9 @@ import {
   runReceipt,
   receiptError,
   runWorkflowName,
+  runAttention,
+  shellAttentionCount,
+  runWaitLeft,
   runKind,
   reviewItems,
   runViewer,
@@ -193,6 +196,7 @@ async function loadState(): Promise<void> {
   const response = await fetch("/api/state");
   if (!response.ok) throw new Error(`state request failed: ${response.status}`);
   const recovering = initialConnectionError;
+  const firstLoad = !stateLoaded;
   state = await response.json();
   stateLoaded = true;
   initialConnectionError = false;
@@ -214,8 +218,10 @@ async function loadState(): Promise<void> {
       }
     }
   }
+  if (screen === "runs" && !opened) selectDefaultRun();
   const key = JSON.stringify({
     recording: state.recording,
+    replaying: state.replaying,
     pending: state.pendingImport,
     ask: state.activeAsk,
     notices: state.notices,
@@ -226,7 +232,8 @@ async function loadState(): Promise<void> {
     runs: (state.runs || []).map((run) => ({
       id: run.id, workflowId: run.workflowId, status: run.status, envelopeStatus: run.envelope?.status,
       at: run.at, kind: run.kind, modelCalls: run.modelCalls,
-      heals: run.heals?.map((heal) => heal.id), decisions: run.decisions, promotionStatus: run.promotion?.status,
+      envelope: run.envelope, failure: run.failure,
+      heals: run.heals?.map((heal) => [heal.id, heal.failedStep]), decisions: run.decisions, promotionStatus: run.promotion?.status,
     })),
     day: new Date().toDateString(),
     reviews: reviewItems(state.runs).map((item) => `${item.workflowId}:${item.stepId}`),
@@ -257,12 +264,12 @@ async function loadState(): Promise<void> {
   paintGuide();
   if (key === renderKey) return;
   renderKey = key;
-  render();
+  render(!firstLoad);
   if (recovering) mainEl().focus({ preventScroll: true });
   paintGuide();
 }
 
-function render(): void {
+function render(focusDetail = true): void {
   const recoveryKey = screen === "library" ? JSON.stringify(state.damagedWorkflows || []) : null;
   const keepLibraryRecovery = libraryRecovery !== null && libraryRecovery.key === recoveryKey;
   if (!keepLibraryRecovery) libraryRecovery = recoveryKey === null ? null : { key: recoveryKey, visible: false, open: false, status: "" };
@@ -359,7 +366,7 @@ function render(): void {
   paintToasts();
   const detail = screen === "workflow" ? `workflow:${openWorkflow}` : screen === "run" ? `run:${openRun}` : "";
   if (detail && detail !== renderedDetail) {
-    mainEl().focus({ preventScroll: true });
+    if (focusDetail) mainEl().focus({ preventScroll: true });
     document.getElementById("content")!.scrollTop = 0;
   }
   renderedDetail = detail;
@@ -542,6 +549,7 @@ function importSheet(): string {
 
 function navigate(next: Screen): void {
   screen = next;
+  if (screen === "runs") selectDefaultRun();
   renderKey = "";
   if (screen === "logins") void loadSaved();
   if (screen === "settings") void loadHostAccess();
@@ -610,7 +618,7 @@ function bind(): void {
   };
   const close = document.getElementById("sidebar-close");
   if (close) close.onclick = () => sidebar.close();
-  document.querySelectorAll("#rail nav button, #screen-list nav button").forEach((btn) => {
+  document.querySelectorAll("#rail [data-screen], #screen-list [data-screen]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
       navigate((btn as HTMLButtonElement).dataset.screen as Screen);
     };
@@ -623,6 +631,8 @@ function bind(): void {
   });
   document.querySelectorAll("[data-open-run]").forEach((btn) => {
     (btn as HTMLButtonElement).onclick = () => {
+      const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
+      if (sidebar.open) sidebar.close("navigate");
       selectRun((btn as HTMLButtonElement).dataset.openRun || "");
       renderKey = "";
       render();
@@ -1691,6 +1701,15 @@ async function runReplay(): Promise<void> {
   await refresh();
 }
 
+function selectDefaultRun(): void {
+  const first = runAttention(state.runs || [], state.activeAsk)[0];
+  if (first?.live) screen = "live";
+  else {
+    const id = first?.run.id || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id;
+    if (id) selectRun(id);
+  }
+}
+
 function selectRun(id: string, stepId = ""): void {
   openRun = id;
   selectedStep = stepId;
@@ -1717,6 +1736,9 @@ function tickClock(): void {
     const deadline = Number(node.dataset.deadline);
     if (deadline) node.textContent = formatWait(Date.now(), deadline, node.dataset.effect || "run stops, nothing applied");
   }
+  for (const node of document.querySelectorAll<HTMLElement>("[data-run-deadline]")) {
+    node.textContent = runWaitLeft(Number(node.dataset.runDeadline));
+  }
   const timer = document.getElementById("rec-timer");
   if (!timer?.dataset.since) return;
   const since = Number(timer.dataset.since);
@@ -1726,12 +1748,7 @@ function tickClock(): void {
 }
 
 function paintDockBadge(): void {
-  const count = attentionCount({
-    ask: state.activeAsk,
-    importPhase: state.pendingImport?.phase,
-    pendingHeals: pendingHealCount(state.runs || []),
-    reviews: reviewItems(state.runs).length,
-  });
+  const count = shellAttentionCount(state);
   document.title = productWindowTitle();
   const nav = navigator as Navigator & { setAppBadge?: (value: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);

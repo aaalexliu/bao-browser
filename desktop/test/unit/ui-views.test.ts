@@ -194,7 +194,7 @@ test("login act bar offers continue and does not press the site button", () => {
   assert.match(html, /still signed out/);
 });
 
-test("attention count covers the ask, the import, and undecided heals", () => {
+test("sidebar count covers Needs-you runs, active asks and imports", () => {
   const html = rail({
     recording: true,
     helper: { label: "helper off" },
@@ -212,10 +212,8 @@ test("attention count covers the ask, the import, and undecided heals", () => {
   assert.match(html, /data-screen="settings"/);
   assert.equal(html.includes("data-screen=\"trail\""), false);
   assert.match(html, /id="attention" data-count="3"/);
-  assert.match(html, /id="attention-label">3 waiting</);
-  assert.match(html, /recording/);
-  assert.match(html, /helper off/);
-  assert.match(html, /no model/);
+  assert.match(html, /id="attention-label">1 run is waiting for you · Sign-in needs you</);
+  assert.doesNotMatch(html, /recording|helper off|no model/);
   assert.equal(attentionCount({ ask: { kind: "confirm" }, importPhase: "confirm", pendingHeals: 1 }), 3);
 });
 
@@ -578,10 +576,11 @@ test("the record bar follows live state without Mac permission onboarding", () =
   const side = rail({
     helper: { label: "helper available", platform: "darwin", accessibility: false, screenCapture: false },
   });
-  assert.doesNotMatch(side, /perm-dot|not granted|needs permission/);
+  assert.doesNotMatch(side, /Optional Mac permissions not granted/);
+  assert.doesNotMatch(side, /perm-dot|needs permission/);
   assert.equal(side.includes('id="onboarding"'), false);
   const quiet = rail({ helper: { label: "helper off", platform: "linux", accessibility: false, screenCapture: false } });
-  assert.match(quiet, /helper off/);
+  assert.match(quiet, /Nothing running/);
   assert.equal(quiet.includes("not granted yet"), false);
   assert.equal(quiet.includes("perm-dot"), false);
   assert.ok(commandItems([{ id: "wf", name: "fixture apply" }]).some((item) => item.label === "Run fixture apply" && item.screen === "replay"));

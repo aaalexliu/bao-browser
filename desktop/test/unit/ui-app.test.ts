@@ -83,8 +83,10 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(await page.locator("#screen-list").isHidden(), true);
     assert.equal(await page.getByRole("button", { name: "Record", exact: true }).isVisible(), true);
     assert.equal(await page.locator("#rail button[data-screen=trail]").count(), 0);
-    assert.match(rail, /helper off|helper available/);
-    assert.match(rail, /no model|fixture model|model ready|cursor account/);
+    await page.click("#rail button[data-place=settings]");
+    assert.match(await page.locator("#settings-helper").innerText(), /helper off|helper available/);
+    assert.match(await page.locator("#settings-model").innerText(), /no model|fixture model|model ready|cursor account/);
+    await page.click("#rail button[data-place=workflows]");
 
     // Open the replay window before exercising the handoffs.
     app.library.save(workflow(app.port, "wf-open", "fixture open", "/fixture", []));

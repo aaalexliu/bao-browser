@@ -8,7 +8,7 @@ Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
 
 The Bao window has no address bar. Runs opens first. The sidebar has Runs, Workflows, and Settings.
 
-Check the footer against [Which grant each job needs](permissions.md#which-grant-each-job-needs). Expect **helper available** or **helper off**, with no Mac permission warning for Chrome agents.
+Check helper presence in Settings against [Which grant each job needs](permissions.md#which-grant-each-job-needs). Chrome agents need no Mac permission grant.
 
 ## Record
 

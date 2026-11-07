@@ -32,6 +32,78 @@ test("three places keep all nine screens and their detail routes reachable", () 
   assert.match(shellList("heals", { runs: [{ id: "run", workflowId: "wf", status: "passed", heals: [{ id: "heal" }] }] }), /id="heal-count">1/);
 });
 
+test("native narrow headers reserve one clearance and keep controls clickable", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-native-shell-layout-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    app.library.saveRun({ id: "native-wait", workflowId: "agent-browser", status: "paused", at: 1, steps: [], heals: [] });
+    const page = await browser.newPage();
+    page.setDefaultTimeout(8_000);
+    for (const native of [false, true]) {
+      for (const width of [720, 1060, 1061]) {
+        await page.setViewportSize({ width, height: 820 });
+        await page.goto(`http://127.0.0.1:${app.port}`);
+        await page.locator("#run-receipt").waitFor();
+        await page.evaluate((enabled) => {
+          if (enabled) document.documentElement.dataset.baoNative = "true";
+          else delete document.documentElement.dataset.baoNative;
+        }, native);
+        for (const screen of ["runs", "library", "settings"] as const) {
+          if (screen !== "runs") {
+            if (width <= 1060) await page.locator("#sidebar-toggle:visible").click();
+            await page.locator(`#rail [data-screen=${screen}]`).click();
+          }
+          if (screen === "library") {
+            await page.locator("#main .library-heading").waitFor();
+            assert.equal(await page.locator("#screen-list").isVisible(), false);
+            const geometry = await page.locator("#content").evaluate((content) => {
+              const header = content.querySelector(".library-heading")!;
+              const rect = header.getBoundingClientRect();
+              const box = content.getBoundingClientRect();
+              const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
+              return {
+                contentTop: box.top, contentLeft: box.left, contentRight: box.right,
+                headerTop: rect.top, headerHeight: rect.height,
+                contained: controls.every((node) => { const control = node.getBoundingClientRect(); return control.top >= rect.top && control.bottom <= rect.bottom && control.left >= rect.left && control.right <= rect.right; }),
+              };
+            });
+            assert.deepEqual(geometry, { contentTop: native && width <= 1060 ? 52 : 0, contentLeft: width <= 1060 ? 0 : 212, contentRight: width, headerTop: native && width <= 1060 ? 52 : 0, headerHeight: 52, contained: true }, `Library ${width}px native=${native}`);
+            for (const button of await page.locator("#main .library-heading button").all()) {
+              if (await button.isVisible()) await button.click({ trial: true });
+            }
+          } else {
+            const geometry = await page.locator("#screen-list").evaluate((list) => {
+              const header = list.querySelector(".pane-bar")!;
+              const rect = header.getBoundingClientRect();
+              const controls = [...header.children].filter((node) => getComputedStyle(node).display !== "none");
+              return {
+                top: rect.top, height: rect.height,
+                navTop: list.querySelector("nav")!.getBoundingClientRect().top,
+                contained: controls.every((node) => { const box = node.getBoundingClientRect(); return box.top >= rect.top && box.bottom <= rect.bottom; }),
+              };
+            });
+            assert.deepEqual(geometry, { top: native && width <= 1060 ? 52 : 0, height: 52, navTop: native && width <= 1060 ? 104 : 52, contained: true }, `${screen} ${width}px native=${native}`);
+            for (const button of await page.locator("#screen-list > .pane-bar button, #screen-list > nav button").all()) {
+              if (await button.isVisible()) await button.click({ trial: true });
+            }
+          }
+        }
+        if (width <= 1060) await page.locator("#sidebar-toggle:visible").click();
+        await page.locator("#rail [data-place=runs]").click();
+        await page.locator(".runs-record").click();
+        await page.locator("#start-url").waitFor();
+      }
+    }
+  } finally {
+    await browser.close(); await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("the running app keeps navigation, details, keyboard focus and narrow layouts working", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-shell-nav-"));
   const oldHome = process.env.HOME;
@@ -97,7 +169,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
       assert.equal(listBounds?.width, width === 1200 ? 340 : width === 720 ? 296 : 320);
       for (const [screen, place, heading] of routes) {
         await navigate(screen, place);
-        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : heading);
+        await page.waitForFunction((text) => document.querySelector("#main h2")?.textContent?.startsWith(text), screen === "library" ? "Workflows" : screen === "runs" ? workflow.name : heading);
         await checkTitle("Bao");
         assert.equal(await page.locator("#screen-list [aria-current=page]").count(), screen === "library" ? 0 : 1);
         if (screen !== "library") {
@@ -129,14 +201,14 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     ] as const) {
       await page.evaluate((value) => localStorage.setItem("bao-theme", value), theme);
       await page.reload();
-      await navigate("runs", "runs");
-      assert.equal(await page.locator("[data-open-run=run-shell]").evaluate((element) => getComputedStyle(element).color), linkColor);
+      await navigate("live", "runs");
+      assert.equal(await page.locator("#runs [data-open-run=run-shell]").evaluate((element) => getComputedStyle(element).color), linkColor);
       await navigate("library", "workflows");
       const title = page.getByRole("button", { name: workflow.name, exact: true });
       assert.ok((await title.boundingBox())!.height < 32);
       assert.equal(await page.locator("#library-search").evaluate((element) => getComputedStyle(element).borderTopColor), inputBorder);
       assert.equal(await page.locator("#content").evaluate((element) => getComputedStyle(element).backgroundColor), surfaceColor);
-      assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "10px");
+      assert.equal(await page.locator("#rail").evaluate((element) => getComputedStyle(element).paddingTop), "52px");
     }
     await page.evaluate(() => localStorage.setItem("bao-theme", "light"));
     await page.reload();
@@ -165,11 +237,13 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     await page.locator("#edit-json").focus();
     pendingHeal = true;
     await page.locator('#attention[data-count="1"]').waitFor();
-    assert.equal(await page.locator("#attention-label").innerText(), "1 waiting");
+    assert.equal(await page.locator("#attention-label").innerText(), "Nothing running");
     assert.equal(await page.locator("#edit-json").evaluate((element) => element === document.activeElement), true);
     await checkTitle("Bao");
     assert.equal(await page.locator("#rail [data-place=workflows]").getAttribute("aria-current"), "page");
     await navigate("runs", "runs");
+    await page.locator("#run-receipt").waitFor();
+    await navigate("live", "runs");
     await page.locator("[data-open-run=run-shell]").first().focus();
     await scrollContent();
     await page.keyboard.press("Enter");
