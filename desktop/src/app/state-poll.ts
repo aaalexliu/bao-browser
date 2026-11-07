@@ -3,7 +3,7 @@ import type { ShellState } from "./views";
 export function activePolling(state: ShellState): boolean {
   return Boolean(
     state.recording || state.replaying || state.liveSessionOpen ||
-    state.teach?.phase === "live" || state.remote?.phase === "running" || state.remote?.phase === "confirm" ||
+    state.teach?.phase === "live" || state.remote?.phase === "running" || state.remote?.phase === "waiting" ||
     state.pendingImport?.phase === "running",
   );
 }

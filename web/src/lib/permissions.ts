@@ -1,5 +1,4 @@
 // What a marketplace listing can do, shown before the first run.
-// A confirm or submit step defaults the listing to Always ask.
 
 export interface PermissionInput {
   name: string;
@@ -14,7 +13,6 @@ export interface PermissionPreview {
   driver: "browser" | "computer-use" | "browser and computer-use";
   confirm: boolean;
   submit: boolean;
-  trust: "ask" | "allow";
 }
 
 interface StepLike {
@@ -64,7 +62,6 @@ export function permissionPreview(document: unknown): PermissionPreview {
     driver,
     confirm,
     submit,
-    trust: confirm || submit ? "ask" : "allow",
   };
 }
 
@@ -83,9 +80,9 @@ export function consequentialStep(step: StepLike): { confirm: boolean; submit: b
 }
 
 export function consequentialCopy(preview: Pick<PermissionPreview, "confirm" | "submit">): string {
-  if (preview.confirm && preview.submit) return "Can press confirm and submit. Always ask.";
-  if (preview.confirm) return "Can press confirm. Always ask.";
-  if (preview.submit) return "Can press submit. Always ask.";
+  if (preview.confirm && preview.submit) return "Includes a human confirm step and can press submit.";
+  if (preview.confirm) return "Includes a human confirm step.";
+  if (preview.submit) return "Can press submit.";
   return "Does not press confirm or submit.";
 }
 

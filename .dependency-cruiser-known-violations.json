@@ -86,20 +86,6 @@
   {
     "type": "dependency",
     "from": "desktop/src/mcp/catalog.ts",
-    "to": "web/src/lib/permissions.ts",
-    "unresolvedTo": "../../../web/src/lib/permissions",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-desktop-cross-product-imports"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "desktop/src/mcp/catalog.ts",
     "to": "web/src/lib/publish.ts",
     "unresolvedTo": "../../../web/src/lib/publish",
     "dependencyTypes": [
@@ -144,20 +130,6 @@
     "from": "desktop/src/v1/remote-agent.ts",
     "to": "web/src/lib/relay-tools.ts",
     "unresolvedTo": "../../../web/src/lib/relay-tools",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-desktop-cross-product-imports"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "desktop/src/v1/remote-agent.ts",
-    "to": "web/src/lib/remote-policy.ts",
-    "unresolvedTo": "../../../web/src/lib/remote-policy",
     "dependencyTypes": [
       "local",
       "import"

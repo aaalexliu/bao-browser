@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -27,8 +27,7 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
   assert.equal(driverLabel(both.driver), "Browser and computer use");
   assert.equal(both.confirm, true);
   assert.equal(both.submit, false);
-  assert.equal(both.trust, "ask");
-  assert.equal(consequentialCopy(both), "Can press confirm. Always ask.");
+  assert.equal(consequentialCopy(both), "Includes a human confirm step.");
 
   const submit = permissionPreview({
     startUrl: "http://127.0.0.1:9/form",
@@ -39,8 +38,7 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
   assert.equal(driverLabel(submit.driver), "Browser");
   assert.equal(submit.confirm, false);
   assert.equal(submit.submit, true);
-  assert.equal(submit.trust, "ask");
-  assert.equal(consequentialCopy(submit), "Can press submit. Always ask.");
+  assert.equal(consequentialCopy(submit), "Can press submit.");
   assert.equal(submit.inputs[0]?.secret, true);
 
   const quiet = permissionPreview({
@@ -50,7 +48,6 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
   });
   assert.equal(quiet.confirm, false);
   assert.equal(quiet.submit, false);
-  assert.equal(quiet.trust, "allow");
   assert.equal(consequentialCopy(quiet), "Does not press confirm or submit.");
   assert.equal(permissionPreview({
     steps: [{ action: "click", label: "submission", surface: "ax", value: "not a url" }],
@@ -59,64 +56,50 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
   assert.equal(permissionPreview({ startUrl: "https://example.com" }).driver, "browser");
 });
 
-test("run_workflow on an un-allowed listing returns needs_approval and does not install", async () => {
-  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-allow-")));
+test("run_workflow installs and runs a marketplace listing without an allow record", async () => {
+  const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-listing-run-")));
+  let origin = "";
+  let submits = 0;
+  let approvalRequests = 0;
   const document = {
-    schema: "bao.workflow/v2",
-    version: 2,
-    id: "trust-1",
-    name: "Pay",
-    startUrl: "https://pay.example/checkout",
-    createdAt: 1,
-    inputs: [{ name: "password", type: "secret", label: "Password" }],
-    steps: [{
-      id: "send",
-      index: 0,
-      action: "click",
-      label: "Submit the form",
-      surface: "dom",
-      timeoutMs: 1000,
-    }],
+    schema: "bao.workflow/v2", version: 2, id: "trust-1", name: "Place Order", createdAt: 1,
+    get startUrl() { return `${origin}/fixture`; },
+    inputs: [],
+    steps: [{ id: "send", index: 0, action: "click", label: "Submit the order", surface: "dom", timeoutMs: 1000,
+      identity: { surface: "dom", role: "button", testId: "send", text: "Place Order", path: [] },
+      expect: { kind: "text", match: "Order placed", timeoutMs: 2000 } }],
   };
   const server = createServer((req, res) => {
-    const url = req.url || "";
-    res.setHeader("content-type", "application/json");
-    if (url.startsWith("/api/workflows/trust-1")) {
+    if (req.url === "/fixture") {
+      res.setHeader("content-type", "text/html");
+      res.end('<h1>Local order fixture</h1><button data-testid="send" onclick="fetch(\'/sent\',{method:\'POST\'}).then(()=>document.getElementById(\'status\').textContent=\'Order placed\')">Place Order</button><p id="status">Ready</p>');
+    } else if (req.url === "/sent" && req.method === "POST") {
+      submits += 1;
+      res.end("ok");
+    } else if (req.url?.startsWith("/api/workflows/trust-1")) {
+      res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ document, visibility: "public", owned: false }));
-      return;
-    }
-    if (url.startsWith("/api/marketplace/trust-1/allow")) {
+    } else if (req.url?.endsWith("/allow")) {
+      approvalRequests += 1;
+      res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ allowed: false }));
-      return;
+    } else {
+      res.writeHead(404).end();
     }
-    res.statusCode = 404;
-    res.end("{}");
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  const port = typeof address === "object" && address ? address.port : 0;
-  writeFileSync(path.join(library.root, "sync.json"), JSON.stringify({
-    server: `http://127.0.0.1:${port}`,
-    deviceToken: "device-token",
-  }));
-  mkdirSync(path.join(library.root, "allows"), { recursive: true });
-  writeFileSync(path.join(library.root, "allows", "trust-1.json"), "{}");
+  assert.ok(address && typeof address === "object");
+  origin = `http://127.0.0.1:${address.port}`;
+  writeFileSync(path.join(library.root, "sync.json"), JSON.stringify({ server: origin, deviceToken: "device-token" }));
+  writeFileSync(path.join(library.root, "settings.json"), JSON.stringify({ siteTrust: { [origin]: "ask" } }));
   try {
-    const blocked = await runWorkflow(library, { id: "trust-1", inputs: {} });
-    assert.equal(blocked.outcome, "needs_approval");
-    assert.equal(blocked.status, "needs_approval");
-    assert.equal(blocked.source, "marketplace");
-    assert.equal(blocked.workflowId, "trust-1");
-    assert.equal(blocked.reason, "Allow this listing before it can run.");
-    assert.equal(blocked.link, "bao://workflow/trust-1");
-    assert.deepEqual(blocked.receipts, []);
-    assert.equal(blocked.permissions?.driver, "browser");
-    assert.equal(blocked.permissions?.submit, true);
-    assert.equal(blocked.permissions?.confirm, false);
-    assert.equal(blocked.permissions?.trust, "ask");
-    assert.equal(blocked.permissions?.inputs[0]?.secret, true);
-    assert.deepEqual(blocked.permissions?.sites, ["https://pay.example"]);
-    assert.throws(() => library.read("trust-1"));
+    const result = await runWorkflow(library, { id: "trust-1" });
+    assert.equal(result.outcome, "ok", result.reason);
+    assert.equal(result.source, "marketplace");
+    assert.equal(submits, 1);
+    assert.equal(approvalRequests, 0);
+    assert.equal(library.read("trust-1").name, "Place Order");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
   }

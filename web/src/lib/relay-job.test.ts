@@ -12,7 +12,6 @@ import {
   asJobId,
   deviceScope,
   durableResult,
-  jobPolicy,
   PgJobStore,
   type QueuedJob,
 } from "./relay-job";
@@ -101,7 +100,6 @@ function queued(id: NonNullable<ReturnType<typeof asJobId>>): QueuedJob {
     tokenId: "atk-pg",
     tool: "search_workflows",
     workflowId: prepared.workflowId,
-    policy: jobPolicy(),
     args: prepared.args,
     events: [],
     createdAt: new Date().toISOString(),

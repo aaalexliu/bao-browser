@@ -24,7 +24,7 @@ export class CodexConfigError extends Error {
  * Codex asks before each call to a server's tools unless default_tools_approval_mode says
  * otherwise, and `codex exec` with approval_policy never refuses every call it would ask about.
  * "approve" covers bao's server only. A per-tool approval_mode in [mcp_servers.bao.tools.*]
- * still wins, and bao's own refusals, such as a checkout click, still apply.
+ * still wins. This setting changes Codex's approval only, not Bao's human workflow steps.
  */
 export const CODEX_APPROVAL_MODE = "approve";
 

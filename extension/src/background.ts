@@ -9,7 +9,6 @@ import {
   hostGrantMessage,
   hostGrantPlan,
   hostGrantWait,
-  secretStaysOnWorkflowOrigin,
   specificHost,
   type HostAccess,
 } from "./host-grant";
@@ -24,8 +23,6 @@ interface Persist {
   windowId?: number;
   dialogs?: boolean;
   origin?: string;
-  /** Origin from open or record. Secret typing stays here even after a later navigation. */
-  workflowOrigin?: string;
 }
 
 interface StoredCmd {
@@ -245,8 +242,7 @@ async function openOwned(url: string, dialogs: boolean, inject: boolean): Promis
     if (!tabId || windowId == null) throw new Error("could not open a replay window");
   }
   // The document request fires during tabs.update. Own the tab first so HAR sees it.
-  // workflowOrigin is the page the workflow opened. Later navigations do not move it.
-  persist = { ...persist, tabId, windowId, dialogs, origin, workflowOrigin: origin };
+  persist = { ...persist, tabId, windowId, dialogs, origin };
   if (inject) await registerScripts(origin, { recorder: persist.phase === "recording", dialogs });
   else await clearBaoScripts();
   const pending = waitComplete(tabId!, 30000);
@@ -254,7 +250,7 @@ async function openOwned(url: string, dialogs: boolean, inject: boolean): Promis
   if (windowId != null) await chrome.windows.update(windowId, { focused: true }).catch(() => undefined);
   await pending;
   if (inject) await ensureInjected(tabId!);
-  persist = { phase: persist.phase === "recording" ? "recording" : "replaying", tabId, windowId, dialogs, origin, workflowOrigin: origin };
+  persist = { phase: persist.phase === "recording" ? "recording" : "replaying", tabId, windowId, dialogs, origin };
   if (dialogs) await ensureDialogs(tabId!);
   await savePersist();
   if (persist.phase === "replaying") await badge("RUN");
@@ -606,12 +602,6 @@ async function typeText(tabId: number, text: string, gaps: number[], maxMs: numb
 async function trustedFill(tabId: number, cmd: Record<string, unknown>, point: Record<string, unknown>): Promise<void> {
   const text = String(cmd.text ?? "");
   const secret = cmd.secret === true;
-  if (secret) {
-    const tab = await chrome.tabs.get(tabId);
-    if (!secretStaysOnWorkflowOrigin(tab.url || "", persist.workflowOrigin || "")) {
-      throw new Error("refusing to type a secret off the workflow origin");
-    }
-  }
   const { gaps, maxMs } = keyGapsOf(cmd);
   const target = targetOf(cmd);
   let landed = "";
@@ -1138,12 +1128,6 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
     await syncNetwork();
     return publishHostAccess("none");
   }
-  if (op === "secret-pin") {
-    const tab = persist.tabId ? await chrome.tabs.get(persist.tabId).catch(() => undefined) : undefined;
-    const url = String(cmd.url || tab?.url || "");
-    const workflowOrigin = persist.workflowOrigin || "";
-    return { ok: secretStaysOnWorkflowOrigin(url, workflowOrigin), workflowOrigin, url };
-  }
   if (op === "flush-observed") {
     const events = observed.slice();
     return { events };
@@ -1173,7 +1157,7 @@ async function perform(cmd: { id: string; op: string } & Record<string, unknown>
     const url = String(cmd.url || "");
     await allowed(url);
     const origin = new URL(url).origin;
-    persist = { ...persist, phase: "recording", origin, workflowOrigin: origin, dialogs: cmd.dialogs === true };
+    persist = { ...persist, phase: "recording", origin, dialogs: cmd.dialogs === true };
     await savePersist();
     await registerScripts(origin, { recorder: true, dialogs: cmd.dialogs === true });
     await badge("REC");
@@ -1491,7 +1475,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!tab?.id || !tab.url) throw new Error("no tab");
       await allowed(tab.url);
       const origin = new URL(tab.url).origin;
-      persist = { phase: "recording", tabId: tab.id, windowId: tab.windowId, origin, workflowOrigin: origin, dialogs: false };
+      persist = { phase: "recording", tabId: tab.id, windowId: tab.windowId, origin, dialogs: false };
       await savePersist();
       await registerScripts(persist.origin!, { recorder: true, dialogs: false });
       await ensureInjected(tab.id);

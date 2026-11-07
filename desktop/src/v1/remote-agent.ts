@@ -6,11 +6,10 @@ import path from "node:path";
 import type { BrowserContext } from "playwright";
 import { redactAudit } from "../../../web/src/lib/audit-redact";
 import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
-import { devicePermission, policyAllowsRemoteRun, type RemotePolicy } from "../../../web/src/lib/remote-policy";
 import { isToolName, JOB_ID, type ToolName } from "../../../web/src/lib/relay-tools";
 import { maxFrameBytes, openWebSocket, type LiteSocket } from "../../../web/src/lib/ws-lite";
 import { EXTENSION_NOT_CONNECTED, replayRefusal } from "../cdp-live/launch-guard";
-import { describeWorkflow, runWorkflow, searchWorkflows, withHeldPage, type WorkflowOutcome } from "../mcp/catalog";
+import { describeWorkflow, runWorkflow, searchWorkflows, type WorkflowOutcome } from "../mcp/catalog";
 import type { PersonPrompts } from "./browser-driver";
 import { clearRelay, loadRelay, type RelayLink } from "./relay-link";
 import { remoteDriverKind } from "./remote-run";
@@ -23,56 +22,46 @@ export function desktopRemoteEnabled(library: Library, env: NodeJS.ProcessEnv = 
   return library.settings().remoteMcp === true;
 }
 
-/** The device's own mode. Job arguments are not a parameter. */
-export function remoteRunAllowed(permission: unknown): "ask" | "deny" {
-  return devicePermission(permission);
-}
-
 export interface RemoteView {
-  phase: "idle" | "approval" | "running" | "confirm";
+  phase: "idle" | "running" | "waiting";
   workflowId?: string;
   workflowName?: string;
-  stepLabel?: string;
   jobId?: string;
 }
 
 export interface RemoteRunners {
   extension?: (workflowId: string, inputs: Record<string, string | number>) => Promise<Record<string, unknown>>;
   playwright?: (workflowId: string, inputs: Record<string, string | number>) => Promise<Record<string, unknown>>;
+  resume?: (token: string) => Promise<Record<string, unknown>>;
 }
 
 type Slot =
   | { phase: "idle" }
-  | { phase: "approval"; jobId: string; workflowId: string; workflowName: string }
   | { phase: "running"; jobId: string; workflowId: string; workflowName: string }
-  | { phase: "confirm"; jobId: string; workflowId: string; workflowName: string; resume: string };
+  | { phase: "waiting"; jobId: string; workflowId: string; workflowName: string; resume: string };
 
 type AssignedJob = {
   id: string;
   tool: ToolName;
   workflowId: string | null;
-  policy: RemotePolicy;
   args: Record<string, unknown>;
   workflowName: string;
 };
 
 type SlotEvent =
-  | { type: "job"; job: AssignedJob; saved: Record<string, unknown> | null; permission: "ask" | "deny" }
-  | { type: "allow" }
-  | { type: "deny" }
+  | { type: "job"; job: AssignedJob; saved: Record<string, unknown> | null }
   | { type: "kill" }
-  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; confirm: { resume: string } | null }
-  | { type: "settled"; jobId: string; reason: string | null }
-  | { type: "confirm-done" };
+  | { type: "expired"; resume: string }
+  | { type: "run-finished"; jobId: string; result: Record<string, unknown>; waiting: { resume: string } | null }
+  | { type: "settled"; jobId: string; reason: string | null };
 
 type SlotEffect =
   | { type: "send-result"; jobId: string; result: Record<string, unknown> }
   | { type: "send-ready" }
   | { type: "start-run"; job: AssignedJob }
-  | { type: "ask" }
   | { type: "abort-run" }
-  | { type: "forget-result"; jobId: string }
-  | { type: "none" };
+  | { type: "release-held"; resume: string; expired: boolean }
+  | { type: "forget-result"; jobId: string };
 
 export function createRemoteAgent(opts: {
   library: Library;
@@ -81,81 +70,29 @@ export function createRemoteAgent(opts: {
   clearStop: () => void;
   runners?: RemoteRunners;
   extensionLinked?: () => boolean;
-  /** Tests skip the Allow wait. Deny still wins, and a client field does not. */
-  autoAllow?: boolean;
 }): {
   view(): RemoteView;
-  allow(): void;
-  deny(): void;
   kill(): void;
-  approveConfirm(): Promise<{ outcome: string; reason?: string }>;
   start(): void;
   stop(): Promise<void>;
 } {
   let slot: Slot = { phase: "idle" };
   let stopped = false;
-  let clicking = false;
   let context: BrowserContext | undefined;
-  let approvalTimer: ReturnType<typeof setTimeout> | null = null;
   let wake: (() => void) | null = null;
   let socket: LiteSocket | null = null;
   let chain: Promise<void> = Promise.resolve();
   let generation = 0;
-  let current: AssignedJob | null = null;
+  let heldResume: string | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
   function view(): RemoteView {
-    if (clicking && slot.phase === "confirm") {
-      return { phase: "running", workflowId: slot.workflowId, workflowName: slot.workflowName, stepLabel: "Place Order", jobId: slot.jobId };
-    }
     if (slot.phase === "idle") return { phase: "idle" };
-    if (slot.phase === "confirm") {
-      return { phase: "confirm", workflowId: slot.workflowId, workflowName: slot.workflowName, stepLabel: "Place Order", jobId: slot.jobId };
-    }
     return { phase: slot.phase, workflowId: slot.workflowId, workflowName: slot.workflowName, jobId: slot.jobId };
   }
 
-  function disarmApproval(): void {
-    if (approvalTimer) clearTimeout(approvalTimer);
-    approvalTimer = null;
-  }
-
-  function allow(): void {
-    disarmApproval();
-    enqueue(() => transition({ type: "allow" }));
-  }
-
-  function deny(): void {
-    disarmApproval();
-    enqueue(() => transition({ type: "deny" }));
-  }
-
   function kill(): void {
-    disarmApproval();
     enqueue(() => transition({ type: "kill" }));
-  }
-
-  async function approveConfirm(): Promise<{ outcome: string; reason?: string }> {
-    if (slot.phase !== "confirm") return { outcome: "failed", reason: "no confirm is waiting" };
-    const pending = slot;
-    clicking = true;
-    try {
-      await withHeldPage(pending.resume, async (page) => {
-        await page.evaluate(() => { document.getElementById("bao-control-strip")?.remove(); });
-        const button = page.locator("#place-order");
-        if (await button.count() < 1) {
-          const body = await page.locator("body").innerText().catch(() => "");
-          throw new Error(`no place-order button on ${page.url()} (${body.slice(0, 180)})`);
-        }
-        await button.click({ timeout: 5000 });
-      });
-      const done = await runWorkflow(opts.library, { resume: pending.resume });
-      return { outcome: done.outcome === "needs_signin" ? "needs_human" : done.outcome, reason: done.reason };
-    } catch (err) {
-      return { outcome: "failed", reason: err instanceof Error ? err.message : String(err) };
-    } finally {
-      clicking = false;
-      enqueue(() => transition({ type: "confirm-done" }));
-    }
   }
 
   function start(): void {
@@ -167,18 +104,20 @@ export function createRemoteAgent(opts: {
     generation += 1;
     socket?.close();
     wake?.();
-    disarmApproval();
+    clearTimeout(deadlineTimer);
+    if (heldResume) await runWorkflow(opts.library, { resume: heldResume, cancel: true });
+    heldResume = undefined;
     await releaseContext();
   }
 
-  return { view, allow, deny, kill, approveConfirm, start, stop: stopLoop };
+  return { view, kill, start, stop: stopLoop };
 
   function enqueue(work: () => void): void {
     chain = chain.then(work).then(() => undefined, () => undefined);
   }
 
   function transition(event: SlotEvent): void {
-    const next = apply(slot, event, current);
+    const next = apply(slot, event);
     slot = next.slot;
     perform(next.effects);
   }
@@ -249,26 +188,15 @@ export function createRemoteAgent(opts: {
     if (message.type !== "job") return;
     const job = assigned(message.job);
     if (!job) return;
-    if (!policyAllowsRemoteRun(job.policy)) {
-      if (slot.phase !== "idle") return;
-      perform([
-        { type: "send-result", jobId: job.id, result: { outcome: "failed", reason: "policy", workflowId: job.workflowId } },
-        { type: "send-ready" },
-      ]);
-      return;
-    }
-    if (slot.phase === "idle") current = job;
     transition({
       type: "job",
       job,
       saved: readSaved(opts.library.root, job.id),
-      permission: remoteRunAllowed(opts.library.settings().remotePermission),
     });
   }
 
   function perform(effects: SlotEffect[]): void {
     for (const effect of effects) {
-      if (effect.type === "none") continue;
       if (effect.type === "send-ready") {
         socket?.send(JSON.stringify({ type: "ready" }));
         continue;
@@ -284,24 +212,27 @@ export function createRemoteAgent(opts: {
         forgetResult(opts.library.root, effect.jobId);
         continue;
       }
+      if (effect.type === "release-held") {
+        clearTimeout(deadlineTimer);
+        const open = context;
+        heldResume = undefined;
+        context = undefined;
+        void runWorkflow(opts.library, { resume: effect.resume, cancel: !effect.expired }, undefined, { prompts: opts.prompts })
+          .finally(() => open?.close().catch(() => undefined)).catch(() => undefined);
+        continue;
+      }
       if (effect.type === "abort-run") {
         generation += 1;
         opts.stop();
+        clearTimeout(deadlineTimer);
+        if (heldResume) void runWorkflow(opts.library, { resume: heldResume, cancel: true }).catch(() => undefined);
+        heldResume = undefined;
         const open = context;
         setTimeout(() => { void open?.close().catch(() => undefined); }, 400);
         continue;
       }
-      if (effect.type === "ask") {
-        if (opts.autoAllow) {
-          queueMicrotask(() => allow());
-          continue;
-        }
-        disarmApproval();
-        approvalTimer = setTimeout(() => deny(), 45_000);
-        approvalTimer.unref();
-        continue;
-      }
       if (effect.type === "start-run") {
+        clearTimeout(deadlineTimer);
         const gen = generation;
         const job = effect.job;
         void execute(job).then((result) => {
@@ -309,18 +240,27 @@ export function createRemoteAgent(opts: {
           enqueue(() => {
             if (gen !== generation) return;
             const resume = typeof result.resume === "string" ? result.resume : "";
-            const confirm = resume && resumeKind(resume) === "confirm" ? { resume } : null;
-            transition({ type: "run-finished", jobId: job.id, result, confirm });
+            const info = resumeInfo(resume);
+            const waiting = resume && info?.kind === "confirm" ? { resume } : null;
+            clearTimeout(deadlineTimer);
+            heldResume = waiting?.resume;
+            if (heldResume && typeof info?.deadline === "number") {
+              armDeadline(heldResume, info.deadline);
+            }
+            transition({ type: "run-finished", jobId: job.id, result, waiting });
           });
         }).catch((err) => {
           if (gen !== generation) return;
           enqueue(() => {
             if (gen !== generation) return;
+            clearTimeout(deadlineTimer);
+            if (heldResume) void runWorkflow(opts.library, { resume: heldResume, cancel: true }).catch(() => undefined);
+            heldResume = undefined;
             transition({
               type: "run-finished",
               jobId: job.id,
               result: { outcome: "failed", workflowId: job.workflowId, reason: err instanceof Error ? err.message : String(err) },
-              confirm: null,
+              waiting: null,
             });
           });
         });
@@ -348,6 +288,18 @@ export function createRemoteAgent(opts: {
     return { workflow, args };
   }
 
+  function armDeadline(token: string, deadline: number): void {
+    deadlineTimer = setTimeout(() => enqueue(() => {
+      if (heldResume !== token || slot.phase !== "waiting") return;
+      if (Date.now() < deadline) {
+        armDeadline(token, deadline);
+        return;
+      }
+      transition({ type: "expired", resume: token });
+    }), Math.max(0, deadline - Date.now()));
+    deadlineTimer.unref();
+  }
+
   async function execute(job: AssignedJob): Promise<Record<string, unknown>> {
     switch (job.tool) {
       case "search_workflows": {
@@ -360,11 +312,18 @@ export function createRemoteAgent(opts: {
       }
       case "get_run":
         return readRun(job);
-      case "resume_workflow":
-        return {
-          outcome: "needs_human",
-          reason: "Approve this on the Mac. A remote agent cannot.",
-        };
+      case "resume_workflow": {
+        const token = stringArg(job.args.resume);
+        opts.clearStop();
+        if (opts.runners?.resume) return opts.runners.resume(token);
+        if (!["signin", "confirm", "wall"].includes(resumeInfo(token)?.kind || "")) {
+          return { outcome: "failed", reason: "This run is not held for a human interaction. Use run_workflow to start a new run." };
+        }
+        return publicOutcome(await runWorkflow(opts.library, { resume: token }, undefined, {
+          prompts: opts.prompts,
+          onContext: (next) => { context = next; },
+        }));
+      }
       case "run_workflow":
         return run(job);
       default: {
@@ -427,13 +386,12 @@ export function createRemoteAgent(opts: {
     try { return opts.library.read(id).name || id; } catch { return id; }
   }
 
-  function resumeKind(token: string | undefined): string | undefined {
+  function resumeInfo(token: string | undefined): { kind?: string; deadline?: number | null } | undefined {
     if (!token) return undefined;
     const file = path.join(opts.library.root, "resumes", `${token}.json`);
     if (!existsSync(file)) return undefined;
     try {
-      const parsed = JSON.parse(readFileSync(file, "utf8")) as { kind?: string };
-      return parsed.kind;
+      return JSON.parse(readFileSync(file, "utf8")) as { kind?: string; deadline?: number | null };
     } catch {
       return undefined;
     }
@@ -463,7 +421,6 @@ export function createRemoteAgent(opts: {
       id,
       tool,
       workflowId,
-      policy: row.policy as RemotePolicy,
       args,
       workflowName: workflowLabel(workflowId || stringArg(args.id) || id),
     };
@@ -490,134 +447,54 @@ export function createRemoteAgent(opts: {
   }
 }
 
-function apply(slot: Slot, event: SlotEvent, current: AssignedJob | null): { slot: Slot; effects: SlotEffect[] } {
+function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[] } {
   if (event.type === "job") {
-    if (slot.phase !== "idle") {
-      if (event.saved && "jobId" in slot && slot.jobId === event.job.id) {
-        return { slot, effects: [{ type: "send-result", jobId: event.job.id, result: event.saved }] };
-      }
-      // Refuse without send-ready. The confirm stays up, and the next run stays queued.
-      if (event.job.tool === "resume_workflow") {
-        return {
-          slot,
-          effects: [{
-            type: "send-result",
-            jobId: event.job.id,
-            result: { outcome: "needs_human", reason: "Approve this on the Mac. A remote agent cannot." },
-          }],
-        };
-      }
-      return { slot, effects: [{ type: "none" }] };
-    }
     if (event.saved) {
-      // The server will not claim the next job until it sees ready.
       return {
         slot,
         effects: [
           { type: "send-result", jobId: event.job.id, result: event.saved },
-          { type: "send-ready" },
+          ...(slot.phase === "idle" ? [{ type: "send-ready" } as const] : []),
         ],
       };
     }
-    if (event.job.tool === "resume_workflow") {
+    if (slot.phase === "running") return { slot, effects: [] };
+    if (slot.phase === "waiting" && (event.job.tool !== "resume_workflow" || event.job.args.resume !== slot.resume)) {
       return {
-        slot: { phase: "idle" },
-        effects: [
-          {
-            type: "send-result",
-            jobId: event.job.id,
-            result: { outcome: "needs_human", reason: "Approve this on the Mac. A remote agent cannot." },
-          },
-          { type: "send-ready" },
-        ],
-      };
-    }
-    if (event.job.tool === "run_workflow" && event.permission === "deny") {
-      return {
-        slot: { phase: "idle" },
-        effects: [
-          {
-            type: "send-result",
-            jobId: event.job.id,
-            result: { outcome: "denied", workflowId: event.job.workflowId, reason: "this Mac denies remote runs" },
-          },
-          { type: "send-ready" },
-        ],
-      };
-    }
-    if (event.job.tool === "run_workflow") {
-      const workflowId = event.job.workflowId || "";
-      return {
-        slot: { phase: "approval", jobId: event.job.id, workflowId, workflowName: event.job.workflowName },
-        effects: [{ type: "ask" }],
+        slot,
+        effects: [{ type: "send-result", jobId: event.job.id, result: { outcome: "needs_human", reason: "This workflow is waiting for its requested interaction." } }],
       };
     }
     return {
       slot: {
         phase: "running",
         jobId: event.job.id,
-        workflowId: event.job.workflowId || "",
-        workflowName: event.job.workflowName,
+        workflowId: slot.phase === "waiting" ? slot.workflowId : event.job.workflowId || "",
+        workflowName: slot.phase === "waiting" ? slot.workflowName : event.job.workflowName,
       },
       effects: [{ type: "start-run", job: event.job }],
     };
   }
-  if (event.type === "allow") {
-    if (slot.phase !== "approval" || !current) return { slot, effects: [{ type: "none" }] };
-    return {
-      slot: { phase: "running", jobId: slot.jobId, workflowId: slot.workflowId, workflowName: slot.workflowName },
-      effects: [{ type: "start-run", job: current }],
-    };
+  if (event.type === "expired") {
+    if (slot.phase !== "waiting" || slot.resume !== event.resume) return { slot, effects: [] };
+    return { slot: { phase: "idle" }, effects: [{ type: "release-held", resume: slot.resume, expired: true }, { type: "send-ready" }] };
   }
-  if (event.type === "deny") {
-    if (slot.phase !== "approval") return { slot, effects: [{ type: "none" }] };
+  if (event.type === "kill") {
+    if (slot.phase === "idle") return { slot, effects: [] };
     return {
       slot: { phase: "idle" },
       effects: [
-        { type: "send-result", jobId: slot.jobId, result: { outcome: "denied", workflowId: slot.workflowId } },
+        slot.phase === "waiting" ? { type: "release-held", resume: slot.resume, expired: false } : { type: "abort-run" },
+        ...(slot.phase === "running" ? [{ type: "send-result", jobId: slot.jobId, result: { outcome: "cancelled", workflowId: slot.workflowId } } as const] : []),
         { type: "send-ready" },
       ],
     };
   }
-  if (event.type === "kill") {
-    if (slot.phase === "approval") {
-      return {
-        slot: { phase: "idle" },
-        effects: [
-          { type: "abort-run" },
-          { type: "send-result", jobId: slot.jobId, result: { outcome: "denied", workflowId: slot.workflowId } },
-          { type: "send-ready" },
-        ],
-      };
-    }
-    if (slot.phase === "running") {
-      // The row stays running until a result is stored. Kill has to send one.
-      return {
-        slot: { phase: "idle" },
-        effects: [
-          { type: "abort-run" },
-          { type: "send-result", jobId: slot.jobId, result: { outcome: "cancelled", workflowId: slot.workflowId } },
-          { type: "send-ready" },
-        ],
-      };
-    }
-    if (slot.phase === "confirm") {
-      return { slot: { phase: "idle" }, effects: [{ type: "abort-run" }, { type: "send-ready" }] };
-    }
-    return { slot, effects: [{ type: "none" }] };
-  }
   if (event.type === "run-finished") {
-    const active = (slot.phase === "approval" || slot.phase === "running") && slot.jobId === event.jobId;
-    if (!active) return { slot, effects: [{ type: "none" }] };
-    if (event.confirm) {
+    if (slot.phase !== "running" || slot.jobId !== event.jobId) return { slot, effects: [] };
+    if (event.waiting) {
       return {
-        slot: {
-          phase: "confirm",
-          jobId: slot.jobId,
-          workflowId: slot.workflowId,
-          workflowName: slot.workflowName,
-          resume: event.confirm.resume,
-        },
+        slot: { ...slot, phase: "waiting", resume: event.waiting.resume },
         effects: [{ type: "send-result", jobId: event.jobId, result: event.result }],
       };
     }
@@ -629,16 +506,11 @@ function apply(slot: Slot, event: SlotEvent, current: AssignedJob | null): { slo
       ],
     };
   }
-  if (event.type === "settled") {
-    const effects: SlotEffect[] = [{ type: "forget-result", jobId: event.jobId }];
-    const active = (slot.phase === "approval" || slot.phase === "running") && slot.jobId === event.jobId;
-    if (event.reason === "timed out" && active) {
-      return { slot: { phase: "idle" }, effects: [...effects, { type: "abort-run" }, { type: "send-ready" }] };
-    }
-    return { slot, effects };
+  const effects: SlotEffect[] = [{ type: "forget-result", jobId: event.jobId }];
+  if (event.reason === "timed out" && slot.phase === "running" && slot.jobId === event.jobId) {
+    return { slot: { phase: "idle" }, effects: [...effects, { type: "abort-run" }, { type: "send-ready" }] };
   }
-  if (slot.phase !== "confirm") return { slot, effects: [{ type: "none" }] };
-  return { slot: { phase: "idle" }, effects: [{ type: "send-ready" }] };
+  return { slot, effects };
 }
 
 function fitResult(jobId: string, result: Record<string, unknown>): Record<string, unknown> {

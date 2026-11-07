@@ -140,6 +140,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
     }
   }
   async function navigate(screen: Screen, place: string): Promise<void> {
+    if (await page.locator(".cap-back").isVisible()) await page.locator(".cap-back").click();
     const primary = page.locator(`#rail [data-place="${place}"]`);
     await primary.waitFor({ state: "attached" });
     if (!await primary.isVisible()) await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
@@ -184,8 +185,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
           assert.equal(await page.locator('#screen-list [data-settings-jump="runs"]').getAttribute("aria-current"), "true");
           assert.equal(await page.locator("#screen-list [aria-current]").count(), 1);
         } else if (place !== "runs" && screen !== "library") {
-          const label = screen === "replay" ? "Replay" : heading;
-          assert.equal(await page.locator("#screen-list").getByRole("button", { name: new RegExp(`^${label}(?: |$)`) }).getAttribute("aria-current"), "page");
+          assert.equal(await page.locator(`#screen-list [data-screen="${screen}"]`).getAttribute("aria-current"), "page");
         }
         const bounds = await page.locator("#content").evaluate((element) => ({ width: element.clientWidth, scroll: element.scrollWidth }));
         assert.ok(bounds.scroll <= bounds.width + 1, `${screen} at ${width}px overflows: ${JSON.stringify(bounds)}`);
@@ -409,7 +409,7 @@ test("Workflows list keeps long names, search recovery, warnings and actions rea
       assert.match(await page.locator("#library-damaged").innerText(), /damaged.json/);
       assert.match(await page.locator("#library-damaged").innerText(), /Go to Folder/);
       await page.getByRole("button", { name: "Record", exact: true }).click();
-      await page.locator("#screen-list [data-screen=library]").click();
+      await page.getByRole("button", { name: "Back to Workflows", exact: true }).click();
       assert.equal(await page.locator("#library-damaged details").isHidden(), true);
       await page.route("**/api/workflows/reveal", (route) => route.fulfill({ status: 500, json: { error: "Could not open the workflow folder." } }));
       await page.getByRole("button", { name: "Show in Finder", exact: true }).click();

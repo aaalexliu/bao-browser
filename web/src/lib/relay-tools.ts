@@ -22,7 +22,7 @@ export const RELAY_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: "Ask the paired device to replay a saved workflow. The device must approve before anything runs. A confirm step cannot be approved from here.",
+    description: "Replay a saved workflow on the paired device without another Bao approval. Sends, orders, and payments run as recorded. Site sign-in and explicit human steps still wait.",
     inputSchema: {
       type: "object",
       properties: {
@@ -35,7 +35,7 @@ export const RELAY_TOOLS = [
   },
   {
     name: "resume_workflow",
-    description: "Continue a paused run. A confirm, payment, send, login, or bot wall can only be approved on the device. This call cannot approve those.",
+    description: "Continue a paused run after the requested interaction is complete. Site login challenges and explicit human workflow steps still require that interaction; this call checks their result.",
     inputSchema: {
       type: "object",
       properties: { resume: { type: "string" }, deviceId: { type: "string" } },
