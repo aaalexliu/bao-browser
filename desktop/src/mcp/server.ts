@@ -189,9 +189,11 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   if (msg.method === "tools/list" || msg.method === "tools/call") {
     try { await ctx.checkVersion(); }
     catch (error) {
-      send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
-      if (error instanceof McpVersionError && error.restart) ctx.stop();
-      return;
+      if (!(error instanceof McpVersionError) || error.restart) {
+        send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } });
+        if (error instanceof McpVersionError && error.restart) ctx.stop();
+        return;
+      }
     }
   }
   if (msg.method === "tools/list") {
