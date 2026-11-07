@@ -206,7 +206,7 @@ function instruction(doc: WorkflowV2, step: WorkflowStep): string {
   if ((step.action === "type" || step.action === "digits") && token) {
     const where = fieldLabel(step);
     text = where ? `Type ${token} in ${where}` : `Type ${token}`;
-  } else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : step.label || `Add ${step.value || "a file"}`;
+  } else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : "Add a file";
   else if (step.action === "click") text = clickLine(doc, step);
   else text = step.label || step.action;
   const cleaned = tidy(text);
@@ -229,7 +229,7 @@ function clickPhrase(step: WorkflowStep): string {
   if (quoted?.[1]) return quoted[1];
   const plain = label.match(/^Click\s+(.+)$/i);
   if (plain?.[1]) return plain[1];
-  return step.identity?.text || step.identity?.name || step.identity?.label || label;
+  return step.identity?.text || step.identity?.name || step.identity?.label || "";
 }
 
 function isFieldTarget(doc: WorkflowV2, step: WorkflowStep): boolean {

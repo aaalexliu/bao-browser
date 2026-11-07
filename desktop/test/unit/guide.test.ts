@@ -49,8 +49,8 @@ test("an exported guide keeps saved values, paths, labels, choices, and exact pi
   doc.name = `Notes ${secret} ${home}`;
   doc.inputs.push({ name: "route", type: "choice", choices: ["Log in first", "Already signed in", secret] });
   doc.steps.push(
-    step({ id: "open", action: "click", label: `Open ${home}` }, 4),
-    step({ id: "win", action: "click", label: "Open C:\\Users\\alex\\notes.txt" }, 5),
+    step({ id: "open", action: "click", label: `Click ${home}` }, 4),
+    step({ id: "win", action: "click", label: "Click C:\\Users\\alex\\notes.txt" }, 5),
     step({ id: "literal", action: "type", label: `Type ${secret}`, value: secret, sensitive: true }, 6),
     step({ id: "escape", action: "click", label: "Click <script>alert(1)</script>" }, 7),
   );
@@ -70,6 +70,23 @@ test("an exported guide keeps saved values, paths, labels, choices, and exact pi
   assert.deepEqual(embedded(html), [...crops.values()]);
   assert.match(html, /id="guide"/);
   assert.match(html, /prefers-color-scheme: dark/);
+});
+
+test("unnamed targets and file actions keep their standard guide instructions", () => {
+  const doc = document();
+  doc.steps = [
+    step({ id: "unnamed", action: "click", label: "Click" }, 0),
+    step({ id: "field", action: "click", label: "Click", identity: field("") }, 1),
+    step({ id: "not-a-target", action: "click", label: "username" }, 2),
+    step({ id: "username", action: "type", label: "Type {{username}}", input: "username", identity: field("username") }, 3),
+    step({ id: "upload", action: "upload", label: "Upload file", value: file }, 4),
+    step({ id: "drop", action: "drop", label: "Drop file", value: home }, 5),
+    step({ id: "bound-upload", action: "upload", label: "Upload file", input: "upload" }, 6),
+    step({ id: "bound-drop", action: "drop", label: "Drop file", input: "upload" }, 7),
+  ];
+  const html = guideHtml(doc, new Map());
+  const lines = [...html.matchAll(/<li class="step">.*?<p>(.*?)<\/p><\/li>/g)].map((match) => match[1]);
+  assert.deepEqual(lines, ["Click", "Click the field", "Click", "Type {{username}} in Username", "Add a file", "Add a file", "Add {{upload}}", "Add {{upload}}"]);
 });
 
 test("a focus click folds into typing without rewriting typed or password pictures", () => {

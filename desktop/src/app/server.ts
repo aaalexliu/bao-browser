@@ -610,7 +610,7 @@ export async function startApp(opts: {
         const body = await readBody(req) as { kind?: string; detail?: string };
         if (body.kind === "login") {
           const detail = typeof body.detail === "string" ? body.detail.replace(/\s+/g, " ").trim() : "";
-          if (detail && (detail.length > 120 || looksPersonal(detail))) return json(res, { error: "detail" }, 400);
+          if (detail.length > 120) return json(res, { error: "detail" }, 400);
           loginWait = { message: "waiting for you to log in", ...(detail ? { detail } : {}) };
         }
         else if (body.kind === "confirm") {
@@ -653,13 +653,13 @@ export async function startApp(opts: {
         const body = await readBody(req) as { phrases?: string[] };
         const phrases = (body.phrases || []).filter((phrase) => typeof phrase === "string" && phrase.length <= 40).slice(0, 6);
         const page = await sitePage();
-        const texts = (await shortTexts(page, phrases)).filter((text) => !looksPersonal(text));
+        const texts = await shortTexts(page, phrases);
         return json(res, { texts });
       }
       if (req.method === "POST" && url.pathname === "/api/site/shot") {
         const body = await readBody(req) as { phrase?: string; file?: string };
         const phrase = (body.phrase || "").trim();
-        if (!phrase || phrase.length > 80 || looksPersonal(phrase)) return json(res, { error: "phrase" }, 400);
+        if (!phrase || phrase.length > 80) return json(res, { error: "phrase" }, 400);
         const base = path.basename(body.file || "status-card.png");
         if (!/^[\w.-]+$/.test(base)) return json(res, { error: "file" }, 400);
         const page = await sitePage();
@@ -3086,13 +3086,6 @@ async function shortTexts(page: Page, phrases: string[]): Promise<string[]> {
     }
     return out;
   }, phrases);
-}
-
-function looksPersonal(text: string): boolean {
-  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text)) return true;
-  if (/\b\d{3}-\d{2}-\d{4}\b/.test(text)) return true;
-  if (/\d{6,}/.test(text)) return true;
-  return false;
 }
 
 async function clipForPhrase(page: Page, phrase: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
