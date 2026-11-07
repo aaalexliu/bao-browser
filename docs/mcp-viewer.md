@@ -33,7 +33,7 @@ Clients that do not negotiate MCP Apps keep their existing native-text browser r
 
 ## Run evidence
 
-The viewer reads the same Library files as Bao desktop. It has no second database. Run and workflow reads cap each record at 2 MiB. History pages cap run reads at five records. Detail pages cap run steps and workflow steps at twenty each. Unavailable or oversized history records consume a page slot and show a skipped-record count.
+The viewer reads the same Library files as Bao desktop. It has no second database. Workflow and replay-record reads cap each record at 2 MiB. Exact-run inspection and step-picture reads load pass-through capture records whole; card pictures read directly by run and step without loading the record. History pages cap run reads at five records. Detail pages cap run steps and workflow steps at twenty each. Unavailable or oversized history records consume a page slot and show a skipped-record count.
 
 The projection omits the run's input fields, raw snapshots, native command arguments and output, dedicated local asset path fields, video, and resume tokens. Stored reasons, read-backs, and owner requests are not scrubbed and may contain input values or local paths. It shows model-call counts as unknown when a record does not track them. A recorded zero counts Bao model calls, not calls made by an external coding agent. Browser captures without a saved workflow still have a receipt with their stored step reasons and available pictures. Detailed evidence in Bao desktop also exposes native command arguments and output.
 
@@ -44,6 +44,8 @@ Pictures load when the owner opens them, not with the initial receipt or history
 The viewer offers no run, resume, edit, approve, or browser-control action. In UI-capable connections, `list_runs`, `inspect_run`, and `open_step_pictures` are callable by the iframe; other tools are model-only. The host enforces tool visibility. This is not a new authorization scheme or a change to the model's existing tool permissions.
 
 ## Known gaps
+
+- Clipped capture can reset another CDP client's emulated DPR 2 to 1 on a native-DPR-1 browser. The Retina fixture uses native DPR 2. Firstmate owns the follow-up for cross-client emulation.
 
 - If a host advertises full-screen mode but the request fails, the receipt does not fall back to an expanded inline view. This remains deferred.
 

@@ -166,7 +166,7 @@ test("live proxy keeps run identity across validation and owner-wall returns and
       }
     }
   });
-  chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(home, "profile"), childHome: path.join(home, "user"), headless: true });
+  chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(home, "profile"), childHome: path.join(home, "user"), headless: true, args: ["--force-device-scale-factor=2"] });
   const { portFile, closed, isClosed, close } = chrome;
   const endpoint = await readDevToolsActivePort(portFile);
   observer = await testChromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
@@ -291,6 +291,19 @@ test("capture receipts preserve recording, owner handoff, and finished outcomes 
     assert.equal(outcome.reason, "Native command failed");
     assert.equal(outcome.link, undefined);
   } finally { await failed.close(); }
+});
+
+test("oversized replay records fail the size check before JSON parsing in both receipt readers", async () => {
+  const f = await recorded("snapshot");
+  try {
+    const library = new Library(f.home);
+    const replay = { ...library.readRun(f.recording.id), kind: "replay" };
+    const json = Buffer.from(JSON.stringify(replay));
+    const padded = Buffer.concat([json, Buffer.alloc(2 * 1024 * 1024 + 1 - json.length)]);
+    await writeFile(path.join(f.home, "runs", `${f.recording.id}.json`), padded);
+    assert.throws(() => inspectRunView(library, { run_id: f.recording.id }), /too large/);
+    assert.throws(() => callViewerTool(library, "open_step_pictures", { run_id: f.recording.id, step_id: f.step.id }), /too large/);
+  } finally { await f.close(); }
 });
 
 test("large captures retain native output once and keep exact-run inspection and card pictures usable", async () => {

@@ -1,4 +1,5 @@
-import { readLibraryFile } from "../v1/library-read";
+import { findNodeAtLocation, parseTree } from "jsonc-parser";
+import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
 import { shotFile, shotFormat } from "../v1/shots";
 import { Library, type StoredRun } from "../v1/store";
@@ -62,8 +63,14 @@ export function listRunViews(library: Library, args: Record<string, unknown>) {
   return { view: "history", runs: runs.map((run) => summary(run, workflowFor(library, run))), offset: page, nextOffset, skipped, order: "recently updated" };
 }
 
+function readViewerRun(library: Library, runId: string): StoredRun {
+  const header = parseTree(readLibraryPrefix(library.root, ["runs", `${runId}.json`], 4096).toString("utf8"));
+  const capture = findNodeAtLocation(header, ["kind"])?.value === "capture";
+  return library.readRun(runId, capture ? { maxBytes: Number.MAX_SAFE_INTEGER } : bounded);
+}
+
 export function inspectRunView(library: Library, args: Record<string, unknown>) {
-  const run = library.readRun(viewerId(args.run_id), { maxBytes: Number.MAX_SAFE_INTEGER });
+  const run = readViewerRun(library, viewerId(args.run_id));
   const workflow = workflowFor(library, run);
   const stepOffset = offset(args.step_offset);
   const workflowOffset = offset(args.workflow_offset);
@@ -127,7 +134,7 @@ export function openBrowserPicture(library: Library, args: Record<string, unknow
 export function openStepPictures(library: Library, args: Record<string, unknown>) {
   const runId = viewerId(args.run_id);
   const stepId = viewerId(args.step_id);
-  const run = library.readRun(runId, { maxBytes: Number.MAX_SAFE_INTEGER });
+  const run = readViewerRun(library, runId);
   const recorded = run.steps.map(record).find((item) => item.id === stepId);
   if (!recorded) throw new Error("Step not found in this run");
   const pictures: { phase: string; mimeType: string; data: string }[] = [];

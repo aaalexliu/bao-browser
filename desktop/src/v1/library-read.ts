@@ -20,7 +20,11 @@ export function readLibraryFile(root: string, parts: readonly string[], maxBytes
   return readLibrarySnapshot(root, parts, maxBytes).bytes;
 }
 
-export function readLibrarySnapshot(root: string, parts: readonly string[], maxBytes: number): { bytes: Buffer; modifiedAtMs: number } {
+export function readLibraryPrefix(root: string, parts: readonly string[], maxBytes: number): Buffer {
+  return readLibrarySnapshot(root, parts, maxBytes, true).bytes;
+}
+
+export function readLibrarySnapshot(root: string, parts: readonly string[], maxBytes: number, prefix = false): { bytes: Buffer; modifiedAtMs: number } {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error("invalid read limit");
   if (parts.some((part) => !part || part === "." || part === ".." || /[/\\\0]/.test(part))) throw new Error("invalid Library path");
   const base = path.resolve(root);
@@ -39,18 +43,19 @@ export function readLibrarySnapshot(root: string, parts: readonly string[], maxB
   const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const info = fstatSync(fd);
-    if (!info.isFile() || info.size > maxBytes) throw new Error("Library file is unavailable or too large");
+    if (!info.isFile() || (!prefix && info.size > maxBytes)) throw new Error("Library file is unavailable or too large");
     check();
     const current = lstatSync(file);
     if (current.dev !== info.dev || current.ino !== info.ino) throw new Error("Library file changed during read");
-    const bytes = Buffer.alloc(Math.min(info.size + 1, maxBytes + 1));
+    const expectedSize = prefix ? Math.min(info.size, maxBytes) : info.size;
+    const bytes = Buffer.alloc(prefix ? expectedSize : Math.min(info.size + 1, maxBytes + 1));
     let size = 0;
     while (size < bytes.length) {
       const count = readSync(fd, bytes, size, bytes.length - size, null);
       if (!count) break;
       size += count;
     }
-    if (size > maxBytes || size !== info.size || [fstatSync(fd), lstatSync(check())].some((current) =>
+    if (size > maxBytes || size !== expectedSize || [fstatSync(fd), lstatSync(check())].some((current) =>
       current.dev !== info.dev || current.ino !== info.ino || current.size !== info.size
       || current.mtimeMs !== info.mtimeMs || current.ctimeMs !== info.ctimeMs)) throw new Error("Library file changed during read");
     return { bytes: bytes.subarray(0, size), modifiedAtMs: info.mtimeMs };
