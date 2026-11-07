@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fromAtspiNode } from "../../src/v1/identity";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { AtspiDriver } from "../../src/v1/os-driver";
@@ -15,8 +15,11 @@ import { unavailableHeal } from "../../src/v1/heal";
 
 const bin = process.env.BAO_OS_HELPER || "";
 const screen = process.env.BAO_SCREEN || "1400x900";
+let calculator: ReturnType<typeof spawn> | undefined;
+after(stopCalculator);
 
 test("calculator capture replays with two number pairs", { skip: process.env.BAO_CALC !== "1" }, async () => {
+  await relaunch(40, 40, 320, 220);
   const raw = await osNodes(bin, screen);
   const events: TrailEvent[] = [];
   for (const name of ["7", "+", "5", "="]) {
@@ -52,18 +55,28 @@ test("calculator capture replays with two number pairs", { skip: process.env.BAO
   }
 });
 
-function relaunch(x: number, y: number, w: number, h: number): Promise<void> {
+async function relaunch(x: number, y: number, w: number, h: number): Promise<void> {
+  await stopCalculator();
   const py = process.env.BAO_CALC_PY || "desktop/os-helper/baocalc.py";
-  return new Promise((resolve, reject) => {
-    spawn("pkill", ["-f", "baocalc.py"]).on("close", () => {
-      const child = spawn("python3", [py, "--x", String(x), "--y", String(y), "--w", String(w), "--h", String(h)], {
-        stdio: "ignore",
-        env: process.env,
-        detached: true,
-      });
-      child.unref();
-      child.on("error", reject);
-      setTimeout(resolve, 700);
-    });
+  const child = calculator = spawn("python3", [py, "--x", String(x), "--y", String(y), "--w", String(w), "--h", String(h)], {
+    stdio: "ignore",
+    env: process.env,
+    detached: true,
   });
+  child.unref();
+  await new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    setTimeout(resolve, 700);
+  });
+}
+
+async function stopCalculator(): Promise<void> {
+  const child = calculator;
+  calculator = undefined;
+  if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    child.ref();
+    const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+    child.kill("SIGTERM");
+    await exited;
+  }
 }

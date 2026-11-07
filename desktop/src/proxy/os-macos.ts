@@ -67,6 +67,7 @@ export interface AxHit {
   tabId?: string;
   restored?: number;
   found?: boolean;
+  pressed?: boolean;
   permitted?: boolean;
   denied?: boolean;
   wouldPrompt?: boolean;
