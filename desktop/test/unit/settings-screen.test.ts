@@ -615,6 +615,77 @@ test("Settings Stop survives restart and stops a changed fixture step without a 
   }
 });
 
+for (const { mode, label, status, modelCalls, heals, laterStep } of [
+  { mode: "auto", label: "Heal it", status: "passed", modelCalls: 1, heals: 1, laterStep: "passed" },
+  { mode: "approve", label: "Ask me", status: "paused", modelCalls: 1, heals: 1, laterStep: "pending" },
+  { mode: "never", label: "Stop", status: "failed", modelCalls: 0, heals: 0, laterStep: "pending" },
+] as const) {
+  test(`Settings ${label} saves through the UI and applies to a changed fixture step`, { timeout: 60_000 }, async (t) => {
+    const home = await mkdtemp(path.join(tmpdir(), `bao-settings-${mode}-`));
+    const previousHome = process.env.HOME;
+    const previousFixture = process.env.BAO_HEAL_FIXTURE;
+    process.env.HOME = home;
+    process.env.BAO_HEAL_FIXTURE = "1";
+    t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+    const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+    const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+      await page.goto(`http://127.0.0.1:${app.port}`);
+      await page.locator('#rail [data-place="settings"]').click();
+      for (let save = 0; save < (mode === "never" ? 2 : 1); save++) {
+        const otherMode = mode === "approve" ? "auto" : "approve";
+        await page.locator(`label[for="heal-${otherMode}"]`).click();
+        await eventually(() => app.library.settings().heal === otherMode);
+        const [savedSetting] = await Promise.all([
+          page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/settings" && (response.request().postDataJSON() as { heal?: string }).heal === mode),
+          page.locator(`label[for="heal-${mode}"]`).click(),
+        ]);
+        assert.equal(savedSetting.ok(), true);
+        await eventually(() => app.library.settings().heal === mode);
+      }
+      const workflow: WorkflowV2 = {
+        schema: "bao.workflow/v2", version: 2, id: `global-${mode}`, name: `Changed button ${mode}`,
+        startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
+        steps: [
+          { id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 },
+          { id: "after-miss", index: 1, action: "note", label: "After the changed button", surface: "dom", timeoutMs: 0 },
+        ],
+      };
+      app.library.save(workflow);
+      await page.locator('#rail [data-place="workflows"]').click();
+      await page.locator(`[data-open-workflow="${workflow.id}"]`).click();
+      await page.locator(`#main [data-screen="replay"][data-workflow="${workflow.id}"]`).click();
+      assert.match(await page.locator("#wf-heal option:checked").innerText(), new RegExp(label));
+      const [response] = await Promise.all([
+        page.waitForResponse((res) => res.url().endsWith("/api/replay") && res.request().method() === "POST"),
+        page.locator("#run").click(),
+      ]);
+      assert.equal(response.ok(), true);
+      const run = await response.json() as { runId: string; status: string; modelCalls: number; failure?: { stepId: string } };
+      assert.equal(run.status, status);
+      assert.equal(run.modelCalls, modelCalls);
+      const saved = app.library.readRun(run.runId);
+      assert.equal(saved.heals.length, heals);
+      assert.equal((saved.steps as { id: string; status: string }[]).find((step) => step.id === "after-miss")?.status, laterStep);
+      if (mode === "never") {
+        assert.equal(run.failure?.stepId, "changed");
+        await page.locator('#rail [data-place="runs"]').click();
+        await page.locator(`[data-open-run="${run.runId}"]`).first().click();
+        await page.locator("#main").getByText("Click the missing login button", { exact: false }).first().waitFor();
+      }
+    } finally {
+      await browser.close();
+      await app.close();
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousFixture === undefined) delete process.env.BAO_HEAL_FIXTURE;
+      else process.env.BAO_HEAL_FIXTURE = previousFixture;
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+}
+
 test("pending CLI imports and the Logins profile picker keep separate handlers", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-import-"));
   const previousHome = process.env.HOME;
