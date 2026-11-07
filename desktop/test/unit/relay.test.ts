@@ -712,7 +712,11 @@ for (const mode of ["extension", "playwright", "cached", "get_run"] as const) {
       assert.equal(inputs.credential, cachedResult.reason);
       return cachedResult;
     };
-    const remote = createRemoteAgent({ library, prompts: {}, stop() {}, clearStop() {}, autoAllow: true, runners: { extension: runner, playwright: runner } });
+    const remote = createRemoteAgent({
+      library, prompts: {}, stop() {}, clearStop() {}, autoAllow: true,
+      extensionLinked: () => mode === "extension",
+      runners: { extension: runner, playwright: runner },
+    });
     remote.start();
     try {
       await waitFor(() => directory.lookups > 0);
@@ -740,7 +744,7 @@ for (const mode of ["extension", "playwright", "cached", "get_run"] as const) {
         };
         const raw = structuredClone(cachedResult);
         const done = await tool(server.origin, token.token, mode === "get_run" ? "get_run" : "run_workflow", mode === "get_run" ? { run_id: runId } : { id: doc.id, inputs: { credential: secret } });
-        assert.equal(done.json.outcome, "ok");
+        assert.equal(done.json.outcome, "ok", JSON.stringify(done.json));
         const sent = done.json.outputs as { name: string; value: string }[];
         assert.deepEqual(sent.map((output) => output.value), ["[secret stripped]", "[secret stripped]", "[secret stripped]", `prefix ${secret} suffix`, "Keep this text"]);
         assert.equal(sent[0]?.name, secret);
