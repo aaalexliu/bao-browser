@@ -275,8 +275,14 @@ export function guiChromeLaunchArgs(
     "--stdout", "/dev/null", "--stderr", stderrFile, "--env", `HOME=${childHome}`, "--args", ...args];
 }
 
+function ownedChromeRunning(child: ChildProcess, pid: number): boolean {
+  if (child.spawnfile !== "/usr/bin/open") return child.exitCode == null && child.signalCode == null;
+  try { return process.kill(pid, 0); }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+}
+
 export function stopOwnedChrome(child: ChildProcess, pid: number): void {
-  if (child.exitCode != null || child.signalCode != null) return;
+  if (!ownedChromeRunning(child, pid)) return;
   if (child.spawnfile === "/usr/bin/open") {
     try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
   } else child.kill("SIGTERM");
@@ -293,7 +299,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     rmSync(stderrFile, { force: true });
   }
   const child = spawn(guiArgs ? "/usr/bin/open" : exe, guiArgs ?? chromeArgs, {
-    stdio: ["ignore", "ignore", "pipe"], detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+    stdio: ["ignore", "ignore", "pipe"], detached: guiArgs ? true : detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
   });
   let output = "";
   let browserPath = "";
@@ -313,7 +319,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     while (Date.now() < deadline) {
       if (guiArgs && !browserPath && existsSync(stderrFile)) readEndpoint(readFileSync(stderrFile, "utf8"));
       if (spawnError) throw spawnError;
-      if (child.exitCode != null || child.signalCode != null) {
+      if (!guiArgs && (child.exitCode != null || child.signalCode != null)) {
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
       const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, listProcesses()) : child.pid;
@@ -328,9 +334,8 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
     throw new Error("Chrome debugging port did not open");
   } catch (error) {
     if (guiArgs) {
-      for (const pid of pidsForDataDir(userDataDir)) {
-        try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
-      }
+      const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
+      if (pid) await releaseProfileProcesses(userDataDir, child, pid, false);
     }
     if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
     throw error;
@@ -422,7 +427,7 @@ export async function launchAccountChrome(opts: {
   const { child, pid, port } = await spawnOwnedChrome(exe, (debugPort) => [
     `--user-data-dir=${opts.userDataDir}`, ...accountLaunchArgs(debugPort), ...testLaneKeychainArgs(), ...testLaneMediaArgs(),
   ], opts.userDataDir);
-  const stop = () => stopOwnedChrome(child, pid);
+  const stop = () => releaseProfileProcesses(opts.userDataDir, child, pid, false);
   try {
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
     const context = browser.contexts()[0];
@@ -430,19 +435,21 @@ export async function launchAccountChrome(opts: {
     const verdict = assessOwnedCommand(readOwnedCommand(pid, opts.userDataDir, process.platform), opts.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
     await parkOnBlank(context);
-    browser.on("disconnected", stop);
-    const orig = context.close.bind(context);
-    context.close = async () => {
+    let closing: Promise<void> | undefined;
+    browser.on("disconnected", () => { if (!closing) void stop().catch(() => undefined); });
+    context.close = () => closing ??= (async () => {
+      let browserCloseSent = false;
       try {
-        await orig();
-      } finally {
-        stop();
-        await browser.close().catch(() => undefined);
-      }
-    };
+        const session = await browser.newBrowserCDPSession();
+        await session.send("Browser.close");
+        browserCloseSent = true;
+      } catch {}
+      await releaseProfileProcesses(opts.userDataDir, child, pid, browserCloseSent);
+      await browser.close().catch(() => undefined);
+    })();
     return context;
   } catch (err) {
-    stop();
+    await stop();
     throw err;
   }
 }
@@ -553,7 +560,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     }
   })();
   const onClosed = () => { if (!released) void close().catch(() => undefined); };
-  child.once("exit", onClosed);
+  if (child.spawnfile !== "/usr/bin/open") child.once("exit", onClosed);
   try {
     const verdict = assessOwnedCommand(readOwnedCommand(pid, opts.userDataDir, process.platform), opts.userDataDir);
     if (!verdict.ok) throw new Error(verdict.reason);
@@ -569,7 +576,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     });
     // Discovery reports existing and future targets without attaching to them.
     await cdp.send("Target.setDiscoverTargets", { discover: true });
-    if (closing || child.exitCode != null || child.signalCode != null) throw new Error("Chrome closed during startup");
+    if (closing || !ownedChromeRunning(child, pid)) throw new Error("Chrome closed during startup");
     return { portFile, closed, close, isClosed: () => !!closing, keepOpen() {
       released = true;
       cdp?.close();
@@ -583,7 +590,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
 
 async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScaleFactor?: number }): Promise<BrowserContext> {
   const { child, pid, port } = await spawnNormalChrome(opts);
-  const stop = () => stopOwnedChrome(child, pid);
+  const stop = () => releaseProfileProcesses(opts.userDataDir, child, pid, false);
   try {
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { noDefaults: true });
     const context = browser.contexts()[0];
@@ -602,21 +609,16 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     }
     let closing: Promise<void> | undefined;
     browser.on("disconnected", () => {
-      if (!closing) stop();
+      if (!closing) void stop().catch(() => undefined);
     });
     context.close = () => closing ??= (async () => {
       const open = context.pages().filter((page) => !page.isClosed());
-      let browserClose: ShutdownTrace["browserClose"] = open.length === 0 ? "skipped" : "failed";
-      const page = open[0];
-      if (page) {
-        try {
-          const session = await context.newCDPSession(page);
-          await session.send("Browser.close");
-          browserClose = "sent";
-        } catch {
-          browserClose = "failed";
-        }
-      }
+      let browserClose: ShutdownTrace["browserClose"] = "failed";
+      try {
+        const session = await browser.newBrowserCDPSession();
+        await session.send("Browser.close");
+        browserClose = "sent";
+      } catch {}
       const released = await releaseProfileProcesses(opts.userDataDir, child, pid, browserClose === "sent");
       await browser.close().catch(() => undefined);
       console.error(formatShutdown({
@@ -666,16 +668,15 @@ export function formatShutdown(trace: ShutdownTrace): string {
 
 async function releaseProfileProcesses(userDataDir: string, child: ChildProcess, pid: number, browserCloseSent: boolean): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const deadline = Date.now() + (browserCloseSent ? 4000 : 0);
-  while (Date.now() < deadline && child.exitCode == null && child.signalCode == null) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  while (Date.now() < deadline && ownedChromeRunning(child, pid)) {
+    await delay(50);
   }
-  if (child.exitCode == null && child.signalCode == null) {
-    try { stopOwnedChrome(child, pid); } catch { /* already gone */ }
-  }
+  if (ownedChromeRunning(child, pid)) stopOwnedChrome(child, pid);
   const killAt = Date.now() + 1500;
-  while (Date.now() < killAt && child.exitCode == null && child.signalCode == null) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  while (Date.now() < killAt && ownedChromeRunning(child, pid)) {
+    await delay(50);
   }
+  if (ownedChromeRunning(child, pid)) throw new Error(`Chrome did not exit after graceful shutdown: ${userDataDir}`);
   const killedPids: number[] = [];
   for (const pid of pidsForDataDir(userDataDir)) {
     try {

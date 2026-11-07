@@ -24,33 +24,27 @@ test("installed Mac Chrome launches as a new GUI app and waits for that instance
   assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", {}, "linux"), undefined);
 });
 
-test("GUI shutdown signals only the browser and leaves its waiting launcher alive", (t) => {
-  const child = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open" });
-  const signals: Array<[number, NodeJS.Signals | number | undefined]> = [];
-  t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
-    signals.push([pid, signal]);
-    return true;
+for (const waiterExit of ["exit", "signal"] as const) {
+  test(`GUI shutdown follows the browser PID after waiter ${waiterExit}`, { timeout: 5000 }, async (t) => {
+    const waiter = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open" });
+    if (waiterExit === "exit") waiter.exitCode = 0;
+    else waiter.signalCode = "SIGHUP";
+    const browser = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    t.after(async () => {
+      if (browser.exitCode == null && browser.signalCode == null) {
+        const exited = once(browser, "exit");
+        browser.kill("SIGKILL");
+        await exited;
+      }
+    });
+    await once(browser, "spawn");
+    const exited = once(browser, "exit");
+    stopOwnedChrome(waiter, browser.pid!);
+    await exited;
+    assert.equal(browser.signalCode, "SIGTERM");
+    assert.doesNotThrow(() => stopOwnedChrome(waiter, browser.pid!));
   });
-  const launcherKill = t.mock.method(child, "kill", () => true);
-  stopOwnedChrome(child, 31415);
-  assert.deepEqual(signals, [[31415, "SIGTERM"]]);
-  assert.equal(launcherKill.mock.callCount(), 0);
-  child.exitCode = 0;
-  stopOwnedChrome(child, 31415);
-  child.exitCode = null;
-  child.signalCode = "SIGTERM";
-  stopOwnedChrome(child, 31415);
-  assert.deepEqual(signals, [[31415, "SIGTERM"]]);
-  assert.equal(launcherKill.mock.callCount(), 0);
-});
-
-test("GUI shutdown tolerates an already exited browser without killing the launcher", (t) => {
-  const child = Object.assign(new ChildProcess(), { spawnfile: "/usr/bin/open" });
-  t.mock.method(process, "kill", () => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); });
-  const launcherKill = t.mock.method(child, "kill", () => true);
-  assert.doesNotThrow(() => stopOwnedChrome(child, 31415));
-  assert.equal(launcherKill.mock.callCount(), 0);
-});
+}
 
 test("direct shutdown signals its child only while it is running", (t) => {
   const child = Object.assign(new ChildProcess(), { spawnfile: "/pinned/chromium" });

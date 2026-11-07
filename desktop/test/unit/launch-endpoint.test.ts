@@ -1,13 +1,76 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
 import * as sockets from "../../src/cdp-live/socket";
 import { launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { laneChildEnv } from "../runtime";
 
 pinTestBrowser();
+
+for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
+  test(`endpoint preserves a persistent cookie after process-group ${signal}`, { timeout: 30_000, skip: process.platform === "win32" }, async () => {
+    const browserCache = process.env.PLAYWRIGHT_BROWSERS_PATH ?? (process.platform === "darwin"
+      ? path.join(homedir(), "Library", "Caches", "ms-playwright")
+      : path.join(process.env.XDG_CACHE_HOME ?? path.join(homedir(), ".cache"), "ms-playwright"));
+    const root = await mkdtemp(path.join(tmpdir(), "bao-group-cookie-"));
+    const userDataDir = path.join(root, "profile");
+    const env = laneChildEnv("hermetic", { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browserCache });
+    env.HOME = root;
+    env.BAO_HOME = path.join(root, "bao");
+    const script = `
+      const { launchOwnedChromeEndpoint } = require(${JSON.stringify(path.resolve("desktop/dist/desktop/src/launch.js"))});
+      (async () => {
+        const chrome = await launchOwnedChromeEndpoint({ userDataDir: ${JSON.stringify(userDataDir)}, headless: true, detached: true });
+        let closing;
+        for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"]) {
+          process.on(signal, () => closing ??= chrome.close().then(() => process.exit(0), () => process.exit(1)));
+        }
+        process.send("ready");
+      })().catch(() => process.exit(1));
+    `;
+    const worker = spawn(process.execPath, ["-e", script], { env, detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    const exited = once(worker, "exit");
+    let cdp: sockets.CdpSocket | undefined;
+    let reopened: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+    try {
+      await Promise.race([once(worker, "message"), exited.then(() => { throw new Error("launch worker exited before ready"); })]);
+      const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
+      cdp = await sockets.connectCdp(endpoint.port, endpoint.browserPath);
+      await cdp.send("Storage.setCookies", { cookies: [{
+        name: "group_shutdown_probe", value: "synthetic", domain: "127.0.0.1", path: "/", expires: Math.floor(Date.now() / 1000) + 3600,
+      }] });
+      process.kill(-worker.pid!, signal);
+      const [code, exitSignal] = await exited;
+      assert.equal(code, 0, "group shutdown must complete gracefully");
+      assert.equal(exitSignal, null);
+      assert.deepEqual(pidsForDataDir(userDataDir), []);
+      cdp.close();
+      reopened = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
+      const next = await readDevToolsActivePort(reopened.portFile);
+      cdp = await sockets.connectCdp(next.port, next.browserPath);
+      const result = await cdp.send("Storage.getCookies") as { cookies: Array<{ name: string; value: string }> };
+      assert.ok(result.cookies.some((cookie) => cookie.name === "group_shutdown_probe" && cookie.value === "synthetic"), "persistent cookie must survive a group signal and relaunch");
+    } finally {
+      if (cdp?.isOpen) await cdp.send("Browser.close", {}, undefined, 3000).catch(() => undefined);
+      cdp?.close();
+      await reopened?.close();
+      if (worker.exitCode == null && worker.signalCode == null) {
+        worker.kill("SIGKILL");
+        await exited;
+      }
+      const deadline = Date.now() + 5000;
+      while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(pidsForDataDir(userDataDir), [], "test must leave no owned Chrome processes");
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
 
 for (const mode of ["close", "retained-close", "failed-close", "disconnect", "process-exit", "startup-failure"] as const) {
   test(`endpoint-only launch releases its owned Chrome after ${mode}`, { timeout: 20_000 }, async (t) => {
