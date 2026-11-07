@@ -39,7 +39,7 @@ Keep-window-open also applies to this profile. The next Bao-profile session clos
 
 ### Use the owner's running Chrome
 
-Set `browser` on the first `open` to choose the route. `"copy"` is the default. `"current"` controls the owner's own running Google Chrome and its actual signed-in profile, not a copy. Use it when a background-launched copy cannot keep the site's sign-in. Later calls inherit that choice; omit `browser` until the session ends.
+Set `browser` on the first `open` to choose the route. `"copy"` is the default. `"current"` controls the owner's own running Google Chrome and its actual signed-in profile, not a copy. Use it when a background-launched copy cannot keep the site's sign-in. Later calls inherit that choice; omit `browser` until the session ends. If the owner's Chrome connection ends unexpectedly, Bao names the ended session and requires an explicit `browser: "current"` or `browser: "copy"` on the next `open`, rather than silently starting a copy.
 
 ```json
 {"command":"open","args":["https://example.com/"],"browser":"current"}
@@ -49,7 +49,7 @@ Set `browser` on the first `open` to choose the route. `"copy"` is the default. 
 
 This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper opens a new inspect tab, enables Chrome's debugging checkbox if needed, and presses Chrome's native debugging Allow sheets while current-Chrome commands connect, including reconnects. Sheets already present when polling starts may also be approved; Bao does not attribute each sheet to a particular connection. It does not request Automation or Screen Recording. A locked screen, missing Accessibility access, or ambiguous browser process stops startup without asking for a new grant.
 
-Bao creates a new task tab before the first navigation. It keeps one browser-level CDP connection for metadata and page pictures. The selected copied-profile setting does not choose the active tab in this route; use native `tab list` and `tab <id>` to select a tab. Both routes record commands and page screenshots in Runs.
+Bao creates a new task tab before the first navigation. A native daemon restart also opens a new task tab and loses prior tab selection and refs; navigate or select a tab again, then take a fresh snapshot. It keeps one browser-level CDP connection for metadata and page pictures. The selected copied-profile setting does not choose the active tab in this route; use native `tab list` and `tab <id>` to select a tab. Both routes record commands and page screenshots in Runs.
 
 `close`, MCP disconnect, and handled stop signals detach from current Chrome. They do not quit it, remove its profile, or close its tabs. Keep-open applies only to copied windows. Bao leaves the debugging checkbox enabled; this route does not restore the old preference or revive retired live-driver workflows.
 
@@ -86,6 +86,10 @@ The default copied-profile route reads the selected source and creates a private
 The copy keeps cookies, saved tabs, session-restore files, Session Storage, and encryption metadata. Cache directories are omitted. Chrome starts with sync off and `--restore-last-session`. Bao changes only the copy's exit marker, profile name, theme, avatar, and new-tab background. The profile name is **Bao copy of <original name>**. Its light orange or blue theme differs from the source; its avatar is the origami fox, or penguin when the source already uses the fox. Extensions stay off, including copied themes. These markers do not prove every site's login survives copying.
 
 The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuses links and active copies. [Session end](#session-end) defines window and copy cleanup. A released keep-open copy or a copy whose Bao process has exited can be reclaimed: Bao stops only Chrome processes using that exact marked directory before deleting it, never the source profile. No idle timeout closes an active session.
+
+## Known gaps
+
+The Settings Mac card still says "Chrome agents need no Accessibility, Automation, or Screen Recording permission." That blanket sentence is stale. It fits the copied and Bao-owned profile routes, but `browser: "current"` requires BaoOSHelper's existing Accessibility grant. A separate browser-choice UI follow-up owns the correction; this route does not change Settings.
 
 ## Evidence
 
