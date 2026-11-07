@@ -89,6 +89,8 @@ The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuse
 
 ## Known gaps
 
+Current-Chrome startup failed once at head `9f644125b37c1aa2f0c41ce255ae7f4198f06fae`: after the helper reported a debugging-checkbox press, the 10-second port wait ended with `Chrome did not open its debugging port`, before the delayed initial native command began. A fresh retry passed with the real 27-second native delay, followed by three passing instrumented startup runs and a passing late reconnect. Those passes do not explain or fix the failure. The cause remains unresolved; Firstmate owns the deferred follow-up. A failed startup can leave the inspect tab open. This change does not add a re-press, off/on toggle, longer deadline, or inspector cleanup.
+
 Current-Chrome startup assumes a U.S. keyboard layout when the helper opens `chrome://inspect/#remote-debugging`. Other layouts can type the wrong omnibox text and perform a search in the owner's signed-in profile. The owner's Mac uses U.S. layout; the native fix is deferred. The remedy is `CGEventKeyboardSetUnicodeString` for text plus layout-resolved `cmd+t`. Firstmate owns that follow-up.
 
 The Settings Mac card still says "Chrome agents need no Accessibility, Automation, or Screen Recording permission." That blanket sentence is stale. It fits the copied and Bao-owned profile routes, but `browser: "current"` requires BaoOSHelper's existing Accessibility grant. A separate browser-choice UI follow-up owns the correction; this route does not change Settings.

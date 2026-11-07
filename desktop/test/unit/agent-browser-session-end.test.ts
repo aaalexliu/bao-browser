@@ -61,6 +61,7 @@ if (args.includes(${JSON.stringify(blockCommand)})) {
       return path.join(copies, entries[0]!);
     },
     async close() {
+      library.updateSettings({ keepAgentBrowserOpen: false });
       for (const c of clients) await c.close();
       for (const name of await readdir(copies).catch(() => [])) {
         const copy = path.join(copies, name);
@@ -198,6 +199,13 @@ for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP"
           await assert.rejects(access(copy), /ENOENT/);
         }
         assert.equal(f.library.listRuns()[0]!.status, "passed");
+        if (keepOpen) {
+          const cleanup = f.start();
+          await cleanup.request("initialize");
+          assert.equal((await cleanup.call("open")).isError, false);
+          assert.equal((await cleanup.call("close")).isError, false);
+          await cleanup.close();
+        }
       } finally { await f.close(); }
     });
   }

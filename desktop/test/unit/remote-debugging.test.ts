@@ -3,6 +3,7 @@
 // BaoOSHelper, Chrome, ps, and lsof are fakes here, so nothing touches the daily Chrome.
 
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
 import test, { after } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,12 +15,14 @@ import {
   CHROME_NOT_OPEN,
   SCREEN_LOCKED,
   chromePidsFromPs,
+  dailyChromePids,
   checkboxKnown,
   explainRemoteDebuggingError,
   setRemoteDebugging,
   type RemoteDebuggingDeps,
 } from "../../src/cdp-live/remote-debugging";
 import { MacOsHelper, type AxHit } from "../../src/proxy/os-macos";
+import * as profileCopy from "../../src/engines/chrome-profile-copy";
 
 const DIR = "/Users/me/Library/Application Support/Google/Chrome";
 const PORT_FILE = `${DIR}/DevToolsActivePort`;
@@ -84,6 +87,29 @@ function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
   };
   return { state, deps };
 }
+
+test("synthetic profile discovery excludes untagged owner Chrome", async (t) => {
+  const syntheticRoot = path.join(logDir, "synthetic-chrome");
+  let ps = "101 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n";
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => DIR);
+  t.mock.method(childProcess, "execFile", (...args: unknown[]) => {
+    assert.equal(args[0], "ps");
+    const callback = args.at(-1) as (error: Error | null, stdout: string, stderr: string) => void;
+    queueMicrotask(() => callback(null, ps, ""));
+    return {};
+  });
+  const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
+  deps.portFile = path.join(syntheticRoot, "DevToolsActivePort");
+  delete deps.findChrome;
+  assert.deepEqual(await dailyChromePids(syntheticRoot, DIR), []);
+  assert.deepEqual(await dailyChromePids(DIR, DIR), [101]);
+  await assert.rejects(setRemoteDebugging(false, deps), new RegExp(CHROME_NOT_OPEN));
+  assert.deepEqual(state.calls, []);
+  ps += `104 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${syntheticRoot} --no-first-run\n`;
+  assert.deepEqual(await dailyChromePids(syntheticRoot, DIR), [104]);
+  assert.deepEqual(await setRemoteDebugging(false, deps), { pid: 104, pressed: false, opened: false, port: null, already: true });
+  assert.deepEqual(state.calls, []);
+});
 
 test("Bao opens the inspect page, presses the checkbox on, and waits for Chrome to listen", async () => {
   const { state, deps } = fakeChrome({ on: false, inspectOpen: false });

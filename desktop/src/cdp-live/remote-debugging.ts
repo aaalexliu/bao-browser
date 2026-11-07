@@ -7,6 +7,7 @@
 
 import { execFile } from "node:child_process";
 import path from "node:path";
+import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { closeInspectTab, logAx, openInspect, type ChromeAx, INSPECT_URL } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
@@ -35,7 +36,7 @@ export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: 
   return pids;
 }
 
-export function dailyChromePids(userDataDir: string, defaultDir = userDataDir): Promise<number[]> {
+export function dailyChromePids(userDataDir: string, defaultDir: string): Promise<number[]> {
   return new Promise((resolve) => {
     execFile("ps", ["-axww", "-o", "pid=,args="], { timeout: 5000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
       resolve(err ? [] : chromePidsFromPs(String(stdout || ""), userDataDir, defaultDir));
@@ -183,7 +184,8 @@ async function within<T>(deps: RemoteDebuggingDeps, what: string, read: () => Pr
  */
 export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps): Promise<RemoteDebuggingResult> {
   const userDataDir = path.dirname(deps.portFile);
-  const pids = await (deps.findChrome || dailyChromePids)(userDataDir);
+  const findChrome = deps.findChrome ?? ((root: string) => dailyChromePids(root, chromeProfilesRoot()));
+  const pids = await findChrome(userDataDir);
   if (await deps.screenLocked?.()) throw new Error(SCREEN_LOCKED);
   if (pids.length === 0) throw new Error(CHROME_NOT_OPEN);
   if (pids.length > 1) throw new Error(`more than one Chrome runs on ${userDataDir}`);

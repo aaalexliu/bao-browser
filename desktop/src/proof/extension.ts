@@ -220,14 +220,15 @@ class ChromeRun {
   }
 
   async quit(): Promise<void> {
-    run("pkill", ["-f", `user-data-dir=${this.profile}`]);
-    const start = Date.now();
-    while (Date.now() - start < 8000) {
-      const left = run("pgrep", ["-af", `user-data-dir=${this.profile}`]);
-      if (!left) break;
-      await sleep(200);
+    const child = this.proc;
+    if (child && child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+      child.kill("SIGTERM");
+      const start = Date.now();
+      while (child.exitCode === null && child.signalCode === null && Date.now() - start < 8000) await sleep(200);
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await exited;
     }
-    run("pkill", ["-9", "-f", `user-data-dir=${this.profile}`]);
     this.proc = undefined;
     unlock(this.profile);
     await sleep(300);

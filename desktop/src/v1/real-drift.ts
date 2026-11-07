@@ -590,8 +590,7 @@ async function driftDesktopApp(opts: {
 }): Promise<WorkflowV2 | undefined> {
   const home = mkdtempSync(path.join(tmpdir(), `bao-${opts.id}-`));
   const baseEnv = appEnv(home, {});
-  stopApp(opts.cmd[0] || opts.id);
-  startApp(opts.cmd, baseEnv);
+  const child = startApp(opts.cmd, baseEnv);
   try {
     const nodes = await waitApp(opts.bin, opts.screen, opts.matchApp);
     await sleep(600);
@@ -607,6 +606,7 @@ async function driftDesktopApp(opts: {
     else opts.rows.push({ workflow: opts.id, change: "move", stepId: "window", passed: false, na: true, reason: "n/a-harness: window did not move" });
     if (moveWindow(opts.id, 40, 40, 640, 480)) opts.rows.push(...await runWorkflow(opts.id, "resize", workflow, driver(), opts.mode));
     else opts.rows.push({ workflow: opts.id, change: "resize", stepId: "window", passed: false, na: true, reason: "n/a-harness: window did not resize" });
+    await stopApp(child);
     await relaunch(opts, workflow, { GDK_SCALE: "2" }, "scale");
     await relaunch(opts, workflow, { GTK_THEME: "Adwaita-dark" }, "theme-dark");
     await relaunch(opts, workflow, { GTK_THEME: "Adwaita" }, "theme-light");
@@ -615,7 +615,7 @@ async function driftDesktopApp(opts: {
     opts.rows.push({ workflow: opts.id, change: "slow", stepId: "slow", passed: false, na: true, reason: "a desktop app has no page network" });
     return workflow;
   } finally {
-    stopApp(opts.cmd[0] || opts.id);
+    await stopApp(child);
   }
 }
 
@@ -625,15 +625,13 @@ async function relaunch(
   extra: Record<string, string>,
   change: string,
 ): Promise<void> {
-  stopApp(opts.cmd[0] || opts.id);
   const home = mkdtempSync(path.join(tmpdir(), `bao-${opts.id}-`));
   let child = startApp(opts.cmd, appEnv(home, extra));
   try {
     try {
       await waitApp(opts.bin, opts.screen, opts.matchApp);
     } catch (err) {
-      try { child.kill("SIGTERM"); } catch { /* already gone */ }
-      stopApp(opts.cmd[0] || opts.id);
+      await stopApp(child);
       child = startApp(opts.cmd, appEnv(home, extra));
       await waitApp(opts.bin, opts.screen, opts.matchApp);
       void err;
@@ -643,7 +641,7 @@ async function relaunch(
   } catch (err) {
     opts.rows.push(failRow(opts.id, change, err));
   } finally {
-    try { child.kill("SIGTERM"); } catch { /* already gone */ }
+    await stopApp(child);
   }
 }
 
@@ -746,10 +744,12 @@ function startApp(cmd: string[], env: NodeJS.ProcessEnv): ChildProcess {
   return child;
 }
 
-function stopApp(bin: string): void {
-  const name = path.basename(bin);
-  const pattern = name.replace(/^(.)/, "[$1]");
-  try { execFileSync("pkill", ["-f", pattern]); } catch { /* not running */ }
+async function stopApp(child: ChildProcess): Promise<void> {
+  if (child.pid && child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+    child.kill("SIGTERM");
+    await exited;
+  }
 }
 
 async function waitApp(bin: string, screen: string, match: (app: string) => boolean): Promise<OsNode[]> {
