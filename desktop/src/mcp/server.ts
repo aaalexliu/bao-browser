@@ -204,7 +204,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
       } else send({ jsonrpc: "2.0", id: msg.id, result });
     } catch (err) {
       const message = ctx.ui && isViewerTool(name)
-        ? "Bao viewer data unavailable: invalid request, missing, private, linked, or oversized record. Open Bao desktop for local details."
+        ? "Bao viewer data unavailable: invalid request, missing, linked, or oversized record. Open Bao desktop for local details."
         : err instanceof Error ? err.message : String(err);
       send({
         jsonrpc: "2.0",

@@ -13,8 +13,8 @@ function* fields(value: unknown, excluded?: unknown): Generator<unknown> {
   }
 }
 
-/** Shared by marketplace evidence and the MCP viewer. Unknown capture steps are not shareable. */
-export function privateStep(workflow: WorkflowV2, step: WorkflowStep, run: Pick<StoredRun, "receipts" | "failure" | "envelope" | "steps">): boolean {
+/** Marketplace review uploads only. Local run evidence does not use this classifier. */
+export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run: Pick<StoredRun, "receipts" | "failure" | "envelope" | "steps">): boolean {
   const privateInputs = new Set(workflow.inputs.filter((input) => input.type === "secret" || input.type === "file").map((input) => input.name));
   const names = new Set(workflow.inputs.map((input) => input.name));
   const scopes: { step: WorkflowStep; nodes: unknown[] }[] = [];
