@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
@@ -556,7 +556,7 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     const library = new Library(home);
     const runs = library.listRuns();
     assert.equal(runs.length, 1);
-    assert.equal(runs[0]!.status, "failed");
+    assert.equal(runs[0]!.status, ending === "finish" ? "passed" : "failed");
     const steps = library.readRun(runs[0]!.id).steps as unknown as RecordedAgentBrowserCommand[];
     const opens = steps.filter(step => step.native.command === "open");
     // Consent and metadata precheck failures leave no command receipt.
@@ -583,6 +583,179 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     await chrome.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+async function lifecycleFixture(t: TestContext, keepOpen = false) {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-lifecycle-"));
+  const home = path.join(root, "home");
+  const executable = path.join(root, "native");
+  await writeFile(executable, "", { mode: 0o700 });
+  const stateDirs = new Set<string>();
+  const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false,
+    closeTargetFails: false, hold: false, closes: 0, kept: 0,
+    onSnapshot: undefined as ((resume: () => void) => void) | undefined };
+  let disconnected!: () => void;
+  const cdp = {
+    get isOpen() { return !state.closed; },
+    disconnected: new Promise<void>(resolve => { disconnected = resolve; }),
+    close() { state.closed = true; disconnected(); },
+    async send(method: string) {
+      if (method === "Target.getTargets") {
+        if (state.cleanupFails) throw new Error("cleanup failed");
+        return { targetInfos: [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
+      }
+      if (method === "Target.closeTarget") {
+        state.closes++;
+        if (state.closeTargetFails) throw new Error("target already gone");
+      }
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/", title: "Task" } };
+      if (method === "Target.attachToTarget") return { sessionId: "page" };
+      if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
+      return {};
+    },
+  } as unknown as CdpSocket;
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ endpoint: { port: 9222, browserPath: "/browser" },
+    cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
+    withConsent: <T>(operation: () => Promise<T>) => operation() }));
+  t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => ({ target: { portFile: "unused" },
+    closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
+    close: async () => { state.closes++; cdp.close(); }, keepOpen: async () => { state.kept++; } }));
+  t.mock.method(childProcess, "execFile", (_file: string, args: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
+    callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
+    const command = args[args.indexOf("--idle-timeout") + 2]!;
+    state.commands.push(command);
+    stateDirs.add(String(options.cwd));
+    void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid)).then(() => {
+      if (command === "tab" && args.includes("new")) state.tabs++;
+      if (state.trackingFails && command === "tab" && args.includes("--json")) {
+        state.trackingFails = false;
+        callback(Object.assign(new Error("tracking failed"), { code: 1 }), "", "tracking failed");
+      } else if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
+      else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: [{ active: true, targetId: "task" }] } }) : "native output", "");
+    });
+    return new EventEmitter();
+  });
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable, keepOpen: () => keepOpen, hasHold: () => state.hold });
+  t.after(async () => {
+    state.cleanupFails = false;
+    await proxy.end();
+    for (const dir of stateDirs) await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  });
+  return { proxy, state, cdp, library: new Library(home) };
+}
+
+for (const keepOpen of [false, true]) test(`idle backstop releases an owned session with keep-open=${keepOpen}`, async (t) => {
+  const f = await lifecycleFixture(t, keepOpen);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  await f.proxy.execute("open", [], "copy");
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  await f.proxy.execute("snapshot");
+  t.mock.timers.tick(599_999);
+  assert.equal(f.proxy.hasSession(), true);
+  t.mock.timers.tick(1);
+  while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(f.state.closes, keepOpen ? 0 : 1);
+  assert.equal(f.state.kept, keepOpen ? 1 : 0);
+  assert.equal(f.library.listRuns()[0]!.status, "failed");
+  assert.match(f.library.listRuns()[0]!.envelope!.reason!, /ended without finish_task/);
+});
+
+test("idle backstop resets on commands, preserves confirmation holds, and only detaches current Chrome", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  await f.proxy.execute("snapshot");
+  t.mock.timers.tick(599_999);
+  await f.proxy.execute("snapshot");
+  t.mock.timers.tick(599_999);
+  assert.equal(f.proxy.hasSession(), true);
+  f.state.hold = true;
+  t.mock.timers.tick(1_200_000);
+  assert.equal(f.proxy.hasSession(), true);
+  f.state.hold = false;
+  t.mock.timers.tick(600_000);
+  while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(f.state.closes, 0);
+  assert.equal(f.state.closed, true);
+  assert.equal(f.library.listRuns()[0]!.status, "failed");
+});
+
+test("idle backstop never interrupts an active agent command", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  await f.proxy.execute("snapshot");
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>(resolve => { started = resolve; });
+  f.state.onSnapshot = (resume) => { release = resume; started(); };
+  const command = f.proxy.execute("snapshot");
+  await pending;
+  t.mock.timers.tick(1_800_000);
+  assert.equal(f.proxy.hasSession(), true);
+  assert.equal(f.state.closed, false);
+  release();
+  assert.equal((await command)[0]!.stdout, "snapshot result");
+  t.mock.timers.reset();
+});
+
+test("disconnect during an owner wait closes task tabs before detaching", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  await f.proxy.execute("wait_for_owner", ["1"]);
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.timers.tick(1_800_000);
+  assert.equal(f.proxy.hasSession(), true, "an owner handoff never expires");
+  t.mock.timers.reset();
+  const waiting = f.proxy.execute("wait_for_owner", ["60000"]);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  const ending = f.proxy.end();
+  await waiting;
+  await ending;
+  assert.equal(f.state.closes, 1);
+  assert.equal(f.state.closed, true);
+  assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
+});
+
+for (const ending of ["finish", "close"] as const) test(`cleanup failure on ${ending} releases ownership without rewriting the run`, async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  f.state.cleanupFails = true;
+  await assert.rejects(ending === "finish" ? f.proxy.finishTask({ outcome: "passed", reason: "Checked result" }) : f.proxy.execute("close"), /cleanup failed/);
+  assert.equal(f.proxy.hasSession(), false);
+  const run = f.library.listRuns()[0]!;
+  assert.equal(run.status, "passed");
+  if (ending === "finish") assert.equal(run.envelope?.reason, "Checked result");
+  await f.proxy.finishTask({ outcome: "passed", reason: "No session" });
+  await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+});
+
+test("finish_task after a lost current session clears the browser-choice restriction", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  f.cdp.close();
+  while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
+  await f.proxy.finishTask({ outcome: "passed", reason: "Task ended" });
+  await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+});
+
+test("failed task-tab tracking forwards commands without repeating setup and tolerates a vanished target", async (t) => {
+  const f = await lifecycleFixture(t);
+  f.state.trackingFails = true;
+  assert.equal((await f.proxy.execute("open", [], "current"))[0]!.exitCode, 0);
+  await f.proxy.execute("snapshot");
+  assert.equal(f.state.tabs, 1);
+  assert.ok(f.state.commands.includes("open"));
+  await f.proxy.execute("tab", ["new"]);
+  f.state.closeTargetFails = true;
+  await f.proxy.finishTask({ outcome: "passed", reason: "Checked result" });
+  assert.equal(f.state.closes, 1);
+  assert.equal(f.proxy.hasSession(), false);
+  assert.equal(f.library.listRuns()[0]!.status, "passed");
 });
 
 test("unexpected current disconnect requires a browser choice, unlike fresh or explicitly closed sessions", async (t) => {

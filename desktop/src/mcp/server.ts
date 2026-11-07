@@ -115,7 +115,7 @@ export async function mcpMain(args: readonly string[] = []): Promise<void> {
   let ending = false;
   const library = new Library(home);
   const proxy = new AgentBrowserProxy({ home, sourceRoot: env.BAO_AGENT_BROWSER_PROFILE_ROOT, directory: library.settings().chromeProfile,
-    keepOpen: () => library.settings().keepAgentBrowserOpen === true });
+    keepOpen: () => library.settings().keepAgentBrowserOpen === true, hasHold: hasHeldRuns });
   let pending = 0;
   const ctx: Context = { library, identity, proxy, ui: false, checkVersion: createMcpVersionCheck(__filename),
     canStopForUpdate: (currentRequest = false) => pending === (currentRequest ? 1 : 0) && !proxy.hasSession() && !hasHeldRuns(),

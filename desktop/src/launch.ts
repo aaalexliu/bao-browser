@@ -732,7 +732,6 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
   const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
   if (pid) {
     let cdp: CdpSocket | undefined;
-    let sent = false;
     try {
       const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
       const command = ownedChromeBrowserCommand(exe, userDataDir, pid);
@@ -740,10 +739,9 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
       if (Number(port) === endpoint.port) {
         cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 3000 });
         await cdp.send("Browser.close", {}, undefined, 3000);
-        sent = true;
       }
     } catch {} finally { cdp?.close(); }
-    if (!sent && ownedChromeBrowserCommand(exe, userDataDir, pid)) {
+    if (ownedChromeBrowserCommand(exe, userDataDir, pid)) {
       try { process.kill(pid, "SIGTERM"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
     }
@@ -760,7 +758,7 @@ export async function closeRetainedChrome(userDataDir: string): Promise<void> {
   }
   const deadline = Date.now() + 1500;
   while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await delay(50);
-  if (pidsForDataDir(userDataDir).length) throw new Error(`Reclaimed Chrome processes did not exit: ${userDataDir}`);
+  if (pidsForDataDir(userDataDir).length) console.error(`bao reclaim processes still shutting down profile=${userDataDir}`);
 }
 
 /** Playwright video only. The pipe and default switches come back with it. */

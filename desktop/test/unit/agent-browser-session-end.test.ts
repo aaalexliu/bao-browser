@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { closeRetainedChrome, pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import { closeRetainedChrome, launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import * as cdpSocket from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState } from "../../src/v1/sync";
 import { laneChildEnv } from "../runtime";
@@ -224,6 +225,23 @@ test("retained-profile reclaim removes orphan renderers only for its exact profi
   assert.equal(children[2]!.child.signalCode, null, "a different profile is never signaled");
 });
 
+test("retained reclaim terminates its exact browser even when CDP acknowledges close without exiting", { timeout: 30_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-reclaim-ack-"));
+  const profile = path.join(root, "chrome");
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true });
+  t.after(async () => { await chrome.close(); await rm(root, { recursive: true, force: true }); });
+  let acknowledged = false;
+  t.mock.method(cdpSocket, "connectCdp", async () => ({
+    async send(method: string) { assert.equal(method, "Browser.close"); acknowledged = true; return {}; },
+    close() {},
+  }));
+  assert.ok(pidsForDataDir(profile).length);
+  await closeRetainedChrome(profile);
+  assert.equal(acknowledged, true);
+  assert.equal(pidsForDataDir(profile).length, 0, "a close acknowledgement is not proof that Chrome exited");
+});
+
 for (const keepOpen of [false, true]) {
   test(`finish_task finalizes without close or disconnect, honors keep-open=${keepOpen}, and accepts another task`, { timeout: 60_000 }, async (t) => {
     const f = await fixture();
@@ -257,7 +275,7 @@ for (const keepOpen of [false, true]) {
 }
 
 for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) {
-  test(`finish_task records a failed reason for ${outcome}`, { timeout: 60_000 }, async (t) => {
+  test(`finish_task records the checked outcome for ${outcome}`, { timeout: 60_000 }, async (t) => {
     const f = await fixture();
     t.after(() => f.close());
     const c = f.start();
@@ -277,9 +295,13 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
     } });
     assert.equal(result.isError, false);
     const run = f.library.listRuns()[0]!;
-    assert.equal(run.status, "failed");
-    assert.ok(run.envelope?.reason, "every failed completion has a reason");
-    if (outcome === "failed-task") assert.equal(run.envelope?.reason, "The requested item was unavailable.");
+    assert.equal(run.status, outcome === "failed-command" ? "passed" : "failed");
+    assert.ok(run.envelope?.reason, "every completion has a reason");
+    if (outcome !== "owner-wait") assert.equal(run.envelope?.reason, "The requested item was unavailable.");
+    if (outcome === "failed-command") {
+      const steps = f.library.readRun(run.id).steps as unknown as { status: string }[];
+      assert.ok(steps.some(step => step.status === "failed"), "recovered command errors remain in the receipt");
+    }
     assert.equal(pidsForDataDir(copy).length, 0);
     assert.equal(f.library.list().workflows.length, 0, "failed tasks cannot save a replayable workflow");
   });
