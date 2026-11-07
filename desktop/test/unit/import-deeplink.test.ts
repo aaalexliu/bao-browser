@@ -92,6 +92,9 @@ test("secret and file import questions need no answer or example", () => {
   assert.ok(questions.every((question) => !question.required && question.example === undefined));
   assert.deepEqual(missingAnswers(questions, {}), []);
   assert.deepEqual(applyImportAnswers(document, {}), document);
+  const answered = applyImportAnswers(document, { pin: "not-for-the-registry", upload: "/Users/grace/import.txt" }) as typeof document;
+  assert.equal(answered.inputs[0]!.default, "[secret stripped]");
+  assert.equal(answered.inputs[1]!.default, "/Users/grace/import.txt");
 });
 
 test("bao links open a workflow or an unsaved import", () => {

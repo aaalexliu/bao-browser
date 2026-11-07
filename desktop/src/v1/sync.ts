@@ -241,15 +241,13 @@ async function syncOnline(library: Library, mode: "sync" | "push" | "pull"): Pro
   if (mode !== "push" && snapshot) applyCatchUp(library, state, snapshot);
   let refused = "";
   let omittedPictures = 0;
-  let refusedIds = new Set<string>();
   if (mode !== "pull" && categoryOn(state, "workflows")) {
     const outgoing = await pushLocal(library, state);
     pushed = outgoing.pushed;
     refused = outgoing.refused;
     omittedPictures += outgoing.omittedPictures;
-    refusedIds = outgoing.refusedIds;
   }
-  if (mode !== "pull" && categoryOn(state, "run history")) omittedPictures += await pushRuns(library, state, refusedIds);
+  if (mode !== "pull" && categoryOn(state, "run history")) omittedPictures += await pushRuns(library, state);
   if (mode !== "pull" && snapshot && categoryOn(state, "settings")) {
     await pushSettings(library, state);
   }
@@ -546,8 +544,7 @@ async function pullRemote(library: Library, state: SyncState): Promise<{ pulled:
   return { pulled, conflicts };
 }
 
-async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: number; conflicts: number; refused: string; omittedPictures: number; refusedIds: Set<string> }> {
-  const refusedIds = new Set<string>();
+async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: number; conflicts: number; refused: string; omittedPictures: number }> {
   let omittedPictures = 0;
   let pushed = 0;
   let conflicts = 0;
@@ -559,10 +556,9 @@ async function pushLocal(library: Library, state: SyncState): Promise<{ pushed: 
     if (result.kind === "conflict") conflicts += 1;
     if (result.kind === "refused") {
       refused = result.message || "invalid workflow";
-      refusedIds.add(doc.id);
     }
   }
-  return { pushed, conflicts, refused, omittedPictures, refusedIds };
+  return { pushed, conflicts, refused, omittedPictures };
 }
 
 async function pushDocument(
@@ -601,10 +597,10 @@ async function pushDocument(
   }
 }
 
-async function pushRuns(library: Library, state: SyncState, refusedIds: Set<string>): Promise<number> {
+async function pushRuns(library: Library, state: SyncState): Promise<number> {
   let omittedPictures = 0;
   for (const run of library.listRuns()) {
-    if (run.kind === "capture" || state.pushedRuns.includes(run.id) || !state.workflows[run.workflowId] || refusedIds.has(run.workflowId)) continue;
+    if (run.kind === "capture" || state.pushedRuns.includes(run.id)) continue;
     const steps = (run.steps as { id?: string; status?: string }[]) ?? [];
     const fitted = await fitPictureBody(buildRunBody({
       id: run.id,
@@ -745,9 +741,11 @@ function readCrop(file: string): Buffer | undefined {
 }
 
 function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
+  const secrets = new Set(doc.inputs.filter((input) => input.type === "secret").map((input) => input.name));
   const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of doc.steps) {
+    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
     const names = [
       ...runs.map((run) => path.join(library.root, "shots", "runs", run.id, shotFile(step.id, "after"))),
       path.join(library.root, "shots", "workflows", doc.id, workflowShotName(step.id)),

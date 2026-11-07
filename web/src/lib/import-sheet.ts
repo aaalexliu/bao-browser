@@ -67,6 +67,7 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   if (missing.length) throw new Error(`answer ${missing.join(", ")}`);
   const doc = structuredClone(document) as { inputs?: InputRow[] };
   for (const input of doc.inputs ?? []) {
+    if (input.type === "secret") continue;
     const answer = answers[input.name];
     if (typeof answer === "string" && answer.trim()) input.default = answer;
   }

@@ -1,7 +1,7 @@
 import { isSealedArtifact, scrubSaved, STRIPPED_SECRET, type SavedContext } from "../../../shared/saved-secrets";
 import { isPicture } from "./png";
 
-const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization)$/i;
+const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|args|params)$/i;
 
 export interface SyncShot {
   stepId: string;
@@ -29,11 +29,11 @@ export function buildPushBody(
   opts: { baseVersion: number; heal?: unknown; category?: string; crops?: { stepId: string; png: Buffer }[] },
 ): SyncPush {
   const secrets = collectSecretStrings(document, opts.heal);
-  const copy = stripUnsafe(document, secrets) as { steps?: { id?: string }[] };
+  const copy = stripUnsafe(document, secrets) as { inputs?: { name?: string; type?: string }[]; steps?: { id?: string; sensitive?: boolean; input?: string }[] };
   const body: SyncPush = {
     baseVersion: opts.baseVersion,
     document: copy,
-    shots: stepShots(Array.isArray(copy.steps) ? copy.steps : [], opts.crops),
+    shots: stepShots(Array.isArray(copy.steps) ? copy.steps : [], opts.crops, copy.inputs),
     category: opts.category,
   };
   if (opts.heal !== undefined) body.heal = stripUnsafe(opts.heal, secrets, { workflow: document as SavedContext["workflow"] });
@@ -63,12 +63,15 @@ export function buildRunBody(
 }
 
 function stepShots(
-  steps: { id?: string }[],
+  steps: { id?: string; sensitive?: boolean; input?: string }[],
   crops: { stepId: string; png: Buffer }[] | undefined,
+  inputs: { name?: string; type?: string }[] = [],
 ): SyncShot[] {
+  const secrets = new Set(inputs.filter((input) => input.type === "secret").map((input) => input.name));
   const byId = new Map((crops ?? []).map((crop) => [crop.stepId, crop.png]));
   const shots: SyncShot[] = [];
   steps.forEach((step, index) => {
+    if (step.sensitive || (step.input && secrets.has(step.input))) return;
     const id = String(step.id ?? index);
     const png = byId.get(id);
     if (png && isPicture(png)) shots.push({ stepId: id, png: png.toString("base64") });

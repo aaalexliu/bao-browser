@@ -10,7 +10,7 @@ import { buildPushBody } from "../../../web/src/lib/guard";
 import sharp from "sharp";
 import { createRelay, MemoryDirectory } from "../../../web/src/lib/relay";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
-import { createShare, getShare, installShare, listRuns, previewPublication, pull, pushRun, pushVersion, recordReview } from "../../../web/src/lib/registry";
+import { createShare, getShare, installShare, listLibrary, listRuns, previewPublication, pull, pushRun, pushVersion, recordReview } from "../../../web/src/lib/registry";
 
 test("audit pages newest 50 rows without losing timestamp precision or owner scope", async () => {
   for (let i = 0; i < 55; i++) {
@@ -58,7 +58,10 @@ const source = {
     { name: "token", type: "text", default: credentials[1] },
     { name: "card", type: "text", default: credentials[2] },
   ],
-  steps: [{ id: "pass", index: 0, action: "type", label: "Enter password", surface: "dom", timeoutMs: 1000, sensitive: true, input: "password", value: "{{password}}" }],
+  steps: [
+    { id: "pass", index: 0, action: "type", label: "Enter password", surface: "dom", timeoutMs: 1000, sensitive: true, input: "password", value: "{{password}}" },
+    { id: "go", index: 1, action: "key", key: "Enter", label: "Continue", surface: "dom", timeoutMs: 1000 },
+  ],
 };
 
 function checkDocument(document: unknown): void {
@@ -71,33 +74,36 @@ function checkDocument(document: unknown): void {
 test("registry sync, share, release, and run pictures retain owner data without redaction markers", async () => {
   await query("INSERT INTO users (id, email, name) VALUES ('owner', 'owner@fixture.test', 'Owner'), ('reader', 'reader@fixture.test', 'Reader')");
   const png = redactedPng(1);
-  const shots = [{ stepId: "pass", png: png.toString("base64") }];
+  const shots = [{ stepId: "go", png: png.toString("base64") }];
   const direct = { ...source, id: "direct-push" };
-  await pushVersion(owner, direct.id, { baseVersion: 0, document: direct });
+  await pushVersion(owner, direct.id, { baseVersion: 0, document: direct, shots: [{ stepId: "pass", png: png.toString("base64") }, ...shots] });
   assert.deepEqual((await pull(owner, direct.id)).document, direct);
+  const directCard = (await listLibrary(owner.userId, "")).find((card) => card.id === direct.id);
+  assert.equal(directCard?.thumbnail, `/api/blobs/shots/${direct.id}/v1/go.jpg`);
   checkDocument((await previewPublication(owner, direct.id)).document);
   const pushed = await pushVersion(owner, source.id, buildPushBody(source, {
-    baseVersion: 0, crops: [{ stepId: "pass", png }],
+    baseVersion: 0, crops: [{ stepId: "pass", png }, { stepId: "go", png }],
     heal: { workflowId: source.id, args: { password: credentials[0], email: "ada@fixture.test" }, screenshot: shots[0]!.png },
   }));
   assert.equal(pushed.version, 1);
   const synced = await pull(owner, source.id);
   checkDocument(synced.document);
   assert.equal(synced.shots.length, 1);
-  const heal = synced.heal as { args: { email: string; password: string }; screenshot: string };
-  assert.equal(heal.args.email, "ada@fixture.test");
-  assert.equal(heal.args.password.includes(credentials[0]!), false);
+  assert.deepEqual(synced.shots.map((shot) => shot.stepId), ["go"]);
+  const heal = synced.heal as { args?: unknown; screenshot: string };
+  assert.equal(heal.args, undefined);
   assert.equal(heal.screenshot, shots[0]!.png);
-  assert.equal((await sharp((await getPng(`shots/${source.id}/v1/pass.jpg`))!).metadata()).format, "jpeg");
+  assert.equal((await sharp((await getPng(`shots/${source.id}/v1/go.jpg`))!).metadata()).format, "jpeg");
 
   const shared = await createShare(owner, source.id, "fork");
   const share = await getShare(shared.token);
   checkDocument(share.document);
   assert.deepEqual(share.questions, []);
-  const installed = await installShare(reader, shared.token, { email: "grace@fixture.test", password: "other-password" });
+  const installed = await installShare(reader, shared.token, { email: "grace@fixture.test", password: "other-password", file: "/Users/grace/import.txt" });
   const copy = (await pull(reader, installed.id)).document;
   assert.equal(JSON.stringify(copy).includes("grace@fixture.test"), true);
-  assert.equal(JSON.stringify(copy).includes("other-password"), true);
+  assert.equal(JSON.stringify(copy).includes("other-password"), false);
+  assert.equal(JSON.stringify(copy).includes("/Users/grace/import.txt"), true);
 
   const preview = await previewPublication(owner, source.id);
   checkDocument(preview.document);
@@ -108,11 +114,11 @@ test("registry sync, share, release, and run pictures retain owner data without 
   assert.equal(JSON.stringify(reviews[0]!.samples).includes("ada@fixture.test"), true);
   assert.equal(JSON.stringify(reviews[0]!.samples).includes(credentials[0]!), false);
 
-  await pushRun(owner, source.id, { id: "owner-run", status: "passed", at: 1, steps: [{ id: "pass", status: "passed" }], shots });
+  await pushRun(owner, source.id, { id: "owner-run", status: "passed", at: 1, steps: [{ id: "go", status: "passed" }], shots });
   const runs = await listRuns(owner, source.id);
   assert.equal(runs.length, 1);
   assert.equal(runs[0]!.shots.length, 1);
-  assert.equal((await sharp((await getPng("runs/owner-run/pass.jpg"))!).metadata()).format, "jpeg");
+  assert.equal((await sharp((await getPng("runs/owner-run/go.jpg"))!).metadata()).format, "jpeg");
   assert.equal(source.inputs[2]!.default, credentials[0]);
   await assert.rejects(() => pull(reader, source.id), /not found/);
 });

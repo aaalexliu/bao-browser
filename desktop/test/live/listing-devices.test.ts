@@ -10,7 +10,7 @@ import path from "node:path";
 import test from "node:test";
 import type { Page } from "playwright";
 import { testChromium as chromium } from "../../src/test-browser.js";
-import { isPng } from "../../../web/src/lib/png";
+import { isPicture, isPng } from "../../../web/src/lib/png";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
 import { pinTestBrowser } from "../../src/launch";
@@ -133,7 +133,7 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
     const src = await crop.getAttribute("src");
     if (!src) throw new Error("step crop missing");
     const bytes = Buffer.from(await (await fetch(new URL(src, origin))).arrayBuffer());
-    assert.equal(isPng(bytes), true);
+    assert.equal(isPicture(bytes), true);
     const inputs = page.getByTestId("inputs");
     assert.match(await inputs.innerText(), /Note/);
     assert.equal(await page.locator("h2", { hasText: /^Inputs$/ }).count(), 1);

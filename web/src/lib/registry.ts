@@ -1016,10 +1016,13 @@ async function pickThumbnail(document: unknown, workflowId: string, version: num
   const rows = await listShotRows(workflowId, version);
   const byId = new Map(rows.map((row) => [row.step_id, row.blob_key]));
   const doc = document && typeof document === "object" ? document as {
-    steps?: { id?: string }[];
+    inputs?: { name?: string; type?: string }[];
+    steps?: { id?: string; sensitive?: boolean; input?: string }[];
   } : {};
-  const steps = doc.steps?.length ? doc.steps : [...byId.keys()].map((id) => ({ id }));
+  const secrets = new Set((doc.inputs ?? []).filter((input) => input.type === "secret").map((input) => input.name));
+  const steps: { id?: string; sensitive?: boolean; input?: string }[] = doc.steps?.length ? doc.steps : [...byId.keys()].map((id) => ({ id }));
   for (const step of steps) {
+    if (step.sensitive || (step.input && secrets.has(step.input))) continue;
     const key = byId.get(String(step.id ?? ""));
     if (!key) continue;
     const bytes = await getPng(key);

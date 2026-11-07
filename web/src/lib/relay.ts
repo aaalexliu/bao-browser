@@ -548,7 +548,21 @@ export function createRelay(opts: {
         throw new RelayError("cursor", 400);
       }
     }
-    const rows = await sql(
+    const rows = await sql<{
+      id: string;
+      token_id: string;
+      device_id: string;
+      tool: ToolName;
+      workflow_id: string | null;
+      status: Job["status"];
+      outcome: Outcome | null;
+      created_at: string | Date;
+      cursor_at: string;
+      claimed_at: string | Date | null;
+      finished_at: string | Date | null;
+      args: Record<string, unknown>;
+      result: DurableResult | null;
+    }>(
       `SELECT id, token_id, device_id, tool, workflow_id, status, outcome,
               created_at, created_at::text AS cursor_at, claimed_at, finished_at, args, result
        FROM agent_jobs WHERE user_id = $1

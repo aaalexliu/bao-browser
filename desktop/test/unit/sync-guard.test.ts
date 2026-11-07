@@ -21,7 +21,8 @@ test("a push retains owner data and screenshots while stripping credentials", ()
       cookie: "session=abc",
       authorization: "Bearer fixture-token",
       args: { password: secret },
-      params: { token: "sk-ownerFixtureToken", email: "ada@fixture.test", phone: "+1 415-555-0123", file: "/Users/ada/note.txt" },
+      params: { token: "sk-ownerFixtureToken", email: "bag@fixture.test" },
+      email: "ada@fixture.test", phone: "+1 415-555-0123", file: "/Users/ada/note.txt",
     },
     {
       baseVersion: 1,
@@ -32,7 +33,10 @@ test("a push retains owner data and screenshots while stripping credentials", ()
   assert.equal(blob.includes(secret), false);
   assert.equal(hasCookieKey(body), false);
   assert.equal(blob.includes("fixture-token"), false);
-  assert.equal(blob.includes("sk-ownerFixtureToken"), true);
+  assert.equal(blob.includes("sk-ownerFixtureToken"), false);
+  assert.equal(blob.includes("bag@fixture.test"), false);
+  assert.equal("args" in (body.document as object), false);
+  assert.equal("params" in (body.document as object), false);
   assert.equal(blob.includes("ada@fixture.test"), true);
   assert.equal(blob.includes("+1 415-555-0123"), true);
   assert.equal(blob.includes("/Users/ada/note.txt"), true);
@@ -40,22 +44,22 @@ test("a push retains owner data and screenshots while stripping credentials", ()
   assert.equal((body.heal as { snapshot?: { dom?: string } }).snapshot?.dom, "button");
 });
 
-test("push and run payloads retain secret-step pictures and full-page pictures without redaction markers", () => {
+test("workflow pictures skip private steps but retain full-page public pictures without markers", () => {
   const crop = tinyPng(1200, 900);
   const sent = buildPushBody(
     {
       inputs: [{ name: "password", type: "secret" }],
-      steps: [{ id: "go" }, { id: "pass", sensitive: true, input: "password" }],
+      steps: [{ id: "go" }, { id: "pass", sensitive: true }, { id: "api", input: "password" }],
     },
-    { baseVersion: 1, crops: [{ stepId: "go", png: crop }, { stepId: "pass", png: crop }] },
+    { baseVersion: 1, crops: [{ stepId: "go", png: crop }, { stepId: "pass", png: crop }, { stepId: "api", png: crop }] },
   );
-  assert.equal(sent.shots.length, 2);
-  assert.deepEqual(sent.shots.map((shot) => shot.stepId), ["go", "pass"]);
+  assert.equal(sent.shots.length, 1);
+  assert.deepEqual(sent.shots.map((shot) => shot.stepId), ["go"]);
   assert.equal("redacted" in sent.shots[0]!, false);
   assert.deepEqual(Buffer.from(sent.shots[0]!.png, "base64"), crop);
   assert.equal(isElementCrop(crop), false);
   const run = buildRunBody({ id: "run", status: "passed", at: 1, steps: [{ id: "pass" }] }, { crops: [{ stepId: "pass", png: crop }] });
-  assert.deepEqual(run.shots, [sent.shots[1]]);
+  assert.deepEqual(run.shots, [{ stepId: "pass", png: crop.toString("base64") }]);
   const stripe = buildPushBody(
     { steps: [{ id: "go" }] },
     { baseVersion: 0, crops: [{ stepId: "go", png: redactedPng(1) }] },
@@ -70,9 +74,29 @@ test("known-secret values strip without refusing or corrupting metadata and bind
     steps: [{ id: "pass", input: "password", value: "{{password}}" }],
     args: { password: "pass" },
   }, { baseVersion: 0 });
-  const document = body.document as { steps: { id: string; input: string; value: string }[]; args: { password: string } };
-  assert.equal(document.args.password, "[secret stripped]");
+  const document = body.document as { steps: { id: string; input: string; value: string }[]; args?: unknown };
+  assert.equal(document.args, undefined);
   assert.deepEqual(document.steps, [{ id: "pass", input: "password", value: "{{password}}" }]);
+});
+
+test("picture sizing preserves samples, nested data and sealed references", async () => {
+  const reference = `sha256:${"a".repeat(64)}`;
+  const source = {
+    shots: [],
+    samples: { screenshot: "941031234", png: "021000021" },
+    document: { screenshot: "not an image", nested: { png: "owner value" } },
+    heal: { screenshot: reference, nested: { screenshot: "kept" } },
+  };
+  const fitted = await fitPictureBody(source);
+  assert.deepEqual(fitted.body, source);
+  assert.equal(fitted.omittedPictures, 0);
+  const pressured = await fitPictureBody({ ...source, padding: "x".repeat(4_000_000) });
+  assert.equal(pressured.tooLarge, true);
+  assert.deepEqual(pressured.body.samples, source.samples);
+  assert.deepEqual(pressured.body.heal, source.heal);
+  assert.equal(pressured.omittedPictures, 0);
+  const smallHeal = { shots: [], heal: { screenshot: "an ordinary saved value" } };
+  assert.deepEqual((await fitPictureBody(smallHeal)).body, smallHeal);
 });
 
 test("many-picture workflow, heal, run and review bodies obey transport limits", async () => {

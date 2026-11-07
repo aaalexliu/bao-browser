@@ -25,6 +25,11 @@ for (const refused of [false, true]) test(`other sync categories continue when a
         res.end(JSON.stringify({ devices: [], categories: [] }));
         return;
       }
+      if (rejectWorkflow && req.url === "/api/workflows/secret-push/runs") {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
       if (rejectWorkflow && req.url === "/api/workflows/secret-push/versions") {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "invalid workflow" }));
@@ -60,15 +65,15 @@ for (const refused of [false, true]) test(`other sync categories continue when a
     assert.equal(seen.some((line) => line.includes(planted)), false);
     const pushed = seen.find((line) => line.startsWith("POST /api/workflows/secret-push/versions"));
     assert.ok(pushed);
-    assert.equal(pushed.includes("ada@fixture.test"), true);
-    assert.equal(pushed.includes("/Users/ada/note.txt"), true);
-    assert.equal(seen.some((line) => line.startsWith("POST /api/workflows/secret-push/runs")), !refused);
+    assert.equal(pushed.includes("ada@fixture.test"), false);
+    assert.equal(pushed.includes("/Users/ada/note.txt"), false);
+    assert.equal(seen.some((line) => line.startsWith("POST /api/workflows/secret-push/runs")), true);
     assert.equal(loadState(home).pushedRuns.includes("owner-run"), !refused);
     assert.equal(loadState(home).pushedRuns.includes("other-run"), true);
     if (refused) {
       rejectWorkflow = false;
       await syncAll(library, "push");
-      assert.equal(seen.filter((line) => line.startsWith("POST /api/workflows/secret-push/runs")).length, 1);
+      assert.equal(seen.filter((line) => line.startsWith("POST /api/workflows/secret-push/runs")).length, 2);
       assert.equal(loadState(home).pushedRuns.includes("owner-run"), true);
     }
     assert.equal(seen.some((line) => line.startsWith("POST /api/sync/settings")), true);
@@ -77,7 +82,7 @@ for (const refused of [false, true]) test(`other sync categories continue when a
   }
 });
 
-for (const status of [403, 404, 413]) test(`run HTTP ${status} remains retryable`, async () => {
+for (const status of [403, 404, 413]) test(`untracked run HTTP ${status} remains retryable with workflow sync off`, async () => {
   let runStatus = status;
   let attempts = 0;
   const server = createServer((req, res) => {
@@ -96,7 +101,7 @@ for (const status of [403, 404, 413]) test(`run HTTP ${status} remains retryable
   const library = new Library(home);
   library.save(secretWorkflow());
   library.saveRun({ id: "retry-run", workflowId: "secret-push", status: "passed", at: 1, steps: [], heals: [] });
-  writeFileSync(path.join(home, "sync.json"), JSON.stringify({ server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture", backedUp: true }));
+  writeFileSync(path.join(home, "sync.json"), JSON.stringify({ server: `http://127.0.0.1:${address.port}`, deviceToken: "fixture", backedUp: true, categoryEnabled: { workflows: false } }));
   try {
     await syncAll(library, "push");
     assert.equal(loadState(home).pushedRuns.includes("retry-run"), false);
@@ -110,14 +115,14 @@ for (const status of [403, 404, 413]) test(`run HTTP ${status} remains retryable
 });
 
 test("a long workflow sync bounds picture bodies and reports omitted pictures", async () => {
-  const bodies: { bytes: number; shots: { png: string }[] }[] = [];
+  const bodies: { bytes: number; shots: { stepId: string; png: string }[] }[] = [];
   const server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       if (req.url?.endsWith("/versions") || req.url?.endsWith("/runs")) {
         const bytes = Buffer.concat(chunks);
-        bodies.push({ bytes: bytes.length, shots: (JSON.parse(bytes.toString()) as { shots: { png: string }[] }).shots });
+        bodies.push({ bytes: bytes.length, shots: (JSON.parse(bytes.toString()) as { shots: { stepId: string; png: string }[] }).shots });
       }
       res.end(JSON.stringify({ version: 1, devices: [], categories: [] }));
     });
@@ -127,7 +132,12 @@ test("a long workflow sync bounds picture bodies and reports omitted pictures", 
   const home = mkdtempSync(path.join(tmpdir(), "bao-many-picture-sync-"));
   const library = new Library(home);
   const doc = secretWorkflow();
-  doc.steps = Array.from({ length: 40 }, (_, i) => ({ ...doc.steps[0]!, id: `step-${i}`, index: i }));
+  doc.inputs = [{ name: "credential", type: "secret", label: "Credential", required: true }];
+  doc.steps = Array.from({ length: 40 }, (_, i) => ({ id: `step-${i}`, index: i, action: "key", key: "Enter", label: "Continue", surface: "dom", timeoutMs: 1000 }));
+  doc.steps.push(
+    { id: "private-sensitive", index: 40, action: "type", value: "{{credential}}", sensitive: true, label: "Private", surface: "dom", timeoutMs: 1000 },
+    { id: "private-input", index: 41, action: "type", input: "credential", value: "{{credential}}", label: "Credential", surface: "dom", timeoutMs: 1000 },
+  );
   library.save(doc);
   const picture = await sharp(randomBytes(720 * 480 * 3), { raw: { width: 720, height: 480, channels: 3 } }).jpeg({ quality: 90 }).toBuffer();
   const dir = path.join(home, "shots", "workflows", doc.id);
@@ -139,6 +149,7 @@ test("a long workflow sync bounds picture bodies and reports omitted pictures", 
     assert.equal(bodies.length, 1);
     assert.ok(bodies[0]!.bytes < 4_000_000);
     assert.ok(bodies[0]!.shots.length > 0 && bodies[0]!.shots.length < 40);
+    assert.equal(bodies[0]!.shots.some((shot) => shot.stepId.startsWith("private-")), false);
     assert.match(result.lastResult || "", /\d+ pictures omitted for transport limits/);
     for (const shot of bodies[0]!.shots) {
       const meta = await sharp(Buffer.from(shot.png, "base64")).metadata();

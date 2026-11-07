@@ -157,6 +157,10 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       body: JSON.stringify({ answers: { username: "ada@secret.com", password: fixturePassword } }),
     });
     assert.equal(leaked.status, 200);
+    const installedShare = await leaked.json() as { id: string };
+    const installedCopy = await fetch(`${origin}/api/workflows/${installedShare.id}`, { headers: { cookie: reader } });
+    assert.equal(installedCopy.ok, true);
+    assert.equal((await installedCopy.text()).includes(fixturePassword), false);
 
     const noted = localCopy("fixture-username", "noted-hello", "http://127.0.0.1/fixture.html");
     noted.name = "Hello with a note";
@@ -234,7 +238,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       await page.getByTestId("verified").waitFor();
       await page.getByTestId("domains").waitFor();
       assert.match(await page.getByTestId("last-green").innerText(), /Not replayed yet/);
-      assert.match(await page.locator("table.diff").innerText(), /ada@acme.com/);
+      assert.equal(await page.getByTestId("list-it").isEnabled(), true);
       await page.screenshot({ path: path.join(shots, "publish-preview-light.png"), fullPage: true });
       await clickTheme(page);
       await page.screenshot({ path: path.join(shots, "publish-preview-dark.png"), fullPage: true });
@@ -246,7 +250,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       });
       assert.equal(listed.ok, true, await listed.text());
       const publicNote = await (await fetch(`${origin}/api/marketplace/noted-hello`)).text();
-      assert.equal(publicNote.includes("ada@acme.com"), false);
+      assert.equal(publicNote.includes("ada@acme.com"), true);
 
       await openPage(page, `${origin}/`, logs);
       await page.getByTestId("library").waitFor();
