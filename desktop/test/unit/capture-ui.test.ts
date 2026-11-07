@@ -47,7 +47,10 @@ test("capture routes a pending Teach review back to Teach without changing its s
     await page.locator(".runs-record").click();
     await page.getByRole("button", { name: "Teach", exact: true }).click();
     await page.locator("#teach-url").fill(`${url}/fixture`);
-    await page.locator("#teach-start").click();
+    await Promise.all([
+      page.waitForResponse((response) => response.url() === `${url}/api/sessions` && response.request().method() === "POST").then((response) => response.finished()),
+      page.locator("#teach-start").click(),
+    ]);
     await page.locator("#teach-stop").waitFor();
     const action = await page.request.post(`${url}/api/sessions/drive`, { data: { click: "#apply-btn" } });
     assert.equal(action.ok(), true, await action.text());
@@ -94,7 +97,10 @@ test("an empty Teach review can be discarded from capture to allow a new recordi
     await page.locator(".runs-record").click();
     await page.getByRole("button", { name: "Teach", exact: true }).click();
     await page.locator("#teach-url").fill(`${url}/fixture`);
-    await page.locator("#teach-start").click();
+    await Promise.all([
+      page.waitForResponse((response) => response.url() === `${url}/api/sessions` && response.request().method() === "POST").then((response) => response.finished()),
+      page.locator("#teach-start").click(),
+    ]);
     await Promise.all([
       page.waitForResponse((response) => response.url() === `${url}/api/teach/stop`).then((response) => response.finished()),
       page.locator("#teach-stop").click(),
@@ -193,10 +199,16 @@ test("the running capture saves its name and steps, pauses, recovers errors and 
       await page.waitForFunction((value) => document.documentElement.dataset.theme === value, theme);
       for (const width of [1280, 400, 360, 320]) {
         await page.setViewportSize({ width, height: 700 });
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        const footer = await page.locator(".cap-foot").boundingBox();
-        const toolbar = await page.locator(".capture-controls").boundingBox();
-        assert.ok(footer && toolbar && footer.y + footer.height <= toolbar.y, `Controls overlap at ${width}px`);
+        const layout = await page.evaluate(() => {
+          const footer = document.querySelector(".cap-foot")?.getBoundingClientRect();
+          const toolbar = document.querySelector(".capture-controls")?.getBoundingClientRect();
+          return {
+            fitsViewport: document.documentElement.scrollWidth <= innerWidth,
+            controlsSeparated: Boolean(footer && toolbar && footer.bottom <= toolbar.top),
+          };
+        });
+        assert.equal(layout.fitsViewport, true);
+        assert.equal(layout.controlsSeparated, true, `Controls overlap at ${width}px`);
         for (const button of await page.locator(".cap-foot button, .capture-controls button").all()) await button.click({ trial: true });
       }
     }
