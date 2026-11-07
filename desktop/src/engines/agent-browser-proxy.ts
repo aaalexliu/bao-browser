@@ -256,7 +256,8 @@ export class AgentBrowserProxy {
     if (!ownerWall(active.page)) return;
     if (openedSite && ownerWall(active.page) === "login_wall" && "importLogin" in session.chrome) {
       if (await session.chrome.importLogin(new URL(active.page.url).origin, true)) {
-        await this.run(session, "open", [openedSite]);
+        const retry = await this.run(session, "open", [openedSite]);
+        if (retry.exitCode !== 0) throw new Error(`Bao sign-in retry failed: ${retry.stderr || retry.stdout || `exit ${retry.exitCode}`}`);
         active = await this.activePage(session);
         if (!active) throw new Error("no active Bao page metadata");
         if (!ownerWall(active.page)) return;

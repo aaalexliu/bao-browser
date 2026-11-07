@@ -121,22 +121,29 @@ async function seedLogin(portFile: string, login: LoginState): Promise<boolean> 
   const cdp = await connect(portFile);
   let targetId: string | undefined;
   try {
-    ({ targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }));
-    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+    const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
+    const origins = [...new Set(login.storage.map((item) => item.origin))];
+    const existing = targetInfos.find((target) => target.type === "page" &&
+      (!origins.length || origins.length === 1 && target.url.startsWith(`${origins[0]}/`)));
+    let pageId = existing?.targetId;
+    if (!pageId) {
+      ({ targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true, hidden: true }));
+      pageId = targetId;
+    }
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: pageId, flatten: true });
     const send = (method: string, params: Record<string, unknown> = {}) => cdp.send(method, params, sessionId);
     const outcomes = await setCookiesOneAtATime({ setOne: (cookie) => cdp.send("Network.setCookie", { ...cookie }, sessionId) }, login.cookies);
     let stored = 0;
     if (login.storage.length) {
-      const origins = [...new Set(login.storage.map((item) => item.origin))];
       cdp.on("Fetch.requestPaused", sessionId, (request) => {
         void send("Fetch.fulfillRequest", { requestId: request.requestId, responseCode: 200,
           responseHeaders: [{ name: "Content-Type", value: "text/html" }],
           body: Buffer.from("<!doctype html><title>Bao</title>").toString("base64") }).catch(() => undefined);
       });
-      await send("Fetch.enable", { patterns: origins.map((origin) => ({ urlPattern: `${origin}/*`, resourceType: "Document" })) });
+      if (targetId) await send("Fetch.enable", { patterns: origins.map((origin) => ({ urlPattern: `${origin}/*`, resourceType: "Document" })) });
       try {
         for (const origin of origins) {
-          await send("Page.navigate", { url: `${origin}/` });
+          if (targetId) await send("Page.navigate", { url: `${origin}/` });
           const deadline = Date.now() + 5000;
           for (;;) {
             const { frameTree } = await cdp.send<{ frameTree: { frame: { securityOrigin: string } } }>("Page.getFrameTree", {}, sessionId, 2000);
@@ -152,7 +159,7 @@ async function seedLogin(portFile: string, login: LoginState): Promise<boolean> 
           stored += await setLocalStorageItems(send, login.storage.filter((item) => item.origin === origin && !existing.has(item.key)));
         }
       } finally {
-        await send("Fetch.disable");
+        if (targetId) await send("Fetch.disable");
       }
     }
     return outcomes.some((outcome) => outcome.ok) || stored > 0;
@@ -222,13 +229,14 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
     };
     const login = options.site ? await snapshot(options.site, profile) : undefined;
     if (!ownsProfile()) throw busy();
+    // Read saved timestamps while Chrome is stopped; observe live changes through CDP.
+    const updates = cookieUpdates(path.join(profile, "Default"));
     launchAttempted = true;
     chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, keychain: "mock", headless: false,
       loadExtensions: false, detached: options.detached });
     const browser = chrome;
     const observed = new Map<string, { signature: string; updated: bigint }>();
     const liveCookies = async (initial = false) => {
-      const updates = cookieUpdates(path.join(profile, "Default"));
       const cdp = await connect(browser.portFile);
       try {
         const { cookies } = await cdp.send<{ cookies: ChromeCookie[] }>("Storage.getCookies");
@@ -239,7 +247,7 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
           const previous = observed.get(key);
           const signature = cookieSignature(cookie);
           const disk = updates.get(key) ?? 0n;
-          const updated = initial ? disk : !previous || previous.signature !== signature ? now : previous.updated > disk ? previous.updated : disk;
+          const updated = initial ? disk : !previous || previous.signature !== signature ? now : previous.updated;
           observed.set(key, { signature, updated });
         }
         return live;

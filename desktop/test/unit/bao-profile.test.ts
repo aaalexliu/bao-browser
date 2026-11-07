@@ -204,13 +204,16 @@ test("a losing concurrent Bao open cannot alter the opening owner's profile or l
   }
 });
 
-for (const scenario of ["stale SSO", "signed-out home", "signed-out wall", "newer anonymous wall", "unavailable source", "unavailable SSO source"] as const) test(`Bao refreshes ${scenario} from the selected source without repeating an origin`, { timeout: 90_000 }, async (t) => {
+for (const scenario of ["stale SSO", "signed-out home", "signed-out wall", "newer anonymous wall", "unavailable source", "unavailable SSO source", "native same-origin wall", "native SSO wall", "failed wall retry"] as const) test(`Bao refreshes ${scenario} from the selected source without repeating an origin`, { timeout: 90_000 }, async (t) => {
+  const native = scenario === "native same-origin wall" || scenario === "native SSO wall";
+  if (native && !process.env.AGENT_BROWSER_PROXY_BINARY) { t.skip("set AGENT_BROWSER_PROXY_BINARY to exercise the real native daemon"); return; }
   const root = await mkdtemp(path.join(tmpdir(), "bao-source-refresh-"));
   const sourceRoot = path.join(root, "source");
   const home = path.join(root, "home");
   const profile = baoAgentProfileDir(home);
-  const sso = scenario === "stale SSO" || scenario === "unavailable SSO source";
+  const sso = scenario === "stale SSO" || scenario === "unavailable SSO source" || scenario === "native SSO wall";
   const unavailable = scenario === "unavailable source" || scenario === "unavailable SSO source";
+  const olderSource = scenario === "newer anonymous wall" || scenario === "stale SSO" || native || scenario === "failed wall retry";
   const server = createServer((request, response) => {
     const url = new URL(request.url!, `http://${request.headers.host}`);
     const redirect = (location: string) => { response.writeHead(302, { location }); response.end(); };
@@ -246,6 +249,7 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
 fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 (async()=>{
  if(command==='close'){console.log('Closed');return;}
+ if(${scenario === "failed wall retry"} && command==='open' && fs.readFileSync(${JSON.stringify(log)},'utf8').trim().split('\\n').filter(line=>JSON.parse(line).command==='open').length===2){console.error('synthetic daemon retry failure');process.exitCode=1;return;}
  const tabs=(await (await fetch('http://'+endpoint.host+'/json/list')).json()).filter(t=>t.type==='page');
  const active=fs.readFileSync(${JSON.stringify(activeTarget)},'utf8');
  if(command==='tab'){console.log(JSON.stringify({data:{tabs:tabs.map(t=>({targetId:t.id,active:t.id===active}))}}));return;}
@@ -280,7 +284,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     }
     return browser;
   });
-  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
+  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable: native ? process.env.AGENT_BROWSER_PROXY_BINARY : executable });
   const writeSource = async (value: string) => {
     const source = await launches.launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
     try {
@@ -294,7 +298,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     } finally { await source.close(); }
   };
   try {
-    if (scenario === "newer anonymous wall" || scenario === "stale SSO") await writeSource("fresh");
+    if (olderSource) await writeSource("fresh");
     const previous = await launches.launchOwnedChrome({ userDataDir: profile, headless: true });
     try {
       await previous.addCookies([
@@ -308,16 +312,28 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
         await page.evaluate(() => localStorage.setItem("identity", "bao-account"));
       }
     } finally { await previous.close(); }
-    if (scenario !== "newer anonymous wall" && scenario !== "stale SSO") await writeSource(scenario === "signed-out wall" ? "anonymous" : "fresh");
+    if (!olderSource) await writeSource(scenario === "signed-out wall" ? "anonymous" : "fresh");
+    if (scenario === "failed wall retry") {
+      await assert.rejects(proxy.execute("open", [opened], "bao"), /Bao sign-in retry failed: synthetic daemon retry failure/);
+      return;
+    }
+    if (native) {
+      const copy = await proxy.execute("open", ["about:blank"]);
+      assert.equal(copy[0]!.exitCode, 0, copy[0]!.stderr);
+      await assert.rejects(proxy.execute("open", [opened], "bao"), /close/i);
+      await proxy.close();
+      launchCount = 0;
+    }
     const results = await proxy.execute("open", [opened], "bao");
     assert.equal(results[0]!.exitCode, 0, results[0]!.stderr);
     const commands = () => readFile(log, "utf8").then((text) => text.trim().split("\n").map((line) => JSON.parse(line) as { command: string }));
-    assert.equal((await commands()).filter((entry) => entry.command === "open").length, scenario === "stale SSO" || scenario === "newer anonymous wall" ? 2 : 1, JSON.stringify(results));
+    if (!native) assert.equal((await commands()).filter((entry) => entry.command === "open").length, scenario === "stale SSO" || scenario === "newer anonymous wall" ? 2 : 1, JSON.stringify(results));
     assert.equal(launchCount, 2, "each open extracts source cookies only once for each needed origin");
     if (scenario === "signed-out wall" || scenario === "unavailable SSO source") {
       assert.equal(JSON.parse(results[0]!.stdout).outcome, "halted");
     } else {
-      assert.equal(results[0]!.stdout, "Opened\n");
+      if (!native) assert.equal(results[0]!.stdout, "Opened\n");
+      else assert.notEqual(JSON.parse(results[0]!.stdout.startsWith("{") ? results[0]!.stdout : "{}").outcome, "halted", "valid source sign-in must recover without owner input");
       const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
       observer = await connectCdp(endpoint.port, endpoint.browserPath);
       const { targetInfos } = await observer.send<{ targetInfos: { type: string; url: string; targetId: string }[] }>("Target.getTargets");
