@@ -50,7 +50,13 @@ for (const [name, strip, push] of [["desktop", desktopStrip, desktopPush], ["web
     assert.equal(cleaned.steps[1]?.label, secret);
     assert.equal(cleaned.steps[2]?.value, stripped);
     assert.equal(cleaned.steps[3]?.value, `prefix ${secret} suffix`);
-    assert.throws(() => push(doc, { baseVersion: 0 }), /secret param/);
+    const projected = push(doc, { baseVersion: 0 }).document as WorkflowV2;
+    assert.equal(projected.inputs[0]?.default, undefined);
+    assert.equal(projected.steps[0]?.value, "{{password}}");
+    assert.equal(projected.steps[1]?.value, stripped);
+    assert.equal(projected.steps[1]?.label, secret);
+    assert.equal(projected.steps[2]?.value, stripped);
+    assert.equal(projected.steps[3]?.value, `prefix ${secret} suffix`);
     const pushDoc = structuredClone(doc);
     pushDoc.steps[1]!.label = "Copy";
     pushDoc.steps.pop();

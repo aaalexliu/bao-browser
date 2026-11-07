@@ -258,10 +258,14 @@ test("plain Replay uses the current saved secret while pinned and run-link input
         page.waitForResponse((item) => item.url() === `${base}/api/replay` && item.request().method() === "POST"),
         page.click("#run"),
       ]);
-      const run = await response.json() as { status: string; modelCalls: number; failure?: unknown };
+      const run = await response.json() as { id?: string; runId?: string; status: string; modelCalls: number; failure?: unknown };
       assert.equal(response.ok(), true, JSON.stringify(run));
       assert.equal(run.status, "passed", JSON.stringify(run.failure));
       assert.equal(run.modelCalls, 0);
+      const runId = run.id || run.runId;
+      assert.ok(runId);
+      await page.click('#rail [data-place="runs"]');
+      await page.locator(`[data-open-run="${runId}"]`).first().click();
       await page.locator("#rerun-run").waitFor();
     }
     await openPlain();

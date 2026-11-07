@@ -8,15 +8,15 @@
     "names": [
       "a missing session and an expired session are not logged in",
       "auth precondition uses the pathname, so a next query is still logged out",
-      "the recorder drops a password value and keeps a secret slot",
-      "property: a password never survives interpret or a logged-out replay",
+      "the recorder keeps a password value in a secret slot",
+      "property: interpret retains passwords without changing logged-out replay waits",
       "a logged-out replay is an auth miss and does not call a model",
       "a secret from the parameter form fills the masked field and stops before Apply",
       "login and auth recovery reject every stripped credential before filling or submitting",
       "the human handoff signs in and replay stops at confirm",
       "replay paths do not click Apply without a human confirm event",
       "the local fixture redirects logged-out and expired sessions and hides the secret",
-      "a headed-off replay of both login paths leaves the secret out of the library",
+      "a headed-off replay of both login paths stops at confirm",
       "a person signs in on the fixture after the banner, and replay stops at confirm"
     ]
   },
@@ -27,7 +27,7 @@
       "desktop/test/unit/auth-login.test.ts"
     ],
     "names": [
-      "recording a password field stores a secret slot and not the value"
+      "recording a password field saves its value in a secret slot"
     ]
   },
   "experian": {

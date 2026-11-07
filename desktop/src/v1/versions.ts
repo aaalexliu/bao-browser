@@ -3,6 +3,8 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { buildPushBody } from "./sync-guard";
 import { retainLocalDefaults } from "./local-defaults";
 import { migrate, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
@@ -402,13 +404,18 @@ export function noteConflict(
 }
 
 function cloudRows(history: CloudVersionRow[], local: WorkflowVersion[]): WorkflowVersion[] {
-  const localByVersion = new Map(local.map((item) => [item.n, item.document]));
+  const promoted = local.filter((item) => item.role !== "draft").map((item) => ({
+    document: item.document,
+    projection: JSON.parse(JSON.stringify(buildPushBody(item.document, { baseVersion: 0 }).document)) as unknown,
+  }));
   const rows: WorkflowVersion[] = [];
   for (const item of history) {
     if (item.kind === "conflict" || item.document === undefined) continue;
     const document = migrate(item.document);
     if (validateWorkflow(document).length) continue;
-    retainLocalDefaults(document, localByVersion.get(item.version));
+    const wire = JSON.parse(JSON.stringify(item.document)) as unknown;
+    const matches = promoted.filter((candidate) => isDeepStrictEqual(candidate.projection, wire));
+    if (matches.length === 1) retainLocalDefaults(document, matches[0]!.document);
     rows.push({
       n: item.version,
       role: "past",
