@@ -2,6 +2,8 @@
 
 Bao is already installed. For a rebuild, see [Build Bao on a Mac](mac-build.md).
 
+For desktop clients, see [Desktop client checks](desktop-clients-test.md).
+
 ## Open
 
 Open Bao from Finder. Double-click `/Applications/Bao.app`. Do not use Terminal.
