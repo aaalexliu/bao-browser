@@ -45,10 +45,10 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
   });
 });
 
-test("MCP search and describe relax only usable saved secrets", async () => {
+test("MCP search and describe relax only saved login passwords", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [
-      { name: "password", type: "secret", label: "Password", required: true, default: "fixture-password" },
+      { name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" },
       { name: "display", type: "text", default: "Ada" },
       { name: "count", type: "number", default: "0" },
       { name: "missing", type: "secret" },
@@ -58,17 +58,30 @@ test("MCP search and describe relax only usable saved secrets", async () => {
       { name: "attachment", type: "file" },
       { name: "optional", type: "text", required: false },
       { name: "code", type: "secret", label: "Verification code", required: true, default: "123456" },
+      { name: "taughtCode", type: "secret", default: "482913" },
+      { name: "card", type: "secret", default: "4111111111111111" },
+      { name: "pin", type: "secret", default: "1234" },
+      { name: "password", type: "secret", default: "not-the-login-password" },
     ];
-    const saved: WorkflowV2 = { ...workflow, inputs, steps: [{
-      id: "code", index: 0, action: "type", label: "Code", input: "code", value: "{{code}}", surface: "dom", timeoutMs: 1000,
-      identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login ONE-TIME-CODE", path: [] },
-    }] };
+    const saved: WorkflowV2 = { ...workflow, inputs, steps: [
+      { id: "signin", index: 0, action: "login", label: "Sign in", input: "credential", surface: "dom", timeoutMs: 1000 },
+      ...["missing", "empty", "stripped"].map((name, index): WorkflowV2["steps"][number] => ({
+        id: name, index: index + 1, action: "login", label: name, input: name, surface: "dom", timeoutMs: 1000,
+      })),
+      { id: "code", index: 4, action: "type", label: "Code", input: "code", value: "{{code}}", surface: "dom", timeoutMs: 1000,
+        identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login ONE-TIME-CODE", path: [] } },
+      { id: "taughtCode", index: 5, action: "type", label: "Code", input: "taughtCode", value: "{{taughtCode}}", sensitive: true, surface: "dom", timeoutMs: 1000 },
+      { id: "card", index: 6, action: "type", label: "Card", input: "card", value: "{{card}}", surface: "dom", timeoutMs: 1000,
+        identity: { surface: "dom", role: "textbox", autocomplete: "cc-number", path: [] } },
+      { id: "pin", index: 7, action: "type", label: "PIN", input: "pin", value: "{{pin}}", surface: "dom", timeoutMs: 1000,
+        identity: { surface: "dom", role: "password", id: "pin", path: [] } },
+    ] };
     library.save(saved);
     await client.handshake();
     const result = await client.call("describe_workflow", { id: saved.id });
     assert.equal(result.isError, false);
     const described = JSON.parse(result.text) as { workflow: WorkflowV2; inputs: { name: string; type: string; label: string; required: boolean }[] };
-    const required = [false, true, true, true, true, true, true, true, false, true];
+    const required = [false, true, true, true, true, true, true, true, false, true, true, true, true, true];
     assert.deepEqual(described.inputs, inputs.map((input, index) => ({
       name: input.name, type: input.type, label: input.label || input.name, required: required[index],
     })));
@@ -81,23 +94,40 @@ test("MCP search and describe relax only usable saved secrets", async () => {
     assert.equal(search.isError, false);
     const hits = JSON.parse(search.text) as { hits: { inputs: typeof described.inputs }[] };
     assert.deepEqual(hits.hits[0]?.inputs, described.inputs);
+    library.save({ ...saved, steps: [{ ...saved.steps[0]!, input: undefined }] });
+    const fallback = await client.call("describe_workflow", { id: saved.id });
+    const selected = JSON.parse(fallback.text) as typeof described;
+    assert.equal(selected.inputs[0]?.required, true);
+    assert.equal(selected.inputs.at(-1)?.required, false);
+    library.save({ ...saved, steps: saved.steps.filter((step) => step.action !== "login").map((step, index) => ({ ...step, index })) });
+    const withoutLogin = await client.call("describe_workflow", { id: saved.id });
+    const ordinary = JSON.parse(withoutLogin.text) as typeof described;
+    assert.equal(ordinary.inputs[0]?.required, true);
+    assert.equal(ordinary.workflow.inputs[0]?.required, true);
   });
 });
 
-test("MCP run omits a saved password but still requires a fresh OTP", { timeout: 60_000 }, async () => {
+test("MCP run omits a saved login password but still requires a fresh OTP", { timeout: 60_000 }, async () => {
   const submissions: Record<string, string>[] = [];
+  const passwords: string[] = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     res.setHeader("content-type", "text/html");
     if (url.pathname === "/submit") {
-      submissions.push(Object.fromEntries(url.searchParams));
+      submissions.push({ password: passwords.at(-1) || "", ...Object.fromEntries(url.searchParams) });
       res.end("<!doctype html><p>Submitted</p>");
       return;
     }
-    res.end(`<!doctype html><form action="/submit">
+    if (url.pathname === "/password") {
+      passwords.push(url.searchParams.get("password") || "");
+      res.end(`<!doctype html><form action="/submit">
+        <label>Code <input id="code" name="code" autocomplete="one-time-code"></label>
+        <button id="verify" type="submit">Verify</button></form>`);
+      return;
+    }
+    res.end(`<!doctype html><form action="/password">
       <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
-      <label>Code <input id="code" name="code" autocomplete="one-time-code"></label>
-      <button type="submit">Submit</button></form>`);
+      <button id="signin" type="submit">Sign in</button></form>`);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -107,18 +137,15 @@ test("MCP run omits a saved password but still requires a fresh OTP", { timeout:
       const saved: WorkflowV2 = {
         ...workflow, startUrl: `http://127.0.0.1:${address.port}/`,
         inputs: [
-          { name: "password", type: "secret", label: "Password", required: true, default: "fixture-password" },
+          { name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" },
           { name: "code", type: "secret", label: "Verification code", required: true, default: "123456" },
         ],
         steps: [
-          ...["password", "code"].map((name, index): WorkflowV2["steps"][number] => ({
-            id: name, index, action: "type", label: name, surface: "dom", timeoutMs: 5000, heal: "never",
-            input: name, value: `{{${name}}}`,
-            identity: { surface: "dom", role: "textbox", id: name, path: [], ...(name === "code" ? { autocomplete: "one-time-code" } : {}) },
-          })),
-          { id: "submit", index: 2, action: "click", label: "Submit", surface: "dom", timeoutMs: 5000, heal: "never",
-            identity: { surface: "dom", role: "button", name: "Submit", path: [] },
-            postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 } },
+          { id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000, heal: "never",
+            input: "credential", postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 } },
+          { id: "code", index: 1, action: "type", label: "Code", surface: "dom", timeoutMs: 5000, heal: "never",
+            input: "code", value: "{{code}}", when: { absent: "Submitted" },
+            identity: { surface: "dom", role: "textbox", id: "code", path: [], autocomplete: "one-time-code" } },
         ],
       };
       library.save(saved);
@@ -129,10 +156,18 @@ test("MCP run omits a saved password but still requires a fresh OTP", { timeout:
       assert.equal(handoff.outcome, "needs_human");
       assert.equal(handoff.reason, "Enter Verification code on this device");
       assert.deepEqual(submissions, []);
+      assert.deepEqual(passwords, []);
+      const description = await client.call("describe_workflow", { id: saved.id });
+      assert.equal(description.isError, false);
+      const described = JSON.parse(description.text) as { inputs: { name: string; required: boolean }[] };
+      assert.deepEqual(described.inputs.map(({ name, required }) => ({ name, required })), [
+        { name: "credential", required: false }, { name: "code", required: true },
+      ]);
       const result = await client.call("run_workflow", { id: saved.id, inputs: { code: "654321" } });
       assert.equal(result.isError, false);
       const outcome = JSON.parse(result.text) as { outcome: string; reason?: string; runId: string };
       assert.equal(outcome.outcome, "ok", outcome.reason);
+      assert.deepEqual(passwords, ["fixture-password"]);
       assert.deepEqual(submissions, [{ password: "fixture-password", code: "654321" }]);
       assert.equal(library.readRun(outcome.runId).modelCalls, 0);
     });

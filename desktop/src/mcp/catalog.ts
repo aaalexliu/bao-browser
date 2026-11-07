@@ -18,6 +18,7 @@ import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, replay, withInputDefaults, type RunResult } from "../v1/replay";
+import { secretInputName } from "../v1/auth";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -839,10 +840,21 @@ function signInStep(step: WorkflowStep | undefined): boolean {
   return SIGN_IN.test(`${step.id} ${step.label} ${step.input || ""}`) || step.sensitive === true;
 }
 
-function inputSchema(doc: { inputs?: WorkflowV2["inputs"] }, defaults: ReplayArgs): InputField[] {
-  return (doc.inputs ?? []).map((input) => {
+function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
+  const passwords = new Set<string>();
+  const collect = (steps: WorkflowStep[]): void => {
+    for (const step of steps) {
+      if (step.action === "login") {
+        const name = secretInputName(doc, step.input);
+        if (name) passwords.add(name);
+      }
+      if (step.forEach) collect(step.forEach.steps);
+    }
+  };
+  collect(doc.steps);
+  return doc.inputs.map((input) => {
     const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
-    const saved = input.type === "secret" && value !== undefined && value !== "" && !hasStrippedSecret(value);
+    const saved = passwords.has(input.name) && value !== undefined && value !== "" && !hasStrippedSecret(value);
     return {
       name: input.name,
       type: input.type,
