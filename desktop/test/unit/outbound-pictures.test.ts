@@ -65,7 +65,7 @@ test("sync omits private-workflow step pictures from versions and runs without c
       return;
     }
     void text(req).then((body) => {
-      if (req.method === "POST") sent.set(req.url!, JSON.parse(body));
+      if (req.method === "POST") sent.set(req.url!, JSON.parse(body) as { shots: { stepId: string; png: string }[] });
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify(req.url === "/api/devices" ? { devices: [], categories: [] } : { version: 1, ok: true }));
     }).catch((error: unknown) => { res.writeHead(500); res.end(String(error)); });

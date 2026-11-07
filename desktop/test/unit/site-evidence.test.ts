@@ -16,14 +16,16 @@ test("site evidence and login details retain personal-looking text within existi
     for (const detail of phrases) {
       const response = await post("/api/prompt", { kind: "login", detail });
       assert.equal(response.status, 200);
-      assert.deepEqual((await response.json()).loginWait, { message: "waiting for you to log in", detail });
+      const body = await response.json() as { loginWait: { message: string; detail: string } };
+      assert.deepEqual(body.loginWait, { message: "waiting for you to log in", detail });
     }
     assert.equal((await post("/api/prompt", { kind: "login", detail: "x".repeat(121) })).status, 400);
     const html = `<style>p { width: 320px; height: 40px; }</style>${phrases.map((text) => `<p>${text}</p>`).join("")}`;
     assert.equal((await post("/api/site/open", { url: `data:text/html,${encodeURIComponent(html)}` })).status, 200);
     const texts = await post("/api/site/text", { phrases });
     assert.equal(texts.status, 200);
-    assert.deepEqual((await texts.json()).texts, phrases);
+    const body = await texts.json() as { texts: string[] };
+    assert.deepEqual(body.texts, phrases);
     for (const [index, phrase] of phrases.entries()) {
       const file = `card-${index}.png`;
       const shot = await post("/api/site/shot", { phrase, file });
