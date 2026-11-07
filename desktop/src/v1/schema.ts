@@ -161,20 +161,40 @@ export interface Anchor {
   relation: "below" | "above" | "right" | "left";
 }
 
-/** One selector. Replay tries `locators` in order, before the repair tiers. */
-export type LocatorKind = "role" | "text" | "testid" | "css" | "xpath" | "anchor";
-
-export interface StepLocator {
-  kind: LocatorKind;
+/**
+ * Fields a saved locator may still carry.
+ * Matching reads the payload for `kind`. The document boundary does not strip the rest.
+ */
+interface LocatorCarry {
   role?: string;
-  /** Accessible name for `role`. */
   name?: string;
-  /** Text, test id, css, or xpath. */
   value?: string;
   relation?: Anchor["relation"];
   /** The stable neighbor. The target's role is `role`. */
   anchor?: Identity;
 }
+
+export interface RoleLocator extends LocatorCarry {
+  kind: "role";
+  role: string;
+  /** Accessible name. An empty string is an unnamed control. */
+  name: string;
+}
+
+export interface ValueLocator extends LocatorCarry {
+  kind: "text" | "testid" | "css" | "xpath";
+  value: string;
+}
+
+export interface AnchorLocator extends LocatorCarry {
+  kind: "anchor";
+  relation: Anchor["relation"];
+  anchor: Identity;
+}
+
+/** One selector. Replay tries `locators` in order, before the repair tiers. */
+export type StepLocator = RoleLocator | ValueLocator | AnchorLocator;
+export type LocatorKind = StepLocator["kind"];
 
 export function popupDismissName(identity: Identity | undefined): string {
   const name = identity?.name ?? identity?.text ?? identity?.label ?? "";
@@ -382,11 +402,29 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
 }
 
 function locatorErrors(locator: StepLocator, id: string): string[] {
-  const errors: string[] = [];
-  if (locator.kind === "role" && (!locator.role || locator.name == null)) errors.push(`role locator ${id}`);
-  if (locator.kind === "anchor" && (!locator.relation || !locator.anchor)) errors.push(`anchor locator ${id}`);
-  if (locator.kind !== "role" && locator.kind !== "anchor" && !locator.value) errors.push(`locator value ${id}`);
-  return errors;
+  switch (locator.kind) {
+    case "role":
+      if (!locator.role || locator.name == null) return [`role locator ${id}`];
+      return [];
+    case "anchor":
+      if (!locator.relation || !locator.anchor) return [`anchor locator ${id}`];
+      return [];
+    case "text":
+    case "testid":
+    case "css":
+    case "xpath":
+      if (!locator.value) return [`locator value ${id}`];
+      return [];
+    default:
+      return missingLocatorValue(locator, id);
+  }
+}
+
+/** A cast document can still carry a kind this union does not name. */
+function missingLocatorValue(locator: never, id: string): string[] {
+  const raw = locator as { kind?: unknown; value?: unknown };
+  if (raw.kind !== "role" && raw.kind !== "anchor" && !raw.value) return [`locator value ${id}`];
+  return [];
 }
 
 function checkErrors(check: StepCheck, id: string, label: string): string[] {

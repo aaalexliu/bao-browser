@@ -8,7 +8,9 @@
 
 import { normRole, normText, withoutPrice } from "./identity";
 import type { Box } from "./repair";
-import type { Identity, StepLocator } from "./schema";
+import type { AnchorLocator, Identity, RoleLocator, StepLocator } from "./schema";
+
+type LocatorRelation = NonNullable<StepLocator["relation"]>;
 
 export function locatorsFromIdentity(identity: Identity | undefined): StepLocator[] | undefined {
   if (!identity) return undefined;
@@ -63,9 +65,17 @@ export function scoreLocator(
 }
 
 function locatorLabel(locator: StepLocator): string {
-  if (locator.kind === "role") return ["role", locator.role, locator.name].filter(Boolean).join(" ");
-  if (locator.kind === "anchor") return ["anchor", locator.relation, locator.role].filter(Boolean).join(" ");
-  return [locator.kind, locator.value].filter(Boolean).join(" ");
+  switch (locator.kind) {
+    case "role":
+      return ["role", locator.role, locator.name].filter(Boolean).join(" ");
+    case "anchor":
+      return ["anchor", locator.relation, locator.role].filter(Boolean).join(" ");
+    case "text":
+    case "testid":
+    case "css":
+    case "xpath":
+      return [locator.kind, locator.value].filter(Boolean).join(" ");
+  }
 }
 
 export function matchLocator(
@@ -74,7 +84,16 @@ export function matchLocator(
   boxes?: Box[],
   hidden?: boolean[],
 ): { index: number; detail: string } | undefined {
-  if (locator.kind === "anchor") return matchAnchor(locator, nodes, boxes);
+  switch (locator.kind) {
+    case "anchor":
+      return matchAnchor(locator, nodes, boxes);
+    case "role":
+    case "text":
+    case "testid":
+    case "css":
+    case "xpath":
+      break;
+  }
   const index = oneHit(locator, nodes, boxes, hidden, false) ?? oneHit(locator, nodes, boxes, hidden, true);
   if (index == null) return undefined;
   const node = nodes[index];
@@ -189,15 +208,23 @@ export function isCollapsedBox(index: number, boxes?: Box[], hidden?: boolean[])
 }
 
 function nodeMatches(locator: StepLocator, node: Identity, dropPrice: boolean): boolean {
-  if (locator.kind === "role") return roleMatches(locator, node, dropPrice);
-  if (locator.kind === "text") return !!locator.value && same(locator.value, [node.text, node.name, node.label], dropPrice);
-  if (locator.kind === "testid") return !!locator.value && same(locator.value, [node.testId], false);
-  if (locator.kind === "css") return !!locator.value && cssMatches(locator.value, node);
-  if (locator.kind === "xpath") return !!locator.value && xpathMatches(locator.value, node);
-  return false;
+  switch (locator.kind) {
+    case "role":
+      return roleMatches(locator, node, dropPrice);
+    case "text":
+      return !!locator.value && same(locator.value, [node.text, node.name, node.label], dropPrice);
+    case "testid":
+      return !!locator.value && same(locator.value, [node.testId], false);
+    case "css":
+      return !!locator.value && cssMatches(locator.value, node);
+    case "xpath":
+      return !!locator.value && xpathMatches(locator.value, node);
+    case "anchor":
+      return false;
+  }
 }
 
-function roleMatches(locator: StepLocator, node: Identity, dropPrice: boolean): boolean {
+function roleMatches(locator: RoleLocator, node: Identity, dropPrice: boolean): boolean {
   if (!locator.role || locator.name == null) return false;
   if (normRole(locator.role) !== normRole(node.role)) return false;
   if (locator.name === "") {
@@ -249,7 +276,7 @@ function anchorLocator(
   const index = targetIndex ?? nodes.indexOf(target);
   const origin = center(boxes[index]);
   if (!origin) return undefined;
-  let best: { index: number; distance: number; relation: StepLocator["relation"] } | undefined;
+  let best: { index: number; distance: number; relation: LocatorRelation } | undefined;
   nodes.forEach((node, i) => {
     if (i === index || !stableNeighbor(node)) return;
     const point = center(boxes[i]);
@@ -279,15 +306,17 @@ function anchorLocator(
 }
 
 function matchAnchor(
-  locator: StepLocator,
+  locator: AnchorLocator,
   nodes: Identity[],
   boxes: Box[] | undefined,
 ): { index: number; detail: string } | undefined {
   if (!locator.anchor || !locator.relation || !boxes) return undefined;
+  const anchor = locator.anchor;
+  const relation = locator.relation;
   let anchorAt = -1;
   nodes.forEach((node, index) => {
     if (anchorAt >= 0) return;
-    if (sameNode(locator.anchor!, node)) anchorAt = index;
+    if (sameNode(anchor, node)) anchorAt = index;
   });
   if (anchorAt < 0) return undefined;
   const origin = center(boxes[anchorAt]);
@@ -298,12 +327,13 @@ function matchAnchor(
     if (index === anchorAt) return;
     if (role && normRole(node.role) !== role) return;
     const point = center(boxes[index]);
-    if (!point || !onSide(origin, point, locator.relation!)) return;
+    if (!point || !onSide(origin, point, relation)) return;
     hits.push(index);
   });
   if (hits.length !== 1) return undefined;
-  const index = hits[0]!;
-  return { index, detail: `${locator.relation} ${shown(nodes[index])}` };
+  const index = hits[0];
+  if (index == null) return undefined;
+  return { index, detail: `${relation} ${shown(nodes[index])}` };
 }
 
 function sameNode(query: Identity, node: Identity): boolean {
@@ -328,7 +358,7 @@ function usable(boxes: Box[]): boolean {
 function relationOf(
   target: { x: number; y: number },
   neighbor: { x: number; y: number },
-): StepLocator["relation"] | undefined {
+): LocatorRelation | undefined {
   const dx = target.x - neighbor.x;
   const dy = target.y - neighbor.y;
   if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return undefined;
@@ -339,7 +369,7 @@ function relationOf(
 function onSide(
   origin: { x: number; y: number },
   point: { x: number; y: number },
-  relation: NonNullable<StepLocator["relation"]>,
+  relation: LocatorRelation,
 ): boolean {
   const dx = point.x - origin.x;
   const dy = point.y - origin.y;

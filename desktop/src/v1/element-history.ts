@@ -136,5 +136,17 @@ function copyIdentity(identity: Identity | undefined): Identity | undefined {
 
 function copyLocators(list: StepLocator[] | undefined): StepLocator[] | undefined {
   if (!list) return undefined;
-  return list.map((locator) => ({ ...locator, anchor: locator.anchor ? { ...locator.anchor } : undefined }));
+  return list.map((locator) => {
+    const anchor = locator.anchor ? { ...locator.anchor } : undefined;
+    switch (locator.kind) {
+      case "anchor":
+        return anchor ? { ...locator, anchor } : { ...locator };
+      case "role":
+      case "text":
+      case "testid":
+      case "css":
+      case "xpath":
+        return { ...locator, anchor };
+    }
+  });
 }
