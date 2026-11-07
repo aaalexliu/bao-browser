@@ -128,7 +128,8 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     const trustId = await trust.getAttribute("id");
     assert.ok(trustId);
     await trust.focus();
-    await trust.press("Home");
+    await trust.press("a");
+    await trust.press("Enter");
     await page.waitForFunction(() => (document.querySelector('[data-site-trust] option[value="ask"]') as HTMLOptionElement)?.defaultSelected === true);
     await eventually(() => app.library.settings().siteTrust?.["https://example.test"] === "ask");
     assert.equal(await page.evaluate(() => document.activeElement?.id), trustId);
@@ -298,6 +299,57 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
         release?.();
       }
     }
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("Enter commits each edited number once without waiting for blur", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-enter-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    const writes: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/settings") writes.push(request.postDataJSON() as unknown);
+    });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    await page.locator("#settings-advanced > summary").click();
+    for (const [selector, key] of [["#promote-after", "promoteAfter"], ["#act-custom", "actTimeoutMin"], ["#circuit-limit", "circuitLimit"]] as const) {
+      if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
+      const input = page.locator(selector);
+      const writesBefore = writes.length;
+      await input.focus();
+      await input.press("ControlOrMeta+A");
+      await input.press("4");
+      const [response] = await Promise.all([
+        page.waitForResponse((item) => item.request().method() === "PUT" && new URL(item.url()).pathname === "/api/settings" && (item.request().postDataJSON() as Record<string, unknown>)[key] === 4),
+        input.press("Enter"),
+      ]);
+      assert.equal(response.ok(), true);
+      await page.waitForFunction((selector) => (document.querySelector(selector) as HTMLInputElement)?.defaultValue === "4" && document.getElementById("settings-feedback")?.textContent === "Saved.", selector);
+      if (selector !== "#act-custom") {
+        assert.equal(await page.evaluate(() => document.activeElement?.id), selector.slice(1));
+        await input.press("Enter");
+      }
+      const refreshed = page.waitForResponse((item) => new URL(item.url()).pathname === "/api/state");
+      if (selector === "#act-custom") await page.locator("#act-minutes").focus();
+      await page.keyboard.press("Tab");
+      await refreshed;
+      assert.deepEqual(writes.slice(writesBefore), [{ [key]: 4 }]);
+    }
+    assert.equal(app.library.settings().promoteAfter, 4);
+    assert.equal(app.library.settings().actTimeoutMs, 240_000);
+    assert.equal(app.library.settings().circuitLimit, 4);
   } finally {
     await browser.close();
     await app.close();

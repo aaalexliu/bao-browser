@@ -350,7 +350,10 @@ function render(focusDetail = true): void {
       libraryRecovery.visible = !recovery.hidden;
       libraryRecovery.open = recovery.open;
     }
-    mainEl().querySelectorAll<HTMLInputElement>('input[type="number"][data-setting]').forEach((input) => { input.onblur = null; });
+    mainEl().querySelectorAll<HTMLInputElement>('input[type="number"][data-setting]').forEach((input) => {
+      input.onblur = null;
+      input.onchange = null;
+    });
     mainEl().innerHTML = body;
     const nextRecovery = document.querySelector<HTMLDetailsElement>("#library-damaged details");
     if (nextRecovery && libraryRecovery) {
@@ -615,8 +618,16 @@ function bindSettings(): void {
     };
     if (input instanceof HTMLInputElement && input.type === "number") {
       input.oninput = () => { input.dataset.settingsEdited = "true"; };
-      input.onblur = () => {
+      const commit = () => {
         if (input.dataset.settingsEdited === "true") void save();
+      };
+      input.onblur = commit;
+      input.onchange = commit;
+      input.onkeydown = (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+        }
       };
     } else input.onchange = save;
   });
