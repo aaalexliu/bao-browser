@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 import path from "node:path";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isElementCrop } from "../../../web/src/lib/png";
-import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
+import { fitPictureBody } from "./sync-pictures";
 import { scrubSaved } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";

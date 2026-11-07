@@ -542,7 +542,7 @@ export function createRelay(opts: {
     if (cursor) {
       try {
         const value: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString());
-        if (!Array.isArray(value) || value.length !== 2 || value.some((item) => typeof item !== "string") || !Number.isFinite(Date.parse(value[0]))) throw new Error("cursor");
+        if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string" || !Number.isFinite(Date.parse(value[0]))) throw new Error("cursor");
         before = value;
       } catch {
         throw new RelayError("cursor", 400);
