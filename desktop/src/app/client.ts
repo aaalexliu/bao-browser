@@ -470,7 +470,10 @@ async function showLiveRun(): Promise<void> {
   if (current?.dataset.run === live.id) {
     const template = document.createElement("template");
     template.innerHTML = view;
-    current.replaceChildren(...template.content.firstElementChild!.childNodes);
+    const next = template.content.firstElementChild!;
+    current.setAttribute("data-step", next.getAttribute("data-step")!);
+    current.setAttribute("aria-label", next.getAttribute("aria-label")!);
+    current.replaceChildren(...next.childNodes);
   } else mainEl().innerHTML = view;
   liveViewElement = document.getElementById("live-run");
   liveViewKey = key;
@@ -1294,7 +1297,8 @@ function bindAsk(): void {
   const active = state.activeRun;
   const action = (url: string, body: unknown) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const cancel = document.getElementById("act-cancel");
-  if (cancel && active) cancel.onclick = () => void action("/api/replay/cancel", { runId: active.id }).then(() => refresh());
+  const cancelRunId = active?.id ?? (state.replaying ? state.guide?.runId : undefined);
+  if (cancel && cancelRunId) cancel.onclick = () => void action("/api/replay/cancel", { runId: cancelRunId }).then(() => refresh());
   const cont = document.getElementById("act-continue");
   const ask = active?.phase === "waiting" ? active.ask : null;
   if (cont) cont.onclick = async () => {
@@ -1979,7 +1983,7 @@ async function runReplay(): Promise<void> {
 
 function selectDefaultRun(): void {
   const first = runAttention(state.runs || [], state.activeAsk, state.activeRun)[0];
-  if (state.activeRun) screen = "live";
+  if (state.activeRun?.ask) screen = "live";
   else if (first?.kind === "healed") selectHeal(first.run.id, first.healId);
   else {
     const id = first?.run.id || [...(state.runs || [])].sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.id;
@@ -1993,7 +1997,7 @@ function selectHeal(runId: string, healId: string): void {
 }
 
 function selectRun(id: string, stepId = ""): void {
-  if (state.activeRun?.id === id && !stepId) {
+  if (state.activeRun?.id === id && state.activeRun.ask && !stepId) {
     screen = "live";
     return;
   }

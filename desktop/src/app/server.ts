@@ -249,7 +249,9 @@ export async function startApp(opts: {
   let humanConfirm: { message: string; detail?: string } | null = null;
   let activeRun: import("./views").ActiveRun | null = null;
   const currentAsk = () => activeRun?.phase === "waiting" ? activeRun.ask : null;
+  let ownedRunId: string | null = null;
   function beginRun(workflowId: string, id: string): void {
+    ownedRunId = id;
     activeRun = { id, workflowId, startedAt: Date.now(), phase: "running", ask: null };
     clearPendingPrompt(library.root);
     stopRun = false;
@@ -258,7 +260,8 @@ export async function startApp(opts: {
   }
   function finishRun(): void {
     replaying = false;
-    if (activeRun?.phase === "running") activeRun = null;
+    if (activeRun?.phase === "running" && activeRun.id === ownedRunId) activeRun = null;
+    ownedRunId = null;
   }
   let stopRun = false;
   let loginContinued = false;
@@ -328,7 +331,7 @@ export async function startApp(opts: {
     clearConfirm() {
       humanConfirm = null;
       if (activeRun?.phase === "waiting" && activeRun.ask.kind === "confirm") {
-        activeRun = { ...activeRun, phase: "running" };
+        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
         clearPendingPrompt(library.root);
       }
       clearAct();
@@ -341,14 +344,14 @@ export async function startApp(opts: {
       loginWait = null;
       loginContinued = false;
       if (activeRun?.phase === "waiting" && (activeRun.ask.kind === "login" || activeRun.ask.kind === "wall")) {
-        activeRun = { ...activeRun, phase: "running" };
+        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
         clearPendingPrompt(library.root);
       }
       clearAct();
     },
     showAsk(ask) {
       if (!ask.runId) return;
-      activeRun = { id: ask.runId, workflowId: ask.workflowId, startedAt: activeRun?.startedAt ?? ask.startedAt, phase: "waiting", ask };
+      activeRun = { id: ask.runId, workflowId: ask.workflowId, startedAt: activeRun?.id === ask.runId ? activeRun.startedAt : ask.startedAt, phase: "waiting", ask };
       rememberPending(ask);
       raiseAct(ask);
     },
@@ -1205,7 +1208,14 @@ export async function startApp(opts: {
         const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
         if (replaying) return json(res, { error: "A run is already active." }, 409);
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-        beginRun(workflow.id, runId);
+        if (body.guide) {
+          activeRun = null;
+          clearPendingPrompt(library.root);
+          guideLive = null;
+          stopRun = false;
+          loginContinued = false;
+          replaying = true;
+        } else beginRun(workflow.id, runId);
         try {
           if (body.fresh) {
             const existing = replays.get(saved.id);
@@ -1237,7 +1247,8 @@ export async function startApp(opts: {
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
         } finally {
-          finishRun();
+          if (body.guide) replaying = false;
+          else finishRun();
         }
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
@@ -1321,7 +1332,8 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         const body = await readBody(req) as { runId?: string };
         syncPending();
-        if (!activeRun || body.runId !== activeRun.id) return json(res, { error: "This run is no longer active." }, 409);
+        const isGuide = replaying && !ownedRunId && guideLive !== null && guideLive.runId === body.runId;
+        if (!isGuide && (!activeRun || body.runId !== activeRun.id)) return json(res, { error: "This run is no longer active." }, 409);
         stopRun = true;
         if (!replaying) {
           clearPendingPrompt(library.root);

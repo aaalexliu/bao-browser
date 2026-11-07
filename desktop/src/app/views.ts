@@ -1841,12 +1841,10 @@ export function runWaitLeft(deadline: number, now = Date.now()): string {
 
 export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; activeRun?: ActiveRun | null } = {}): string {
   const active = selection.activeRun;
-  const listed = active && !runs.some((run) => run.id === active.id)
-    ? [{ id: active.id, workflowId: active.workflowId, status: active.phase === "waiting" ? "paused" : "running", at: active.startedAt }, ...runs] : runs;
-  const attention = runAttention(listed, ask, active);
+  const attention = runAttention(runs, ask, active);
   const imports = attentionCount({ pendingHeals: 0, importPhase });
   const reviews = reviewItems(runs);
-  const count = shellAttentionCount({ runs: listed, activeAsk: ask, activeRun: active, pendingImport: { phase: importPhase } });
+  const count = shellAttentionCount({ runs, activeAsk: ask, activeRun: active, pendingImport: { phase: importPhase } });
   const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
   let selectionShown = false;
   const row = (run: RunSummary, attentionLabel?: string, kind = run.id === active?.id ? active.phase === "waiting" ? "paused" : "running" : runListKind(run), live = false, healId?: string) => {
@@ -1878,8 +1876,8 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const groups = new Map<string, RunSummary[]>();
   const isCurrent = (run: RunSummary) => run.id === active?.id || runWaiting(run);
-  const currentRuns = listed.filter(isCurrent).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
-  for (const run of [...listed].filter((item) => !isCurrent(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
+  const currentRuns = runs.filter(isCurrent).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
+  for (const run of [...runs].filter((item) => !isCurrent(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
     const at = runTime(run);
     const label = at === undefined ? "Date unknown" : day(at) === day(now) ? "Today" : day(at) === day(+yesterday) ? "Yesterday" : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric", ...(new Date(at).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(at);
     const entries = groups.get(label);

@@ -101,6 +101,7 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
     writeFileSync(path.join(dirs.home, "live-session/session.json"), JSON.stringify({ id: "past", intent: "Historical unrelated task", status: "passed", host: "past.test", updatedAt: 1, audit: [], steps: [], note: "" }));
     await page.goto(base);
     await page.waitForSelector("#live-film img");
+    assert.equal(await page.locator("#live-run").getAttribute("aria-label"), "Run: Book a class");
     await page.getByRole("button", { name: "Open workflow", exact: true }).click();
     await page.waitForSelector("#workflow-detail");
     await page.locator('#rail button[data-place="runs"]').click();
