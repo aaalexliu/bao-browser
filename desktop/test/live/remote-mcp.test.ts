@@ -17,6 +17,7 @@ import { pinTestBrowser } from "../../src/launch";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice } from "../../src/v1/sync";
+import { saveRelay } from "../../src/v1/relay-link";
 import { testArtifacts } from "../artifacts";
 
 const PASSWORD = "fixture-pass-value";
@@ -111,6 +112,9 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
   const idA = deviceId(homeA);
   const idB = deviceId(homeB);
   const idC = deviceId(homeC);
+  await pairRelay(origin, cookie, libA, idA, "Mac A");
+  await pairRelay(origin, cookie, libB, idB, "Mac B");
+  await pairRelay(origin, cookie, libC, idC, "Mac C");
   const tokenA = await mint(origin, cookie, idA, "cursor-a");
   const tokenB = await mint(origin, cookie, idB, "cursor-b");
   const tokenC = await mint(origin, cookie, idC, "cursor-c");
@@ -481,6 +485,21 @@ async function signIn(origin: string): Promise<string> {
   return `bao_session=${match[1]}`;
 }
 
+async function pairRelay(origin: string, cookie: string, library: Library, deviceId: string, name: string): Promise<void> {
+  const issued = await fetch(`${origin}/api/agent/pair`, {
+    method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}",
+  });
+  const code = await issued.json() as { code: string };
+  assert.equal(issued.status, 200, JSON.stringify(code));
+  const claimed = await fetch(`${origin}/api/agent/pair/claim`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code: code.code, deviceId, name }),
+  });
+  const link = await claimed.json() as { token: string; tokenId: string; deviceId: string };
+  assert.equal(claimed.status, 200, JSON.stringify(link));
+  saveRelay(library.root, { server: origin, ...link });
+}
+
 async function pairCode(origin: string, cookie: string): Promise<string> {
   const res = await fetch(`${origin}/api/pair`, {
     method: "POST",
@@ -620,7 +639,7 @@ async function startFixture(): Promise<{ origin: string; state: () => Promise<{ 
       </script>`,
       "/wall": `<h1>Verify you are human</h1><button id="solve" onclick="location.href='/ready'">Finish check</button>`,
       "/login": `<h1>Sign in</h1><input type="password" id="password" name="password"><button id="signin" onclick="location.href='/ready'">Sign in</button>`,
-      "/ready": `<h1>Signed in</h1><button id="checkout" data-testid="checkout" onclick="document.body.textContent='Paid'">Checkout</button>`,
+      "/ready": `<h1>Signed in</h1><button id="checkout" data-testid="checkout" onclick="document.body.innerHTML='<p>Paid</p>'">Checkout</button>`,
       "/confirm": `<button id="arm" data-testid="arm">Arm</button><button id="place-order">Place Order</button><p id="status"></p><script>
         document.getElementById("arm").onclick = () => { document.getElementById("status").textContent = "Ready"; };
         document.getElementById("place-order").onclick = () => { document.getElementById("status").textContent = "Placed"; fetch("/placed", { method: "POST" }); };
@@ -640,7 +659,7 @@ async function startFixture(): Promise<{ origin: string; state: () => Promise<{ 
       return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(`<!doctype html><title>fixture</title>${html}`);
+    res.end(`<!doctype html><title>fixture</title><style>body { padding: 180px 32px 32px; }</style>${html}`);
   });
   await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
   return {
