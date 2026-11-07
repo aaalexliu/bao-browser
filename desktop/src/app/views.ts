@@ -147,7 +147,7 @@ export interface FailureView {
   snapshot?: { screenshot?: string; screenshotRef?: string; dom?: SnapshotNode[]; ax?: string };
 }
 
-type HealTarget = Partial<Pick<Identity, "name" | "text" | "testId" | "id" | "role" | "description" | "path">>;
+type HealTarget = Partial<Pick<Identity, "name" | "text" | "testId" | "id" | "role" | "path">>;
 
 export interface HealView {
   id: string;
@@ -1124,6 +1124,7 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
 
 export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = [], extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
   const recorded = heal.failedStep?.identity;
+  const hasProposal = !!heal.proposedPatch;
   const proposed = heal.proposedPatch?.identity;
   const before = imageRef(run.id, heal.beforeShot);
   const after = imageRef(run.id, heal.snapshot?.screenshot) || imageRef(run.id, heal.snapshot?.screenshotRef);
@@ -1150,25 +1151,32 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
   const post = heal.postconditionPassed === undefined ? "not run" : heal.postconditionPassed ? "passed" : "failed";
   const decisions = (run.decisions || []).filter((item) => item.healId === heal.id);
   const lastDecision = decisions.at(-1)?.decision;
+  const reviewState = lastDecision || (status === "promoted" ? "keep" : status === "reverted" ? "revert" : hasProposal ? "pending" : "no-proposal");
+  const note = lastDecision === "keep" ? "Saved this target as a draft. Replay still uses the live version until you promote it."
+    : lastDecision === "revert" ? "Saved the recorded target as a draft. Replay still uses the live version until you promote it."
+    : reviewState === "keep" ? "Bao kept this target."
+    : reviewState === "revert" ? "Bao reverted this target to the saved step."
+    : !hasProposal ? "No new target was proposed. You can save the recorded target as a draft with Revert."
+    : `Bao keeps a heal after ${need} clean runs. Keep it now if the new target looks right.`;
   const decisionLine = decisions.map((item) => `${item.decision} at ${formatClock(item.ts)}`).join(", ");
   const model = heal.model ? `${heal.model.name || ""} ${heal.model.version || ""}`.trim() : "no model";
   const name = extra.workflowName || healWorkflowName(heal, run, new Map());
   return `<article id="heal-detail" data-heal="${esc(heal.id)}" data-run="${esc(run.id)}" aria-label="Target review: ${esc(name)}">
-    <p class="heal-kicker"><span class="heal-state">${runStatusGlyph("healed")}${lastDecision === "keep" || status === "promoted" ? "Target kept" : lastDecision === "revert" || status === "reverted" ? "Target reverted" : "Heal to keep"}</span><span class="heal-dot" aria-hidden="true"></span><span id="heal-workflow">${esc(name)}</span>${heal.ts === undefined ? "" : `<span class="heal-dot" aria-hidden="true"></span><time datetime="${esc(new Date(heal.ts).toISOString())}">${esc(formatWhen(heal.ts))}</time>`}</p>
-    <h2>${esc(step)} moved</h2>
-    <p class="heal-lead">${esc(move)} ${esc(outcome)}</p>
+    <p class="heal-kicker"><span class="heal-state">${hasProposal ? runStatusGlyph("healed") : ""}${reviewState === "keep" ? "Target kept" : reviewState === "revert" ? "Target reverted" : hasProposal ? "Heal to keep" : "No proposed target"}</span><span class="heal-dot" aria-hidden="true"></span><span id="heal-workflow">${esc(name)}</span>${heal.ts === undefined ? "" : `<span class="heal-dot" aria-hidden="true"></span><time datetime="${esc(new Date(heal.ts).toISOString())}">${esc(formatWhen(heal.ts))}</time>`}</p>
+    <h2>${esc(step)}${hasProposal ? " moved" : " needs review"}</h2>
+    <p class="heal-lead">${hasProposal ? `${esc(move)} ${esc(outcome)}` : "Bao could not propose a new target for this step."}</p>
     <div class="heal-comparison">
-      <figure>${picture(before, `Before: ${oldTarget}`)}<figcaption><b>Before</b> · recorded</figcaption></figure>
-      <figure>${picture(after, `Now: ${newTarget}`)}<figcaption><b>Now</b>${heal.ts === undefined ? "" : ` · ${esc(new Date(heal.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }))}`}</figcaption></figure>
+      <figure>${picture(before, "Page at the start of the failed step")}<figcaption><b>Before</b> · start of step</figcaption></figure>
+      <figure>${picture(after, "Page when the step failed")}<figcaption><b>Now</b>${heal.ts === undefined ? "" : ` · ${esc(new Date(heal.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }))}`}</figcaption></figure>
     </div>
     <dl class="heal-facts">
       <dt>Old target</dt><dd>${esc(oldTarget)}</dd>
-      <dt>New target</dt><dd>${esc(newTarget)}</dd>
+      <dt>New target</dt><dd>${hasProposal ? esc(newTarget) : "No target proposed"}</dd>
       <dt>Clean runs</dt><dd id="promotion" data-status="${esc(status)}"><span class="heal-count">${promotion ? `${clean} of ${need}` : "Not recorded"}</span>${promotion ? `<div class="heal-segments" aria-hidden="true">${Array.from({ length: need }, (_, index) => `<i${index < clean ? ' class="passed"' : ""}></i>`).join("")}</div>` : ""}</dd>
     </dl>
-    <p class="heal-note">${status === "promoted" ? "Bao kept this target." : status === "reverted" ? "Bao reverted this target to the saved step." : `Bao keeps a heal after ${need} clean runs. Keep it now if the new target looks right.`}</p>
+    <p class="heal-note">${esc(note)}</p>
     <div class="heal-actions">
-      <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Keep new target</button>
+      <button type="button" class="primary" data-keep="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}"${hasProposal ? "" : " disabled"}>Keep new target</button>
       <button type="button" data-revert="${esc(heal.id)}" data-run="${esc(run.id)}" data-workflow="${esc(run.workflowId)}">Revert…</button>
     </div>
     <p id="heal-decision-status" role="status"></p>
@@ -1190,7 +1198,6 @@ export function healDetail(run: RunSummary, heal: HealView, secrets: string[] = 
 }
 
 function healTargetDescription(identity: HealTarget | undefined, label?: string): string {
-  if (identity?.description) return identity.description;
   if (!identity) return label || "Target not recorded";
   const name = identity.name || identity.text;
   const target = name ? `“${name}”${identity.role ? ` ${identity.role}` : ""}` : label || identity.testId || identity.id || identity.role || "Target not recorded";

@@ -545,6 +545,7 @@ function importSheet(): string {
 }
 
 function navigate(next: Screen): void {
+  if (next === "heals") openHeal = null;
   screen = next;
   if (screen === "runs") selectDefaultRun();
   renderKey = "";
@@ -1204,7 +1205,7 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
   const runId = btn.dataset.run || "";
   const workflowId = btn.dataset.workflow || "";
   const host = btn.closest("#heal-detail");
-  const controls = host?.querySelectorAll<HTMLButtonElement>("[data-keep], [data-revert]");
+  const controls = host?.querySelectorAll<HTMLButtonElement>("[data-keep]:not(:disabled), [data-revert]:not(:disabled)");
   controls?.forEach((control) => { control.disabled = true; });
   const status = host?.querySelector<HTMLElement>("#heal-decision-status");
   if (status) status.textContent = "";
@@ -1213,7 +1214,7 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
     if (!runResponse.ok) throw new Error("Run unavailable");
     const run = await runResponse.json() as RunSummary;
     const item = (run.heals || []).find((heal) => heal.id === healId);
-    if (!item || !healId) throw new Error("Target unavailable");
+    if (!item || !healId || (decision === "keep" && !item.proposedPatch)) throw new Error("Target unavailable");
     const response = await fetch(`/api/heal/${decision}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1225,12 +1226,16 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
       title: decision === "keep" ? "Patch kept" : "Patch reverted",
       body: decision === "keep" ? "Saved a draft. Replay still uses the live version until you promote it." : "Saved the recorded target as a draft. Replay still uses the live version until you promote it.",
     };
-    renderKey = "";
-    await refresh();
   } catch {
     if (status) status.textContent = `Could not ${decision === "keep" ? "keep" : "revert"} this target. Try again.`;
-  } finally {
     controls?.forEach((control) => { control.disabled = false; });
+    return;
+  }
+  renderKey = "";
+  try {
+    await refresh();
+  } catch {
+    if (status) status.textContent = "Draft saved. Could not refresh the view. Reload to see the saved decision.";
   }
 }
 

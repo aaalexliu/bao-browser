@@ -65,14 +65,36 @@ test("target review matches the paired layout and keeps decisions on the exact e
       assert.equal(await page.locator(".heal-technical").getAttribute("open"), "");
       assert.match(await page.locator(".heal-code").innerText(), /Recorded: link.*Statements/);
     }
+    await page.keyboard.press("Meta+k");
+    await page.locator("#palette-input").fill("Heals");
+    await page.locator('#palette-list [data-command="heals"]').click();
+    await page.locator("#heal-inbox").waitFor();
+    await page.locator('#heal-inbox [data-heal="target"]').click();
+    await page.locator('#heal-detail[data-heal="target"]').waitFor();
     await page.route("**/api/heal/keep", (route) => route.fulfill({ status: 500, body: "failed" }));
     await page.locator("[data-keep]").click();
     await page.getByRole("status").filter({ hasText: "Could not keep this target. Try again." }).waitFor();
     assert.equal(app.library.readRun("review-run").decisions?.length || 0, 0);
     assert.equal(await page.locator("[data-keep]").isEnabled(), true);
     await page.unroute("**/api/heal/keep");
+    await page.route("**/api/state", (route) => route.abort());
     await page.locator("[data-keep]").click();
-    await page.getByText("Patch kept", { exact: true }).waitFor();
+    await page.getByRole("status").filter({ hasText: "Draft saved. Could not refresh the view." }).waitFor();
+    assert.equal(await page.locator("[data-keep]").isDisabled(), true);
+    assert.equal(await page.locator("[data-revert]").isDisabled(), true);
+    assert.equal(app.library.readRun("review-run").decisions?.length, 1);
+    await page.unroute("**/api/state");
+    await page.reload();
+    await page.keyboard.press("Meta+k");
+    await page.locator("#palette-input").fill("Heals");
+    await page.locator('#palette-list [data-command="heals"]').click();
+    await page.locator('[data-heal-filter="kept"]').click();
+    await page.locator('#heal-inbox [data-heal="target"]').click();
+    await page.locator('#heal-detail[data-heal="target"]').waitFor();
+    assert.match(await page.locator(".heal-state").innerText(), /Target kept/);
+    assert.match(await page.locator(".heal-note").innerText(), /Saved this target as a draft/);
+    const promoted = { ...promotion, status: "promoted" };
+    app.library.savePromotion(promoted);
     assert.equal(app.library.readRun("review-run").decisions?.at(-1)?.decision, "keep");
     assert.equal(app.library.readRun("other-run").decisions?.length || 0, 0);
     assert.equal(app.library.read(workflow.id).steps[0]!.identity!.role, "link");
@@ -87,7 +109,49 @@ test("target review matches the paired layout and keeps decisions on the exact e
     assert.deepEqual(app.library.readRun("review-run").decisions?.map((item) => item.decision), ["keep", "revert"]);
     assert.equal(JSON.stringify(app.library.readRun("review-run").heals), original);
     assert.equal(app.library.readRun("other-run").decisions?.length || 0, 0);
+    assert.match(await page.locator(".heal-state").innerText(), /Target reverted/);
+    assert.match(await page.locator(".heal-note").innerText(), /Saved the recorded target as a draft/);
     assert.deepEqual(errors, []);
+  } finally {
+    await browser.close(); await app.close();
+    if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a patchless heal keeps Revert available and describes AX targets by name, role and container", { timeout: 60_000 }, async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-heal-no-proposal-"));
+  const oldHome = process.env.HOME;
+  process.env.HOME = home;
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    app.library.save(workflow);
+    const identity = { surface: "ax" as const, name: "Save", role: "button", description: "Saves the document", path: [{ role: "dialog", name: "Export" }] };
+    const heal = { id: "no-proposal", ts: 1, failedStep: { ...workflow.steps[0]!, surface: "os" as const, identity }, beforeShot: "before.png" };
+    app.library.saveRun({ id: "patchless-run", workflowId: workflow.id, status: "failed", at: 3, steps: [], heals: [heal] });
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#heal-detail[data-heal="no-proposal"]').waitFor();
+    assert.equal(await page.locator("#heal-detail h2").innerText(), "Step 1 needs review");
+    assert.equal(await page.locator(".heal-state").innerText(), "No proposed target");
+    assert.match(await page.locator(".heal-lead").innerText(), /could not propose a new target/);
+    assert.equal(await page.locator(".heal-facts dd").nth(0).innerText(), "“Save” button in “Export” dialog");
+    assert.equal(await page.locator(".heal-facts dd").nth(1).innerText(), "No target proposed");
+    assert.equal(await page.locator("[data-keep]").isDisabled(), true);
+    assert.equal(await page.locator("[data-revert]").isEnabled(), true);
+    assert.match(await page.locator(".heal-comparison figcaption").first().innerText(), /Before · start of step/);
+    assert.equal(await page.locator(".heal-comparison img").first().getAttribute("alt"), "Page at the start of the failed step");
+    await page.locator("[data-revert]").click();
+    await page.getByRole("button", { name: "Revert step 1", exact: true }).click();
+    await page.getByText("Patch reverted", { exact: true }).waitFor();
+    assert.equal(app.library.readRun("patchless-run").decisions?.at(-1)?.decision, "revert");
+    assert.equal(await page.locator("[data-keep]").isDisabled(), true);
+    app.library.saveRun({ id: "patchless-run", workflowId: workflow.id, status: "failed", at: 3, steps: [], heals: [{ ...heal, proposedPatch: { identity } }] });
+    await page.reload();
+    await page.locator('#heal-detail[data-heal="no-proposal"]').waitFor();
+    assert.equal(await page.locator(".heal-facts dd").nth(1).innerText(), "“Save” button in “Export” dialog");
+    assert.equal(await page.locator("[data-keep]").isEnabled(), true);
   } finally {
     await browser.close(); await app.close();
     if (oldHome === undefined) delete process.env.HOME; else process.env.HOME = oldHome;
