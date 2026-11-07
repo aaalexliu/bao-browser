@@ -1,0 +1,4 @@
+commands:
+  prepare: npm ci --prefer-offline --no-audit --no-fund && npm --prefix web ci --prefer-offline --no-audit --no-fund
+test:
+  prepare: true
