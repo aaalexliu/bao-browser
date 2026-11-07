@@ -367,7 +367,7 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
     await page.locator("#promote-after").waitFor();
-    for (const [policy, selector, key, value] of [
+    for (const pollBeforeEdit of [false, true]) for (const [policy, selector, key, value] of [
       ["approve", "#promote-after", "promoteAfter", "5"], ["auto", "#promote-after", "promoteAfter", ""],
       ["approve", "#act-custom", "actTimeoutMin", "75"], ["auto", "#act-custom", "actTimeoutMin", ""],
     ] as const) {
@@ -384,6 +384,7 @@ test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60
       try {
         await page.locator(`label[for="heal-${policy}"]`).click();
         await held;
+        if (pollBeforeEdit) await page.waitForFunction((policy) => (document.getElementById(`heal-${policy}`) as HTMLInputElement)?.defaultChecked, policy);
         if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
         const input = page.locator(selector);
         const writesBefore = writes.length;
