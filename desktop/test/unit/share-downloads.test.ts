@@ -48,6 +48,7 @@ test("Share opens exports that download the original bytes and names within the 
     await page.goto(base);
     await page.locator("#rail button[data-place=workflows]").click();
     await page.locator(`[data-open-workflow="${doc.id}"]`).click();
+    await page.locator("#workflow-options > summary").click();
     const opener = page.getByTestId("share-open");
     const panel = page.getByTestId("share-panel");
     await opener.waitFor();

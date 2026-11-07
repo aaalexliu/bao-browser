@@ -268,7 +268,7 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     await page.click(`[data-open-workflow="${merged.id}"]`);
     await page.waitForSelector("#route-branch");
     const branch = (await page.locator("#route-branch").innerText()).replace(/\s+/g, " ").trim();
-    assert.equal(branch, "Routes: Log in first / Already signed in");
+    assert.equal(branch, "Paths: Log in first / Already signed in");
     assert.equal(await page.locator("#workflow-detail").innerText().then((text) => text.includes("{{route}}")), false);
     assert.equal(await page.locator('[data-testid="deeplink"]').count(), 0);
     assert.equal(await page.locator('[data-testid="share-menu"]').count(), 1);
@@ -278,11 +278,11 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
       return { id, files: existsSync(dir) ? readdirSync(dir) : [] };
     });
     await page.waitForTimeout(1500);
-    const cards = await page.evaluate(() => [...document.querySelectorAll("#workflow-steps .step-card")].map((card) => {
-      const thumb = card.querySelector(".thumb");
+    const cards = await page.evaluate(() => [...document.querySelectorAll("[data-step-panel]")].map((card) => {
+      const thumb = card.querySelector(".wf-picture");
       const img = thumb?.querySelector("img") as HTMLImageElement | null;
       return {
-        label: card.querySelector("strong")?.textContent || "",
+        label: card.querySelector("h2")?.textContent || "",
         shot: thumb?.getAttribute("data-shot") || "",
         has: thumb?.classList.contains("has-shot") === true,
         w: img?.naturalWidth || 0,
