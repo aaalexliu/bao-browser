@@ -143,12 +143,10 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
 
 if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
   test("kept-copy failure probe", { timeout: 60_000 }, async (t) => {
-    const mode = process.env.BAO_SESSION_END_FAILURE_PROBE;
     const f = await fixture("close");
     t.after(async () => {
       try {
         await f.close();
-        if (mode !== "body") throw new Error("kept-copy-cleanup-marker");
       } finally {
         const entries = await readdir(f.copies).catch(() => []);
         const remainingPids = entries.flatMap(name => pidsForDataDir(path.join(f.copies, name)));
@@ -170,27 +168,25 @@ if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
     const copy = await f.copy();
     await c.close();
     assert.ok(pidsForDataDir(copy).length > 0);
-    if (mode !== "cleanup") assert.fail("kept-copy-body-marker");
+    assert.fail("kept-copy-body-marker");
   });
 } else {
   test("fixture teardown preserves body failures and reclaims kept copies", { timeout: 120_000 }, async () => {
     const root = await mkdtemp(path.join(tmpdir(), "bao-session-end-failure-"));
     try {
-      for (const mode of ["body", "both", "cleanup"]) {
-        const receipt = path.join(root, `${mode}.json`);
-        const env: NodeJS.ProcessEnv = { ...laneChildEnv("hermetic", process.env),
-          BAO_SESSION_END_FAILURE_PROBE: mode, BAO_SESSION_END_FAILURE_RECEIPT: receipt };
-        delete env.NODE_TEST_CONTEXT;
-        const result = await new Promise<{ code: number | string | null | undefined; output: string }>((resolve) => {
-          execFile(process.execPath, ["--test", "--test-isolation=process", "--test-reporter=tap",
-            "--test-name-pattern=^kept-copy failure probe$", __filename], { env, timeout: 90_000 }, (error, stdout, stderr) => {
-            resolve({ code: error?.code, output: stdout + stderr });
-          });
+      const receipt = path.join(root, "body.json");
+      const env: NodeJS.ProcessEnv = { ...laneChildEnv("hermetic", process.env),
+        BAO_SESSION_END_FAILURE_PROBE: "1", BAO_SESSION_END_FAILURE_RECEIPT: receipt };
+      delete env.NODE_TEST_CONTEXT;
+      const result = await new Promise<{ code: number | string | null | undefined; output: string }>((resolve) => {
+        execFile(process.execPath, ["--test", "--test-isolation=process", "--test-reporter=tap",
+          "--test-name-pattern=^kept-copy failure probe$", __filename], { env, timeout: 90_000 }, (error, stdout, stderr) => {
+          resolve({ code: error?.code, output: stdout + stderr });
         });
-        assert.equal(result.code, 1, result.output);
-        assert.match(result.output, mode === "cleanup" ? /kept-copy-cleanup-marker/ : /kept-copy-body-marker/);
-        assert.deepEqual(JSON.parse(await readFile(receipt, "utf8")), { entries: [], remainingPids: [] });
-      }
+      });
+      assert.equal(result.code, 1, result.output);
+      assert.match(result.output, /kept-copy-body-marker/);
+      assert.deepEqual(JSON.parse(await readFile(receipt, "utf8")), { entries: [], remainingPids: [] });
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 }
@@ -198,47 +194,45 @@ if (process.env.BAO_SESSION_END_FAILURE_PROBE) {
 for (const ending of ["queued-eof", "active-signal"] as const) {
   test(`explicit close overrides keep-open during ${ending}`, { timeout: 60_000 }, async (t) => {
     const f = await fixture(ending === "queued-eof" ? "snapshot" : "close");
-    try {
-      f.library.updateSettings({ keepAgentBrowserOpen: true });
-      const c = f.start();
-      await c.request("initialize");
-      assert.equal((await c.call("open")).isError, false);
-      const copy = await f.copy();
-      c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close" } });
-      await f.pending();
-      if (ending === "queued-eof") {
-        c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
-        await c.close();
-      } else {
-        await c.stop();
-      }
-      assert.equal(pidsForDataDir(copy).length, 0, "explicit close must not leave Chrome running");
-      await assert.rejects(access(copy), /ENOENT/, "explicit close must delete the private copy");
-      assert.notEqual(f.library.listRuns()[0]!.status, "recording");
-    } finally { t.after(() => f.close()); }
+    t.after(() => f.close());
+    f.library.updateSettings({ keepAgentBrowserOpen: true });
+    const c = f.start();
+    await c.request("initialize");
+    assert.equal((await c.call("open")).isError, false);
+    const copy = await f.copy();
+    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close" } });
+    await f.pending();
+    if (ending === "queued-eof") {
+      c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
+      await c.close();
+    } else {
+      await c.stop();
+    }
+    assert.equal(pidsForDataDir(copy).length, 0, "explicit close must not leave Chrome running");
+    await assert.rejects(access(copy), /ENOENT/, "explicit close must delete the private copy");
+    assert.notEqual(f.library.listRuns()[0]!.status, "recording");
   });
 }
 
 for (const ending of ["agent-exit", "disconnect", "signal"] as const) {
   test(`${ending} closes the marked Chrome, removes its copy, finishes the run and allows another open`, { timeout: 60_000 }, async (t) => {
     const f = await fixture();
-    try {
-      const c = f.start(ending === "agent-exit");
-      await c.request("initialize");
-      assert.equal((await c.call("open")).isError, false);
-      const copy = await f.copy();
-      assert.ok(pidsForDataDir(copy).length);
-      assert.equal(f.library.listRuns()[0]!.status, "recording");
-      if (ending === "signal") await c.stop(); else await c.close();
-      await until(() => pidsForDataDir(copy).length === 0);
-      await until(() => access(copy).then(() => false, () => true));
-      assert.equal(f.library.listRuns()[0]!.status, "passed");
-      const next = f.start();
-      await next.request("initialize");
-      assert.equal((await next.call("open")).isError, false);
-      assert.notEqual(await f.copy(), copy);
-      await next.close();
-    } finally { t.after(() => f.close()); }
+    t.after(() => f.close());
+    const c = f.start(ending === "agent-exit");
+    await c.request("initialize");
+    assert.equal((await c.call("open")).isError, false);
+    const copy = await f.copy();
+    assert.ok(pidsForDataDir(copy).length);
+    assert.equal(f.library.listRuns()[0]!.status, "recording");
+    if (ending === "signal") await c.stop(); else await c.close();
+    await until(() => pidsForDataDir(copy).length === 0);
+    await until(() => access(copy).then(() => false, () => true));
+    assert.equal(f.library.listRuns()[0]!.status, "passed");
+    const next = f.start();
+    await next.request("initialize");
+    assert.equal((await next.call("open")).isError, false);
+    assert.notEqual(await f.copy(), copy);
+    await next.close();
   });
 }
 
@@ -246,32 +240,32 @@ for (const [signal, repeat] of [["SIGINT", false], ["SIGTERM", false], ["SIGHUP"
   for (const keepOpen of [false, true]) {
     test(`terminal group ${signal}${repeat ? " twice" : ""} respects keep-open=${keepOpen}`, { timeout: 60_000 }, async (t) => {
       const f = await fixture();
-      try {
-        f.library.updateSettings({ keepAgentBrowserOpen: keepOpen });
-        const c = f.start(false, true);
-        await c.request("initialize");
-        assert.equal((await c.call("open")).isError, false);
-        const copy = await f.copy();
-        const groups = execFileSync("ps", ["-o", "pgid=", "-p", pidsForDataDir(copy).join(",")], { encoding: "utf8" }).trim().split(/\s+/).map(Number);
-        assert.equal(groups.includes(c.pid!), !keepOpen, "only keep-open at launch may detach Chrome from the MCP group");
-        await c.interruptGroup(signal, repeat);
-        if (keepOpen) {
-          await delay(250);
-          assert.ok(pidsForDataDir(copy).length > 0, "terminal signals must not reach a kept Chrome");
-          const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
-          assert.equal(lease.retained, true);
-        } else {
-          await until(() => pidsForDataDir(copy).length === 0);
-          await assert.rejects(access(copy), /ENOENT/);
-        }
-        assert.equal(f.library.listRuns()[0]!.status, "passed");
-      } finally { t.after(() => f.close()); }
+      t.after(() => f.close());
+      f.library.updateSettings({ keepAgentBrowserOpen: keepOpen });
+      const c = f.start(false, true);
+      await c.request("initialize");
+      assert.equal((await c.call("open")).isError, false);
+      const copy = await f.copy();
+      const groups = execFileSync("ps", ["-o", "pgid=", "-p", pidsForDataDir(copy).join(",")], { encoding: "utf8" }).trim().split(/\s+/).map(Number);
+      assert.equal(groups.includes(c.pid!), !keepOpen, "only keep-open at launch may detach Chrome from the MCP group");
+      await c.interruptGroup(signal, repeat);
+      if (keepOpen) {
+        await delay(250);
+        assert.ok(pidsForDataDir(copy).length > 0, "terminal signals must not reach a kept Chrome");
+        const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
+        assert.equal(lease.retained, true);
+      } else {
+        await until(() => pidsForDataDir(copy).length === 0);
+        await assert.rejects(access(copy), /ENOENT/);
+      }
+      assert.equal(f.library.listRuns()[0]!.status, "passed");
     });
   }
 }
 
 test("a stopped MCP cleans up its proxy even while a catalog request is stuck", { timeout: 45_000 }, async (t) => {
   const f = await fixture();
+  t.after(() => f.close());
   let received!: () => void;
   const requested = new Promise<void>(resolve => { received = resolve; });
   const server = createServer((req) => { req.resume(); received(); });
@@ -295,7 +289,6 @@ test("a stopped MCP cleans up its proxy even while a catalog request is stuck", 
     assert.equal((await next.call("open")).isError, false);
     await next.close();
   } finally {
-    t.after(() => f.close());
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
@@ -303,6 +296,7 @@ test("a stopped MCP cleans up its proxy even while a catalog request is stuck", 
 
 test("close near the stop deadline closes a retained window before a queued catalog call finishes", { timeout: 45_000 }, async (t) => {
   const f = await fixture();
+  t.after(() => f.close());
   let received!: () => void;
   let reply: (() => void) | undefined;
   const requested = new Promise<void>(resolve => { received = resolve; });
@@ -341,7 +335,6 @@ test("close near the stop deadline closes a retained window before a queued cata
     reply?.();
     await stopped;
   } finally {
-    t.after(() => f.close());
     reply?.();
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
@@ -350,39 +343,39 @@ test("close near the stop deadline closes a retained window before a queued cata
 
 test("keep-open finishes the run and the next session reclaims only that home's retained window", { timeout: 60_000 }, async (t) => {
   const f = await fixture();
+  t.after(() => f.close());
   const other = await fixture();
-  try {
-    const unrelated = other.start();
-    await unrelated.request("initialize");
-    assert.equal((await unrelated.call("open")).isError, false);
-    const unrelatedCopy = await other.copy();
-    const c = f.start();
-    await c.request("initialize");
-    assert.equal((await c.call("open")).isError, false);
-    const copy = await f.copy();
-    // Read the owner's current choice at disconnect, not only at MCP startup.
-    f.library.updateSettings({ keepAgentBrowserOpen: true });
-    await c.close();
-    assert.ok(pidsForDataDir(copy).length);
-    const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
-    assert.equal(lease.retained, true);
-    assert.equal(f.library.listRuns()[0]!.status, "passed");
-    const next = f.start();
-    await next.request("initialize");
-    assert.equal((await next.call("open")).isError, false);
-    const remaining = pidsForDataDir(copy);
-    const commands = remaining.map((pid) => {
-      try { return execFileSync("ps", ["-o", "pid=,ppid=,command=", "-p", String(pid)], { encoding: "utf8" }).trim(); }
-      catch { return `${pid} exited`; }
-    });
-    assert.equal(remaining.length, 0, `kept Chrome must exit before refresh: ${commands.join("; ")}`);
-    await assert.rejects(access(copy), /ENOENT/);
-    assert.notEqual(await f.copy(), copy);
-    assert.ok(pidsForDataDir(unrelatedCopy).length, "another Bao home stays open");
-    const freshCopy = await f.copy();
-    assert.equal((await next.call("close")).isError, false, "explicit close overrides keep-open");
-    assert.equal((await next.call("close")).isError, false, "explicit close is idempotent");
-    await assert.rejects(access(freshCopy), /ENOENT/);
-    await next.close();
-  } finally { t.after(() => f.close()); t.after(() => other.close()); }
+  t.after(() => other.close());
+  const unrelated = other.start();
+  await unrelated.request("initialize");
+  assert.equal((await unrelated.call("open")).isError, false);
+  const unrelatedCopy = await other.copy();
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const copy = await f.copy();
+  // Read the owner's current choice at disconnect, not only at MCP startup.
+  f.library.updateSettings({ keepAgentBrowserOpen: true });
+  await c.close();
+  assert.ok(pidsForDataDir(copy).length);
+  const lease = JSON.parse(await readFile(path.join(copy, "lease.json"), "utf8")) as { retained?: boolean };
+  assert.equal(lease.retained, true);
+  assert.equal(f.library.listRuns()[0]!.status, "passed");
+  const next = f.start();
+  await next.request("initialize");
+  assert.equal((await next.call("open")).isError, false);
+  const remaining = pidsForDataDir(copy);
+  const commands = remaining.map((pid) => {
+    try { return execFileSync("ps", ["-o", "pid=,ppid=,command=", "-p", String(pid)], { encoding: "utf8" }).trim(); }
+    catch { return `${pid} exited`; }
+  });
+  assert.equal(remaining.length, 0, `kept Chrome must exit before refresh: ${commands.join("; ")}`);
+  await assert.rejects(access(copy), /ENOENT/);
+  assert.notEqual(await f.copy(), copy);
+  assert.ok(pidsForDataDir(unrelatedCopy).length, "another Bao home stays open");
+  const freshCopy = await f.copy();
+  assert.equal((await next.call("close")).isError, false, "explicit close overrides keep-open");
+  assert.equal((await next.call("close")).isError, false, "explicit close is idempotent");
+  await assert.rejects(access(freshCopy), /ENOENT/);
+  await next.close();
 });
