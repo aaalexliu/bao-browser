@@ -42,11 +42,10 @@ export class AgentBrowserRun {
 
   get id(): string { return this.run.id; }
 
-  get lastPicture(): { stepId: string; phase: "before" | "after" | "requested" } | undefined {
+  get lastPicture(): { stepId: string; phase: "before" | "after" } | undefined {
     for (let i = this.run.steps.length - 1; i >= 0; i--) {
       const step = this.run.steps[i]!;
       if (step.afterShot) return { stepId: step.id, phase: "after" };
-      if (step.native.screenshots.length) return { stepId: step.id, phase: "requested" };
       if (step.beforeShot) return { stepId: step.id, phase: "before" };
     }
     return undefined;

@@ -158,7 +158,7 @@ function viewerMain(): void {
     if (picture.kind === "captured" && browserPicture) {
       const figure = el("figure", undefined, `browser-picture${expanded ? " expanded" : ""}`);
       const image = el("img");
-      const phase = card.command === "close" ? "Last page before the session closed" : picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
+      const phase = card.command === "close" ? "Last recorded page" : picture.phase === "before" ? `Before ${card.command}` : `After ${card.command}`;
       image.src = `data:${browserPicture.mimeType};base64,${browserPicture.data}`; image.alt = `${phase}: ${card.caption}`;
       const frame = el("div", undefined, "browser-frame"); frame.append(image);
       if (picture.target) {

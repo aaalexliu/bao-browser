@@ -7,7 +7,7 @@ export interface BrowserToolCard {
   caption: string;
   runId: string | null;
   stepId: string | null;
-  picture: { kind: "captured"; stepId?: string; phase: "before" | "after" | "requested"; target?: RecordedAgentBrowserCommand["target"] }
+  picture: { kind: "captured"; stepId?: string; phase: "before" | "after"; target?: RecordedAgentBrowserCommand["target"] }
     | { kind: "unavailable"; reason: string };
 }
 
