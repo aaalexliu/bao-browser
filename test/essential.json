@@ -137,6 +137,7 @@
       "desktop/test/unit/realworld-basics.test.ts",
       "desktop/test/unit/relay-singleton.test.ts",
       "desktop/test/unit/revise-decision.test.ts",
+      "desktop/test/unit/runs-row-navigation.test.ts",
       "desktop/test/unit/schema-replay.test.ts",
       "desktop/test/unit/shell-navigation.test.ts",
       "desktop/test/unit/site-trust.test.ts",

@@ -166,7 +166,7 @@ test("a failed guide returns to idle polling even if its last progress still say
 
 test("a stale running live record cannot keep a restarted or closed session polling fast", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const state = { liveSessionOpen: false, liveSession: { status: "running" } };
+  const state = { liveSessionOpen: false, liveSession: { id: "stale", status: "running" as const, intent: "", host: "", updatedAt: 0, steps: [], audit: [], note: "" } };
   let calls = 0;
   const poller = createStatePoller({
     poll: async () => { calls += 1; },
