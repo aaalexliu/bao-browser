@@ -120,7 +120,11 @@ export class AgentBrowserProxy {
       try {
         const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? "copy", webSite(args[0])));
         this.session = session;
-        void session.chrome.closed.then(() => session.closing ? undefined : this.remove(session)).catch(() => undefined);
+        void session.chrome.closed.then(() => {
+          if (session.closing) return;
+          if (!this.disconnected && !session.removing) session.workflow.unavailable("the owner closed the window before the task finished");
+          return this.remove(session);
+        }).catch(() => undefined);
       } catch (error) {
         await recording.complete(step, [], this.options.home, async () => { throw error; }, error);
         recording.finish();

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +10,10 @@ import { Library } from "../../src/v1/store";
 import type { TrailEvent } from "../../src/v1/interpret";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { UI_EXTENSION, VIEWER_MIME } from "../../src/mcp/viewer";
+import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { connectCdp } from "../../src/cdp-live/socket";
+import { launchOwnedChrome } from "../../src/launch";
+import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 interface Result { content: { type: string; text?: string }[]; isError: boolean; structuredContent?: { command: string; run_id: string; step_id: string } }
@@ -81,6 +86,16 @@ async function fixture(ui = false) {
     reorder() { reordered = true; },
     removeChosen() { missing = true; },
     resumeOwner(ready = true) { ownerReady = ready; },
+    async closeWindow() {
+      const namespace = createHash("sha256").update(path.resolve(home)).digest("hex").slice(0, 20);
+      const copies = path.join(tmpdir(), `bao-profile-copies-${namespace}`);
+      const [copy] = await readdir(copies);
+      assert.ok(copy);
+      const endpoint = await readDevToolsActivePort(path.join(copies, copy, "DevToolsActivePort"));
+      const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+      try { await cdp.send("Browser.close"); }
+      finally { cdp.close(); }
+    },
     async disconnect() { child.stdin.end(); await exited; },
     async close() {
       if (child.exitCode === null) await call("close").catch(() => undefined);
@@ -97,6 +112,47 @@ async function passed(f: Awaited<ReturnType<typeof fixture>>, command: string, a
   assert.equal(result.isError, false, text(result));
   return text(result);
 }
+
+test("a failed action with only viewport movement stays saveable after retry", { timeout: 30_000 }, async () => {
+  const f = await fixture();
+  const profile = path.join(f.root, "effect-profile");
+  const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
+  try {
+    const page = context.pages()[0]!;
+    const endpoint = await readDevToolsActivePort(path.join(profile, "DevToolsActivePort"));
+    const session = await context.newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.detach();
+    const workflow = new AgentBrowserWorkflow(f.home, "run-viewport", async () => ({
+      ...endpoint, targetId: targetInfo.targetId, targetIds: [targetInfo.targetId],
+    }));
+    const success = { stdout: "", stderr: "", exitCode: 0 };
+    await workflow.record("open", [f.url], "open", async () => {
+      await page.goto(f.url);
+      return success;
+    }, () => false);
+    const target = page.locator('[data-testid="chosen"]');
+    const before = await target.boundingBox();
+    await workflow.record("click", ["#missing"], "failed", async () => {
+      await page.evaluate(() => window.scrollTo(0, 600));
+      return { stdout: "", stderr: "Target not found", exitCode: 1 };
+    }, () => false);
+    const after = await target.boundingBox();
+    assert.ok(before && after);
+    assert.notEqual(after.y, before.y, "the failed action changed viewport geometry");
+    await workflow.record("click", ['[data-testid="chosen"]'], "retry", async () => {
+      await target.click();
+      return success;
+    }, () => false);
+    assert.match(workflow.finish(), /Saved workflow:/);
+    const saved = f.library.list().workflows[0]!;
+    assert.deepEqual(saved.steps.map((step) => step.action), ["click"]);
+    assert.equal(saved.steps[0]!.identity?.testId, "chosen");
+  } finally {
+    await context.close();
+    await f.close();
+  }
+});
 
 test("native ref capture saves a discoverable workflow that replays with new inputs after DOM reordering", { skip: !binary, timeout: 120_000 }, async () => {
   const f = await fixture();
@@ -258,6 +314,24 @@ test("native UI closing results retain capture receipt ids beside the workflow n
     assert.equal(closing.structuredContent?.step_id, (capture.steps as RecordedAgentBrowserCommand[]).at(-1)!.id);
     assert.equal(capture.workflowId, "agent-browser");
     assert.equal(f.library.list().workflows.length, 1);
+  } finally { await f.close(); }
+});
+
+test("owner window close keeps an unfinished native task capture-only", { skip: !binary, timeout: 60_000 }, async () => {
+  const f = await fixture();
+  try {
+    await passed(f, "open", [f.url]);
+    await passed(f, "click", ['[data-testid="chosen"]']);
+    await f.closeWindow();
+    const deadline = Date.now() + 5000;
+    while (f.library.listRuns()[0]?.status === "recording" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(f.library.listRuns()[0]!.status, "passed", "the raw capture receipt stays unchanged");
+    await f.disconnect();
+    assert.equal(f.library.list().workflows.length, 0, "an owner interruption must not publish partial steps");
+    const commands = f.library.listRuns()[0]!.steps as RecordedAgentBrowserCommand[];
+    assert.deepEqual(commands.map((step) => step.native.command), ["open", "click"]);
   } finally { await f.close(); }
 });
 

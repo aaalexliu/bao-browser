@@ -64,6 +64,13 @@ function readObservation(dump: typeof dumpPage, leaves: typeof leafTexts): Obser
   return { page: dump(), leaves: leaves() };
 }
 
+function effectState(observation: Observation): string {
+  return JSON.stringify({
+    ...observation,
+    page: { ...observation.page, nodes: observation.page.nodes.map(({ bbox: _bbox, ...node }) => node) },
+  });
+}
+
 const PAGE_FUNCTIONS = `const dumpPage = ${dumpPage.toString()}; const leafTexts = ${leafTexts.toString()};`;
 
 function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget | undefined {
@@ -170,7 +177,7 @@ export class AgentBrowserWorkflow {
           if (!after) throw new Error("page observation unavailable");
         }
         if (result.exitCode !== 0) {
-          if (action && (!before || !after || JSON.stringify(before.before) !== JSON.stringify(after))) this.unavailable("a failed action changed the page");
+          if (action && (!before || !after || effectState(before.before) !== effectState(after))) this.unavailable("a failed action changed the page");
           return result;
         }
         if (command === "open") {
