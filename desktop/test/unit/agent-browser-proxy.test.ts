@@ -377,20 +377,32 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
   });
 }
 
-test("failed copy cleanup retains the session and blocks reopen", async (t) => {
+for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle"] as const) test(`failed copy cleanup after ${ending} retains the session and blocks reopen`, async (t) => {
   const f = await fixture(t);
   const openChrome = profiles.openCopiedChromeForProxy;
   const failure = new Error("copy deletion failed");
   let cleanup: (() => Promise<void>) | undefined;
+  let cleanupAttempted = false;
   t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof openChrome>[0]) => {
     const chrome = await openChrome(options);
     cleanup = chrome.close;
-    return { ...chrome, close: async () => { throw failure; } };
+    return { ...chrome, close: async () => { cleanupAttempted = true; throw failure; } };
   });
   try {
+    if (ending === "idle") t.mock.timers.enable({ apis: ["setTimeout"] });
     await f.proxy.execute("open");
     const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
-    await assert.rejects(f.proxy.close(), failure);
+    if (ending === "close") await assert.rejects(f.proxy.close(), failure);
+    else if (ending === "finish_task") await assert.rejects(f.proxy.finishTask({ outcome: "passed", reason: "task complete" }), failure);
+    else if (ending === "disconnect") await assert.rejects(f.proxy.end(), failure);
+    else {
+      if (ending === "owner-close") {
+        f.closeWindow();
+        await waitFor(async () => cleanupAttempted);
+      } else t.mock.timers.tick(600_000);
+      await assert.rejects(f.proxy.execute("open"), failure);
+    }
+    assert.equal(f.proxy.hasSession(), true, "failed cleanup must retain ownership");
     await access(f.copy());
     await access(stateDir);
     const calls = await f.calls();

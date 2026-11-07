@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
 import * as sockets from "../../src/cdp-live/socket";
-import { launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { closeRetainedChrome, launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { laneChildEnv } from "../runtime";
 
@@ -102,20 +102,91 @@ test("startup keeps its original error when graceful cleanup times out", { timeo
   try {
     await assert.rejects(launchOwnedChromeEndpoint({ userDataDir, headless: true }), (error) => error === startupError);
     assert.ok(signals.includes("SIGTERM"));
-    assert.ok(!signals.includes("SIGKILL"), "cleanup must not force-kill a live browser");
-    assert.ok(pidsForDataDir(userDataDir).length > 0, "the shutdown fault must leave Chrome alive");
+    assert.ok(signals.includes("SIGKILL"), "cleanup must escalate when graceful shutdown stalls");
+    assert.ok(pidsForDataDir(userDataDir).length > 0, "the mocked signals must leave Chrome alive");
   } finally {
     killMock.mock.restore();
     childKillMock.mock.restore();
-    if (pidsForDataDir(userDataDir).length) {
-      const endpoint = await readDevToolsActivePort(path.join(userDataDir, "DevToolsActivePort"));
-      const cdp = await connect(endpoint.port, endpoint.browserPath);
-      try { await cdp.send("Browser.close", {}, undefined, 3000).catch(() => undefined); }
-      finally { cdp.close(); }
-    }
-    const deadline = Date.now() + 5000;
-    while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    await closeRetainedChrome(userDataDir);
     assert.deepEqual(pidsForDataDir(userDataDir), []);
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test("retained reclaim lets Chrome save a cookie before sending signals", { timeout: 20_000 }, async (t) => {
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-reclaim-cookie-"));
+  const connect = sockets.connectCdp;
+  const kill = process.kill.bind(process);
+  const signals: Array<NodeJS.Signals | number | undefined> = [];
+  t.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+    if (signal === "SIGTERM" || signal === "SIGKILL") signals.push(signal);
+    return kill(pid, signal);
+  });
+  let delayClose = false;
+  let requestedClose: Promise<unknown> | undefined;
+  t.mock.method(sockets, "connectCdp", async (...args: Parameters<typeof connect>) => {
+    const cdp = await connect(...args);
+    const send = cdp.send.bind(cdp);
+    t.mock.method(cdp, "send", (method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => {
+      if (delayClose && method === "Browser.close") {
+        // A close acknowledgement does not mean the browser has flushed its profile.
+        const close = cdp.close.bind(cdp);
+        requestedClose = new Promise((resolve) => setTimeout(resolve, 200)).then(() => send(method, params, sessionId, timeoutMs)).catch(() => undefined).finally(close);
+        t.mock.method(cdp, "close", () => undefined);
+        return Promise.resolve({});
+      }
+      return send(method, params, sessionId, timeoutMs);
+    });
+    return cdp;
+  });
+  let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let inspector: sockets.CdpSocket | undefined;
+  try {
+    chrome = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
+    let endpoint = await readDevToolsActivePort(chrome.portFile);
+    inspector = await connect(endpoint.port, endpoint.browserPath);
+    await inspector.send("Storage.setCookies", { cookies: [{ name: "reclaim_probe", value: "saved", domain: "127.0.0.1", path: "/", expires: Math.floor(Date.now() / 1000) + 3600 }] });
+    inspector.close();
+    chrome.keepOpen();
+    delayClose = true;
+    await closeRetainedChrome(userDataDir);
+    await requestedClose;
+    assert.deepEqual(signals, [], "accepted graceful close must finish before signal escalation");
+    delayClose = false;
+    chrome = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
+    endpoint = await readDevToolsActivePort(chrome.portFile);
+    inspector = await connect(endpoint.port, endpoint.browserPath);
+    const { cookies } = await inspector.send<{ cookies: { name: string; value: string }[] }>("Storage.getCookies");
+    assert.ok(cookies.some((cookie) => cookie.name === "reclaim_probe" && cookie.value === "saved"), "the persistent cookie contract survives reclaim and relaunch");
+  } finally {
+    delayClose = false;
+    await requestedClose;
+    inspector?.close();
+    await chrome?.close();
+    await closeRetainedChrome(userDataDir);
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test("a late close cannot kill the replacement of a retained browser", { timeout: 20_000 }, async () => {
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-late-close-"));
+  let original: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let replacement: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
+  let cdp: sockets.CdpSocket | undefined;
+  try {
+    original = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
+    original.keepOpen();
+    await closeRetainedChrome(userDataDir);
+    replacement = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
+    await original.close();
+    const endpoint = await readDevToolsActivePort(replacement.portFile);
+    cdp = await sockets.connectCdp(endpoint.port, endpoint.browserPath);
+    const { targetInfos } = await cdp.send<{ targetInfos: { type: string }[] }>("Target.getTargets");
+    assert.ok(targetInfos.some((target) => target.type === "page"), "a replacement remains usable after the original owner's delayed cleanup");
+  } finally {
+    cdp?.close();
+    await original?.close();
+    await replacement?.close();
     await rm(userDataDir, { recursive: true, force: true });
   }
 });
