@@ -361,7 +361,7 @@ function render(focusDetail = true): void {
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
   const keepWorkflow = screen === "workflow" && document.getElementById("workflow-host")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
-  const keepLive = screen === "live" && live && document.getElementById("live-run")?.dataset.run === live.id;
+  const keepLive = screen === "live" && live && document.getElementById("live-run")?.dataset.step === `${live.id}:${live.ask?.stepId ?? ""}:${live.ask?.startedAt ?? ""}`;
   if (!keepReplay && !keepWorkflow && !keepImport && !keepLive) {
     const body = initialConnectionError ? connectionError()
       : screen === "capture" ? capture()
@@ -1297,8 +1297,7 @@ function bindAsk(): void {
   const active = state.activeRun;
   const action = (url: string, body: unknown) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const cancel = document.getElementById("act-cancel");
-  const cancelRunId = active?.id ?? (state.replaying ? state.guide?.runId : undefined);
-  if (cancel && cancelRunId) cancel.onclick = () => void action("/api/replay/cancel", { runId: cancelRunId }).then(() => refresh());
+  if (cancel && active) cancel.onclick = () => void action("/api/replay/cancel", { runId: active.id }).then(() => refresh());
   const cont = document.getElementById("act-continue");
   const ask = active?.phase === "waiting" ? active.ask : null;
   if (cont) cont.onclick = async () => {

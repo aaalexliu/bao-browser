@@ -348,6 +348,8 @@ test("the Needs-you row becomes Running as soon as its server run continues", { 
 
 test("live confirmation checks the site without pressing its final action", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-handoff");
+  let releaseDetails!: () => void;
+  const detailsGate = new Promise<void>((resolve) => { releaseDetails = resolve; });
   process.env.BAO_DRIVE = "1";
   const app = await startApp({ home: dirs.home, port: 0 });
   const browser = await testChromium.launch();
@@ -386,8 +388,16 @@ test("live confirmation checks the site without pressing its final action", { ti
     const waiting = await (await fetch(`${base}/api/state`)).json() as ShellState;
     assert.equal(waiting.activeAsk?.kind, "confirm");
     assert.equal(waiting.replaying, true, "checking must not perform the final click or complete the run");
+    await page.route(/\/api\/(workflows|runs)\/[^/]+$/, async (route) => {
+      await detailsGate;
+      await route.continue();
+    });
     await post(`${base}/api/replay/press`, { name: "Apply" });
     await page.waitForResponse(async (response) => response.url() === `${base}/api/state` && ((await response.json()) as ShellState).activeAsk?.kind === "login");
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor({ timeout: 5000 });
+    assert.equal(await page.getByRole("button", { name: "I pressed Apply" }).count(), 0, "the old confirmation control must disappear before delayed detail reads finish");
+    releaseDetails();
+    await page.unrouteAll({ behavior: "wait" });
     const loginState = await (await fetch(`${base}/api/state`)).json() as ShellState;
     assert.equal(loginState.activeAsk?.stepId, "login", JSON.stringify(loginState.activeAsk));
     const loginRun = app.library.readRun(loginState.activeAsk!.runId!) as RunSummary;
@@ -408,6 +418,8 @@ test("live confirmation checks the site without pressing its final action", { ti
   } finally {
     await stop(base).catch(() => undefined);
     await replay?.catch(() => undefined);
+    releaseDetails();
+    await page.unrouteAll({ behavior: "wait" });
     await browser.close(); await app.close();
     delete process.env.BAO_DRIVE;
     rmSync(dirs.home, { recursive: true, force: true });

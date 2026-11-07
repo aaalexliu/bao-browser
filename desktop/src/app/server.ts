@@ -375,7 +375,6 @@ export async function startApp(opts: {
     runners: {
       extension: async (id, inputs) => {
         if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
-        if (replaying) return { outcome: "failed", workflowId: id, reason: "A run is already active." };
         const workflow = library.read(id);
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         beginRun(workflow.id, runId);
@@ -1206,12 +1205,8 @@ export async function startApp(opts: {
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
-        if (replaying) return json(res, { error: "A run is already active." }, 409);
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         if (body.guide) {
-          activeRun = null;
-          clearPendingPrompt(library.root);
-          guideLive = null;
           stopRun = false;
           loginContinued = false;
           replaying = true;
@@ -1332,8 +1327,7 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         const body = await readBody(req) as { runId?: string };
         syncPending();
-        const isGuide = replaying && !ownedRunId && guideLive !== null && guideLive.runId === body.runId;
-        if (!isGuide && (!activeRun || body.runId !== activeRun.id)) return json(res, { error: "This run is no longer active." }, 409);
+        if (!activeRun || body.runId !== activeRun.id) return json(res, { error: "This run is no longer active." }, 409);
         stopRun = true;
         if (!replaying) {
           clearPendingPrompt(library.root);
