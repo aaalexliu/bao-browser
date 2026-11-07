@@ -1338,12 +1338,11 @@ async function runLogin(
   }
   if (human && (gate.humanReady || gate.yieldHuman)) {
     const ask = personAsk(gate, step, "login");
-    beginHandoff(driver, gate, step.id);
-    gate.onPause?.(ask);
     if (!gate.humanReady) {
       await driver.showAsk?.(ask);
       await driver.showLoginWait?.(step.label || "Sign in on the site window");
     }
+    beginHandoff(driver, gate, step.id);
     return { ok: false, paused: "signin", repairs: [], ask };
   }
   const filled = await settleLogin(workflow, step, args, driver, gate, human);

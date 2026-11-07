@@ -138,6 +138,69 @@ test("Runs opens its exact active handoff, keeps progress stable, and confirms S
   } finally { await browser.close(); await app.close(); rmSync(dirs.home, { recursive: true, force: true }); }
 });
 
+test("live detail stays on its run between asks and until the final receipt", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("live-continuation");
+  process.env.BAO_DRIVE = "1";
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: Promise<{ status: string; runId: string }> | undefined;
+  try {
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "reserve", index: 0, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } },
+      { id: "working", index: 1, action: "verify", label: "Wait for the note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Go to login", timeoutMs: 60000 } },
+      { id: "login", index: 2, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Owner signed in", timeoutMs: 60000 } },
+      { id: "finish", index: 3, action: "verify", label: "Check the final note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Finish the run", timeoutMs: 60000 } },
+    ];
+    app.library.save(wf);
+    mkdirSync(path.join(dirs.home, "live-session"), { recursive: true });
+    writeFileSync(path.join(dirs.home, "live-session/session.json"), JSON.stringify({ id: "past", intent: "Historical unrelated task", status: "passed", host: "past.test", updatedAt: 1, audit: [], steps: [], note: "" }));
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "I pressed Apply" }).waitFor();
+    await page.waitForSelector("#live-film img");
+    const mounted = await page.locator("#live-run").elementHandle();
+    const runId = await page.locator("#live-run").getAttribute("data-run");
+    const continuations: string[] = [];
+    page.on("request", (request) => { if (request.url() === `${base}/api/prompt/continue`) continuations.push(request.method()); });
+    await post(`${base}/api/replay/press`, { name: "Apply" });
+    await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent === "Bao is continuing this run");
+    assert.equal(await mounted!.evaluate((el) => el === document.getElementById("live-run")), true);
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
+    assert.equal(await page.getByText("Historical unrelated task").count(), 0);
+    assert.equal(await page.locator("#live-session, #act-bar").count(), 0);
+    assert.equal(await page.locator("#app").getAttribute("data-live-detail"), "true");
+    assert.equal(await page.getByRole("button", { name: "Open workflow", exact: true }).isVisible(), true);
+    assert.equal(await page.locator(`#runs [data-open-run="${runId}"][aria-current="true"]`).count(), 1);
+    assert.equal(await page.locator("#act-continue").isDisabled(), true);
+    await page.locator("#act-continue").dispatchEvent("click");
+    await page.waitForResponse((response) => response.url() === `${base}/api/state`);
+    assert.deepEqual(continuations, [], "the old confirmation control must not continue a later login");
+    await post(`${base}/api/replay/press`, { fill: { selector: "#note-input", value: "Go to login" }, name: "Save note" });
+    await page.getByRole("button", { name: "I’m signed in, continue" }).waitFor();
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
+    assert.equal(await page.locator("#act-continue").isEnabled(), true);
+    await page.getByRole("button", { name: "I’m signed in, continue" }).click();
+    await page.waitForFunction(() => document.getElementById("live-action-status")?.textContent === "Bao is continuing this run");
+    assert.deepEqual(continuations, ["POST"]);
+    assert.equal(await page.locator("#live-session, #run-receipt").count(), 0);
+    assert.equal(await page.locator("#live-run").getAttribute("data-run"), runId);
+    await post(`${base}/api/replay/press`, { fill: { selector: "#note-input", value: "Finish the run" }, name: "Save note" });
+    const result = await replay;
+    assert.equal(result.status, "passed");
+    await page.waitForSelector("#run-receipt");
+    assert.equal(result.runId, runId);
+  } finally {
+    await post(`${base}/api/replay/cancel`).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close(); await app.close();
+    delete process.env.BAO_DRIVE;
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("live confirmation checks the site without pressing its final action", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-handoff");
   process.env.BAO_DRIVE = "1";
