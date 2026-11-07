@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
-import { redactSavedValue } from "../../../shared/outbound-secrets";
+import { hasPrivatePictureInput, redactSavedValue } from "../../../shared/outbound-secrets";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isElementCrop } from "../../../web/src/lib/png";
@@ -602,6 +602,7 @@ async function pushDocument(
 }
 
 async function pushRuns(library: Library, state: SyncState): Promise<number> {
+  const workflows = library.list().workflows;
   let omittedPictures = 0;
   for (const run of library.listRuns()) {
     if (run.kind === "capture" || state.pushedRuns.includes(run.id)) continue;
@@ -611,7 +612,7 @@ async function pushRuns(library: Library, state: SyncState): Promise<number> {
       status: run.status,
       at: run.at,
       steps,
-    }, { crops: runCrops(library, run.id, steps) }));
+    }, { crops: runCrops(library, run.id, steps, workflows.find((doc) => doc.id === run.workflowId)) }));
     omittedPictures += fitted.omittedPictures;
     if (fitted.tooLarge) continue;
     try {
@@ -745,6 +746,7 @@ function readCrop(file: string): Buffer | undefined {
 }
 
 function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png: Buffer }[] {
+  if (hasPrivatePictureInput(doc)) return [];
   const secrets = new Set(doc.inputs.filter((input) => input.type === "secret"
     || redactSavedValue(input.default ?? "") === STRIPPED_SECRET).map((input) => input.name));
   const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
@@ -766,7 +768,8 @@ function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png
   return crops;
 }
 
-function runCrops(library: Library, runId: string, steps: { id?: string }[]): { stepId: string; png: Buffer }[] {
+function runCrops(library: Library, runId: string, steps: { id?: string }[], doc: WorkflowV2 | undefined): { stepId: string; png: Buffer }[] {
+  if (doc && hasPrivatePictureInput(doc)) return [];
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of steps) {
     const id = String(step.id || "");

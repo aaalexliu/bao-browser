@@ -10,7 +10,7 @@ import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-recor
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
-import { scrubSaved } from "../../../shared/outbound-secrets";
+import { hasPrivatePictureInput, scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
@@ -328,6 +328,7 @@ export async function reviewWorkflow(
 }
 
 function stepShots(library: Library, workflow: WorkflowV2, runId: string): { stepId: string; png: string }[] {
+  if (hasPrivatePictureInput(workflow)) return [];
   const dir = path.join(library.root, "shots", "runs", runId);
   const run = library.readRun(runId);
   const shots: { stepId: string; png: string }[] = [];

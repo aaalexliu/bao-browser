@@ -13,7 +13,7 @@ import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
-test("marketplace review keeps private step crops local while uploading ordinary crops", { timeout: 60_000 }, async (t) => {
+test("marketplace review keeps all pictures local for private-input workflows and uploads ordinary workflows", { timeout: 60_000 }, async (t) => {
   process.env.BAO_CHROME_NO_SANDBOX = "1";
   const root = mkdtempSync(path.join(tmpdir(), "bao-catalog-review-"));
   const library = new Library(root);
@@ -89,6 +89,12 @@ test("marketplace review keeps private step crops local while uploading ordinary
       assert.ok(decoded.info.width > 0 && decoded.info.height > 0, step.id);
     }
     assert.deepEqual(pidsForDataDir(path.join(root, "chrome-profile")), []);
+    assert.equal(review.shots.length, 0);
+    library.save({ ...document, inputs: [], steps: [document.steps[0]!] });
+    const ordinary = await reviewWorkflow(library, document.id, {}, { server: origin });
+    resume = ordinary.resume;
+    assert.equal(ordinary.outcome, "ok", ordinary.reason);
+    assert.equal(ordinary.reviewed, true, ordinary.reason);
     assert.deepEqual(review.shots.map((shot) => shot.stepId), ["ordinary"]);
     const uploaded = await sharp(Buffer.from(review.shots[0]!.png, "base64")).raw().toBuffer({ resolveWithObject: true });
     assert.ok(uploaded.info.width > 0 && uploaded.info.width <= 720);
