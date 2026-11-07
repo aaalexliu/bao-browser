@@ -68,6 +68,15 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
       await settings.click();
       await page.locator("#settings").waitFor();
       assert.equal(await page.locator("#main").evaluate((node) => getComputedStyle(node).outlineStyle), "none", `${theme}: pointer opening has no focus box`);
+      for (const key of ["Shift", "Meta", "Control", "Alt", "CapsLock", "Meta+Tab", "Meta+c", "Meta+h", "Meta+Shift+4", "Control+c", "Alt+c", "a"]) {
+        await page.keyboard.press(key);
+        await checkMain(false);
+      }
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await page.evaluate(() => document.activeElement?.matches(":focus-visible")), true);
+      await settings.click();
+      await page.keyboard.press("ArrowDown");
+      await checkMain(true);
       await page.reload();
       await settings.focus();
       await page.keyboard.press("Enter");
@@ -104,8 +113,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
         else await page.locator("#palette-list [data-command]").first().click();
         await page.locator("#workflow-detail").waitFor();
         await checkMain(keyboard);
-        await settings.click();
-        await page.locator('#rail [data-place="runs"]').click();
+        await page.goto(`${url}/?screen=runs`);
         const receipt = page.locator('[data-open-run="focus-run"]').first();
         if (keyboard) { await receipt.focus(); await page.keyboard.press("Enter"); }
         else await receipt.click();
@@ -113,8 +121,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
         await checkMain(keyboard);
         for (const failure of ["run", "receipt"]) {
           runFailure = failure;
-          await settings.click();
-          await page.locator('#rail [data-place="runs"]').click();
+          await page.goto(`${url}/?screen=runs`);
           await page.locator('[data-open-run="focus-run"]').first().click();
           const retry = page.locator("#retry-run");
           await retry.waitFor();
