@@ -281,10 +281,13 @@ function render(focusDetail = true): void {
   const focused = document.activeElement as HTMLElement | null;
   const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
   const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
-  const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft]")].filter((input) => input instanceof HTMLSelectElement
-    ? [...input.options].some((option) => option.selected !== option.defaultSelected)
-    : input.type === "checkbox" ? input.checked !== input.defaultChecked : input.value !== input.defaultValue)
-    .map((input) => [input.id, input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.value] as const) : [];
+  const customWait = document.getElementById("act-custom") as HTMLInputElement | null;
+  const settingsDrafts = screen === "settings" ? [...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#settings [data-settings-draft], #settings [data-setting]")].filter((input) => {
+    if (input.id === "act-minutes" && input.value === "custom") return customWait === focused || customWait?.validity.valid === false;
+    return input === focused || (input instanceof HTMLSelectElement
+      ? [...input.options].some((option) => option.selected !== option.defaultSelected)
+      : input.type === "checkbox" || input.type === "radio" ? input.checked !== input.defaultChecked : input.value !== input.defaultValue);
+  }).map((input) => [input.id, input instanceof HTMLInputElement && (input.type === "checkbox" || input.type === "radio") ? input.checked : input.value] as const) : [];
   const focusedNav = focused?.closest("#rail, #screen-list");
   const focusedRun = focused?.dataset.openRun;
   const focusedRunGroup = focused?.closest("section")?.getAttribute("aria-label");
@@ -373,8 +376,8 @@ function render(focusDetail = true): void {
     if (input instanceof HTMLInputElement && typeof value === "boolean") input.checked = value;
     else if (input && typeof value === "string") input.value = value;
   }
-  if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
   bind();
+  if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
   applySearch();
   paintPalette();
   paintLive();
@@ -501,9 +504,6 @@ function settings(): string {
     ${hostAccessPanel(state.settings?.hostAccess)}
     <p class="quiet">AI help uses the connected Cursor account or a model key set when Bao starts. After ${esc(String(circuit))} failed runs in a short window, auto-heal stays off.</p>
     <label>Failed runs that stop auto-heal <input id="circuit-limit" data-setting="circuitLimit" type="number" required min="1" max="50" value="${circuit}"></label>
-    <section id="remote-mcp-setting"><h3>Remote requests</h3>
-      <label>Remote requests <select id="remote-permission" data-setting="remotePermission"><option value="ask"${state.settings?.remotePermission !== "deny" ? " selected" : ""}>Ask on this computer</option><option value="deny"${state.settings?.remotePermission === "deny" ? " selected" : ""}>Deny remote runs</option></select></label>
-    </section>
     ${siteTrustPanel(sitesForTrust(state.workflows || [], state.settings?.siteTrust))}
     ${syncPanel(state.sync, conflictCopy)}
     <h3>Appearance</h3>
@@ -581,8 +581,11 @@ function bindSettings(): void {
   });
   const feedback = document.getElementById("settings-feedback");
   if (feedback) feedback.textContent = settingsFeedback;
+  const custom = document.getElementById("act-custom") as HTMLInputElement | null;
+  const wait = document.getElementById("act-minutes") as HTMLSelectElement | null;
+  if (custom && wait) custom.hidden = wait.value !== "custom";
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-setting]").forEach((input) => {
-    input.onchange = async () => {
+    const save = async () => {
       if (input.value === "custom") {
         const custom = document.getElementById("act-custom") as HTMLInputElement;
         custom.hidden = false;
@@ -592,6 +595,9 @@ function bindSettings(): void {
       if (!input.reportValidity()) return;
       const key = input.dataset.setting!;
       const value = key === "siteTrust" ? readSiteTrust() : input instanceof HTMLInputElement && input.type === "checkbox" ? input.checked : input.type === "number" || key === "actTimeoutMin" ? Number(input.value) : input.value;
+      settingsFeedback = "Saving…";
+      const status = document.getElementById("settings-feedback");
+      if (status) status.textContent = settingsFeedback;
       try {
         const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ [key]: value }) });
         const body = await response.json() as { error?: string };
@@ -604,6 +610,8 @@ function bindSettings(): void {
         if (status) status.textContent = settingsFeedback;
       }
     };
+    if (input instanceof HTMLInputElement && input.type === "number") input.onblur = save;
+    else input.onchange = save;
   });
 }
 

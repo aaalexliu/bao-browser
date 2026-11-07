@@ -65,6 +65,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     assert.equal(await page.getByRole("combobox", { name: "Use AI to suggest heals" }).count(), 0);
     assert.equal(await page.locator("#settings-model").innerText(), "None");
     assert.equal(await page.locator("#save-settings").count(), 0);
+    assert.equal(await page.locator("#remote-permission").count(), 0);
     await page.locator('label[for="heal-approve"]').click();
     await eventually(() => app.library.settings().heal === "approve");
     await page.locator("#promote-after").fill("5");
@@ -80,14 +81,22 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
       if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
       const input = page.locator(selector);
       const previous = await input.inputValue();
+      const key = selector === "#promote-after" ? "promoteAfter" : "actTimeoutMin";
+      const writesBefore = settingsWrites.length;
       await input.fill("");
       await input.press("Tab");
       assert.equal(await input.evaluate((el) => (el as HTMLInputElement).validity.valueMissing), true);
+      assert.notEqual(await page.locator("#settings-feedback").textContent(), "settings");
+      await input.fill(previous);
+      const [restored] = await Promise.all([
+        page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/settings" && (response.request().postDataJSON() as Record<string, unknown>)[key] === Number(previous)),
+        input.press("Tab"),
+      ]);
+      assert.equal(restored.ok(), true);
+      await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
+      assert.deepEqual(settingsWrites.slice(writesBefore), [{ [key]: Number(previous) }]);
       assert.equal(app.library.settings().promoteAfter, 5);
       assert.equal(app.library.settings().actTimeoutMs, 4_500_000);
-      await input.fill(previous);
-      await input.press("Tab");
-      await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
     }
     await page.locator("#settings-advanced > summary").click();
     assert.equal(await page.locator("#sync-server").inputValue(), "https://registry-a.test");
@@ -115,8 +124,6 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.locator("#circuit-limit").fill("7");
     await page.locator("#circuit-limit").press("Tab");
     await eventually(() => app.library.settings().circuitLimit === 7);
-    await page.locator("#remote-permission").selectOption("deny");
-    await eventually(() => app.library.settings().remotePermission === "deny");
     const trust = page.locator("[data-site-trust]");
     const trustId = await trust.getAttribute("id");
     assert.ok(trustId);
@@ -219,6 +226,78 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await page.locator('[data-remove]').click();
     await page.waitForFunction(() => (document.getElementById("saved-logins")?.textContent || "").includes("No sites yet"));
     assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("an earlier Settings save cannot erase a later numeric edit", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-overlap-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage();
+    const writes: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/settings") writes.push(request.postDataJSON() as unknown);
+    });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    await page.locator("#promote-after").waitFor();
+    for (const [policy, selector, key, value] of [
+      ["approve", "#promote-after", "promoteAfter", "5"], ["auto", "#promote-after", "promoteAfter", ""],
+      ["approve", "#act-custom", "actTimeoutMin", "75"], ["auto", "#act-custom", "actTimeoutMin", ""],
+    ] as const) {
+      let arrive: (() => void) | undefined;
+      let release: (() => void) | undefined;
+      const held = new Promise<void>((resolve) => { arrive = resolve; });
+      const released = new Promise<void>((resolve) => { release = resolve; });
+      await page.route("**/api/settings", async (route) => {
+        const response = await route.fetch();
+        arrive?.();
+        await released;
+        await route.fulfill({ response });
+      }, { times: 1 });
+      try {
+        await page.locator(`label[for="heal-${policy}"]`).click();
+        await held;
+        if (selector === "#act-custom") await page.locator("#act-minutes").selectOption("custom");
+        const input = page.locator(selector);
+        const original = await input.elementHandle();
+        assert.ok(original);
+        const writesBefore = writes.length;
+        await input.fill(value);
+        if (!value) await input.press("Tab");
+        release?.();
+        await page.waitForFunction((element) => !element?.isConnected, original);
+        await original.dispose();
+        assert.equal(await input.inputValue(), value);
+        assert.equal(await input.evaluate((element) => (element as HTMLInputElement).validity.valueMissing), !value);
+        assert.equal(await page.evaluate(() => document.activeElement?.id), selector.slice(1));
+        assert.equal(await input.isVisible(), true);
+        assert.equal(await page.locator("#settings-feedback").textContent(), "Saved.");
+        assert.deepEqual(writes.slice(writesBefore), []);
+        const saved = value || "7";
+        if (!value) await input.fill(saved);
+        const [response] = await Promise.all([
+          page.waitForResponse((item) => item.request().method() === "PUT" && new URL(item.url()).pathname === "/api/settings" && (item.request().postDataJSON() as Record<string, unknown>)[key] === Number(saved)),
+          input.press("Tab"),
+        ]);
+        assert.equal(response.ok(), true);
+        await page.waitForFunction(({ selector, saved }) => (document.querySelector(selector) as HTMLInputElement)?.defaultValue === saved && document.getElementById("settings-feedback")?.textContent === "Saved.", { selector, saved });
+        assert.equal(key === "promoteAfter" ? app.library.settings().promoteAfter : app.library.settings().actTimeoutMs, Number(saved) * (key === "promoteAfter" ? 1 : 60_000));
+        assert.deepEqual(writes.slice(writesBefore), [{ [key]: Number(saved) }]);
+      } finally {
+        release?.();
+      }
+    }
   } finally {
     await browser.close();
     await app.close();
