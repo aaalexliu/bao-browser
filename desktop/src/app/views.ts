@@ -1875,7 +1875,7 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   const day = (value: number) => new Date(value).toDateString();
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const groups = new Map<string, RunSummary[]>();
-  const isCurrent = (run: RunSummary) => run.id === active?.id || runWaiting(run);
+  const isCurrent = (run: RunSummary) => run.id === active?.id;
   const currentRuns = runs.filter(isCurrent).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
   for (const run of [...runs].filter((item) => !isCurrent(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
     const at = runTime(run);

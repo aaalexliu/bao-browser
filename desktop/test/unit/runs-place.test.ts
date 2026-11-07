@@ -337,13 +337,14 @@ test("running Runs groups history, opens shared receipts, survives polling and r
     await page.locator("#rail [data-place=runs]").click();
     await page.locator("#needs-you-heading .run-count").filter({ hasText: "3" }).waitFor();
     const history = page.locator('#runs section[aria-label="Today"]');
-    assert.deepEqual(await history.locator("button").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run"))), ["raw-failed", "raw-heal", "raw-browser"]);
+    assert.deepEqual(await history.locator("button").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-open-run"))), ["raw-paused", "raw-failed", "raw-heal", "raw-browser"]);
     assert.equal(await page.locator('#runs section[aria-label="Yesterday"]').count(), 1);
     assert.doesNotMatch(await page.locator("#runs").innerText(), /raw-/);
     assert.doesNotMatch(await history.locator("[data-open-run=raw-failed]").innerText(), /model calls/);
-    assert.equal(await page.locator('#runs section[aria-label="Now"] [data-open-run=raw-paused]').count(), 1);
+    assert.equal(await page.locator('#runs section[aria-label="Now"]').count(), 0);
+    assert.equal(await page.locator('#runs ul[aria-label="Needs you"] [data-open-run=raw-paused]').count(), 1);
     assert.match(await page.locator("#runs [data-open-run=raw-old]").innerText(), /Passed/);
-    assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 2);
+    assert.equal(await history.getByRole("button", { name: workflow.name, exact: true }).count(), 3);
     const row = history.locator("[data-open-run=raw-failed]");
     await row.focus();
     app.library.appendDecision("raw-heal", { ts: now, healId: "proposal", decision: "keep" });
