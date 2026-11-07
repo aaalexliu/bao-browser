@@ -311,7 +311,7 @@ for (const observationFailure of ["navigation", "unreadable"] as const) {
             await blocked;
             throw new Error("Page unreadable");
           }
-          return Reflect.apply(evaluate, page, args);
+          return Reflect.apply(evaluate, page, args) as ReturnType<typeof evaluate>;
         }) as typeof page.evaluate;
         page.waitForLoadState = async (...args) => {
           if (args[0] === "domcontentloaded") {
