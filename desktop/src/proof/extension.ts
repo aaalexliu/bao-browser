@@ -1270,8 +1270,7 @@ async function recordWorkflow(link: ExtensionLink, id: string, startUrl: string,
   await cmd(link, "open", { url: startUrl, dialogs: true, inject: true }, 45000);
   await run(capture);
   await sleep(800);
-  capture.recording = false;
-  const events = capture.events;
+  const events = capture.stop();
   const built = explain(events, { id, name: id, startUrl: captureStartUrl(events, startUrl) });
   built.workflow.driver = "extension";
   writeGestures(BAO, built.workflow.id, gestureQueue(built.workflow.steps, built.groups, gestures));

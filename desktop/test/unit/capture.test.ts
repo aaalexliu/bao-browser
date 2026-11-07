@@ -10,6 +10,111 @@ import { interpret } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
 import { validateWorkflow } from "../../src/v1/schema";
 
+test("idle capture stays unpaused and rejects recording input", () => {
+  const capture = new Capture();
+  capture.pause();
+  capture.resume();
+  assert.equal(capture.recording, false);
+  assert.equal(capture.paused, false);
+  assert.equal(capture.push({ kind: "act", op: "click" }), false);
+  capture.handoff("Waiting for a person");
+  assert.deepEqual(capture.events, []);
+  assert.deepEqual(capture.steps, []);
+  assert.throws(() => capture.note("A note"), /not recording/);
+  assert.throws(() => capture.check("A check"), /not recording/);
+});
+
+test("paused capture keeps handoffs, notes and checks while dropping UI events", () => {
+  const capture = new Capture();
+  capture.start();
+  capture.pause();
+  capture.pause();
+  assert.equal(capture.recording, true);
+  assert.equal(capture.paused, true);
+  assert.equal(capture.push({ kind: "act", op: "click" }), false);
+  capture.handoff("  Waiting   for a person  ");
+  capture.handoff("   ");
+  assert.equal(capture.steps.length, 0);
+  capture.note("Wait for the banner");
+  assert.equal(capture.steps.length, 0);
+  const check = capture.check("Welcome");
+  assert.equal(check.label, "Check: Welcome");
+  assert.equal(check.note, "Wait for the banner");
+  assert.deepEqual(capture.events.map((event) => [event.op, event.afterText]), [
+    ["note", "Waiting for a person"],
+    ["note", "Wait for the banner"],
+    ["expect", "Welcome"],
+  ]);
+  capture.resume();
+  capture.resume();
+  assert.equal(capture.recording, true);
+  assert.equal(capture.paused, false);
+  assert.equal(capture.push({ kind: "act", op: "click" }), true);
+  assert.deepEqual(capture.steps.map((step) => step.label), ["Check: Welcome", "Click"]);
+});
+
+for (const paused of [false, true]) {
+  test(`stop retains capture data and returns to idle from ${paused ? "paused" : "recording"}`, () => {
+    const capture = new Capture();
+    capture.start();
+    capture.push({ kind: "act", op: "click" });
+    if (paused) capture.pause();
+    capture.note("Keep this note");
+    const events = structuredClone(capture.events);
+    const steps = structuredClone(capture.steps);
+    const stopped = capture.stop();
+    assert.equal(capture.recording, false);
+    assert.equal(capture.paused, false);
+    assert.equal(stopped, capture.events);
+    assert.equal(capture.stop(), stopped);
+    capture.pause();
+    capture.resume();
+    assert.equal(capture.paused, false);
+    assert.equal(capture.push({ kind: "act", op: "click" }), false);
+    capture.handoff("Do not keep this");
+    assert.throws(() => capture.note("Do not keep this"), /not recording/);
+    assert.throws(() => capture.check("Do not keep this"), /not recording/);
+    assert.deepEqual(capture.events, events);
+    assert.deepEqual(capture.steps, steps);
+  });
+}
+
+test("discard clears paused capture data", () => {
+  const capture = new Capture();
+  capture.start();
+  capture.push({ kind: "act", op: "click" });
+  capture.pause();
+  capture.note("Discard this note");
+  capture.check("Discard this check");
+  capture.discard();
+  assert.equal(capture.recording, false);
+  assert.equal(capture.paused, false);
+  assert.deepEqual(capture.events, []);
+  assert.deepEqual(capture.steps, []);
+  assert.deepEqual(capture.stop(), []);
+});
+
+for (const phase of ["recording", "paused", "stopped"] as const) {
+  test(`start resets capture data and pending notes from ${phase}`, () => {
+    const capture = new Capture();
+    capture.start();
+    capture.note("Do not carry this note");
+    capture.handoff("Do not carry this handoff");
+    if (phase === "paused") capture.pause();
+    if (phase === "stopped") capture.stop();
+    capture.start();
+    assert.equal(capture.recording, true);
+    assert.equal(capture.paused, false);
+    assert.equal(capture.events.length, 0);
+    assert.equal(capture.steps.length, 0);
+    assert.equal(capture.push({ kind: "act", op: "click" }), true);
+    assert.deepEqual(capture.steps, [{ id: capture.events[0]?.id, label: "Click" }]);
+    capture.start();
+    assert.deepEqual(capture.events, []);
+    assert.deepEqual(capture.steps, []);
+  });
+}
+
 test("pause drops UI events while notes retain typed values", () => {
   const capture = new Capture();
   assert.equal(capture.push({ kind: "act", op: "click" }), false);
