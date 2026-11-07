@@ -84,6 +84,29 @@ for (const locatorOnly of [false, true]) {
   });
 }
 
+for (const recovery of ["overlay-find", "overlay-expect", "reveal"] as const) {
+  test(`reserved ${recovery} recovery returns a failed run without pressing the human target`, async () => {
+    const driver = counting();
+    const target = ident("Go");
+    const allow = ident("Allow");
+    driver.tree = async () => ({
+      nodes: recovery === "reveal" ? [target, allow] : [{ surface: "dom", role: "dialog", path: [] }, allow, ...(recovery === "overlay-expect" ? [target] : [])],
+      texts: [], values: [],
+      ...(recovery === "reveal" ? { boxes: [{ x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 0, w: 20, h: 20 }], hidden: [true, false] } : {}),
+    });
+    const workflow = doc([
+      { ...click("Go", 0), heal: "never", ...(recovery === "reveal" ? { reveal: { kind: "role" as const, role: "button", name: "Allow" } } : {}),
+        ...(recovery === "overlay-expect" ? { postcondition: { kind: "text" as const, match: "Done", timeoutMs: 0 } } : {}) },
+      { ...click("Allow", 1), action: "confirm", human: true },
+    ]);
+    const result = await replay(workflow, {}, driver);
+    assert.equal(result.status, "failed");
+    assert.ok(result.failure);
+    assert.deepEqual(driver.clicks, recovery === "overlay-expect" ? ["Go"] : []);
+    assert.equal(result.steps[0]?.status, "failed");
+  });
+}
+
 test("a requested click does not consume an explicit human workflow pause", async () => {
   const driver = counting();
   const workflow = doc([

@@ -306,7 +306,6 @@ export async function replay(
     actTimeoutMs: settings.actTimeoutMs,
     runId,
     yieldHuman: opts.yieldHuman,
-    humanReady: opts.humanReady,
   };
   const clock = opts.nowMs ?? (() => Date.now());
   let precondition: RunResult["precondition"];
@@ -353,6 +352,7 @@ export async function replay(
   let guard: PageGuard | undefined;
   for (let i = 0; i < workflow.steps.length; i++) {
     const step = workflow.steps[i]!;
+    gate.humanReady = opts.humanReady === true && i === startAt;
     if (driver.shouldStop?.()) {
       steps[i] = { id: step.id, status: "failed", reason: "cancelled" };
       return finish({
@@ -1005,7 +1005,7 @@ async function dismissCover(
     if (!await waitSpinner(driver, step)) return undefined;
   } else {
     if (!block.node) return undefined;
-    await recordedClick(driver, gate, step.id, block.node);
+    if (!await recordedClick(driver, gate, step.id, block.node)) return undefined;
   }
   repairs.push({ stepId: step.id, repair: "overlay", detail: block.kind });
   budget.used += 1;
@@ -1199,7 +1199,7 @@ async function openReveal(
   if (!pick) return false;
   const node = tree.nodes[pick.index];
   if (!node) return false;
-  await recordedClick(driver, gate, step.id, node);
+  if (!await recordedClick(driver, gate, step.id, node)) return false;
   // The opened field replaces the collapsed one. Wait until that swap settles
   // before the next dump, or the handle is on a node fill cannot use.
   await (driver.sleep ? driver.sleep(300) : sleep(300));
@@ -1251,7 +1251,7 @@ async function runConfirm(
 ): Promise<StepOutcome> {
   if (gate.humanReady) {
     const seen = await driver.tree();
-    if (step.postcondition && holds(step.postcondition, seen, args)) {
+    if (!step.postcondition || holds(step.postcondition, seen, args)) {
       gate.trail.push({ kind: "human-confirm", stepId: step.id });
       endHandoff(driver, gate, step.id);
       await driver.clearConfirm?.();
@@ -1466,7 +1466,7 @@ async function fillSecretLogin(
   const user = tree.nodes.find((node) => node.id === "username" || node.nameAttr === "username");
   if (user && username) await driver.fill(user, username, false);
   const cont = tree.nodes.find((node) => node.id === "continue" || node.testId === "login-continue");
-  if (cont) await recordedClick(driver, gate, stepId, cont);
+  if (cont && !await recordedClick(driver, gate, stepId, cont)) return;
   tree = await driver.tree();
   const pass = tree.nodes.find((node) => node.id === "password" || node.nameAttr === "password" || node.role === "password");
   if (!pass) throw new Error("password field missing");
@@ -1481,14 +1481,14 @@ async function fillSecretLogin(
   if (hold > 0) await (driver.sleep ? driver.sleep(hold) : sleep(hold));
   tree = await driver.tree();
   const sign = tree.nodes.find((node) => node.id === "signin" || node.testId === "login-submit");
-  if (sign) await recordedClick(driver, gate, stepId, sign);
+  if (sign && !await recordedClick(driver, gate, stepId, sign)) return;
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
   const code = tree.nodes.find((node) => node.id === "code" || node.testId === "verify-code");
   if (code && verifyCode) {
     await driver.fill(code, verifyCode, false);
     const button = tree.nodes.find((node) => node.id === "verify" || node.testId === "verify-submit");
-    if (button) await recordedClick(driver, gate, stepId, button);
+    if (button && !await recordedClick(driver, gate, stepId, button)) return;
   }
 }
 
@@ -1496,20 +1496,21 @@ function recordedSteps(workflow: WorkflowV2): WorkflowStep[] {
   return workflow.steps.flatMap((step) => [step, ...(step.forEach?.steps || [])]);
 }
 
-async function recordedClick(driver: Driver, gate: ApplyGate, stepId: string, node: Identity, requested = false): Promise<void> {
+async function recordedClick(driver: Driver, gate: ApplyGate, stepId: string, node: Identity, requested = false): Promise<boolean> {
   const steps = recordedSteps(gate.workflow);
   const index = steps.findIndex((step) => step.id === stepId);
   const reserved = steps.slice(index + 1).some((step) => step.action === "confirm" && (
     (step.identity && (sameRecordedControl(step.identity, node) || lookup(step.identity, [node]).ok))
     || step.locators?.some((locator) => matchLocator(locator, [node]))
   ));
-  if (!requested && reserved) throw new Error("Target belongs to a recorded human confirm step");
+  if (!requested && reserved) return false;
   await driver.click(node);
   gate.trail.push({
     kind: "click",
     stepId,
     target: node.testId || node.id || node.text || node.name || node.role,
   });
+  return true;
 }
 
 async function poll(
@@ -1731,7 +1732,9 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
   const original = recordedSteps(gate.workflow).find((recorded) => recorded.id === step.id);
   const requested = !!original && (step.identity === original.identity || (!!original.identity
     && (sameRecordedControl(original.identity, node) || lookup(original.identity, [node]).ok)));
-  await recordedClick(driver, gate, step.id, node, requested);
+  if (!await recordedClick(driver, gate, step.id, node, requested)) {
+    throw new Error("Target belongs to a recorded human confirm step");
+  }
 }
 
 export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {

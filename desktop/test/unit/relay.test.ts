@@ -359,13 +359,14 @@ test("remote resume observes an explicit human step and unblocks queued runs aft
   const root = mkdtempSync(path.join(tmpdir(), "bao-relay-confirm-"));
   const library = new Library(root);
   const confirming: WorkflowV2 = { ...workflow("books"), steps: [{
-    id: "confirm", index: 0, action: "confirm", human: true, surface: "dom", label: "Place order",
+    id: "confirm", index: 0, action: "confirm", human: true, surface: "dom", label: "Place order", timeoutMs: 0,
     postcondition: { kind: "text", match: "Placed", timeoutMs: 0 },
   }] };
   library.save(confirming);
   library.save(workflow("next"));
   const token = "confirm-token";
   let interacted = false;
+  let stops = 0;
   let clears = 0;
   const resumed: string[] = [];
   const ran: string[] = [];
@@ -395,11 +396,12 @@ test("remote resume observes an explicit human step and unblocks queued runs aft
     const remote = createRemoteAgent({
       library,
       prompts: {},
-      stop() {},
+      stop() { stops += 1; },
       clearStop() { clears += 1; },
       runners: {
         playwright: async (id) => {
           ran.push(id);
+          if (id === "books") writeFileSync(path.join(root, "resumes", `${token}.json`), JSON.stringify({ kind: "confirm", deadline: Date.now() + 3000 }));
           return id === "books" ? confirm(false) : { outcome: "ok", workflowId: id };
         },
         resume: async (value) => {
@@ -430,6 +432,9 @@ test("remote resume observes an explicit human step and unblocks queued runs aft
       assert.deepEqual(resumed, [token, token]);
       assert.deepEqual(ran, ["books", "next"]);
       assert.equal(clears, 4);
+      await new Promise((resolve) => setTimeout(resolve, 3100));
+      assert.equal(stops, 0);
+      assert.equal(remote.view().phase, "idle");
     } finally {
       await remote.stop();
     }
@@ -472,10 +477,22 @@ for (const pause of ["signin", "wall", "deadline", "kill"] as const) {
         assert.equal(paused.json.outcome, "needs_human");
         if (pause === "deadline" || pause === "kill") {
           assert.equal(remote.view().phase, "waiting");
+          const local = replay({ ...workflow("local"), steps: [{
+            id: "go", index: 0, action: "click", label: "Go", surface: "dom", timeoutMs: 0,
+            identity: { surface: "dom", role: "button", name: "Go", path: [] },
+            postcondition: { kind: "text", match: "Done", timeoutMs: 5000 },
+          }] }, {}, {
+            tree: async () => ({ nodes: [{ surface: "dom", role: "button", name: "Go", path: [] }], texts: remote.view().phase === "idle" ? ["Done"] : [], values: [] }),
+            snapshot: async () => ({}), click: async () => {}, fill: async () => {}, key: async () => {},
+            upload: async () => {}, drop: async () => {}, digits: async () => {}, check: async () => {}, notify: async () => {},
+            shouldStop: () => stops > 0,
+            sleep: async () => { await new Promise((resolve) => setTimeout(resolve, 20)); },
+          });
           if (pause === "kill") remote.kill();
           await waitFor(() => remote.view().phase === "idle");
+          assert.equal((await local).status, "passed");
           assert.equal(existsSync(file), false);
-          assert.equal(stops, 1);
+          assert.equal(stops, 0);
         } else {
           assert.equal(remote.view().phase, "idle");
         }

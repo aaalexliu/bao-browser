@@ -12,6 +12,7 @@ import { runViewer } from "../../src/app/views";
 import { runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import { formatClock } from "../../src/v1/time";
 import { replay, type Driver } from "../../src/v1/replay";
+import { clearPendingPrompt, readPendingPrompt, writePendingPrompt } from "../../src/v1/pending-prompt";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const PASSWORD = "BaoSecretFixture9kQ7m";
@@ -44,11 +45,30 @@ test("a yielded confirm does not shoot or press, and resume applies nothing", as
     trail: paused.trail,
     shotDir,
   });
-  assert.equal(resumed.status, "failed");
-  assert.equal(resumed.failure?.reason, "nothing applied");
+  assert.equal(resumed.status, "paused");
+  assert.equal(resumed.pausedKind, "confirm");
   assert.equal(clicks.length, 0);
-  assert.match(resumed.trail.find((event) => event.phase === "end")?.text || "", /Handoff ended/);
-  assert.match(resumed.trail.find((event) => event.phase === "end")?.text || "", ZONE);
+  assert.equal(resumed.trail.some((event) => event.phase === "end"), false);
+});
+
+test("explicit resume completes a recorded confirm without a postcondition", async () => {
+  const workflow = confirmWorkflow("http://127.0.0.1/fixture");
+  delete workflow.steps[0]!.postcondition;
+  const clicks: string[] = [];
+  const driver = fakeDriver(clicks, [], () => {}, new Capture());
+  const first = await replay(workflow, {}, driver, { yieldHuman: true });
+  assert.equal(first.status, "paused");
+  const resumed = await replay(workflow, {}, driver, { yieldHuman: true, humanReady: true, trail: first.trail });
+  assert.equal(resumed.status, "passed");
+  assert.deepEqual(clicks, []);
+  assert.ok(resumed.trail.some((event) => event.kind === "human-confirm"));
+  workflow.steps.push({ ...workflow.steps[0]!, id: "second-confirm", index: 1 });
+  const next = await replay(workflow, {}, driver, { yieldHuman: true, humanReady: true });
+  assert.equal(next.status, "paused");
+  assert.equal(next.pausedStepId, "second-confirm");
+  const completed = await replay(workflow, {}, driver, { yieldHuman: true, humanReady: true, fromStepId: "second-confirm" });
+  assert.equal(completed.status, "passed");
+  assert.deepEqual(clicks, []);
 });
 
 test("handoff lines stay on the trail while UI events are paused", () => {
@@ -101,10 +121,16 @@ test("scripted driver on the sign-in fixture resumes the same run", { timeout: 6
   const home = mkdtempSync(path.join(tmpdir(), "bao-envelope-"));
   const app = await startApp({ home, port: 0 });
   let token = "";
+  let loginClears = 0;
   try {
     const base = `http://127.0.0.1:${app.port}`;
     app.library.save(signInWorkflow(base));
-    const first = await runWorkflow(app.library, { id: "fixture-signin" });
+    const first = await runWorkflow(app.library, { id: "fixture-signin" }, undefined, {
+      prompts: {
+        showAsk(ask) { assert.ok(ask.runId); writePendingPrompt(home, { ask, runId: ask.runId }); },
+        clearLoginWait() { loginClears += 1; clearPendingPrompt(home); },
+      },
+    });
     token = first.resume_token || "";
     assert.equal(first.status, "needs_signin");
     assert.equal(first.outcome, "needs_signin");
@@ -131,6 +157,8 @@ test("scripted driver on the sign-in fixture resumes the same run", { timeout: 6
     token = "";
     assert.equal(done.outcome, "ok");
     assert.equal(done.status, "completed");
+    assert.ok(loginClears > 0);
+    assert.equal(readPendingPrompt(home), null);
     assert.equal(JSON.stringify(done).includes(PASSWORD), false);
     const stored = app.library.readRun(done.run_id || "");
     assert.equal(stored.modelCalls, 0);
@@ -188,9 +216,15 @@ test("cancel and resume leave the confirm button unpressed", { timeout: 60_000 }
     });
     assert.equal(waiting, "Waiting to apply");
     const resumed = await runWorkflow(app.library, { resume: token });
+    assert.equal(resumed.outcome, "needs_human");
+    assert.equal(resumed.resume, token);
+    await withHeldPage(token, async (page) => {
+      assert.equal(page.isClosed(), false);
+      await page.locator("#apply-btn").click();
+    });
+    const completed = await runWorkflow(app.library, { resume: token });
     token = "";
-    assert.equal(resumed.reason, "nothing applied");
-    assert.notEqual(resumed.status, "completed");
+    assert.equal(completed.status, "completed");
 
     app.library.save(confirmWorkflow(`${base}/fixture`, "confirm-cancel"));
     const second = await runWorkflow(app.library, { id: "confirm-cancel" });
@@ -204,6 +238,44 @@ test("cancel and resume leave the confirm button unpressed", { timeout: 60_000 }
     await app.close();
   }
 });
+
+for (const ending of ["complete", "cancel", "timeout"] as const) {
+  test(`held ${ending} clears its persisted prompt`, { timeout: 60_000 }, async () => {
+    process.env.BAO_CHROME_NO_SANDBOX = "1";
+    const home = mkdtempSync(path.join(tmpdir(), "bao-held-prompt-"));
+    const app = await startApp({ home, port: 0 });
+    let token = "";
+    let clears = 0;
+    const prompts = {
+      showAsk(ask: Parameters<typeof writePendingPrompt>[1]["ask"]) {
+        assert.ok(ask.runId);
+        writePendingPrompt(home, { ask, runId: ask.runId });
+      },
+      clearConfirm() { clears += 1; clearPendingPrompt(home); },
+    };
+    try {
+      app.library.updateSettings({ actTimeoutMs: 1000 });
+      app.library.save(confirmWorkflow(`http://127.0.0.1:${app.port}/fixture`));
+      const first = await runWorkflow(app.library, { id: "confirm-apply" }, undefined, { prompts });
+      token = first.resume || "";
+      assert.ok(token);
+      assert.equal(readPendingPrompt(home)?.runId, first.runId);
+      if (ending === "complete") await withHeldPage(token, async (page) => { await page.locator("#apply-btn").click(); });
+      if (ending === "timeout") await new Promise((resolve) => setTimeout(resolve, 1100));
+      const result = await runWorkflow(app.library, { resume: token, cancel: ending === "cancel" });
+      token = "";
+      assert.equal(result.status, ending === "complete" ? "completed" : ending === "cancel" ? "stopped" : "timed-out");
+      assert.ok(clears > 0);
+      assert.equal(readPendingPrompt(home), null);
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await fetch(`http://127.0.0.1:${app.port}/api/state`);
+      assert.equal(app.library.readRun(first.runId || "").status, ending === "complete" ? "passed" : ending === "cancel" ? "stopped" : "timed-out");
+    } finally {
+      if (token) await runWorkflow(app.library, { resume: token, cancel: true }).catch(() => undefined);
+      await app.close();
+    }
+  });
+}
 
 function signInWorkflow(base: string): WorkflowV2 {
   return {

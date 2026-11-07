@@ -204,13 +204,13 @@ export async function runWorkflow(
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
-  if (request.cancel) return cancelWorkflow(library, request.resume || "");
+  if (request.cancel) return cancelWorkflow(library, request.resume || "", control);
   const peeked = request.resume ? peekResume(library, request.resume) : undefined;
   if (request.resume && !peeked) return emptyOutcome("", "failed", "resume token");
   const live = request.resume ? liveRuns.get(request.resume) : undefined;
   if (live) {
-    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT);
-    return continueLive(library, live, request.inputs ?? {});
+    if (live.deadline !== null && Date.now() >= live.deadline) return stopLive(library, live, "timed-out", TIMED_OUT, control);
+    return continueLive(library, live, request.inputs ?? {}, control);
   }
   if (peeked && (peeked.kind === "signin" || peeked.kind === "confirm" || peeked.kind === "wall")) {
     dropResume(library, request.resume || "");
@@ -419,6 +419,7 @@ interface LiveRun {
   kind: "signin" | "confirm" | "wall";
   deadline: number | null;
   ask: string;
+  prompts?: PersonPrompts;
 }
 
 const liveRuns = new Map<string, LiveRun>();
@@ -500,6 +501,7 @@ async function replayInBrowser(
         kind: run.pausedKind,
         deadline: run.ask.deadline,
         ask: run.ask.instruction,
+        prompts: control?.prompts,
       };
       liveRuns.set(outcome.resume, live);
       await finishVideo();
@@ -514,9 +516,10 @@ async function replayInBrowser(
   }
 }
 
-async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs): Promise<WorkflowOutcome> {
+async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, control?: RunControl): Promise<WorkflowOutcome> {
   live.inputs = { ...live.inputs, ...extra };
-  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page), {
+  live.prompts = control?.prompts ?? live.prompts;
+  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page, undefined, live.prompts), {
     runId: live.runId,
     shotDir: live.shotDir,
     settings: library.settings(),
@@ -541,6 +544,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   }
   liveRuns.delete(live.token);
   dropResume(library, live.token);
+  clearLivePrompt(live);
   await releaseBrowser(library, live);
   library.savePublicInputs(live.workflow.id, publicInputs(live.workflow, live.inputs));
   const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
@@ -549,7 +553,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   return storeOutcome(library, outcome, live.secrets, live.inputs);
 }
 
-async function cancelWorkflow(library: Library, token: string): Promise<WorkflowOutcome> {
+async function cancelWorkflow(library: Library, token: string, control?: RunControl): Promise<WorkflowOutcome> {
   if (!token) return emptyOutcome("", "failed", "resume token");
   const live = liveRuns.get(token);
   if (!live) {
@@ -562,12 +566,19 @@ async function cancelWorkflow(library: Library, token: string): Promise<Workflow
     result.ask = peeked.ask;
     return result;
   }
-  return stopLive(library, live, "stopped", "nothing applied");
+  return stopLive(library, live, "stopped", "nothing applied", control);
 }
 
-async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string): Promise<WorkflowOutcome> {
+function clearLivePrompt(live: LiveRun): void {
+  if (live.kind === "confirm") live.prompts?.clearConfirm?.();
+  else live.prompts?.clearLoginWait?.();
+}
+
+async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string, control?: RunControl): Promise<WorkflowOutcome> {
   liveRuns.delete(live.token);
   dropResume(library, live.token);
+  live.prompts = control?.prompts ?? live.prompts;
+  clearLivePrompt(live);
   await releaseBrowser(library, live);
   const result = baseOutcome(live.workflow, undefined, "failed", reason, live.stepId, live.inputs);
   result.runId = live.runId;

@@ -198,7 +198,6 @@ test("device B searches and runs a workflow saved on device A", { timeout: 600_0
         run: { id: WORKFLOW_ID, outcome: runBody.outcome, source: runBody.source, lastGreen: runBody.lastGreen },
         searchAfterRun: { id: again.id, source: again.source, lastGreen: again.lastGreen },
         describeAfterRun: { id: WORKFLOW_ID, lastGreen: describeAgain.lastGreen },
-        marketplaceBlocked: { id: LISTING_ID, outcome: blockedBody.outcome },
         marketplaceRun: { id: LISTING_ID, outcome: installBody.outcome, source: installBody.source, lastGreen: installBody.lastGreen, installed: true },
         macAAfterSync: { id: WORKFLOW_ID, source: macAHit.source, lastGreen: macAHit.lastGreen },
       };

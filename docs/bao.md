@@ -22,7 +22,7 @@ The relay does not get a CDP socket, a cookie jar, or a client-chosen permission
 
 Once enabled and paired, the Mac runs requested workflows without another Bao approval. Old `remotePermission` and `siteTrust` settings no longer gate runs. Sends, orders, and payments run as recorded. A site login challenge or an explicit human workflow step still waits for that interaction. `resume_workflow` checks its result and continues the same run. Sign-in and wall pauses return the remote slot to idle. Only a recorded confirm step holds the slot while its page waits for the owner. Its resume can pass unrelated queued calls. The slot releases at the held run's deadline or on local Kill; queued calls still have their own 55-second timeout.
 
-Known gaps: the waiting banner has no local Continue. The owner completes the site action, then the remote agent calls `resume_workflow`. Ship matching registry and desktop versions together; older Macs may still enforce the removed approvals.
+Known gaps: the waiting banner has no local Continue. The owner completes the site action, then the remote agent calls `resume_workflow`. Ship matching registry and desktop versions together; older Macs may still enforce the removed approvals. The recorder still turns some purchase-label clicks into human confirms; a follow-up must keep requested clicks distinct from requested pauses. Sign-in and wall pauses return to idle, but a later run closes their held page and leaves stale resume state. That pre-existing ownership issue needs a follow-up.
 
 ### Drivers
 
@@ -61,7 +61,7 @@ The registry serves `POST /mcp` (streamable HTTP, JSON responses). The tools at 
 
 A device counted as online while `agent_poll_at` was inside the last 2 seconds. The poll loop and a heartbeat during a job keep that fresh. A paired WebSocket also counts as online. Anything else returns `{ outcome: "device_offline" }` immediately.
 
-`run_workflow` starts on the paired Mac without an Allow / Deny prompt or a fixed local-approval policy. A click on Send, Pay, Apply, or Place Order runs like any other requested click. Bao does not add a local approval based on the button's label. A recorded `confirm` step with `human: true` remains a human operation: the person acts on the site, then `resume_workflow` checks the postcondition. Login and bot walls still return `needs_human`. Nothing solves a captcha or spoofs a fingerprint.
+`run_workflow` starts on the paired Mac without an Allow / Deny prompt or a fixed local-approval policy. A click on Send, Pay, Apply, or Place Order runs like any other requested click. Bao does not add a local approval based on the button's label. A recorded `confirm` step with `human: true` remains a human operation: the person acts on the site, then `resume_workflow` checks the postcondition when one exists. Without a postcondition, explicit resume signals that the person has acted. Login and bot walls still return `needs_human`. Nothing solves a captcha or spoofs a fingerprint.
 
 While a remote run is in progress the window says "Remote agent running" and Kill cancels it. Each job writes an audit row (agent token id, workflow, device, outcome, timestamps). The row drops named cookie, password, secret, and authorization fields. Other owner data, including credential-shaped values, resume fields, and screenshot bytes remain. The audit API returns the newest 50 rows and a `nextCursor`; pass it as `cursor` to fetch older rows.
 

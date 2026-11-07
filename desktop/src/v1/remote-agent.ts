@@ -51,6 +51,7 @@ type AssignedJob = {
 type SlotEvent =
   | { type: "job"; job: AssignedJob; saved: Record<string, unknown> | null }
   | { type: "kill" }
+  | { type: "expired"; resume: string }
   | { type: "run-finished"; jobId: string; result: Record<string, unknown>; waiting: { resume: string } | null }
   | { type: "settled"; jobId: string; reason: string | null };
 
@@ -59,6 +60,7 @@ type SlotEffect =
   | { type: "send-ready" }
   | { type: "start-run"; job: AssignedJob }
   | { type: "abort-run" }
+  | { type: "release-held"; resume: string; expired: boolean }
   | { type: "forget-result"; jobId: string };
 
 export function createRemoteAgent(opts: {
@@ -209,6 +211,15 @@ export function createRemoteAgent(opts: {
         forgetResult(opts.library.root, effect.jobId);
         continue;
       }
+      if (effect.type === "release-held") {
+        clearTimeout(deadlineTimer);
+        const open = context;
+        heldResume = undefined;
+        context = undefined;
+        void runWorkflow(opts.library, { resume: effect.resume, cancel: !effect.expired }, undefined, { prompts: opts.prompts })
+          .finally(() => open?.close().catch(() => undefined)).catch(() => undefined);
+        continue;
+      }
       if (effect.type === "abort-run") {
         generation += 1;
         opts.stop();
@@ -220,6 +231,7 @@ export function createRemoteAgent(opts: {
         continue;
       }
       if (effect.type === "start-run") {
+        clearTimeout(deadlineTimer);
         const gen = generation;
         const job = effect.job;
         void execute(job).then((result) => {
@@ -232,13 +244,7 @@ export function createRemoteAgent(opts: {
             clearTimeout(deadlineTimer);
             heldResume = waiting?.resume;
             if (heldResume && typeof info?.deadline === "number") {
-              const token = heldResume;
-              deadlineTimer = setTimeout(() => enqueue(() => {
-                if (heldResume !== token) return;
-                void runWorkflow(opts.library, { resume: token }).catch(() => undefined);
-                transition({ type: "kill" });
-              }), Math.max(0, info.deadline - Date.now()));
-              deadlineTimer.unref();
+              armDeadline(heldResume, info.deadline);
             }
             transition({ type: "run-finished", jobId: job.id, result, waiting });
           });
@@ -259,6 +265,18 @@ export function createRemoteAgent(opts: {
         });
       }
     }
+  }
+
+  function armDeadline(token: string, deadline: number): void {
+    deadlineTimer = setTimeout(() => enqueue(() => {
+      if (heldResume !== token || slot.phase !== "waiting") return;
+      if (Date.now() < deadline) {
+        armDeadline(token, deadline);
+        return;
+      }
+      transition({ type: "expired", resume: token });
+    }), Math.max(0, deadline - Date.now()));
+    deadlineTimer.unref();
   }
 
   async function execute(job: AssignedJob): Promise<Record<string, unknown>> {
@@ -433,12 +451,16 @@ function apply(slot: Slot, event: SlotEvent): { slot: Slot; effects: SlotEffect[
       effects: [{ type: "start-run", job: event.job }],
     };
   }
+  if (event.type === "expired") {
+    if (slot.phase !== "waiting" || slot.resume !== event.resume) return { slot, effects: [] };
+    return { slot: { phase: "idle" }, effects: [{ type: "release-held", resume: slot.resume, expired: true }, { type: "send-ready" }] };
+  }
   if (event.type === "kill") {
     if (slot.phase === "idle") return { slot, effects: [] };
     return {
       slot: { phase: "idle" },
       effects: [
-        { type: "abort-run" },
+        slot.phase === "waiting" ? { type: "release-held", resume: slot.resume, expired: false } : { type: "abort-run" },
         ...(slot.phase === "running" ? [{ type: "send-result", jobId: slot.jobId, result: { outcome: "cancelled", workflowId: slot.workflowId } } as const] : []),
         { type: "send-ready" },
       ],
