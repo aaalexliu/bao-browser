@@ -15,7 +15,6 @@ test("marketplace discloses purchase and confirm clicks without claiming a human
       { action: "click", label: `Click "${name}"` },
       { action: "click", identity: { name } },
       { action: "click", identity: { text: name } },
-      { action: "click", value: name },
     ]) {
       const preview = permissionPreview({ steps: [step] });
       assert.equal(preview.confirm, false, name);

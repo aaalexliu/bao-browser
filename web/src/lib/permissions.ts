@@ -72,10 +72,11 @@ export function driverLabel(driver: PermissionPreview["driver"]): string {
 }
 
 export function consequentialStep(step: StepLike): { confirm: boolean; submit: boolean } {
-  const text = `${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""} ${step.value || ""}`;
+  const labels = `${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""}`;
+  const text = `${labels} ${step.value || ""}`;
   return {
     confirm: step.action === "confirm" || step.gate === "confirm",
-    submit: /\bsubmit\b/i.test(text) || (step.action === "click" && /\b(?:place\s+order|buy|pay|reserve|confirm)\b/i.test(text)),
+    submit: /\bsubmit\b/i.test(text) || (step.action === "click" && /\b(?:place\s+order|buy|pay|reserve|confirm)\b/i.test(labels)),
   };
 }
 
