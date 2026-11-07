@@ -593,7 +593,8 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false,
     closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
-    onSnapshot: undefined as ((resume: () => void) => void) | undefined };
+    onSnapshot: undefined as ((resume: () => void) => void) | undefined,
+    onClose: undefined as (() => Promise<void>) | undefined };
   let disconnected!: () => void;
   const cdp = {
     get isOpen() { return !state.closed; },
@@ -622,7 +623,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   });
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => ({ target: { portFile: "unused" },
     closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
-    close: async () => { state.closes++; cdp.close(); }, keepOpen: async () => { state.kept++; } }));
+    close: async () => { state.closes++; await state.onClose?.(); cdp.close(); }, keepOpen: async () => { state.kept++; } }));
   t.mock.method(childProcess, "execFile", (_file: string, args: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
     callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
     const command = args[args.indexOf("--idle-timeout") + 2]!;
@@ -729,6 +730,35 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   assert.equal(f.state.closes, keepOpen ? 0 : 1);
   assert.equal(f.state.kept, keepOpen ? 1 : 0);
   assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
+});
+
+test("finish_task during async window cleanup applies the same session's checked outcome", async (t) => {
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  await f.proxy.execute("open", [], "copy");
+  const runId = f.proxy.activeRunId!;
+  let release!: () => void;
+  let started!: () => void;
+  const cleanupStarted = new Promise<void>(resolve => { started = resolve; });
+  const cleanupHeld = new Promise<void>(resolve => { release = resolve; });
+  f.state.onClose = () => { started(); return cleanupHeld; };
+  try {
+    f.cdp.close();
+    await cleanupStarted;
+    assert.equal(f.proxy.hasSession(), true);
+    assert.equal(f.library.readRun(runId).status, "passed");
+    assert.equal(f.library.readRun(runId).envelope, undefined);
+    const finishing = f.proxy.finishTask({ outcome: "failed", reason: "Checked result was unavailable" });
+    release();
+    assert.equal(await finishing, runId);
+    assert.equal(f.library.readRun(runId).status, "failed");
+    assert.equal(f.library.readRun(runId).envelope?.reason, "Checked result was unavailable");
+    assert.equal(f.proxy.hasSession(), false);
+    assert.equal(f.state.closes, 1, "finish joins existing cleanup rather than starting another path");
+  } finally { release(); }
 });
 
 test("idle backstop never interrupts an active agent command", async (t) => {

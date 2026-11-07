@@ -274,7 +274,7 @@ for (const keepOpen of [false, true]) {
   });
 }
 
-test("finish_task after close records the checked outcome once", { timeout: 60_000 }, async (t) => {
+test("finish_task after a completed close leaves the prior task unchanged", { timeout: 60_000 }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -282,20 +282,19 @@ test("finish_task after close records the checked outcome once", { timeout: 60_0
   assert.equal((await c.call("open")).isError, false);
   const runId = f.library.listRuns()[0]!.id;
   assert.equal((await c.call("close")).isError, false);
-  assert.equal(f.library.readRun(runId).status, "passed");
-  assert.equal(f.library.readRun(runId).envelope, undefined);
+  const saved = f.library.readRun(runId);
+  assert.equal(saved.status, "passed");
+  assert.equal(saved.envelope, undefined);
   const result = await c.request("tools/call", { name: "finish_task", arguments: {
     outcome: "failed", reason: "The requested item was unavailable.",
   } });
   assert.equal(result.isError, false);
-  const receipt = JSON.parse(result.content![0]!.text) as { run_id: string; status: string };
-  assert.equal(receipt.run_id, runId);
-  assert.equal(receipt.status, "failed");
-  const saved = f.library.readRun(runId);
-  assert.equal(saved.status, "failed");
-  assert.equal(saved.envelope?.reason, "The requested item was unavailable.");
+  const receipt = JSON.parse(result.content![0]!.text) as { outcome: string; run_id?: string };
+  assert.equal(receipt.outcome, "no_session");
+  assert.equal(receipt.run_id, undefined);
+  assert.deepEqual(f.library.readRun(runId), saved, "a later task cannot relabel a fully removed session");
   await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "A later claim" } });
-  assert.deepEqual(f.library.readRun(runId), saved, "an explicit task outcome cannot be overwritten");
+  assert.deepEqual(f.library.readRun(runId), saved, "repeated finishes leave the prior task unchanged");
   assert.equal(f.library.listRuns().length, 1);
 });
 
