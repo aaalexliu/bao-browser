@@ -5,7 +5,7 @@ import { isElementCrop, isPicture } from "./png";
 import { syncPicture } from "./sync-pictures";
 import { query } from "./db";
 import type { SyncShot } from "./guard";
-import { applyImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
+import { applyRegistryImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
 import { permissionPreview, type PermissionPreview } from "./permissions";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
 import { runPublishGate } from "./review-gate";
@@ -1139,7 +1139,7 @@ async function readable(principal: Principal, id: string) {
 
 function answered(document: unknown, answers: Record<string, unknown>) {
   try {
-    return applyImportAnswers(document, answers);
+    return applyRegistryImportAnswers(document, answers);
   } catch (err) {
     throw new HttpError(err instanceof Error ? err.message : "answer the import questions", 400);
   }

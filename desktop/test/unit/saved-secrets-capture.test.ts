@@ -63,7 +63,7 @@ test("browser capture retains password changes and ordinary fields in Library de
       const input = saved.inputs.find((input) => input.name === step.input)!;
       assert.equal(step.action, "type");
       assert.equal(step.identity?.autocomplete, field.autocomplete);
-      assert.equal(input.default, field.value, field.id);
+      assert.equal(input.default, field.id === "otp" ? undefined : field.value, field.id);
       assert.equal(input.type, field.secret ? "secret" : "text", field.id);
       assert.equal(trail.filter((event) => event.identity?.id === field.id).at(-1)!.value, field.value);
     }

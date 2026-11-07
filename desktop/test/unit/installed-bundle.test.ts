@@ -297,7 +297,7 @@ test("an installed bundle serves extension settings and imports synthetic localS
       const metadata = { label: value, source: { agent: value }, locators: [{ kind: 'text', value }], ax: value };
       const record = { op: 'type', value, metadata, sealed: { kind: 'read-back', expected: value, actual: value, hash: 'signed' } };
       const original = structuredClone(record);
-      assert.deepEqual(stripUnsafe(record), record);
+      assert.deepEqual(stripUnsafe(record), { ...record, value: value === 'short-password' ? value : STRIPPED_SECRET });
       library.saveTrail('staged-input', [record]);
       assert.deepEqual(library.readTrail('staged-input'), [record]);
       assert.equal(stepNeedsSecretValue({ action: 'type', value: STRIPPED_SECRET }, { inputs: [] }, {}), true);

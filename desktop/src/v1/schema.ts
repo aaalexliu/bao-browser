@@ -534,7 +534,8 @@ function migrateStep(step: LooseStep, index: number, wf: string, inputs: Workflo
     if (step.action === "osSetValue" || step.action === "osType") {
       const secret = !!step.sensitive || isSensitiveValue(step.os.value || step.value || "");
       const input = addInput(inputs, secret ? "secret" : "text", secret ? "secret" : "text", identity);
-      input.default = step.os.value ?? step.value;
+      const value = step.os.value ?? step.value;
+      if (value && !looksLikePath(value)) input.default = value;
       return {
         ...base,
         action: "type",

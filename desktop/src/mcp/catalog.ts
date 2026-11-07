@@ -9,6 +9,8 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
+import { reusableInputs } from "../../../shared/saved-secrets";
+import { scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
 import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
@@ -187,6 +189,9 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
 }> {
   const found = await locateWorkflow(library, id, auth);
   const workflow = structuredClone(found.document);
+  for (const input of workflow.inputs) {
+    if (input.type === "secret") delete input.default;
+  }
   return {
     workflow,
     inputs: inputSchema(workflow),
@@ -255,8 +260,10 @@ export async function runWorkflow(
     return placed ? { ...outcome, source, lastGreen } : { ...outcome, lastGreen };
   };
   const given: ReplayArgs = {
-    ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
-    ...(resumed?.publicInputs ?? {}),
+    ...reusableInputs(workflow, {
+      ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
+      ...(resumed?.publicInputs ?? {}),
+    }),
     ...(request.inputs ?? {}),
   };
   const inputs = withInputDefaults(workflow, given);
@@ -360,7 +367,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   })[];
 } {
   const file = reportPath(library, runId);
-  if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome;
+  if (existsSync(file)) return publicOutcome(library, JSON.parse(readFileSync(file, "utf8")) as WorkflowOutcome);
   const stored = library.readRun(runId);
   const envelope = stored.envelope;
   const status = envelope?.status ?? stored.status;
@@ -394,7 +401,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
       } : {}),
     }] : [];
   });
-  return {
+  return publicOutcome(library, {
     outcome,
     reason,
     runId: stored.id,
@@ -422,7 +429,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
         line: lastClass.line,
       },
     } : {}),
-  };
+  }, stored.inputs);
 }
 
 interface LiveRun {
@@ -504,7 +511,7 @@ async function replayInBrowser(
       trail,
       siteTrust: trustMode(library.settings(), originOf(workflow.startUrl)),
     });
-    const outcome = rememberRun(library, workflow, run, args);
+    const outcome = rememberRun(library, workflow, run, args, secrets);
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
       hold = true;
       const live: LiveRun = {
@@ -539,7 +546,7 @@ async function replayInBrowser(
 }
 
 async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs): Promise<WorkflowOutcome> {
-  live.inputs = { ...live.inputs, ...extra };
+  live.inputs = { ...reusableInputs(live.workflow, live.inputs), ...extra };
   const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page), {
     runId: live.runId,
     shotDir: live.shotDir,
@@ -558,7 +565,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
     live.ask = run.ask.instruction;
     live.trail = run.trail;
     live.steps = run.steps;
-    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.token);
+    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, live.token);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
     return outcome;
   }
@@ -566,10 +573,10 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs):
   dropResume(library, live.token);
   await releaseBrowser(library, live);
   library.savePublicInputs(live.workflow.id, publicInputs(live.workflow, live.inputs));
-  const outcome = rememberRun(library, live.workflow, run, live.inputs);
+  const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets);
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-  return storeOutcome(library, outcome);
+  return storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets);
 }
 
 async function cancelWorkflow(library: Library, token: string): Promise<WorkflowOutcome> {
@@ -619,7 +626,7 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
       deadline: result.deadline,
     },
   });
-  return storeOutcome(library, result);
+  return storeOutcome(library, result, live.workflow, live.inputs, live.secrets);
 }
 
 async function releaseBrowser(
@@ -644,6 +651,7 @@ function rememberRun(
   workflow: WorkflowV2,
   run: RunResult,
   inputs: ReplayArgs,
+  secrets: string[],
   resumeToken?: string,
 ): WorkflowOutcome {
   const failed = run.steps.find((step) => step.status === "failed" || step.status === "paused");
@@ -702,7 +710,7 @@ function rememberRun(
     });
     result.resume_token = result.resume;
   }
-  return storeOutcome(library, result);
+  return storeOutcome(library, result, workflow, inputs, secrets);
 }
 
 function saveWorkflowRun(
@@ -768,7 +776,7 @@ function remember(
   result.ask = reason;
   result.deadline = deadline ? formatClock(deadline) : "No timeout";
   result.resume_token = result.resume;
-  return storeOutcome(library, result);
+  return storeOutcome(library, result, workflow, inputs);
 }
 
 function baseOutcome(
@@ -850,9 +858,17 @@ function secretStrings(workflow: WorkflowV2, inputs: ReplayArgs): string[] {
   return out;
 }
 
-function storeOutcome(library: Library, outcome: WorkflowOutcome): WorkflowOutcome {
-  writeReport(library, outcome);
-  return outcome;
+function publicOutcome(library: Library, outcome: WorkflowOutcome, inputs?: ReplayArgs): WorkflowOutcome {
+  let workflow: WorkflowV2 | undefined;
+  try { workflow = library.read(outcome.workflowId); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  return scrubSaved(outcome, { workflow, args: inputs });
+}
+
+function storeOutcome(library: Library, outcome: WorkflowOutcome, workflow: WorkflowV2, inputs: ReplayArgs, secrets = secretStrings(workflow, inputs)): WorkflowOutcome {
+  const parsed = scrubSaved(outcome, { workflow, args: inputs, secrets });
+  writeReport(library, parsed);
+  return parsed;
 }
 
 function writeReport(library: Library, outcome: WorkflowOutcome): void {

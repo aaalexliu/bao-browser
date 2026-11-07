@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import test from "node:test";
-import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { secretArg } from "../../src/v1/auth";
+import { runField } from "../../src/app/views";
+import { editInput } from "../../src/v1/input-token";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
-import { replay, type Driver, type ReplayOptions } from "../../src/v1/replay";
+import { replay, withInputDefaults, type Driver, type ReplayOptions } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testChromium } from "../../src/test-browser";
 
@@ -54,7 +57,7 @@ test("secret slots keep typed values and replay beside an unchanged ordinary fie
       const original = structuredClone(events);
       const meta = { id: "slots", startUrl: url, secrets: entry.name === "listed secret" ? [secret] : undefined };
       const workflow = interpret(events, meta);
-      assert.equal(workflow.inputs[0]!.default, secret, entry.name);
+      assert.equal(workflow.inputs[0]!.default, entry.name === "one time code" ? undefined : secret, entry.name);
       assert.deepEqual(events, original, entry.name);
       assert.deepEqual(validateWorkflow(workflow), [], entry.name);
       const slot = workflow.steps[0]!;
@@ -88,6 +91,45 @@ test("secret slots keep typed values and replay beside an unchanged ordinary fie
     }
   } finally {
     await browser.close();
+  }
+});
+
+test("OTP history never supplies defaults or past-run inputs, while fresh input replays", async () => {
+  for (const autocomplete of ["one-time-code", "section-login ONE-TIME-CODE"]) {
+    const event: TrailEvent = {
+      id: "otp", ts: 1, kind: "act", op: "type", value: "123456",
+      identity: { ...field, autocomplete },
+    };
+    const workflow = interpret([event], { id: "otp-history", startUrl: "http://127.0.0.1/" });
+    const input = workflow.inputs[0]!;
+    assert.equal(event.value, "123456");
+    assert.equal(input.default, undefined);
+    input.default = "123456";
+    assert.deepEqual(withInputDefaults(workflow, {}), {});
+    assert.equal(secretArg(workflow, {}, input.name), "");
+    assert.equal(secretArg(workflow, { [input.name]: "654321" }, input.name), "654321");
+    assert.deepEqual(reusableInputs(workflow, { [input.name]: "123456", ordinary: "Ada" }), { ordinary: "Ada" });
+    assert.match(runField({ ...input, fresh: oneTimeCodeInput(workflow, input.name) }, "234567"), /value=""/);
+    const edited = editInput(workflow, { name: input.name, default: "345678" });
+    assert.ok(edited.doc);
+    assert.equal(edited.doc.inputs[0]!.default, undefined);
+    const fills: string[] = [];
+    const driver: Driver = {
+      tree: async () => ({ nodes: [workflow.steps[0]!.identity!], texts: [], values: [] }),
+      snapshot: async () => ({}),
+      click: async () => {}, fill: async (_node, value) => { fills.push(value); }, key: async () => {},
+      upload: async () => {}, drop: async () => {}, digits: async () => {}, check: async () => {},
+      notify: async () => {}, sleep: async () => {},
+    };
+    await replay(workflow, {}, driver);
+    assert.equal(fills.includes("123456"), false);
+    fills.length = 0;
+    const fresh = await replay(workflow, { [input.name]: "654321" }, driver);
+    assert.equal(fresh.status, "passed", fresh.failure?.reason);
+    assert.deepEqual(fills, ["654321"]);
+    assert.equal(input.default, "123456");
+    const bound = { ...workflow, steps: [{ ...workflow.steps[0]!, input: undefined }] };
+    assert.deepEqual(withInputDefaults(bound, {}), {});
   }
 });
 

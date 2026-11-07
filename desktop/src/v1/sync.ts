@@ -8,7 +8,7 @@ import path from "node:path";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
-import { scrubSaved } from "../../../shared/saved-secrets";
+import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
@@ -291,11 +291,12 @@ export async function resolveConflict(
     copyVersion?: number;
     copy?: unknown;
   }>(state, "POST", `/api/workflows/${encodeURIComponent(id)}/conflict`, { action });
-  const chosen = action === "keep-mine" ? migrate(JSON.parse(readFileSync(note.file, "utf8"))) : migrate(result.document);
+  const local = migrate(JSON.parse(readFileSync(note.file, "utf8")));
+  const chosen = action === "keep-mine" ? local : retainLocalDefaults(migrate(result.document), local);
   library.save(chosen);
   state.workflows[chosen.id] = { version: result.version, hash: docHash(library.read(chosen.id)) };
   if (action === "keep-both" && result.copy && result.copyId && result.copyVersion) {
-    const copy = migrate(result.copy);
+    const copy = retainLocalDefaults(migrate(result.copy), local);
     library.save(copy);
     state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(library.read(copy.id)) };
   }
@@ -692,8 +693,19 @@ function enqueueDirty(library: Library, state: SyncState): void {
   state.outbox = outbox;
 }
 
+function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
+  for (const input of doc.inputs) {
+    if (input.type !== "secret" || oneTimeCodeInput(doc, input.name)) continue;
+    const saved = local?.inputs.find((candidate) => candidate.name === input.name && candidate.type === "secret");
+    if (saved?.default !== undefined && !hasStrippedSecret(saved.default)) input.default = saved.default;
+  }
+  return doc;
+}
+
 function writeRemote(library: Library, state: SyncState, remote: PullBody): void {
   const doc = migrate(remote.document);
+  const local = library.list().workflows.find((workflow) => workflow.id === doc.id);
+  retainLocalDefaults(doc, local);
   library.save(doc);
   state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }

@@ -229,6 +229,63 @@ for (const mode of ["pull", "push"] as const) test(`${mode} keeps a dirty local 
   }
 });
 
+test("password defaults sync without leaving or disappearing from this device", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-password-sync-"));
+  const library = new Library(home);
+  const local = secretWorkflow();
+  local.inputs[0]!.default = planted;
+  local.inputs.push({ name: "deleted", type: "secret", label: "Deleted", default: "old-password" });
+  library.save(local);
+  let remote: unknown;
+  let version = 1;
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/api/sync/snapshot") {
+        res.writeHead(404).end("{}");
+      } else if (req.url === "/api/devices") {
+        res.end(JSON.stringify({ devices: [], categories: [] }));
+      } else if (req.method === "POST") {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        assert.equal(JSON.stringify(body).includes(planted), false);
+        remote = body.document;
+        res.end(JSON.stringify({ version }));
+      } else if (req.url === "/api/workflows") {
+        res.end(JSON.stringify({ workflows: [{ id: local.id }] }));
+      } else {
+        res.end(JSON.stringify({ version, document: remote }));
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  writeFileSync(path.join(home, "sync.json"), JSON.stringify({
+    server: `http://127.0.0.1:${address.port}`, deviceToken: "device-token", backedUp: true,
+    workflows: {}, pushedRuns: [], remoteDevices: [], remoteCategories: [], conflicts: [],
+  }));
+  try {
+    const pushed = await syncAll(library, "push");
+    assert.match(pushed.lastResult || "", /pushed 1/);
+    const updated = remote as WorkflowV2;
+    assert.equal(updated.inputs[0]!.default, undefined);
+    updated.name = "Changed on another device";
+    updated.inputs = updated.inputs.filter((input) => input.name !== "deleted");
+    version = 2;
+    await syncAll(library, "pull");
+    const saved = library.read(local.id);
+    assert.equal(saved.name, updated.name);
+    assert.equal(saved.inputs[0]!.default, planted);
+    assert.equal(saved.inputs.some((input) => input.name === "deleted"), false);
+    const again = await syncAll(library, "push");
+    assert.match(again.lastResult || "", /pushed 0/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 function secretWorkflow(): WorkflowV2 {
   return {
     schema: "bao.workflow/v2",

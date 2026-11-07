@@ -3,6 +3,7 @@
 // A note becomes the step's intent. Two demonstrations merge into one workflow,
 // with a branch only where the steps differ.
 
+import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
 import { looksLikePath, validateWorkflow, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
@@ -414,7 +415,6 @@ export function teachSummaryFrom(
   };
 }
 
-/** One labelled case for the intent harness. Secrets stay out of the file. */
 export function teachIntentCase(
   id: string,
   events: readonly TrailEvent[],
@@ -575,7 +575,7 @@ function applyDecision(
       type: secret ? "secret" : prior?.type === "file" ? "file" : prior?.type === "number" ? "number" : "text",
       required: true,
       label: name,
-      default: literal ?? prior?.default,
+      default: oneTimeCodeField(draft.step.identity) ? undefined : literal ?? prior?.default,
     });
     draft.card.values = [{
       role: secret ? "secret" : "input",

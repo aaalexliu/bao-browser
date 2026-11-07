@@ -92,3 +92,18 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   }
   return doc;
 }
+
+export function applyRegistryImportAnswers(document: unknown, answers: Record<string, unknown>): unknown {
+  const doc = applyImportAnswers(document, answers) as { inputs?: InputRow[] };
+  for (const input of doc.inputs ?? []) {
+    if (input.type === "secret" || input.type === "file") {
+      delete input.default;
+      continue;
+    }
+    const answer = answers[input.name];
+    if (typeof answer !== "string" || !answer.trim()) continue;
+    const kind = personalKind(answer, input.name);
+    if (kind === "email" || kind === "path" || kind === "phone" || kind === "ssn") delete input.default;
+  }
+  return doc;
+}

@@ -8,7 +8,7 @@ import { canonical } from "../../src/v1/canonical";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildPrompt, keepPatch, revertPatch, scriptedHeal, unavailableHeal, type HealProposal } from "../../src/v1/heal";
 import { Library } from "../../src/v1/store";
-import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
@@ -78,6 +78,59 @@ test("redacted keys stay explicit and replay stops before dispatching a missing 
   assert.equal(result.status, "failed");
   assert.equal(result.failure?.reason, "This step needs a value. Its saved value was stripped because it may contain a secret.");
   assert.deepEqual(keys, []);
+});
+
+test("sensitive key events without a value fail before dispatch or healing while real keys replay", async () => {
+  for (const fields of [{}, { key: "" }, { key: "Enter" }, { value: "Tab" }]) {
+    const doc = interpret([
+      { id: "key", ts: 1, kind: "act", op: "key", sensitive: true, ...fields },
+    ], { id: "sensitive-key", startUrl: "https://example.test/" });
+    const key = fields.key || fields.value;
+    assert.equal(doc.steps[0]?.key, key);
+    assert.equal(doc.steps[0]?.unresolved?.reason, key ? undefined : NEEDS_SECRET_VALUE);
+    const keys: string[] = [];
+    let modelCalls = 0;
+    const d = driver([]);
+    d.key = async (value) => { keys.push(value); };
+    const result = await replay(doc, {}, d, {
+      settings: { heal: "auto" },
+      heal: {
+        available: () => true,
+        propose: async () => { modelCalls += 1; return null; },
+      },
+    });
+    assert.equal(result.status, key ? "passed" : "failed");
+    assert.equal(result.failure?.reason, key ? undefined : NEEDS_SECRET_VALUE);
+    assert.deepEqual(keys, key ? [key] : []);
+    assert.equal(d.clicks, 0);
+    assert.equal(modelCalls, 0);
+  }
+});
+
+test("native migration retains local values but omits path defaults from both value sources", () => {
+  for (const action of ["osType", "osSetValue"]) {
+    for (const source of ["os", "step"]) {
+      for (const value of ["SuperSecretPassword!", "Ada", "/Users/alex/private.txt", "C:\\Users\\alex\\private.txt"]) {
+        const doc = migrate({
+          id: "native-default", version: 1, startUrl: "https://example.test/", createdAt: 1,
+          steps: [{
+            action, sensitive: value === "SuperSecretPassword!",
+            ...(source === "step" ? { value } : {}),
+            os: {
+              ...(source === "os" ? { value } : {}),
+              target: { platform: "macos", role: "AXTextField", name: "Field" },
+            },
+          }],
+        });
+        const pathValue = value !== "SuperSecretPassword!" && value !== "Ada";
+        assert.equal(doc.inputs[0]?.default, pathValue ? undefined : value);
+        assert.equal(doc.inputs[0]?.type, value === "SuperSecretPassword!" ? "secret" : "text");
+        assert.equal(doc.steps[0]?.value, `{{${doc.inputs[0]?.name}}}`);
+        assert.deepEqual(validateWorkflow(doc), []);
+        assert.equal(validate(doc), true);
+      }
+    }
+  }
 });
 
 test("a refused confirm click does not keep the pre-click status as its postcondition", () => {

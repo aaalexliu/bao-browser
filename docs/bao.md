@@ -203,7 +203,7 @@ The credit-freeze workflow's precondition is `{ kind: "url", match: "/freeze", p
 
 The login step has two paths. With no secret, replay shows the same confirm-style banner, title "Sign in on the site window", and waits. With the password supplied on the upfront secret input, replay fills the masked field and does not show that banner. Either way it continues on `/freeze`, clicks Frozen, re-reads `Status: none`, and pauses on the confirm step. The workflow has no Apply click. A confirm step with no postcondition pauses and does not write a `human-confirm` trail event. While that event is absent, replay refuses Apply clicks from the step, from a repair, and from a heal. The fixture counts Apply posts. The count stayed 0.
 
-A password field recorded in a capture session becomes a `secret` input with no default. The page script does not read the field's value. Interpret drops a leaked password string. Saved runs are masked. Screenshots cover `input[type=password]` with a black bar before the PNG is taken, and the accessibility snapshot is omitted while that field is on the page.
+That spike excluded passwords from saved files. Current capture reads password values and records them as named `secret` inputs with defaults in the local Library. Saved runs and teaching cases retain their values too. Replay uses a saved password unless a runtime input overrides it. OTP still asks for a fresh code. Screenshots cover `input[type=password]` with a black bar before the PNG is taken, and the accessibility snapshot is omitted while that field is on the page.
 
 ### What passed
 
@@ -225,7 +225,7 @@ A password field recorded in a capture session becomes a `secret` input with no 
 
 On parent commit `346ac1b`, `desktop/test/live/browser.test.ts` ("capture login, upload, and drop, then replay with two input sets") clicked Log in with an empty heal list. Swapping the identity to `missing-login` left the stored locators on `testid` `login`, the css selector, and the role name `Log in`. Replay tries those locators before identity, so the fixture healer never ran. The test now rewrites every stored locator on that step — testid, css, role name, text, xpath, and anchor — to a control that is not on the page. The broken replay fails in phase `find` with no heal. With `BAO_HEAL_FIXTURE=1` the same workflow passes, the heal model is `bao-heal-fixture`, and the postcondition passes.
 
-The replay form used to rebuild on each state change and drop a password that had been typed but not submitted. It now puts those typed values back, including the secret field. The secret is still not written to the library.
+The replay form used to rebuild on each state change and drop a password that had been typed but not submitted. It now puts those typed values back, including the secret field. The local Library now retains password values for replay. See [Secret text in saved files](permissions.md#secret-text-in-saved-files).
 
 ## Decisions
 
@@ -279,7 +279,7 @@ Locator versions live on the workflow versions, in the one Versions panel. A ver
 
 ### 2026-10-22 — Trace-style run viewer
 
-Step-picture formats, framing, and missing-picture behavior are in [Bao desktop v1](v1.md#install-and-run). Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••` and is still asked again. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
+Step-picture formats, framing, and missing-picture behavior are in [Bao desktop v1](v1.md#install-and-run). Clicking a step seeks the replay video, and moving through the video highlights the step at that time. The recording is served with byte ranges so the player can land on that timestamp. Before and After switch the selected picture. A stored input is `name: value`, so a secret reads `password: ••••`. That display mask does not clear the saved password. Replay can use its saved default. OTP still asks for a fresh code. A failed step has a side panel: the phase, then each locator that was tried and the score it got.
 
 ### 2026-10-22 — Try a step, input tokens, and per-site trust
 
@@ -287,7 +287,7 @@ Workflow step controls and input editing are described in [Bao desktop v1](v1.md
 
 ### 2026-10-22 — Re-run, skipped idle, and a per-step heal limit
 
-A past run can be started again from the run viewer. Re-run with this run's inputs fills the form from that run and asks for a secret again. Debug from this step starts at the selected step. Idle longer than 3 seconds is collapsed on the filmstrip and in the replay video, with a marker such as `skipped 12s`. When the same step heals itself on 3 consecutive runs, auto-heal stops for that step, the step is marked needs review, and the act bar says so.
+A past run can be started again from the run viewer. Re-run with this run's inputs fills the form from that run, including saved passwords. OTP still asks for a fresh code. Debug from this step starts at the selected step. Idle longer than 3 seconds is collapsed on the filmstrip and in the replay video, with a marker such as `skipped 12s`. When the same step heals itself on 3 consecutive runs, auto-heal stops for that step, the step is marked needs review, and the act bar says so.
 
 ## 2026-10-22 — One checkout for the signed app
 
@@ -299,7 +299,7 @@ The integration branch (pull request 58) is the tree a Mac build should use. It 
 - Chrome login import from pull request 57. One site at a time, after a click: cookies, localStorage, and IndexedDB into Bao's own Chrome. Session cookies survive a clean exit. A saved site is probed before a run, and a dead session stops as needs sign-in instead of failing a later step.
 - Sync, the marketplace, and the MCP catalog from pull request 59. `bao sync` pairs and pushes or pulls. See [MCP](#mcp) for the current local tool catalog. The Mac Accessibility driver is `bao mcp-ax`. The web app under `web/` is the registry. Replay still happens on the device.
 
-`docs/mac-build.md` is the path from a fresh macOS account to the signed `Bao.app`. `docs/mac-test.md` is the pass on an installed app. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs fills non-secret fields from the last run. Settings → Technical details → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` on Linux only. It does nothing on macOS.
+`docs/mac-build.md` is the path from a fresh macOS account to the signed `Bao.app`. `docs/mac-test.md` is the pass on an installed app. Pull request 58 landed on `v1/desktop` as a merge commit. Pull request 57 followed it. Pull request 59 is rebased on `v1/desktop` and stays open for that merge. Replay → Re-run with past inputs can reuse saved inputs, including passwords. OTP still asks for a fresh code. Settings → Technical details → Sync pairs this Mac. `BAO_CHROME_NO_SANDBOX=1` adds `--no-sandbox` and `--disable-dev-shm-usage` on Linux only. It does nothing on macOS.
 
 # Importing one site's login
 
@@ -447,7 +447,7 @@ A hosted registry also needs the invite secret on that command (`--secret`) or i
 
 `bao sync` pushes local changes, pulls newer versions, and refreshes the device list. The first sync copies `workflows/`, `runs/`, and `settings.json` to `backups/before-sync-<time>/` before anything is sent. Back up daily or Back up weekly, beside that copy, writes `backups/scheduled-<time>/` when the interval is due. Settings → Technical details → Sync shows the backup as a local phrase from the shared formatter, such as “Last night, 2:00 AM EDT”. Reveal in Finder opens that folder. The path stays on the tooltip. Each cloud version records the device and the parent version. A push whose parent is not the cloud's latest is stored as a conflict draft and does not replace the head. The desktop workflow detail shows a conflict banner above the steps, outside More actions. It names both Macs, shows the steps side by side, and offers Keep mine, Keep theirs, and Keep both as a copy. The workflow page shows a Conflict badge, both device names, and the same version numbers as the Mac. Its buttons name the devices, such as Keep Ada's Mac and Keep Home Mac, plus Keep both as a copy. The crop line appears only when a step picture is stored. The copy you had is also written to `conflicts/<id>.json`. An edit to a readable workflow made while the Mac is offline waits in the outbox and pushes the next time sync reconnects. The device token is stored in `sync.json` mode `0600` and is not returned by the local app's `/api/state`.
 
-The web Devices page lists each paired Mac with the time it last synced, how many workflows that sync held, and Unpair. Settings → Technical details → Sync shows the paired devices, item counts per site category, and a toggle for workflows, run history, heal records, and settings. While a category is catching up it reads “N on this device of M in the cloud.” An offline Mac finishes that catch-up the next time sync reaches the account. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). Optional Mac helper behavior is in [Bao desktop v1](v1.md#install-and-run). [Saved-file secret handling](permissions.md#secret-text-in-saved-files) defines saved credential stripping.
+The web Devices page lists each paired Mac with the time it last synced, how many workflows that sync held, and Unpair. Settings → Technical details → Sync shows the paired devices, item counts per site category, and a toggle for workflows, run history, heal records, and settings. While a category is catching up it reads “N on this device of M in the cloud.” An offline Mac finishes that catch-up the next time sync reaches the account. Those times use the shared formatter in `web/src/lib/time.ts`. A device row from the last day leads with how long ago and then the zoned clock (`just now · Oct 22, 12:41 AM EDT`). This Mac's last sync is the zoned clock (`Oct 22, 12:41 AM EDT`). Optional Mac helper behavior is in [Bao desktop v1](v1.md#install-and-run). [Saved-file secret handling](permissions.md#secret-text-in-saved-files) defines local value retention, outbound omissions, and missing-value limits.
 
 Sync skips damaged local workflows on push and leaves their files untouched on pull, even when a cloud copy exists. It removes their queued edits from the outbox. Local workflow counts include only readable workflows. For catch-up checks, a damaged file counts as present only when its ID is already in this Mac's sync history; an unrelated damaged file cannot cover a missing cloud workflow. See [Library recovery](v1.md#install-and-run) to repair those files.
 
@@ -455,18 +455,16 @@ Sync skips damaged local workflows on push and leaves their files untouched on p
 
 On the workflow page, mark which inputs are asked on import. Share copies the `bao://workflow/<id>` link, opens the public preview, and exports the workflow file. Publish stays disabled until a device replays the publication copy, and a failed clean replay stays disabled with the reason beside it. Export stays disabled, with a reason, when the workflow has no steps. Only inputs the author marks `askOnImport` become import questions through `prepareImport` in `web/src/lib/import-sheet.ts`. Names, emails, phone numbers, addresses, and file paths remain in the copy. Saved password/secret defaults and credential-like values still strip. Nothing is saved until the author's required questions are answered.
 
-The recorded Firstmate decision for Part 5 keeps main's saved-credential stripping as the one exception to privacy-later. It removes privacy-only refusals and adds no new stripping paths. The follow-up Firstmate decision keeps main's outbound `args`/`params` exclusions and skips secret import answers without refusing the install. File answers remain supported. Relay keeps main's named credential-key drops; only its on-disk device copy uses saved-value scrubbing.
+Local import answers become defaults in the recipient's private Library, including password and email answers. File inputs still use the file picker and do not keep an absolute path as a default. Cloud registry imports still scrub answers and reject secret answers. A non-personal sample is shown as an example.
 
-Import answers can become defaults, including emails and file paths. The registry applies import answers without another credential-stripping pass. Publication replay samples keep main's behavior: accept trimmed, nonempty strings, omit keys matching `password|secret|cookie|token`, and omit values that match the existing email, path, phone, or dashed-SSN patterns. Samples do not inspect input types; other values, including names and card-shaped numbers, remain. Secret and file import questions are optional and receive their values on the device.
-
-Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered. `bao://run/<id>?inputs=<json>` opens the run form with those non-secret inputs filled in. A secret key in that JSON is refused, and a secret is asked again on the device.
+Each workflow and each marketplace listing has two links. `bao://workflow/<id>` opens that workflow. `bao://import/<id>` opens the import sheet and does not save until the questions are answered. `bao://run/<id>?inputs=<json>` opens the local run form with matching inputs filled in, including secret inputs. File inputs are skipped. OTP still asks for a fresh code. A run link can contain a password, so treat the link as sensitive.
 
 ```bash
 npm run bao -- open bao://workflow/<id>
 npm run bao -- open bao://import/<id>
 ```
 
-Replay → Re-run with past inputs fills the non-secret fields from the last run. Passwords are not kept.
+Replay → Re-run with past inputs can reuse saved passwords from the last run. The local Library keeps those values. OTP still asks for a fresh code.
 
 ## List a workflow
 
@@ -480,7 +478,7 @@ npm run bao -- sync review <id> --inputs inputs.json
 
 `bao sync review` replays on this Mac and records the hash of the public copy. That review does not stamp last green. Confirming the listing runs the public copy once more, in a clean throwaway browser, against its public site. That run stamps Verified. A passed replay on a Mac also stamps last green, and sync carries that time to the other Macs. A failing replay blocks the listing, names the step, and leaves List it disabled. The reason beside that button is a sentence. Replay again runs the clean browser once more. The marketplace card counts that clean replay: when no device run was stored it says “Verified by 1 replay” instead of “0 runs.” The listing page shows the step list with saved pictures, one Inputs section, the sites it touches, and the version history. Before the first run it shows a permissions preview: the sites (listed once), the inputs (a secret is a label and a secret tag, and you enter it on your device), whether it runs in the browser or with computer use, and whether it can press confirm or submit. Allow is required before install or copy. Copy to my library stays disabled until Allow, and the server rejects that copy with 403. A confirm or submit step defaults to Always ask, and that step keeps the Always ask tag after Allow. Install then opens `bao://import/<id>`. The replay clock is labeled Publisher replayed green. After you run it, Your last green is a separate line and does not move the publisher's time. Share copies the workflow link and the import link. Report a problem is a quiet link at the bottom of the page. There is no payment step.
 
-Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted: the password is not stored, so the clean replay cannot sign in.
+Example workflows (a fixture sign-in, a row pick, a username, a file upload, Wikipedia search, and a public form) ship private. They show up in the marketplace only after the device review and that clean replay both pass. A fixture sign-in stays unlisted when the released copy lacks the password needed for a clean replay. The local Library can retain that password, but the released copy omits secret defaults.
 
 ## MCP
 

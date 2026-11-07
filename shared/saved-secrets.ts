@@ -16,6 +16,21 @@ export function isSealedArtifact(value: unknown): boolean {
     || typeof node.documentHash === "string" && node.documentHash.length > 0 && record(node.document).schema === "bao.workflow/v2";
 }
 
+export function oneTimeCodeField(value: unknown): boolean {
+  const field = record(value);
+  return typeof field.autocomplete === "string" && field.autocomplete.toLowerCase().split(/\s+/).includes("one-time-code");
+}
+
+export function oneTimeCodeInput(workflow: Pick<WorkflowV2, "steps">, name: string): boolean {
+  return workflow.steps.some((step) => oneTimeCodeField(step.identity) && (step.input === name
+    || typeof step.value === "string" && [...step.value.matchAll(INPUT_BINDING)].some((match) => match[1] === name))
+    || !!step.forEach && oneTimeCodeInput(step.forEach, name));
+}
+
+export function reusableInputs(workflow: Pick<WorkflowV2, "steps">, args: ReplayArgs): ReplayArgs {
+  return Object.fromEntries(Object.entries(args).filter(([name]) => !oneTimeCodeInput(workflow, name)));
+}
+
 export function secretSavedField(value: unknown): boolean {
   const field = record(value);
   if ([field.type, field.inputType, field.role].some((item) => typeof item === "string" && item.toLowerCase() === "password")) return true;

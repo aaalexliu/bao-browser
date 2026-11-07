@@ -946,6 +946,10 @@ export function secretInput(name: string, label: string, value: string): string 
 
 /** The run form. Defaults come from the same token fields the step text shows. */
 export function runField(input: TokenInput, previous?: string, now = new Date()): string {
+  if (input.fresh) {
+    input = { ...input, default: undefined, relative: undefined };
+    previous = undefined;
+  }
   const shown = tokenFields(input);
   const label = esc(shown.label);
   if (shown.masked) return secretInput(input.name, shown.label, previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default);

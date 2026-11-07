@@ -1,4 +1,5 @@
-import { isSealedArtifact, scrubSaved, STRIPPED_SECRET, type SavedContext } from "../../../shared/saved-secrets";
+import { isSealedArtifact, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { scrubSaved, type SavedContext } from "../../../shared/outbound-secrets";
 import { isElementCrop } from "./png";
 
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|args|params)$/i;

@@ -10,6 +10,7 @@ import { sitesForTrust } from "../v1/site-trust";
 import { expandControlKey } from "../v1/visible-copy";
 import { trajectoryFromWorkflow } from "../v1/trajectory";
 import type { WorkflowV2 } from "../v1/schema";
+import { oneTimeCodeInput } from "../../../shared/saved-secrets";
 import type { inspectRunView } from "../mcp/run-view";
 import type { DamagedWorkflow, Settings } from "../v1/store";
 import { captureTrailOwnsSteps, livePageFromQuery, liveSessionView, screenFromQuery } from "./live-view";
@@ -1658,16 +1659,16 @@ async function openEditor(id: string): Promise<void> {
 
 async function fillArgs(id: string): Promise<void> {
   if (!id) return;
-  const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as {
-    inputs: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string }[];
-    steps?: { label?: string; download?: { output?: string } }[];
-  };
+  const doc = await (await fetch("/api/workflows/" + encodeURIComponent(id))).json() as Pick<WorkflowV2, "inputs" | "steps">;
   const form = document.getElementById("args");
   if (!form || screen !== "replay") return;
   const pinned = pinnedRunId ? (state.runs || []).find((run) => run.id === pinnedRunId && run.workflowId === id) : undefined;
   const last = (state.runs || []).filter((run) => run.workflowId === id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
   const prev = { ...((pinnedRunId && pinnedInputs) || pinned?.inputs || last?.inputs || {}), ...deeplinkInputs };
-  form.innerHTML = doc.inputs.map((input) => field(input, prev[input.name], doc.steps || [])).join("") || "<p>This workflow has no inputs.</p>";
+  form.innerHTML = doc.inputs.map((input) => {
+    const fresh = oneTimeCodeInput(doc, input.name);
+    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, prev[input.name], doc.steps || []);
+  }).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
   form.querySelectorAll(".drop").forEach((zone) => {
@@ -1692,7 +1693,7 @@ async function fillArgs(id: string): Promise<void> {
 }
 
 function field(
-  input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string },
+  input: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean; fromOutput?: string; relative?: string; format?: string; zone?: string; fresh?: boolean },
   previous: string | undefined,
   steps: { label?: string; download?: { output?: string } }[],
 ): string {

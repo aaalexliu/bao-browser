@@ -8,7 +8,7 @@ import { locatorsFromIdentity } from "./locators";
 import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { WORKFLOW_SCHEMA_ID } from "./schema";
-import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, secretSavedField } from "../../../shared/saved-secrets";
+import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -141,7 +141,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
-    if ([event.value, event.key].some(hasStrippedSecret)) step.unresolved = { reason: NEEDS_SECRET_VALUE };
+    if ([event.value, event.key].some(hasStrippedSecret) || step.action === "key" && event.sensitive && !step.key) step.unresolved = { reason: NEEDS_SECRET_VALUE };
     const skip = step.sensitive ? undefined : event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
     if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
@@ -529,7 +529,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
     const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(secret ? { ...event, identity } : event, secret);
     const input = addInput(inputs, kind, named);
-    if (event.value !== undefined && !event.rawPath) input.default = event.value;
+    if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity)) input.default = event.value;
     return {
       ...step,
       action: "type",

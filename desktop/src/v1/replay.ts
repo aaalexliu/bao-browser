@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "../../../shared/saved-secrets";
+import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import { applyAllowed, type ApplyGate, type RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
@@ -288,7 +288,7 @@ export interface ReplayOptions {
 let seq = 0;
 
 export function withInputDefaults(workflow: WorkflowV2, args: ReplayArgs): ReplayArgs {
-  const defaults = Object.fromEntries(workflow.inputs.flatMap((input) => input.type !== "file" && input.default !== undefined
+  const defaults = Object.fromEntries(workflow.inputs.flatMap((input) => input.type !== "file" && !oneTimeCodeInput(workflow, input.name) && input.default !== undefined
     ? [[input.name, input.type === "number" && !hasStrippedSecret(input.default) ? Number(input.default) : input.default]] : []));
   return { ...defaults, ...args };
 }
