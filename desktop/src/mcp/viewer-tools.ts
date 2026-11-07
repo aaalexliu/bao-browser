@@ -1,5 +1,5 @@
 import type { Library } from "../v1/store";
-import { inspectRunView, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
+import { inspectRunView, openBrowserPicture, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
 import { VIEWER_URI } from "./viewer";
 
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
@@ -20,12 +20,12 @@ export const VIEWER_TOOLS = [
     annotations, _meta: appOnly,
   },
   {
-    name: "open_browser_picture", description: "Read the current browser card's before or after picture after the app mounts. At most one picture of at most 512 KiB, in app-only metadata.",
+    name: "open_browser_picture", description: "Read the current browser card's before or after picture after the app mounts. At most one picture of at most 2 MiB, in app-only metadata.",
     inputSchema: { type: "object", properties: { run_id: id, step_id: id, phase: { type: "string", enum: ["before", "after"] } }, required: ["run_id", "step_id", "phase"], additionalProperties: false },
     annotations, _meta: appOnly,
   },
   {
-    name: "open_step_pictures", description: "Read a recorded step's pictures after the owner clicks Open step pictures. Sends at most two PNG/JPEG pictures, each at most 512 KiB, to the host app in UI-only metadata.",
+    name: "open_step_pictures", description: "Read a recorded step's pictures after the owner clicks Open step pictures. Sends at most two PNG/JPEG pictures, each at most 512 KiB for replays or 2 MiB for captures, to the host app in UI-only metadata.",
     inputSchema: { type: "object", properties: { run_id: id, step_id: id }, required: ["run_id", "step_id"], additionalProperties: false },
     annotations, _meta: appOnly,
   },
@@ -37,8 +37,7 @@ export function isViewerTool(name: string): boolean {
 
 export function callViewerTool(library: Library, name: string, args: Record<string, unknown>) {
   if (name === "open_step_pictures" || name === "open_browser_picture") {
-    if (name === "open_browser_picture" && args.phase !== "before" && args.phase !== "after") throw new Error("Invalid picture phase");
-    const data = openStepPictures(library, args, name === "open_browser_picture" ? [args.phase as "before" | "after"] : undefined);
+    const data = name === "open_browser_picture" ? openBrowserPicture(library, args) : openStepPictures(library, args);
     return {
       content: [{ type: "text", text: `${data.pictures.length} step pictures opened for ${data.runId}/${data.stepId}. Pictures go to the host app, not the model-visible result. Missing, linked, invalid, or oversized pictures are unavailable.` }],
       _meta: { baoPictures: data }, isError: false,

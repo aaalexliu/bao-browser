@@ -12,12 +12,9 @@ export interface BrowserToolCard {
 }
 
 export const BROWSER_RESULT_SCHEMA = {
-  type: "object", required: ["command", "status", "results", "run_id", "step_id"],
+  type: "object", required: ["command", "status", "run_id", "step_id"],
   properties: {
     command: { type: "string" }, status: { type: "string", enum: ["complete", "failed", "waiting"] },
-    results: { type: "array", items: { type: "object", required: ["stdout", "stderr", "exitCode"], properties: {
-      stdout: { type: "string" }, stderr: { type: "string" }, exitCode: { type: "integer" },
-    } } },
     run_id: { type: ["string", "null"] }, step_id: { type: ["string", "null"] }, error: { type: "string" },
   },
 };
@@ -68,8 +65,9 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
       { type: "text", text: card.caption },
       ...results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))),
       ...(error === undefined ? [] : [{ type: "text", text: error }]),
+      { type: "text", text: JSON.stringify({ run_id: runId, step_id: card.stepId }) },
     ],
-    structuredContent: { command, status, results, run_id: runId, step_id: card.stepId, ...(error === undefined ? {} : { error }) },
+    structuredContent: { command, status, run_id: runId, step_id: card.stepId, ...(error === undefined ? {} : { error }) },
     _meta: { baoToolCard: card },
     isError: failed,
   };

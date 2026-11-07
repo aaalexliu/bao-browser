@@ -341,11 +341,12 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     : status === "needs-sign-in" ? "needs_signin"
     : status === "needs_signin" || status === "needs_approval" || status === "needs_human" ? status
     : status === "paused" || status === "running" || status === "idle" ? "needs_human" : "failed";
-  const failure = stored.failure as RunResult["failure"];
-  const stoppedStep = (stored.steps as { id?: string; status?: string; reason?: string }[])
+  const recording = stored.kind === "capture" && status === "recording";
+  const failure = recording ? undefined : stored.failure as RunResult["failure"];
+  const stoppedStep = recording ? undefined : (stored.steps as { id?: string; status?: string; reason?: string }[])
     .find((item) => item?.status === "paused" || item?.status === "failed" || item?.status === "timeout");
-  const reason = envelope?.reason || failure?.reason || stoppedStep?.reason;
-  const step = envelope?.step || failure?.stepId || stoppedStep?.id;
+  const reason = recording ? undefined : envelope?.reason || failure?.reason || stoppedStep?.reason;
+  const step = recording ? undefined : envelope?.step || failure?.stepId || stoppedStep?.id;
   const lastClass = stored.pageClasses?.[stored.pageClasses.length - 1];
   const receipts = stored.steps.flatMap((item) => {
     const receipt = item as { id?: string; status?: string };
@@ -364,7 +365,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     pageLeftOpen: stored.pageLeftOpen,
     status: status as WorkflowOutcome["status"] | "recording",
     step,
-    ask: envelope?.ask || (outcome !== "ok" ? reason : undefined),
+    ask: recording ? undefined : envelope?.ask || (outcome !== "ok" ? reason : undefined),
     deadline: envelope?.deadline,
     resume: envelope?.resume_token,
     resume_token: envelope?.resume_token,

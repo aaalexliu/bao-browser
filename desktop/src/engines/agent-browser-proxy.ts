@@ -346,7 +346,8 @@ export class AgentBrowserProxy {
       if (signal.aborted) throw new Error("screenshot timed out");
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 3000);
       const metrics = visual ? await cdp.send<{ cssLayoutViewport: { pageX: number; pageY: number; clientWidth: number; clientHeight: number } }>("Page.getLayoutMetrics", {}, sessionId, 3000) : undefined;
-      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", metrics ? { format: "jpeg", quality: 75, clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight, scale: 1 } } : { format: "png" }, sessionId, 3000);
+      const pixelRatio = metrics ? await cdp.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "window.devicePixelRatio", returnByValue: true }, sessionId, 3000) : undefined;
+      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", metrics ? { format: "jpeg", quality: 65, clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight, scale: 1 / pixelRatio!.result.value } } : { format: "png" }, sessionId, 3000);
       return { bytes: Buffer.from(data, "base64"), viewport: metrics ? { width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight } : undefined };
     } finally {
       signal.removeEventListener("abort", close);

@@ -101,9 +101,9 @@ interface Reply {
     capabilities?: Record<string, unknown>;
     resources?: { uri: string; mimeType: string }[];
     contents?: { uri: string; mimeType: string; text: string; _meta?: unknown }[];
-    structuredContent?: { command: string; results: unknown[]; error?: string; run_id: string | null };
+    structuredContent?: { command: string; status: string; error?: string; run_id: string | null; step_id: string | null };
     _meta?: { baoToolCard?: BrowserToolCard; baoViewer?: { run?: { id: string; modelCalls: number | null }; runs?: { id: string }[] }; baoPictures?: { pictures: unknown[] } };
-    tools?: { name: string; description?: string; _meta?: { ui?: { resourceUri?: string; visibility?: string[] } } }[];
+    tools?: { name: string; description?: string; outputSchema?: { required: string[]; properties: Record<string, unknown> }; _meta?: { ui?: { resourceUri?: string; visibility?: string[] } } }[];
     instructions?: string;
     serverInfo?: { name?: string };
     content?: { text?: string }[];
@@ -246,6 +246,25 @@ test("catalog errors identify the active Library and unsearched legacy data for 
   } finally { mcp.child.kill(); }
 });
 
+test("get_run attaches a bounded exact-run view for a capture larger than two MiB", async () => {
+  const mcp = startMcp("bao-mcp-large-capture-");
+  try {
+    await mcp.request("initialize", { capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } });
+    new Library(mcp.home).saveRun({
+      id: "run-large-capture", kind: "capture", workflowId: "agent-browser", status: "recording", at: Date.now(), heals: [],
+      steps: [{ id: "command-1", status: "passed", native: { command: "snapshot", results: [{ stdout: "large snapshot content ".repeat(150000), stderr: "", exitCode: 0 }] } }],
+    });
+    const reply = await mcp.request("tools/call", { name: "get_run", arguments: { run_id: "run-large-capture" } });
+    assert.equal(reply.result?.isError, false);
+    assert.equal(reply.result?._meta?.baoViewer?.run?.id, "run-large-capture");
+    const receipt = JSON.parse(reply.result!.content![0]!.text!) as { outcome: string; status: string; link?: string };
+    assert.equal(receipt.outcome, "recording");
+    assert.equal(receipt.status, "recording");
+    assert.equal(receipt.link, undefined);
+    assert.ok(JSON.stringify(reply).length < 10000);
+  } finally { mcp.child.kill(); }
+});
+
 test("UI clients negotiate one bundled resource, read history/receipt, and keep images out of model results", async () => {
   const mcp = startMcp("bao-mcp-ui-");
   const legacy = startMcp("bao-mcp-ui-compare-");
@@ -260,11 +279,17 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     assert.deepEqual(tools.find((tool) => tool.name === "open_step_pictures")?._meta?.ui?.visibility, ["app"]);
     assert.deepEqual(tools.find((tool) => tool.name === "open_browser_picture")?._meta?.ui?.visibility, ["app"]);
     assert.equal(tools.find((tool) => tool.name === "agent_browser")?._meta?.ui?.resourceUri, VIEWER_URI);
+    const schema = tools.find((tool) => tool.name === "agent_browser")?.outputSchema;
+    assert.ok(schema);
+    assert.equal(schema.required.includes("results"), false);
+    assert.equal(Object.hasOwn(schema.properties, "results"), false);
     const browserError = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot" } });
     assert.equal(browserError.result?.isError, true);
     assert.equal(browserError.result?.structuredContent?.error, "start agent-browser with open before sending commands");
     assert.equal(browserError.result?._meta?.baoToolCard?.picture.kind, "unavailable");
     assert.equal(browserError.result?.structuredContent?.run_id, null);
+    assert.deepEqual(JSON.parse(browserError.result!.content!.at(-1)!.text!), { run_id: null, step_id: null });
+    assert.equal(Object.hasOwn(browserError.result!.structuredContent!, "results"), false);
     assert.notEqual(browserError.result?.content?.[0]?.text, browserError.result?.structuredContent?.error);
     assert.equal(browserError.result?.content?.[1]?.text, "start agent-browser with open before sending commands");
     const invalidCommand = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "retired" } });

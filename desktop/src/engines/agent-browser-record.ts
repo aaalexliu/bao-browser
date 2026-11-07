@@ -29,10 +29,9 @@ export interface RecordedAgentBrowserCommand {
 export class AgentBrowserRun {
   private readonly run: Omit<StoredRun, "steps"> & {
     steps: RecordedAgentBrowserCommand[];
-    console: { stepId: string; type: string; text: string; ts: number }[];
   } = {
     id: `run-${randomUUID()}`, kind: "capture", pageEngine: "agent-browser", workflowId: "agent-browser",
-    status: "recording", at: Date.now(), steps: [], heals: [], console: [],
+    status: "recording", at: Date.now(), steps: [], heals: [],
   };
   private readonly shots: string;
 
@@ -70,11 +69,6 @@ export class AgentBrowserRun {
       step.reason = step.native.error;
     } else if (step.native.isError) {
       step.reason = "Native agent-browser command failed.";
-    }
-    for (const result of results) {
-      for (const type of ["stdout", "stderr"] as const) {
-        if (result[type]) this.run.console.push({ stepId: step.id, type, text: result[type], ts: step.endedAt });
-      }
     }
     this.persist();
     if (privatePage) {
