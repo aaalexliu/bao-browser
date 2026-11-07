@@ -183,6 +183,15 @@ export interface ShellState {
   liveSessionOpen?: boolean;
   capturePaused?: boolean;
   recordingSince?: number;
+  capture?: {
+    recording: boolean;
+    paused: boolean;
+    steps: string[];
+    url?: string;
+    stream?: { label: string; op?: string; field?: string; sensitive?: boolean; ts?: number }[];
+  };
+  trails?: string[];
+  liveTrail?: { id?: string; ts?: number; op?: string; kind?: string }[];
   helper?: {
     label: string;
     platform?: string;
@@ -292,6 +301,14 @@ export function icon(name: string): string {
   if (name === "search") return `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3.25 3.25"/></svg>`;
   const strokes: Record<string, string> = {
     play: '<path d="m5 2.5 9 5.5-9 5.5Z" fill="currentColor" stroke="none"/>',
+    pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',
+    stop: '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>',
+    globe: '<circle cx="8" cy="8" r="5.75"/><path d="M2.25 8h11.5M8 2.25c1.6 1.6 2.4 3.5 2.4 5.75S9.6 12.15 8 13.75C6.4 12.15 5.6 10.25 5.6 8S6.4 3.85 8 2.25Z"/>',
+    click: '<path d="M4.5 2.5v9.25l2.4-2.3 1.75 4 1.7-.75-1.75-3.95 3.4-.3Z"/>',
+    type: '<rect x="1.75" y="4" width="12.5" height="8" rx="1.75"/><path d="M4.5 6.75h.01M7 6.75h.01M9.5 6.75h.01M12 6.75h.01M5.5 9.5h5"/>',
+    person: '<circle cx="8" cy="5.25" r="2.5"/><path d="M3 13.5c.55-2.5 2.5-3.9 5-3.9s4.45 1.4 5 3.9"/>',
+    table: '<rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75"/><path d="M1.75 6.25h12.5M1.75 9.75h12.5M6.25 6.25v7"/>',
+    lock: '<rect x="3.25" y="7" width="9.5" height="6.75" rx="1.5"/><path d="M5.25 7V5.25a2.75 2.75 0 0 1 5.5 0V7"/>',
     library: '<rect x="2.25" y="2.25" width="11.5" height="4.5" rx="1.25"/><rect x="2.25" y="9.25" width="11.5" height="4.5" rx="1.25"/><path d="M5 4.5h3.5M5 11.5h5"/>',
     runs: '<circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/>',
     record: '<circle cx="8" cy="8" r="6.25"/><circle cx="8" cy="8" r="3.6" fill="currentColor" stroke="none"/>',
@@ -2160,9 +2177,60 @@ export function saveSheetView(sheet: SaveSheet): string {
   </section>`;
 }
 
-export function recordBar(state: { recording?: boolean; capturePaused?: boolean; recordingSince?: number }): string {
-  if (!state.recording) return "";
+export function captureView(state: ShellState, draft: { name: string; startUrl: string; error: string; busy: boolean; picking: boolean }): string {
+  const teachPending = Boolean(state.teach && state.teach.phase !== "idle");
+  const recording = Boolean(state.recording) && !teachPending;
+  const teachButton = `<button type="button" id="open-teach"${draft.busy ? " disabled" : ""}>Teach</button>`;
+  const ids = (state.trails || []).map((id) => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
+  const opening = state.capture?.url || draft.startUrl;
+  let host = "";
+  try { host = new URL(opening).hostname; } catch { /* Relative fixture URLs have no site name. */ }
+  return `<section id="capture-panel" aria-label="Bao, ${recording ? "recording" : "capture setup"}" aria-busy="${draft.busy}">
+    <header class="cap-bar">${!recording ? `<button type="button" class="cap-back" data-screen="library" aria-label="Back to Workflows">${icon("back")}</button>` : ""}<div><h2>${recording ? "Recording" : "Capture"}</h2><p>${recording ? state.capturePaused ? "Paused. Nothing you do now is recorded." : "Steps appear as you go" : "Record a task in Bao’s Chrome"}</p></div>${teachPending ? teachButton : ""}</header>
+    <div class="cap-body">
+      <div class="namefield"><label for="cap-name">Name</label><input id="cap-name" value="${esc(draft.name)}" placeholder="Name this workflow"${draft.busy ? " disabled" : ""}></div>
+      ${recording ? `<p class="cap-where">${icon("globe")}<span>${state.capturePaused ? "Paused" : "Recording"} in Bao’s Chrome${host ? ` · ${esc(host)}` : ""}</span></p><div id="live-steps">${captureStream(state, draft.picking)}</div>` : `<div class="namefield"><label for="start-url">Start URL</label><input id="start-url" value="${esc(draft.startUrl)}"${draft.busy ? " disabled" : ""}></div><p class="cap-setup-note">Nothing is recorded until you start. Bao opens its own Chrome window.</p>`}
+      ${state.teach?.phase === "review" ? `<p class="cap-setup-note">Save or discard your pending Teach review before starting a capture.</p>` : ""}
+      ${!recording ? `<div class="card">
+        <h3>Mac app</h3>
+        <p>On macOS the helper is <code>Bao.app/Contents/Resources/BaoOSHelper.app</code> (bundle <code>dev.bao.oshelper</code>). On Linux the AT-SPI helper is <code>bao-os-helper</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Agent and MCP</h3>
+        <p>Connect an agent with <code>bao mcp</code>. Use <code>agent_browser</code> to drive Chrome. Watch its commands and screenshots in Runs. Supported single-page tasks save replayable workflows when the session ends. Other sessions stay in Runs with a reason.</p>
+      </div>
+      <div class="card" id="trail-tab">
+        <h3>Trail</h3>
+        <p class="quiet">Trail is the evidence for a capture, not a place in the sidebar.</p>
+        <label>Trail <select id="trail-id">${ids}</select></label>
+        <button id="load-trail" type="button">Load</button>
+        <div id="trail-view">Password values are not stored.</div>
+      </div>` : ""}
+      <p id="capture-error" role="alert"${draft.error ? "" : " hidden"}>${esc(draft.error)}</p>
+    </div>
+    <footer class="cap-foot">${recording ? `<p>${icon("lock")}<span>Passwords and codes are never saved.</span></p><button type="button" id="capture-discard"${draft.busy ? " disabled" : ""}>Discard…</button><button type="button" class="primary" id="stop"${draft.busy ? " disabled" : ""}>${draft.busy ? "Saving…" : "Stop and save"}</button>` : !teachPending ? `${teachButton}<button type="button" class="primary" id="start"${draft.busy ? " disabled" : ""}>${draft.busy ? "Starting…" : "Start capture"}</button>` : state.teach?.phase === "review" ? `<button type="button" id="capture-teach-discard"${draft.busy ? " disabled" : ""}>Discard Teach review</button>` : ""}</footer>
+  </section>`;
+}
+
+export function captureStream(state: ShellState, picking = false): string {
+  const steps = state.capture?.stream || [];
+  const rows = steps.map((step, index) => {
+    const kind = step.op === "navigate" || /^(Open|Navigate)/i.test(step.label) ? "globe" : /^(type|input)$/.test(step.op || "") || /^Type/i.test(step.label) ? "type" : /^Wait/i.test(step.label) ? "person" : step.op === "extract" || /^(Extract|Read table)/i.test(step.label) ? "table" : "click";
+    const field = kind === "type" ? step.field || (step.sensitive ? "Password" : "") : "";
+    const label = field ? `Type the ${field.charAt(0).toLowerCase()}${field.slice(1)}` : step.label;
+    const newest = index === steps.length - 1 && Boolean(step.ts && Date.now() - step.ts < 15_000);
+    const detail = field ? `<div class="sub"><span class="cap-token">${step.sensitive ? icon("lock") : ""}${esc(field)}</span>${step.sensitive ? `<span class="mask" aria-label="hidden">••••••••</span><span>Not saved. Bao uses your Chrome login.</span>` : ""}</div>` : "";
+    return `<li${newest ? ` class="new"` : ""}><span class="no">${index + 1}</span>${icon(kind)}<div><span class="lab">${esc(label)}</span>${detail}</div>${newest ? `<span class="just">Just now</span>` : ""}</li>`;
+  }).join("");
+  const waiting = state.capturePaused ? "Recording is paused" : picking ? "Pick list is on" : "Ready for your next step";
+  const hint = state.capturePaused ? "Resume when you’re ready to keep recording." : picking ? "Click the table you want in Chrome" : "Keep going in Bao’s Chrome";
+  return `<ol class="stream" aria-label="Recorded steps" aria-live="polite" aria-relevant="additions text">${rows}<li class="wait"><span class="no">${steps.length + 1}</span>${icon(picking ? "table" : "record")}<div><span class="lab">${waiting}</span><div class="sub">${hint}${state.capturePaused ? "" : `<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>`}</div></div></li></ol>`;
+}
+
+export function recordBar(state: ShellState, capture = false, picking = false): string {
+  if (!state.recording || (state.teach && state.teach.phase !== "idle")) return "";
   const paused = state.capturePaused ? "Resume" : "Pause";
+  if (capture) return `<div id="record-bar" class="capture-controls" role="toolbar" aria-label="Recording controls" data-paused="${Boolean(state.capturePaused)}"><span class="rec"><i class="rec-dot" aria-hidden="true"></i><span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span><span id="rec-steps">${state.capture?.steps.length || 0} steps</span></span><span class="cap-divider" aria-hidden="true"></span><button type="button" id="rec-pause">${icon(state.capturePaused ? "play" : "pause")}${paused}</button><button type="button" id="rec-extract" aria-pressed="${picking}">${icon("table")}Pick list</button><span class="cap-divider" aria-hidden="true"></span><button type="button" class="stop" id="rec-stop">${icon("stop")}Stop and save</button></div>`;
   return `<div id="record-bar" data-paused="${state.capturePaused ? "true" : "false"}">
     <span class="rec-dot" aria-hidden="true"></span>
     <span id="rec-timer" data-since="${state.recordingSince || 0}">0:00</span>

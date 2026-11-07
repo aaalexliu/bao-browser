@@ -53,7 +53,7 @@ test("capture list mapping and record controls stay reachable without scrolling 
       assert.ok(picker.x >= 0 && picker.y >= 0 && picker.x + picker.width <= viewport.width);
       assert.ok(picker.y + picker.height <= bar.y);
       assert.ok(bar.y + bar.height <= viewport.height);
-      for (const id of ["rec-extract", "rec-pause", "rec-mark", "rec-stop"]) {
+      for (const id of ["rec-extract", "rec-pause", "rec-stop"]) {
         assert.equal(await page.locator(`#${id}`).evaluate((element) => {
           const box = element.getBoundingClientRect();
           return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));

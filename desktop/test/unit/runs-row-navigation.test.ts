@@ -119,6 +119,7 @@ test("historical live sessions create no rows or attention, and stored waits kee
     assert.equal(await page.locator('#attention-label').innerText(), "Nothing running");
     await page.locator(".runs-record").click();
     await page.locator("#start-url").waitFor();
+    await page.getByRole("button", { name: "Back to Workflows", exact: true }).click();
     await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await page.locator('#rail [data-place="runs"]').click();
     await page.locator('#runs-welcome').waitFor();
