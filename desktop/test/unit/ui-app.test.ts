@@ -223,6 +223,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.equal(healed.status, "passed", JSON.stringify(healed));
     const before = JSON.stringify(app.library.readRun(healed.runId).heals);
     await page.click("#rail button[data-place=runs]");
+    await page.locator(`#screen-list [data-heal="${healed.heals![0]!.id}"][data-run="${healed.runId}"]`).waitFor();
     assert.match(await page.locator("#screen-list").innerText(), /Heal to keep/);
     await page.keyboard.press("Meta+k");
     await page.locator("#palette-input").fill("Heals");
