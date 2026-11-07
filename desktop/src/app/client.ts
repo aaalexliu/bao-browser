@@ -291,6 +291,7 @@ function render(focusDetail = true): void {
   document.getElementById("app")!.dataset.workflowsList = screen === "library" ? "true" : "false";
   document.getElementById("app")!.dataset.workflowDetail = screen === "workflow" ? "true" : "false";
   document.getElementById("content")!.classList.toggle("runs-content", runsPlace);
+  document.getElementById("content")!.classList.toggle("heal-content", screen === "heals" && Boolean(openHeal));
   document.getElementById("content")!.classList.toggle("workflows-content", screen === "library" || screen === "workflow");
   document.getElementById("content")!.classList.toggle("settings-content", screen === "settings");
   if (railHtmlKey !== railHtml) {
@@ -321,7 +322,7 @@ function render(focusDetail = true): void {
   const replayId = lastWf || (state.workflows && state.workflows[0]?.id) || "";
   const openArgs = document.getElementById("args");
   const keepReplay = screen === "replay" && !deeplinkPending && openArgs !== null && openArgs.childElementCount > 0 && argsWorkflow === replayId;
-  const keepWorkflow = screen === "workflow" && document.getElementById("workflow-detail")?.getAttribute("data-workflow") === openWorkflow;
+  const keepWorkflow = screen === "workflow" && document.getElementById("workflow-host")?.getAttribute("data-workflow") === openWorkflow;
   const keepImport = screen === "import" && document.getElementById("import-sheet")?.getAttribute("data-id") === state.opened?.id;
   if (!keepReplay && !keepWorkflow && !keepImport) {
     const body = initialConnectionError ? connectionError()
@@ -330,12 +331,12 @@ function render(focusDetail = true): void {
       : screen === "runs" ? runsWelcome(Boolean(state.runs?.length))
       : screen === "live" ? liveSessionView(state.liveSession, livePageFromQuery(location.search))
       : screen === "run" ? `<section id="run-host"><p class="meta">Loading run…</p></section>`
-      : screen === "heals" ? healInbox(state.runs || [], state.workflows || [], healFilter)
+      : screen === "heals" ? openHeal ? `<div id="heal-detail"><p class="quiet">Loading target review…</p></div>` : healInbox(state.runs || [], state.workflows || [], healFilter)
       : screen === "settings" ? settings()
       : screen === "logins" ? loginsScreen(login)
       : screen === "replay" ? replayForm()
       : screen === "import" ? importSheet()
-      : screen === "workflow" ? `<section id="workflow-host"><div class="wf-toolbar">${workflowSidebarToggle()}</div><p class="meta">Loading workflow…</p></section>`
+      : screen === "workflow" ? `<section id="workflow-host" data-workflow="${esc(openWorkflow)}"><div class="wf-toolbar">${workflowSidebarToggle()}</div><p class="meta">Loading workflow…</p></section>`
       : libraryTable(state.workflows || [], state.runs || [], state.promotions || [], state.librarySplits || [], state.home || "", state.damagedWorkflows || []);
     const typingSearch = document.activeElement?.id === "library-search";
     const caret = typingSearch ? (document.activeElement as HTMLInputElement).selectionStart : null;
@@ -544,6 +545,7 @@ function importSheet(): string {
 }
 
 function navigate(next: Screen): void {
+  if (next === "heals") openHeal = null;
   screen = next;
   if (screen === "runs") selectDefaultRun();
   renderKey = "";
@@ -1189,7 +1191,12 @@ function bindHeal(): void {
     (btn as HTMLButtonElement).onclick = () => void decide(btn as HTMLButtonElement, "keep");
   });
   document.querySelectorAll("[data-revert]").forEach((btn) => {
-    (btn as HTMLButtonElement).onclick = () => void decide(btn as HTMLButtonElement, "revert");
+    (btn as HTMLButtonElement).onclick = () => {
+      const dialog = document.getElementById("heal-revert-confirm") as HTMLDialogElement;
+      dialog.returnValue = "";
+      dialog.onclose = () => { if (dialog.returnValue === "revert") void decide(btn as HTMLButtonElement, "revert"); };
+      dialog.showModal();
+    };
   });
 }
 
@@ -1197,29 +1204,39 @@ async function decide(btn: HTMLButtonElement, decision: "keep" | "revert"): Prom
   const healId = decision === "keep" ? btn.dataset.keep : btn.dataset.revert;
   const runId = btn.dataset.run || "";
   const workflowId = btn.dataset.workflow || "";
-  const run = await (await fetch("/api/runs/" + encodeURIComponent(runId))).json() as RunSummary;
-  const item = (run.heals || []).find((heal) => heal.id === healId);
-  if (!item || !healId) return;
-  if (decision === "keep") {
-    await fetch("/api/heal/keep", {
+  const host = btn.closest("#heal-detail");
+  const controls = host?.querySelectorAll<HTMLButtonElement>("[data-keep]:not(:disabled), [data-revert]:not(:disabled)");
+  controls?.forEach((control) => { control.disabled = true; });
+  const status = host?.querySelector<HTMLElement>("#heal-decision-status");
+  if (status) status.textContent = "";
+  try {
+    const runResponse = await fetch("/api/runs/" + encodeURIComponent(runId));
+    if (!runResponse.ok) throw new Error("Run unavailable");
+    const run = await runResponse.json() as RunSummary;
+    const item = (run.heals || []).find((heal) => heal.id === healId);
+    if (!item || !healId || (decision === "keep" && !item.proposedPatch)) throw new Error("Target unavailable");
+    const response = await fetch(`/api/heal/${decision}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: workflowId, stepId: item.failedStep?.id, patch: item.proposedPatch, runId, healId }),
+      body: JSON.stringify({ id: workflowId, runId, healId, ...(decision === "keep" ? { stepId: item.failedStep?.id, patch: item.proposedPatch } : {}) }),
     });
-  } else {
-    await fetch("/api/heal/revert", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: workflowId, runId, healId }),
-    });
+    if (!response.ok) throw new Error("Decision failed");
+    banner = {
+      id: `decision-${decision}-${Date.now()}`,
+      title: decision === "keep" ? "Patch kept" : "Patch reverted",
+      body: decision === "keep" ? "Saved a draft. Replay still uses the live version until you promote it." : "Saved the recorded target as a draft. Replay still uses the live version until you promote it.",
+    };
+  } catch {
+    if (status) status.textContent = `Could not ${decision === "keep" ? "keep" : "revert"} this target. Try again.`;
+    controls?.forEach((control) => { control.disabled = false; });
+    return;
   }
-  banner = {
-    id: `decision-${decision}-${Date.now()}`,
-    title: decision === "keep" ? "Patch kept" : "Patch reverted",
-    body: decision === "keep" ? "Saved a draft. Replay still uses the live version until you promote it." : "Reverted the live workflow to the failed step.",
-  };
   renderKey = "";
-  await refresh();
+  try {
+    await refresh();
+  } catch {
+    if (status) status.textContent = "Draft saved. Could not refresh the view. Reload to see the saved decision.";
+  }
 }
 
 async function showRun(id: string): Promise<void> {
@@ -1426,15 +1443,18 @@ async function showHeal(runId: string, healId: string): Promise<void> {
   const host = document.getElementById("heal-detail");
   if (!host || !heal || screen !== "heals" || openHeal?.runId !== runId || openHeal.healId !== healId) return;
   const names = new Map((state.workflows || []).map((workflow) => [workflow.id, workflow.name]));
-  const promotion = (state.promotions || []).find((item) => item.healId === heal.id)
+  const promotion = (state.promotions || []).find((item) => item.healId === heal.id && item.workflowId === run.workflowId)
     || (run.promotion && run.promotion.healId === heal.id ? run.promotion : undefined);
   host.outerHTML = healDetail(run, heal as HealView, [], {
     workflowName: healWorkflowName(heal, run, names),
     promotion,
   });
   bindHeal();
-  const compare = document.getElementById("shot-compare");
-  if (compare) mountCompare(compare);
+  host.ownerDocument.querySelectorAll<HTMLImageElement>("[data-heal-shot]").forEach((image) => {
+    const unavailable = () => { image.hidden = true; image.nextElementSibling?.removeAttribute("hidden"); };
+    image.onerror = unavailable;
+    if (image.complete && !image.naturalWidth) unavailable();
+  });
 }
 
 async function loadTrail(id: string, hostId: string): Promise<void> {
@@ -2594,41 +2614,6 @@ function mountStage(stage: HTMLElement): void {
   };
   stage.prepend(img);
   img.src = url;
-}
-
-function mountCompare(node: HTMLElement): void {
-  const load = (src: string) => new Promise<HTMLImageElement | null>((resolve) => {
-    if (!src) return resolve(null);
-    const img = new Image();
-    img.alt = "";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-  void Promise.all([load(node.dataset.before || ""), load(node.dataset.after || "")]).then(([before, after]) => {
-    if (!node.isConnected) return;
-    if (before) {
-      before.className = "compare-before";
-      node.prepend(before);
-      node.classList.add("has-shot");
-    }
-    if (after) {
-      after.id = "compare-top";
-      after.className = "compare-after";
-      node.prepend(after);
-      node.classList.add("has-shot");
-    }
-    const slider = document.getElementById("shot-slider") as HTMLInputElement | null;
-    const top = document.getElementById("compare-top") as HTMLImageElement | null;
-    if (slider && top) {
-      const paint = () => {
-        const right = 100 - Number(slider.value);
-        top.style.clipPath = `inset(0 ${right}% 0 0)`;
-      };
-      slider.oninput = paint;
-      paint();
-    }
-  });
 }
 
 document.addEventListener("keydown", (event) => {

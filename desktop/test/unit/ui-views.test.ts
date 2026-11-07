@@ -339,6 +339,42 @@ test("heal review shows both targets, hides the prompt, and masks a secret", () 
   assert.match(html, /The heal record is not edited/);
 });
 
+test("target review uses the recorded step index, honest evidence and promotion progress", () => {
+  const run = { id: "review-run", workflowId: "statements", status: "failed" };
+  const heal = {
+    id: "review-target", ts: 1, failedStep: { index: 2, identity: { role: "link", name: "Statements", path: [{ role: "navigation", name: "Main menu" }] } },
+    proposedPatch: { identity: { role: "menuitem", name: "Statements", path: [{ role: "menu", name: "Accounts" }] } },
+  };
+  const html = healDetail(run, heal, [], { promotion: { status: "provisional", replays: 1, need: 3 } });
+  assert.match(html, /<h2>Step 3 moved<\/h2>/);
+  assert.match(html, /Old target<\/dt><dd>“Statements” link in “Main menu” navigation/);
+  assert.match(html, /New target<\/dt><dd>“Statements” menuitem in “Accounts” menu/);
+  assert.match(html, /heal-count">1 of 3/);
+  assert.equal((html.match(/<i class="passed">/g) || []).length, 1);
+  assert.equal((html.match(/<i><\/i>/g) || []).length, 2);
+  assert.match(html, /Review the new target before keeping it/);
+  assert.doesNotMatch(html, /finished|January|recorded Oct|shot-slider/);
+  const unknown = healDetail(run, { id: "missing" });
+  assert.match(unknown, /Target not recorded/);
+  assert.match(unknown, /Not recorded/);
+  assert.equal((unknown.match(/No picture stored/g) || []).length, 2);
+  assert.doesNotMatch(unknown, /0 of 3|datetime=/);
+  const kept = healDetail({ ...run, decisions: [{ ts: 1, healId: heal.id, decision: "keep" }] }, heal);
+  assert.match(kept, /Target kept/);
+  assert.match(kept, /Saved this target as a draft/);
+  for (const status of ["provisional", "promoted", "reverted"]) {
+    for (const decision of ["keep", "revert"] as const) {
+      const decided = healDetail({ ...run, decisions: [{ ts: 1, healId: heal.id, decision }] }, heal, [], { promotion: { status, replays: 1, need: 3 } });
+      assert.match(decided, decision === "keep" ? /Target kept/ : /Target reverted/);
+      assert.match(decided, decision === "keep" ? /Saved this target as a draft/ : /Saved the recorded target as a draft/);
+      assert.doesNotMatch(decided, /Keep it now/);
+    }
+  }
+  const reverted = healDetail(run, heal, [], { promotion: { status: "reverted", replays: 1, need: 3 } });
+  assert.match(reverted, /Target reverted/);
+  assert.match(reverted, /Bao reverted this target/);
+});
+
 test("a heal shows its own workflow, never a sibling name", () => {
   const html = healInbox([
     {
