@@ -19,6 +19,69 @@ async function eventually(check: () => boolean): Promise<void> {
   assert.ok(check(), "saved setting did not reach the Library");
 }
 
+test("AI help saves each source and keeps API drafts across refreshes", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-ai-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    const source = page.getByRole("combobox", { name: "Use AI to suggest heals" });
+    await source.selectOption("cursor-account");
+    await eventually(() => app.library.settings().healSource?.kind === "cursor-account");
+    await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
+    assert.match(await page.locator('[data-settings-jump="ai"]').innerText(), /Cursor account/);
+    await source.selectOption("api-key");
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "ai-key");
+    await page.getByRole("button", { name: "Save API key", exact: true }).click();
+    assert.equal(await page.locator("#ai-key").evaluate((el) => (el as HTMLInputElement).validity.valueMissing), true);
+    assert.deepEqual(app.library.settings().healSource, { kind: "cursor-account" });
+    await page.getByLabel("Provider", { exact: true }).selectOption("anthropic");
+    await page.getByLabel("API key", { exact: true }).fill("fixture-ui-key");
+    await page.locator("#promote-after").fill("4");
+    await page.locator("#promote-after").press("Tab");
+    await page.waitForFunction(() => (document.getElementById("promote-after") as HTMLInputElement)?.defaultValue === "4");
+    assert.equal(await source.inputValue(), "api-key");
+    assert.equal(await page.locator("#ai-key-form").isVisible(), true);
+    assert.equal(await page.locator("#ai-provider").inputValue(), "anthropic");
+    assert.equal(await page.locator("#ai-key").inputValue(), "fixture-ui-key");
+    await page.locator("#ai-key").press("Enter");
+    await eventually(() => app.library.settings().healSource?.kind === "api-key");
+    await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
+    assert.deepEqual(app.library.settings().healSource, { kind: "api-key", provider: "anthropic", key: "fixture-ui-key" });
+    await page.reload();
+    await page.locator('#rail [data-place="settings"]').click();
+    assert.equal(await source.inputValue(), "api-key");
+    assert.equal(await page.locator("#ai-provider").inputValue(), "anthropic");
+    assert.equal(await page.locator("#ai-key").inputValue(), "fixture-ui-key");
+    await page.locator("#settings-advanced > summary").click();
+    for (const theme of ["light", "dark"]) {
+      await page.setViewportSize({ width: 1280, height: 1000 });
+      await page.locator("#theme").selectOption(theme);
+      for (const width of [1280, 720, 390, 320]) {
+        await page.setViewportSize({ width, height: 1000 });
+        assert.ok(await page.locator("#content").evaluate((el) => el.scrollWidth <= el.clientWidth), `AI controls overflow at ${width} in ${theme}`);
+        assert.ok(await page.locator("#ai-key").evaluate((el) => el.getBoundingClientRect().right <= innerWidth));
+      }
+    }
+    await source.selectOption("none");
+    await eventually(() => app.library.settings().healSource?.kind === "none");
+    await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
+    assert.equal(await page.locator("#ai-key-form").isVisible(), false);
+    assert.match(await page.locator('[data-settings-jump="ai"]').textContent() || "", /None/);
+  } finally {
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("grouped Settings saves live controls, preserves secondary settings, opens Logins", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-"));
   const previousHome = process.env.HOME;
@@ -62,12 +125,13 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     assert.deepEqual(await page.locator(".settings-heading").allTextContents(), ["Runs and heals", "Mac permissions", "Remote access", "Logins", "AI help"]);
     assert.equal(await page.getByText("Before each run", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Stop", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("combobox", { name: "Use AI to suggest heals" }).count(), 0);
-    assert.equal(await page.locator("#settings-model").innerText(), "None");
+    assert.equal(await page.getByRole("combobox", { name: "Use AI to suggest heals" }).inputValue(), "none");
+    assert.deepEqual(await page.locator("#ai-source option").allTextContents(), ["None", "Cursor account", "API key…"]);
     assert.equal(await page.locator("#save-settings").count(), 0);
     assert.equal(await page.locator("#remote-permission").count(), 0);
     await page.locator('label[for="heal-approve"]').click();
     await eventually(() => app.library.settings().heal === "approve");
+    await page.waitForFunction(() => document.getElementById("settings-feedback")?.textContent === "Saved.");
     await page.locator("#promote-after").fill("5");
     await page.locator("#promote-after").press("Tab");
     await eventually(() => app.library.settings().promoteAfter === 5);

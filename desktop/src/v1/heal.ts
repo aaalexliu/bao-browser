@@ -84,6 +84,11 @@ export interface HealProvider {
   propose(failure: StepFailure, step: WorkflowStep, context?: SavedContext): Promise<HealProposal | null>;
 }
 
+export type HealSource =
+  | { kind: "none" }
+  | { kind: "cursor-account" }
+  | { kind: "api-key"; provider: "openai" | "anthropic"; key: string };
+
 export interface HealSettings {
   /** Global default. Absent means auto. */
   heal?: HealMode;
@@ -164,9 +169,10 @@ export function llmHealFromEnv(
           }),
         });
         const raw = await res.text();
+        const body = JSON.parse(raw) as { choices?: { message?: { content?: string } }[] };
         const name = env.BAO_OPENAI_MODEL || "gpt-4.1-mini";
         return {
-          patch: patchFromText(raw),
+          patch: patchFromText(body.choices?.[0]?.message?.content || ""),
           model: { provider: "openai", name, version: name },
           prompt,
           rawResponse: raw,
@@ -186,9 +192,10 @@ export function llmHealFromEnv(
         }),
       });
       const raw = await res.text();
+      const body = JSON.parse(raw) as { content?: { type: string; text?: string }[] };
       const name = env.BAO_ANTHROPIC_MODEL || "claude-sonnet-4-5";
       return {
-        patch: patchFromText(raw),
+        patch: patchFromText(body.content?.filter((block) => block.type === "text").map((block) => block.text || "").join("\n") || ""),
         model: { provider: "anthropic", name, version: name },
         prompt,
         rawResponse: raw,

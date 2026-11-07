@@ -1,7 +1,3 @@
-// Heal through the Cursor account when `agent` is already logged in.
-// The prompt goes on stdin. This file never reads or passes an API key.
-// File handoff stays the fallback when print mode cannot run.
-
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +7,8 @@ import {
   cursorHeal,
   llmHealFromEnv,
   patchFromText,
+  unavailableHeal,
+  type HealSource,
   type HealProposal,
   type HealProvider,
 } from "./heal";
@@ -269,13 +267,23 @@ function chainHeal(providers: HealProvider[]): HealProvider {
   };
 }
 
-/** CLI print first. `BAO_HEAL_CURSOR=1` waits for heal-response.json when print cannot run. Vendor keys are last. */
+/** A saved source is exclusive. Unset keeps CLI print, file handoff, then vendor-key detection. */
 export async function cursorAccountHeal(
   env: NodeJS.ProcessEnv = process.env,
   secrets: string[] = [],
   agent: CursorAgentRun = realCursorAgent(),
+  source?: HealSource,
 ): Promise<HealProvider> {
+  if (source?.kind === "none") return unavailableHeal();
+  if (source?.kind === "api-key") {
+    return llmHealFromEnv({
+      ...env,
+      OPENAI_API_KEY: source.provider === "openai" ? source.key : undefined,
+      ANTHROPIC_API_KEY: source.provider === "anthropic" ? source.key : undefined,
+    }, fetch, secrets);
+  }
   await readCursorAccount(env, agent);
+  if (source?.kind === "cursor-account") return cursorPrintHeal(env, secrets, agent);
   const providers: HealProvider[] = [cursorPrintHeal(env, secrets, agent)];
   if (env.BAO_HEAL_CURSOR === "1") {
     const dir = env.BAO_HEAL_DIR || resolveHome({ env });

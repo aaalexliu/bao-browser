@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact, scrubSaved } from "../../../shared/saved-secrets";
-import type { HealSettings } from "./heal";
+import type { HealSettings, HealSource } from "./heal";
 import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
@@ -14,6 +14,8 @@ import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead
 
 export interface Settings extends HealSettings {
   heal: HealMode;
+  /** Absent keeps the source Bao detected before a choice was saved. */
+  healSource?: HealSource;
   promoteAfter: number;
   actTimeoutMs: number;
   circuitLimit: number;

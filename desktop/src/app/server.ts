@@ -817,8 +817,15 @@ export async function startApp(opts: {
         }
       }
       if (req.method === "PUT" && url.pathname === "/api/settings") {
-        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown };
+        const body = await readBody(req) as { heal?: HealMode; promoteAfter?: number; actTimeoutMin?: number; circuitLimit?: number; syncServer?: string; remoteMcp?: boolean; remotePermission?: string; siteTrust?: unknown; pageEngine?: string; chromeProfile?: string; chromeProfileExtensions?: unknown; keepAgentBrowserOpen?: unknown; healSource?: unknown };
         const patch: Partial<Settings> = {};
+        if (body.healSource !== undefined) {
+          const source = body.healSource as Partial<{ kind: string; provider: string; key: string }> | null;
+          if (source?.kind === "none" || source?.kind === "cursor-account") patch.healSource = { kind: source.kind };
+          else if (source?.kind === "api-key" && (source.provider === "openai" || source.provider === "anthropic") && typeof source.key === "string" && source.key.trim()) {
+            patch.healSource = { kind: "api-key", provider: source.provider, key: source.key.trim() };
+          } else return json(res, { error: "Choose None, Cursor account, or an API provider with a key." }, 400);
+        }
         if (body.keepAgentBrowserOpen !== undefined) {
           if (typeof body.keepAgentBrowserOpen !== "boolean") return json(res, { error: "keepAgentBrowserOpen must be a boolean" }, 400);
           patch.keepAgentBrowserOpen = body.keepAgentBrowserOpen;
@@ -2789,7 +2796,7 @@ async function runExtension(
     if (hostGrantError(err)) return rememberHostGrant(library, workflow, grantText(err), prompts, runId);
     throw err;
   }
-  const heal = await healProvider(secretList);
+  const heal = await healProvider(library.settings().healSource, secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const settings = library.settings();
@@ -2869,7 +2876,7 @@ async function runRecorded(
     const value = args[input.name];
     return typeof value === "string" && value ? [value] : [];
   });
-  const heal = await healProvider(secretList);
+  const heal = await healProvider(library.settings().healSource, secretList);
   const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
   const clip = replayClips.get(session.profile);
   if (clip) clip.runId = runId;
@@ -3002,7 +3009,8 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
   };
 }
 
-async function healProvider(secrets: string[] = []): Promise<HealProvider> {
+async function healProvider(source: Settings["healSource"], secrets: string[] = []): Promise<HealProvider> {
+  if (source) return cursorAccountHeal(process.env, secrets, undefined, source);
   if (process.env.BAO_HEAL_FIXTURE === "1") {
     return scriptedHeal({
       patch: { identity: { surface: "dom", role: "button", testId: "login", path: [] } },
