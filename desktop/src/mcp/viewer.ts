@@ -221,12 +221,21 @@ function viewerMain(): void {
     const seconds = Math.max(0, Math.round(ms / 1000));
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
-  function mark(target: NonNullable<Extract<BrowserToolCard["picture"], { kind: "captured" }>["target"]>, label: string): HTMLElement {
+  /** Only the box goes on the page picture, so no label ever covers the text around the target. */
+  function mark(target: NonNullable<Extract<BrowserToolCard["picture"], { kind: "captured" }>["target"]>): HTMLElement {
     const { rect, viewport } = target;
-    const node = el("div", undefined, `browser-mark${rect.y / viewport.height < .15 ? " below" : ""}${rect.x / viewport.width > .7 ? " trailing" : ""}`);
+    const node = el("div", undefined, "browser-mark");
     node.setAttribute("aria-hidden", "true");
     Object.assign(node.style, { left: `${rect.x / viewport.width * 100}%`, top: `${rect.y / viewport.height * 100}%`, width: `${rect.width / viewport.width * 100}%`, height: `${rect.height / viewport.height * 100}%` });
-    node.append(el("span", label));
+    return node;
+  }
+  /** The caption under a picture names what its box marks, after an orange key. */
+  function caption(text: string, label?: string): HTMLElement {
+    const node = el("figcaption");
+    if (label) {
+      const key = el("span", undefined, "browser-key"); key.setAttribute("aria-hidden", "true");
+      node.append(key, el("strong", label), ` · ${text}`);
+    } else node.append(text);
     return node;
   }
   function emptyPicture(reason: string, small = false): HTMLElement {
@@ -250,8 +259,8 @@ function viewerMain(): void {
     const phase = card.command === "close" ? "Last recorded page" : `${picture.phase === "before" ? "Before" : "After"} ${words[card.command] || card.command}`;
     image.src = `data:${data.mimeType};base64,${data.data}`; image.alt = `${phase}: ${card.caption}`;
     const frame = el("div", undefined, "browser-frame"); frame.append(image);
-    if (picture.target) frame.append(mark(picture.target, card.mark || (card.command === "fill" ? "Typed here" : "Clicked here")));
-    figure.append(frame, el("figcaption", phase)); root.append(figure);
+    if (picture.target) frame.append(mark(picture.target));
+    figure.append(frame, picture.target ? caption(phase, card.mark || (card.command === "fill" ? "Typed here" : "Clicked here")) : caption(phase)); root.append(figure);
     root.append(button(expanded ? "Close picture" : "Open picture", async () => {
       expanded = !expanded;
       try {
@@ -266,15 +275,17 @@ function viewerMain(): void {
       root.append(el("p", "The target picture was unavailable. This page picture does not mark the target.", "muted"));
     }
   }
-  function smallFigure(data: CardPictures["main"], picture: BrowserToolCard["picture"] | undefined, caption: string, chip?: string): HTMLElement {
+  function smallFigure(data: CardPictures["main"], picture: BrowserToolCard["picture"] | undefined, name: string, boxLabel?: string): HTMLElement {
     const figure = el("figure");
     if (data && picture?.kind === "captured") {
       const frame = el("div", undefined, "browser-frame");
-      const image = el("img"); image.src = `data:${data.mimeType};base64,${data.data}`; image.alt = caption; frame.append(image);
-      if (picture.target && chip) frame.append(mark(picture.target, chip));
-      figure.append(frame);
-    } else figure.append(emptyPicture(picture ? pictureReason(picture) : "No earlier picture in this run.", true));
-    figure.append(el("figcaption", caption));
+      const image = el("img"); image.src = `data:${data.mimeType};base64,${data.data}`; image.alt = name; frame.append(image);
+      const target = boxLabel ? picture.target : undefined;
+      if (target) frame.append(mark(target));
+      figure.append(frame, caption(name, target ? boxLabel : undefined));
+      return figure;
+    }
+    figure.append(emptyPicture(picture ? pictureReason(picture) : "No earlier picture in this run.", true), caption(name));
     return figure;
   }
   function pairBlock(card: BrowserToolCard): void {
@@ -529,10 +540,9 @@ footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-si
 .browser-frame{position:relative}
 .browser-frame img{width:100%;height:auto;outline:1px solid #0000001a;outline-offset:-1px}
 html[data-theme=dark] .browser-frame img{outline-color:#ffffff1a}
-.browser-mark{position:absolute;border:2px solid #ff6a00;box-shadow:0 0 0 1px #fff,0 0 0 4px #ff6a0047;border-radius:4px;pointer-events:none}
-.browser-mark span{position:absolute;bottom:calc(100% + 6px);inset-inline-start:-2px;white-space:nowrap;background:#c2410c;color:#fff;border:1px solid #fff;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:600}
-.browser-mark.below span{bottom:auto;top:calc(100% + 6px)}
-.browser-mark.trailing span{inset-inline-start:auto;inset-inline-end:-2px}
+.browser-mark{position:absolute;border:2px solid #ff6a00;box-shadow:0 0 0 1px #fff,0 0 0 3px #ff6a0033;border-radius:4px;pointer-events:none}
+.browser-key{display:inline-block;width:12px;height:9px;border:2px solid #ff6a00;border-radius:3px;margin-inline-end:6px;vertical-align:-1px}
+figcaption strong{color:var(--color-text-primary,var(--fg))}
 .browser-caption{font-weight:600;margin:14px 0 12px;font-size:.9375rem;line-height:1.4}
 q.cite{quotes:"\\201C" "\\201D";background:#ff6a0029;box-shadow:inset 0 -1px 0 #ff6a00b3;border-radius:3px;padding:0 2px}
 q.value{quotes:"\\201C" "\\201D";font-family:ui-monospace,monospace;font-size:.92em;background:var(--soft);border-radius:3px;padding:0 3px}

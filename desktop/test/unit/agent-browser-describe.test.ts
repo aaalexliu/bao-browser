@@ -58,10 +58,10 @@ test("each command gets a plain sentence, and failures keep the native error", (
   assert.equal(text("snapshot", ["-i"], list), 'Read the page "Manage Your Deliveries" (https://shop.example/subscriptions): 7 buttons, 1 field.');
   assert.equal(text("close", []), "Closed the Bao browser window.");
   const failed = describeStep({ command: "click", args: ["@e32"], results: [{ stdout: "", stderr: "✗ Unknown ref: e32\n", exitCode: 1 }], snapshot: list, page });
-  assert.equal(failed.text, 'Could not click "Edit" (button) for "McCabe Organic Coix Seed - Job\'s Tears 2 Lbs…": ✗ Unknown ref: e32');
+  assert.equal(failed.text, 'Could not click "Edit" (button) for "McCabe Organic Coix Seed - Job\'s Tears 2 Lbs…".');
   assert.equal(failed.error, "✗ Unknown ref: e32");
   assert.equal(describeStep({ command: "snapshot", args: [], results: [], error: "start agent-browser with open before sending commands" }).text,
-    "Could not read the page: start agent-browser with open before sending commands");
+    "Could not read the page.");
 });
 
 test("owner waits name the site and page, and the return names where Bao is now", () => {

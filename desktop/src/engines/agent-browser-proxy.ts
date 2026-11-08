@@ -7,7 +7,7 @@ import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, type CurrentChrome } from "../cdp-live/current-chrome";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
 import { newInRead } from "./agent-browser-describe";
-import type { ShotBox } from "../v1/shots";
+import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
@@ -504,9 +504,24 @@ export class AgentBrowserProxy {
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, remaining());
       attached = sessionId;
       const metrics = visual ? await cdp.send<{ cssLayoutViewport: { pageX: number; pageY: number; clientWidth: number; clientHeight: number } }>("Page.getLayoutMetrics", {}, sessionId, remaining()) : undefined;
-      const pixelRatio = metrics ? await cdp.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "window.devicePixelRatio", returnByValue: true }, sessionId, remaining()) : undefined;
-      const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", metrics ? { format: "jpeg", quality: 65, clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight, scale: 1 / pixelRatio!.result.value } } : { format: "png" }, sessionId, remaining());
-      return { bytes: Buffer.from(data, "base64"), viewport: metrics ? { width: metrics.cssLayoutViewport.clientWidth, height: metrics.cssLayoutViewport.clientHeight } : undefined };
+      if (!metrics) {
+        const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" }, sessionId, remaining());
+        return { bytes: Buffer.from(data, "base64") };
+      }
+      const { result } = await cdp.send<{ result: { value: number } }>("Runtime.evaluate", { expression: "window.devicePixelRatio", returnByValue: true }, sessionId, remaining());
+      const ratio = result.value > 0 ? result.value : 1;
+      const view = metrics.cssLayoutViewport;
+      // Cards show the viewport about 480 CSS pixels wide, so up to 2 device pixels per CSS pixel keeps text sharp on a 2x screen.
+      // A picture over the card reader's limit falls back to CSS-pixel size, then to the older quality.
+      const tries = [{ scale: Math.min(2, ratio) / ratio, quality: 85 }, { scale: 1 / ratio, quality: 80 }, { scale: 1 / ratio, quality: 65 }];
+      let bytes = Buffer.alloc(0);
+      for (const shot of tries) {
+        const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "jpeg", quality: shot.quality,
+          clip: { x: view.pageX, y: view.pageY, width: view.clientWidth, height: view.clientHeight, scale: shot.scale } }, sessionId, remaining());
+        bytes = Buffer.from(data, "base64");
+        if (bytes.length <= BROWSER_PICTURE_BYTES) break;
+      }
+      return { bytes, viewport: { width: view.clientWidth, height: view.clientHeight } };
     } finally {
       signal.removeEventListener("abort", close);
       if (session.kind === "copy") cdp?.close();

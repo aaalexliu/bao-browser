@@ -304,6 +304,16 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
   assert.equal(BROWSER_PICTURE_BYTES, 2 * 1024 * 1024);
   assert.ok(image.center[0]! > 240 && image.center[1]! < 20 && image.center[2]! < 20, "the scrolled target is in the marked picture position");
   assert.equal(browserToolResult("click", results, evidence, proxy.activeRunId)._meta.baoToolCard.picture.kind, "captured");
+  await page.evaluate(() => { document.querySelector("canvas")!.remove(); });
+  await proxy.execute("click", ["@e1"], undefined, true);
+  const plain = proxy.lastCommand!;
+  const sharp: Buffer = await readFile(path.join(home, "shots", "runs", runId, plain.step.beforeShot!));
+  const size = await page.evaluate(async (data) => {
+    const image = new Image(); image.src = `data:image/jpeg;base64,${data}`; await image.decode();
+    return { width: image.width, height: image.height };
+  }, sharp.toString("base64"));
+  assert.deepEqual(size, { width: viewport.width * 2, height: viewport.height * 2 }, "a plain page keeps its device pixels on a 2x screen");
+  assert.deepEqual(plain.step.target?.viewport, { width: viewport.width, height: viewport.height }, "boxes stay in CSS pixels");
   await assert.rejects(proxy.execute("snapshot", ["--cdp", "forbidden"]));
   assert.equal(proxy.lastCommand, undefined);
   assert.equal(browserToolResult("snapshot", [], proxy.lastCommand, proxy.activeRunId, "validation failed").structuredContent.run_id, runId);
@@ -467,8 +477,10 @@ test("the host resource renders a step card from result metadata, keeps it on a 
   assert.equal(first.params.name, "open_browser_card");
   assert.deepEqual(first.params.arguments, { run_id: "run-exact", step_id: "command-5" });
   await hostDeliver(page, { jsonrpc: "2.0", id: first.id, result: { _meta: { baoToolCard: card, baoCardPictures: picture } } });
-  await page.locator(".browser-mark").getByText("Clicked", { exact: true }).waitFor();
+  await page.locator("figcaption").getByText("Clicked", { exact: true }).waitFor();
   assert.equal(await page.locator(".browser-mark").evaluate((node) => (node as HTMLElement).style.left), "20%");
+  assert.equal(await page.locator(".browser-mark").textContent(), "", "no label sits on the page picture");
+  assert.equal(await page.locator("figcaption").textContent(), "Clicked · Before click");
   assert.equal(await page.locator(".browser-caption q.cite").textContent(), "Add blueberries");
   assert.equal(await page.getByText(/ref=e280/).count(), 0);
   assert.match(await page.locator("img").getAttribute("alt") || "", /Before click/);
@@ -536,7 +548,8 @@ test("a host that forwards only content and isError still draws each step's card
     browserToolResult("wait_for_owner", waiting, { runId: f.recording.id, step: wait, steps }),
   ];
   assert.equal(results[0]!.content[0]!.text, 'Clicked "Add blueberries" (button).');
-  assert.equal(results[1]!.content[0]!.text, 'Could not click the element: ✗ Unknown ref: e9');
+  assert.equal(results[1]!.content[0]!.text, "Could not click the element.");
+  assert.deepEqual(results[1]!.content.slice(1, -1).map((block) => block.text), ["✗ Unknown ref: e9\n"], "the native error appears once, after the sentence");
   assert.match(results[2]!.content[0]!.text, /^Your turn: sign in to shop\.example in Bao's Chrome window\. The page is "Sign in to Shop"/);
 
   const page = await browser.newPage({ viewport: { width: 560, height: 900 } });
@@ -551,7 +564,8 @@ test("a host that forwards only content and isError still draws each step's card
   await forward(results[0]!);
   assert.equal(await page.locator(".browser-caption").textContent(), 'Clicked "Add blueberries" (button).');
   await answer(0);
-  await page.locator(".browser-mark").getByText("Clicked", { exact: true }).waitFor();
+  await page.locator("figcaption").getByText("Clicked", { exact: true }).waitFor();
+  assert.equal(await page.locator(".browser-mark").count(), 1);
   assert.equal(await page.locator(".browser-caption q.cite").textContent(), "Add blueberries");
   assert.equal(await page.locator("header .muted").textContent(), `Step 2 · click`);
 

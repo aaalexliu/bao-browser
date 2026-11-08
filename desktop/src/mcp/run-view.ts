@@ -2,14 +2,14 @@ import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
-import { shotFile, shotFormat } from "../v1/shots";
+import { BROWSER_PICTURE_BYTES, shotFile, shotFormat } from "../v1/shots";
 import { Library, secretInputNames, type StoredRun } from "../v1/store";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import { finishCard, stepCard, type BrowserToolCard, type CardPicture } from "./tool-card";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
 export const VIEW_PICTURE_BYTES = 512 * 1024;
-export const BROWSER_PICTURE_BYTES = 2 * 1024 * 1024;
+export { BROWSER_PICTURE_BYTES };
 const PAGE_SIZE = 5;
 const STEP_PAGE_SIZE = 20;
 const bounded = { maxBytes: VIEW_RECORD_BYTES };

@@ -223,7 +223,8 @@ export function describeStep(facts: StepFacts): StepSummary {
       : command === "click" || command === "fill" ? [" ", ...elementParts(element, args[0])]
         : command === "press" && args[0] ? [` ${args[0]}`] : [];
     const parts: SummaryPart[] = [`Could not ${verb[command] ?? command}`, ...target];
-    return { parts, text: `${summaryText(parts)}: ${error}`, error, ...(page ? { page } : {}) };
+    // The native error follows in its own block, so the sentence does not repeat it.
+    return { parts, text: `${summaryText(parts)}.`, error, ...(page ? { page } : {}) };
   }
 
   switch (command) {

@@ -3,6 +3,9 @@
 
 export type ShotFormat = "png" | "jpg";
 
+/** Largest page picture a browser card reads. Captures fall back to fewer pixels to stay within it. */
+export const BROWSER_PICTURE_BYTES = 2 * 1024 * 1024;
+
 export function shotFormat(bytes: Uint8Array): ShotFormat | undefined {
   if (bytes.length < 24) return;
   if ([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, i) => bytes[i] === byte)) return "png";
