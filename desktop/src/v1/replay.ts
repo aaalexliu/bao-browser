@@ -1202,20 +1202,25 @@ async function runHandoff(
 ): Promise<StepOutcome> {
   if (step.action !== "handoff") return { ok: true, repairs: [] };
   if (step.reason === "sign-in") return runLogin(workflow, step, args, driver, secrets, gate);
+  const check = step.check;
+  const real = !!check && check.kind !== "settled";
   const seen = await driver.tree().catch(() => undefined);
-  if (seen && step.check && checkHolds(step.check, seen, args)) return { ok: true, repairs: [] };
+  if (step.reason === "code" && real && seen && checkHolds(check, seen, args)) return finishHandoff(driver, gate, step.id);
+  if (gate.humanReady === "confirmed" || (gate.humanReady === true && !real)) return finishHandoff(driver, gate, step.id);
+  if (gate.humanReady && real && seen && checkHolds(check, seen, args)) return finishHandoff(driver, gate, step.id);
   const ask = personAsk(gate, step, "confirm");
   if (gate.humanReady || gate.yieldHuman) {
-    if (!gate.humanReady) await driver.showAsk?.(ask);
+    if (!gate.humanReady) await showOwnerAsk(driver, step, ask);
     beginHandoff(driver, gate, step.id);
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
   beginHandoff(driver, gate, step.id);
   gate.onPause?.(ask);
-  await driver.showAsk?.(ask);
+  await showOwnerAsk(driver, step, ask);
   const ok = await waitForOwner(step, args, driver, gate);
+  if (ok) return finishHandoff(driver, gate, step.id);
   endHandoff(driver, gate, step.id);
-  if (ok) return { ok: true, repairs: [] };
+  await driver.clearConfirm?.();
   return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "waiting for you", undefined, secrets) };
 }
 
@@ -1226,12 +1231,12 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
     if (driver.loginContinued?.()) return true;
     if (driver.shouldStop?.()) return false;
     const tree = await driver.tree().catch(() => undefined);
-    if (tree && step.action === "handoff" && step.check && checkHolds(step.check, tree, args)) return true;
+    if (tree && step.action === "handoff" && step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
   if (driver.loginContinued?.()) return true;
   const tree = await driver.tree().catch(() => undefined);
-  return !!tree && step.action === "handoff" && !!step.check && checkHolds(step.check, tree, args);
+  return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
 }
 
 async function runLogin(
@@ -1269,7 +1274,7 @@ async function runLogin(
 
 function loginSatisfied(workflow: WorkflowV2, step: WorkflowStep, tree: LiveTree, args: ReplayArgs): boolean {
   if (workflow.precondition?.phase === "auth") return pathMatches(tree.url, workflow.precondition.match);
-  if (step.action !== "handoff" || step.reason !== "sign-in" || !step.check) return false;
+  if (step.action !== "handoff" || step.reason !== "sign-in" || !step.check || step.check.kind === "settled") return false;
   return checkHolds(step.check, tree, args);
 }
 
@@ -1311,7 +1316,8 @@ async function settleLogin(
 
 function personAsk(gate: ApplyGate, step: WorkflowStep, kind: "login" | "confirm"): HumanAsk {
   const workflow = gate.workflow;
-  return makeAsk({
+  const code = step.action === "handoff" && step.reason === "code";
+  const ask = makeAsk({
     kind,
     workflowId: workflow.id,
     workflowName: workflow.name,
@@ -1319,11 +1325,30 @@ function personAsk(gate: ApplyGate, step: WorkflowStep, kind: "login" | "confirm
     stepIndex: step.index + 1,
     stepCount: workflow.steps.length,
     label: stepTitle(step),
-    button: kind === "confirm" ? confirmButton({ label: stepTitle(step), identity: stepQuery(step) }) : undefined,
+    button: kind === "confirm" && !code ? confirmButton({ label: stepTitle(step), identity: stepQuery(step) }) : undefined,
     site: siteHost(workflow.startUrl),
     timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
     runId: gate.runId,
   });
+  if (code) {
+    ask.instruction = `Enter the code on ${ask.site} in the Bao window`;
+    ask.button = undefined;
+  }
+  return ask;
+}
+
+async function showOwnerAsk(driver: Driver, step: WorkflowStep, ask: HumanAsk): Promise<void> {
+  await driver.showAsk?.(ask);
+  if (step.action === "handoff" && step.reason === "owner-press") await driver.showConfirm?.(stepTitle(step));
+}
+
+function finishHandoff(driver: Driver, gate: ApplyGate, stepId: string): StepOutcome {
+  endHandoff(driver, gate, stepId);
+  if (!gate.trail.some((event) => event.kind === "human-confirm" && event.stepId === stepId)) {
+    gate.trail.push({ kind: "human-confirm", stepId, ts: Date.now(), text: "Owner confirmed" });
+  }
+  void driver.clearConfirm?.();
+  return { ok: true, repairs: [] };
 }
 
 function beginHandoff(driver: Driver, gate: ApplyGate, stepId: string): void {

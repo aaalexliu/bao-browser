@@ -417,7 +417,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       id, index, action: "handoff", reason: owner ? "owner-press" : "sign-in", timeoutMs: 8000,
       ...(owner ? { target } : {}),
       caption: caption(owner ? (named ? `You press ${named}` : "You press the button") : "Sign in", owner ? cite : undefined, owner ? box : undefined),
-      ...observed(event, undefined, false, known, meta.secrets ?? []),
+      ...handoffCheck(observed(event, undefined, false, known, meta.secrets ?? [])),
     };
   }
   if (event.op === "extract" && event.extract) {
@@ -513,8 +513,12 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
 function targetFor(identity: Identity | undefined, locators: StepLocator[] | undefined): Target {
   const list = locators?.length ? locators : (locatorsFromIdentity(identity) ?? []);
   const hint = hintFromIdentity(identity);
-  const fallback = list.length ? list : [{ kind: "role" as const, role: identity?.role || "button", name: identity?.name || identity?.text || identity?.label || "target" }];
-  return { locators: fallback, ...(hint ? { hint } : {}) };
+  return { locators: list, ...(hint ? { hint } : {}) };
+}
+
+function handoffCheck(result: { check?: Check }): { check?: Check } {
+  if (!result.check || result.check.kind === "settled") return {};
+  return result;
 }
 
 function observed(

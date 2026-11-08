@@ -826,7 +826,7 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
       const next = task.layout(current);
       if (next && next !== current.startUrl) {
         const steps = current.steps.map((step, index) => {
-          if (index === 0 && step.action === "navigate") return { ...step, value: next };
+          if (index === 0 && step.action === "navigate") return { ...step, url: next };
           // Legacy Vector's Enter submits fulltext. The same key on the current skin opens the article.
           // Go is the control that still opens it.
           if (task.id === "p7" && step.action === "key" && /^enter$/i.test(stepKey(step) || "")) return vectorGo(step);

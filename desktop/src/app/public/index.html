@@ -781,8 +781,9 @@
     .wf-eyebrow .ico { width: 14px; height: 14px; }
     .wf-inspector-body h2 { font-size: 1.0625rem; line-height: 1.25; font-weight: 700; margin: 2px 0 12px; }
     .wf-picture { display: none; }
-    .wf-picture.has-shot { display: block; margin-bottom: 14px; }
+    .wf-picture.has-shot { display: block; position: relative; margin-bottom: 14px; }
     .wf-picture img { display: block; position: static; width: 100%; height: auto; border-radius: 6px; }
+    .wf-picture .shot-box { position: absolute; border: 2px solid #e35d2a; box-shadow: 0 0 0 1px #fff; pointer-events: none; }
     .wf-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 14px 0 0; }
     .wf-facts :is(dt, dd) { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     .wf-facts dt { color: var(--quiet); }

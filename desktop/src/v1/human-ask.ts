@@ -70,7 +70,7 @@ export function wallInstruction(site: string, kind: "bot" | "login"): string {
 export function actAskLine(ask: { kind: AskKind; site?: string; button?: string; instruction?: string }): string {
   const site = publicSite(ask.site || "the site");
   if (ask.kind === "wall") return ownerStopText(ask.instruction || wallInstruction(site, "bot"));
-  if (ask.kind === "confirm") return `Press ${ask.button || "the button"} on ${site} in the Bao window`;
+  if (ask.kind === "confirm") return ask.instruction || `Press ${ask.button || "the button"} on ${site} in the Bao window`;
   return `Sign in to ${site} in the Bao window`;
 }
 

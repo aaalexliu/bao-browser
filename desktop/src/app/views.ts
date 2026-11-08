@@ -1435,13 +1435,21 @@ export interface StepCard {
   id: string;
   index?: number;
   action?: string;
+  reason?: string;
   label?: string;
-  caption?: { text: string; citation?: { text: string } };
+  caption?: { text: string; citation?: { text: string }; targetBox?: { x: number; y: number; width: number; height: number; viewport: { width: number; height: number } } };
   intent?: string;
   human?: boolean;
   sensitive?: boolean;
   input?: string;
   value?: string;
+  url?: string;
+  text?: string | { input?: string; literal?: string };
+  file?: { input?: string; fromOutput?: string };
+  open?: { url?: string; target?: string; file?: string };
+  download?: { url?: string; output?: string; name?: string };
+  check?: { kind?: string; match?: string; state?: string; locators?: { name?: string; value?: string; role?: string }[] };
+  target?: { hint?: { role?: string; label?: string; nameAttr?: string }; locators?: { kind?: string; role?: string; name?: string; value?: string }[] };
   expect?: { kind?: string; match?: string; state?: string };
   postcondition?: { kind: "url" | "text" | "value" | "element" | "absent"; match?: string; identity?: { name?: string; text?: string; role?: string } };
   readBack?: { source?: string; match?: string };
@@ -1502,7 +1510,7 @@ export function hostAccessPanel(access: unknown): string {
 }
 
 function workflowStepKind(step: StepCard): { label: string; glyph: string } {
-  const human = step.human || step.action === "login" || step.action === "confirm";
+  const human = step.human || step.action === "handoff" || step.action === "login" || step.action === "confirm";
   const label = human ? "Waits for you" : ({ navigate: "Open page", click: "Click", type: "Type", digits: "Type", key: "Press key", check: "Choose", select: "Choose", verify: "Check", upload: "Upload file", drop: "Drop file", download: "Save file", open: "Open file", extract: "Read table", for_each: "Repeat", note: "Note" } as Record<string, string>)[step.action || ""] || "Step";
   const path = human ? "M5.25 8.5V3.75a1 1 0 0 1 2 0V7.5M7.25 7V2.75a1 1 0 0 1 2 0V7M9.25 7V3.75a1 1 0 0 1 2 0v4.5M11.25 6.5a1 1 0 0 1 2 0v2.75a4.75 4.75 0 0 1-4.75 4.75h-.4a4.1 4.1 0 0 1-3.3-1.66L2.9 9.85a1 1 0 0 1 1.5-1.3l.85.95"
     : step.action === "type" ? "M3.5 4h9A1.75 1.75 0 0 1 14.25 5.75v4.5A1.75 1.75 0 0 1 12.5 12h-9a1.75 1.75 0 0 1-1.75-1.75v-4.5A1.75 1.75 0 0 1 3.5 4ZM4.5 6.75h.01M7 6.75h.01M9.5 6.75h.01M12 6.75h.01M5.5 9.5h5"
@@ -1523,6 +1531,29 @@ function workflowInputLabels(text: string, inputs: TokenInput[]): string {
     const input = inputs.find((item) => item.name === name);
     return input?.label || input?.name || match;
   });
+}
+
+function cardInputName(step: StepCard): string {
+  const typed = typeof step.text === "string" ? undefined : step.text;
+  return typed?.input || step.file?.input || step.input || mustacheName(typed?.literal) || mustacheName(step.value) || mustacheName(step.caption?.text) || mustacheName(step.label);
+}
+
+function cardTargetName(step: StepCard): string {
+  const locator = step.target?.locators?.find((item) => item.name || item.value);
+  return locator?.name || locator?.value || step.target?.hint?.label || step.target?.hint?.nameAttr || step.identity?.name || step.identity?.text || step.identity?.testId || step.identity?.id || "";
+}
+
+function cardTargetKind(step: StepCard): string {
+  const role = step.target?.locators?.find((item) => item.role)?.role || step.target?.hint?.role || step.identity?.role;
+  return role === "textbox" ? "box" : role === "combobox" ? "menu" : role || "control";
+}
+
+function cardUrl(step: StepCard): string {
+  return step.url || step.open?.url || step.download?.url || "";
+}
+
+function cardCheck(step: StepCard): StepCard["check"] {
+  return step.check || step.expect || step.postcondition;
 }
 
 function workflowCheckText(text: string, inputs: TokenInput[]): string {
@@ -1561,12 +1592,12 @@ export function workflowDetail(
   const selected = doc.steps.find((step) => step.id === meta.selectedStep) || doc.steps[0];
   const rows = doc.steps.map((step, index) => {
     const kind = workflowStepKind(step);
-    const input = step.input || mustacheName(step.value) || mustacheName(step.label);
+    const input = cardInputName(step);
     return `<tr data-step-row="${esc(step.id)}"${step === selected ? ` class="selected"` : ""}>
       <td class="wf-number">${index + 1}</td><td class="wf-kind" title="${esc(kind.label)}">${kind.glyph}<span class="sr-only">${esc(kind.label)}</span></td>
       <td><button type="button" class="wf-step-pick" data-workflow-step="${esc(step.id)}" data-step-input="${esc(input)}" aria-pressed="${step === selected}" aria-controls="workflow-inspector">${esc(workflowStepTitle(step, inputs))}</button></td>
       <td class="wf-uses">${input ? `<span class="wf-token">${esc(inputs.find((item) => item.name === input)?.label || input)}</span>` : ""}</td>
-      <td class="wf-check">${step.expect || step.postcondition || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
+      <td class="wf-check">${cardCheck(step) || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
     </tr>`;
   }).join("");
   const panels = doc.steps.map((step, index) => {
@@ -1574,30 +1605,29 @@ export function workflowDetail(
     const known = meta.shots?.[step.id] || "";
     const captured = `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(workflowShotName(step.id))}`;
     const shot = known || (meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : captured);
-    const input = inputs.find((item) => item.name === (step.input || mustacheName(step.value) || mustacheName(step.label)));
-    const targetName = step.identity?.name || step.identity?.text || step.identity?.testId || step.identity?.id;
-    const targetKind = step.identity?.role === "textbox" ? "box" : step.identity?.role === "combobox" ? "menu" : step.identity?.role || "control";
+    const inputName = cardInputName(step);
+    const input = inputs.find((item) => item.name === inputName);
+    const targetName = cardTargetName(step);
+    const targetKind = cardTargetKind(step);
     const target = targetName ? `The “${targetName}” ${targetKind}` : "";
+    const pageUrl = cardUrl(step);
     const branch = step.when?.present ? `Only when “${step.when.present}” is on the page.` : step.when?.value ? `Only for “${step.when.value}”.` : "";
     const checks: string[] = [];
-    if (step.expect) checks.push(step.expect.kind === "settled" ? "The page finishes loading"
-      : step.expect.match ? `The ${step.expect.kind === "url" ? "address" : "page"} ${mustacheName(step.expect.match) ? "matches" : "shows"} ${workflowCheckText(step.expect.match, inputs)}`
-      : step.expect.state ? `The control is ${step.expect.state}` : "The saved check");
-    const post = step.postcondition;
-    const postTarget = post?.identity?.name || post?.identity?.text || post?.identity?.role || "saved control";
-    if (post) checks.push(post.kind === "element" || post.kind === "absent"
-      ? `The ${mustacheName(postTarget) ? "control matching " : ""}${workflowCheckText(postTarget, inputs)} ${post.kind === "absent" ? "is gone" : "is on the page"}`
-      : `The ${post.kind === "url" ? "address" : post.kind === "value" ? "value" : "page"} ${mustacheName(post.match) ? "matches" : "shows"} ${workflowCheckText(post.match || "", inputs)}`);
+    const saved = cardCheck(step);
+    if (saved) checks.push(saved.kind === "settled" ? "The page finishes loading"
+      : saved.kind === "element" || saved.kind === "absent" ? `The saved control ${saved.kind === "absent" ? "is gone" : "is on the page"}`
+      : saved.match ? `The ${saved.kind === "url" ? "address" : saved.kind === "value" ? "value" : "page"} ${mustacheName(saved.match) ? "matches" : "shows"} ${workflowCheckText(saved.match, inputs)}`
+      : saved.state ? `The control is ${saved.state}` : "The saved check");
     if (step.readBack) checks.push(`Reads ${step.readBack.source || "the value"}${step.readBack.match ? ` matching ${workflowCheckText(step.readBack.match, inputs)}` : ""}`);
     const check = [...new Set(checks)].join(". ") || (step.action === "verify" ? "The saved check" : "Nothing extra");
     const inputVerb = ({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens" } as Record<string, string>)[step.action || ""] || "Uses";
     return `<section data-step-panel="${esc(step.id)}"${step !== selected ? " hidden" : ""}>
       <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
       <h2>${esc(workflowStepTitle(step, inputs))}</h2>
-      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}></div>
+      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}${step.caption?.targetBox ? ` data-box="${step.caption.targetBox.x},${step.caption.targetBox.y},${step.caption.targetBox.width},${step.caption.targetBox.height}" data-view="${step.caption.targetBox.viewport.width},${step.caption.targetBox.viewport.height}"` : ""}></div>
       ${step.intent ? `<p>${esc(step.intent)}</p>` : ""}${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
-      <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" ? step.value || doc.startUrl || "The saved page" : "No saved target"))}</dd>
-        ${input ? `<dt>${inputVerb}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : step.value ? `<dt>Value</dt><dd>${esc(step.value)}</dd>` : ""}
+      <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" || step.action === "open" || step.action === "download" ? pageUrl || doc.startUrl || "The saved page" : "No saved target"))}</dd>
+        ${input ? `<dt>${inputVerb}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : typeof step.text === "object" && step.text.literal ? `<dt>Value</dt><dd>${esc(step.text.literal)}</dd>` : ""}
         <dt>Then checks</dt><dd>${esc(check)}</dd>
         <dt><label for="wf-miss-${index}">If it misses</label></dt><dd><select id="wf-miss-${index}" data-step-heal="${esc(step.id)}">
           <option value="" ${step.heal ? "" : "selected"}>Use workflow setting</option><option value="auto" ${step.heal === "auto" ? "selected" : ""}>Heal it</option><option value="ask" ${step.heal === "ask" ? "selected" : ""}>Ask me</option><option value="never" ${step.heal === "never" ? "selected" : ""}>Stop the run</option>

@@ -5,7 +5,7 @@
 
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
-import { stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { finishInput, stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -160,7 +160,7 @@ export function projectTeach(
     return {
       id,
       events: group.map((item) => ({ ...item })),
-      step: { ...step, intent: noteAsIntent ? note : guess },
+      step: { ...step, caption: { ...step.caption, text: (noteAsIntent ? note : guess) || step.caption.text } },
       card,
       dropped: false,
       merged: false,
@@ -173,7 +173,10 @@ export function projectTeach(
     ...draft.step,
     index,
     id: `${meta.id}-${index}`,
-    intent: draft.card.noteAsIntent ? (draft.card.note || draft.step.caption.text) : (draft.card.intent || draft.step.caption.text),
+    caption: {
+      ...draft.step.caption,
+      text: draft.card.noteAsIntent ? (draft.card.note || draft.step.caption.text) : (draft.card.intent || draft.step.caption.text),
+    },
   }));
   const inputs = inputsFor(steps, baseline.inputs, overrides);
   const workflow: WorkflowV2 = {
@@ -570,13 +573,13 @@ function applyDecision(
     }
     const literal = draft.events.map((event) => event.value).filter((value) => value && !looksLikePath(value)).pop();
     const prior = overrides.get(current) || inputs.find((input) => input.name === current);
-    overrides.set(name, {
+    overrides.set(name, finishInput({
       name,
       type: secret ? "secret" : prior?.type === "file" ? "file" : prior?.type === "number" ? "number" : "text",
-      supply: secret || !literal ? "must" : "saved",
+      supply: "must",
       label: name,
       default: oneTimeCodeField(stepQuery(draft.step)) ? undefined : literal ?? prior?.default,
-    });
+    }));
     draft.card.values = [{
       role: secret ? "secret" : "input",
       name,

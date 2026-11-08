@@ -1,6 +1,6 @@
 // JSON schema generated from the desktop contract. The web registry imports the emitted file.
 
-const WORKFLOW_SCHEMA_ID = "bao.workflow/v4";
+import { WORKFLOW_SCHEMA_ID } from "./schema";
 
 const locator = {
   oneOf: [
@@ -43,7 +43,7 @@ const target = {
 
 const check = { type: "object", required: ["kind", "timeoutMs"], properties: { kind: { type: "string" }, match: { type: "string" }, timeoutMs: { type: "number" }, locators: { type: "array" }, state: { type: "string" } } };
 
-function step(action: string, required: string[], properties: Record<string, unknown>) {
+function step(action: string, required: string[], properties: Record<string, unknown>, withCheck = true) {
   return {
     type: "object",
     additionalProperties: false,
@@ -57,7 +57,7 @@ function step(action: string, required: string[], properties: Record<string, unk
       when: { type: "object" },
       heal: { enum: ["auto", "ask", "never"] },
       readBack: { type: "object" },
-      check,
+      ...(withCheck ? { check } : {}),
       ...properties,
     },
   };
@@ -86,7 +86,12 @@ export function workflowJsonSchema(): Record<string, unknown> {
       driver: { enum: ["playwright", "extension"] },
       inputs: { type: "array", items: { type: "object", required: ["name", "type", "label", "supply"], properties: { name: { type: "string" }, type: { type: "string" }, label: { type: "string" }, supply: { enum: ["saved", "must"] }, default: { type: "string" } } } },
       steps: { type: "array", items: { oneOf: [
-        step("click", ["target"], { target }),
+        step("click", ["target"], {
+          target,
+          optional: { const: "dismiss" },
+          selection: { type: "object", additionalProperties: false, required: ["by", "input"], properties: { by: { enum: ["name", "title", "text", "value"] }, input: { type: "string" } } },
+          dialog: { type: "object", additionalProperties: false, required: ["input"], properties: { input: { type: "string" } } },
+        }),
         step("type", ["target", "text"], { target, text: { type: "object" }, sensitive: { type: "boolean" } }),
         step("key", ["key"], { key: { type: "string" }, target }),
         step("check", ["target", "checked"], { target, checked: { type: "boolean" } }),
@@ -96,15 +101,15 @@ export function workflowJsonSchema(): Record<string, unknown> {
         step("handoff", ["reason"], { reason: { enum: ["sign-in", "code", "owner-press"] }, target }),
         step("upload", ["target", "file"], { target, file: { type: "object" } }),
         step("drop", ["target", "file"], { target, file: { type: "object" } }),
-        step("extract", ["extract"], { extract: { type: "object" } }),
-        step("for_each", ["forEach"], { forEach: { type: "object" } }),
-        step("note", ["text"], { text: { type: "string" } }),
+        step("extract", ["extract"], { extract: { type: "object" } }, false),
+        step("for_each", ["forEach"], { forEach: { type: "object" } }, false),
+        step("note", ["text"], { text: { type: "string" } }, false),
         step("download", ["download"], { download: { type: "object" }, target }),
         step("open", ["open"], { open: { type: "object" } }),
         step("digits", ["text"], { text: { type: "object" }, target }),
         step("pickDate", ["date"], { date: { type: "object" }, target }),
-        step("wait", ["reason"], { reason: { type: "string" }, ms: { type: "number" } }),
-        step("finish", [], { reason: { type: "string" } }),
+        step("wait", ["reason"], { reason: { type: "string" }, ms: { type: "number" } }, false),
+        step("finish", [], { reason: { type: "string" } }, false),
       ] } },
       outputs: { type: "array" },
       readBack: { type: "object" },
