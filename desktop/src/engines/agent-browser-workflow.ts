@@ -183,9 +183,15 @@ export class AgentBrowserWorkflow {
           if (!target && command !== "press") this.unavailable("an action had no durable target");
           else if (command === "press" && !target && !before.pageLevel) this.unavailable("a key action had no durable target");
           else {
+            const box = captured?.bbox;
+            const viewport = before.before.page.viewport;
+            const seen = box && viewport && box.w > 0 && box.h > 0
+              && box.x < viewport.width && box.y < viewport.height && box.x + box.w > 0 && box.y + box.h > 0
+              ? { box: { x: box.x, y: box.y, width: box.w, height: box.h }, viewport } : {};
             const event: TrailEvent = {
               id, toolCallId: id, ts: Date.now(), kind: "act", op: command === "fill" ? "type" : command === "press" ? "key" : "click",
               ...(target ? { identity: target.identity, locators: target.locators } : {}),
+              ...seen,
               ...(command === "fill" ? { value: args[1], valueMode: "full" } : {}),
               ...(command === "press" ? { key: args[0] } : {}),
               beforeUrl: target?.url ?? before.before.page.url,

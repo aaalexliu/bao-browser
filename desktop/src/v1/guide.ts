@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isElementCrop } from "./redacted-png";
-import { projectStep, stepInputName, stepQuery } from "./schema";
+import { stepTitle, stepInputName, stepQuery } from "./schema";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 import { guideShotName, shotFile, workflowShotName } from "./shots";
 import { visibleCopy } from "./visible-copy";
@@ -200,17 +200,18 @@ function inputList(doc: WorkflowV2): string {
 }
 
 function instruction(doc: WorkflowV2, step: WorkflowStep): string {
-  const input = doc.inputs.find((item) => item.name === projectStep(step).input);
+  const input = doc.inputs.find((item) => item.name === stepInputName(step));
   const name = input && /^[A-Za-z][A-Za-z0-9_]*$/.test(input.name) ? input.name : "";
   const token = name ? `{{${name}}}` : "";
   let text: string;
   if ((step.action === "type" || step.action === "digits") && token) {
     const where = fieldLabel(step);
     text = where ? `Type ${token} in ${where}` : `Type ${token}`;
-  } else if (step.action === "login") text = "Sign in";
+  } else if (step.action === "handoff" && step.reason === "sign-in") text = "Sign in";
+  else if (step.action === "handoff") text = step.caption.text || "You press the button";
   else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : "Add a file";
   else if (step.action === "click") text = clickLine(doc, step);
-  else text = projectStep(step).label || step.action;
+  else text = stepTitle(step) || step.action;
   const cleaned = tidy(text);
   return cleaned || (token ? `Type ${token}` : "Step");
 }
@@ -226,17 +227,17 @@ function clickLine(doc: WorkflowV2, step: WorkflowStep): string {
 }
 
 function clickPhrase(step: WorkflowStep): string {
-  const label = (projectStep(step).label || "").trim();
+  const label = (stepTitle(step) || "").trim();
   const quoted = label.match(/^Click\s+"(.+)"$/i);
   if (quoted?.[1]) return quoted[1];
   const plain = label.match(/^Click\s+(.+)$/i);
   if (plain?.[1]) return plain[1];
-  return projectStep(step).identity?.text || projectStep(step).identity?.name || projectStep(step).identity?.label || "";
+  return stepQuery(step)?.text || stepQuery(step)?.name || stepQuery(step)?.label || "";
 }
 
 function isFieldTarget(doc: WorkflowV2, step: WorkflowStep): boolean {
-  const role = (projectStep(step).identity?.role || "").toLowerCase();
-  const tag = (projectStep(step).identity?.tag || "").toLowerCase();
+  const role = (stepQuery(step)?.role || "").toLowerCase();
+  const tag = (stepQuery(step)?.tag || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (/password|textbox|searchbox|combobox/.test(role) || role === "input") return true;
   const phrase = clickPhrase(step).toLowerCase();
@@ -245,8 +246,8 @@ function isFieldTarget(doc: WorkflowV2, step: WorkflowStep): boolean {
 }
 
 function fieldLabel(step: WorkflowStep): string {
-  const identity = projectStep(step).identity;
-  const candidates = [identity?.label, identity?.name, identity?.nameAttr, projectStep(step).input, identity?.id];
+  const identity = stepQuery(step);
+  const candidates = [identity?.label, identity?.name, identity?.nameAttr, stepInputName(step), identity?.id];
   for (const candidate of candidates) {
     const clean = (candidate || "").replace(/\s+/g, " ").trim();
     if (!clean || clean.includes("{{")) continue;

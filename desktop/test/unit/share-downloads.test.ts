@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepValueTemplate } from "../../src/v1/schema";
 import { fixtureInput, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -61,8 +61,8 @@ test("Share, guide, editor export, and import preserve saved evidence", { timeou
     assert.equal(releasedBytes.includes(password), true);
     assert.deepEqual(releasedDoc, doc);
     assert.equal(releasedDoc.inputs.some((input) => input.askOnImport), false);
-    assert.equal((releasedDoc.steps[1] == null ? undefined : projectStep(releasedDoc.steps[1]).value), "{{password}}");
-    assert.equal((releasedDoc.steps[2] == null ? undefined : projectStep(releasedDoc.steps[2]).value), password);
+    assert.equal((releasedDoc.steps[1] == null ? undefined : stepValueTemplate(releasedDoc.steps[1])), "{{password}}");
+    assert.equal((releasedDoc.steps[2] == null ? undefined : stepValueTemplate(releasedDoc.steps[2])), password);
     const guide = await fetch(base + endpoint + "/guide");
     assert.equal(guide.status, 200);
     const guideBytes = Buffer.from(await guide.arrayBuffer());

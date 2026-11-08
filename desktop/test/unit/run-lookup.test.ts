@@ -25,6 +25,7 @@ const workflow: WorkflowV2 = fixtureDoc({
   steps: [fixtureStep({ id: "note", index: 0, action: "note", label: "Read cloud", surface: "dom", timeoutMs: 0 })],
 });
 const stored: StoredRun = {
+  schema: "bao.run/v4",
   id: "run-imported", kind: "capture", workflowId: "cloud", status: "passed", at: 1234,
   heals: [], steps: [{ id: "note", status: "passed" }], outputs, video: "run-imported.webm",
 };

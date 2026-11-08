@@ -1,7 +1,7 @@
 // One-way export to a Chrome DevTools Recorder / puppeteer-replay JSON file.
 // Anchor locators have no selector in that format, so they are left out.
 
-import { projectStep, subst, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepLocators, stepValueTemplate, stepKey, stepCheck, stepForEach, subst, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 
 export interface PuppeteerReplayFile {
@@ -30,13 +30,13 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
   }
   const needsValue = (step: WorkflowStep): boolean => {
     if (stepNeedsSecretValue(step, workflow, args)) return true;
-    const source = projectStep(step).forEach?.over;
+    const source = stepForEach(step)?.over;
     if (source?.kind === "input" && [args[source.name], workflow.inputs.find((input) => input.name === source.name)?.default].some(hasStrippedSecret)) return true;
-    return projectStep(step).forEach?.steps.some(needsValue) ?? false;
+    return stepForEach(step)?.steps.some(needsValue) ?? false;
   };
   for (const step of workflow.steps) {
     if (needsValue(step)) throw new Error(NEEDS_SECRET_VALUE);
-    const selectors = selectorChains(projectStep(step).locators);
+    const selectors = selectorChains(stepLocators(step));
     if (step.action === "navigate") continue;
     if (step.action === "click" || step.action === "check") {
       // @puppeteer/replay 4.0.2 always forwards offsetX/offsetY. Puppeteer 25
@@ -44,18 +44,18 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
       // waits until timeout. One pixel in from the top left still hits the node.
       if (selectors.length) steps.push({ type: "click", selectors, offsetX: 1, offsetY: 1 });
     } else if (step.action === "type" || step.action === "select") {
-      const value = subst(projectStep(step).value || "", args);
+      const value = subst(stepValueTemplate(step) || "", args);
       if (selectors.length) steps.push({ type: "change", selectors, value });
-    } else if (step.action === "key" && projectStep(step).key) {
-      steps.push({ type: "keyDown", key: projectStep(step).key });
-      steps.push({ type: "keyUp", key: projectStep(step).key });
+    } else if (step.action === "key" && stepKey(step)) {
+      steps.push({ type: "keyDown", key: stepKey(step) });
+      steps.push({ type: "keyUp", key: stepKey(step) });
     }
-    const held = projectStep(step).expect || projectStep(step).postcondition;
-    const match = projectStep(step).expect?.match || projectStep(step).postcondition?.match;
+    const held = stepCheck(step);
+    const match = held && "match" in held ? held.match : undefined;
     if (!held || !match || step.action === "type") continue;
     const text = subst(match, args);
     if (!text) continue;
-    const url = (projectStep(step).expect?.kind || projectStep(step).postcondition?.kind) === "url";
+    const url = (stepCheck(step)?.kind || stepCheck(step)?.kind) === "url";
     steps.push({
       type: "waitForExpression",
       expression: url

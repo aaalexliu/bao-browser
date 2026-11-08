@@ -31,7 +31,7 @@ export default async function WorkflowPage({
     listRuns(user, id),
     previewPublication(user, id),
   ]);
-  const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; label?: string }[] };
+  const doc = workflow.document as { name?: string; inputs?: { name: string; type: string; label?: string; askOnImport?: boolean }[]; steps?: { id: string; caption?: { text?: string } }[] };
   const steps = doc.steps ?? [];
   const drafts = versions.filter((version) => version.kind === "conflict");
   const headDevice = workflow.deviceName || "The other Mac";
@@ -90,7 +90,7 @@ export default async function WorkflowPage({
             {workflow.shots.map((shot) => (
               <li key={shot.stepId}>
                 <img src={shot.url} alt="" />
-                <span>{steps.find((step) => step.id === shot.stepId)?.label || shot.stepId}</span>
+                <span>{steps.find((step) => step.id === shot.stepId)?.caption?.text || shot.stepId}</span>
               </li>
             ))}
           </ol>
@@ -98,7 +98,7 @@ export default async function WorkflowPage({
         </>
       ) : null}
       <ol className="steps">
-        {steps.map((step) => <li key={step.id}>{step.label}</li>)}
+        {steps.map((step) => <li key={step.id}>{step.caption?.text}</li>)}
       </ol>
       <h2>Inputs</h2>
       <form action={`/api/workflows/${id}/inputs`} method="post">

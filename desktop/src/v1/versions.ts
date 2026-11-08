@@ -6,7 +6,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { buildPushBody } from "../../../shared/sync-guard";
 import { retainLocalDefaults } from "./local-defaults";
-import { projectStep, parseWorkflow, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepHistory, stepQuery, stepTitle, parseWorkflow, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
 export type VersionRole = "live" | "draft" | "past";
@@ -122,7 +122,7 @@ function seed(library: Library, id: string): WorkflowVersion[] {
 
 export function summarize(row: WorkflowVersion, previous?: WorkflowV2): VersionSummary {
   const change = versionChange(previous, row.document);
-  const history = stepHistory(row.document);
+  const history = workflowHistory(row.document);
   return {
     n: row.n,
     role: row.role,
@@ -157,8 +157,8 @@ function conflictSides(theirs: WorkflowV2, mine: WorkflowV2): ConflictSide[] {
     const right = mine.steps.find((step) => step.id === id);
     const leftLabel = left ? stepLabel(left, id) : "—";
     const rightLabel = right ? stepLabel(right, id) : "—";
-    const leftDetail = left ? identityPhrase(projectStep(left).identity) : "—";
-    const rightDetail = right ? identityPhrase(projectStep(right).identity) : "—";
+    const leftDetail = left ? identityPhrase(stepQuery(left)) : "—";
+    const rightDetail = right ? identityPhrase(stepQuery(right)) : "—";
     return {
       id,
       leftLabel,
@@ -196,7 +196,7 @@ function phrasePair(before: Identity | undefined, after: Identity | undefined): 
 }
 
 function stepLabel(step: WorkflowStep | undefined, fallback: string): string {
-  return (step ? projectStep(step).label : undefined) || step?.action || fallback;
+  return (step ? stepTitle(step) : undefined) || step?.action || fallback;
 }
 
 /** The first changed step is the line. Every step is in `steps` for the before/after list. */
@@ -207,14 +207,12 @@ export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2
   for (const step of next.steps) {
     const before = prior.find((item) => item.id === step.id);
     if (before) used.add(before.id);
-    const beforeView = before ? projectStep(before) : undefined;
-    const afterView = projectStep(step);
-    const pair = phrasePair(beforeView?.identity, afterView.identity);
+    const pair = phrasePair(before ? stepQuery(before) : undefined, stepQuery(step));
     const label = stepLabel(step, step.id);
     const changed = Boolean(previous) && (
       !before
       || pair.before !== pair.after
-      || (beforeView?.label || "") !== (afterView.label || "")
+      || stepTitle(before) !== stepTitle(step)
       || before.action !== step.action
     );
     steps.push({
@@ -230,7 +228,7 @@ export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2
     steps.push({
       id: step.id,
       label: stepLabel(step, step.id),
-      before: identityPhrase(projectStep(step).identity),
+      before: identityPhrase(stepQuery(step)),
       after: "removed",
       changed: true,
     });
@@ -254,11 +252,11 @@ export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2
 }
 
 /** Every locator row on the step that holds the newest one. */
-function stepHistory(document: WorkflowV2): HeldLocator[] {
+function workflowHistory(document: WorkflowV2): HeldLocator[] {
   let rows: HeldLocator[] | undefined;
   let tip = -1;
   for (const step of document.steps) {
-    const history = projectStep(step).history;
+    const history = stepHistory(step);
     if (!history?.length) continue;
     const last = history[history.length - 1];
     if (!last || last.at < tip) continue;
@@ -281,7 +279,7 @@ function stepHistory(document: WorkflowV2): HeldLocator[] {
 function locatorHeld(document: WorkflowV2): HeldLocator | undefined {
   let tip: HeldLocator | undefined;
   for (const step of document.steps) {
-    const history = projectStep(step).history;
+    const history = stepHistory(step);
     const last = history?.[history.length - 1];
     if (!last) continue;
     if (!tip || last.at >= tip.at) {
@@ -296,7 +294,7 @@ function locatorHeld(document: WorkflowV2): HeldLocator | undefined {
     }
   }
   if (tip) return tip;
-  const step = document.steps.find((item) => projectStep(item).identity);
+  const step = document.steps.find((item) => stepQuery(item));
   if (!step) return undefined;
   return {
     stepId: step.id,

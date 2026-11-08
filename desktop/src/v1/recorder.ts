@@ -64,7 +64,16 @@ export function recorderSource(): string {
     ${leafTexts.toString()}
     ${smallestChange.toString()}
     const norm = (v) => (v || "").replace(/\\s+/g, " ").trim();
-    const send = (payload) => { if (window.__baoRecord) window.__baoRecord(payload); };
+    const send = (payload) => {
+      const id = payload && payload.identity;
+      if (id && id.box && id.viewport) {
+        payload.box = id.box;
+        payload.viewport = id.viewport;
+        delete id.box;
+        delete id.viewport;
+      }
+      if (window.__baoRecord) window.__baoRecord(payload);
+    };
     let pending;
     const noteDialog = (type, message, decision, value) => {
       const text = String(message == null ? "" : message).replace(/\\s+/g, " ").trim().slice(0, 180) || "dialog";
@@ -219,6 +228,14 @@ export function recorderSource(): string {
         label: shown || undefined,
         text: text || buttonValue || undefined,
         path: pathOf(el),
+        ...(() => {
+          if (!el.getBoundingClientRect) return {};
+          const rect = el.getBoundingClientRect();
+          const viewport = { width: window.innerWidth, height: window.innerHeight };
+          const box = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+          const covers = box.width > 0 && box.height > 0 && box.x < viewport.width && box.y < viewport.height && box.x + box.width > 0 && box.y + box.height > 0;
+          return covers ? { box, viewport } : {};
+        })(),
       };
     };
     const eventEl = (event) => {

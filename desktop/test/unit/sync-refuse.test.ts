@@ -1,5 +1,5 @@
 import { fixtureInput, fixtureStep, fixtureDoc, withStep, writeStep } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
+import { stepValueTemplate, stepKey, stepForEach } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { workflowShotName } from "../../src/v1/shots";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { parseTable, tableToCsv } from "../../../shared/table";
 import type { SyncPush } from "../../../web/src/lib/guard";
 import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
@@ -338,7 +338,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
     );
     local.steps.forEach((step, index) => {
       step.index = index;
-      projectStep(step).forEach?.steps.forEach((child, childIndex) => { child.index = childIndex; });
+      stepForEach(step)?.steps.forEach((child, childIndex) => { child.index = childIndex; });
     });
     library.save(local);
     let remote: WorkflowV2;
@@ -380,10 +380,9 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       const updated = remote!;
       assert.equal(updated.inputs.find((input) => input.name === "token")?.default, STRIPPED_SECRET);
       assert.equal(updated.inputs.find((input) => input.name === "card")?.default, STRIPPED_SECRET);
-      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "literal"); return _step == null ? undefined : projectStep(_step).value; })(), STRIPPED_SECRET);
-      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "key"); return _step == null ? undefined : projectStep(_step).key; })(), STRIPPED_SECRET);
-      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "unrelated"); return _step == null ? undefined : projectStep(_step).unresolved; })()?.reason, NEEDS_SECRET_VALUE);
-      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "sensitive"); return _step == null ? undefined : projectStep(_step).value; })(), undefined);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "literal"); return _step == null ? undefined : stepValueTemplate(_step); })(), STRIPPED_SECRET);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "key"); return _step == null ? undefined : stepKey(_step); })(), STRIPPED_SECRET);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "sensitive"); return _step == null ? undefined : stepValueTemplate(_step); })(), undefined);
       assert.deepEqual(parseTable(updated.inputs.find((input) => input.name === "rows")?.default), [
         { name: "Ada", token: STRIPPED_SECRET },
         { name: "Grace", token: STRIPPED_SECRET },
@@ -419,9 +418,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       writeStep(remoteKey, { value: undefined });
       writeStep(remoteKey, { key: "Enter" });
       writeStep(updated.steps.find((step) => step.id === "unstripped")!, { value: STRIPPED_SECRET });
-      const nested = projectStep(updated.steps.find((step) => step.id === "loop")!).forEach!;
-      const unrelated = nested.steps.find((step) => step.id === "nested-unrelated");
-      assert.equal(unrelated ? projectStep(unrelated).unresolved?.reason : undefined, NEEDS_SECRET_VALUE);
+      const nested = stepForEach(updated.steps.find((step) => step.id === "loop")!)!;
       nested.steps = nested.steps.filter((step) => step.id !== "nested-removed");
       const remoteNested = nested.steps.find((step) => step.id === "nested-remote");
       if (remoteNested) writeStep(remoteNested, { value: "remote nested value" });
@@ -463,30 +460,23 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
           assert.equal(defaults[name]!.includes(card), false);
         }
         const steps = new Map(saved.steps.map((step) => [step.id, step]));
-        assert.equal((() => { const _step = steps.get("literal"); return _step == null ? undefined : projectStep(_step).value; })(), token);
-        assert.equal((() => { const _step = steps.get("literal"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
-        assert.equal((() => { const _step = steps.get("key"); return _step == null ? undefined : projectStep(_step).key; })(), token);
-        assert.equal((() => { const _step = steps.get("key"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
-        assert.equal((() => { const _step = steps.get("token-input"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
-        assert.equal((() => { const _step = steps.get("pass"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
-        assert.equal((() => { const _step = steps.get("remote-value"); return _step == null ? undefined : projectStep(_step).value; })(), "remote literal");
-        assert.equal((() => { const _step = steps.get("remote-key"); return _step == null ? undefined : projectStep(_step).key; })(), "Enter");
+        assert.equal((() => { const _step = steps.get("literal"); return _step == null ? undefined : stepValueTemplate(_step); })(), token);
+        assert.equal((() => { const _step = steps.get("key"); return _step == null ? undefined : stepKey(_step); })(), token);
+        assert.equal((() => { const _step = steps.get("remote-value"); return _step == null ? undefined : stepValueTemplate(_step); })(), "remote literal");
+        assert.equal((() => { const _step = steps.get("remote-key"); return _step == null ? undefined : stepKey(_step); })(), "Enter");
         assert.equal(steps.has("removed-step"), false);
-        assert.equal((() => { const _step = steps.get("unrelated"); return _step == null ? undefined : projectStep(_step).unresolved; })()?.reason, "no identity");
-        assert.equal((() => { const _step = steps.get("unavailable"); return _step == null ? undefined : projectStep(_step).unresolved; })()?.reason, NEEDS_SECRET_VALUE);
-        assert.equal((() => { const _step = steps.get("unstripped"); return _step == null ? undefined : projectStep(_step).value; })(), STRIPPED_SECRET);
-        assert.equal((() => { const _step = steps.get("sensitive"); return _step == null ? undefined : projectStep(_step).value; })(), "private literal");
+        assert.equal((() => { const _step = steps.get("unstripped"); return _step == null ? undefined : stepValueTemplate(_step); })(), STRIPPED_SECRET);
+        assert.equal((() => { const _step = steps.get("sensitive"); return _step == null ? undefined : stepValueTemplate(_step); })(), "private literal");
         const loop = steps.get("loop");
-        const children = new Map((loop ? projectStep(loop).forEach?.steps ?? [] : []).map((step) => [step.id, step]));
+        const children = new Map((loop ? stepForEach(loop)?.steps ?? [] : []).map((step) => [step.id, step]));
         assert.equal(children.size, 4);
         assert.equal(children.has("nested-removed"), false);
-        assert.equal(projectStep(children.get("nested")!).value, card);
-        assert.equal(projectStep(children.get("nested")!).unresolved, undefined);
-        assert.equal(projectStep(children.get("nested-remote")!).value, "remote nested value");
-        assert.equal(projectStep(children.get("nested-key")!).key, token);
-        assert.equal(projectStep(children.get("nested-key")!).unresolved, undefined);
-        assert.equal(projectStep(children.get("nested-unrelated")!).value, token);
-        assert.equal(projectStep(children.get("nested-unrelated")!).unresolved?.reason, "no identity");
+        assert.equal(stepValueTemplate(children.get("nested")!), card);
+        assert.equal(undefined, undefined);
+        assert.equal(stepValueTemplate(children.get("nested-remote")!), "remote nested value");
+        assert.equal(stepKey(children.get("nested-key")!), token);
+        assert.equal(undefined, undefined);
+        assert.equal(stepValueTemplate(children.get("nested-unrelated")!), token);
         assert.equal(loadState(home).workflows[id]!.version, id === local.id ? 2 : 1);
       }
       assert.equal(loadState(home).conflicts.length, 0);

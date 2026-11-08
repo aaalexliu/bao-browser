@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinTestBrowser } from "../launch";
 import { startApp } from "../app/server";
-import { projectStep, stepQuery, stepTitle } from "../v1/schema";
+import { stepKey, stepQuery, stepTitle } from "../v1/schema";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 import { pauseIsExpected, scoreBotWall, type TaskExpect } from "./task-expect";
 
@@ -829,7 +829,7 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
           if (index === 0 && step.action === "navigate") return { ...step, value: next };
           // Legacy Vector's Enter submits fulltext. The same key on the current skin opens the article.
           // Go is the control that still opens it.
-          if (task.id === "p7" && step.action === "key" && /^enter$/i.test(projectStep(step).key || "")) return vectorGo(step);
+          if (task.id === "p7" && step.action === "key" && /^enter$/i.test(stepKey(step) || "")) return vectorGo(step);
           return step;
         });
         const updated: WorkflowV2 = { ...current, startUrl: next, steps };
@@ -1039,7 +1039,7 @@ export function scoreP3(input: ScoreInput): { pass: boolean; cause: string; deta
   const nights = input.run === 1 ? 2 : 3;
   const text = evidence(input);
   const summary = text.match(/[£$](\d+)\s*x\s*(\d+)\s*nights?\s*[£$](\d+)([\s\S]*?)\bTotal\s*[£$](\d+)/i);
-  const pressed = input.workflow.steps.some((step) => step.action === "click" && /reserve now/i.test(projectStep(step).label));
+  const pressed = input.workflow.steps.some((step) => step.action === "click" && /reserve now/i.test(stepTitle(step)));
   if (!summary) return { pass: false, cause: "date picker", detail: `summary did not show ${nights} nights` };
   const rate = Number(summary[1]);
   const gotNights = Number(summary[2]);
@@ -1128,7 +1128,7 @@ function scoreP6(input: ScoreInput): { pass: boolean; cause: string; detail: str
   const text = input.page.text || "";
   const missing = wanted.filter((name) => !text.includes(name));
   const dupes = wanted.filter((name) => occurrences(text, name) > 1);
-  if (input.run === 2 && input.workflow.steps.filter((step) => /add/i.test(projectStep(step).label)).length < 5 && missing.length) {
+  if (input.run === 2 && input.workflow.steps.filter((step) => /add/i.test(stepTitle(step))).length < 5 && missing.length) {
     return { pass: false, cause: "missing step type", detail: `no for-each; table missed ${missing.join(", ")}` };
   }
   if (missing.length || dupes.length) return { pass: false, cause: "pass check", detail: `missing ${missing.join(", ") || "none"}; duplicates ${dupes.join(", ") || "none"}` };
@@ -1157,7 +1157,7 @@ function scoreP7(input: ScoreInput): { pass: boolean; cause: string; detail: str
 function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = evidence(input);
   const prompt = input.run === 1 ? "alpha-prompt" : "beta-prompt";
-  const dialog = input.workflow.steps.some((step) => /dialog|alert|prompt|confirm/i.test(`${projectStep(step).label} ${JSON.stringify(step).slice(0, 200)}`));
+  const dialog = input.workflow.steps.some((step) => /dialog|alert|prompt|confirm/i.test(`${stepTitle(step)} ${JSON.stringify(step).slice(0, 200)}`));
   const entered = text.includes(`You entered: ${prompt}`) || text.includes(prompt);
   const heading = /New Window/i.test(text);
   if (!entered || !heading) {
@@ -1169,7 +1169,7 @@ function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: str
 
 export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = evidence(input);
-  const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(projectStep(step).label));
+  const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(stepTitle(step)));
   if (pressed) return { pass: false, cause: "missing step type", detail: "Place Order was clicked" };
   if (!/YouTube Organic Cotton/i.test(text) || !/\$29\.50/.test(text)) {
     return { pass: false, cause: "shadow DOM", detail: "the cart did not show the YouTube shirt at $29.50" };
@@ -1185,7 +1185,7 @@ export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; deta
 function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const labels = input.run === 1 ? ["Alpha", "Beta"] : ["Gamma", "Delta"];
   const text = evidence(input);
-  const canvasClicks = input.workflow.steps.filter((step) => /canvas/i.test(JSON.stringify(projectStep(step).identity || {}))).length;
+  const canvasClicks = input.workflow.steps.filter((step) => /canvas/i.test(JSON.stringify(stepQuery(step) || {}))).length;
   if (!/excalidraw/i.test(text) && canvasClicks === 0) {
     return { pass: false, cause: "missing step type", detail: "canvas clicks were not recorded as steps" };
   }
@@ -1194,7 +1194,7 @@ function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: st
 
 function scoreP14(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = `${input.page.title || ""} ${input.page.text || ""} ${evidence(input)}`;
-  const stepText = input.workflow.steps.map((step) => `${projectStep(step).label} ${projectStep(step).identity?.text || ""} ${projectStep(step).identity?.name || ""}`).join("\n");
+  const stepText = input.workflow.steps.map((step) => `${stepTitle(step)} ${stepQuery(step)?.text || ""} ${stepQuery(step)?.name || ""}`).join("\n");
   return scoreBotWall({ expect: input.expect, replay: input.replay, pageText: text, stepText });
 }
 
@@ -1236,7 +1236,7 @@ function summarizeWorkflow(workflow: WorkflowV2, openUrl: string, recordError: s
     steps: workflow.steps.length,
     actions,
     inputs: workflow.inputs.map((input) => `${input.name}:${input.type}${input.default ? `=${input.default}` : ""}`),
-    labels: workflow.steps.map((step) => `${step.action} ${projectStep(step).label}`).slice(0, 40),
+    labels: workflow.steps.map((step) => `${step.action} ${stepTitle(step)}`).slice(0, 40),
     recordError: recordError || undefined,
   };
 }

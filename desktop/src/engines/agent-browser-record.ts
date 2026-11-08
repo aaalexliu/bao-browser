@@ -217,7 +217,12 @@ export class AgentBrowserRun {
         ...this.run,
         steps: this.run.steps.map((step) => ({
           ...step,
-          native: { ...step.native, results: [] },
+          native: {
+            ...step.native,
+            results: step.native.command === "snapshot" || step.native.command === "ax"
+              ? step.native.results.map((result) => ({ ...result, stdout: "", stderr: "" }))
+              : step.native.results,
+          },
         })),
       });
     }

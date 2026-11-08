@@ -1,5 +1,5 @@
 import { fixtureDoc } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
+import { checkMatch, stepLocators, stepValueTemplate, stepCheck, handoffReason } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ACCEPT, lookup, type Identity } from "../../src/v1/identity";
@@ -103,7 +103,7 @@ test("a recording opens on the URL the capture began on", () => {
   const doc = interpret(events, { id: "wf-open", name: "Open", startUrl: "https://books.toscrape.com/" });
   assert.equal(doc.startUrl, "https://books.toscrape.com/");
   assert.equal(doc.steps[0]?.action, "navigate");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).value), "https://books.toscrape.com/");
+  assert.equal((doc.steps[0] == null ? undefined : stepValueTemplate(doc.steps[0])), "https://books.toscrape.com/");
   assert.equal(doc.steps[1]?.action, "click");
 });
 
@@ -115,8 +115,8 @@ test("radios, checkboxes, and selects are check and select steps", () => {
   ];
   const doc = interpret(events, { id: "wf-form", name: "Form", startUrl: "https://demoqa.com/automation-practice-form" });
   assert.deepEqual(doc.steps.map((step) => step.action), ["check", "check", "select"]);
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).checked), true);
-  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).value), "{{months}}");
+  assert.equal((doc.steps[0] == null ? undefined : (doc.steps[0].action === "check" ? doc.steps[0].checked : undefined)), true);
+  assert.equal((doc.steps[2] == null ? undefined : stepValueTemplate(doc.steps[2])), "{{months}}");
   assert.equal(doc.inputs.find((input) => input.name === "months")?.default, "January");
   assert.equal(doc.steps.some((step) => step.action === "type"), false);
 });
@@ -171,12 +171,11 @@ test("the real signup-email tie is broken by the recorded test id and css path",
     },
   ], { id: "wf-tie", name: "Tie", startUrl: "https://automationexercise.com/login" });
   const step = recorded.steps[0]!;
-  assert.equal(projectStep(step).locators?.some((item) => item.kind === "testid" && item.value === "signup-email"), true);
-  assert.equal(projectStep(step).locators?.some((item) => item.kind === "css" && item.value === signup.cssPath), true);
+  assert.equal(stepLocators(step)?.some((item) => item.kind === "testid" && item.value === "signup-email"), true);
+  assert.equal(stepLocators(step)?.some((item) => item.kind === "css" && item.value === signup.cssPath), true);
   assert.equal(scoreLocator({ kind: "testid", value: "signup-email" }, fields).score, 100);
   assert.equal(matchLocator({ kind: "css", value: signup.cssPath || "" }, fields)?.index, 1);
-  delete projectStep(step).expect;
-  delete projectStep(step).postcondition;
+  if ("check" in step) delete step.check;
   const filled: string[] = [];
   const live = tree(fields, { url: "https://automationexercise.com/login" });
   const driver: Driver = {
@@ -223,10 +222,8 @@ test("a recorded purchase-labelled click replays on the page without a human gat
     const event = await recorded;
     const doc = condense([event], { id: "wf-purchase", name: "Purchase", startUrl: url });
     assert.equal(doc.steps[0]?.action, "click");
-    assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).human), undefined);
-    assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).confirm), undefined);
-    assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).gate), undefined);
-    assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).postcondition)?.match, "Order placed");
+    assert.equal((doc.steps[0] == null ? undefined : handoffReason(doc.steps[0])), undefined);
+    assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Order placed");
 
     const replayPage = await browser.newPage();
     await replayPage.goto(url);
@@ -246,14 +243,12 @@ test("Reserve Now stays a click and a prompt keeps the text it returned", () => 
   ];
   const doc = interpret(events, { id: "wf-gate", name: "Gate", startUrl: "https://example.test/" });
   assert.equal(doc.steps[0]?.action, "click");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).human), undefined);
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).confirm), undefined);
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).gate), undefined);
+  assert.equal((doc.steps[0] == null ? undefined : handoffReason(doc.steps[0])), undefined);
   assert.equal(doc.steps[1]?.action, "click");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).value), "{{prompt}}");
+  assert.equal((doc.steps[1] == null ? undefined : stepValueTemplate(doc.steps[1])), "{{prompt}}");
   assert.equal(doc.inputs.find((input) => input.name === "prompt")?.default, "proof-prompt");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).expect)?.match, "You entered: {{prompt}}");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).postcondition)?.match, "You entered: {{prompt}}");
+  assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), "You entered: {{prompt}}");
+  assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), "You entered: {{prompt}}");
 });
 
 test("purchase and confirm labels stay ordinary clicks on every recorded control", () => {
@@ -265,9 +260,7 @@ test("purchase and confirm labels stay ordinary clicks on every recorded control
           { id: name, ts: 1, kind: "act", op: "click", identity: dom({ ...control, text: name, name }) },
         ], { id: "wf-click", name: "Click", startUrl: "https://example.test/", preserveActions });
         assert.equal(doc.steps[0]?.action, "click", name);
-        assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).confirm), undefined, name);
-        assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).human), undefined, name);
-        assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).gate), undefined, name);
+        assert.equal((doc.steps[0] == null ? undefined : handoffReason(doc.steps[0])), undefined, name);
       }
     }
   }
@@ -278,11 +271,10 @@ test("an explicit recorded confirm and an explicit confirm gate keep their meani
     { id: "confirm", ts: 1, kind: "act", op: "confirm", afterText: "Order placed" },
     { id: "gated", ts: 2, kind: "act", op: "click", gate: "confirm", identity: dom({ role: "button", name: "Buy now" }) },
   ], { id: "wf-confirm", name: "Confirm", startUrl: "https://example.test/" });
-  assert.equal(doc.steps[0]?.action, "confirm");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).human), true);
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).postcondition)?.match, "Order placed");
+  assert.equal(doc.steps[0]?.action, "handoff");
+  assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Order placed");
   assert.equal(doc.steps[1]?.action, "click");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).gate), "confirm");
+  assert.equal(doc.steps[1] ? handoffReason(doc.steps[1]) : undefined, undefined);
 });
 
 test("zero executed steps and a failed final check are not passes", () => {

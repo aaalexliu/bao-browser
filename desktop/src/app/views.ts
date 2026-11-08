@@ -1328,6 +1328,7 @@ export function runKind(run: RunSummary, promotion?: PromotionView): string {
   if (run.status === "timed-out") return "timed-out";
   if (run.kind === "capture") return run.status === "needs_human" ? "paused" : run.status;
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
+  if (run.status === "waiting-for-sign-in" || run.status === "needs-sign-in" || run.status === "needs_signin") return "waiting-for-sign-in";
   if (run.status === "needs_human" || run.status === "paused") return "paused";
   if (run.status === "failed") return "failed";
   if ((run.heals || []).length > 0) return "healed";
@@ -1336,6 +1337,7 @@ export function runKind(run: RunSummary, promotion?: PromotionView): string {
 
 export function statusLabel(kind: string): string {
   if (kind === "timed-out") return "stopped, timed out";
+  if (kind === "waiting-for-sign-in") return "waiting for sign-in";
   if (kind === "paused") return "needs you";
   if (kind === "failed") return "failed";
   if (kind === "healed") return "healed";
@@ -1863,7 +1865,7 @@ function runTime(run: RunSummary): number | undefined {
 }
 
 function runWaiting(run: RunSummary): boolean {
-  return ["paused", "needs_human", "needs_signin"].includes(run.envelope?.status || run.status);
+  return ["paused", "needs_human", "needs_signin", "waiting-for-sign-in", "needs-sign-in"].includes(run.envelope?.status || run.status);
 }
 
 type RunAttentionItem =

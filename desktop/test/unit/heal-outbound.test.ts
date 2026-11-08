@@ -1,5 +1,5 @@
 import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
+import { stepTitle, stepValueTemplate } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -65,8 +65,8 @@ function assertPrompt(prompt: string, secret: string): void {
   assert.ok(prompt.includes(`Reason: ${secret}`));
   assert.equal(prompt.includes("AAAALOCALSCREENSHOT"), false);
   const step = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Step: "))!.slice(6)) as WorkflowStep;
-  assert.equal(projectStep(step).value, "{{password}}");
-  assert.equal(projectStep(step).label, secret);
+  assert.equal(stepValueTemplate(step), "{{password}}");
+  assert.equal(stepTitle(step), secret);
 }
 
 for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"] as const) {
@@ -131,7 +131,7 @@ for (const mode of ["logged-out", "print-fails"] as const) {
     assert.equal(request.dom[0].identity.value, secret);
     assert.equal(request.intent, secret);
     assert.equal(request.reason, secret);
-    assert.equal(projectStep(request.step).value, "{{password}}");
+    assert.equal(stepValueTemplate(request.step), "{{password}}");
     assert.equal(readFileSync(path.join(dir, "heal-shot.png"), "base64"), Buffer.from(data.failure.snapshot.screenshot!, "base64").toString("base64"));
     assert.deepEqual(data, original);
   });

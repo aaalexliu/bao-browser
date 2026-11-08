@@ -3,7 +3,7 @@ import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
 import { isSensitiveField, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
 import { fixedSavedChoice, hasStrippedSecret, isSealedArtifact, NEEDS_SECRET_VALUE, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
-import { projectStep } from "../desktop/src/v1/schema";
+import { stepForEach, stepQuery, stepSensitive } from "../desktop/src/v1/schema";
 import type { WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
 import type { TrailEvent } from "../desktop/src/v1/interpret";
 import type { ReceiptBody } from "../desktop/src/v1/receipt";
@@ -96,19 +96,19 @@ export function hasPrivatePictureInput(workflow: Pick<WorkflowV2, "inputs" | "st
     || /\bcard\b|\bcc-/i.test([hint.name, hint.id, hint.autocomplete, hint.ariaLabel, hint.placeholder].filter(Boolean).join(" "));
   if (workflow.inputs.some((input) => input.type === "secret" || privateField({ name: input.name, ariaLabel: input.label }))) return true;
   const privateSteps = (steps: WorkflowStep[]): boolean => steps.some((step) => {
-    const view = projectStep(step);
-    const identity = view.identity;
+    const identity = stepQuery(step);
+    const nested = stepForEach(step);
     const field = step.action === "type" || step.action === "digits" || identity && (identity.inputType || identity.autocomplete
       || ["input", "textarea", "select"].includes(identity.tag || "")
       || /^(input|textbox|searchbox|combobox|password|axtextfield|axsecuretextfield|axtextarea)$/i.test(identity.role));
-    return !!field && (view.sensitive === true || !!identity && privateField({
+    return !!field && (stepSensitive(step) || !!identity && privateField({
       type: identity.inputType || identity.role,
       autocomplete: identity.autocomplete,
       name: [identity.nameAttr, identity.name].filter(Boolean).join(" "),
       id: identity.id,
       ariaLabel: identity.label,
       placeholder: identity.placeholder,
-    })) || !!view.forEach && privateSteps(view.forEach.steps);
+    })) || !!nested && privateSteps(nested.steps);
   });
   return privateSteps(workflow.steps);
 }

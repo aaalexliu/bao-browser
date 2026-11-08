@@ -1,6 +1,6 @@
 import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
 import { stripUnsafe } from "../../../shared/sync-guard";
-import { projectStep } from "./schema";
+import { stepValueTemplate } from "./schema";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 
 export function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
@@ -36,15 +36,12 @@ export function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): Workfl
 
 function restoreSecretText(step: WorkflowStep, saved: WorkflowStep | undefined, stripped: WorkflowStep | undefined): void {
   if (!saved || !stripped) return;
-  const current = projectStep(step);
-  const savedView = projectStep(saved);
-  const strippedView = projectStep(stripped);
-  if (step.action === "key" && saved.action === "key") {
-    const next = keptSecret(current.key, strippedView.key, savedView.key);
+  if (step.action === "key" && saved.action === "key" && stripped.action === "key") {
+    const next = keptSecret(step.key, stripped.key, saved.key);
     if (next !== undefined) step.key = next;
   }
   if (step.action === "type" || step.action === "select" || step.action === "digits") {
-    const next = keptSecret(current.value, strippedView.value, savedView.value);
+    const next = keptSecret(stepValueTemplate(step), stepValueTemplate(stripped), stepValueTemplate(saved));
     if (next !== undefined) step.text = { literal: next };
   }
 }

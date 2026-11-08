@@ -16,6 +16,7 @@ const command: RecordedAgentBrowserCommand = {
   native: { command: "click", args: ["@e7"], results: [{ stdout: "Clicked Milk\n", stderr: "native detail", exitCode: 0 }], isError: false, screenshots: [] },
 };
 const capture: StoredRun = {
+  schema: "bao.run/v4",
   id: "run-capture", kind: "capture", workflowId: "agent-browser", status: "recording", at: 1, heals: [], steps: [command],
 };
 

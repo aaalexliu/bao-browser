@@ -1,7 +1,7 @@
 // Trajectory diff. Replay is compared with the recording, one step at a time:
 // target identity, action, postcondition, and a coarse timing bucket.
 
-import { projectStep } from "./schema";
+import { stepQuery, stepCheck } from "./schema";
 import type { Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
 export type TimingBucket = "lt1s" | "lt10s" | "lt60s" | "slower";
@@ -47,12 +47,9 @@ export function targetKey(identity?: Identity): string {
 }
 
 export function postKey(step: WorkflowStep): string {
-  const view = projectStep(step);
+  const check = stepCheck(step);
   const parts: string[] = [];
-  if (view.waitFor) parts.push(`wait_for ${view.waitFor.kind} ${"match" in view.waitFor ? view.waitFor.match || "" : ""}`.trim());
-  if (view.expect) parts.push(`${view.expect.kind} ${view.expect.match || view.expect.state || ""}`.trim());
-  else if (view.postcondition) parts.push(`${view.postcondition.kind} ${view.postcondition.match || ""}`.trim());
-  if (view.gone) parts.push(`gone ${view.gone.kind} ${"match" in view.gone ? view.gone.match || "" : ""}`.trim());
+  if (check) parts.push(`${check.kind} ${"match" in check ? check.match || "" : ""}${ "state" in check ? check.state || "" : ""}`.trim());
   if (step.readBack) parts.push(`read-back ${step.readBack.source} ${step.readBack.match}`);
   return parts.filter(Boolean).join("; ") || "none";
 }
@@ -61,7 +58,7 @@ export function trajectoryFromWorkflow(workflow: WorkflowV2, timings: number[] =
   return workflow.steps.map((step, index) => ({
     stepId: step.id,
     action: step.action,
-    target: targetKey(projectStep(step).identity),
+    target: targetKey(stepQuery(step)),
     postcondition: postKey(step),
     timing: timingBucket(timings[index] ?? 0),
   }));

@@ -1048,8 +1048,8 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     [row.id, ver],
   );
   const parsed = json(versions[0]?.document);
-  const document = parsed && typeof parsed === "object" ? parsed as { driver?: string | null; provenance?: string; inputs?: unknown; steps?: { label?: string }[] } : { steps: [] };
-  const steps = (document.steps ?? []).map((step) => step.label || "");
+  const document = parsed && typeof parsed === "object" ? parsed as { driver?: string | null; provenance?: string; inputs?: unknown; steps?: { caption?: { text?: string } }[] } : { steps: [] };
+  const steps = (document.steps ?? []).map((step) => step.caption?.text || "");
   return {
     id: row.id,
     driver: document.driver,

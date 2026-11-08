@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepQuery } from "../../src/v1/schema";
 import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Headless window. Fixture page only. No vendor network and no real profile.
 
@@ -247,7 +247,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("article#heal-detail [data-keep]");
     await page.waitForFunction(() => document.body.innerText.includes("Patch kept"));
     const kept = app.library.read("wf-heal");
-    assert.equal((kept.steps[0] == null ? undefined : projectStep(kept.steps[0]).identity)?.testId, "missing-login");
+    assert.equal((kept.steps[0] == null ? undefined : stepQuery(kept.steps[0]))?.testId, "missing-login");
     assert.equal(JSON.stringify(app.library.readRun(healed.runId).heals), before);
     assert.equal(app.library.readRun(healed.runId).decisions?.[0]?.decision, "keep");
     await page.waitForSelector("[data-revert]");
@@ -255,7 +255,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.locator('#heal-revert-confirm [value="revert"]').click();
     await page.waitForFunction(() => document.body.innerText.includes("Patch reverted"));
     const reverted = app.library.read("wf-heal");
-    assert.equal((reverted.steps[0] == null ? undefined : projectStep(reverted.steps[0]).identity)?.testId, "missing-login");
+    assert.equal((reverted.steps[0] == null ? undefined : stepQuery(reverted.steps[0]))?.testId, "missing-login");
     const runAfter = app.library.readRun(healed.runId);
     assert.equal(JSON.stringify(runAfter.heals), before);
     assert.deepEqual(runAfter.decisions?.map((item) => item.decision), ["keep", "revert"]);
