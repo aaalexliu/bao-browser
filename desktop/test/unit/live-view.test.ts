@@ -515,6 +515,11 @@ test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60
     await page.getByRole("button", { name: "Open workflow", exact: true }).click();
     await page.getByRole("button", { name: "Guide me", exact: true }).click();
     await page.waitForFunction(() => document.getElementById("live")?.textContent === "Another run is waiting for you. Finish or stop it first.");
+    await page.getByRole("button", { name: "Workflows", exact: true }).click();
+    await page.getByRole("button", { name: "Book a class", exact: true }).click();
+    await page.getByRole("button", { name: "Run…", exact: true }).click();
+    await page.locator("#run").waitFor();
+    assert.notEqual(await page.locator("#live").textContent(), "Another run is waiting for you. Finish or stop it first.");
     const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
     assert.equal(after.activeRun?.id, owned);
     assert.equal(after.activeRun?.phase, "waiting");

@@ -205,7 +205,7 @@ test("a relay clear does not remove a local hold", () => {
   assert.equal(snapshot(matched.seat).ownedRunId, "run-1");
 });
 
-test("a guide keeps one hold, so a later ask cannot leave the parked hold in Needs you", () => {
+test("a later ask replaces a guide-parked hold and the guide ends idle", () => {
   const returned = occupy(ownedWait(), { type: "end-run", id: "run-1" }).seat;
   const guide = occupy(returned, { type: "start-guide" });
   assert.equal(guide.ok, true);

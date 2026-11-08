@@ -295,6 +295,7 @@ async function loadState(): Promise<void> {
 }
 
 function render(focusDetail = true): void {
+  if (screen !== "replay") replayError = "";
   const recoveryKey = screen === "library" ? JSON.stringify(state.damagedWorkflows || []) : null;
   const keepLibraryRecovery = libraryRecovery !== null && libraryRecovery.key === recoveryKey;
   if (!keepLibraryRecovery) libraryRecovery = recoveryKey === null ? null : { key: recoveryKey, visible: false, open: false, status: "" };
