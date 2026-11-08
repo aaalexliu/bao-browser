@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,7 +11,7 @@ import { BrowserDriver } from "../../src/v1/browser-driver";
 import { readCalendarSelection } from "../../src/v1/files-dates";
 import { unavailableHeal } from "../../src/v1/heal";
 import { replay } from "../../src/v1/replay";
-import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts, tryWriteEvidence } from "../artifacts";
 import { liveSkip, offOriginFailureUrl, ownApiOutage, probeSite, type SiteProbe } from "../runtime";
 
@@ -20,17 +20,11 @@ const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 const liveOnly = process.env.BAO_LIVE_TESTS === "1" ? false : "set BAO_LIVE_TESTS=1";
 
 function workflow(partial: Pick<WorkflowV2, "id" | "name" | "startUrl" | "inputs" | "steps">): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: WORKFLOW_SCHEMA_ID,
-    version: 3,
-    filesDates: 1,
     createdAt: CLOCK.getTime(),
     ...partial,
   });
-}
-
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: partial.timeoutMs ?? 20000, index: partial.index ?? 0, ...partial });
 }
 
 async function withBrowser(fn: (browser: Browser) => Promise<void>): Promise<void> {
@@ -85,25 +79,43 @@ test("restful-booker selects the replayed check-in and check-out cells", { timeo
       name: "Restful booker dates",
       startUrl: start,
       inputs: [
-        fixtureInput({ name: "checkIn", type: "date", label: "Check in", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
-        fixtureInput({ name: "checkOut", type: "date", label: "Check out", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
+        {
+          name: "checkIn",
+          type: "date",
+          label: "Check in",
+          supply: "must",
+          format: "YYYY-MM-DD",
+          relative: "+14d",
+          zone: "UTC",
+        },
+        {
+          name: "checkOut",
+          type: "date",
+          label: "Check out",
+          supply: "must",
+          format: "YYYY-MM-DD",
+          relative: "+17d",
+          zone: "UTC",
+        },
       ],
       steps: [
-        step({
+        {
           id: "open",
           index: 0,
+          timeoutMs: 20000,
+          caption: { text: "Open the room" },
           action: "open",
-          label: "Open the room",
           open: { target: "url", url: start },
-        }),
-        step({
+        },
+        {
           id: "stay",
           index: 1,
-          action: "click",
-          label: "Pick dates",
-          datePicker: { input: "checkIn", endInput: "checkOut" },
-          identity: { surface: "dom", role: "group", tag: "div", path: [] },
-        }),
+          timeoutMs: 20000,
+          caption: { text: "Pick dates" },
+          action: "pickDate",
+          date: { input: "checkIn", endInput: "checkOut" },
+          target: { locators: [], hint: { role: "group", surface: "dom", tag: "div" } },
+        },
       ],
     });
     const result = await replay(doc, { checkIn: "+21d", checkOut: "+23d" }, new BrowserDriver(page), {
@@ -155,13 +167,15 @@ test("the IRS W-9 downloads twice to the same templated hash", { timeout: 120_00
     id: "wf-w9",
     name: "W-9",
     startUrl: url,
-    inputs: [fixtureInput({ name: "company", type: "text", default: "irs" })],
-    steps: [step({
+    inputs: [{ name: "company", type: "text", label: "company", supply: "saved", default: "irs" }],
+    steps: [{
       id: "dl",
+      index: 0,
+      timeoutMs: 20000,
+      caption: { text: "Download W-9" },
       action: "download",
-      label: "Download W-9",
-      download: { output: "statement", name: "{{run.date}}-{{company}}-statement.pdf", url },
-    })],
+      download: { output: "statement", name: "{{run.date}}-{{company}}-statement.pdf", url: url },
+    }],
   });
   const hashes: string[] = [];
   const paths: string[] = [];
@@ -218,48 +232,62 @@ test("a downloaded file uploads to the-internet and the filename is shown", { ti
     name: "Download then upload",
     startUrl: uploadUrl,
     inputs: [
-      fixtureInput({ name: "company", type: "text", default: "acme" }),
-      fixtureInput({ name: "upload", type: "file", fromOutput: "note", required: false }),
+      { name: "company", type: "text", label: "company", supply: "saved", default: "acme" },
+      { name: "upload", type: "file", label: "upload", supply: "must", fromOutput: "note" },
     ],
     steps: [
-      step({
+      {
         id: "dl",
         index: 0,
+        timeoutMs: 20000,
+        caption: { text: "Download" },
         action: "download",
-        label: "Download",
         download: { output: "note", name: "{{run.date}}-{{company}}-{{suggested}}", url: fileUrl },
-      }),
-      step({
+      },
+      {
         id: "open",
         index: 1,
+        timeoutMs: 20000,
+        caption: { text: "Open upload" },
         action: "open",
-        label: "Open upload",
         open: { target: "url", url: uploadUrl },
-      }),
-      step({
+      },
+      {
         id: "up",
         index: 2,
+        timeoutMs: 20000,
+        caption: { text: "Upload" },
         action: "upload",
-        label: "Upload",
-        input: "upload",
-        value: "{{upload}}",
-        fileFrom: "note",
-        identity: { surface: "dom", role: "textbox", tag: "input", path: [], id: "file-upload" },
-      }),
-      step({
+        target: {
+          locators: [{ kind: "css", value: "#file-upload" }, { kind: "xpath", value: "//*[@id=\"file-upload\"]" }],
+          hint: { role: "textbox", surface: "dom", tag: "input", id: "file-upload" },
+        },
+        file: { fromOutput: "note" },
+      },
+      {
         id: "submit",
         index: 3,
+        timeoutMs: 20000,
+        caption: { text: "Upload", citation: { text: "Upload", source: "text" } },
         action: "click",
-        label: "Upload",
-        identity: { surface: "dom", role: "button", tag: "button", path: [], id: "file-submit", text: "Upload" },
-      }),
-      step({
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Upload" },
+            { kind: "text", value: "Upload" },
+            { kind: "css", value: "#file-submit" },
+            { kind: "xpath", value: "//*[@id=\"file-submit\"]" },
+          ],
+          hint: { role: "button", surface: "dom", tag: "button", id: "file-submit" },
+        },
+      },
+      {
         id: "see",
         index: 4,
+        timeoutMs: 20000,
+        caption: { text: "Filename is shown" },
         action: "verify",
-        label: "Filename is shown",
-        expect: { kind: "text", match: "some-file.txt", timeoutMs: 15000 },
-      }),
+        check: { kind: "text", match: "some-file.txt", timeoutMs: 15000 },
+      },
     ],
   });
   await withBrowser(async (browser) => {

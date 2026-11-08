@@ -1,4 +1,6 @@
-import { stepQuery, stepInputName, stepCheck, handoffReason, stepSensitive } from "../../src/v1/schema";
+import { targetOf } from "../support/workflow";
+import { targetElementId } from "../../../shared/step-read";
+import { stepInputName, stepCheck, handoffReason, stepSensitive } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -63,10 +65,10 @@ test("browser capture retains password changes and ordinary fields in Library de
     assert.equal(saved.steps.length, fields.length);
     const trail = library.readTrail(doc.id) as TrailEvent[];
     for (const field of fields) {
-      const step = saved.steps.find((step) => stepQuery(step)?.id === field.id)!;
+      const step = saved.steps.find((step) => targetElementId(targetOf(step)) === field.id)!;
       const input = saved.inputs.find((input) => input.name === stepInputName(step))!;
       assert.equal(step.action, "type");
-      assert.equal(stepQuery(step)?.autocomplete, field.autocomplete);
+      assert.equal(targetOf(step)?.hint?.autocomplete, field.autocomplete);
       assert.equal(input.default, field.id === "otp" ? undefined : field.value, field.id);
       assert.equal(input.type, field.secret ? "secret" : "text", field.id);
       assert.equal(trail.filter((event) => event.identity?.id === field.id).at(-1)!.value, field.value);
@@ -117,7 +119,7 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
     const saved = library.read(document.id);
     const taught = projectTeach(events, [], meta).workflow;
     for (const workflow of [saved, taught, interpret(events, { ...meta, preserveActions: true })]) {
-      const guests = workflow.steps.find((step) => stepQuery(step)?.id === "guests")!;
+      const guests = workflow.steps.find((step) => targetElementId(targetOf(step)) === "guests")!;
       assert.ok(guests);
       const input = workflow.inputs.find((input) => input.name === stepInputName(guests))!;
       assert.equal(input.type, "text");
@@ -127,12 +129,12 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
       assert.ok(stepCheck(guests));
     }
     for (const [id, value] of [["password", "1qaz2wsx"], ["next-password", "Book!password"]] as const) {
-      const step = saved.steps.find((step) => stepQuery(step)?.id === id)!;
+      const step = saved.steps.find((step) => targetElementId(targetOf(step)) === id)!;
       const input = saved.inputs.find((input) => input.name === stepInputName(step))!;
       assert.equal(input.type, "secret");
       assert.equal(input.default, value);
     }
-    const otp = saved.steps.find((step) => stepQuery(step)?.id === "otp")!;
+    const otp = saved.steps.find((step) => targetElementId(targetOf(step)) === "otp")!;
     assert.equal(saved.inputs.find((input) => input.name === stepInputName(otp))!.default, undefined);
     assert.equal(cleanSaveField("Book a table", 80), "Book a table");
     const prompt = saveIntentPrompt({ floorTitle: "Book a table", steps: [{ id: "guests", action: "type", label: "Book a table" }] });

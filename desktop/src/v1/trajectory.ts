@@ -1,8 +1,8 @@
 // Trajectory diff. Replay is compared with the recording, one step at a time:
 // target identity, action, postcondition, and a coarse timing bucket.
 
-import { stepQuery, stepCheck } from "./schema";
-import type { Identity, WorkflowStep, WorkflowV2 } from "./schema";
+import { type Identity, stepCheck, stepTarget, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { targetQuery } from "./identity";
 
 export type TimingBucket = "lt1s" | "lt10s" | "lt60s" | "slower";
 
@@ -46,6 +46,11 @@ export function targetKey(identity?: Identity): string {
   return role;
 }
 
+function stepTargetKey(step: WorkflowStep): string {
+  const target = stepTarget(step);
+  return targetKey(target ? targetQuery(target) : undefined);
+}
+
 export function postKey(step: WorkflowStep): string {
   const check = stepCheck(step);
   const parts: string[] = [];
@@ -58,7 +63,7 @@ export function trajectoryFromWorkflow(workflow: WorkflowV2, timings: number[] =
   return workflow.steps.map((step, index) => ({
     stepId: step.id,
     action: step.action,
-    target: targetKey(stepQuery(step)),
+    target: stepTargetKey(step),
     postcondition: postKey(step),
     timing: timingBucket(timings[index] ?? 0),
   }));

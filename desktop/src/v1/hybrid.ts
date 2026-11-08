@@ -2,8 +2,7 @@
 // The model may drop a noise step, write intent text, and flag human steps.
 // It cannot add a step, change an input, or clear a secret or gate tag.
 
-import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepCheck, handoffReason, stepSensitive } from "./schema";
-import type { WorkflowStep, WorkflowV2 } from "./schema";
+import { handoffReason, locatorValue, roleLocator, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface HybridHuman {
   id: string;
@@ -114,7 +113,8 @@ export function isNoiseStep(step: WorkflowStep): boolean {
   if (stepInputName(step) || stepSensitive(step) || handoffReason(step)) return false;
   const effect = stepCheck(step)?.kind;
   if (effect === "text" || effect === "url" || effect === "value") return false;
-  const name = [stepQuery(step)?.name, stepQuery(step)?.text, stepQuery(step)?.label, stepTitle(step)].filter(Boolean).join(" ");
+  const target = stepTarget(step);
+  const name = [roleLocator(target)?.name, locatorValue(target, "text"), target?.hint?.label, stepTitle(step)].filter(Boolean).join(" ");
   return /\bhelp\b/i.test(name);
 }
 
@@ -132,10 +132,9 @@ function literals(workflow: WorkflowV2, secrets: string[]): { from: string; to: 
     if (input.default) out.push({ from: input.default, to: `{{${input.name}}}` });
   }
   for (const step of workflow.steps) {
-    const literal = stepValueTemplate(step);
-    if (step.action === "type" && literal && !literal.includes("{{")) {
-      out.push({ from: literal, to: "{{literal}}" });
-    }
+    if (step.action !== "type" || !("literal" in step.text)) continue;
+    const literal = step.text.literal;
+    if (literal && !literal.includes("{{")) out.push({ from: literal, to: "{{literal}}" });
   }
   return out;
 }

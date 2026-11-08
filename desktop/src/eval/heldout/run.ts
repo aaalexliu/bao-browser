@@ -10,7 +10,8 @@ import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
 import { replay, type RunResult } from "../../v1/replay";
 import type { TrajectoryStep } from "../../v1/trajectory";
-import { stepTitle, stepQuery, stepInputName, stepKey, stepCheck, handoffReason, validateWorkflow, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
+import { targetQuery } from "../../v1/identity";
+import { locatorValue, roleLocator, stepTarget, stepTitle, stepInputName, stepKey, stepCheck, handoffReason, validateWorkflow, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";
@@ -84,7 +85,8 @@ function hybridPrompt(workflow: WorkflowV2): string {
 }
 
 function heldSignature(step: WorkflowStep): string {
-  const id = stepQuery(step);
+  const target = stepTarget(step);
+  const id = target ? targetQuery(target) : undefined;
   const text = (id?.text || "").replace(/\s+/g, " ").trim().slice(0, 60);
   return [
     step.action,
@@ -700,9 +702,9 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
     const input = workflow.inputs.find((item) => item.name === stepInputName(step));
     const target: LintTarget = {
       action: step.action,
-      name: stepQuery(step)?.name || stepQuery(step)?.text || stepQuery(step)?.label,
-      label: stepQuery(step)?.label,
-      text: stepQuery(step)?.text,
+      name: roleLocator(stepTarget(step))?.name || locatorValue(stepTarget(step), "text") || stepTarget(step)?.hint?.label,
+      label: stepTarget(step)?.hint?.label,
+      text: locatorValue(stepTarget(step), "text"),
       input: stepInputName(step),
       literal: input?.default,
     };

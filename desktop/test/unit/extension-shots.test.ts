@@ -1,4 +1,5 @@
-import { fixtureDoc } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
+import type { WorkflowStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -45,9 +46,9 @@ test("an extension Library run saves six rapid page pictures without a captureVi
     await app.extensionLink!.waitForHello(0, 30_000);
     stage("native hello ready");
     const base = `http://127.0.0.1:${app.port}`;
-    app.library.save(fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: "wf-extension-shots", name: "Rapid pictures", driver: "extension",
+    app.library.save(testWorkflow({ schema: "bao.workflow/v4", id: "wf-extension-shots", name: "Rapid pictures", driver: "extension",
       startUrl: `${base}/fixture?signedin=1`, inputs: [], createdAt: 1,
-      steps: [0, 1, 2].map((index) => ({ id: `picture-${index}`, index, action: "note", surface: "dom", label: `Picture ${index + 1}`, timeoutMs: 1000 })) }));
+      steps: [0, 1, 2].map((index): WorkflowStep => ({ id: `picture-${index}`, index, timeoutMs: 1000, caption: { text: `Picture ${index + 1}` }, action: "note", text: `Picture ${index + 1}` })) }));
     const response = await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "wf-extension-shots", args: {} }) });
     const result = await response.json() as { runId: string; status: string; error?: string };

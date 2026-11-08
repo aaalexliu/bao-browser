@@ -6,8 +6,8 @@
 // Nothing here names a fixture.
 
 import { sameTrailPage, type TrailEvent } from "../../v1/interpret";
-import { stepTitle, stepQuery, stepCheck, handoffReason, stepSensitive } from "../../v1/schema";
-import type { WorkflowStep } from "../../v1/schema";
+import { targetElementId } from "../../../../shared/step-read";
+import { handoffReason, locatorValue, roleLocator, stepCheck, stepSensitive, stepTarget, stepTitle, type WorkflowStep } from "../../v1/schema";
 
 export interface HumanMark {
   id: string;
@@ -116,8 +116,8 @@ function noEffectStep(step: WorkflowStep): boolean {
 }
 
 function stepText(step: WorkflowStep): string {
-  const id = stepQuery(step);
-  return [id?.name, id?.text, id?.label, id?.nameAttr, id?.id, id?.testId, stepTitle(step)].filter(Boolean).join(" ");
+  const target = stepTarget(step);
+  return [roleLocator(target)?.name, locatorValue(target, "text"), target?.hint?.label, target?.hint?.nameAttr, targetElementId(target), locatorValue(target, "testid"), stepTitle(step)].filter(Boolean).join(" ");
 }
 
 interface TypoGroup {

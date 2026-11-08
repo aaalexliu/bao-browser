@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import path from "node:path";
@@ -12,14 +12,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp } from "../runtime";
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return fixtureDoc({ schema: "bao.workflow/v4", version: 2, id, name, createdAt: 1, startUrl, inputs: [], steps });
-}
-
-function confirmStep(postcondition: boolean): WorkflowV2["steps"][number] {
-  return fixtureStep({
-    id: "reserve", index: 0, action: "confirm", human: true, label: "Press Reserve", surface: "dom", timeoutMs: 60_000,
-    ...(postcondition ? { postcondition: { kind: "text" as const, match: "Applied", timeoutMs: 60_000 } } : {}),
-  });
+  return testWorkflow({ schema: "bao.workflow/v4", id, name, createdAt: 1, startUrl, inputs: [], steps });
 }
 
 async function stateOf(base: string): Promise<ShellState> {
@@ -45,9 +38,23 @@ test("an unsaved running replay is the only Now row and opens live", { timeout: 
   const base = `http://127.0.0.1:${app.port}`;
   let replay: Promise<unknown> | undefined;
   try {
-    app.library.save(workflow("wf-old", "Pay the electricity bill", `${base}/fixture`, [confirmStep(false)]));
+    app.library.save(workflow("wf-old", "Pay the electricity bill", `${base}/fixture`, [{
+      id: "reserve",
+      index: 0,
+      timeoutMs: 60000,
+      caption: { text: "Press Reserve" },
+      action: "handoff",
+      reason: "owner-press",
+    }]));
     app.library.save(workflow("wf-live", "Book a class", `${base}/fixture`, [
-      fixtureStep({ id: "wait", index: 0, label: "Wait for the class note", action: "verify", surface: "dom", timeoutMs: 60_000, expect: { kind: "text", match: "Finish the unsaved run", timeoutMs: 60_000 } }),
+      {
+        id: "wait",
+        index: 0,
+        timeoutMs: 60000,
+        caption: { text: "Wait for the class note" },
+        action: "verify",
+        check: { kind: "text", match: "Finish the unsaved run", timeoutMs: 60000 },
+      },
     ]));
     app.library.saveRun({ id: "run-old", workflowId: "wf-old", status: "paused", at: Date.now() - 86_400_000, steps: [], heals: [], envelope: { status: "needs_human", ask: "Press Pay in the Bao window." } });
     await page.goto(base);
@@ -102,7 +109,15 @@ test("a replay waiting in this process is under Needs you and Now, and opens liv
   const base = `http://127.0.0.1:${app.port}`;
   let replay: Promise<unknown> | undefined;
   try {
-    app.library.save(workflow("wf-live", "Book a class", `${base}/fixture`, [confirmStep(true)]));
+    app.library.save(workflow("wf-live", "Book a class", `${base}/fixture`, [{
+      id: "reserve",
+      index: 0,
+      timeoutMs: 60000,
+      caption: { text: "Press Reserve" },
+      action: "handoff",
+      reason: "owner-press",
+      check: { kind: "text", match: "Applied", timeoutMs: 60000 },
+    }]));
     await page.goto(base);
     await page.locator("#runs").waitFor();
     replay = fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "wf-live", args: {} }) });
@@ -150,7 +165,14 @@ test("a returned paused run stays out of Now and opens live", { timeout: 90_000 
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const base = `http://127.0.0.1:${app.port}`;
   try {
-    app.library.save(workflow("wf-live", "Book a class", `${base}/fixture`, [confirmStep(false)]));
+    app.library.save(workflow("wf-live", "Book a class", `${base}/fixture`, [{
+      id: "reserve",
+      index: 0,
+      timeoutMs: 60000,
+      caption: { text: "Press Reserve" },
+      action: "handoff",
+      reason: "owner-press",
+    }]));
     await page.goto(base);
     await page.locator("#runs").waitFor();
     const result = await (await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "wf-live", args: {} }) })).json() as { status?: string; runId?: string; error?: string };
@@ -202,9 +224,30 @@ test("a restored wait stays out of Now, in Needs you and its day group, and open
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const base = `http://127.0.0.1:${app.port}`;
   try {
-    app.library.save(workflow("wf-old", "Pay the electricity bill", "/fixture", [confirmStep(false)]));
-    app.library.save(workflow("wf-live", "Book a class", "/fixture", [confirmStep(false)]));
-    app.library.save(workflow("wf-guide", "File the permit", "/fixture", [confirmStep(false)]));
+    app.library.save(workflow("wf-old", "Pay the electricity bill", "/fixture", [{
+      id: "reserve",
+      index: 0,
+      timeoutMs: 60000,
+      caption: { text: "Press Reserve" },
+      action: "handoff",
+      reason: "owner-press",
+    }]));
+    app.library.save(workflow("wf-live", "Book a class", "/fixture", [{
+      id: "reserve",
+      index: 0,
+      timeoutMs: 60000,
+      caption: { text: "Press Reserve" },
+      action: "handoff",
+      reason: "owner-press",
+    }]));
+    app.library.save(workflow("wf-guide", "File the permit", "/fixture", [{
+      id: "reserve",
+      index: 0,
+      timeoutMs: 60000,
+      caption: { text: "Press Reserve" },
+      action: "handoff",
+      reason: "owner-press",
+    }]));
     app.library.saveRun({
       id: "run-old", workflowId: "wf-old", status: "paused", at: +yesterday, steps: [], heals: [],
       envelope: { status: "needs_human", ask: "Press Pay in the Bao window." },

@@ -1,3 +1,4 @@
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
@@ -9,9 +10,7 @@ import { FrameDecoder, encodeFrame } from "../../src/extension/frames";
 import { clampGesture, fillPlan, gestureQueue } from "../../src/extension/gestures";
 import { acceptAuth, originArg } from "../../src/extension/native-host";
 import { hostScriptPath, startExtensionLink } from "../../src/extension/link";
-import { fixtureDoc } from "../support/fixture-step";
 import { EXTENSION_ID, EXTENSION_KEY, extensionOrigin, workflowDriver } from "../../src/extension/protocol";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import {
   ALL_SITE_ORIGINS,
   grantedCovers,
@@ -27,10 +26,6 @@ import { diffSignals, hashCookieHeader, hashValue } from "../../src/extension/si
 import { validateWorkflow } from "../../src/v1/schema";
 import { createHash } from "node:crypto";
 
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
-
 test("driver defaults to playwright and only extension selects the extension", () => {
   assert.equal(workflowDriver({}), "playwright");
   assert.equal(workflowDriver({ driver: "playwright" }), "playwright");
@@ -39,16 +34,7 @@ test("driver defaults to playwright and only extension selects the extension", (
 });
 
 test("workflow validation accepts the extension driver and rejects a third one", () => {
-  const doc = migrate({
-    id: "wf-ext",
-    name: "Ext",
-    version: 2,
-    schema: "bao.workflow/v4",
-    startUrl: "https://example.test/",
-    createdAt: 1,
-    inputs: [],
-    steps: [],
-  });
+  const doc = testWorkflow({ id: "wf-ext", name: "Ext" });
   assert.deepEqual(validateWorkflow(doc), []);
   assert.deepEqual(validateWorkflow({ ...doc, driver: "extension" }), []);
   assert.deepEqual(validateWorkflow({ ...doc, driver: "playwright" }), []);

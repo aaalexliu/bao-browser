@@ -1,11 +1,10 @@
-import { checkMatch, stepInputName, stepValueTemplate, stepCheck } from "../../src/v1/schema";
+import { checkMatch, type Identity, stepCheck, stepInputName } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileParamName, storedFileEvent } from "../../src/v1/file-chooser";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
-import type { Identity } from "../../src/v1/schema";
 
 function id(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "input", path: [], ...partial };
@@ -55,7 +54,8 @@ test("a drop with a file name is a file input", () => {
   assert.equal(doc.steps[0]?.action, "drop");
   assert.equal(doc.inputs[0]?.type, "file");
   assert.equal(doc.inputs[0]?.name, "file");
-  assert.equal((doc.steps[0] == null ? undefined : stepValueTemplate(doc.steps[0])), "{{file}}");
+  const dropped = doc.steps[0];
+  assert.deepEqual(dropped?.action === "drop" ? dropped.file : undefined, { input: "file" });
   assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Dropped file: {{file}}");
   assert.equal(JSON.stringify(doc).includes("/tmp/bao"), false);
 });

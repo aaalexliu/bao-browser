@@ -1,4 +1,3 @@
-import { fixtureInput, fixtureStep, writeStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import fc from "fast-check";
@@ -10,7 +9,7 @@ import { loginDocument, loginRedirect, readCookie, sessionStatus } from "../../s
 import { interpret } from "../../src/v1/interpret";
 import { recordedField } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepTitle, stepValueTemplate, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTitle, validateWorkflow, type Identity, type Target, type WorkflowV2 } from "../../src/v1/schema";
 import { startApp } from "../../src/app/server";
 import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { scrubSaved } from "../../../shared/outbound-secrets";
@@ -72,7 +71,9 @@ test("the recorder keeps a password value in a secret slot", () => {
   }], { id: "wf-rec", name: "Recorded", startUrl: "http://127.0.0.1/login" });
   assert.equal(JSON.stringify(doc).includes(SECRET), true);
   assert.equal(doc.inputs.find((input) => input.type === "secret")?.default, SECRET);
-  assert.equal((doc.steps[0] == null ? undefined : stepValueTemplate(doc.steps[0])), "{{password}}");
+  const typed = doc.steps[0]!;
+  assert.ok(typed.action === "type");
+  assert.deepEqual(typed.text, { input: "password" });
   assert.equal(validateWorkflow(doc).length, 0);
 });
 
@@ -160,8 +161,9 @@ test("login and auth recovery hand off stripped credentials without filling or s
       }
       if (source === "password") args.password = STRIPPED_SECRET;
       if (source === "preferred password") {
-        workflow.inputs.push(fixtureInput({ name: "alternate", type: "secret" }));
-        if (recovery) writeStep(workflow.steps[0]!, { input: "alternate" });
+        workflow.inputs.push({ name: "alternate", type: "secret", label: "alternate", supply: "must" });
+        const first = workflow.steps[0]!;
+        if (recovery && first.action === "click") first.dialog = { input: "alternate" };
         else args.password = STRIPPED_SECRET;
         args.alternate = STRIPPED_SECRET;
       }
@@ -188,10 +190,17 @@ test("outbound-stripped login and owner Teach steps hand off, but automated entr
   for (const action of ["login", "confirm", "type"]) {
     const local = freezeWorkflow();
     local.inputs.find((input) => input.name === "password")!.default = SECRET;
-    if (action === "login" || action === "confirm") writeStep(local.steps[0]!, { action: "handoff", reason: action === "login" ? "sign-in" : "owner-press" });
-    else local.steps[0]!.action = "type";
-    writeStep(local.steps[0]!, { human: action !== "type" });
-    writeStep(local.steps[0]!, { identity: ident({ id: "password", role: "password" }) });
+    const signIn = local.steps[0]!;
+    assert.ok(signIn.action === "handoff");
+    const { id, index, timeoutMs, caption, check } = signIn;
+    const target: Target = {
+      locators: [{ kind: "css", value: "#password" }, { kind: "xpath", value: '//*[@id="password"]' }],
+      hint: { role: "password", surface: "dom", id: "password" },
+    };
+    const base = { id, index, timeoutMs, caption, check };
+    local.steps[0] = action === "login" ? { ...base, action: "handoff", reason: "sign-in" }
+      : action === "confirm" ? { ...base, action: "handoff", reason: "owner-press", target }
+      : { ...base, action: "type", target, text: { literal: "" } };
     const workflow = scrubSaved(local);
     assert.equal(workflow.inputs.find((input) => input.name === "password")?.default, STRIPPED_SECRET);
     const driver = humanDriver();
@@ -216,9 +225,23 @@ test("an Apply click runs before a later explicit human confirm", async () => {
   workflow.precondition = undefined;
   workflow.inputs = [];
   workflow.steps = [
-    fixtureStep({ id: "apply", index: 0, action: "click", label: "Apply", surface: "dom", timeoutMs: 0,
-      identity: ident({ testId: "apply", text: "Apply" }) }),
-    fixtureStep({ id: "wait", index: 1, action: "confirm", human: true, label: "You confirm", surface: "dom", timeoutMs: 0 }),
+    {
+      id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
+    { id: "wait", index: 1, timeoutMs: 0, caption: { text: "You confirm" }, action: "handoff", reason: "owner-press" },
   ];
   const clicks: string[] = [];
   const page = tree([ident({ testId: "apply", text: "Apply" })]);
@@ -434,7 +457,7 @@ test("recording a password field saves its value in a secret slot", async (t) =>
     const saved = await stopped.json() as WorkflowV2;
     assert.equal(JSON.stringify(saved).includes(SECRET), true);
     assert.equal(saved.inputs.some((input) => input.type === "secret" && input.default === SECRET), true);
-    const passwordStep = saved.steps.find((step) => step.action === "type" && stepValueTemplate(step) === "{{password}}");
+    const passwordStep = saved.steps.find((step) => step.action === "type" && "input" in step.text && step.text.input === "password");
     assert.ok(passwordStep);
     const committed = await (await post("/api/sessions/commit", { name: "Fixture login" })).json() as WorkflowV2;
     assert.equal(committed.id, saved.id);

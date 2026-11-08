@@ -2,8 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { fromAtspiNode, assignSiblingIndex, lookup, normRole } from "./identity";
-import type { HealNotice } from "./replay";
-import type { Driver, LiveTree } from "./replay";
+import type { Driver, HealNotice, LiveTree } from "./replay";
 import type { FileArg, Identity } from "./schema";
 import { osNodes, osPress, osSetText, type OsNode } from "../proxy/os";
 import { notifyOs } from "./browser-driver";
@@ -48,12 +47,12 @@ export class AtspiDriver implements Driver {
     throw new Error("native drag onto a window is not available on this Linux driver");
   }
 
-  async digits(app: string | undefined, role: string, text: string): Promise<void> {
+  async digits(role: string, text: string): Promise<void> {
     for (const ch of text) {
       const tree = await this.tree();
-      const query: Identity = { surface: "atspi", role, name: ch, app, path: [] };
+      const query: Identity = { surface: "atspi", role, name: ch, path: [] };
       const hit = lookup(query, tree.nodes);
-      const exact = uniqueNamedRole(tree.nodes, app, role, ch);
+      const exact = uniqueNamedRole(tree.nodes, role, ch);
       const node = hit.ok && hit.index != null ? tree.nodes[hit.index] : hit.reason === "tie" ? exact : undefined;
       if (!node) throw new Error(`digit ${ch} ${hit.reason || "missing"}`);
       await this.click(node);
@@ -76,11 +75,8 @@ export class AtspiDriver implements Driver {
 }
 
 /** The scorer ties a button with the label of the same name. Role plus name is one control. */
-export function uniqueNamedRole(nodes: Identity[], app: string | undefined, role: string, name: string): Identity | undefined {
-  const hits = nodes.filter((node) => {
-    if (app && node.app && node.app.toLowerCase() !== app.toLowerCase()) return false;
-    return normRole(node.role) === normRole(role) && (node.name || "") === name;
-  });
+export function uniqueNamedRole(nodes: Identity[], role: string, name: string): Identity | undefined {
+  const hits = nodes.filter((node) => normRole(node.role) === normRole(role) && (node.name || "") === name);
   return hits.length === 1 ? hits[0] : undefined;
 }
 

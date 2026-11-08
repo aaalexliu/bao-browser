@@ -6,7 +6,8 @@ import { inferExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
 import { caption, citeIdentity, clickSentence, openSentence, targetBox, typeSentence } from "./caption";
 import { locatorsFromIdentity } from "./locators";
-import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepSensitive, stepSurface, stepForEach, finishInput, hintFromIdentity, WORKFLOW_SCHEMA_ID, type AnchorLocator, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepEnteredLiteral, targetName } from "../../../shared/step-read";
+import { stepTitle, stepInputName, stepSensitive, stepSurface, stepForEach, stepTarget, finishInput, hintFromIdentity, WORKFLOW_SCHEMA_ID, type AnchorLocator, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { fixedSavedChoice, hasStrippedSecret, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 
@@ -678,7 +679,7 @@ function collapseDigits(
     const sample = pieces[i]!.step;
     const input = addInput(inputs, "number", inputs.some((item) => item.name === "a") ? "b" : "a");
     input.supply = "saved";
-    input.default = run.map((step) => stepQuery(step)?.name).join("");
+    input.default = run.map((step) => targetName(stepTarget(step))).join("");
     input.label = input.name;
     out.push({
       events: pieces.slice(i, i + run.length).flatMap((piece) => piece.events),
@@ -701,7 +702,7 @@ function digitRun(steps: WorkflowStep[], start: number): WorkflowStep[] {
   for (let i = start; i < steps.length; i++) {
     const step = steps[i]!;
     if (step.action !== "click" || stepSurface(step) === "dom") break;
-    const digit = stepQuery(step)?.name;
+    const digit = targetName(stepTarget(step));
     if (!digit || !DIGIT.test(digit)) break;
     run.push(step);
   }
@@ -715,12 +716,12 @@ function attachExpr(steps: WorkflowStep[]): WorkflowStep[] {
   const right = nums[1]!;
   const leftAt = steps.indexOf(left);
   const rightAt = steps.indexOf(right);
-  const op = steps.slice(leftAt + 1, rightAt).find((step) => step.action === "click" && OP.has(stepQuery(step)?.name || ""));
-  const equals = steps.slice(rightAt + 1).find((step) => stepQuery(step)?.name === "=");
+  const op = steps.slice(leftAt + 1, rightAt).find((step) => step.action === "click" && OP.has(targetName(stepTarget(step)) || ""));
+  const equals = steps.slice(rightAt + 1).find((step) => targetName(stepTarget(step)) === "=");
   const leftName = left.action === "digits" && "input" in left.text ? left.text.input : undefined;
   const rightName = right.action === "digits" && "input" in right.text ? right.text.input : undefined;
   if (!op || !equals || !leftName || !rightName || equals.action !== "click") return steps;
-  const opName = stepQuery(op)?.name;
+  const opName = targetName(stepTarget(op));
   const symbol = opName === "×" ? "*" : opName === "÷" ? "/" : opName;
   equals.check = { kind: "value", match: `{{${leftName}}}${symbol}{{${rightName}}}`, timeoutMs: 4000 };
   return steps;
@@ -728,7 +729,7 @@ function attachExpr(steps: WorkflowStep[]): WorkflowStep[] {
 
 function assertFileSlots(doc: WorkflowV2): void {
   const walk = (step: WorkflowStep): void => {
-    const value = stepValueTemplate(step);
+    const value = stepEnteredLiteral(step);
     if (value && value.startsWith("/") && !value.includes("{{")) {
       throw new Error("interpret kept a file path");
     }

@@ -15,16 +15,11 @@ import { pinTestBrowser } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { startApp } from "../../src/app/server";
-import { fixtureDoc, fixtureInput } from "../support/fixture-step";
-import { type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
+import { parseWorkflow, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 import { SEED_WORKFLOWS } from "../../../web/src/lib/seeds";
 import { testArtifacts } from "../artifacts";
-
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
 
 process.env.TZ = "America/New_York";
 const TEST_BROWSER = pinTestBrowser();
@@ -169,7 +164,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
 
     const noted = localCopy("fixture-username", "noted-hello", "http://127.0.0.1/fixture.html");
     noted.name = "Hello with a note";
-    noted.inputs.push(fixtureInput({ name: "note", type: "text", label: "Note", required: false, default: "ada@acme.com" }));
+    noted.inputs.push({ name: "note", type: "text", label: "Note", supply: "saved", default: "ada@acme.com" });
     const pushed = await fetch(`${origin}/api/workflows/noted-hello/versions`, {
       method: "POST",
       headers: { cookie: examples, "content-type": "application/json" },
@@ -186,7 +181,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
       if (!seed.id.startsWith("fixture-")) continue;
       const current = await fetch(`${origin}/api/workflows/${seed.id}`, { headers: { cookie: examples } });
       const pulled = await current.json() as { version: number; document: WorkflowV2 };
-      const doc = migrate(pulled.document);
+      const doc = pulled.document;
       doc.startUrl = fixture;
       const retargeted = await fetch(`${origin}/api/workflows/${seed.id}/versions`, {
         method: "POST",
@@ -371,7 +366,7 @@ test("two devices, review gate, agent, and the web app", { timeout: 720_000 }, a
         const secretDoc = localCopy("fixture-username", "secret-push", fixture);
         secretDoc.inputs = [
           ...secretDoc.inputs,
-          fixtureInput({ name: "password", type: "secret", label: "Password", required: true }),
+          { name: "password", type: "secret", label: "Password", supply: "must" },
         ];
         libB.save(secretDoc);
         libB.noteHealPromotion("secret-push", { args: { password: planted } });
@@ -485,7 +480,7 @@ function seedInputs(id: string, _fixture: string): ReplayArgs {
 function localCopy(seedId: string, id: string, startUrl: string): WorkflowV2 {
   const seed = SEED_WORKFLOWS.find((item) => item.id === seedId);
   if (!seed) throw new Error(seedId);
-  const doc = migrate(JSON.parse(JSON.stringify(seed.document)) as unknown);
+  const doc = parseWorkflow(JSON.parse(JSON.stringify(seed.document)));
   doc.id = id;
   doc.startUrl = startUrl;
   doc.createdAt = Date.now();

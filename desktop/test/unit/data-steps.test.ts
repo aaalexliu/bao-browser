@@ -1,6 +1,6 @@
-import { fixtureStep, fixtureDoc, withStep } from "../support/fixture-step";
-// Extract, for_each, and outputs. Old workflows stay version 2.
+// Extract, for_each, and outputs.
 
+import { stepText, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -9,30 +9,33 @@ import { dataCases } from "../../src/eval/data/cases";
 import { installDataPage } from "../../src/v1/data-page";
 import { bindStep, materializeOutputs, outputCsv, outputsHtml, parseCsv, performDataStep, specFromProposal, validateDataSteps, type ExtractSpec, type PageProposal } from "../../src/v1/data-steps";
 import { interpret } from "../../src/v1/interpret";
-import { checkMatch, stepValueTemplate, stepCheck, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
-
-function migrateDataSteps(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
+import { checkMatch, stepCheck, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 test("a saved workflow is schema v4 and validates", () => {
   const raw = JSON.parse(readFileSync("examples/workflows/browser-form.json", "utf8")) as WorkflowV2;
   assert.equal(raw.schema, "bao.workflow/v4");
-  assert.equal((raw as { version?: number }).version, undefined);
   assert.equal(validateWorkflow(raw).length, 0);
   assert.deepEqual(validateDataSteps(raw), []);
 });
 
-test("extract on a version 2 document migrates to version 3", () => {
+test("an extract step and its table output validate", () => {
   const doc = workflow();
-  undefined;
-  doc.steps = [extractStep()];
+  doc.steps = [{
+    id: "extract-1",
+    index: 0,
+    timeoutMs: 8000,
+    caption: { text: "extract-1" },
+    heal: "never",
+    action: "extract",
+    extract: {
+      mode: "list",
+      as: "books",
+      locators: [{ kind: "css", value: "article.product_pod" }],
+      columns: [{ name: "title", type: "text", read: "title", locators: [{ kind: "css", value: "h3 > a" }] }],
+    },
+  }];
   doc.outputs = [{ name: "books", type: "table", from: "books", columns: [{ name: "title", type: "text" }] }];
-  const migrated = migrateDataSteps(doc);
-  assert.equal(migrated.schema, "bao.workflow/v4");
-  assert.equal((migrated as { version?: number }).version, undefined);
-  assert.notEqual(migrated, doc);
-  assert.deepEqual(validateWorkflow(migrated), []);
+  assert.deepEqual(validateWorkflow(doc), []);
 });
 
 test("csv, column choices, and the run table", () => {
@@ -55,8 +58,17 @@ test("csv, column choices, and the run table", () => {
   const spec = specFromProposal(proposal, { names: { price_color: "price" }, drop: ["stock"], maxPages: 3, as: "books" });
   assert.deepEqual(spec.columns.filter((column) => !column.dropped).map((column) => column.name), ["title", "price"]);
   assert.equal(spec.pagination?.maxPages, 3);
-  const bound = bindStep(fixtureStep(withStep(clickStep("row-0"), { action: "type", value: "{{row.note}}", postcondition: { kind: "value", match: "{{row.note}}", timeoutMs: 4000 } })), { note: "hello, world" }, 0);
-  assert.equal(stepValueTemplate(bound), "hello, world");
+  const bound = bindStep({
+    id: "row-0",
+    index: 0,
+    timeoutMs: 8000,
+    caption: { text: "row-0" },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "button", name: "row-0" }] },
+    text: { literal: "{{row.note}}" },
+    check: { kind: "value", match: "{{row.note}}", timeoutMs: 4000 },
+  }, { note: "hello, world" }, 0);
+  assert.deepEqual(stepText(bound), { literal: "hello, world" });
   assert.equal(checkMatch(stepCheck(bound)), "hello, world");
   const outputs = materializeOutputs(
     { outputs: [{ name: "books", type: "table", from: "books", columns: [{ name: "title", type: "text" }] }] },
@@ -88,19 +100,15 @@ test("the published schema accepts data steps", () => {
   assert.ok(extract?.required?.includes("extract"));
 });
 
-test("interpret proposes extract and for_each, and leaves an ordinary trail on version 2", () => {
+test("interpret proposes extract and for_each, and leaves an ordinary trail plain", () => {
   for (const item of dataCases) {
     const doc = interpret(item.events, { id: item.id, name: item.name, startUrl: "https://books.toscrape.com/" });
     const blob = JSON.stringify(doc);
     if (item.expect === "plain") {
-      assert.equal(doc.schema, "bao.workflow/v4", item.id);
-      assert.equal((doc as { version?: number }).version, undefined, item.id);
       assert.equal(doc.outputs, undefined);
       assert.equal(doc.steps.some((step) => step.action === "extract" || step.action === "for_each"), false);
       continue;
     }
-    assert.equal(doc.schema, "bao.workflow/v4", item.id);
-    assert.equal((doc as { version?: number }).version, undefined, item.id);
     assert.equal(validateWorkflow(doc).join(", "), "", item.id);
     if (item.expect === "extract") {
       assert.equal(doc.steps[0]?.action, "extract");
@@ -112,7 +120,10 @@ test("interpret proposes extract and for_each, and leaves an ordinary trail on v
       assert.ok(loop?.forEach);
       assert.equal(loop?.forEach?.over.kind, "input");
       assert.ok(doc.inputs.some((input) => input.type === "table"));
-      const values = (loop?.forEach?.steps ?? []).map((step) => stepValueTemplate(step));
+      const values = (loop?.forEach?.steps ?? []).map((step) => {
+        const text = stepText(step);
+        return text && "literal" in text ? text.literal : "";
+      });
       assert.ok(values.includes("{{row.name}}"), values.join(" "));
       assert.ok(values.includes("{{row.email}}"), values.join(" "));
       assert.equal(blob.includes("ada@example.com"), false);
@@ -131,7 +142,15 @@ test("extract paginates until next is gone and for_each binds each row", async (
   };
   let page = 0;
   const tables = new Map<string, Record<string, string>[]>();
-  const extracted = await performDataStep(extractStep(spec), {}, tables, {
+  const extracted = await performDataStep({
+    id: "extract-1",
+    index: 0,
+    timeoutMs: 8000,
+    caption: { text: "extract-1" },
+    heal: "never",
+    action: "extract",
+    extract: spec,
+  }, {}, tables, {
     async readList() {
       page += 1;
       return { rows: [{ title: `Page ${page}` }], nextVisible: page < 2 };
@@ -142,19 +161,31 @@ test("extract paginates until next is gone and for_each binds each row", async (
   assert.equal(extracted.ok && extracted.detail, "2 rows");
   assert.equal(page, 2);
   const seen: string[] = [];
-  const loop: WorkflowStep = fixtureStep({
-    ...clickStep("each"),
-    action: "for_each",
+  const loop: WorkflowStep = {
+    id: "each",
+    index: 0,
+    timeoutMs: 8000,
+    caption: { text: "each" },
     heal: "never",
+    action: "for_each",
     forEach: {
       over: { kind: "input", name: "people" },
-      steps: [fixtureStep(withStep(clickStep("row-0"), { action: "type", value: "{{row.email}}" }))],
+      steps: [{
+        id: "row-0",
+        index: 0,
+        timeoutMs: 8000,
+        caption: { text: "row-0" },
+        action: "type",
+        target: { locators: [{ kind: "role", role: "button", name: "row-0" }] },
+        text: { literal: "{{row.email}}" },
+      }],
     },
-  });
+  };
   const walked = await performDataStep(loop, {
     people: "email\nada@example.com\ngrace@example.com\nlinus@example.com\n",
   }, tables, {}, false, async (nested) => {
-    seen.push(stepValueTemplate(nested) || "");
+    const text = stepText(nested);
+    seen.push(text && "literal" in text ? text.literal : "");
     return { ok: true };
   });
   assert.equal(walked.ok && walked.detail, "3 rows");
@@ -194,9 +225,8 @@ test("picking one card proposes the list and reads every row", async () => {
 });
 
 function workflow(): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-data",
     name: "Data",
     startUrl: "https://books.toscrape.com/",
@@ -206,16 +236,3 @@ function workflow(): WorkflowV2 {
   });
 }
 
-function clickStep(id: string): WorkflowStep {
-  return fixtureStep({ id, index: 0, action: "click", label: id, surface: "dom", timeoutMs: 8000 });
-}
-
-function extractStep(spec?: ExtractSpec): WorkflowStep {
-  const extract = spec ?? {
-    mode: "list" as const,
-    as: "books",
-    locators: [{ kind: "css" as const, value: "article.product_pod" }],
-    columns: [{ name: "title", type: "text" as const, read: "title" as const, locators: [{ kind: "css" as const, value: "h3 > a" }] }],
-  };
-  return fixtureStep({ ...clickStep("extract-1"), action: "extract", heal: "never", locators: extract.locators, extract });
-}

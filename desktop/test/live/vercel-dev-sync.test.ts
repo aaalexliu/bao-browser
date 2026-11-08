@@ -1,5 +1,5 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
-import { stepQuery } from "../../src/v1/schema";
+import { targetOf, testWorkflow,  } from "../support/workflow";
+import { locatorValue, type WorkflowV2 } from "../../src/v1/schema";
 // Pair, push, and pull against a local `vercel dev` (no deploy, no linked project).
 // Not part of test:v1. Run: node --test desktop/test/live/vercel-dev-sync.test.ts
 
@@ -10,7 +10,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";
 
@@ -67,31 +66,32 @@ test("pair, push, and pull against local vercel dev", { timeout: 600_000 }, asyn
     const pulledDoc = libB.read("vercel-roundtrip");
     assert.equal(pulledDoc.name, "From the first Mac");
     const step = pulledDoc.steps[0];
-    assert.ok((step ? stepQuery(step) : undefined));
-    assert.equal(step ? stepQuery(step)?.testId : undefined, "go");
+    assert.ok(targetOf(step));
+    assert.equal(step ? locatorValue(targetOf(step), "testid") : undefined, "go");
   } finally {
     await stop(web);
   }
 });
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name,
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "s0",
       index: 0,
-      action: "click",
-      label: "Open",
-      surface: "dom",
-      identity: { surface: "dom", role: "button", path: [], testId: "go" },
       timeoutMs: 1000,
-    })],
+      caption: { text: "Open" },
+      action: "click",
+      target: {
+        locators: [{ kind: "testid", value: "go" }, { kind: "css", value: "[data-testid=\"go\"]" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
   });
 }
 

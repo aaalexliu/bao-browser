@@ -12,14 +12,13 @@ import { deriveAesKey, decryptCookieValue, encryptCookieValue, LINUX_ITERATIONS,
 import { importChromeLogin, observePage, preferredProfile, previewChromeProfiles, PROBE_SETTLE_MS } from "../../src/login-import/import-login";
 import { describeKeys, keychainMessage, keyRingFromSources, linuxSecretLookups, macKeychainArgs, readPlatformKeys } from "../../src/login-import/keys";
 import { judgeSignedIn, isLoginUrl } from "../../src/login-import/probe";
-import { cookieMatchesHost, findCookieDb, loadDb, metaForChromeMajor, summarySql, withCookieDb } from "../../src/login-import/read";
+import { cookieMatchesHost, type DecryptedCookie, findCookieDb, loadDb, metaForChromeMajor, summarySql, withCookieDb } from "../../src/login-import/read";
 import { buildReport } from "../../src/login-import/report";
 import { NEEDS_SIGN_IN, runIfSignedIn } from "../../src/login-import/session-gate";
 import { cdpCookieSetter, setCookiesOneAtATime, toSetCookie } from "../../src/login-import/set-cookies";
 import { SiteStore } from "../../src/login-import/sites";
 import { copyIndexedDb, decodeStorageBytes, encodeStorageBytes, indexedDbIdentifier, localStorageKey, originsForSite, readLocalStorage, setLocalStorageItems } from "../../src/login-import/storage";
 import { ConsentRequired } from "../../src/login-import/types";
-import type { DecryptedCookie } from "../../src/login-import/read";
 import {
   assertNoValue,
   chromeExpiry,

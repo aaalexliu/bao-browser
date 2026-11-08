@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import test from "node:test";
 import fc from "fast-check";
@@ -19,14 +19,9 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, index: 0, ...partial, label: partial.label || partial.action });
-}
-
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "Freeze",
     startUrl: "http://127.0.0.1/freeze",
@@ -76,7 +71,14 @@ test("credit freeze example validates and names the expect phase", () => {
 
 test("verify fails in the expect phase and passes when the status text is re-read", async () => {
   const workflow = doc([
-    step({ id: "v", action: "verify", label: "Verify freeze status", expect: { kind: "text", match: "Status: Frozen", timeoutMs: 0 } }),
+    {
+      id: "v",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Verify freeze status" },
+      action: "verify",
+      check: { kind: "text", match: "Status: Frozen", timeoutMs: 0 },
+    },
   ]);
   const missed = await replay(workflow, {}, fake([tree([], { texts: ["Status: none"] })]), { heal: unavailableHeal() });
   assert.equal(missed.status, "failed");
@@ -94,12 +96,22 @@ test("a label repair clicks the renamed control and does not call the model", as
     propose: async () => { proposed += 1; return null; },
   };
   const workflow = doc([
-    step({
+    {
       id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click \"Apply\"", citation: { text: "Apply", source: "text" } },
       action: "click",
-      label: 'Click "Apply"',
-      identity: ident({ testId: "missing-apply", text: "Apply" }),
-    }),
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "missing-apply" },
+          { kind: "css", value: "[data-testid=\"missing-apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   const page = tree([ident({ role: "button", testId: "apply-now", text: "Apply now" })]);
   const driver = fake([page]);
@@ -115,13 +127,23 @@ test("an anchor repair picks the button below the heading", async () => {
   const decoy = ident({ role: "button", id: "elsewhere", text: "Elsewhere" });
   const apply = ident({ role: "button", id: "apply", text: "Go" });
   const workflow = doc([
-    step({
+    {
       id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
       action: "click",
-      label: "Click Apply",
-      identity: ident({ testId: "missing", role: "button", text: "Apply" }),
-      anchor: { identity: heading, relation: "below" },
-    }),
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "missing" },
+          { kind: "css", value: "[data-testid=\"missing\"]" },
+          { kind: "anchor", relation: "below", anchor: { role: "heading", text: "Credit freeze", id: "title" } },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   const page = tree([heading, decoy, apply], {
     boxes: [
@@ -142,20 +164,20 @@ test("an id locator wins over a glossary button that shares the field name", asy
   const glossary = ident({ role: "button", text: "Condition/disease", name: "Condition/disease" });
   const field = ident({ role: "textbox", id: "advcond", tag: "input", cssPath: "#advcond" });
   const workflow = doc([
-    step({
+    {
       id: "cond",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Type {{advcond}}" },
       action: "type",
-      label: "Type {{advcond}}",
-      input: "advcond",
-      value: "{{advcond}}",
-      identity: field,
-      locators: [
-        { kind: "text", value: "Condition/disease" },
-        { kind: "css", value: "#advcond" },
-      ],
-    }),
+      target: {
+        locators: [{ kind: "text", value: "Condition/disease" }, { kind: "css", value: "#advcond" }],
+        hint: { role: "textbox", surface: "dom", tag: "input", id: "advcond" },
+      },
+      text: { input: "advcond" },
+    },
   ]);
-  workflow.inputs = [fixtureInput({ name: "advcond", type: "text", default: "type 1 diabetes" })];
+  workflow.inputs = [{ name: "advcond", type: "text", label: "advcond", supply: "saved", default: "type 1 diabetes" }];
   const page = tree([glossary, field], {
     boxes: [
       { x: 40, y: 40, w: 180, h: 24 },
@@ -198,18 +220,22 @@ test("a search textbox whose id is gone still presses Enter on the combobox, not
   const combo = ident({ role: "combobox", name: "Search Wikipedia", text: "Search Wikipedia" });
   const button = ident({ role: "button", name: "Search Wikipedia", text: "Search Wikipedia" });
   const workflow = doc([
-    step({
+    {
       id: "go",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Press Enter", citation: { text: "Search Wikipedia", source: "name" } },
       action: "key",
       key: "Enter",
-      label: "Press Enter",
-      identity: ident({ role: "textbox", name: "Search Wikipedia", id: "searchInput" }),
-      locators: [
-        { kind: "role", role: "textbox", name: "Search Wikipedia" },
-        { kind: "text", value: "Search Wikipedia" },
-        { kind: "css", value: "#searchInput" },
-      ],
-    }),
+      target: {
+        locators: [
+          { kind: "role", role: "textbox", name: "Search Wikipedia" },
+          { kind: "text", value: "Search Wikipedia" },
+          { kind: "css", value: "#searchInput" },
+        ],
+        hint: { role: "textbox", surface: "dom", id: "searchInput" },
+      },
+    },
   ]);
   const keys: string[] = [];
   const driver: Driver = {
@@ -244,20 +270,24 @@ test("a suggestion click prefers the option when the listbox shows the same text
   const listbox = ident({ role: "listbox", id: "react-select-2-listbox", text: "Physics" });
   const option = ident({ role: "option", id: "react-select-2-option-0", text: "Physics", cssPath: "#react-select-2-option-0" });
   const workflow = doc([
-    step({
+    {
       id: "subject",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click {{subjectsInput}}", citation: { text: "Physics", source: "text" } },
       action: "click",
-      label: "Click {{subjectsInput}}",
-      identity: option,
+      target: {
+        locators: [
+          { kind: "role", role: "option", name: "Maths" },
+          { kind: "text", value: "Maths" },
+          { kind: "css", value: "#react-select-2-option-0" },
+        ],
+        hint: { role: "option", surface: "dom", id: "react-select-2-option-0" },
+      },
       selection: { by: "text", input: "subjectsInput" },
-      locators: [
-        { kind: "role", role: "option", name: "Maths" },
-        { kind: "text", value: "Maths" },
-        { kind: "css", value: "#react-select-2-option-0" },
-      ],
-    }),
+    },
   ]);
-  workflow.inputs = [fixtureInput({ name: "subjectsInput", type: "text", default: "Maths" })];
+  workflow.inputs = [{ name: "subjectsInput", type: "text", label: "subjectsInput", supply: "saved", default: "Maths" }];
   const driver = fake([tree([listbox, option], {
     boxes: [
       { x: 40, y: 80, w: 240, h: 40 },
@@ -273,16 +303,17 @@ test("a suggestion click prefers the option when the listbox shows the same text
 test("an aria-hidden control with a box is still the recorded id", async () => {
   const button = ident({ role: "button", id: "action-bar-download-btn", text: "Download", name: "download", cssPath: "#action-bar-download-btn" });
   const workflow = doc([
-    step({
+    {
       id: "dl",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click download", citation: { text: "Download", source: "text" } },
       action: "click",
-      label: "Click download",
-      identity: button,
-      locators: [
-        { kind: "role", role: "button", name: "download" },
-        { kind: "css", value: "#action-bar-download-btn" },
-      ],
-    }),
+      target: {
+        locators: [{ kind: "role", role: "button", name: "download" }, { kind: "css", value: "#action-bar-download-btn" }],
+        hint: { role: "button", surface: "dom", id: "action-bar-download-btn" },
+      },
+    },
   ]);
   const driver = fake([tree([button], {
     boxes: [{ x: 40, y: 781, w: 135, h: 40 }],
@@ -300,7 +331,18 @@ for (const drift of ["none", "role", "testId", "role and testId"]) {
     const recorded = ident({ role: "textbox", id: "firstName", tag: "input", cssPath: "#firstName", testId: "recorded-first" });
     const field = { ...recorded, role: drift.includes("role") ? "input" : recorded.role, testId: drift.includes("testId") ? "live-first" : recorded.testId };
     const workflow = doc([
-      step({ id: "first", action: "type", label: "Type Alan", value: "Alan", identity: recorded, locators: [{ kind: "css", value: "#firstName" }] }),
+      {
+        id: "first",
+        index: 0,
+        timeoutMs: 0,
+        caption: { text: "Type Alan" },
+        action: "type",
+        target: {
+          locators: [{ kind: "css", value: "#firstName" }],
+          hint: { role: "textbox", surface: "dom", tag: "input", id: "firstName" },
+        },
+        text: { literal: "Alan" },
+      },
     ]);
     const page = tree([dialog, close, field], {
       inDialog: [true, true, true],
@@ -328,7 +370,22 @@ test("an overlay repair dismisses the notice before the click and skips the mode
   const covered = tree([ident({ role: "dialog", testId: "overlay", text: "A notice" }), dismiss]);
   const open = tree([apply]);
   const workflow = doc([
-    step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) }),
+    {
+      id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   const driver = fake([covered, open]);
   const result = await replay(workflow, {}, driver, {
@@ -350,14 +407,22 @@ test("a locate miss becomes a model heal only after the repairs refuse", async (
   };
   const missing = tree([ident({ role: "button", testId: "apply", text: "Continue" })]);
   const workflow = doc([
-    step({
+    {
       id: "apply",
-      action: "click",
-      label: 'Click "Submit freeze"',
-      intent: "Submit freeze",
-      identity: ident({ testId: "missing-apply", text: "Submit freeze" }),
+      index: 0,
       timeoutMs: 0,
-    }),
+      caption: { text: "Click \"Submit freeze\"", citation: { text: "Submit freeze", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Submit freeze" },
+          { kind: "text", value: "Submit freeze" },
+          { kind: "testid", value: "missing-apply" },
+          { kind: "css", value: "[data-testid=\"missing-apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   const driver = fake([missing, missing]);
   const result = await replay(workflow, {}, driver, {
@@ -370,7 +435,17 @@ test("a locate miss becomes a model heal only after the repairs refuse", async (
 });
 
 test("promotion stays provisional until drift and three real runs pass, and reverts on either miss", () => {
-  const before = step({ id: "s", action: "click", identity: ident({ testId: "missing" }) });
+  const before: WorkflowStep = {
+    id: "s",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "click" },
+    action: "click",
+    target: {
+      locators: [{ kind: "testid", value: "missing" }, { kind: "css", value: "[data-testid=\"missing\"]" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  };
   const opened = openProvisional({
     healId: "heal-1",
     workflowId: "wf",

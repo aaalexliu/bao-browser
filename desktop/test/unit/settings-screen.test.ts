@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,8 +32,8 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
   try {
     const page = await browser.newPage();
     const url = `http://127.0.0.1:${app.port}`;
-    const workflow: WorkflowV2 = fixtureDoc({
-      schema: "bao.workflow/v4", version: 2, id: "focus-fixture", name: "Focus fixture", createdAt: 1,
+    const workflow: WorkflowV2 = testWorkflow({
+      schema: "bao.workflow/v4", id: "focus-fixture", name: "Focus fixture", createdAt: 1,
       startUrl: "/fixture", inputs: [], steps: [],
     });
     app.library.save(workflow);
@@ -733,12 +733,29 @@ test("Settings Stop survives restart and stops a changed fixture step without a 
     await page.goto(`http://127.0.0.1:${app.port}`);
     await page.locator('#rail [data-place="settings"]').click();
     assert.equal(await page.getByRole("radio", { name: "Stop", exact: true }).isChecked(), true);
-    const workflow: WorkflowV2 = fixtureDoc({
-      schema: "bao.workflow/v4", version: 2, id: "global-never", name: "Changed button Stop",
+    const workflow: WorkflowV2 = testWorkflow({
+      schema: "bao.workflow/v4", id: "global-never", name: "Changed button Stop",
       startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
       steps: [
-        fixtureStep({ id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 }),
-        fixtureStep({ id: "after-miss", index: 1, action: "note", label: "After the changed button", surface: "dom", timeoutMs: 0 }),
+        {
+          id: "changed",
+          index: 0,
+          timeoutMs: 100,
+          caption: { text: "Click the missing login button" },
+          action: "click",
+          target: {
+            locators: [{ kind: "testid", value: "missing-login" }, { kind: "css", value: "[data-testid=\"missing-login\"]" }],
+            hint: { role: "button", surface: "dom" },
+          },
+        },
+        {
+          id: "after-miss",
+          index: 1,
+          timeoutMs: 0,
+          caption: { text: "After the changed button" },
+          action: "note",
+          text: "After the changed button",
+        },
       ],
     });
     app.library.save(workflow);
@@ -801,12 +818,29 @@ for (const { mode, label, status, modelCalls, heals, laterStep } of [
         assert.equal(savedSetting.ok(), true);
         await eventually(() => app.library.settings().heal === mode);
       }
-      const workflow: WorkflowV2 = fixtureDoc({
-        schema: "bao.workflow/v4", version: 2, id: `global-${mode}`, name: `Changed button ${mode}`,
+      const workflow: WorkflowV2 = testWorkflow({
+        schema: "bao.workflow/v4", id: `global-${mode}`, name: `Changed button ${mode}`,
         startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
         steps: [
-          fixtureStep({ id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 }),
-          fixtureStep({ id: "after-miss", index: 1, action: "note", label: "After the changed button", surface: "dom", timeoutMs: 0 }),
+          {
+            id: "changed",
+            index: 0,
+            timeoutMs: 100,
+            caption: { text: "Click the missing login button" },
+            action: "click",
+            target: {
+              locators: [{ kind: "testid", value: "missing-login" }, { kind: "css", value: "[data-testid=\"missing-login\"]" }],
+              hint: { role: "button", surface: "dom" },
+            },
+          },
+          {
+            id: "after-miss",
+            index: 1,
+            timeoutMs: 0,
+            caption: { text: "After the changed button" },
+            action: "note",
+            text: "After the changed button",
+          },
         ],
       });
       app.library.save(workflow);

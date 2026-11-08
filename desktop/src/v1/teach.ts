@@ -5,7 +5,8 @@
 
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
-import { finishInput, stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepEnteredLiteral, targetElementId } from "../../../shared/step-read";
+import { finishInput, locatorValue, looksLikePath, roleLocator, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -579,7 +580,7 @@ function applyDecision(
       type: secret ? "secret" : prior?.type === "file" ? "file" : prior?.type === "number" ? "number" : "text",
       supply: "must",
       label: name,
-      default: oneTimeCodeField(stepQuery(draft.step)) ? undefined : literal ?? prior?.default,
+      default: oneTimeCodeField(stepTarget(draft.step)?.hint) ? undefined : literal ?? prior?.default,
     }));
     draft.card.values = [{
       role: secret ? "secret" : "input",
@@ -684,7 +685,7 @@ function inputsFor(steps: WorkflowStep[], existing: WorkflowInput[], overrides: 
     push(step.when?.input);
     const check = stepCheck(step);
     const match = check && "match" in check ? check.match : undefined;
-    for (const token of tokens(stepValueTemplate(step), match, match, step.readBack?.match)) push(token);
+    for (const token of tokens(stepEnteredLiteral(step), match, match, step.readBack?.match)) push(token);
   }
   return names.map((name) => {
     const override = overrides.get(name);
@@ -708,7 +709,7 @@ function valuesOf(step: WorkflowStep, event: TrailEvent | undefined): TeachValue
     return [{ role: "input", name: stepInputName(step) || "file", label: `{{${stepInputName(step) || "file"}}}` }];
   }
   const input = stepInputName(step);
-  const value = stepValueTemplate(step);
+  const value = stepEnteredLiteral(step);
   if (stepSensitive(step) || event?.sensitive || step.action === "type" && /pass|secret/i.test(input || "")) {
     return [{ role: "secret", name: input || "secret", label: "secret" }];
   }
@@ -761,15 +762,18 @@ function typeIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   const where = fieldName(step, event);
   const secret = stepSensitive(step) || event?.sensitive || /pass|secret/i.test(stepInputName(step) || "");
   if (secret) return where ? `Type secret into ${where}` : "Type secret";
-  const token = stepInputName(step) ? `{{${stepInputName(step)}}}` : (stepValueTemplate(step) || "").trim();
+  const token = stepInputName(step) ? `{{${stepInputName(step)}}}` : (stepEnteredLiteral(step) || "").trim();
   if (token && where) return `Type ${token} into ${where}`;
   if (token) return token.startsWith("Type ") ? token : `Type ${token}`;
   return where ? `Type into ${where}` : "Type";
 }
 
 function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
-  const identity = event?.identity || stepQuery(step);
-  const raw = [identity?.label, identity?.name, identity?.nameAttr, identity?.id].find((bit) => bit && bit.trim()) || "";
+  const target = stepTarget(step);
+  const names = event?.identity
+    ? [event.identity.label, event.identity.name, event.identity.nameAttr, event.identity.id]
+    : [target?.hint?.label, roleLocator(target)?.name, target?.hint?.nameAttr, targetElementId(target)];
+  const raw = names.find((bit) => bit && bit.trim()) || "";
   const clean = raw.replace(/\s+/g, " ").trim();
   if (!clean || clean.includes("{{")) return "";
   if (/[A-Z]/.test(clean) || /\s/.test(clean)) return clean;
@@ -811,12 +815,11 @@ function fileText(value: string, events: readonly TrailEvent[]): string {
 
 function sameTarget(a: WorkflowStep, b: WorkflowStep): boolean {
   if (a.action !== b.action) return false;
-  const left = stepQuery(a);
-  const right = stepQuery(b);
+  const left = stepTarget(a);
+  const right = stepTarget(b);
   if (!left || !right) return a.action === b.action && !left && !right;
-  return (left.id != null && left.id === right.id)
-    || (left.testId != null && left.testId === right.testId)
-    || (left.nameAttr != null && left.nameAttr === right.nameAttr);
+  const same = (read: (target: Target) => string | undefined) => read(left) != null && read(left) === read(right);
+  return same(targetElementId) || same((target) => locatorValue(target, "testid")) || same((target) => target.hint?.nameAttr);
 }
 
 function clone<T>(value: T): T {
@@ -858,8 +861,8 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
 }
 
 function mergeKey(step: WorkflowStep): string {
-  const identity = stepQuery(step);
-  const target = identity?.testId || identity?.id || identity?.nameAttr || identity?.name || identity?.text || "";
+  const at = stepTarget(step);
+  const target = locatorValue(at, "testid") || targetElementId(at) || at?.hint?.nameAttr || roleLocator(at)?.name || locatorValue(at, "text") || "";
   return `${step.action}|${target}`;
 }
 

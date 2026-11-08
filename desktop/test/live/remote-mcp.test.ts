@@ -1,4 +1,4 @@
-import { fixtureStep, fixtureDoc } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // A cloud MCP client runs a saved workflow on one paired Mac.
 // The registry is this machine's Next server. Chrome is a throwaway profile.
 // Run after `tsc -p tsconfig.desktop.json`. Needs BAO_CHROME_NO_SANDBOX=1.
@@ -6,8 +6,7 @@ import { fixtureStep, fixtureDoc } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -321,59 +320,92 @@ test("remote MCP runs a workflow on one Mac", { timeout: 720_000 }, async () => 
 
 function saveWorkflows(library: Library, origin: string): void {
   library.save(workflow("hello-bao", "Hello Bao", `${origin}/hello`, [
-    click("go", 0, "Click Go", "#go", "go", "Go", "Hello Bao", 8000),
+    {
+      id: "go",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Click Go", citation: { text: "Go", source: "text" } },
+      heal: "never",
+      action: "click",
+      target: { locators: [{ kind: "css", value: "#go" }], hint: { role: "button", surface: "dom", tag: "button", id: "go" } },
+      check: { kind: "text", match: "Hello Bao", timeoutMs: 8000 },
+    },
   ]));
   library.save(workflow("bot-wall", "Bot wall", `${origin}/wall`, [
-    click("checkout", 0, "Click checkout", "#checkout", "checkout", "Checkout", "Paid", 4000),
+    {
+      id: "checkout",
+      index: 0,
+      timeoutMs: 4000,
+      caption: { text: "Click checkout", citation: { text: "Checkout", source: "text" } },
+      heal: "never",
+      action: "click",
+      target: {
+        locators: [{ kind: "css", value: "#checkout" }],
+        hint: { role: "button", surface: "dom", tag: "button", id: "checkout" },
+      },
+      check: { kind: "text", match: "Paid", timeoutMs: 4000 },
+    },
   ]));
   library.save(workflow("login-wall", "Login wall", `${origin}/app`, [
-    click("checkout", 0, "Click checkout", "#checkout", "checkout", "Checkout", "Paid", 4000),
+    {
+      id: "checkout",
+      index: 0,
+      timeoutMs: 4000,
+      caption: { text: "Click checkout", citation: { text: "Checkout", source: "text" } },
+      heal: "never",
+      action: "click",
+      target: {
+        locators: [{ kind: "css", value: "#checkout" }],
+        hint: { role: "button", surface: "dom", tag: "button", id: "checkout" },
+      },
+      check: { kind: "text", match: "Paid", timeoutMs: 4000 },
+    },
   ]));
   library.save(workflow("place-order", "Place Order", `${origin}/confirm`, [
-    click("arm", 0, "Arm the order", "#arm", "arm", "Arm", "Ready", 8000),
-    fixtureStep({
+    {
+      id: "arm",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Arm the order", citation: { text: "Arm", source: "text" } },
+      heal: "never",
+      action: "click",
+      target: { locators: [{ kind: "css", value: "#arm" }], hint: { role: "button", surface: "dom", tag: "button", id: "arm" } },
+      check: { kind: "text", match: "Ready", timeoutMs: 8000 },
+    },
+    {
       id: "place",
       index: 1,
-      action: "confirm",
-      label: "Place Order",
-      surface: "dom",
-      human: true,
-      confirm: true,
       timeoutMs: 8000,
+      caption: { text: "Place Order" },
       heal: "never",
-      postcondition: { kind: "text", match: "Placed", timeoutMs: 4000 },
-    }),
+      action: "handoff",
+      reason: "owner-press",
+      check: { kind: "text", match: "Placed", timeoutMs: 4000 },
+    },
   ]));
   library.save(workflow("slow-bao", "Slow Bao", `${origin}/slow`, [
-    click("go", 0, "Click Go", "#go", "go", "Go", "Finished", 20_000),
+    {
+      id: "go",
+      index: 0,
+      timeoutMs: 20000,
+      caption: { text: "Click Go", citation: { text: "Go", source: "text" } },
+      heal: "never",
+      action: "click",
+      target: { locators: [{ kind: "css", value: "#go" }], hint: { role: "button", surface: "dom", tag: "button", id: "go" } },
+      check: { kind: "text", match: "Finished", timeoutMs: 20000 },
+    },
   ]));
 }
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name,
     startUrl,
     createdAt: Date.now(),
     inputs: [],
     steps,
-  });
-}
-
-function click(id: string, index: number, label: string, css: string, testId: string, text: string, match: string, timeoutMs: number): WorkflowV2["steps"][number] {
-  return fixtureStep({
-    id,
-    index,
-    action: "click",
-    label,
-    surface: "dom",
-    timeoutMs,
-    heal: "never",
-    identity: { surface: "dom", role: "button", path: [], id, testId, text, tag: "button", name: text },
-    locators: [{ kind: "css", value: css }],
-    postcondition: { kind: "text", match, timeoutMs },
   });
 }
 

@@ -1,5 +1,5 @@
-import { writeStep } from "../support/fixture-step";
-import { stepQuery, stepLocators } from "../../src/v1/schema";
+import { targetFor } from "../support/workflow";
+import { type StepLocator, stepLocators, stepTarget } from "../../src/v1/schema";
 // The test Chromium, local fixture page, no model, no vendor network.
 // Capture through the recorder, then replay twice with different inputs.
 
@@ -10,7 +10,6 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { launchOwnedChrome, pinTestBrowser } from "../../src/launch";
-import type { StepLocator } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
@@ -101,13 +100,15 @@ test("capture login, upload, and drop, then replay with two input sets", async (
       writeExample("examples/workflows/browser-form.json", JSON.stringify(app.library.read(workflow.id), null, 2));
     }
     const saved = app.library.read(workflow.id);
-    const login = saved.steps.find((step) => stepQuery(step)?.testId === "login" || stepQuery(step)?.id === "login-btn");
-    assert.ok(login);
-    writeStep(login, { label: "Click missing control" });
-    writeStep(login, { intent: "missing control" });
+    const login = saved.steps.find((step) => {
+      const target = stepTarget(step);
+      return target?.locators.some((locator) => locator.kind === "testid" && locator.value === "login") || target?.hint?.id === "login-btn";
+    });
+    assert.ok(login?.action === "click");
+    login.caption = { text: "Click missing control" };
     login.timeoutMs = 0;
-    writeStep(login, { identity: { surface: "dom", role: "button", testId: "missing-login", name: "Missing login", path: [] } });
-    writeStep(login, { locators: breakStoredLocators(stepLocators(login)) });
+    const missing = targetFor({ surface: "dom", role: "button", testId: "missing-login", name: "Missing login", path: [] });
+    login.target = { ...missing, locators: breakStoredLocators(missing.locators) };
     const kinds = new Set((stepLocators(login) || []).map((locator) => locator.kind));
     assert.ok(kinds.has("testid") && kinds.has("css") && kinds.has("role"));
     for (const locator of stepLocators(login) || []) {

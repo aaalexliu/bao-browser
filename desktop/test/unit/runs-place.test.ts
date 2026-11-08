@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,9 +18,16 @@ test("Runs shows stored step reasons after workflow edits or deletion in both th
   const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage();
-  const workflow: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "edited", createdAt: 1, name: "Review report", startUrl: "/fixture", inputs: [],
-    steps: [fixtureStep({ id: "review", index: 0, action: "click", label: "Review report", sensitive: true, surface: "dom", timeoutMs: 1000 })],
+  const workflow: WorkflowV2 = testWorkflow({
+    schema: "bao.workflow/v4", id: "edited", createdAt: 1, name: "Review report", startUrl: "/fixture", inputs: [],
+    steps: [{
+      id: "review",
+      index: 0,
+      timeoutMs: 1000,
+      caption: { text: "Review report" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Review report" }] },
+    }],
   });
   try {
     app.library.save(workflow);
@@ -303,9 +310,19 @@ test("running Runs groups history, opens shared receipts, survives polling and r
   const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
-  const workflow: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "wf-runs", createdAt: 1, name: "Download the electricity bill and save the PDF to the monthly household records folder", startUrl: "/fixture", inputs: [],
-    steps: [fixtureStep({ id: "open", index: 0, label: "Open account", action: "click", surface: "dom", identity: { surface: "dom", role: "button", name: "Open account", path: [] }, timeoutMs: 1000 })],
+  const workflow: WorkflowV2 = testWorkflow({
+    schema: "bao.workflow/v4", id: "wf-runs", createdAt: 1, name: "Download the electricity bill and save the PDF to the monthly household records folder", startUrl: "/fixture", inputs: [],
+    steps: [{
+      id: "open",
+      index: 0,
+      timeoutMs: 1000,
+      caption: { text: "Open account", citation: { text: "Open account", source: "name" } },
+      action: "click",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Open account" }, { kind: "text", value: "Open account" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
   });
   app.library.save(workflow);
   const now = +new Date(2026, 10, 6, 12);

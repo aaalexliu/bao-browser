@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 // Marketplace listing and Devices against a local `vercel dev`. No deploy.
 // Run: node --test desktop/test/live/listing-devices.test.ts
 
@@ -190,24 +190,31 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
 });
 
 function workflow(origin: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "listing-crop",
     name: "Read the fixture",
     startUrl: `${origin}/fixture.html`,
     createdAt: 1,
-    inputs: [fixtureInput({ name: "note", type: "text", label: "Note", required: false, askOnImport: true })],
-    steps: [fixtureStep({
+    inputs: [{ name: "note", type: "text", label: "Note", supply: "must", askOnImport: true }],
+    steps: [{
       id: "see",
       index: 0,
-      action: "click",
-      label: "Click Log in",
-      surface: "dom",
       timeoutMs: 8000,
-      identity: { surface: "dom", path: [], id: "login-btn", testId: "login", role: "button", text: "Log in", tag: "button" },
-      postcondition: { kind: "text", match: "Missing credentials", timeoutMs: 8000 },
-    })],
+      caption: { text: "Click Log in", citation: { text: "Log in", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Log in" },
+          { kind: "text", value: "Log in" },
+          { kind: "testid", value: "login" },
+          { kind: "css", value: "#login-btn" },
+          { kind: "xpath", value: "//*[@id=\"login-btn\"]" },
+        ],
+        hint: { role: "button", surface: "dom", tag: "button", id: "login-btn" },
+      },
+      check: { kind: "text", match: "Missing credentials", timeoutMs: 8000 },
+    }],
   });
 }
 

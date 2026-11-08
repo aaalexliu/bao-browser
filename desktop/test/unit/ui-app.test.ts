@@ -1,22 +1,16 @@
-import { stepQuery } from "../../src/v1/schema";
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { targetOf, testWorkflow } from "../support/workflow";
+import { locatorValue, type WorkflowV2 } from "../../src/v1/schema";
 // Headless window. Fixture page only. No vendor network and no real profile.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp } from "../runtime";
 
-function ident(partial: Partial<Identity>): Identity {
-  return { surface: "dom", role: "button", path: [], ...partial };
-}
-
 function workflow(port: number, id: string, name: string, start: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name,
     startUrl: `http://127.0.0.1:${port}${start}`,
@@ -51,27 +45,28 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
     const confirmWf = workflow(app.port, "wf-confirm", "fixture apply", "/fixture", [
-      fixtureStep({
+      {
         id: "login",
         index: 0,
-        action: "login",
-        human: true,
-        label: "sign in",
-        surface: "dom",
         timeoutMs: 15000,
-        postcondition: { kind: "text", match: "Welcome", timeoutMs: 15000 },
-      }),
-      fixtureStep({
+        caption: { text: "sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "text", match: "Welcome", timeoutMs: 15000 },
+      },
+      {
         id: "apply",
         index: 1,
-        action: "confirm",
-        human: true,
-        label: 'you press "Apply"',
-        surface: "dom",
-        identity: ident({ name: "Apply", text: "Apply" }),
         timeoutMs: 15000,
-        postcondition: { kind: "text", match: "Applied", timeoutMs: 15000 },
-      }),
+        caption: { text: "you press \"Apply\"" },
+        action: "handoff",
+        reason: "owner-press",
+        target: {
+          locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+          hint: { role: "button", surface: "dom" },
+        },
+        check: { kind: "text", match: "Applied", timeoutMs: 15000 },
+      },
     ]);
     app.library.save(confirmWf);
     await page.goto(`http://127.0.0.1:${app.port}/`);
@@ -156,17 +151,14 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(await page.locator("#model-calls").innerText(), /0 model calls/);
 
     const drift = workflow(app.port, "wf-drift", "upload note", "/fixture?drift=1", [
-      fixtureStep({
+      {
         id: "upload",
         index: 0,
-        action: "click",
-        label: "click Upload",
-        intent: "Send the file",
-        surface: "dom",
-        identity: ident({ name: "Upload" }),
-        locators: [{ kind: "role", role: "button", name: "Upload" }],
         timeoutMs: 1000,
-      }),
+        caption: { text: "click Upload", citation: { text: "Upload", source: "name" } },
+        action: "click",
+        target: { locators: [{ kind: "role", role: "button", name: "Upload" }], hint: { role: "button", surface: "dom" } },
+      },
     ]);
     app.library.save(drift);
     const failed = await post(app.port, "/api/replay", { id: drift.id, args: {} }) as {
@@ -193,27 +185,30 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
 
     process.env.BAO_HEAL_FIXTURE = "1";
     app.library.save(workflow(app.port, "wf-text", "textedit write", "/fixture", [
-      fixtureStep({
+      {
         id: "write",
         index: 0,
-        action: "click",
-        label: "Click write",
-        surface: "dom",
-        identity: ident({ name: "Write" }),
         timeoutMs: 500,
-      }),
+        caption: { text: "Click write", citation: { text: "Write", source: "name" } },
+        action: "click",
+        target: {
+          locators: [{ kind: "role", role: "button", name: "Write" }, { kind: "text", value: "Write" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      },
     ]));
     const healWf = workflow(app.port, "wf-heal", "fixture login", "/fixture", [
-      fixtureStep({
+      {
         id: "login",
         index: 0,
-        action: "click",
-        label: "Click login",
-        intent: "the missing control",
-        surface: "dom",
-        identity: ident({ testId: "missing-login" }),
         timeoutMs: 500,
-      }),
+        caption: { text: "Click login" },
+        action: "click",
+        target: {
+          locators: [{ kind: "testid", value: "missing-login" }, { kind: "css", value: "[data-testid=\"missing-login\"]" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      },
     ]);
     app.library.save(healWf);
     const healed = await post(app.port, "/api/replay", { id: healWf.id, args: {} }) as {
@@ -246,7 +241,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("article#heal-detail [data-keep]");
     await page.waitForFunction(() => document.body.innerText.includes("Patch kept"));
     const kept = app.library.read("wf-heal");
-    assert.equal((kept.steps[0] == null ? undefined : stepQuery(kept.steps[0]))?.testId, "missing-login");
+    assert.equal(locatorValue(targetOf(kept.steps[0]), "testid"), "missing-login");
     assert.equal(JSON.stringify(app.library.readRun(healed.runId).heals), before);
     assert.equal(app.library.readRun(healed.runId).decisions?.[0]?.decision, "keep");
     await page.waitForSelector("[data-revert]");
@@ -254,7 +249,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.locator('#heal-revert-confirm [value="revert"]').click();
     await page.waitForFunction(() => document.body.innerText.includes("Patch reverted"));
     const reverted = app.library.read("wf-heal");
-    assert.equal((reverted.steps[0] == null ? undefined : stepQuery(reverted.steps[0]))?.testId, "missing-login");
+    assert.equal(locatorValue(targetOf(reverted.steps[0]), "testid"), "missing-login");
     const runAfter = app.library.readRun(healed.runId);
     assert.equal(JSON.stringify(runAfter.heals), before);
     assert.deepEqual(runAfter.decisions?.map((item) => item.decision), ["keep", "revert"]);

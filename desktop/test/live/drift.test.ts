@@ -1,4 +1,4 @@
-import { stepTitle } from "../../src/v1/schema";
+import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 // Replay one captured workflow under scripted page changes.
 // Reports which attribute would have been the one that broke.
 
@@ -13,7 +13,6 @@ import { BrowserDriver } from "../../src/v1/browser-driver";
 import { driftMarkdown, driftReport, type DriftRow } from "../../src/v1/drift";
 import { unavailableHeal } from "../../src/v1/heal";
 import { replay } from "../../src/v1/replay";
-import type { WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";

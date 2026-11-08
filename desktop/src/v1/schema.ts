@@ -8,15 +8,15 @@ import { INPUT_BINDING } from "./bindings";
 import { validateDataSteps, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import { filesDatesErrors } from "./files-dates-check";
 import {
-  queryFromTarget as readQueryFromTarget,
   stepForEach as readForEach,
   stepInputName as readInputName,
   stepKey as readKey,
   stepLiteral as readLiteral,
-  stepQuery as readQuery,
   stepSensitive as readSensitive,
-  stepValueTemplate as readValueTemplate,
 } from "../../../shared/step-read";
+import { targetQuery } from "./identity";
+
+export { targetRole } from "../../../shared/step-read";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v4";
 export const RUN_SCHEMA_ID = "bao.run/v4";
@@ -281,28 +281,18 @@ export interface FileArg {
   path: string;
 }
 
-export interface RunStep {
-  id: string;
-  action: string;
-  status: string;
-  caption: StepCaption;
-  beforeShot?: string;
-  afterShot?: string;
-  startedAt?: number;
-  endedAt?: number;
-  reason?: string;
-}
-
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const CITATION_SOURCES = new Set<CitationSource>(["text", "name", "label", "aria-label", "placeholder", "alt", "title"]);
 
+/** The text a run argument stands for: a file argument by its name. */
+export function argText(value: ReplayArgs[string] | undefined): string {
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) return value.name;
+  return "";
+}
+
 export function subst(template: string, args: ReplayArgs): string {
-  return template.replace(INPUT_BINDING, (_all, name: string) => {
-    const value = args[name];
-    if (typeof value === "string" || typeof value === "number") return String(value);
-    if (value && typeof value === "object" && !Array.isArray(value) && "name" in value) return value.name;
-    return "";
-  });
+  return template.replace(INPUT_BINDING, (_all, name: string) => argText(args[name]));
 }
 
 export function looksLikePath(value: string): boolean {
@@ -373,6 +363,14 @@ export function checkState(check: Check | undefined): string | undefined {
   return check && "state" in check ? check.state : undefined;
 }
 
+export function roleLocator(target: Target | undefined): RoleLocator | undefined {
+  return target?.locators.find((locator): locator is RoleLocator => locator.kind === "role");
+}
+
+export function locatorValue(target: Target | undefined, kind: ValueLocator["kind"]): string | undefined {
+  return target?.locators.find((locator): locator is ValueLocator => locator.kind === kind)?.value;
+}
+
 export function stepCheck(step: WorkflowStep): Check | undefined {
   return "check" in step ? step.check : undefined;
 }
@@ -385,19 +383,8 @@ export function stepLiteral(step: WorkflowStep): string | undefined {
   return readLiteral(step);
 }
 
-/** A literal, or a {{input}} template, for readers that substitute at replay. */
-export function stepValueTemplate(step: WorkflowStep): string | undefined {
-  return readValueTemplate(step);
-}
-
 export function stepKey(step: WorkflowStep): string | undefined {
   return readKey(step);
-}
-
-export function queryFromTarget(target: Target | undefined): Identity | undefined {
-  const read = readQueryFromTarget(target);
-  if (!read) return undefined;
-  return { ...read, surface: read.surface as Surface, path: read.path };
 }
 
 export function stepSensitive(step: WorkflowStep): boolean {
@@ -443,10 +430,6 @@ export function stepDate(step: WorkflowStep): { input: string; endInput?: string
 
 export function handoffReason(step: WorkflowStep): HandoffReason | undefined {
   return step.action === "handoff" ? step.reason : undefined;
-}
-
-export function stepQuery(step: WorkflowStep): Identity | undefined {
-  return readQuery(step) as Identity | undefined;
 }
 
 export function hintFromIdentity(node: Identity | undefined): TargetHint | undefined {
@@ -657,8 +640,7 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>, input
 }
 
 function dismissName(step: Extract<WorkflowStep, { action: "click" }>): string {
-  const query = queryFromTarget(step.target);
-  return popupDismissName(query);
+  return popupDismissName(targetQuery(step.target));
 }
 
 function textOk(text: TextOf | undefined): boolean {

@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 // Product pages never show this machine's listen address.
 // Replay still opens the real URL. The capture bar has no Dock icon.
 // The bundled browser is named Bao without re-signing the helper.
@@ -81,36 +81,35 @@ test("rendered product pages never contain the listen address", () => {
     timeoutMs: 1000,
     now: 1_000,
   });
-  const doc: WorkflowV2 = fixtureDoc({
+  const doc: WorkflowV2 = testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "Fixture",
     startUrl: LISTEN,
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "open",
       index: 0,
-      action: "navigate",
-      label: `Open ${LISTEN}`,
-      surface: "dom",
       timeoutMs: 8000,
-    }), fixtureStep({
+      caption: { text: `Open ${LISTEN}` },
+      action: "navigate",
+      url: "https://example.test/",
+    }, {
       id: "secure",
       index: 1,
-      action: "navigate",
-      label: "Open http://localhost:4787/secure",
-      surface: "dom",
       timeoutMs: 8000,
-    }), fixtureStep({
+      caption: { text: "Open http://localhost:4787/secure" },
+      action: "navigate",
+      url: "https://example.test/",
+    }, {
       id: "bare",
       index: 2,
-      action: "open",
-      label: "Open 127.0.0.1:61984/fixture",
-      surface: "dom",
       timeoutMs: 8000,
-    })],
+      caption: { text: "Open 127.0.0.1:61984/fixture" },
+      action: "open",
+      open: { target: "url", url: "https://example.test/" },
+    }],
   });
   const pages: [string, string][] = [
     ["library", libraryTable([{

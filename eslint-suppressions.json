@@ -31,11 +31,6 @@
       "count": 1
     }
   },
-  "desktop/src/v1/os-driver.ts": {
-    "no-duplicate-imports": {
-      "count": 1
-    }
-  },
   "desktop/src/v1/replay.ts": {
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
@@ -70,18 +65,10 @@
   "desktop/test/live/remote-mcp.test.ts": {
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 1
-    },
-    "no-duplicate-imports": {
-      "count": 1
     }
   },
   "desktop/test/live/sync-conflict.test.ts": {
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
-    }
-  },
-  "desktop/test/unit/backup-schedule.test.ts": {
-    "no-duplicate-imports": {
       "count": 1
     }
   },
@@ -226,9 +213,6 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    },
-    "no-duplicate-imports": {
       "count": 1
     }
   },

@@ -1,5 +1,5 @@
-import { stepTitle } from "../../src/v1/schema";
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
+import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 // Two Macs edit one workflow against a local `vercel dev`. No deploy.
 // Run: node --test desktop/dist/desktop/test/live/sync-conflict.test.js
 
@@ -14,7 +14,6 @@ import type { Page } from "playwright";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { pinTestBrowser } from "../../src/launch";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { loadState, pairDevice, syncAll } from "../../src/v1/sync";
 
@@ -139,35 +138,42 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
 });
 
 function workflow(id: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name: id === "offline-note" ? "Offline note" : "Shared note",
     startUrl: "https://example.com/fixture",
     createdAt: Date.now(),
     inputs: [],
     steps: [
-      step("one", "Open", "open"),
-      step("two", "Save", "save"),
+      {
+        id: "one",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: "Open" },
+        action: "click",
+        target: {
+          locators: [{ kind: "testid", value: "open" }, { kind: "css", value: "[data-testid=\"open\"]" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      },
+      {
+        id: "two",
+        index: 1,
+        timeoutMs: 1000,
+        caption: { text: "Save" },
+        action: "click",
+        target: {
+          locators: [{ kind: "testid", value: "save" }, { kind: "css", value: "[data-testid=\"save\"]" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      },
     ],
   });
 }
 
-function step(id: string, label: string, testId: string): WorkflowV2["steps"][number] {
-  return fixtureStep({
-    id,
-    index: id === "one" ? 0 : 1,
-    action: "click",
-    label,
-    surface: "dom",
-    identity: { surface: "dom", role: "button", path: [], testId },
-    timeoutMs: 1000,
-  });
-}
-
 function relabel(doc: WorkflowV2, stepId: string, label: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     ...doc,
     updatedAt: Date.now(),
     steps: doc.steps.map((item) => item.id === stepId ? { ...item, label } : item),

@@ -1,15 +1,16 @@
 // Score a condensed workflow against a ground-truth case, then replay it.
 
-import { interpret, isConstantType } from "../../v1/interpret";
+import { interpret, isConstantType, type TrailEvent } from "../../v1/interpret";
 import { replay, type Driver } from "../../v1/replay";
-import { stepInputName, stepValueTemplate, handoffReason, stepQuery } from "../../v1/schema";
-import type { Identity, ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
+import { stepEnteredLiteral } from "../../../../shared/step-read";
+import { targetQuery } from "../../v1/identity";
+import { handoffReason, type Identity, type ReplayArgs, stepInputName, stepTarget, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
 import { condense } from "../../v1/condense";
 import { INTENT_CASES, noisyTrail, type IntentCase, type World } from "./cases";
-import type { TrailEvent } from "../../v1/interpret";
 
 export function targetOf(step: { identity?: Identity } | WorkflowStep): string {
-  const id = "caption" in step ? stepQuery(step) : step.identity;
+  const target = "caption" in step ? stepTarget(step) : undefined;
+  const id = "caption" in step ? target && targetQuery(target) : step.identity;
   return id?.testId || id?.id || id?.name || id?.nameAttr || "";
 }
 
@@ -59,7 +60,7 @@ export function truthLiterals(item: IntentCase): string[] {
 }
 
 export function stepLiterals(workflow: WorkflowV2): string[] {
-  return workflow.steps.filter((step) => step.action === "type" && !stepInputName(step)).map((step) => stepValueTemplate(step) || "");
+  return workflow.steps.filter((step) => step.action === "type" && !stepInputName(step)).map((step) => stepEnteredLiteral(step) || "");
 }
 
 export interface ParamScore {

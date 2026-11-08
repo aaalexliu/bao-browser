@@ -65,7 +65,7 @@ The same accessibility table, fed by `desktop/src/v1/identity.ts` `fromAtspiNode
 
 ## Locators, then repairs
 
-A step may store `locators` in this order: role plus accessible name, text, test id, css, xpath, then a relative anchor. Replay closes a known overlay first, then tries those locators, then label similarity, anchor position, and the wait. Each locator has to match exactly one node that still has a box. The run records which kind hit. The scorer above is the lookup when the step has no locator list. `xpath` is not one of the scored attributes.
+A step target stores `locators` in this order: role plus accessible name, text, test id, css, xpath, then a relative anchor. Replay closes a known overlay first, then tries those locators, then label similarity, anchor position, and the wait. Each locator has to match exactly one node that still has a box. The run records which kind hit. The scorer above is the lookup when the target has no locator list. It reads the target through `targetQuery`. `xpath` is not one of the scored attributes.
 
 ## What replay does with a miss
 

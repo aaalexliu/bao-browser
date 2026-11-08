@@ -1,3 +1,4 @@
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -5,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
-import { fixtureDoc } from "../support/fixture-step";
 import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { liveShotUrl, publicLiveSession, liveLabel, shotNameOk } from "../../src/cdp-live/live-record";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
@@ -20,10 +20,6 @@ import {
 import { assertActivePortFile, listenPid, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../../src/cdp-live/launch-guard";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
-
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
 
 const ready = {
   openedByBao: true,
@@ -92,16 +88,7 @@ test("AX summary drops other window titles", () => {
 });
 
 test("cdp-live is not a workflow driver", () => {
-  const doc = migrate({
-    id: "wf-cdp-live",
-    name: "Live",
-    version: 2,
-    schema: "bao.workflow/v4",
-    startUrl: "https://books.toscrape.com/",
-    createdAt: 1,
-    inputs: [],
-    steps: [],
-  });
+  const doc = testWorkflow({ id: "wf-cdp-live", name: "Live", startUrl: "https://books.toscrape.com/" });
   assert.ok(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }).includes("driver"));
   assert.ok(validateWorkflow({ ...doc, driver: "cdp" as unknown as WorkflowV2["driver"] }).includes("driver"));
   assert.equal(workflowDriver({ driver: "cdp-live" }), "playwright");

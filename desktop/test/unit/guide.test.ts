@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { guideCrops, guideHtml } from "../../src/v1/guide";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import type { WorkflowV2 } from "../../src/v1/schema";
 import { guideShotName, shotFile, workflowShotName } from "../../src/v1/shots";
 import { Library } from "../../src/v1/store";
 
@@ -15,28 +15,52 @@ const secret = "SuperSecretPassword!";
 const file = "/Users/alex/notes.txt";
 const home = "/home/alex/drop.txt";
 
-function step(partial: FixtureDraft, index: number): WorkflowStep {
-  return fixtureStep({ timeoutMs: 8000, index, ...partial });
-}
-
-function field(name: string): Identity {
-  return { surface: "dom", role: "input", tag: "input", id: name, nameAttr: name, path: [] };
-}
-
 function document(): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "guide-wf", name: "Sign in and apply", startUrl: "http://127.0.0.1:9/fixture", createdAt: 1,
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "guide-wf", name: "Sign in and apply", startUrl: "http://127.0.0.1:9/fixture", createdAt: 1,
     inputs: [
-      fixtureInput({ name: "username", type: "text", default: "demo" }),
-      fixtureInput({ name: "password", type: "secret", default: secret }),
-      fixtureInput({ name: "note", type: "text", default: "alpha note" }),
-      fixtureInput({ name: "upload", type: "text", default: file }),
+      { name: "username", type: "text", label: "username", supply: "saved", default: "demo" },
+      { name: "password", type: "secret", label: "password", supply: "saved", default: secret },
+      { name: "note", type: "text", label: "note", supply: "saved", default: "alpha note" },
+      { name: "upload", type: "text", label: "upload", supply: "saved", default: file },
     ],
     steps: [
-      step({ id: "username", action: "type", label: "Type {{username}}", input: "username", value: "{{username}}" }, 0),
-      step({ id: "password", action: "type", label: "Type secret", input: "password", value: "{{password}}", sensitive: true }, 1),
-      step({ id: "note", action: "type", label: "Type {{note}}", input: "note", value: "{{note}}" }, 2),
-      step({ id: "apply", action: "click", label: "Click Apply" }, 3),
+      {
+        id: "username",
+        index: 0,
+        timeoutMs: 8000,
+        caption: { text: "Type {{username}}" },
+        action: "type",
+        target: { locators: [{ kind: "role", role: "textbox", name: "Type {{username}}" }] },
+        text: { input: "username" },
+      },
+      {
+        id: "password",
+        index: 1,
+        timeoutMs: 8000,
+        caption: { text: "Type secret" },
+        action: "type",
+        target: { locators: [{ kind: "role", role: "textbox", name: "Type secret" }] },
+        text: { input: "password" },
+        sensitive: true,
+      },
+      {
+        id: "note",
+        index: 2,
+        timeoutMs: 8000,
+        caption: { text: "Type {{note}}" },
+        action: "type",
+        target: { locators: [{ kind: "role", role: "textbox", name: "Type {{note}}" }] },
+        text: { input: "note" },
+      },
+      {
+        id: "apply",
+        index: 3,
+        timeoutMs: 8000,
+        caption: { text: "Click Apply" },
+        action: "click",
+        target: { locators: [{ kind: "role", role: "button", name: "Click Apply" }] },
+      },
     ],
   });
 }
@@ -48,12 +72,48 @@ function embedded(html: string): Buffer[] {
 test("an exported guide keeps saved values, paths, labels, choices, and exact picture bytes", () => {
   const doc = document();
   doc.name = `Notes ${secret} ${home}`;
-  doc.inputs.push(fixtureInput({ name: "route", type: "choice", choices: ["Log in first", "Already signed in", secret] }));
+  doc.inputs.push({
+    name: "route",
+    type: "choice",
+    label: "route",
+    supply: "must",
+    choices: ["Log in first", "Already signed in", secret],
+  });
   doc.steps.push(
-    step({ id: "open", action: "click", label: `Click ${home}` }, 4),
-    step({ id: "win", action: "click", label: "Click C:\\Users\\alex\\notes.txt" }, 5),
-    step({ id: "literal", action: "type", label: `Type ${secret}`, value: secret, sensitive: true }, 6),
-    step({ id: "escape", action: "click", label: "Click <script>alert(1)</script>" }, 7),
+    {
+      id: "open",
+      index: 4,
+      timeoutMs: 8000,
+      caption: { text: `Click ${home}` },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: `Click ${home}` }] },
+    },
+    {
+      id: "win",
+      index: 5,
+      timeoutMs: 8000,
+      caption: { text: "Click C:\\Users\\alex\\notes.txt" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Click C:\\Users\\alex\\notes.txt" }] },
+    },
+    {
+      id: "literal",
+      index: 6,
+      timeoutMs: 8000,
+      caption: { text: `Type ${secret}` },
+      action: "type",
+      target: { locators: [{ kind: "role", role: "textbox", name: `Type ${secret}` }] },
+      text: { literal: secret },
+      sensitive: true,
+    },
+    {
+      id: "escape",
+      index: 7,
+      timeoutMs: 8000,
+      caption: { text: "Click <script>alert(1)</script>" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Click <script>alert(1)</script>" }] },
+    },
   );
   const crops = new Map([
     ["username", blankPng(80, 60)],
@@ -76,14 +136,78 @@ test("an exported guide keeps saved values, paths, labels, choices, and exact pi
 test("unnamed targets and file actions keep their standard guide instructions", () => {
   const doc = document();
   doc.steps = [
-    step({ id: "unnamed", action: "click", label: "Click" }, 0),
-    step({ id: "field", action: "click", label: "Click", identity: field("") }, 1),
-    step({ id: "not-a-target", action: "click", label: "username" }, 2),
-    step({ id: "username", action: "type", label: "Type {{username}}", input: "username", identity: field("username") }, 3),
-    step({ id: "upload", action: "upload", label: "Upload file", value: file }, 4),
-    step({ id: "drop", action: "drop", label: "Drop file", value: home }, 5),
-    step({ id: "bound-upload", action: "upload", label: "Upload file", input: "upload" }, 6),
-    step({ id: "bound-drop", action: "drop", label: "Drop file", input: "upload" }, 7),
+    {
+      id: "unnamed",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Click" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Click" }] },
+    },
+    {
+      id: "field",
+      index: 1,
+      timeoutMs: 8000,
+      caption: { text: "Click" },
+      action: "click",
+      target: { locators: [], hint: { role: "input", surface: "dom", tag: "input" } },
+    },
+    {
+      id: "not-a-target",
+      index: 2,
+      timeoutMs: 8000,
+      caption: { text: "username" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "username" }] },
+    },
+    {
+      id: "username",
+      index: 3,
+      timeoutMs: 8000,
+      caption: { text: "Type {{username}}" },
+      action: "type",
+      target: {
+        locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+        hint: { nameAttr: "username", role: "input", surface: "dom", tag: "input", id: "username" },
+      },
+      text: { input: "username" },
+    },
+    {
+      id: "upload",
+      index: 4,
+      timeoutMs: 8000,
+      caption: { text: "Upload file" },
+      action: "upload",
+      target: { locators: [{ kind: "css", value: "input[type=file]" }] },
+      file: { input: "file" },
+    },
+    {
+      id: "drop",
+      index: 5,
+      timeoutMs: 8000,
+      caption: { text: "Drop file" },
+      action: "drop",
+      target: { locators: [{ kind: "css", value: "input[type=file]" }] },
+      file: { input: "file" },
+    },
+    {
+      id: "bound-upload",
+      index: 6,
+      timeoutMs: 8000,
+      caption: { text: "Upload file" },
+      action: "upload",
+      target: { locators: [{ kind: "css", value: "input[type=file]" }] },
+      file: { input: "upload" },
+    },
+    {
+      id: "bound-drop",
+      index: 7,
+      timeoutMs: 8000,
+      caption: { text: "Drop file" },
+      action: "drop",
+      target: { locators: [{ kind: "css", value: "input[type=file]" }] },
+      file: { input: "upload" },
+    },
   ];
   const html = guideHtml(doc, new Map());
   const lines = [...html.matchAll(/<li class="step">.*?<p>(.*?)<\/p><\/li>/g)].map((match) => match[1]);
@@ -93,14 +217,95 @@ test("unnamed targets and file actions keep their standard guide instructions", 
 test("a focus click folds into typing without rewriting typed or password pictures", () => {
   const doc = document();
   doc.steps = [
-    step({ id: "c-user", action: "click", label: "Click username", identity: field("username") }, 0),
-    step({ id: "username", action: "type", label: "Type demo", input: "username", value: "demo", identity: field("username") }, 1),
-    step({ id: "c-pass", action: "click", label: "Click password", identity: field("password") }, 2),
-    step({ id: "password", action: "type", label: "Type secret", input: "password", value: secret, sensitive: true, identity: field("password") }, 3),
-    step({ id: "login", action: "click", label: "Click Log in", identity: { surface: "dom", role: "button", tag: "button", text: "Log in", path: [] } }, 4),
-    step({ id: "note", action: "type", label: "Type alpha note", input: "note", value: "alpha note", identity: field("note") }, 5),
-    step({ id: "apply", action: "click", label: "Click Apply" }, 6),
-    step({ id: "only-note", action: "click", label: "Click note", identity: field("note") }, 7),
+    {
+      id: "c-user",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Click username" },
+      action: "click",
+      target: {
+        locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+        hint: { nameAttr: "username", role: "input", surface: "dom", tag: "input", id: "username" },
+      },
+    },
+    {
+      id: "username",
+      index: 1,
+      timeoutMs: 8000,
+      caption: { text: "Type demo" },
+      action: "type",
+      target: {
+        locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+        hint: { nameAttr: "username", role: "input", surface: "dom", tag: "input", id: "username" },
+      },
+      text: { input: "username" },
+    },
+    {
+      id: "c-pass",
+      index: 2,
+      timeoutMs: 8000,
+      caption: { text: "Click password" },
+      action: "click",
+      target: {
+        locators: [{ kind: "css", value: "#password" }, { kind: "xpath", value: "//*[@id=\"password\"]" }],
+        hint: { nameAttr: "password", role: "input", surface: "dom", tag: "input", id: "password" },
+      },
+    },
+    {
+      id: "password",
+      index: 3,
+      timeoutMs: 8000,
+      caption: { text: "Type secret" },
+      action: "type",
+      target: {
+        locators: [{ kind: "css", value: "#password" }, { kind: "xpath", value: "//*[@id=\"password\"]" }],
+        hint: { nameAttr: "password", role: "input", surface: "dom", tag: "input", id: "password" },
+      },
+      text: { input: "password" },
+      sensitive: true,
+    },
+    {
+      id: "login",
+      index: 4,
+      timeoutMs: 8000,
+      caption: { text: "Click Log in", citation: { text: "Log in", source: "text" } },
+      action: "click",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Log in" }, { kind: "text", value: "Log in" }],
+        hint: { role: "button", surface: "dom", tag: "button" },
+      },
+    },
+    {
+      id: "note",
+      index: 5,
+      timeoutMs: 8000,
+      caption: { text: "Type alpha note" },
+      action: "type",
+      target: {
+        locators: [{ kind: "css", value: "#note" }, { kind: "xpath", value: "//*[@id=\"note\"]" }],
+        hint: { nameAttr: "note", role: "input", surface: "dom", tag: "input", id: "note" },
+      },
+      text: { input: "note" },
+    },
+    {
+      id: "apply",
+      index: 6,
+      timeoutMs: 8000,
+      caption: { text: "Click Apply" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Click Apply" }] },
+    },
+    {
+      id: "only-note",
+      index: 7,
+      timeoutMs: 8000,
+      caption: { text: "Click note" },
+      action: "click",
+      target: {
+        locators: [{ kind: "css", value: "#note" }, { kind: "xpath", value: "//*[@id=\"note\"]" }],
+        hint: { nameAttr: "note", role: "input", surface: "dom", tag: "input", id: "note" },
+      },
+    },
   ];
   const crops = new Map(["username", "password", "note", "apply", "only-note"].map((id, i) => [id, blankPng(64 + i, 40)]));
   const html = guideHtml(doc, crops);
@@ -116,13 +321,36 @@ test("a focus click folds into typing without rewriting typed or password pictur
 test("guides use human login copy and list defaults rather than import examples", () => {
   const doc = document();
   doc.inputs = [
-    fixtureInput({ name: "saved", type: "text", default: "captured-value", example: "import-example" }),
-    fixtureInput({ name: "sample", type: "text", example: "sample-only" }),
-    fixtureInput({ name: "empty", type: "text", default: "", example: "empty-example" }),
+    {
+      name: "saved",
+      type: "text",
+      label: "saved",
+      supply: "saved",
+      default: "captured-value",
+      example: "import-example",
+    },
+    { name: "sample", type: "text", label: "sample", supply: "must", example: "sample-only" },
+    { name: "empty", type: "text", label: "empty", supply: "must", example: "empty-example" },
   ];
   doc.steps = [
-    step({ id: "login", action: "login", label: "ensure logged in (import from chrome, else wait for user)" }, 0),
-    step({ id: "secret", action: "type", label: "Type stored secret", value: "stored secret", sensitive: true }, 1),
+    {
+      id: "login",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "ensure logged in (import from chrome, else wait for user)" },
+      action: "handoff",
+      reason: "sign-in",
+    },
+    {
+      id: "secret",
+      index: 1,
+      timeoutMs: 8000,
+      caption: { text: "Type stored secret" },
+      action: "type",
+      target: { locators: [{ kind: "role", role: "textbox", name: "Type stored secret" }] },
+      text: { literal: "stored secret" },
+      sensitive: true,
+    },
   ];
   const html = guideHtml(doc, new Map());
   assert.match(html, /<li class="step"><p>Sign in<\/p><\/li>/);

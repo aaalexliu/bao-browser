@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 // The page class is decided before a heal. Each class is a fixture, and a
 // wall stops the run with no heal and no model call.
 
@@ -15,14 +15,9 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
-}
-
 function doc(startUrl: string, steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "Fixture",
     startUrl,
@@ -60,7 +55,22 @@ function fake(pages: LiveTree[], signals?: PageSignals): Driver & { clicks: stri
   };
 }
 
-const clickApply = step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) });
+const clickApply: WorkflowStep = {
+  id: "apply",
+  index: 0,
+  timeoutMs: 0,
+  caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+  action: "click",
+  target: {
+    locators: [
+      { kind: "role", role: "button", name: "Apply" },
+      { kind: "text", value: "Apply" },
+      { kind: "testid", value: "apply" },
+      { kind: "css", value: "[data-testid=\"apply\"]" },
+    ],
+    hint: { role: "button", surface: "dom" },
+  },
+};
 
 function countingHeal() {
   let proposed = 0;

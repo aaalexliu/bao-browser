@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -22,14 +22,9 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
-}
-
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "Freeze",
     startUrl: "http://127.0.0.1/freeze",
@@ -107,7 +102,14 @@ test("the filmstrip drops idle gaps and sizes frames by the step", () => {
 });
 
 test("a step policy of never or ask wins over the workflow", () => {
-  const workflow = doc([step({ id: "c", action: "confirm" })]);
+  const workflow = doc([{
+    id: "c",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "You press the button" },
+    action: "handoff",
+    reason: "owner-press",
+  }]);
   workflow.heal = "auto";
   assert.equal(stepPolicy({ heal: "never" }, workflow, {}), "never");
   assert.equal(stepPolicy({ heal: "ask" }, workflow, {}), "approve");
@@ -124,13 +126,22 @@ test("an explicit step timeout of zero does not become the two-hour default", ()
 
 test("never, a blocker, and an open circuit do not call a model", async () => {
   const missing = tree([ident({ role: "button", testId: "apply", text: "Continue" })]);
-  const click = step({
+  const click: WorkflowStep = {
     id: "apply",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click \"Submit freeze\"", citation: { text: "Submit freeze", source: "text" } },
     action: "click",
-    label: 'Click "Submit freeze"',
-    intent: "Submit freeze",
-    identity: ident({ testId: "missing-apply", text: "Submit freeze" }),
-  });
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Submit freeze" },
+        { kind: "text", value: "Submit freeze" },
+        { kind: "testid", value: "missing-apply" },
+        { kind: "css", value: "[data-testid=\"missing-apply\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
+  };
   const refused = await replay(doc([{ ...click, heal: "never" }]), {}, fake([missing]), { heal: healer });
   assert.equal(refused.status, "failed");
   assert.equal(refused.steps[0]?.triage, "never");
@@ -138,12 +149,23 @@ test("never, a blocker, and an open circuit do not call a model", async () => {
   assert.equal(refused.steps[0]?.snapshot?.ax, "- button \"Continue\"");
   assert.equal(refused.console?.[0]?.text, "bao fixture ready");
 
-  const waiting = doc([step({
+  const waiting = doc([{
     id: "w",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click Go", citation: { text: "Go", source: "text" } },
     action: "click",
-    identity: ident({ testId: "go", text: "Go" }),
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Go" },
+        { kind: "text", value: "Go" },
+        { kind: "testid", value: "go" },
+        { kind: "css", value: "[data-testid=\"go\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
     check: { kind: "text", match: "waiting", timeoutMs: 0 },
-  })]);
+  }]);
   const blocked = await replay(waiting, {}, fake([tree([ident({ testId: "go", text: "Go" })], { texts: [] })]), { heal: healer });
   assert.equal(blocked.steps[0]?.triage, "blocker");
   assert.match(blocked.steps[0]?.reason || "", /waiting/);
@@ -155,14 +177,23 @@ test("never, a blocker, and an open circuit do not call a model", async () => {
 
 test("ask pauses on a real change and a step heal value validates", async () => {
   const missing = tree([ident({ role: "button", testId: "apply", text: "Continue" })]);
-  const click = step({
+  const click: WorkflowStep = {
     id: "apply",
-    action: "click",
-    label: 'Click "Submit freeze"',
-    intent: "Submit freeze",
-    identity: ident({ testId: "missing-apply", text: "Submit freeze" }),
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click \"Submit freeze\"", citation: { text: "Submit freeze", source: "text" } },
     heal: "ask",
-  });
+    action: "click",
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Submit freeze" },
+        { kind: "text", value: "Submit freeze" },
+        { kind: "testid", value: "missing-apply" },
+        { kind: "css", value: "[data-testid=\"missing-apply\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
+  };
   const paused = await replay(doc([click]), {}, fake([missing]), {
     heal: {
       available: () => true,
@@ -353,7 +384,7 @@ test("the agent-browser viewer omits inspectors only for recorded-only runs in e
   for (const status of ["passed", "failed", "recording"] as const) {
     const run: RunSummary = {
       id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status,
-      steps: [{ id: "command-1", label: "snapshot", status: status === "recording" ? "pending" : status, afterShot: "command-1-after.png" }],
+      steps: [{ id: "command-1", caption: { text: "snapshot" }, status: status === "recording" ? "pending" : status, afterShot: "command-1-after.png" }],
     };
     for (const recordedOnly of [true, false]) {
       const html = runViewer(run, { name: "agent-browser", recordedOnly, steps: run.steps! });
@@ -418,7 +449,7 @@ test("the agent-browser viewer describes recording before any terminal step resu
 test("an active agent-browser recording keeps failed and paused command headlines", () => {
   for (const status of ["failed", "paused"] as const) {
     for (const recordedOnly of [true, false]) {
-      const steps = [{ id: "command-1", label: "snapshot", status, reason: "Native command failed." }];
+      const steps = [{ id: "command-1", caption: { text: "snapshot" }, status, reason: "Native command failed." }];
       const html = runViewer({
         id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status: "recording", steps,
       }, { name: "agent-browser", recordedOnly, steps });
@@ -434,10 +465,10 @@ test("agent-browser failure columns follow the selected step's rendered panel", 
   for (const phaseSource of ["step", "failure"] as const) {
     for (const recordedOnly of [true, false]) {
       const steps: NonNullable<RunSummary["steps"]> = [
-        { id: "command-1", label: "open", status: "failed", ...(phaseSource === "step" ? { phase: "action" as const } : {}) },
-        { id: "command-2", label: "snapshot", status: "passed" },
-        { id: "command-3", label: "click", status: "failed", reason: "Native command failed." },
-        { id: "command-4", label: "wait", status: "paused", phase: "action" },
+        { id: "command-1", caption: { text: "open" }, status: "failed", ...(phaseSource === "step" ? { phase: "action" as const } : {}) },
+        { id: "command-2", caption: { text: "snapshot" }, status: "passed" },
+        { id: "command-3", caption: { text: "click" }, status: "failed", reason: "Native command failed." },
+        { id: "command-4", caption: { text: "wait" }, status: "paused", phase: "action" },
       ];
       const run: RunSummary = {
         id: "native", workflowId: "agent-browser", pageEngine: "agent-browser", kind: "capture", status: "failed", steps,
@@ -515,7 +546,7 @@ test("the run viewer links a failure to its step and shows the snapshot", () => 
   const cards = workflowDetail({
     id: "wf",
     name: "upload note",
-    steps: [{ id: "apply", action: "confirm", label: "Apply", heal: "never" }],
+    steps: [{ id: "apply", action: "handoff", reason: "owner-press", caption: { text: "Apply" }, heal: "never" }],
   });
   assert.match(cards, /data-step-heal="apply"/);
   assert.match(cards, /value="never" selected/);

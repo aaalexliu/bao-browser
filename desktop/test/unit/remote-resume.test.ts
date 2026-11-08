@@ -1,5 +1,5 @@
-import { stepTitle } from "../../src/v1/schema";
-import { fixtureStep, fixtureDoc, withStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
+import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -9,7 +9,6 @@ import test from "node:test";
 import { heldConfirmReady, runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { MemoryJobStore } from "../../../web/src/lib/relay-job";
 import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/relay";
@@ -59,17 +58,43 @@ test("production remote confirms continue locally once and reject non-held order
     await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
     const address = site.address();
     assert.ok(address && typeof address === "object");
-    const placed: WorkflowV2["steps"][number] = fixtureStep({
-      id: "place", index: 0, action: "click", label: "Place order", surface: "dom", timeoutMs: 1000, heal: "never",
-      identity: { surface: "dom", role: "button", id: "place", name: "Place order", path: [] },
-      postcondition: { kind: "text", match: "Placed", timeoutMs: 3000 },
-    });
-    const workflow: WorkflowV2 = fixtureDoc({
-      schema: "bao.workflow/v4", version: 2, id: "failed-order", name: "Synthetic order", createdAt: 1,
-      startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [placed, fixtureStep({
-        id: "missing", index: 1, action: "click", label: "Missing follow-up", surface: "dom", timeoutMs: 0, heal: "never",
-        identity: { surface: "dom", role: "button", id: "missing", name: "Missing follow-up", path: [] },
-      })],
+    const placed: WorkflowV2["steps"][number] = {
+      id: "place",
+      index: 0,
+      timeoutMs: 1000,
+      caption: { text: "Place order", citation: { text: "Place order", source: "name" } },
+      heal: "never",
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Place order" },
+          { kind: "text", value: "Place order" },
+          { kind: "css", value: "#place" },
+          { kind: "xpath", value: "//*[@id=\"place\"]" },
+        ],
+        hint: { role: "button", surface: "dom", id: "place" },
+      },
+      check: { kind: "text", match: "Placed", timeoutMs: 3000 },
+    };
+    const workflow: WorkflowV2 = testWorkflow({
+      schema: "bao.workflow/v4", id: "failed-order", name: "Synthetic order", createdAt: 1,
+      startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [placed, {
+        id: "missing",
+        index: 1,
+        timeoutMs: 0,
+        caption: { text: "Missing follow-up", citation: { text: "Missing follow-up", source: "name" } },
+        heal: "never",
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Missing follow-up" },
+            { kind: "text", value: "Missing follow-up" },
+            { kind: "css", value: "#missing" },
+            { kind: "xpath", value: "//*[@id=\"missing\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "missing" },
+        },
+      }],
     });
     library.save(workflow);
     library.updateSettings({ remoteMcp: true });
@@ -113,9 +138,14 @@ test("production remote confirms continue locally once and reject non-held order
     assert.equal(existsSync(goneFile), false);
     assert.equal(orders, 1);
 
-    library.save(fixtureDoc({ ...workflow, id: "held-order", steps: [placed, fixtureStep({
-      id: "confirm", index: 1, action: "confirm", human: true, label: "Finish on the site", surface: "dom", timeoutMs: 5000,
-    })] }));
+    library.save(testWorkflow({ ...workflow, id: "held-order", steps: [placed, {
+      id: "confirm",
+      index: 1,
+      timeoutMs: 5000,
+      caption: { text: "Finish on the site" },
+      action: "handoff",
+      reason: "owner-press",
+    }] }));
     const held = await tool("run_workflow", { id: "held-order" });
     assert.equal(held.outcome, "needs_human");
     assert.equal(orders, 2);
@@ -123,16 +153,42 @@ test("production remote confirms continue locally once and reject non-held order
     assert.equal(resumed.outcome, "ok", JSON.stringify(resumed));
     assert.equal(orders, 2, "held resume restarted its completed first step");
 
-    const confirm: WorkflowV2["steps"][number] = fixtureStep({
-      id: "owner-order", index: 0, action: "confirm", human: true, label: "Place order on the site", surface: "dom", timeoutMs: 5000,
-      postcondition: { kind: "text", match: "Placed", timeoutMs: 3000 },
-    });
-    const finish: WorkflowV2["steps"][number] = fixtureStep({
-      id: "finish", index: 1, action: "click", label: "Finish", surface: "dom", timeoutMs: 1000, heal: "never",
-      identity: { surface: "dom", role: "button", id: "finish", name: "Finish", path: [] },
-      postcondition: { kind: "text", match: "Finished", timeoutMs: 3000 },
-    });
-    library.save(fixtureDoc({ ...workflow, id: "auto-order", steps: [confirm, finish] }));
+    const confirm: WorkflowV2["steps"][number] = {
+      id: "owner-order",
+      index: 0,
+      timeoutMs: 5000,
+      caption: { text: "Place order on the site" },
+      action: "handoff",
+      reason: "owner-press",
+      check: { kind: "text", match: "Placed", timeoutMs: 3000 },
+    };
+    const manualConfirm: WorkflowV2["steps"][number] = {
+      id: "owner-order",
+      index: 0,
+      timeoutMs: 5000,
+      caption: { text: "Place order on the site" },
+      action: "handoff",
+      reason: "owner-press",
+    };
+    const finish: WorkflowV2["steps"][number] = {
+      id: "finish",
+      index: 1,
+      timeoutMs: 1000,
+      caption: { text: "Finish", citation: { text: "Finish", source: "name" } },
+      heal: "never",
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Finish" },
+          { kind: "text", value: "Finish" },
+          { kind: "css", value: "#finish" },
+          { kind: "xpath", value: "//*[@id=\"finish\"]" },
+        ],
+        hint: { role: "button", surface: "dom", id: "finish" },
+      },
+      check: { kind: "text", match: "Finished", timeoutMs: 3000 },
+    };
+    library.save(testWorkflow({ ...workflow, id: "auto-order", steps: [confirm, finish] }));
     const automatic = await tool("run_workflow", { id: "auto-order" });
     assert.equal(automatic.outcome, "needs_human");
     assert.equal(remote.view().canDetectCompletion, true);
@@ -160,7 +216,7 @@ test("production remote confirms continue locally once and reject non-held order
     assert.equal(stale.runId, automatic.runId);
     assert.equal(followups, 1);
 
-    library.save(fixtureDoc({ ...workflow, id: "manual-order", steps: [withStep(confirm, { postcondition: undefined }), finish] }));
+    library.save(testWorkflow({ ...workflow, id: "manual-order", steps: [manualConfirm, finish] }));
     const manual = await tool("run_workflow", { id: "manual-order" });
     await new Promise((resolve) => setTimeout(resolve, 700));
     assert.equal(followups, 1, "a confirm without evidence must wait for local Continue");
@@ -172,8 +228,8 @@ test("production remote confirms continue locally once and reject non-held order
     assert.equal((await tool("resume_workflow", { resume: manual.resume })).outcome, "ok");
     assert.equal(followups, 2, "agent acknowledgement repeated the next step");
 
-    library.save(fixtureDoc({ ...workflow, id: "changed-postcondition", steps: [
-      withStep(confirm, { postcondition: { kind: "text", match: "Old receipt text", timeoutMs: 1000 } }), finish,
+    library.save(testWorkflow({ ...workflow, id: "changed-postcondition", steps: [
+      { ...confirm, check: { kind: "text", match: "Old receipt text", timeoutMs: 1000 } }, finish,
     ] }));
     const changed = await tool("run_workflow", { id: "changed-postcondition" });
     const notReady = await tool("resume_workflow", { resume: changed.resume });
@@ -183,10 +239,27 @@ test("production remote confirms continue locally once and reject non-held order
     await waitFor(() => remote.view().phase === "idle");
     assert.equal(followups, 3, "owner Continue could not acknowledge a changed postcondition");
 
-    library.save(fixtureDoc({ ...workflow, id: "two-confirms", steps: [
+    library.save(testWorkflow({ ...workflow, id: "two-confirms", steps: [
       confirm,
-      withStep(confirm, { id: "second-confirm", index: 1, postcondition: undefined }),
-      { ...finish, index: 2 },
+      { ...manualConfirm, id: "second-confirm", index: 1 },
+      {
+        id: "finish",
+        index: 2,
+        timeoutMs: 1000,
+        caption: { text: "Finish", citation: { text: "Finish", source: "name" } },
+        heal: "never",
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Finish" },
+            { kind: "text", value: "Finish" },
+            { kind: "css", value: "#finish" },
+            { kind: "xpath", value: "//*[@id=\"finish\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "finish" },
+        },
+        check: { kind: "text", match: "Finished", timeoutMs: 3000 },
+      },
     ] }));
     const two = await tool("run_workflow", { id: "two-confirms" });
     await withHeldPage(String(two.resume), async (page) => {
@@ -213,10 +286,27 @@ test("production remote confirms continue locally once and reject non-held order
     await waitFor(() => remote.view().phase === "idle");
     assert.equal(followups, 4);
 
-    library.save(fixtureDoc({ ...workflow, id: "two-manual-confirms", steps: [
-      withStep(confirm, { postcondition: undefined }),
-      withStep(confirm, { id: "second-confirm", index: 1, postcondition: undefined }),
-      { ...finish, index: 2 },
+    library.save(testWorkflow({ ...workflow, id: "two-manual-confirms", steps: [
+      manualConfirm,
+      { ...manualConfirm, id: "second-confirm", index: 1 },
+      {
+        id: "finish",
+        index: 2,
+        timeoutMs: 1000,
+        caption: { text: "Finish", citation: { text: "Finish", source: "name" } },
+        heal: "never",
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Finish" },
+            { kind: "text", value: "Finish" },
+            { kind: "css", value: "#finish" },
+            { kind: "xpath", value: "//*[@id=\"finish\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "finish" },
+        },
+        check: { kind: "text", match: "Finished", timeoutMs: 3000 },
+      },
     ] }));
     const twoManual = await tool("run_workflow", { id: "two-manual-confirms" });
     remote.continue(String(twoManual.resume), confirm.id);
@@ -285,12 +375,36 @@ for (const observationFailure of ["navigation", "unreadable"] as const) {
       await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
       const address = site.address();
       assert.ok(address && typeof address === "object");
-      library.save(fixtureDoc({
-        schema: "bao.workflow/v4", version: 2, id: "observer-order", name: "Observer order", createdAt: 1,
+      library.save(testWorkflow({
+        schema: "bao.workflow/v4", id: "observer-order", name: "Observer order", createdAt: 1,
         startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [
-          fixtureStep({ id: "confirm", index: 0, action: "confirm", human: true, label: "Finish on the site", surface: "dom", timeoutMs: 5000, postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } }),
-          fixtureStep({ id: "finish", index: 1, action: "click", label: "Finish", surface: "dom", timeoutMs: 1000, heal: "never",
-            identity: { surface: "dom", role: "button", id: "finish", name: "Finish", path: [] }, postcondition: { kind: "text", match: "Finished", timeoutMs: 3000 } }),
+          {
+            id: "confirm",
+            index: 0,
+            timeoutMs: 5000,
+            caption: { text: "Finish on the site" },
+            action: "handoff",
+            reason: "owner-press",
+            check: { kind: "text", match: "Ready", timeoutMs: 1000 },
+          },
+          {
+            id: "finish",
+            index: 1,
+            timeoutMs: 1000,
+            caption: { text: "Finish", citation: { text: "Finish", source: "name" } },
+            heal: "never",
+            action: "click",
+            target: {
+              locators: [
+                { kind: "role", role: "button", name: "Finish" },
+                { kind: "text", value: "Finish" },
+                { kind: "css", value: "#finish" },
+                { kind: "xpath", value: "//*[@id=\"finish\"]" },
+              ],
+              hint: { role: "button", surface: "dom", id: "finish" },
+            },
+            check: { kind: "text", match: "Finished", timeoutMs: 3000 },
+          },
         ],
       }));
       const held = await runWorkflow(library, { id: "observer-order" });

@@ -1,11 +1,17 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { replay, type Driver } from "../../src/v1/replay";
-import type { Check, Identity, WorkflowV2 } from "../../src/v1/schema";
+import { locatorsFromIdentity } from "../../src/v1/locators";
+import { hintFromIdentity, type Check, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 
 function dismiss(patch: Partial<Identity> = {}): Identity {
   return { surface: "dom", role: "button", name: "Close", path: [{ role: "dialog", name: "Welcome" }], ...patch };
+}
+
+/** These fixtures store a css path as a locator only when it starts at an element id. */
+function storedPath(node: Identity): Identity {
+  return node.cssPath?.startsWith("#") ? node : { ...node, cssPath: undefined };
 }
 
 async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => Identity[], expect?: Check, finalOptional = false) {
@@ -25,11 +31,20 @@ async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => I
     async notify() {},
     async sleep(ms) { elapsed += ms; t.mock.timers.tick(ms); },
   };
-  const workflow: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0, inputs: [],
+  const workflow: WorkflowV2 = testWorkflow({
+    id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0,
     steps: [
-      fixtureStep({ id: "dismiss", index: 0, surface: "dom", action: "click", label: "Close", optional: "dismiss", identity: want, timeoutMs: 2000, expect }),
-      ...(finalOptional ? [] : [{ id: "resume", index: 1, surface: "dom" as const, action: "key" as const, label: "Resume", key: "Tab", timeoutMs: 2000 }]),
+      {
+        id: "dismiss",
+        index: 0,
+        timeoutMs: 2000,
+        caption: { text: "Close" },
+        action: "click",
+        target: { locators: locatorsFromIdentity(storedPath(want)) ?? [], hint: hintFromIdentity(want) },
+        optional: "dismiss",
+        ...(expect ? { check: expect } : {}),
+      },
+      ...(finalOptional ? [] : [{ id: "resume", index: 1, timeoutMs: 2000, caption: { text: "Resume" }, action: "key" as const, key: "Tab" }]),
     ],
   });
   const result = await replay(workflow, {}, driver);

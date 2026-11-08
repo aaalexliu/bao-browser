@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -119,7 +119,7 @@ test("p3 and p9 score completed preparation, not final clicks or pauses", () => 
         run,
         expect: "completed",
         replay: { status: "passed", modelCalls: 0 },
-        workflow: fixtureDoc({ ...load<ScoreInput["workflow"]>(`workflows/${id}.json`), steps: [] }),
+        workflow: testWorkflow({ ...load<ScoreInput["workflow"]>(`workflows/${id}.json`), steps: [] }),
         page: { text: id === "p3"
           ? `£100 x ${nights} nights £${100 * nights} Fees £10 Total £${100 * nights + 10}`
           : `YouTube Organic Cotton $29.50 ${run === 1 ? "2 Market" : "3 Market"}` },
@@ -133,7 +133,14 @@ test("p3 and p9 score completed preparation, not final clicks or pauses", () => 
       assert.equal(score({ ...input, expect: "needs_human" }).pass, false);
       assert.equal(score({ ...input, page: { text: "Wrong booking or empty cart" } }).pass, false);
       const label = id === "p3" ? "Reserve Now" : "Place Order";
-      assert.equal(score({ ...input, workflow: fixtureDoc({ ...input.workflow, steps: [fixtureStep({ id: "submit", index: 0, action: "click", label, surface: "dom", timeoutMs: 1000 })] }) }).pass, false);
+      assert.equal(score({ ...input, workflow: testWorkflow({ ...input.workflow, steps: [{
+        id: "submit",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: label },
+        action: "click",
+        target: { locators: [{ kind: "role", role: "button", name: label }] },
+      }] }) }).pass, false);
     }
   }
 });

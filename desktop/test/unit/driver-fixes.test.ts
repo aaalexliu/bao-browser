@@ -1,4 +1,4 @@
-import { checkMatch, stepTitle, stepCheck, handoffReason } from "../../src/v1/schema";
+import { checkMatch, handoffReason, type Identity, stepCheck, stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,7 +8,6 @@ import test from "node:test";
 import { condense } from "../../src/v1/condense";
 import { fileAct, trailHasPath } from "../../src/v1/file-chooser";
 import { replay, type Driver } from "../../src/v1/replay";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 import { crashStatus, loadTrail, replayTask } from "../../src/eval/drivers";
 import { ensurePartialTrail, liveCrashReason, withRateLimitRetry, type LiveCliResult } from "../../src/eval/live-cli";
 import { McpClient } from "../../src/eval/mcp-client";

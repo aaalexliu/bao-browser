@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { stepText, targetFor, testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,17 +8,22 @@ import { startApp } from "../../src/app/server";
 import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import { stepQuery, stepValueTemplate, subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "wf-live", name: "Saved live form",
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "wf-live", name: "Saved live form",
     startUrl: "https://example.test/", createdAt: 1,
-    inputs: [fixtureInput({ name: "text", type: "text", default: "value" })],
-    steps: identities.map((identity, index) => ({
-      id: `live-${index}`, index, action: "type", label: "Saved field", surface: "dom", timeoutMs: 1000,
-      identity: { surface: "dom", role: "textbox", path: [], ...identity }, input: "text", value: "{{text}}",
+    inputs: [{ name: "text", type: "text", label: "text", supply: "saved", default: "value" }],
+    steps: identities.map((identity, index): WorkflowStep => ({
+      id: `live-${index}`,
+      index,
+      timeoutMs: 1000,
+      caption: { text: "Saved field" },
+      action: "type",
+      target: targetFor({ surface: "dom", role: "textbox", path: [], ...identity }),
+      text: { input: "text" },
     })),
   });
 }
@@ -36,13 +41,12 @@ async function pagePng(width: number, height: number, veiled = false): Promise<B
 test("saved generic input tokens stay usable without a migration", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
   try {
-    const workflow = recorded([{}]);
-    stepQuery(workflow.steps[0]!)!.label = "App name";
+    const workflow = recorded([{ label: "App name" }]);
     const library = new Library(home);
     library.save(workflow);
     const saved = library.read(workflow.id);
     assert.equal(saved.inputs[0]?.name, "text");
-    assert.equal(subst(stepValueTemplate(saved.steps[0]!)!, { text: "existing argument" }), "existing argument");
+    assert.deepEqual(stepText(saved.steps[0]), { input: "text" });
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

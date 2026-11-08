@@ -1,4 +1,5 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { targetOf, testWorkflow } from "../support/workflow";
+import { targetElementId } from "../../../shared/step-read";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,21 +10,16 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { isCollapsedBox, matchLocator } from "../../src/v1/locators";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepTitle, stepQuery, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTitle, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { diffTrajectory, type TrajectoryStep } from "../../src/v1/trajectory";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
-}
-
 function doc(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "Checks",
     startUrl: "https://example.test/",
@@ -65,19 +61,19 @@ const searchToggle = ident({ role: "link", text: "Search", path: [{ role: "searc
 const opened = ident({ role: "input", name: "Search Wikipedia", nameAttr: "search" });
 
 function searchWorkflow(reveal: boolean): WorkflowV2 {
-  return doc([step({
+  return doc([{
     id: "q",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Type {{searchInput}}", citation: { text: "Search Wikipedia", source: "name" } },
     action: "type",
-    label: "Type {{searchInput}}",
-    input: "searchInput",
-    value: "{{searchInput}}",
-    identity: searchInput,
-    locators: [
-      { kind: "role", role: "input", name: "Search Wikipedia" },
-      { kind: "css", value: "#searchInput" },
-    ],
-    reveal: reveal ? { kind: "role", role: "link", name: "Search" } : undefined,
-  })], [fixtureInput({ name: "searchInput", type: "text", default: "Ada Lovelace" })]);
+    target: {
+      locators: [{ kind: "role", role: "input", name: "Search Wikipedia" }, { kind: "css", value: "#searchInput" }],
+      hint: { role: "input", surface: "dom", id: "searchInput" },
+      reveal: reveal ? { kind: "role", role: "link", name: "Search" } : undefined,
+    },
+    text: { input: "searchInput" },
+  }], [{ name: "searchInput", type: "text", label: "searchInput", supply: "saved", default: "Ada Lovelace" }]);
 }
 
 test("a hidden box is not a locator hit", () => {
@@ -132,12 +128,23 @@ test("a visible target does not click the search toggle", async () => {
 });
 
 test("a text check and an absent check fail in expect", async () => {
-  const waiting = doc([step({
+  const waiting = doc([{
     id: "w",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click Go", citation: { text: "Go", source: "text" } },
     action: "click",
-    identity: ident({ testId: "go", text: "Go" }),
-    waitFor: { kind: "text", match: "Ready", timeoutMs: 0 },
-  })]);
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Go" },
+        { kind: "text", value: "Go" },
+        { kind: "testid", value: "go" },
+        { kind: "css", value: "[data-testid=\"go\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
+    check: { kind: "text", match: "Ready", timeoutMs: 0 },
+  }]);
   const missed = await replay(waiting, {}, fake([tree([ident({ testId: "go", text: "Go" })], { texts: [] })]), { heal: unavailableHeal() });
   assert.equal(missed.status, "failed");
   assert.equal(missed.failure?.phase, "expect");
@@ -145,12 +152,23 @@ test("a text check and an absent check fail in expect", async () => {
   assert.equal(missed.steps[0]?.phase, "expect");
   assert.match(missed.steps[0]?.reason || "", /^expect:/);
 
-  const covering = doc([step({
+  const covering = doc([{
     id: "g",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click Go", citation: { text: "Go", source: "text" } },
     action: "click",
-    identity: ident({ testId: "go", text: "Go" }),
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Go" },
+        { kind: "text", value: "Go" },
+        { kind: "testid", value: "go" },
+        { kind: "css", value: "[data-testid=\"go\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
     check: { kind: "absent", locators: [{ kind: "testid", value: "go" }], timeoutMs: 0 },
-  })]);
+  }]);
   const stuck = await replay(covering, {}, fake([
     tree([ident({ testId: "go", text: "Go" })]),
     tree([ident({ testId: "go", text: "Go" })]),
@@ -165,15 +183,17 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
   const note = path.join(home, "note.txt");
   writeFileSync(note, "bao drift\n");
   const log = new ReceiptLog(path.join(home, "receipts.jsonl"));
-  const workflow = doc([step({
+  const workflow = doc([{
     id: "save",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Save" },
+    readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
     action: "key",
     key: "ctrl+s",
-    label: "Save",
-    readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
-  })], [
-    fixtureInput({ name: "text", type: "text", default: "bao drift" }),
-    fixtureInput({ name: "note", type: "text" }),
+  }], [
+    { name: "text", type: "text", label: "text", supply: "saved", default: "bao drift" },
+    { name: "note", type: "text", label: "note", supply: "must" },
   ]);
   assert.deepEqual(validateWorkflow(workflow), []);
   const passed = await replay(workflow, { text: "bao drift", note }, fake([tree([])]), {
@@ -192,14 +212,17 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
   assert.equal(log.entries[1]?.prev, log.entries[0]?.hash);
   assert.equal(verifyReceiptChain(log.entries), true);
 
-  const outside = doc([step({
+  const outside = doc([{
     id: "save",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Press ctrl+s" },
+    readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
     action: "key",
     key: "ctrl+s",
-    readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
-  })], [
-    fixtureInput({ name: "text", type: "text" }),
-    fixtureInput({ name: "note", type: "text" }),
+  }], [
+    { name: "text", type: "text", label: "text", supply: "must" },
+    { name: "note", type: "text", label: "note", supply: "must" },
   ]);
   const refused = await replay(outside, { text: "bao drift", note: "/etc/hostname" }, fake([tree([])]), { heal: unavailableHeal() });
   assert.equal(refused.status, "failed");
@@ -211,12 +234,23 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
 
 test("a form read-back re-reads the saved text", async () => {
   const save = ident({ role: "button", testId: "save-note", text: "Save note" });
-  const workflow = doc([step({
+  const workflow = doc([{
     id: "save",
-    action: "click",
-    identity: save,
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click Save note", citation: { text: "Save note", source: "text" } },
     readBack: { source: "text", match: "{{note}}", timeoutMs: 0 },
-  })], [fixtureInput({ name: "note", type: "text", default: "hello" })]);
+    action: "click",
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Save note" },
+        { kind: "text", value: "Save note" },
+        { kind: "testid", value: "save-note" },
+        { kind: "css", value: "[data-testid=\"save-note\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
+  }], [{ name: "note", type: "text", label: "note", supply: "saved", default: "hello" }]);
   const driver = fake([
     tree([save], { texts: [] }),
     tree([save], { texts: ["hello"] }),
@@ -276,7 +310,7 @@ test("credit freeze read-back is the status text and validates", () => {
   const frozen = freeze.steps.find((item) => stepTitle(item) === "Click Frozen");
   assert.equal(frozen?.readBack?.source, "text");
   assert.equal(frozen?.readBack?.match, "Status: none");
-  assert.equal(freeze.steps.some((item) => item.action === "click" && stepQuery(item)?.id === "apply"), false);
+  assert.equal(freeze.steps.some((item) => item.action === "click" && targetElementId(targetOf(item)) === "apply"), false);
   assert.equal(freeze.steps.at(-1)?.action, "handoff");
   assert.equal(freeze.precondition?.phase, "auth");
 });

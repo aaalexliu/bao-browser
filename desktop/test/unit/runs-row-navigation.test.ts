@@ -1,5 +1,5 @@
-import { stepQuery } from "../../src/v1/schema";
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { targetOf, testWorkflow,  } from "../support/workflow";
+import { targetQuery } from "../../src/v1/identity";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,9 +10,19 @@ import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { formatClock } from "../../src/v1/time";
 
-const workflow: WorkflowV2 = fixtureDoc({
-  schema: "bao.workflow/v4", version: 2, id: "statements", name: "Download statement", createdAt: 1,
-  startUrl: "/fixture", inputs: [], steps: [fixtureStep({ id: "open", index: 0, action: "click", label: "Open statements", surface: "dom", identity: { surface: "dom", role: "button", name: "Statements", path: [] }, timeoutMs: 1000 })],
+const workflow: WorkflowV2 = testWorkflow({
+  schema: "bao.workflow/v4", id: "statements", name: "Download statement", createdAt: 1,
+  startUrl: "/fixture", inputs: [], steps: [{
+    id: "open",
+    index: 0,
+    timeoutMs: 1000,
+    caption: { text: "Open statements", citation: { text: "Statements", source: "name" } },
+    action: "click",
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Statements" }, { kind: "text", value: "Statements" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  }],
 });
 
 test("Runs rows open the exact target proposal, preserve receipts, keep keyboard selection through polling", { timeout: 60_000 }, async () => {
@@ -23,7 +33,7 @@ test("Runs rows open the exact target proposal, preserve receipts, keep keyboard
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   try {
     app.library.save(workflow);
-    const heal = { id: "first", intent: "Open statements", failedStep: { ...workflow.steps[0]!, index: 2 }, proposedPatch: { identity: { ...stepQuery(workflow.steps[0]!)!, name: "New statements" } } };
+    const heal = { id: "first", intent: "Open statements", failedStep: { ...workflow.steps[0]!, index: 2 }, proposedPatch: { identity: { ...targetQuery(targetOf(workflow.steps[0])!), name: "New statements" } } };
     app.library.saveRun({ id: "run-targets", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [heal, { ...heal, id: "second", failedStep: workflow.steps[0]! }] });
     app.library.saveRun({ id: "run-other", workflowId: workflow.id, status: "passed", at: 1, steps: [], heals: [heal] });
     const promotion = { workflowId: workflow.id, healId: "first", status: "provisional", drift: "passed", replays: 1, need: 3 };

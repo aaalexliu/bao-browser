@@ -1,4 +1,4 @@
-import { fixtureDoc, writeStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -25,15 +25,23 @@ test("review samples preserve ordinary choice and fixed values", () => {
 });
 
 function workflow(origin: string): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "review-text-values", name: "Review text values",
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "review-text-values", name: "Review text values",
     startUrl: `${origin}/fixture`, createdAt: 1,
-    inputs: values.map((value, index) => ({ name: `sample${index}`, type: "text", default: value })),
+    inputs: values.map((value, index) => ({ name: `sample${index}`, type: "text", label: `sample${index}`, supply: "saved", default: value })),
     steps: values.map((value, index) => ({
-      id: `field${index}`, index, action: "type", label: `Fill sample ${index}`, heal: "never", surface: "dom",
-      input: `sample${index}`, value: `{{sample${index}}}`,
-      identity: { surface: "dom", role: "textbox", testId: `field${index}`, path: [] },
-      postcondition: { kind: "text", match: `Received ${value}`, timeoutMs: 5000 }, timeoutMs: 5000,
+      id: `field${index}`,
+      index,
+      timeoutMs: 5000,
+      caption: { text: `Fill sample ${index}` },
+      heal: "never",
+      action: "type",
+      target: {
+        locators: [{ kind: "testid", value: `field${index}` }, { kind: "css", value: `[data-testid="field${index}"]` }],
+        hint: { role: "textbox", surface: "dom" },
+      },
+      text: { input: `sample${index}` },
+      check: { kind: "text", match: `Received ${value}`, timeoutMs: 5000 },
     })),
   });
 }
@@ -44,9 +52,10 @@ test("review crop eligibility covers literal, default and actual run text values
     const run = { steps: [], inputs: {} as Record<string, string> };
     for (const [index, value] of values.entries()) {
       const step = document.steps[index]!;
+      assert.ok(step.action === "type");
       if (source !== "default") delete document.inputs[index]!.default;
       if (source === "literal") {
-        writeStep(step, { value: value });
+        step.text = { literal: value };
       } else if (source === "run") run.inputs[`sample${index}`] = value;
       assert.equal(privateReviewStep(document, step, run), index < 3, `${source}: ${index}`);
     }

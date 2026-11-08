@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -32,14 +32,35 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     const jpeg = await fetch(`http://127.0.0.1:${app.port}/api/runs/${runId}/shots/after.jpg`);
     assert.equal(jpeg.status, 200);
     assert.equal(jpeg.headers.get("content-type"), "image/jpeg");
-    app.library.save(fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: "wf-shot-stage", name: "Step screenshot fixture",
+    app.library.save(testWorkflow({ schema: "bao.workflow/v4", id: "wf-shot-stage", name: "Step screenshot fixture",
       startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
       steps: [
-        fixtureStep({ id: "shot", index: 0, action: "note", label: "Fixture page", surface: "dom", timeoutMs: 1000 }),
-        fixtureStep({ id: "crop", index: 1, action: "note", label: "Target crop", surface: "dom", timeoutMs: 1000 }),
-        fixtureStep({ id: "jpeg", index: 2, action: "note", label: "Extension page", surface: "dom", timeoutMs: 1000 }),
-        fixtureStep({ id: "missing", index: 3, action: "note", label: "No shot", surface: "dom", timeoutMs: 1000 }),
-        fixtureStep({ id: "gone", index: 4, action: "note", label: "Deleted picture", surface: "dom", timeoutMs: 1000 }),
+        {
+          id: "shot",
+          index: 0,
+          timeoutMs: 1000,
+          caption: { text: "Fixture page" },
+          action: "note",
+          text: "Fixture page",
+        },
+        { id: "crop", index: 1, timeoutMs: 1000, caption: { text: "Target crop" }, action: "note", text: "Target crop" },
+        {
+          id: "jpeg",
+          index: 2,
+          timeoutMs: 1000,
+          caption: { text: "Extension page" },
+          action: "note",
+          text: "Extension page",
+        },
+        { id: "missing", index: 3, timeoutMs: 1000, caption: { text: "No shot" }, action: "note", text: "No shot" },
+        {
+          id: "gone",
+          index: 4,
+          timeoutMs: 1000,
+          caption: { text: "Deleted picture" },
+          action: "note",
+          text: "Deleted picture",
+        },
       ] }));
     app.library.saveRun({ id: runId, workflowId: "wf-shot-stage", at: 1, status: "passed", modelCalls: 0, heals: [],
       steps: [

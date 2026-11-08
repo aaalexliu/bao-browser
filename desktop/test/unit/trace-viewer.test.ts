@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // Filmstrip shots, labeled inputs, and the failure side panel.
 
 import assert from "node:assert/strict";
@@ -17,14 +17,9 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
-}
-
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "upload note",
     startUrl: "http://127.0.0.1/fixture",
@@ -147,28 +142,34 @@ test("a locator scores 100 for one hit, 40 for two, and 0 for a miss", () => {
 
 test("a missed step keeps every locator it tried, with the score", async () => {
   const live = tree([ident({ testId: "save", text: "Continue" })]);
-  const missed = await replay(doc([step({
+  const missed = await replay(doc([{
     id: "save",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "save", citation: { text: "Save", source: "text" } },
     action: "click",
-    label: "save",
-    identity: ident({ testId: "missing-save", text: "Save" }),
-    locators: [
-      { kind: "testid", value: "missing-save" },
-      { kind: "text", value: "Save" },
-    ],
-  })]), {}, fake([live]), { heal: noHeal });
+    target: {
+      locators: [{ kind: "testid", value: "missing-save" }, { kind: "text", value: "Save" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  }]), {}, fake([live]), { heal: noHeal });
   assert.equal(missed.status, "failed");
   assert.equal(missed.failure?.phase, "find");
   assert.deepEqual(missed.failure?.locators?.map((item) => item.score), [0, 0]);
   assert.match(missed.failure?.locators?.[0]?.label || "", /missing-save/);
   assert.match(missed.failure?.locators?.[1]?.label || "", /Save/);
 
-  const ranked = await replay(doc([step({
+  const ranked = await replay(doc([{
     id: "save",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "save", citation: { text: "Save", source: "text" } },
     action: "click",
-    label: "save",
-    identity: ident({ role: "button", text: "Save" }),
-  })]), {}, fake([live]), { heal: noHeal });
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Save" }, { kind: "text", value: "Save" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  }]), {}, fake([live]), { heal: noHeal });
   assert.equal(ranked.failure?.phase, "find");
   assert.ok((ranked.failure?.locators || []).length >= 1);
   assert.equal(typeof ranked.failure?.locators?.[0]?.score, "number");

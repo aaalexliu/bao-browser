@@ -1,10 +1,9 @@
 // Cheap repairs. They run before any model call and only use the step's
 // recorded intent plus the live tree. A repair that is not sure returns nothing.
 
-import { lookup } from "./identity";
+import { lookup, targetQuery } from "./identity";
 import { isCollapsedBox, locatorIndexes, matchLocator } from "./locators";
-import { stepTitle, stepQuery, stepReveal, stepLocators } from "./schema";
-import type { Identity, StepLocator, WorkflowStep } from "./schema";
+import { type Identity, type StepLocator, stepLocators, stepReveal, stepTarget, stepTitle, type WorkflowStep } from "./schema";
 
 export interface Box {
   x: number;
@@ -75,7 +74,7 @@ export function anchorCandidate(
   if (!found.ok || found.index == null) return undefined;
   const origin = center(boxes[found.index]);
   if (!origin) return undefined;
-  const role = normRole(stepQuery(step)?.role);
+  const role = normRole(matchRole(step));
   let best: { index: number; distance: number } | undefined;
   nodes.forEach((node, index) => {
     if (index === found.index) return;
@@ -87,6 +86,12 @@ export function anchorCandidate(
   });
   if (!best) return undefined;
   return { index: best.index, detail: `${anchor.relation} ${shown(nodes[best.index])}` };
+}
+
+/** The role the matcher looks for on this step's target. */
+function matchRole(step: WorkflowStep): string | undefined {
+  const target = stepTarget(step);
+  return target ? targetQuery(target).role : undefined;
 }
 
 const TOGGLE = /^(search|buscar)$/;
@@ -114,9 +119,9 @@ export function collapsedTarget(
     }
     return undefined;
   }
-  const identity = stepQuery(step);
-  if (!identity) return undefined;
-  const found = lookup(identity, nodes);
+  const target = stepTarget(step);
+  if (!target) return undefined;
+  const found = lookup(targetQuery(target), nodes);
   if (!found.ok || found.index == null) return undefined;
   if (!isCollapsedBox(found.index, boxes, hidden)) return undefined;
   return { index: found.index, detail: "identity collapsed" };
@@ -178,7 +183,7 @@ export function intentText(step: WorkflowStep): string {
 }
 
 function scoreNode(want: string, node: Identity, step: WorkflowStep): number {
-  const role = normRole(stepQuery(step)?.role);
+  const role = normRole(matchRole(step));
   if (role && normRole(node.role) && normRole(node.role) !== role) return 0;
   const texts = [node.name, node.text, node.label, node.title, node.description].filter((item): item is string => !!item);
   if (!texts.length) return 0;

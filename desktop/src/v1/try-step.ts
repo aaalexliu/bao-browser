@@ -1,12 +1,11 @@
 // Try looks a step up on the live window. It does not click, type, or call a model.
 
 import type { HealProvider } from "./heal";
-import { lookup } from "./identity";
+import { lookup, targetQuery } from "./identity";
 import type { Driver } from "./replay";
 import { identityView } from "./run-trace";
 import type { IdentityView } from "../app/view-types";
-import { stepQuery } from "./schema";
-import type { WorkflowStep } from "./schema";
+import { stepTarget, type WorkflowStep } from "./schema";
 
 export interface TryOutcome {
   matched: boolean;
@@ -19,7 +18,8 @@ export interface TryOutcome {
 
 export async function tryStep(step: WorkflowStep, driver: Driver, heal?: HealProvider): Promise<TryOutcome> {
   void heal;
-  const recorded = stepQuery(step);
+  const target = stepTarget(step);
+  const recorded = target ? targetQuery(target) : undefined;
   if (!recorded) {
     return { matched: false, actions: 0, modelCalls: 0, reason: "no identity" };
   }

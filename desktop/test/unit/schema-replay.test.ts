@@ -1,4 +1,5 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { stepText, targetFor, targetOf, testWorkflow } from "../support/workflow";
+import { checkMatch, handoffReason, type Identity, locatorValue, roleLocator, stepCheck, stepInputName, stepKey, stepLocators, stepSensitive, stepTitle, type Target, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -13,45 +14,8 @@ import { Library } from "../../src/v1/store";
 import { NEEDS_SECRET_VALUE, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
-import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
+import { checkHolds, expectedText, replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { parseRecordedDate } from "../../src/v1/dates";
-import { checkMatch, stepTitle, stepQuery, stepLocators, stepInputName, stepValueTemplate, stepKey, stepCheck, handoffReason, stepSensitive, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
-
-function migrate(raw: unknown): WorkflowV2 {
-  const doc = raw && typeof raw === "object" ? structuredClone(raw) as Record<string, unknown> : {};
-  const steps = Array.isArray(doc.steps) ? doc.steps as Record<string, unknown>[] : [];
-  const inputs = Array.isArray(doc.inputs) ? [...doc.inputs as object[]] : [];
-  for (const step of steps) {
-    const action = String(step.action || "");
-    const os = step.os && typeof step.os === "object" ? step.os as { value?: unknown; target?: { name?: string } } : undefined;
-    const value = typeof step.value === "string" ? step.value : typeof os?.value === "string" ? os.value : undefined;
-    const native = action === "osType" || action === "osSetValue";
-    if (action === "input" && step.sensitive === true && typeof value === "string") {
-      inputs.push({ name: "password", type: "secret", label: "Password", supply: "saved", default: value });
-      step.action = "type";
-      step.input = "password";
-      delete step.value;
-    }
-    if (native && typeof value === "string") {
-      const pathValue = !value.startsWith("Super") && value !== "Ada" && (value.startsWith("/") || /^[A-Za-z]:\\/.test(value));
-      const name = step.sensitive === true ? "password" : "field";
-      inputs.push({
-        name,
-        type: step.sensitive === true ? "secret" : "text",
-        label: name,
-        supply: pathValue ? "must" : "saved",
-        ...(pathValue ? {} : { default: value }),
-      });
-      step.action = "type";
-      step.input = name;
-      step.identity = { surface: "ax", role: "textbox", name: os?.target?.name || "Field", path: [] };
-      delete step.value;
-    }
-  }
-  doc.inputs = inputs;
-  doc.steps = steps;
-  return fixtureDoc(doc);
-}
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -65,16 +29,16 @@ test("missing locator payloads are rejected at the document boundary", () => {
   const step = (id: string, index: number, locators?: unknown[], reveal?: unknown) => ({
     id,
     index,
-    action: "click",
-    label: id,
-    surface: "dom",
     timeoutMs: 0,
-    ...(locators ? { locators } : {}),
-    ...(reveal ? { reveal } : {}),
+    caption: { text: id },
+    action: "click",
+    target: {
+      locators: locators ?? [{ kind: "role", role: "button", name: id }],
+      ...(reveal ? { reveal } : {}),
+    },
   });
   const raw = {
     schema: WORKFLOW_SCHEMA_ID,
-    version: 2,
     id: "wf-locator-payloads",
     name: "Locator payloads",
     startUrl: "https://example.test/",
@@ -96,7 +60,7 @@ test("missing locator payloads are rejected at the document boundary", () => {
       step("unknown-missing", 12, [{ kind: "legacy" }]),
     ],
   };
-  const doc = migrate(raw);
+  const doc = raw as unknown as WorkflowV2;
   assert.deepEqual(validateWorkflow(doc), [
     "role locator missing-role",
     "role locator empty-role",
@@ -117,42 +81,6 @@ test("missing locator payloads are rejected at the document boundary", () => {
     role: "button",
     value: "#ok",
   });
-});
-
-test("migrate retains a password default and validates against the json schema", () => {
-  const doc = migrate({
-    id: "wf-login",
-    name: "Login",
-    version: 1,
-    startUrl: "https://example.test/login",
-    createdAt: 1,
-    variables: [],
-    steps: [
-      {
-        id: "u",
-        action: "input",
-        label: "Username",
-        ts: 1,
-        value: "tomsmith",
-        target: { selectors: [{ type: "id", value: "#username" }], text: "" },
-      },
-      {
-        id: "p",
-        action: "input",
-        label: "Password",
-        ts: 2,
-        sensitive: true,
-        value: "SuperSecretPassword!",
-        target: { selectors: [{ type: "id", value: "#password" }], text: "" },
-      },
-    ],
-  });
-  assert.deepEqual(validateWorkflow(doc), []);
-  assert.equal(validate(doc), true);
-  assert.equal(JSON.stringify(doc).includes("SuperSecretPassword!"), true);
-  assert.equal(doc.inputs.find((item) => item.name === "password")?.type, "secret");
-  assert.equal(doc.inputs.find((item) => item.name === "password")?.default, "SuperSecretPassword!");
-  assert.equal(doc.steps[1] ? stepValueTemplate(doc.steps[1]) : undefined, "{{password}}");
 });
 
 test("redacted keys stay explicit and replay stops before dispatching a missing or placeholder key", async () => {
@@ -198,32 +126,6 @@ test("sensitive key events without a value fail before dispatch or healing while
     assert.deepEqual(keys, key ? [key] : []);
     assert.equal(d.clicks, 0);
     assert.equal(modelCalls, 0);
-  }
-});
-
-test("native migration retains local values but omits path defaults from both value sources", () => {
-  for (const action of ["osType", "osSetValue"]) {
-    for (const source of ["os", "step"]) {
-      for (const value of ["SuperSecretPassword!", "Ada", "/Users/alex/private.txt", "C:\\Users\\alex\\private.txt"]) {
-        const doc = migrate({
-          id: "native-default", version: 1, startUrl: "https://example.test/", createdAt: 1,
-          steps: [{
-            action, sensitive: value === "SuperSecretPassword!",
-            ...(source === "step" ? { value } : {}),
-            os: {
-              ...(source === "os" ? { value } : {}),
-              target: { platform: "macos", role: "AXTextField", name: "Field" },
-            },
-          }],
-        });
-        const pathValue = value !== "SuperSecretPassword!" && value !== "Ada";
-        assert.equal(doc.inputs[0]?.default, pathValue ? undefined : value);
-        assert.equal(doc.inputs[0]?.type, value === "SuperSecretPassword!" ? "secret" : "text");
-        assert.equal(doc.steps[0] ? stepValueTemplate(doc.steps[0]) : undefined, `{{${doc.inputs[0]?.name}}}`);
-        assert.deepEqual(validateWorkflow(doc), []);
-        assert.equal(validate(doc), true);
-      }
-    }
   }
 });
 
@@ -292,7 +194,7 @@ test("interpret is deterministic and lifts a secret default and a file input", (
   assert.equal(JSON.stringify(upload).includes("taxes.pdf"), false);
 
   const typed = once.steps.find((step) => stepInputName(step) === "username");
-  assert.equal((typed == null ? undefined : stepValueTemplate(typed)), "{{username}}");
+  assert.deepEqual(stepText(typed), { input: "username" });
   assert.equal((typed ? stepTitle(typed) : "").includes("tomsmith") || once.inputs.find((item) => item.name === "username")?.default === "tomsmith", true);
 });
 
@@ -300,16 +202,16 @@ test("interpret uses requested navigation targets while legacy navigation keeps 
   const event: TrailEvent = { id: "open", ts: 1, kind: "act", op: "navigate", value: "https://target.test/entry?mode=edit", beforeUrl: "https://start.test/", afterUrl: "https://redirect.test/done" };
   const meta = { id: "wf-explicit-open", startUrl: "https://start.test/" };
   const explicit = interpret([event], meta);
-  assert.equal((explicit.steps[0] == null ? undefined : stepValueTemplate(explicit.steps[0])), event.value);
+  assert.equal(navigateUrl(explicit.steps[0]), event.value);
   assert.equal(checkMatch(explicit.steps[0] == null ? undefined : stepCheck(explicit.steps[0])), "redirect.test");
   assert.equal(checkMatch(stepCheck(interpret([{ ...event, afterUrl: undefined }], meta).steps[0]!)), "target.test");
   for (const afterUrl of ["about:blank", "file:///private", "not a URL"]) {
     const step = interpret([{ ...event, afterUrl }], meta).steps[0]!;
-    assert.equal(stepValueTemplate(step), event.value);
+    assert.equal(navigateUrl(step), event.value);
     assert.equal(stepCheck(step), undefined);
   }
   const legacy = interpret([{ ...event, value: undefined }], meta);
-  assert.equal((legacy.steps[0] == null ? undefined : stepValueTemplate(legacy.steps[0])), event.afterUrl);
+  assert.equal(navigateUrl(legacy.steps[0]), event.afterUrl);
   assert.equal(checkMatch(legacy.steps[0] == null ? undefined : stepCheck(legacy.steps[0])), "redirect.test");
 });
 
@@ -339,7 +241,7 @@ test("calculator clicks become number inputs and the equals check is the express
   assert.deepEqual(doc.inputs.map((item) => item.type), ["number", "number"]);
   assert.equal(doc.inputs[0]?.default, "7");
   assert.equal(doc.inputs[1]?.default, "5");
-  const equals = doc.steps.find((step) => stepQuery(step)?.name === "=");
+  const equals = doc.steps.find((step) => roleLocator(targetOf(step))?.name === "=");
   assert.equal(checkMatch(equals == null ? undefined : stepCheck(equals)), "{{a}}+{{b}}");
   assert.equal(expectedText("{{a}}+{{b}}", { a: 1, b: 2 }), "3");
   assert.equal(JSON.stringify(doc).includes("\"7\""), true);
@@ -367,7 +269,7 @@ test("property: interpret retains secret defaults while keeping paths in file in
     const doc = interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] });
     const blob = canonical(doc);
     assert.equal(doc.inputs.find((input) => input.type === "secret")!.default, secret);
-    assert.equal(stepValueTemplate(doc.steps[0]!), "{{password}}");
+    assert.deepEqual(stepText(doc.steps[0]), { input: "password" });
     assert.equal(stepCheck(doc.steps[0]!), undefined);
     assert.equal(blob.includes(secret), true);
     const effects: [TrailEvent, string | undefined][] = [
@@ -406,25 +308,27 @@ function driver(nodes: Identity[], extra: Partial<LiveTree> = {}): Driver & { cl
   };
 }
 
-function workflow(identity: Identity): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4",
-    version: 2,
+function navigateUrl(step: WorkflowStep | undefined): string | undefined {
+  return step?.action === "navigate" ? step.url : undefined;
+}
+
+function byTestId(testId: string): Target {
+  return { locators: [{ kind: "testid", value: testId }, { kind: "css", value: `[data-testid="${testId}"]` }], hint: { role: "button", surface: "dom" } };
+}
+
+function workflow(target: Target): WorkflowV2 {
+  return testWorkflow({
     id: "wf",
     name: "Login",
-    startUrl: "https://example.test/",
-    createdAt: 1,
-    inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "s0",
       index: 0,
-      action: "click",
-      label: "Click login",
-      surface: "dom",
-      identity,
       timeoutMs: 0,
-      postcondition: { kind: "element", timeoutMs: 0 },
-    })],
+      caption: { text: "Click login" },
+      action: "click",
+      target,
+      check: { kind: "element", locators: target.locators, timeoutMs: 0 },
+    }],
   });
 }
 
@@ -435,7 +339,7 @@ test("replay stops with a structured failure when healing is off", async () => {
     propose: async () => { calls += 1; return null; },
   };
   const d = driver([id({ testId: "real" })]);
-  const result = await replay(workflow(id({ testId: "missing" })), {}, d, { heal, secrets: ["SuperSecretPassword!"] });
+  const result = await replay(workflow(byTestId("missing")), {}, d, { heal, secrets: ["SuperSecretPassword!"] });
   assert.equal(result.status, "failed");
   assert.equal(calls, 0);
   assert.equal(result.failure?.reason, "below-threshold");
@@ -444,7 +348,7 @@ test("replay stops with a structured failure when healing is off", async () => {
 });
 
 test("global Stop inherits the existing workflow and step policy precedence", () => {
-  const doc = workflow(id({ testId: "missing" }));
+  const doc = workflow(byTestId("missing"));
   assert.equal(effectiveMode(doc, {}), "auto");
   for (const global of ["auto", "approve", "never"] as const) {
     assert.equal(effectiveMode(doc, { heal: global }), global);
@@ -461,8 +365,15 @@ test("global Stop inherits the existing workflow and step policy precedence", ()
 
 for (const mode of ["never", "auto", "approve"] satisfies GlobalHealMode[]) {
   test(`global ${mode} controls a changed step with an available healer`, async () => {
-    const doc = workflow(id({ testId: "missing" }));
-    doc.steps.push(fixtureStep({ id: "after-miss", index: 1, action: "note", label: "After the changed step", surface: "dom", timeoutMs: 0 }));
+    const doc = workflow(byTestId("missing"));
+    doc.steps.push({
+      id: "after-miss",
+      index: 1,
+      timeoutMs: 0,
+      caption: { text: "After the changed step" },
+      action: "note",
+      text: "After the changed step",
+    });
     const d = driver([id({ testId: "real" })]);
     let checks = 0;
     let calls = 0;
@@ -498,7 +409,7 @@ test("auto heal applies a patch, records the audit, and does not edit the workfl
     prompt: "patch the step SuperSecretPassword!",
     rawResponse: "{\"identity\":true} SuperSecretPassword!",
   };
-  const doc = workflow(id({ testId: "missing" }));
+  const doc = workflow(byTestId("missing"));
   const before = canonical(doc);
   const d = driver([id({ testId: "real" })]);
   const result = await replay(doc, {}, d, {
@@ -529,7 +440,7 @@ test("approve pauses before the patch is applied", async () => {
     rawResponse: "{}",
   };
   const d = driver([id({ testId: "real" })]);
-  const doc = workflow(id({ testId: "missing" }));
+  const doc = workflow(byTestId("missing"));
   doc.heal = "approve";
   const result = await replay(doc, {}, d, { heal: scriptedHeal(proposal), now: () => 1 });
   assert.equal(result.status, "paused");
@@ -540,7 +451,7 @@ test("approve pauses before the patch is applied", async () => {
 });
 
 test("the prompt text leaves the screenshot bytes on the audit snapshot", () => {
-  const step = workflow(id({ testId: "missing" })).steps[0]!;
+  const step = workflow(byTestId("missing")).steps[0]!;
   const prompt = buildPrompt({
     stepId: "s0",
     index: 0,
@@ -555,12 +466,12 @@ test("the prompt text leaves the screenshot bytes on the audit snapshot", () => 
 });
 
 test("keep then revert restores the failed step and appends decisions", () => {
-  const doc = workflow(id({ testId: "missing" }));
+  const doc = workflow(byTestId("missing"));
   const patch = { identity: id({ testId: "real" }) };
   const kept = keepPatch(doc, "s0", patch);
-  assert.equal((kept.steps[0] == null ? undefined : stepQuery(kept.steps[0]))?.testId, "real");
+  assert.equal(locatorValue(targetOf(kept.steps[0]), "testid"), "real");
   const restored = revertPatch(kept, doc.steps[0]!);
-  assert.equal((restored.steps[0] == null ? undefined : stepQuery(restored.steps[0]))?.testId, "missing");
+  assert.equal(locatorValue(targetOf(restored.steps[0]), "testid"), "missing");
   const home = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
   const library = new Library(home);
   const heal = { id: "heal-1", failedStep: doc.steps[0], prompt: "untouched" };
@@ -578,7 +489,7 @@ test("llm provider is unavailable without a key and does not fetch", async () =>
   assert.equal(heal.available(), false);
   assert.equal(await heal.propose({
     stepId: "s", index: 0, phase: "find", intent: "x", reason: "miss", snapshot: {},
-  }, workflow(id({ testId: "a" })).steps[0]!), null);
+  }, workflow(byTestId("a")).steps[0]!), null);
   assert.equal(fetched, 0);
   assert.equal(unavailableHeal().available(), false);
 });
@@ -607,8 +518,8 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
   assert.equal(JSON.stringify(doc).includes("note.txt"), false);
   assert.equal(JSON.stringify(doc).includes("/tmp/note.txt"), false);
   const args = { file: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };
-  assert.equal(holds(stepCheck(step!)!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
-  assert.equal(holds(stepCheck(step!)!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
+  assert.equal(checkHolds(stepCheck(step!)!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
+  assert.equal(checkHolds(stepCheck(step!)!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
 });
 
 test("interpret keeps login and confirm as human steps with no coordinates", () => {
@@ -634,7 +545,7 @@ test("interpret keeps login and confirm as human steps with no coordinates", () 
   assert.equal((doc.steps[0] == null ? undefined : doc.steps[0].caption.targetBox), undefined);
   assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Sign in");
   assert.equal(doc.steps[1]?.action, "click");
-  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.name, "Open");
+  assert.equal(roleLocator(targetOf(doc.steps[1]))?.name, "Open");
   assert.equal(doc.steps[2]?.action, "handoff");
   assert.equal((doc.steps[2] == null ? undefined : (doc.steps[2].action === "handoff")), true);
   assert.equal((doc.steps[2] == null ? undefined : doc.steps[2].caption.targetBox), undefined);
@@ -671,18 +582,20 @@ test("a confirm step waits for a person and does not click", async () => {
   const apply = id({ name: "Apply", role: "button" });
   const d = driver([apply], { texts: ["Your file is open"] });
   d.showConfirm = (label) => { shown = label; };
-  const doc = workflow(apply);
-  doc.steps[0] = fixtureStep({
+  const doc = workflow(targetFor(apply));
+  doc.steps[0] = {
     id: "c",
     index: 0,
-    action: "confirm",
-    human: true,
-    label: "confirm before applying",
-    surface: "dom",
-    identity: apply,
     timeoutMs: 0,
-    postcondition: { kind: "text", match: "Your file is open", timeoutMs: 0 },
-  });
+    caption: { text: "confirm before applying" },
+    action: "handoff",
+    reason: "owner-press",
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+      hint: { role: "button", surface: "dom" },
+    },
+    check: { kind: "text", match: "Your file is open", timeoutMs: 0 },
+  };
   const result = await replay(doc, {}, d);
   assert.equal(result.status, "passed");
   assert.equal(d.clicks, 0);
@@ -695,18 +608,17 @@ test("a login step never types", async () => {
   let fills = 0;
   const d = driver([], { url: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
   d.fill = async () => { fills += 1; };
-  const doc = workflow(id({ role: "textbox" }));
+  const doc = workflow({ locators: [], hint: { role: "textbox", surface: "dom" } });
   doc.replayed = false;
-  doc.steps[0] = fixtureStep({
+  doc.steps[0] = {
     id: "login",
     index: 0,
-    action: "login",
-    human: true,
-    label: "ensure logged in (import from chrome, else wait for user)",
-    surface: "dom",
     timeoutMs: 0,
-    postcondition: { kind: "url", match: "usa.experian.com/mfe/protection", timeoutMs: 0 },
-  });
+    caption: { text: "ensure logged in (import from chrome, else wait for user)" },
+    action: "handoff",
+    reason: "sign-in",
+    check: { kind: "url", match: "usa.experian.com/mfe/protection", timeoutMs: 0 },
+  };
   const ready = await replay(doc, {}, d);
   assert.equal(ready.status, "passed");
   assert.equal(fills, 0);
@@ -722,19 +634,21 @@ test("a login step never types", async () => {
 test("a confirm step times out without clicking and says nothing was applied", async () => {
   const apply = id({ name: "Apply", role: "button" });
   const d = driver([apply], { texts: ["Waiting to apply"] });
-  const doc = workflow(apply);
+  const doc = workflow(targetFor(apply));
   doc.name = "upload note";
-  doc.steps[0] = fixtureStep({
+  doc.steps[0] = {
     id: "c",
     index: 0,
-    action: "confirm",
-    human: true,
-    label: 'you press "Apply"',
-    surface: "dom",
-    identity: apply,
     timeoutMs: 40,
-    postcondition: { kind: "text", match: "Applied", timeoutMs: 40 },
-  });
+    caption: { text: "you press \"Apply\"" },
+    action: "handoff",
+    reason: "owner-press",
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+      hint: { role: "button", surface: "dom" },
+    },
+    check: { kind: "text", match: "Applied", timeoutMs: 40 },
+  };
   const result = await replay(doc, {}, d);
   assert.equal(result.status, "failed");
   assert.equal(result.failure?.reason, "nothing applied");
@@ -755,18 +669,20 @@ test("closing the page during a confirm wait leaves the prompt in place", async 
     if (reads > 2) throw new Error("page closed");
     return tree([apply], { texts: ["Waiting to apply"] });
   };
-  const doc = workflow(apply);
-  doc.steps[0] = fixtureStep({
+  const doc = workflow(targetFor(apply));
+  doc.steps[0] = {
     id: "c",
     index: 0,
-    action: "confirm",
-    human: true,
-    label: 'you press "Apply"',
-    surface: "dom",
-    identity: apply,
     timeoutMs: 40,
-    postcondition: { kind: "text", match: "Applied", timeoutMs: 40 },
-  });
+    caption: { text: "you press \"Apply\"" },
+    action: "handoff",
+    reason: "owner-press",
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+      hint: { role: "button", surface: "dom" },
+    },
+    check: { kind: "text", match: "Applied", timeoutMs: 40 },
+  };
   await assert.rejects(() => replay(doc, {}, d), /page closed/);
   assert.equal(asks, 1);
   assert.equal(clears, 0);
@@ -774,7 +690,7 @@ test("closing the page during a confirm wait leaves the prompt in place", async 
 });
 
 test("value postcondition reads the live text", () => {
-  const ok = holds(
+  const ok = checkHolds(
     { kind: "value", match: "{{a}}+{{b}}", timeoutMs: 1 },
     tree([], { texts: ["12"] }),
     { a: 7, b: 5 },

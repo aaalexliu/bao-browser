@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep, writeStep, withStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { buildLocators } from "../../src/v1/locators";
-import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import { hintFromIdentity, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 function ident(text: string): Identity {
@@ -14,8 +14,8 @@ function ident(text: string): Identity {
 }
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "requested", name: "Requested actions",
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "requested", name: "Requested actions",
     startUrl: "http://127.0.0.1:9/fixture", createdAt: 1, inputs: [],
     steps: steps.map((step, index) => ({ ...step, index })),
   });
@@ -35,7 +35,17 @@ function counting(): Driver & { clicks: string[] } {
 }
 
 function click(label: string, index: number): WorkflowStep {
-  return fixtureStep({ id: `step-${index}`, index, action: "click", label, surface: "dom", timeoutMs: 0, identity: ident(label) });
+  return {
+    id: `step-${index}`,
+    index: index,
+    timeoutMs: 0,
+    caption: { text: label, citation: { text: label, source: "text" } },
+    action: "click",
+    target: {
+      locators: [{ kind: "role", role: "button", name: label }, { kind: "text", value: label }],
+      hint: { role: "button", surface: "dom" },
+    },
+  };
 }
 
 test("old site and remote approvals do not survive the Settings read", () => {
@@ -62,8 +72,9 @@ for (const locatorOnly of [false, true]) {
     const workflow = JSON.parse(readFileSync(path.resolve("examples/workflows/credit-freeze.json"), "utf8")) as WorkflowV2;
     workflow.steps = workflow.steps.map((step) => ({ ...step, timeoutMs: 0 }));
     if (locatorOnly) {
-      const confirm = workflow.steps.find((step) => step.action === "handoff" && step.reason === "owner-press")!;
-      writeStep(confirm, { locators: [{ kind: "role", role: "button", name: "Apply" }] });
+      const confirm = workflow.steps.find((step) => step.action === "handoff" && step.reason === "owner-press");
+      assert.ok(confirm?.action === "handoff");
+      confirm.target = { locators: [{ kind: "role", role: "button", name: "Apply" }] };
     }
     const driver = counting();
     driver.tree = async () => ({ url: workflow.startUrl, nodes: [ident("Apply")], texts: [], values: [] });
@@ -96,9 +107,32 @@ for (const recovery of ["overlay-find", "overlay-expect", "reveal"] as const) {
       ...(recovery === "reveal" ? { boxes: [{ x: 0, y: 0, w: 0, h: 0 }, { x: 0, y: 0, w: 20, h: 20 }], hidden: [true, false] } : {}),
     });
     const workflow = doc([
-      { ...click("Go", 0), heal: "never", ...(recovery === "reveal" ? { reveal: { kind: "role" as const, role: "button", name: "Allow" } } : {}),
-        ...(recovery === "overlay-expect" ? { postcondition: { kind: "text" as const, match: "Done", timeoutMs: 0 } } : {}) },
-      fixtureStep(withStep(click("Allow", 1), { action: "confirm", human: true })),
+      {
+        id: "step-0",
+        index: 0,
+        timeoutMs: 0,
+        caption: { text: "Go", citation: { text: "Go", source: "text" } },
+        heal: "never",
+        action: "click",
+        target: {
+          locators: [{ kind: "role", role: "button", name: "Go" }, { kind: "text", value: "Go" }],
+          hint: { role: "button", surface: "dom" },
+          ...(recovery === "reveal" ? { reveal: { kind: "role" as const, role: "button", name: "Allow" } } : {}),
+        },
+        ...(recovery === "overlay-expect" ? { check: { kind: "text" as const, match: "Done", timeoutMs: 0 } } : {}),
+      },
+      {
+        id: "step-1",
+        index: 1,
+        timeoutMs: 0,
+        caption: { text: "Allow" },
+        action: "handoff",
+        reason: "owner-press",
+        target: {
+          locators: [{ kind: "role", role: "button", name: "Allow" }, { kind: "text", value: "Allow" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      },
     ]);
     const result = await replay(workflow, {}, driver);
     assert.equal(result.status, "failed");
@@ -119,12 +153,35 @@ test("a missing Continue cannot press Place order in its recorded DOM position",
   const place: Identity = { ...original, text: "Place order", name: "Place order" };
   const boxes = [{ x: 20, y: 20, w: 200, h: 30 }, { x: 20, y: 100, w: 100, h: 30 }];
   const locators = buildLocators(original, [heading, original], boxes, 1);
-  for (const identity of [original, undefined]) {
+  for (const hint of [hintFromIdentity(original), undefined]) {
     const driver = counting();
     driver.tree = async () => ({ nodes: [heading, place], texts: ["Order summary"], values: [], boxes });
     const workflow = doc([
-      withStep(click("Continue", 0), { identity, heal: "never", locators }),
-      fixtureStep(withStep(click("Place order", 1), { action: "confirm", identity: place, human: true })),
+      {
+        id: "step-0",
+        index: 0,
+        timeoutMs: 0,
+        caption: { text: "Continue", citation: { text: "Continue", source: "text" } },
+        heal: "never",
+        action: "click",
+        target: hint ? { locators, hint } : { locators },
+      },
+      {
+        id: "step-1",
+        index: 1,
+        timeoutMs: 0,
+        caption: { text: "Place order" },
+        action: "handoff",
+        reason: "owner-press",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Place order" },
+            { kind: "text", value: "Place order" },
+            { kind: "xpath", value: "/html[1]/body[1]/main[1]/button[1]" },
+          ],
+          hint: { role: "button", surface: "dom", tag: "button", path: [{ role: "main", name: "Checkout" }] },
+        },
+      },
     ]);
     const result = await replay(workflow, {}, driver, { yieldHuman: true });
     assert.deepEqual(driver.clicks, []);
@@ -138,8 +195,29 @@ test("a missing Continue cannot press Place order in its recorded DOM position",
 test("a requested click does not consume an explicit human workflow pause", async () => {
   const driver = counting();
   const workflow = doc([
-    click("Apply", 0),
-    fixtureStep(withStep(click("Apply", 1), { action: "confirm", human: true, label: "You press Apply" })),
+    {
+      id: "step-0",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
+    {
+      id: "step-1",
+      index: 1,
+      timeoutMs: 0,
+      caption: { text: "You press Apply" },
+      action: "handoff",
+      reason: "owner-press",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   const result = await replay(workflow, {}, driver, { yieldHuman: true });
   assert.equal(result.status, "paused");

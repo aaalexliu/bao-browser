@@ -3,7 +3,7 @@ import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
 import { isSensitiveField, SENSITIVE_RE, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
 import { fixedSavedChoice, isSealedArtifact, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
-import { stepForEach, stepInputName, stepQuery, stepSensitive, stepValueTemplate, type StepRead } from "./step-read";
+import { stepEnteredLiteral, stepForEach, stepInputName, stepSensitive, stepTarget, targetElementId, targetName, targetRole, type StepRead } from "./step-read";
 import type { WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
 import type { TrailEvent } from "../desktop/src/v1/interpret";
 import type { ReceiptBody } from "../desktop/src/v1/receipt";
@@ -58,7 +58,7 @@ function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordV
     const inputs = new Set<string>();
     const rows = new Set<string>();
     const input = stepInputName(step as StepRead);
-    const value = stepValueTemplate(step as StepRead);
+    const value = stepEnteredLiteral(step as StepRead);
     if (input) inputs.add(input);
     if (source) rows.add(source);
     if (typeof value === "string") {
@@ -74,8 +74,9 @@ function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordV
 }
 
 function secretNode(node: RecordValue): boolean {
-  const query = stepQuery(node as StepRead);
-  return stepSensitive(node as StepRead) || node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field) || secretSavedField(query);
+  const target = stepTarget(node as StepRead);
+  return stepSensitive(node as StepRead) || node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field)
+    || secretSavedField(target?.hint) || secretSavedField({ role: targetRole(target) });
 }
 
 export function redactSavedValue(value: string): string {
@@ -97,18 +98,20 @@ export function hasPrivatePictureInput(workflow: Pick<WorkflowV2, "inputs" | "st
     || /\bcard\b|\bcc-/i.test([hint.name, hint.id, hint.autocomplete, hint.ariaLabel, hint.placeholder].filter(Boolean).join(" "));
   if (workflow.inputs.some((input) => input.type === "secret" || privateField({ name: input.name, ariaLabel: input.label }))) return true;
   const privateSteps = (steps: WorkflowStep[]): boolean => steps.some((step) => {
-    const identity = stepQuery(step as StepRead);
+    const target = stepTarget(step as StepRead);
+    const hint = target?.hint;
+    const role = targetRole(target) || "unknown";
     const nested = stepForEach(step as StepRead);
-    const field = step.action === "type" || step.action === "digits" || identity && (identity.inputType || identity.autocomplete
-      || ["input", "textarea", "select"].includes(identity.tag || "")
-      || /^(input|textbox|searchbox|combobox|password|axtextfield|axsecuretextfield|axtextarea)$/i.test(identity.role));
-    return !!field && (stepSensitive(step) || !!identity && privateField({
-      type: identity.inputType || identity.role,
-      autocomplete: identity.autocomplete,
-      name: [identity.nameAttr, identity.name].filter(Boolean).join(" "),
-      id: identity.id,
-      ariaLabel: identity.label,
-      placeholder: identity.placeholder,
+    const field = step.action === "type" || step.action === "digits" || target && (hint?.inputType || hint?.autocomplete
+      || ["input", "textarea", "select"].includes(hint?.tag || "")
+      || /^(input|textbox|searchbox|combobox|password|axtextfield|axsecuretextfield|axtextarea)$/i.test(role));
+    return !!field && (stepSensitive(step) || !!target && privateField({
+      type: hint?.inputType || role,
+      autocomplete: hint?.autocomplete,
+      name: [hint?.nameAttr, targetName(target)].filter(Boolean).join(" "),
+      id: targetElementId(target),
+      ariaLabel: hint?.label,
+      placeholder: hint?.placeholder,
     })) || !!nested?.steps && privateSteps(nested.steps as WorkflowStep[]);
   });
   return privateSteps(workflow.steps);
@@ -167,7 +170,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
           if (!rows.has(name)) {
             for (const row of [...parseTable(input.default), ...parseTable(args?.[name])]) for (const column of Object.keys(row)) policy.columns.add(column);
           }
-          const value = stepValueTemplate(step as StepRead);
+          const value = stepEnteredLiteral(step as StepRead);
           if (typeof value === "string") for (const match of value.matchAll(ROW_BINDING)) policy.columns.add(match[1]!);
         }
       }

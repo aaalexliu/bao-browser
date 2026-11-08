@@ -11,8 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinTestBrowser } from "../launch";
 import { startApp } from "../app/server";
-import { stepKey, stepQuery, stepTitle } from "../v1/schema";
-import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
+import { locatorValue, roleLocator, stepKey, stepTarget, stepTitle, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { pauseIsExpected, scoreBotWall, type TaskExpect } from "./task-expect";
 
 process.env.BAO_DRIVE = "1";
@@ -1185,7 +1184,7 @@ export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; deta
 function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const labels = input.run === 1 ? ["Alpha", "Beta"] : ["Gamma", "Delta"];
   const text = evidence(input);
-  const canvasClicks = input.workflow.steps.filter((step) => /canvas/i.test(JSON.stringify(stepQuery(step) || {}))).length;
+  const canvasClicks = input.workflow.steps.filter((step) => /canvas/i.test(JSON.stringify(stepTarget(step) || {}))).length;
   if (!/excalidraw/i.test(text) && canvasClicks === 0) {
     return { pass: false, cause: "missing step type", detail: "canvas clicks were not recorded as steps" };
   }
@@ -1194,7 +1193,7 @@ function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: st
 
 function scoreP14(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = `${input.page.title || ""} ${input.page.text || ""} ${evidence(input)}`;
-  const stepText = input.workflow.steps.map((step) => `${stepTitle(step)} ${stepQuery(step)?.text || ""} ${stepQuery(step)?.name || ""}`).join("\n");
+  const stepText = input.workflow.steps.map((step) => `${stepTitle(step)} ${locatorValue(stepTarget(step), "text") || ""} ${roleLocator(stepTarget(step))?.name || ""}`).join("\n");
   return scoreBotWall({ expect: input.expect, replay: input.replay, pageText: text, stepText });
 }
 
@@ -1473,10 +1472,10 @@ function shiftBookingNights(workflow: WorkflowV2): WorkflowV2 | undefined {
     });
     if (bumped) return { ...workflow, inputs };
   }
-  const days = workflow.steps.filter((step) => step.action === "click" && /^\d{2}$/.test(stepQuery(step)?.text || stepQuery(step)?.name || ""));
+  const days = workflow.steps.filter((step) => step.action === "click" && /^\d{2}$/.test(dayText(step)));
   if (days.length < 2) return undefined;
-  const start = Number(stepQuery(days[0])?.text || stepQuery(days[0])?.name);
-  const end = Number(stepQuery(days[days.length - 1])?.text || stepQuery(days[days.length - 1])?.name);
+  const start = Number(dayText(days[0]!));
+  const end = Number(dayText(days[days.length - 1]!));
   if (!start || !end || end <= start) return undefined;
   const from = String(end).padStart(2, "0");
   const to = String(start + 3).padStart(2, "0");
@@ -1628,4 +1627,9 @@ if (require.main === module) {
     console.error(err);
     process.exit(1);
   });
+}
+
+function dayText(step: WorkflowStep): string {
+  const target = stepTarget(step);
+  return locatorValue(target, "text") || roleLocator(target)?.name || "";
 }

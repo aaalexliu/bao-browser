@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 // Step text tokens and the run form share one default. A secret stays masked.
 
 import assert from "node:assert/strict";
@@ -13,38 +13,36 @@ import { Library } from "../../src/v1/store";
 import { draftVersion, promoteVersion } from "../../src/v1/versions";
 
 function doc(): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-note",
     name: "Note",
     startUrl: "http://127.0.0.1/fixture",
     createdAt: 1,
     inputs: [
-      fixtureInput({ name: "note", type: "text", label: "Note", default: "ada", required: true }),
-      fixtureInput({ name: "password", type: "secret", label: "Password", required: true }),
+      { name: "note", type: "text", label: "Note", supply: "saved", default: "ada" },
+      { name: "password", type: "secret", label: "Password", supply: "must" },
     ],
     steps: [
-      fixtureStep({
+      {
         id: "type",
         index: 0,
-        action: "type",
-        label: "Type {{note}}",
-        value: "{{note}}",
-        input: "note",
-        surface: "dom",
         timeoutMs: 0,
-      }),
-      fixtureStep({
+        caption: { text: "Type {{note}}" },
+        action: "type",
+        target: { locators: [{ kind: "role", role: "textbox", name: "Type {{note}}" }] },
+        text: { input: "note" },
+      },
+      {
         id: "secret",
         index: 1,
-        action: "type",
-        label: "Type {{password}}",
-        input: "password",
-        sensitive: true,
-        surface: "dom",
         timeoutMs: 0,
-      }),
+        caption: { text: "Type {{password}}" },
+        action: "type",
+        target: { locators: [{ kind: "role", role: "textbox", name: "Type {{password}}" }] },
+        text: { input: "password" },
+        sensitive: true,
+      },
     ],
   });
 }

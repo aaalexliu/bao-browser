@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
@@ -14,23 +14,24 @@ import { loadState, saveState, syncAll, syncStatus } from "../../src/v1/sync";
 const AT = "2026-10-22T04:50:16.442Z";
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name,
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "s0",
       index: 0,
-      action: "click",
-      label: "Open",
-      surface: "dom",
-      identity: { surface: "dom", role: "button", path: [], testId: "go" },
       timeoutMs: 1000,
-    })],
+      caption: { text: "Open" },
+      action: "click",
+      target: {
+        locators: [{ kind: "testid", value: "go" }, { kind: "css", value: "[data-testid=\"go\"]" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
   });
 }
 

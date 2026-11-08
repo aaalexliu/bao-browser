@@ -1,36 +1,68 @@
-import { fixtureDoc, fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 // Guide Me highlights the next target and waits. It does not click or type.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import { guideMe } from "../../src/v1/guide-me";
 import type { Driver, GuideAct } from "../../src/v1/replay";
-import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "textbox", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft, index: number): WorkflowStep {
-  return fixtureStep({ timeoutMs: 8000, ...partial, index });
-}
-
 test("guide me advances when the person acts and the action counter stays 0", async () => {
   const user = ident({ id: "username", nameAttr: "username", role: "textbox" });
   const login = ident({ id: "login-btn", role: "button", name: "Log in", testId: "login" });
-  const doc: WorkflowV2 = fixtureDoc({
+  const doc: WorkflowV2 = testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-guide",
     name: "Guide the fixture",
     startUrl: "http://127.0.0.1/fixture",
     inputs: [],
     createdAt: 1,
     steps: [
-      step({ id: "note", action: "note", label: "Note: wait", intent: "wait" }, 0),
-      step({ id: "focus-user", action: "click", label: "Click Username", intent: "Focus the username field", identity: user }, 1),
-      step({ id: "type-user", action: "type", label: "Type demo", intent: "Type the demo username", value: "demo", identity: user }, 2),
-      step({ id: "login", action: "click", label: "Click Log in", intent: "Log in", identity: login }, 3),
+      { id: "note", index: 0, timeoutMs: 8000, caption: { text: "Note: wait" }, action: "note", text: "Note: wait" },
+      {
+        id: "focus-user",
+        index: 1,
+        timeoutMs: 8000,
+        caption: { text: "Click Username" },
+        action: "click",
+        target: {
+          locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+          hint: { nameAttr: "username", role: "textbox", surface: "dom", id: "username" },
+        },
+      },
+      {
+        id: "type-user",
+        index: 2,
+        timeoutMs: 8000,
+        caption: { text: "Type demo" },
+        action: "type",
+        target: {
+          locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+          hint: { nameAttr: "username", role: "textbox", surface: "dom", id: "username" },
+        },
+        text: { literal: "demo" },
+      },
+      {
+        id: "login",
+        index: 3,
+        timeoutMs: 8000,
+        caption: { text: "Click Log in", citation: { text: "Log in", source: "name" } },
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Log in" },
+            { kind: "text", value: "Log in" },
+            { kind: "testid", value: "login" },
+            { kind: "css", value: "#login-btn" },
+            { kind: "xpath", value: "//*[@id=\"login-btn\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "login-btn" },
+        },
+      },
     ],
   });
   const outlined: string[] = [];
@@ -80,16 +112,25 @@ test("guide me advances when the person acts and the action counter stays 0", as
 
 test("guide me rings the control itself when the driver can", async () => {
   const user = ident({ id: "username", role: "textbox" });
-  const doc: WorkflowV2 = fixtureDoc({
+  const doc: WorkflowV2 = testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-ring",
     name: "Ring",
     startUrl: "http://127.0.0.1/fixture",
     inputs: [],
     createdAt: 1,
     steps: [
-      step({ id: "focus-user", action: "click", label: "Click Username", intent: "Focus the username field", identity: user }, 0),
+      {
+        id: "focus-user",
+        index: 0,
+        timeoutMs: 8000,
+        caption: { text: "Click Username" },
+        action: "click",
+        target: {
+          locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+          hint: { role: "textbox", surface: "dom", id: "username" },
+        },
+      },
     ],
   });
   const outlined: string[] = [];

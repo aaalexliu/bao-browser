@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 // The test Chromium, synthetic profile only. The cookie values and storage values
 // below are fixtures. Assertions must not include them in failure text.
 
@@ -275,22 +275,23 @@ test("import a public demo login, then block the run after the cookie is cleared
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-in-light.png"), fullPage: true });
 
     await clearBaoCookies(baoProfile);
-    const workflow: WorkflowV2 = fixtureDoc({
+    const workflow: WorkflowV2 = testWorkflow({
       schema: "bao.workflow/v4",
-      version: 2,
       id: "wf-public",
       name: "Public gate",
       startUrl: probe,
       inputs: [],
-      steps: [fixtureStep({
+      steps: [{
         id: "s1",
         index: 0,
-        action: "click",
-        label: "Go",
-        surface: "dom",
         timeoutMs: 1000,
-        identity: { surface: "dom", role: "button", testId: "missing", path: [] },
-      })],
+        caption: { text: "Go" },
+        action: "click",
+        target: {
+          locators: [{ kind: "testid", value: "missing" }, { kind: "css", value: "[data-testid=\"missing\"]" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      }],
       createdAt: 1,
     });
     app.library.save(workflow);
@@ -644,22 +645,23 @@ async function assertNeedsSignIn(port: number, library: { save(doc: WorkflowV2):
     }),
   });
   if (!saved.ok) throw new Error("could not save the site probe");
-  const workflow: WorkflowV2 = fixtureDoc({
+  const workflow: WorkflowV2 = testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-gate",
     name: "Gated",
     startUrl: `${origin}/home`,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "s1",
       index: 0,
-      action: "click",
-      label: "Go",
-      surface: "dom",
       timeoutMs: 1000,
-      identity: { surface: "dom", role: "button", testId: "missing", path: [] },
-    })],
+      caption: { text: "Go" },
+      action: "click",
+      target: {
+        locators: [{ kind: "testid", value: "missing" }, { kind: "css", value: "[data-testid=\"missing\"]" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
     createdAt: 1,
   });
   library.save(workflow);

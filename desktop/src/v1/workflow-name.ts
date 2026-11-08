@@ -12,9 +12,7 @@ export interface NameEvent {
 
 export interface NameStep {
   action?: string;
-  label?: string;
   caption?: { text?: string; citation?: { text?: string } };
-  identity?: { name?: string; text?: string; label?: string };
   target?: { hint?: { label?: string }; locators?: readonly object[] };
 }
 
@@ -90,11 +88,7 @@ function obviousPhrase(source: NameSource, host: string): string {
     add((step.target?.locators as { name?: string }[] | undefined)?.find((item) => item.name)?.name);
     add(step.target?.hint?.label);
     add(step.caption?.citation?.text);
-    add(step.identity?.name);
-    add(step.identity?.text);
-    add(step.identity?.label);
     add(step.caption?.text);
-    add(step.label);
   }
   const goals = phrases.filter((phrase) => GOAL.test(phrase) && words(phrase) >= 2);
   if (goals.length) return goals[goals.length - 1]!;

@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -11,7 +11,7 @@ import test from "node:test";
 import sharp from "sharp";
 import { pidsForDataDir } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 test("marketplace review keeps all pictures local for private-input workflows and uploads ordinary workflows", { timeout: 60_000 }, async (t) => {
@@ -42,31 +42,37 @@ test("marketplace review keeps all pictures local for private-input workflows an
   try {
     const file = path.join(root, "sample.txt");
     await writeFile(file, "Synthetic attachment");
-    const document: WorkflowV2 = fixtureDoc({
+    const document: WorkflowV2 = testWorkflow({
       schema: "bao.workflow/v4",
-      version: 2,
       id: "review-shot-scope",
       name: "Review synthetic samples",
       startUrl: `${origin}/fixture`,
       createdAt: 1,
       inputs: [
-        fixtureInput({ name: "password", type: "secret", label: "Synthetic password" }),
-        fixtureInput({ name: "attachment", type: "file", label: "Synthetic attachment" }),
+        { name: "password", type: "secret", label: "Synthetic password", supply: "must" },
+        { name: "attachment", type: "file", label: "Synthetic attachment", supply: "must" },
       ],
       steps: [
-        { id: "ordinary", label: "Review ordinary sample" },
-        { id: "secret-bound", label: "Review {{password}}" },
-        { id: "file-bound", label: "Review {{attachment}}" },
-        { id: "sensitive", label: "Review marked sample", sensitive: true },
-      ].map((step, index) => ({
-        ...step,
+        { id: "ordinary", text: "Review ordinary sample" },
+        { id: "secret-bound", text: "Review {{password}}" },
+        { id: "file-bound", text: "Review {{attachment}}" },
+      ].map(({ id, text }, index): WorkflowStep => ({
+        id,
         index,
-        action: "click",
-        heal: "never",
-        surface: "dom",
-        identity: { surface: "dom", role: "button", testId: "go", text: "Review sample", path: [] },
-        postcondition: { kind: "text", match: "Reviewed", timeoutMs: 5000 },
         timeoutMs: 5000,
+        caption: { text, citation: { text: "Review sample", source: "text" } },
+        heal: "never",
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Review sample" },
+            { kind: "text", value: "Review sample" },
+            { kind: "testid", value: "go" },
+            { kind: "css", value: '[data-testid="go"]' },
+          ],
+          hint: { role: "button", surface: "dom" },
+        },
+        check: { kind: "text", match: "Reviewed", timeoutMs: 5000 },
       })),
     });
     library.save(document);
@@ -91,7 +97,7 @@ test("marketplace review keeps all pictures local for private-input workflows an
     }
     assert.deepEqual(pidsForDataDir(path.join(root, "chrome-profile")), []);
     assert.equal(review.shots.length, 0);
-    library.save(fixtureDoc({ ...document, inputs: [], steps: [document.steps[0]!] }));
+    library.save(testWorkflow({ ...document, inputs: [], steps: [document.steps[0]!] }));
     const ordinary = await reviewWorkflow(library, document.id, {}, { server: origin });
     resume = ordinary.resume;
     assert.equal(ordinary.outcome, "ok", ordinary.reason);

@@ -19,10 +19,11 @@ import { BrowserDriver, type PersonPrompts } from "../v1/browser-driver";
 import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
-import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
+import { checkHolds, expectedText, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
-import { stepTitle, stepValueTemplate, stepCheck, stepForEach, stepInputName, stepQuery, stepSensitive, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepEnteredLiteral, targetName } from "../../../shared/step-read";
+import { stepTitle, stepInputName, stepCheck, stepForEach, stepSensitive, stepTarget, locatorValue, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
 
@@ -327,7 +328,7 @@ export async function heldConfirmReady(token: string): Promise<boolean> {
   if (!post) return false;
   live.observing = (async () => {
     const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
-    return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && holds(post, tree, live.inputs);
+    return liveRuns.get(token) === live && live.stepId === stepId && !live.continuing && checkHolds(post, tree, live.inputs);
   })().finally(() => { live.observing = undefined; });
   return live.observing;
 }
@@ -648,7 +649,7 @@ async function observeConfirm(live: LiveRun): Promise<void> {
   const locators = post && "locators" in post ? post.locators : undefined;
   if (!post || ((post.kind === "element" || post.kind === "absent") ? !locators?.length : !("match" in post && post.match?.trim()))) return;
   try {
-    live.confirmPending = !holds(post, await (live.observer ??= new BrowserDriver(live.page)).tree(), live.inputs);
+    live.confirmPending = !checkHolds(post, await (live.observer ??= new BrowserDriver(live.page)).tree(), live.inputs);
   } catch { /* The owner can use Continue if the page cannot be read. */ }
 }
 
@@ -900,8 +901,10 @@ function readBack(step: WorkflowStep, status: string, inputs: ReplayArgs): strin
   if (status === "pending") return "";
   const check = stepCheck(step);
   if (check && "match" in check && check.match) return expectedText(check.match, inputs);
-  const value = stepValueTemplate(step);
-  if (typeof value === "string" && value.includes("{{")) return expectedText(value, inputs);
+  const input = step.action === "click" ? step.dialog?.input : stepInputName(step);
+  if (input) return expectedText(`{{${input}}}`, inputs);
+  const value = stepEnteredLiteral(step);
+  if (value?.includes("{{")) return expectedText(value, inputs);
   return stepTitle(step);
 }
 
@@ -949,8 +952,8 @@ function signInStep(step: WorkflowStep | undefined): boolean {
   if (!step) return false;
   if (step.action === "handoff") return step.reason === "sign-in";
   if (stepSensitive(step)) return true;
-  const target = stepQuery(step);
-  return SIGN_IN.test([step.caption.text, stepInputName(step), target?.name, target?.text, target?.label].filter(Boolean).join(" "));
+  const target = stepTarget(step);
+  return SIGN_IN.test([step.caption.text, stepInputName(step), targetName(target), locatorValue(target, "text"), target?.hint?.label].filter(Boolean).join(" "));
 }
 
 function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {

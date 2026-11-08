@@ -1,7 +1,6 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow,  } from "../support/workflow";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,23 +11,24 @@ import { loadState, restoreScheduledBackup, revealBackup, runScheduledBackup, sa
 const DAY = 24 * 60 * 60 * 1000;
 
 function workflow(): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-backup",
     name: "Backup me",
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "s0",
       index: 0,
-      action: "click",
-      label: "Open",
-      surface: "dom",
-      identity: { surface: "dom", role: "button", path: [], testId: "go" },
       timeoutMs: 1000,
-    })],
+      caption: { text: "Open" },
+      action: "click",
+      target: {
+        locators: [{ kind: "testid", value: "go" }, { kind: "css", value: "[data-testid=\"go\"]" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
   });
 }
 
