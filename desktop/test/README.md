@@ -8,7 +8,7 @@ The runner drops model keys, `CI`, and every inherited name that starts with `BA
 
 Owned test launches use `--use-mock-keychain` and `--password-store=basic`. They never launch installed Google Chrome or read its login keychain. `resolveNormalChrome` and `pinTestBrowser` refuse standard installed Chrome paths, including links to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` and `/opt/google/chrome/chrome`. Test homes, source profiles, native-host configs, and browser profiles must all be temporary. A temporary `BAO_HOME` alone does not move native-host writes; use a temporary HOME too.
 
-The runner defaults to two files at a time, matching CI. Node's CPU-based default can stall fixture browsers on a shared Mac. Pass `--test-concurrency=N` to override the limit. Do not run the whole local suite for a focused change.
+The runner defaults to two files at a time, matching CI. Node's CPU-based default can stall fixture browsers on a shared Mac. Pass `--test-concurrency=N` to override the limit. Any test or cleanup hook without its own timeout fails after 120 seconds, so a stuck cleanup reports a failure. The run ends after that failure only with `--test-force-exit`, which CI passes; without it, handles the stuck hook left open can keep the run waiting. Do not run the whole local suite for a focused change.
 
 Artifacts use `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifacts/<run-id>/<test>/`. The runner drops the first two names, so a test sets them itself if needed. A leaf cannot be empty or contain a path separator or `..`. The test prints its artifact directory. Evidence errors do not replace the original test error.
 
