@@ -34,10 +34,16 @@ test("loopback copy reads as Fixture, a path, or the fixture", () => {
   assert.equal(visibleCopy(`Open ${LISTEN}`), "Fixture");
   assert.equal(visibleCopy("Open http://127.0.0.1:4787/"), "Fixture");
   assert.equal(visibleCopy("Open http://127.0.0.1:4787/fixture/room"), "Fixture");
+  assert.equal(visibleCopy("Open 127.0.0.1:61984/fixture"), "Fixture");
+  assert.equal(visibleCopy("Open localhost:61984/fixture/room"), "Fixture");
+  assert.equal(visibleCopy("Open [::1]:9/fixture"), "Fixture");
+  assert.equal(visibleCopy("Open 127.0.0.1:9/secure"), "/secure");
   assert.equal(visibleCopy("Open http://127.0.0.1:9/secure"), "/secure");
   assert.equal(visibleCopy("Open http://localhost:4787/account"), "/account");
   assert.equal(visibleCopy("Sign in to 127.0.0.1 in the Bao window"), "Sign in to the fixture in the Bao window");
   assert.equal(visibleCopy("Opened http://127.0.0.1:4787/fixture then clicked"), "Opened Fixture then clicked");
+  assert.equal(visibleCopy("Saved Open 127.0.0.1:61984/fixture"), "Saved Open Fixture");
+  assert.equal(visibleCopy("Saved Open 127.0.0.1:9/secure"), "Saved Open /secure");
   assert.equal(visibleCopy("Open https://example.com/fixture"), "Open https://example.com/fixture");
   assert.equal(loopbackPlace("http://[::1]:4787/fixture"), "Fixture");
   assert.equal(controlKey("http://127.0.0.1:4787"), "fixture4:4787");
@@ -92,6 +98,13 @@ test("rendered product pages never contain the listen address", () => {
       label: "Open http://localhost:4787/secure",
       surface: "dom",
       timeoutMs: 8000,
+    }), fixtureStep({
+      id: "bare",
+      index: 2,
+      action: "open",
+      label: "Open 127.0.0.1:61984/fixture",
+      surface: "dom",
+      timeoutMs: 8000,
     })],
   });
   const pages: [string, string][] = [
@@ -110,7 +123,7 @@ test("rendered product pages never contain the listen address", () => {
       id: "run-1",
       workflowId: "wf",
       status: "paused",
-      steps: [{ id: "open", status: "paused", label: `Open ${LISTEN}` }],
+      steps: [{ id: "open", status: "paused", label: `Open ${LISTEN}` }, { id: "bare", status: "passed", label: "Open 127.0.0.1:61984/fixture" }],
       envelope: {
         status: "needs_signin",
         ask: "Sign in to 127.0.0.1 in the Bao window",
@@ -128,6 +141,10 @@ test("rendered product pages never contain the listen address", () => {
   for (const [where, html] of pages) assertNoListen(html, where);
   assert.match(pages[0][1], /data-open-workflow="wf">Fixture</);
   assert.match(pages[1][1], /\/secure/);
+  assert.equal(pages[1][1].includes("the fixture/fixture"), false);
+  assert.equal(pages[2][1].includes("the fixture/fixture"), false);
+  assert.match(pages[1][1], />Fixture</);
+  assert.match(pages[2][1], /step-label">Fixture</);
   assert.match(pages[3][1], /Sign in to the fixture in the Bao window/);
   assert.match(pages[5][1], /Fixture</);
   assert.match(pages[6][1], /<strong>Fixture<\/strong>/);
