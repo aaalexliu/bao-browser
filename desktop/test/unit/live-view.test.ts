@@ -290,6 +290,352 @@ test("a relay extension run leaves a waiting local run controllable", { timeout:
   }
 });
 
+test("a relay clear does not remove a local hold or its pending prompt", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("rclr");
+  const directory = new MemoryDirectory();
+  directory.addDevice("clear-hold-device", "clear-hold-user");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const relay = await listenRelay(createRelay({ store: new MemoryJobStore(), directory, enabled: () => true }), { principal: () => ({ userId: "clear-hold-user" }) });
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  let relayRun: Promise<Record<string, unknown>> | undefined;
+  async function relayPost(route: string, body: unknown, token?: string): Promise<Record<string, unknown>> {
+    const response = await fetch(`${relay.origin}${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 200, JSON.stringify(result));
+    return result;
+  }
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 },
+    ];
+    app.library.save(wf);
+    app.library.save({
+      ...wf,
+      id: "relay-login",
+      name: "Relay login",
+      driver: "extension",
+      steps: [{ id: "login", index: 0, action: "login", human: true, label: "Relay sign in", surface: "dom", timeoutMs: 1000 }],
+    });
+    const issued = await relayPost("/api/agent/pair", {});
+    const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Clear-hold Mac", deviceId: "clear-hold-device" });
+    const agent = await directory.mintAgent("clear-hold-user", "clear-hold-device");
+    assert.ok(agent);
+    saveRelay(dirs.home, { server: relay.origin, token: String(paired.token), tokenId: String(paired.tokenId), deviceId: String(paired.deviceId) });
+    app.library.updateSettings({ remoteMcp: true });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await relayPost("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const result = body.result as { content?: { type: string; text?: string }[] };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      if ((await tool("search_workflows", { query: "Relay login" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let localId = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "waiting" && state.activeRun.id && readPendingPrompt(dirs.home)?.runId === state.activeRun.id) {
+        localId = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(localId);
+    app.library.updateSettings({ actTimeoutMs: 400 });
+    relayRun = tool("run_workflow", { id: "relay-login" });
+    const relayResult = await relayRun;
+    assert.notEqual(relayResult.outcome, "ok", JSON.stringify(relayResult));
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, localId);
+    assert.equal(after.activeRun?.phase, "waiting");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+    assert.equal(after.activeAsk?.runId, localId);
+    assert.equal(readPendingPrompt(dirs.home)?.runId, localId);
+  } finally {
+    await relayRun?.catch(() => undefined);
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await app.close();
+    await relay.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("grant");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const base = `http://127.0.0.1:${app.port}`;
+  let opens = 0;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async (op) => {
+      if (op === "open") {
+        opens += 1;
+        if (opens === 1) return { needsHuman: true, pattern: "https://example.test/*" };
+      }
+      return { nodes: [], texts: [], url: "https://example.test/" };
+    };
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 1000 }];
+    app.library.save(wf);
+    const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(first.status, "needs_human");
+    const held = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(held.activeRun?.id, first.runId);
+    assert.equal(held.activeRun?.phase, "waiting");
+    assert.equal(held.activeAsk?.kind, "wall");
+    assert.equal(readPendingPrompt(dirs.home)?.runId, first.runId);
+    const second = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(second.status, "passed");
+    assert.notEqual(second.runId, first.runId);
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun, null);
+    assert.equal(after.activeAsk, null);
+    assert.equal(readPendingPrompt(dirs.home), null);
+  } finally {
+    await stop(base).catch(() => undefined);
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("Guide me during an owned wait says the run is waiting", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gwait");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let owned = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "waiting" && state.replaying && state.runExecuting && state.activeRun.id) {
+        owned = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(owned);
+    const refused = await fetch(`${base}/api/replay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: wf.id, args: {}, guide: true }),
+    });
+    const body = await refused.json() as { error?: string };
+    assert.equal(refused.status, 409);
+    assert.equal(body.error, "Another run is waiting for you. Finish or stop it first.");
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, owned);
+    assert.equal(after.activeRun?.phase, "waiting");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+  } finally {
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gvis");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let owned = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "waiting" && state.replaying && state.runExecuting && state.activeRun.id) {
+        owned = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(owned);
+    await page.goto(`${base}/?screen=live`);
+    await page.getByRole("button", { name: "Open workflow", exact: true }).click();
+    await page.getByRole("button", { name: "Guide me", exact: true }).click();
+    await page.waitForFunction(() => document.getElementById("live")?.textContent === "Another run is waiting for you. Finish or stop it first.");
+    await page.getByRole("button", { name: "Workflows", exact: true }).click();
+    await page.getByRole("button", { name: "Book a class", exact: true }).click();
+    await page.getByRole("button", { name: "Run…", exact: true }).click();
+    await page.locator("#run").waitFor();
+    assert.notEqual(await page.locator("#live").textContent(), "Another run is waiting for you. Finish or stop it first.");
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, owned);
+    assert.equal(after.activeRun?.phase, "waiting");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+  } finally {
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close();
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("a refused Guide me shows the still-going sentence on screen", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gstl");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let releaseRun!: () => void;
+  const held = new Promise<void>((resolve) => { releaseRun = resolve; });
+  let replay: ReturnType<typeof post> | undefined;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => {
+      await held;
+      return { nodes: [], texts: [], url: "https://example.test/" };
+    };
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 60000 }];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let owned = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "running" && state.replaying && state.runExecuting && state.activeRun.id) {
+        owned = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(owned);
+    await page.goto(base);
+    await page.getByRole("button", { name: "Workflows", exact: true }).click();
+    await page.getByRole("button", { name: "Book a class", exact: true }).click();
+    await page.getByRole("button", { name: "Guide me", exact: true }).click();
+    await page.waitForFunction(() => document.getElementById("live")?.textContent === "Another run is still going. Finish or stop it first.");
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, owned);
+    assert.equal(after.activeRun?.phase, "running");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+  } finally {
+    releaseRun();
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close();
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
+test("a closed guide window does not open the Run form", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gcls");
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let releaseGuide!: () => void;
+  const held = new Promise<void>((resolve) => { releaseGuide = resolve; });
+  let guided = false;
+  try {
+    app.library.save(workflow(`${base}/fixture`));
+    await page.route("**/api/replay", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      const body = route.request().postDataJSON() as { guide?: boolean };
+      if (!body?.guide) return route.continue();
+      guided = true;
+      await held;
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Target page, context or browser has been closed" }),
+      });
+    });
+    await page.goto(base);
+    await page.getByRole("button", { name: "Workflows", exact: true }).click();
+    await page.getByRole("button", { name: "Book a class", exact: true }).click();
+    await page.getByRole("button", { name: "Guide me", exact: true }).click();
+    for (let attempt = 0; attempt < 50 && !guided; attempt++) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(guided, true);
+    await page.locator('#rail button[data-place="runs"]').click();
+    const closed = page.waitForResponse((response) => response.url().includes("/api/replay") && response.status() === 500);
+    releaseGuide();
+    await closed;
+    await page.waitForResponse((response) => response.url().includes("/api/state") && response.request().method() === "GET");
+    assert.equal(await page.locator("#run").count(), 0);
+    assert.equal(await page.locator("#main").innerText().then((text) => text.includes("Target page, context or browser has been closed")), false);
+    assert.equal(await page.locator("#rail button[data-place=\"runs\"]").getAttribute("aria-current"), "page");
+  } finally {
+    releaseGuide();
+    await browser.close();
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-run-identity");
   process.env.BAO_DRIVE = "1";

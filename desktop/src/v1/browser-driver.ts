@@ -37,9 +37,9 @@ export interface FileProof {
 
 export interface PersonPrompts {
   showConfirm?(label: string): void;
-  clearConfirm?(): void;
+  clearConfirm?(runId: string): void;
   showLoginWait?(label: string): void;
-  clearLoginWait?(): void;
+  clearLoginWait?(runId: string): void;
   showAsk?(ask: HumanAsk): void;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
@@ -566,8 +566,8 @@ export class BrowserDriver implements Driver {
     this.prompts?.showConfirm?.(label);
   }
 
-  clearConfirm(): void {
-    this.prompts?.clearConfirm?.();
+  clearConfirm(runId: string): void {
+    this.prompts?.clearConfirm?.(runId);
     void this.clearStrip();
   }
 
@@ -575,8 +575,8 @@ export class BrowserDriver implements Driver {
     this.prompts?.showLoginWait?.(label);
   }
 
-  clearLoginWait(): void {
-    this.prompts?.clearLoginWait?.();
+  clearLoginWait(runId: string): void {
+    this.prompts?.clearLoginWait?.(runId);
     void this.clearStrip();
   }
 
