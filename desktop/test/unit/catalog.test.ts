@@ -118,9 +118,9 @@ test("a resume fills the saved default, not the last run", async () => {
     const library = new Library(home);
     const doc = workflow("owner-resume", "Owner");
     doc.inputs = [
-      { name: "password", type: "secret", label: "Password", required: true },
-      { name: "name", type: "text", label: "Name", required: true, default: "Alex" },
-      { name: "code", type: "secret", label: "Code", required: true },
+      { name: "password", type: "secret", label: "Password", supply: "must" },
+      { name: "name", type: "text", label: "Name", supply: "saved", default: "Alex" },
+      { name: "code", type: "secret", label: "Code", supply: "must" },
     ];
     library.save(doc);
     library.savePublicInputs(doc.id, { name: "Beth" });
@@ -146,8 +146,8 @@ test("a resume still asks for an author value the last run left untouched", asyn
       ...workflow("imp-resume", "Imported"),
       imported: true,
       inputs: [
-        { name: "who", type: "text", label: "Who", required: true, default: "front desk" },
-        { name: "note", type: "text", label: "Note", required: true, default: "author" },
+        { name: "who", type: "text", label: "Who", supply: "saved", default: "front desk" },
+        { name: "note", type: "text", label: "Note", supply: "saved", default: "author" },
       ],
     };
     library.save(doc);
@@ -169,8 +169,8 @@ test("the first marketplace run asks for the author's values", async () => {
   const listing: WorkflowV2 = {
     ...workflow("listing", "Front desk"),
     inputs: [
-      { name: "who", type: "text", label: "Who", required: true, default: "front desk", ownerSaved: true },
-      { name: "note", type: "text", label: "Note", required: true, default: "author note" },
+      { name: "who", type: "text", label: "Who", supply: "saved", default: "front desk", ownerSaved: true },
+      { name: "note", type: "text", label: "Note", supply: "saved", default: "author note" },
     ],
   };
   const server = createServer((req, res) => {
@@ -211,13 +211,13 @@ test("an owned fork keeps the owner's import answers", async () => {
     ...workflow("forked", "Fork of Front desk"),
     imported: true,
     inputs: [
-      { name: "name", type: "text", label: "Name", required: true, default: "Alex", ownerSaved: true },
-      { name: "note", type: "text", label: "Note", required: true, default: "author note" },
+      { name: "name", type: "text", label: "Name", supply: "saved", default: "Alex", ownerSaved: true },
+      { name: "note", type: "text", label: "Note", supply: "saved", default: "author note" },
     ],
   };
   const legacy: WorkflowV2 = {
     ...workflow("legacy", "Old fork"),
-    inputs: [{ name: "name", type: "text", label: "Name", required: true, default: "Alex", ownerSaved: true }],
+    inputs: [{ name: "name", type: "text", label: "Name", supply: "saved", default: "Alex", ownerSaved: true }],
   };
   const server = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
@@ -264,7 +264,7 @@ test("a refused app run does not adopt an imported author value", async () => {
     ...workflow("extension", "Imported extension"),
     driver: "extension",
     imported: true,
-    inputs: [{ name: "who", type: "text", label: "Who", required: true, default: "front desk" }],
+    inputs: [{ name: "who", type: "text", label: "Who", supply: "saved", default: "front desk" }],
   });
   library.updateSettings({ pageEngine: "agent-browser" });
   const app = await startApp({ home, port: 0, extensionHost: false });
@@ -301,7 +301,7 @@ test("file import keeps an owner's workflow unmarked and marks a new file", asyn
     assert.equal(library.read("mine").name, "Mine edited");
     const shared = {
       ...workflow("shared", "Shared"),
-      inputs: [{ name: "who", type: "text", label: "Who", required: true, default: "author", ownerSaved: true }],
+      inputs: [{ name: "who", type: "text", label: "Who", supply: "saved", default: "author", ownerSaved: true }],
     };
     const imported = await fetch(`${base}/api/workflows/import`, {
       method: "POST",
@@ -590,11 +590,11 @@ test("a stopped run keeps the saved-values receipt", { timeout: 60_000 }, async 
     const doc: WorkflowV2 = {
       ...workflow("stop-saved", "Stop saved"),
       startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
-      inputs: [{ name: "name", type: "text", label: "Name", required: true, default: "Ada" }],
-      steps: [{
+      inputs: [{ name: "name", type: "text", label: "Name", supply: "saved", default: "Ada" }],
+      steps: [fixtureStep({
         id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
         postcondition: { kind: "text", match: "Signed in", timeoutMs: 5000 },
-      }],
+      })],
     };
     library.save(doc);
     const first = await runWorkflow(library, { id: doc.id });

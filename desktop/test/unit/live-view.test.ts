@@ -322,7 +322,7 @@ test("a relay clear does not remove a local hold or its pending prompt", { timeo
     app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      { id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 },
+      fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }),
     ];
     app.library.save(wf);
     app.library.save({
@@ -330,7 +330,7 @@ test("a relay clear does not remove a local hold or its pending prompt", { timeo
       id: "relay-login",
       name: "Relay login",
       driver: "extension",
-      steps: [{ id: "login", index: 0, action: "login", human: true, label: "Relay sign in", surface: "dom", timeoutMs: 1000 }],
+      steps: [fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Relay sign in", surface: "dom", timeoutMs: 1000 })],
     });
     const issued = await relayPost("/api/agent/pair", {});
     const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Clear-hold Mac", deviceId: "clear-hold-device" });
@@ -406,7 +406,7 @@ test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60
     };
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 1000 }];
+    wf.steps = [fixtureStep({ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 1000 })];
     app.library.save(wf);
     const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
     assert.equal(first.status, "needs_human");
@@ -446,7 +446,7 @@ test("Guide me during an owned wait says the run is waiting", { timeout: 60000 }
     app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [{ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }];
+    wf.steps = [fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 })];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
     let owned = "";
@@ -499,7 +499,7 @@ test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60
     app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [{ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }];
+    wf.steps = [fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 })];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
     let owned = "";
@@ -559,7 +559,7 @@ test("a refused Guide me shows the still-going sentence on screen", { timeout: 6
     };
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 60000 }];
+    wf.steps = [fixtureStep({ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 60000 })];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
     let owned = "";

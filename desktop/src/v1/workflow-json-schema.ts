@@ -201,6 +201,7 @@ export function workflowJsonSchema(): Record<string, unknown> {
       summary: { type: "string" },
       intent: { type: "string" },
       driver: { enum: ["playwright", "extension"] },
+      imported: { const: true },
       inputs: { type: "array", items: {
         type: "object",
         required: ["name", "type", "label", "supply"],
@@ -210,6 +211,7 @@ export function workflowJsonSchema(): Record<string, unknown> {
           label: { type: "string", minLength: 1 },
           supply: { enum: ["saved", "must"] },
           default: { type: "string", minLength: 1 },
+          ownerSaved: { const: true },
           askOnImport: { type: "boolean" },
           example: { type: "string" },
           choices: { type: "array", items: { type: "string" } },

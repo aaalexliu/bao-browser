@@ -74,9 +74,9 @@ test("a stored input is name, colon, value", () => {
     ...doc([]),
     name: "Fill the form",
     inputs: [
-      { name: "name", type: "text", default: "Ada" },
-      { name: "email", type: "text", default: "ada@example.com" },
-      { name: "password", type: "secret", default: secret },
+      { name: "name", type: "text", label: "Name", supply: "saved", default: "Ada" },
+      { name: "email", type: "text", label: "Email", supply: "saved", default: "ada@example.com" },
+      { name: "password", type: "secret", label: "Password", supply: "saved", default: secret },
     ],
   };
   const line = savedValueLine(savedWorkflow, { name: "Ada", email: "ada@example.com", password: secret });

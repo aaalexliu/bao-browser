@@ -58,6 +58,9 @@
         "extension"
       ]
     },
+    "imported": {
+      "const": true
+    },
     "inputs": {
       "type": "array",
       "items": {
@@ -97,6 +100,9 @@
           "default": {
             "type": "string",
             "minLength": 1
+          },
+          "ownerSaved": {
+            "const": true
           },
           "askOnImport": {
             "type": "boolean"
