@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 // Finished runs open their failed step; a separate active login opens its live detail.
 
 import assert from "node:assert/strict";
@@ -21,7 +22,7 @@ test("the runs list opens failed receipts while an active login owns its live de
   const browser = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
-    const doc: WorkflowV2 = {
+    const doc: WorkflowV2 = fixtureDoc({
       schema: "bao.workflow/v4",
       version: 2,
       id: "wf-note",
@@ -29,15 +30,15 @@ test("the runs list opens failed receipts while an active login owns its live de
       startUrl: "http://127.0.0.1/fixture",
       createdAt: 1,
       inputs: [
-        { name: "note", type: "text", label: "Note" },
-        { name: "password", type: "secret", label: "Password" },
+        fixtureInput({ name: "note", type: "text", label: "Note" }),
+        fixtureInput({ name: "password", type: "secret", label: "Password" }),
       ],
       steps: [
-        { id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 0 },
-        { id: "save", index: 1, action: "click", label: "Save", surface: "dom", timeoutMs: 0 },
-        { id: "note", index: 2, action: "type", label: "Type the note", surface: "dom", timeoutMs: 0, input: "note" },
+        fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 0 }),
+        fixtureStep({ id: "save", index: 1, action: "click", label: "Save", surface: "dom", timeoutMs: 0 }),
+        fixtureStep({ id: "note", index: 2, action: "type", label: "Type the note", surface: "dom", timeoutMs: 0, input: "note" }),
       ],
-    };
+    });
     app.library.save(doc);
     app.library.saveRun({
       id: "run-fail",

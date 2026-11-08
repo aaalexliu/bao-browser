@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import path from "node:path";
@@ -11,14 +12,14 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp } from "../runtime";
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return { schema: "bao.workflow/v4", version: 2, id, name, createdAt: 1, startUrl, inputs: [], steps };
+  return fixtureDoc({ schema: "bao.workflow/v4", version: 2, id, name, createdAt: 1, startUrl, inputs: [], steps });
 }
 
 function confirmStep(postcondition: boolean): WorkflowV2["steps"][number] {
-  return {
+  return fixtureStep({
     id: "reserve", index: 0, action: "confirm", human: true, label: "Press Reserve", surface: "dom", timeoutMs: 60_000,
     ...(postcondition ? { postcondition: { kind: "text" as const, match: "Applied", timeoutMs: 60_000 } } : {}),
-  };
+  });
 }
 
 async function stateOf(base: string): Promise<ShellState> {
@@ -46,7 +47,7 @@ test("an unsaved running replay is the only Now row and opens live", { timeout: 
   try {
     app.library.save(workflow("wf-old", "Pay the electricity bill", `${base}/fixture`, [confirmStep(false)]));
     app.library.save(workflow("wf-live", "Book a class", `${base}/fixture`, [
-      { id: "wait", index: 0, label: "Wait for the class note", action: "verify", surface: "dom", timeoutMs: 60_000, expect: { kind: "text", match: "Finish the unsaved run", timeoutMs: 60_000 } },
+      fixtureStep({ id: "wait", index: 0, label: "Wait for the class note", action: "verify", surface: "dom", timeoutMs: 60_000, expect: { kind: "text", match: "Finish the unsaved run", timeoutMs: 60_000 } }),
     ]));
     app.library.saveRun({ id: "run-old", workflowId: "wf-old", status: "paused", at: Date.now() - 86_400_000, steps: [], heals: [], envelope: { status: "needs_human", ask: "Press Pay in the Bao window." } });
     await page.goto(base);

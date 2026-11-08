@@ -1,3 +1,4 @@
+import { fixtureDoc } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { EventEmitter } from "node:events";
@@ -14,7 +15,7 @@ import { Library } from "../../src/v1/store";
 import { loadState, saveState, syncAll, syncStatus } from "../../src/v1/sync";
 
 function workflow(id: string, createdAt = 1): WorkflowV2 {
-  return { schema: "bao.workflow/v4", version: 2, id, name: `Workflow ${id}`, createdAt, startUrl: "https://example.test/", inputs: [], steps: [] };
+  return fixtureDoc({ schema: "bao.workflow/v4", version: 2, id, name: `Workflow ${id}`, createdAt, startUrl: "https://example.test/", inputs: [], steps: [] });
 }
 
 function fixture() {

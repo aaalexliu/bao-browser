@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -18,7 +19,7 @@ const reason = "this workflow used the retired live driver";
 test("Library and Replay explain retired workflows; replay and live API never open a browser", async () => {
   const dirs = applyHermeticApp("retired-live");
   const library = new Library(dirs.home);
-  const workflow: WorkflowV2 = { schema: "bao.workflow/v4", version: 2, id: "retired", name: "Saved task", createdAt: 1, driver: "cdp-live", startUrl: "http://127.0.0.1/", inputs: [], steps: [] };
+  const workflow: WorkflowV2 = fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: "retired", name: "Saved task", createdAt: 1, driver: "cdp-live" as unknown as WorkflowV2["driver"], startUrl: "http://127.0.0.1/", inputs: [], steps: [] });
   library.save(workflow);
   writeFileSync(path.join(dirs.home, "settings.json"), JSON.stringify({ careful: true, liveChromeProfile: "Profile 2" }));
   const app = await startApp({ home: dirs.home, port: 0 });
@@ -60,14 +61,14 @@ test("HTTP edits and replacement paths retain retirement and refuse browser laun
   await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
   const fixtureOrigin = `http://127.0.0.1:${(fixture.address() as { port: number }).port}`;
   const library = new Library(dirs.home);
-  const ordinary: WorkflowV2 = {
+  const ordinary: WorkflowV2 = fixtureDoc({
     schema: "bao.workflow/v4", version: 2, id: "historical", name: "Before retirement", createdAt: 1,
     startUrl: `${fixtureOrigin}/`, inputs: [],
-    steps: [{ id: "target", index: 0, action: "click", label: "Target", surface: "dom", timeoutMs: 1000, identity: { surface: "dom", role: "button", path: [], testId: "target" } }],
-  };
+    steps: [fixtureStep({ id: "target", index: 0, action: "click", label: "Target", surface: "dom", timeoutMs: 1000, identity: { surface: "dom", role: "button", path: [], testId: "target" } })],
+  });
   library.save(ordinary);
   const oldDraft = draftVersion(library, ordinary, "edit");
-  library.save({ ...ordinary, driver: "cdp-live" });
+  library.save({ ...ordinary, driver: "cdp-live" as unknown as WorkflowV2["driver"] });
   const provisional = { ...openProvisional({ workflowId: ordinary.id, healId: "heal", stepId: "target", before: ordinary.steps[0]!, patch: { identity: { surface: "dom", role: "button", path: [], testId: "target" } } }), version: oldDraft.n };
   library.savePromotion(provisional);
   const app = await startApp({ home: dirs.home, port: 0 });

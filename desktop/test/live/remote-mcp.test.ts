@@ -1,3 +1,4 @@
+import { fixtureStep, fixtureDoc } from "../support/fixture-step";
 // A cloud MCP client runs a saved workflow on one paired Mac.
 // The registry is this machine's Next server. Chrome is a throwaway profile.
 // Run after `tsc -p tsconfig.desktop.json`. Needs BAO_CHROME_NO_SANDBOX=1.
@@ -330,7 +331,7 @@ function saveWorkflows(library: Library, origin: string): void {
   ]));
   library.save(workflow("place-order", "Place Order", `${origin}/confirm`, [
     click("arm", 0, "Arm the order", "#arm", "arm", "Arm", "Ready", 8000),
-    {
+    fixtureStep({
       id: "place",
       index: 1,
       action: "confirm",
@@ -341,7 +342,7 @@ function saveWorkflows(library: Library, origin: string): void {
       timeoutMs: 8000,
       heal: "never",
       postcondition: { kind: "text", match: "Placed", timeoutMs: 4000 },
-    },
+    }),
   ]));
   library.save(workflow("slow-bao", "Slow Bao", `${origin}/slow`, [
     click("go", 0, "Click Go", "#go", "go", "Go", "Finished", 20_000),
@@ -349,7 +350,7 @@ function saveWorkflows(library: Library, origin: string): void {
 }
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id,
@@ -358,11 +359,11 @@ function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2[
     createdAt: Date.now(),
     inputs: [],
     steps,
-  };
+  });
 }
 
 function click(id: string, index: number, label: string, css: string, testId: string, text: string, match: string, timeoutMs: number): WorkflowV2["steps"][number] {
-  return {
+  return fixtureStep({
     id,
     index,
     action: "click",
@@ -373,7 +374,7 @@ function click(id: string, index: number, label: string, css: string, testId: st
     identity: { surface: "dom", role: "button", path: [], id, testId, text, tag: "button", name: text },
     locators: [{ kind: "css", value: css }],
     postcondition: { kind: "text", match, timeoutMs },
-  };
+  });
 }
 
 async function waitOnline(origin: string, token: string): Promise<void> {

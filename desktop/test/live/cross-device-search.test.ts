@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Device B's MCP search finds and runs a workflow that lives on device A.
 // Local `vercel dev` only. Nothing is deployed.
 // Run after `tsc -p tsconfig.desktop.json`. Chrome needs BAO_CHROME_NO_SANDBOX=1.
@@ -265,7 +266,7 @@ async function mcpSession(env: NodeJS.ProcessEnv, home: string): Promise<{ child
 }
 
 function workflow(startUrl: string, id = WORKFLOW_ID, name = "Span from Mac A"): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id,
@@ -273,7 +274,7 @@ function workflow(startUrl: string, id = WORKFLOW_ID, name = "Span from Mac A"):
     startUrl,
     createdAt: Date.now(),
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -282,8 +283,8 @@ function workflow(startUrl: string, id = WORKFLOW_ID, name = "Span from Mac A"):
       identity: { surface: "dom", role: "button", path: [], testId: "go" },
       postcondition: { kind: "text", match: "Opened", timeoutMs: 8000 },
       timeoutMs: 8000,
-    }],
-  };
+    })],
+  });
 }
 
 function startFixture(): Promise<{ origin: string; server: Server }> {

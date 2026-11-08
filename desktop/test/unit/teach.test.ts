@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Teach narration, corrections, eval pairs, saved branch compatibility, and merging takes.
 // No browser. The fixture replay lives in teach-workflows.test.ts.
 
@@ -27,7 +28,7 @@ import {
 } from "../../src/v1/teach";
 import { rail, runViewer, shellList, teachCard, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
 
-const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
+const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validate = ajv.compile(schema);
 
@@ -69,7 +70,7 @@ test("a capture note becomes the current or next step's intent", () => {
   assert.equal(current.cards[0]?.intent, "Click Open");
   assert.equal(current.cards[0]?.note, "wait for the banner");
   assert.equal(current.cards[0]?.noteAsIntent, true);
-  assert.equal(current.workflow.steps[0]?.intent, "wait for the banner");
+  assert.equal((current.workflow.steps[0] == null ? undefined : projectStep(current.workflow.steps[0]).intent), "wait for the banner");
   assert.equal(current.workflow.steps[0]?.action, "click");
   const html = teachCard({
     id: current.cards[0]!.id,
@@ -100,10 +101,10 @@ test("a capture note becomes the current or next step's intent", () => {
   const pair = intentEvalPair("wf-note", [click, typed], [], meta);
   const blob = JSON.stringify(pair);
   assert.equal(blob.includes("wait for the banner"), true);
-  assert.equal(pair.workflow.steps[0]?.intent, "wait for the banner");
+  assert.equal((pair.workflow.steps[0] == null ? undefined : projectStep(pair.workflow.steps[0]).intent), "wait for the banner");
   assert.equal(pair.rawTrail.some((event) => event.op === "note" && event.afterText === "wait for the banner"), true);
   const caseDoc = teachIntentCase("case-capture-note", [click, typed], [], meta);
-  assert.equal(caseDoc.workflow.steps[0]?.intent, "wait for the banner");
+  assert.equal((caseDoc.workflow.steps[0] == null ? undefined : projectStep(caseDoc.workflow.steps[0]).intent), "wait for the banner");
   assert.equal(caseDoc.events.some((event) => event.op === "note"), true);
 });
 
@@ -125,7 +126,7 @@ test("the heuristic narrates the fixture and a note becomes the intent", () => {
   assert.equal(named?.intent, "Click note");
   const decisions = decide([], { kind: "note", cardId: "type-note", note: "type the note" }, 10);
   const corrected = projectTeach(fixtureEvents(), decisions, meta);
-  assert.equal(corrected.workflow.steps.find((step) => step.input === "note")?.intent, "type the note");
+  assert.equal((() => { const _step = corrected.workflow.steps.find((step) => projectStep(step).input === "note"); return _step == null ? undefined : projectStep(_step).intent; })(), "type the note");
   assert.equal(decisions[0]?.detail, "note became intent");
 });
 
@@ -140,12 +141,12 @@ test("three corrections change the workflow and the eval pair measures them", ()
   assert.equal(blob.includes(secret), true);
   assert.equal(blob.includes("/tmp/secret-folder"), false);
   assert.equal(pair.workflow.steps.some((step) => projectStep(step).identity?.id === "note-input" && step.action === "click"), false);
-  const typed = pair.workflow.steps.find((step) => step.input === "note");
-  assert.equal(typed?.intent, "type the note");
-  const confirm = pair.workflow.steps.find((step) => step.action === "confirm");
-  assert.equal(confirm?.human, true);
-  assert.equal(confirm?.postcondition?.match, "Applied");
-  assert.equal(confirm?.provenance, undefined);
+  const typed = pair.workflow.steps.find((step) => projectStep(step).input === "note");
+  assert.equal((typed == null ? undefined : projectStep(typed).intent), "type the note");
+  const confirm = pair.workflow.steps.find((step) => (step.action as string) === "confirm");
+  assert.equal((confirm == null ? undefined : projectStep(confirm).human), true);
+  assert.equal((confirm == null ? undefined : projectStep(confirm).postcondition)?.match, "Applied");
+  assert.equal((confirm == null ? undefined : projectStep(confirm).provenance), undefined);
   const secretInput = pair.workflow.inputs.find((input) => input.type === "secret");
   assert.ok(secretInput);
   assert.equal(secretInput?.default, secret);
@@ -232,7 +233,7 @@ test("failed runs keep step details but no longer offer Teach repair", () => {
 test("marking a secret constant keeps its value, and a check is a verify step", () => {
   const constant = projectTeach(fixtureEvents(), decide([], { kind: "constant", cardId: "type-secret" }, 1), meta);
   assert.equal(constant.workflow.inputs.some((input) => input.type === "secret"), false);
-  assert.ok(constant.workflow.steps.some((step) => step.value === secret));
+  assert.ok(constant.workflow.steps.some((step) => projectStep(step).value === secret));
   const checked = projectTeach(
     fixtureEvents(),
     decide([], { kind: "verify", cardId: "click-apply", outcome: "Applied" }, 2),
@@ -291,7 +292,7 @@ test("merge keeps the shared step and branches where the takes differ", async ()
 test("previously saved taught branches still load and replay with or without the notice", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-taught-compat-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const saved: WorkflowV2 = {
+  const saved: WorkflowV2 = fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf-broken",
@@ -300,26 +301,26 @@ test("previously saved taught branches still load and replay with or without the
     createdAt: 1,
     inputs: [],
     steps: [
-      {
+      fixtureStep({
         id: "keep", index: 0, action: "click", label: "Click save", surface: "dom", timeoutMs: 1000,
         identity: ident({ id: "save-note", role: "button", text: "Save note" }),
-      },
-      {
+      }),
+      fixtureStep({
         id: "wf-broken-fix-1-0", index: 1, action: "click", label: "Review notice", surface: "dom", timeoutMs: 1000,
         identity: ident({ id: "interstitial-go", role: "button", testId: "interstitial-go", text: "Review notice" }),
         when: { present: "Review notice" },
-      },
-      {
+      }),
+      fixtureStep({
         id: "wf-broken-fix-1-1", index: 2, action: "click", label: "Next", surface: "dom", timeoutMs: 1000,
         identity: ident({ id: "continue-btn", role: "button", testId: "continue", text: "Next" }),
         when: { present: "Review notice" },
-      },
-      {
+      }),
+      fixtureStep({
         id: "bad", index: 3, action: "click", label: "Click Apply", surface: "dom", timeoutMs: 1000,
         identity: ident({ id: "apply-btn", role: "button", testId: "apply", text: "Apply" }),
-      },
+      }),
     ],
-  };
+  });
   mkdirSync(path.join(home, "workflows"));
   writeFileSync(path.join(home, "workflows", `${saved.id}.json`), JSON.stringify(saved));
   const library = new Library(home);
@@ -385,7 +386,7 @@ test("a teach correction is an intent case the harness loads", () => {
   assert.ok(doc.secretIds.includes("type-secret"));
   assert.equal(doc.human.find((mark) => mark.id === "click-apply")?.gate, "confirm");
   assert.equal(doc.replays.length, 2);
-  assert.equal(doc.workflow.steps.find((step) => step.input === "note")?.intent, "type the note");
+  assert.equal((() => { const _step = doc.workflow.steps.find((step) => projectStep(step).input === "note"); return _step == null ? undefined : projectStep(_step).intent; })(), "type the note");
   const dir = mkdtempSync(path.join(tmpdir(), "bao-cases-"));
   writeFileSync(path.join(dir, "case-note.json"), JSON.stringify(doc));
   const earlier = teachIntentCase("case-note-1", fixtureEvents(), decisions.slice(0, 1), meta);
@@ -394,7 +395,7 @@ test("a teach correction is an intent case the harness loads", () => {
   assert.equal(loaded.length, 2);
   assert.equal(loaded[0]?.schema, "bao.intent-case/v1");
   assert.equal(loaded.find((item) => item.id === "case-note")?.decisions.length, 2);
-  assert.equal(loaded.find((item) => item.id === "case-note")?.workflow.steps.find((step) => step.input === "note")?.intent, "type the note");
+  assert.equal((() => { const _step = loaded.find((item) => item.id === "case-note")?.workflow.steps.find((step) => projectStep(step).input === "note"); return _step == null ? undefined : projectStep(_step).intent; })(), "type the note");
 });
 
 function guardedDriver(texts: string[], clicks: string[]): Driver {
@@ -435,7 +436,10 @@ function guardedDriver(texts: string[], clicks: string[]): Driver {
 }
 
 function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
-  const nodes = doc.steps.flatMap((step) => projectStep(step).identity ? [projectStep(step).identity] : []);
+  const nodes = doc.steps.flatMap((step) => {
+    const identity = projectStep(step).identity;
+    return identity ? [identity] : [];
+  });
   const values: LiveTree["values"] = [];
   return {
     tree: async () => ({ nodes, texts: ["Applied"], values, url: doc.startUrl }),

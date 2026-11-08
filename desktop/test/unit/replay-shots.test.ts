@@ -1,3 +1,5 @@
+import { projectStep } from "../../src/v1/schema";
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -15,11 +17,11 @@ import { Library } from "../../src/v1/store";
 import { syncAll } from "../../src/v1/sync";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const workflow: WorkflowV2 = {
+const workflow: WorkflowV2 = fixtureDoc({
   schema: "bao.workflow/v4", version: 2, id: "wf-shots", name: "Run pictures",
   startUrl: "http://127.0.0.1/fixture", createdAt: 1, inputs: [], driver: "extension",
-  steps: [{ id: "step", index: 0, action: "note", label: "Fixture", surface: "dom", timeoutMs: 1000 }],
-};
+  steps: [fixtureStep({ id: "step", index: 0, action: "note", label: "Fixture", surface: "dom", timeoutMs: 1000 })],
+});
 
 // The native-messaging byte contract, before image decoding in the UI.
 const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(32), Buffer.from([0xff, 0xd9])]);
@@ -147,14 +149,14 @@ test("workflow sync keeps the recorded control crop after a replay navigates awa
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${origin}/fixture`);
     const driver = new BrowserDriver(page);
-    const doc: WorkflowV2 = {
+    const doc: WorkflowV2 = fixtureDoc({
       ...workflow, driver: "playwright", startUrl: `${origin}/fixture`,
-      steps: [{ id: "login", index: 0, action: "click", label: "Click Continue", surface: "dom", timeoutMs: 3000,
+      steps: [fixtureStep({ id: "login", index: 0, action: "click", label: "Click Continue", surface: "dom", timeoutMs: 3000,
         identity: { surface: "dom", role: "link", name: "Continue", id: "login", path: [] },
-        postcondition: { kind: "url", match: "/next", timeoutMs: 3000 } }],
-    };
+        postcondition: { kind: "url", match: "/next", timeoutMs: 3000 } })],
+    });
     library.save(doc);
-    const crop = await driver.shot({ identity: doc.steps[0]!.identity });
+    const crop = await driver.shot({ identity: projectStep(doc.steps[0]!).identity });
     assert.ok(crop);
     const recorded = await sharp(crop).metadata();
     assert.ok(recorded.width! < 720 && recorded.height! < 480);

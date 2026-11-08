@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -38,7 +39,7 @@ test("a chooser click becomes a file input and the workflow has no path", () => 
   const doc = interpret(events, { id: "wf-file", name: "File", startUrl: "http://127.0.0.1/fixture" });
   assert.equal(doc.steps.length, 1);
   assert.equal(doc.steps[0]?.action, "upload");
-  assert.equal(doc.steps[0]?.input, "file");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).input), "file");
   assert.equal(doc.inputs[0]?.type, "file");
   assert.equal(doc.inputs[0]?.default, undefined);
   const blob = JSON.stringify(doc);
@@ -54,8 +55,8 @@ test("a drop with a file name is a file input", () => {
   assert.equal(doc.steps[0]?.action, "drop");
   assert.equal(doc.inputs[0]?.type, "file");
   assert.equal(doc.inputs[0]?.name, "file");
-  assert.equal(doc.steps[0]?.value, "{{file}}");
-  assert.equal(doc.steps[0]?.postcondition?.match, "Dropped file: {{file}}");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).value), "{{file}}");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).postcondition)?.match, "Dropped file: {{file}}");
   assert.equal(JSON.stringify(doc).includes("/tmp/bao"), false);
 });
 

@@ -1,3 +1,4 @@
+import { fixtureInput, fixtureStep, fixtureDoc, withStep, writeStep } from "../support/fixture-step";
 import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -138,7 +139,7 @@ test("a long workflow sync bounds picture bodies and reports omitted pictures", 
   const library = new Library(home);
   const doc = secretWorkflow();
   doc.inputs = [];
-  doc.steps = Array.from({ length: 40 }, (_, i) => ({ id: `step-${i}`, index: i, action: "key", key: "Enter", label: "Continue", surface: "dom", timeoutMs: 1000 }));
+  doc.steps = Array.from({ length: 40 }, (_, i) => fixtureStep({ id: `step-${i}`, index: i, action: "key", key: "Enter", label: "Continue", timeoutMs: 1000 }));
   library.save(doc);
   const picture = await sharp(randomBytes(720 * 480 * 3), { raw: { width: 720, height: 480, channels: 3 } }).jpeg({ quality: 90 }).toBuffer();
   const dir = path.join(home, "shots", "workflows", doc.id);
@@ -233,7 +234,7 @@ test("password defaults sync without leaving or disappearing from this device", 
   const library = new Library(home);
   const local = secretWorkflow();
   local.inputs[0]!.default = planted;
-  local.inputs.push({ name: "deleted", type: "secret", label: "Deleted", default: "old-password" });
+  local.inputs.push(fixtureInput({ name: "deleted", type: "secret", label: "Deleted", default: "old-password" }));
   library.save(local);
   let remote: unknown;
   let version = 1;
@@ -292,48 +293,48 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
     const home = mkdtempSync(path.join(tmpdir(), `bao-defaults-${mode}-`));
     const library = new Library(home);
     const local = secretWorkflow();
-    local.version = 3;
+    undefined;
     const originalTable = `Display Name,Token\r\nAda,${token}\r\nGrace,${card}\r\n`;
     const tableNames = ["unchangedRows", "renamedRows", "deletedRows", "reorderedRows"];
     local.inputs = [
-      { name: "password", type: "secret", default: planted },
-      { name: "token", type: "text", default: token },
-      { name: "card", type: "text", default: card },
-      { name: "changed", type: "text", default: token },
-      { name: "changedSecret", type: "secret", default: planted },
-      { name: "cleared", type: "text", default: token },
-      { name: "removed", type: "text", default: token },
-      { name: "file", type: "file", default: token },
-      { name: "otp", type: "text", default: "123456" },
-      { name: "rows", type: "table", default: `name,token\nAda,${token}\nGrace,${card}\nReplaced row,${token}\nRemoved row,${card}` },
-      { name: "unstripped", type: "text", default: "local text" },
-      { name: "mixedRows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" },
-      ...tableNames.map((name) => ({ name, type: "table" as const, default: originalTable })),
+      fixtureInput({ name: "password", type: "secret", default: planted }),
+      fixtureInput({ name: "token", type: "text", default: token }),
+      fixtureInput({ name: "card", type: "text", default: card }),
+      fixtureInput({ name: "changed", type: "text", default: token }),
+      fixtureInput({ name: "changedSecret", type: "secret", default: planted }),
+      fixtureInput({ name: "cleared", type: "text", default: token }),
+      fixtureInput({ name: "removed", type: "text", default: token }),
+      fixtureInput({ name: "file", type: "file", default: token }),
+      fixtureInput({ name: "otp", type: "text", default: "123456" }),
+      fixtureInput({ name: "rows", type: "table", default: `name,token\nAda,${token}\nGrace,${card}\nReplaced row,${token}\nRemoved row,${card}` }),
+      fixtureInput({ name: "unstripped", type: "text", default: "local text" }),
+      fixtureInput({ name: "mixedRows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" }),
+      ...tableNames.map((name) => fixtureInput({ name, type: "table", default: originalTable })),
     ];
-    const literal = (id: string, value: string): WorkflowStep => ({
+    const literal = (id: string, value: string): WorkflowStep => (fixtureStep({
       id, index: 0, action: "type", label: id, surface: "dom", timeoutMs: 1000,
       identity: { surface: "dom", role: "textbox", path: [] }, value,
-    });
+    }));
     local.steps.push(
-      { ...literal("token-input", "{{token}}"), input: "token" },
+      withStep(literal("token-input", "{{token}}"), { input: "token" }),
       literal("literal", token),
-      { ...literal("key", ""), action: "key", value: undefined, key: token },
+      fixtureStep(withStep(literal("key", ""), { action: "key", key: token, value: undefined })),
       literal("remote-value", token),
-      { ...literal("remote-key", ""), action: "key", value: undefined, key: token },
+      fixtureStep(withStep(literal("remote-key", ""), { action: "key", key: token, value: undefined })),
       literal("removed-step", token),
-      { ...literal("unrelated", token), unresolved: { reason: "no identity" } },
+      withStep(literal("unrelated", token), { unresolved: { reason: "no identity" } }),
       literal("unavailable", STRIPPED_SECRET),
       literal("unstripped", "local literal"),
-      { ...literal("sensitive", "private literal"), sensitive: true },
-      { ...literal("otp-step", "{{otp}}"), input: "otp", identity: { surface: "dom", role: "textbox", path: [], autocomplete: "one-time-code" } },
-      { ...literal("loop", ""), action: "for_each", value: undefined,
+      withStep(literal("sensitive", "private literal"), { sensitive: true }),
+      withStep(literal("otp-step", "{{otp}}"), { input: "otp", identity: { surface: "dom", role: "textbox", path: [], autocomplete: "one-time-code" } }),
+      fixtureStep({ ...literal("loop", ""), action: "for_each", value: undefined,
         forEach: { over: { kind: "input", name: "rows" }, steps: [
           literal("nested", card),
           literal("nested-removed", token),
           literal("nested-remote", token),
-          { ...literal("nested-key", ""), action: "key", value: undefined, key: token },
-          { ...literal("nested-unrelated", token), unresolved: { reason: "no identity" } },
-        ] } },
+          fixtureStep(withStep(literal("nested-key", ""), { action: "key", key: token, value: undefined })),
+          withStep(literal("nested-unrelated", token), { unresolved: { reason: "no identity" } }),
+        ] } }),
     );
     local.steps.forEach((step, index) => {
       step.index = index;
@@ -379,10 +380,10 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       const updated = remote!;
       assert.equal(updated.inputs.find((input) => input.name === "token")?.default, STRIPPED_SECRET);
       assert.equal(updated.inputs.find((input) => input.name === "card")?.default, STRIPPED_SECRET);
-      assert.equal(updated.steps.find((step) => step.id === "literal")?.value, STRIPPED_SECRET);
-      assert.equal(updated.steps.find((step) => step.id === "key")?.key, STRIPPED_SECRET);
-      assert.equal(updated.steps.find((step) => step.id === "unrelated")?.unresolved?.reason, NEEDS_SECRET_VALUE);
-      assert.equal(updated.steps.find((step) => step.id === "sensitive")?.value, undefined);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "literal"); return _step == null ? undefined : projectStep(_step).value; })(), STRIPPED_SECRET);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "key"); return _step == null ? undefined : projectStep(_step).key; })(), STRIPPED_SECRET);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "unrelated"); return _step == null ? undefined : projectStep(_step).unresolved; })()?.reason, NEEDS_SECRET_VALUE);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "sensitive"); return _step == null ? undefined : projectStep(_step).value; })(), undefined);
       assert.deepEqual(parseTable(updated.inputs.find((input) => input.name === "rows")?.default), [
         { name: "Ada", token: STRIPPED_SECRET },
         { name: "Grace", token: STRIPPED_SECRET },
@@ -412,16 +413,18 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
         { name: "New remote row", token: "new remote value" },
       ]);
       updated.steps = updated.steps.filter((step) => step.id !== "removed-step");
-      updated.steps.find((step) => step.id === "remote-value")!.value = "remote literal";
+      writeStep(updated.steps.find((step) => step.id === "remote-value")!, { value: "remote literal" });
       const remoteKey = updated.steps.find((step) => step.id === "remote-key")!;
       remoteKey.action = "key";
-      remoteKey.value = undefined;
-      remoteKey.key = "Enter";
-      updated.steps.find((step) => step.id === "unstripped")!.value = STRIPPED_SECRET;
-      const nested = updated.steps.find((step) => step.id === "loop")!.forEach!;
-      assert.equal(nested.steps.find((step) => step.id === "nested-unrelated")?.unresolved?.reason, NEEDS_SECRET_VALUE);
+      writeStep(remoteKey, { value: undefined });
+      writeStep(remoteKey, { key: "Enter" });
+      writeStep(updated.steps.find((step) => step.id === "unstripped")!, { value: STRIPPED_SECRET });
+      const nested = projectStep(updated.steps.find((step) => step.id === "loop")!).forEach!;
+      const unrelated = nested.steps.find((step) => step.id === "nested-unrelated");
+      assert.equal(unrelated ? projectStep(unrelated).unresolved?.reason : undefined, NEEDS_SECRET_VALUE);
       nested.steps = nested.steps.filter((step) => step.id !== "nested-removed");
-      nested.steps.find((step) => step.id === "nested-remote")!.value = "remote nested value";
+      const remoteNested = nested.steps.find((step) => step.id === "nested-remote");
+      if (remoteNested) writeStep(remoteNested, { value: "remote nested value" });
       nested.steps.forEach((step, index) => { step.index = index; });
       updated.steps.forEach((step, index) => { step.index = index; });
       version = 2;
@@ -460,29 +463,30 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
           assert.equal(defaults[name]!.includes(card), false);
         }
         const steps = new Map(saved.steps.map((step) => [step.id, step]));
-        assert.equal(steps.get("literal")?.value, token);
-        assert.equal(steps.get("literal")?.unresolved, undefined);
-        assert.equal(steps.get("key")?.key, token);
-        assert.equal(steps.get("key")?.unresolved, undefined);
-        assert.equal(steps.get("token-input")?.unresolved, undefined);
-        assert.equal(steps.get("pass")?.unresolved, undefined);
-        assert.equal(steps.get("remote-value")?.value, "remote literal");
-        assert.equal(steps.get("remote-key")?.key, "Enter");
+        assert.equal((() => { const _step = steps.get("literal"); return _step == null ? undefined : projectStep(_step).value; })(), token);
+        assert.equal((() => { const _step = steps.get("literal"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
+        assert.equal((() => { const _step = steps.get("key"); return _step == null ? undefined : projectStep(_step).key; })(), token);
+        assert.equal((() => { const _step = steps.get("key"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
+        assert.equal((() => { const _step = steps.get("token-input"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
+        assert.equal((() => { const _step = steps.get("pass"); return _step == null ? undefined : projectStep(_step).unresolved; })(), undefined);
+        assert.equal((() => { const _step = steps.get("remote-value"); return _step == null ? undefined : projectStep(_step).value; })(), "remote literal");
+        assert.equal((() => { const _step = steps.get("remote-key"); return _step == null ? undefined : projectStep(_step).key; })(), "Enter");
         assert.equal(steps.has("removed-step"), false);
-        assert.equal(steps.get("unrelated")?.unresolved?.reason, "no identity");
-        assert.equal(steps.get("unavailable")?.unresolved?.reason, NEEDS_SECRET_VALUE);
-        assert.equal(steps.get("unstripped")?.value, STRIPPED_SECRET);
-        assert.equal(steps.get("sensitive")?.value, "private literal");
-        const children = new Map(steps.get("loop")!.forEach!.steps.map((step) => [step.id, step]));
+        assert.equal((() => { const _step = steps.get("unrelated"); return _step == null ? undefined : projectStep(_step).unresolved; })()?.reason, "no identity");
+        assert.equal((() => { const _step = steps.get("unavailable"); return _step == null ? undefined : projectStep(_step).unresolved; })()?.reason, NEEDS_SECRET_VALUE);
+        assert.equal((() => { const _step = steps.get("unstripped"); return _step == null ? undefined : projectStep(_step).value; })(), STRIPPED_SECRET);
+        assert.equal((() => { const _step = steps.get("sensitive"); return _step == null ? undefined : projectStep(_step).value; })(), "private literal");
+        const loop = steps.get("loop");
+        const children = new Map((loop ? projectStep(loop).forEach?.steps ?? [] : []).map((step) => [step.id, step]));
         assert.equal(children.size, 4);
         assert.equal(children.has("nested-removed"), false);
-        assert.equal(children.get("nested")?.value, card);
-        assert.equal(children.get("nested")?.unresolved, undefined);
-        assert.equal(children.get("nested-remote")?.value, "remote nested value");
-        assert.equal(children.get("nested-key")?.key, token);
-        assert.equal(children.get("nested-key")?.unresolved, undefined);
-        assert.equal(children.get("nested-unrelated")?.value, token);
-        assert.equal(children.get("nested-unrelated")?.unresolved?.reason, "no identity");
+        assert.equal(projectStep(children.get("nested")!).value, card);
+        assert.equal(projectStep(children.get("nested")!).unresolved, undefined);
+        assert.equal(projectStep(children.get("nested-remote")!).value, "remote nested value");
+        assert.equal(projectStep(children.get("nested-key")!).key, token);
+        assert.equal(projectStep(children.get("nested-key")!).unresolved, undefined);
+        assert.equal(projectStep(children.get("nested-unrelated")!).value, token);
+        assert.equal(projectStep(children.get("nested-unrelated")!).unresolved?.reason, "no identity");
         assert.equal(loadState(home).workflows[id]!.version, id === local.id ? 2 : 1);
       }
       assert.equal(loadState(home).conflicts.length, 0);
@@ -495,15 +499,15 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
 }
 
 function secretWorkflow(): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "secret-push",
     name: "Secret push",
     startUrl: "http://127.0.0.1/fixture.html",
-    inputs: [{ name: "password", type: "secret", label: "Password", required: true }],
+    inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", required: true })],
     createdAt: 1,
-    steps: [{
+    steps: [fixtureStep({
       id: "pass",
       index: 0,
       action: "type",
@@ -514,6 +518,6 @@ function secretWorkflow(): WorkflowV2 {
       value: "{{password}}",
       sensitive: true,
       identity: { surface: "dom", role: "password", path: [] },
-    }],
-  };
+    })],
+  });
 }

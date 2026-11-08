@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -14,9 +15,13 @@ import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { parseRecordedDate } from "../../src/v1/dates";
-import { projectStep, migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 
-const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
+function migrate(_raw: unknown): WorkflowV2 {
+  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
+}
+
+const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validate = ajv.compile(schema);
 
@@ -72,7 +77,7 @@ test("missing locator payloads are rejected at the document boundary", () => {
     "role locator reveal",
     "locator value unknown-missing",
   ]);
-  const legacy = doc.steps.find((item) => item.id === "legacy")?.locators?.[0];
+  const legacy = projectStep(doc.steps.find((item) => item.id === "legacy")!).locators?.[0];
   assert.deepEqual(JSON.parse(canonical(legacy)), {
     kind: "css",
     label: "css #ok",
@@ -115,7 +120,7 @@ test("migrate retains a password default and validates against the json schema",
   assert.equal(JSON.stringify(doc).includes("SuperSecretPassword!"), true);
   assert.equal(doc.inputs.find((item) => item.name === "password")?.type, "secret");
   assert.equal(doc.inputs.find((item) => item.name === "password")?.default, "SuperSecretPassword!");
-  assert.equal(doc.steps[1]?.value, "{{password}}");
+  assert.equal(doc.steps[1] ? projectStep(doc.steps[1]).value : undefined, "{{password}}");
 });
 
 test("redacted keys stay explicit and replay stops before dispatching a missing or placeholder key", async () => {
@@ -125,9 +130,9 @@ test("redacted keys stay explicit and replay stops before dispatching a missing 
   ];
   const doc = interpret(events, { id: "redacted-keys", startUrl: "https://example.test/" });
   assert.deepEqual(doc.steps.map((step) => step.action), ["key", "key"]);
-  assert.equal(doc.steps[0]!.key, STRIPPED_SECRET);
-  assert.ok(doc.steps[0]!.unresolved);
-  assert.equal(doc.steps[1]!.key, "Enter");
+  assert.equal(projectStep(doc.steps[0]!).key, STRIPPED_SECRET);
+  assert.ok(projectStep(doc.steps[0]!).unresolved);
+  assert.equal(projectStep(doc.steps[1]!).key, "Enter");
   assert.deepEqual(validateWorkflow(doc), []);
   assert.equal(validate(doc), true);
   const keys: string[] = [];
@@ -145,8 +150,8 @@ test("sensitive key events without a value fail before dispatch or healing while
       { id: "key", ts: 1, kind: "act", op: "key", sensitive: true, ...fields },
     ], { id: "sensitive-key", startUrl: "https://example.test/" });
     const key = fields.key || fields.value;
-    assert.equal(doc.steps[0]?.key, key);
-    assert.equal(doc.steps[0]?.unresolved?.reason, key ? undefined : NEEDS_SECRET_VALUE);
+    assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).key), key);
+    assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).unresolved)?.reason, key ? undefined : NEEDS_SECRET_VALUE);
     const keys: string[] = [];
     let modelCalls = 0;
     const d = driver([], { url: doc.startUrl });
@@ -184,7 +189,7 @@ test("native migration retains local values but omits path defaults from both va
         const pathValue = value !== "SuperSecretPassword!" && value !== "Ada";
         assert.equal(doc.inputs[0]?.default, pathValue ? undefined : value);
         assert.equal(doc.inputs[0]?.type, value === "SuperSecretPassword!" ? "secret" : "text");
-        assert.equal(doc.steps[0]?.value, `{{${doc.inputs[0]?.name}}}`);
+        assert.equal(doc.steps[0] ? projectStep(doc.steps[0]).value : undefined, `{{${doc.inputs[0]?.name}}}`);
         assert.deepEqual(validateWorkflow(doc), []);
         assert.equal(validate(doc), true);
       }
@@ -206,10 +211,10 @@ test("a refused confirm click does not keep the pre-click status as its postcond
     },
   ];
   const doc = interpret(events, { id: "c", startUrl: "https://fixture.test/confirm" });
-  assert.equal(doc.steps[0]?.postcondition?.kind, "text");
-  assert.equal(doc.steps[0]?.postcondition?.match, "Armed");
-  assert.equal(doc.steps[1]?.gate, "confirm");
-  assert.notEqual(doc.steps[1]?.postcondition?.kind, "text");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).postcondition)?.kind, "text");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).postcondition)?.match, "Armed");
+  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).gate), "confirm");
+  assert.notEqual((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).postcondition)?.kind, "text");
 });
 
 test("interpret is deterministic and lifts a secret default and a file input", () => {
@@ -252,30 +257,30 @@ test("interpret is deterministic and lifts a secret default and a file input", (
   assert.equal(once.inputs.find((item) => item.type === "secret")?.name, "password");
   assert.equal(once.inputs.some((item) => item.type === "file"), true);
   const upload = once.steps.find((step) => step.action === "upload");
-  assert.equal(upload?.postcondition?.kind, "text");
-  assert.equal(upload?.postcondition?.match, "{{file}}");
+  assert.equal((upload == null ? undefined : projectStep(upload).postcondition)?.kind, "text");
+  assert.equal((upload == null ? undefined : projectStep(upload).postcondition)?.match, "{{file}}");
   assert.equal(JSON.stringify(upload).includes("taxes.pdf"), false);
   assert.equal(once.steps.some((step) => projectStep(step).unresolved), false);
-  const typed = once.steps.find((step) => step.input === "username");
-  assert.equal(typed?.value, "{{username}}");
-  assert.equal(typed?.label.includes("tomsmith") || once.inputs.find((item) => item.name === "username")?.default === "tomsmith", true);
+  const typed = once.steps.find((step) => projectStep(step).input === "username");
+  assert.equal((typed == null ? undefined : projectStep(typed).value), "{{username}}");
+  assert.equal((typed ? projectStep(typed).label : "").includes("tomsmith") || once.inputs.find((item) => item.name === "username")?.default === "tomsmith", true);
 });
 
 test("interpret uses requested navigation targets while legacy navigation keeps its observed URL", () => {
   const event: TrailEvent = { id: "open", ts: 1, kind: "act", op: "navigate", value: "https://target.test/entry?mode=edit", beforeUrl: "https://start.test/", afterUrl: "https://redirect.test/done" };
   const meta = { id: "wf-explicit-open", startUrl: "https://start.test/" };
   const explicit = interpret([event], meta);
-  assert.equal(explicit.steps[0]?.value, event.value);
-  assert.equal(explicit.steps[0]?.expect?.match, "redirect.test");
-  assert.equal(interpret([{ ...event, afterUrl: undefined }], meta).steps[0]?.expect?.match, "target.test");
+  assert.equal((explicit.steps[0] == null ? undefined : projectStep(explicit.steps[0]).value), event.value);
+  assert.equal((explicit.steps[0] == null ? undefined : projectStep(explicit.steps[0]).expect)?.match, "redirect.test");
+  assert.equal((() => { const _step = interpret([{ ...event, afterUrl: undefined }], meta).steps[0]; return _step == null ? undefined : projectStep(_step).expect; })()?.match, "target.test");
   for (const afterUrl of ["about:blank", "file:///private", "not a URL"]) {
     const step = interpret([{ ...event, afterUrl }], meta).steps[0]!;
     assert.equal(projectStep(step).value, event.value);
     assert.equal(projectStep(step).expect, undefined);
   }
   const legacy = interpret([{ ...event, value: undefined }], meta);
-  assert.equal(legacy.steps[0]?.value, event.afterUrl);
-  assert.equal(legacy.steps[0]?.expect?.match, "redirect.test");
+  assert.equal((legacy.steps[0] == null ? undefined : projectStep(legacy.steps[0]).value), event.afterUrl);
+  assert.equal((legacy.steps[0] == null ? undefined : projectStep(legacy.steps[0]).expect)?.match, "redirect.test");
 });
 
 test("sensitive generic fields retain defaults beside ordinary long text", () => {
@@ -305,7 +310,7 @@ test("calculator clicks become number inputs and the equals check is the express
   assert.equal(doc.inputs[0]?.default, "7");
   assert.equal(doc.inputs[1]?.default, "5");
   const equals = doc.steps.find((step) => projectStep(step).identity?.name === "=");
-  assert.equal(equals?.postcondition?.match, "{{a}}+{{b}}");
+  assert.equal((equals == null ? undefined : projectStep(equals).postcondition)?.match, "{{a}}+{{b}}");
   assert.equal(expectedText("{{a}}+{{b}}", { a: 1, b: 2 }), "3");
   assert.equal(JSON.stringify(doc).includes("\"7\""), true);
 });
@@ -332,8 +337,8 @@ test("property: interpret retains secret defaults while keeping paths in file in
     const doc = interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] });
     const blob = canonical(doc);
     assert.equal(doc.inputs.find((input) => input.type === "secret")!.default, secret);
-    assert.equal(doc.steps[0]!.value, "{{password}}");
-    assert.equal(doc.steps[0]!.postcondition, undefined);
+    assert.equal(projectStep(doc.steps[0]!).value, "{{password}}");
+    assert.equal(projectStep(doc.steps[0]!).postcondition, undefined);
     assert.equal(blob.includes(secret), true);
     const effects: [TrailEvent, string | undefined][] = [
       [events[0]!, undefined],
@@ -341,7 +346,7 @@ test("property: interpret retains secret defaults while keeping paths in file in
     ];
     for (const [event, match] of effects) {
       const effect = interpret([event], { id: "effect", startUrl: "https://example.test/", secrets: [secret] });
-      assert.equal(effect.steps[0]!.postcondition?.match, match);
+      assert.equal(projectStep(effect.steps[0]!).postcondition?.match, match);
     }
     assert.equal(blob.includes(filePath), false);
     assert.equal(canonical(doc), canonical(interpret(events, { id: "wf-prop", startUrl: "https://example.test/", secrets: [secret] })));
@@ -372,7 +377,7 @@ function driver(nodes: Identity[], extra: Partial<LiveTree> = {}): Driver & { cl
 }
 
 function workflow(identity: Identity): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
@@ -380,7 +385,7 @@ function workflow(identity: Identity): WorkflowV2 {
     startUrl: "https://example.test/",
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -389,8 +394,8 @@ function workflow(identity: Identity): WorkflowV2 {
       identity,
       timeoutMs: 0,
       postcondition: { kind: "element", timeoutMs: 0 },
-    }],
-  };
+    })],
+  });
 }
 
 test("replay stops with a structured failure when healing is off", async () => {
@@ -427,7 +432,7 @@ test("global Stop inherits the existing workflow and step policy precedence", ()
 for (const mode of ["never", "auto", "approve"] satisfies GlobalHealMode[]) {
   test(`global ${mode} controls a changed step with an available healer`, async () => {
     const doc = workflow(id({ testId: "missing" }));
-    doc.steps.push({ id: "after-miss", index: 1, action: "note", label: "After the changed step", surface: "dom", timeoutMs: 0 });
+    doc.steps.push(fixtureStep({ id: "after-miss", index: 1, action: "note", label: "After the changed step", surface: "dom", timeoutMs: 0 }));
     const d = driver([id({ testId: "real" })]);
     let checks = 0;
     let calls = 0;
@@ -523,9 +528,9 @@ test("keep then revert restores the failed step and appends decisions", () => {
   const doc = workflow(id({ testId: "missing" }));
   const patch = { identity: id({ testId: "real" }) };
   const kept = keepPatch(doc, "s0", patch);
-  assert.equal(kept.steps[0]?.identity?.testId, "real");
+  assert.equal((kept.steps[0] == null ? undefined : projectStep(kept.steps[0]).identity)?.testId, "real");
   const restored = revertPatch(kept, doc.steps[0]!);
-  assert.equal(restored.steps[0]?.identity?.testId, "missing");
+  assert.equal((restored.steps[0] == null ? undefined : projectStep(restored.steps[0]).identity)?.testId, "missing");
   const home = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
   const library = new Library(home);
   const heal = { id: "heal-1", failedStep: doc.steps[0], prompt: "untouched" };
@@ -572,8 +577,8 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
   assert.equal(JSON.stringify(doc).includes("note.txt"), false);
   assert.equal(JSON.stringify(doc).includes("/tmp/note.txt"), false);
   const args = { file: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };
-  assert.equal(holds(step!.postcondition!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
-  assert.equal(holds(step!.postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
+  assert.equal(holds(projectStep(step!).postcondition!, tree([], { texts: ["Waiting for a file", "Welcome grace"] }), args), false);
+  assert.equal(holds(projectStep(step!).postcondition!, tree([], { texts: ["Dropped file: bao-fix-run1.txt"] }), args), true);
 });
 
 test("interpret keeps login and confirm as human steps with no coordinates", () => {
@@ -595,16 +600,16 @@ test("interpret keeps login and confirm as human steps with no coordinates", () 
   ], { id: "wf-human", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
   assert.equal(validateWorkflow(doc).length, 0);
   assert.equal(doc.steps[0]?.action, "login");
-  assert.equal(doc.steps[0]?.human, true);
-  assert.equal(doc.steps[0]?.provenance, undefined);
-  assert.equal(doc.steps[0]?.label, "ensure logged in (import from chrome, else wait for user)");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).human), true);
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).provenance), undefined);
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).label), "ensure logged in (import from chrome, else wait for user)");
   assert.equal(doc.steps[1]?.action, "click");
-  assert.equal(doc.steps[1]?.identity?.name, "Open");
+  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).identity)?.name, "Open");
   assert.equal(doc.steps[2]?.action, "confirm");
-  assert.equal(doc.steps[2]?.human, true);
-  assert.equal(doc.steps[2]?.provenance, undefined);
-  assert.equal(doc.steps[2]?.label, "confirm before applying");
-  assert.equal(doc.steps[2]?.postcondition?.match, "Security freeze is off");
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).human), true);
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).provenance), undefined);
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).label), "confirm before applying");
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).postcondition)?.match, "Security freeze is off");
 });
 
 test("interpret turns a status re-read into a verify step", () => {
@@ -624,11 +629,11 @@ test("interpret turns a status re-read into a verify step", () => {
   ], { id: "wf-verify", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
   assert.equal(validateWorkflow(doc).length, 0);
   assert.equal(doc.steps[2]?.action, "verify");
-  assert.equal(doc.steps[2]?.label, "re-read the status");
-  assert.equal(doc.steps[2]?.human, undefined);
-  assert.equal(doc.steps[2]?.provenance, undefined);
-  assert.equal(doc.steps[2]?.expect?.kind, "text");
-  assert.equal(doc.steps[2]?.expect?.match, "Open");
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).label), "re-read the status");
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).human), undefined);
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).provenance), undefined);
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).expect)?.kind, "text");
+  assert.equal((doc.steps[2] == null ? undefined : projectStep(doc.steps[2]).expect)?.match, "Open");
 });
 
 test("a confirm step waits for a person and does not click", async () => {
@@ -637,7 +642,7 @@ test("a confirm step waits for a person and does not click", async () => {
   const d = driver([apply], { texts: ["Your file is open"] });
   d.showConfirm = (label) => { shown = label; };
   const doc = workflow(apply);
-  doc.steps[0] = {
+  doc.steps[0] = fixtureStep({
     id: "c",
     index: 0,
     action: "confirm",
@@ -647,7 +652,7 @@ test("a confirm step waits for a person and does not click", async () => {
     identity: apply,
     timeoutMs: 0,
     postcondition: { kind: "text", match: "Your file is open", timeoutMs: 0 },
-  };
+  });
   const result = await replay(doc, {}, d);
   assert.equal(result.status, "passed");
   assert.equal(d.clicks, 0);
@@ -662,7 +667,7 @@ test("a login step never types", async () => {
   d.fill = async () => { fills += 1; };
   const doc = workflow(id({ role: "textbox" }));
   doc.replayed = false;
-  doc.steps[0] = {
+  doc.steps[0] = fixtureStep({
     id: "login",
     index: 0,
     action: "login",
@@ -671,7 +676,7 @@ test("a login step never types", async () => {
     surface: "dom",
     timeoutMs: 0,
     postcondition: { kind: "url", match: "usa.experian.com/mfe/protection", timeoutMs: 0 },
-  };
+  });
   const ready = await replay(doc, {}, d);
   assert.equal(ready.status, "passed");
   assert.equal(fills, 0);
@@ -689,7 +694,7 @@ test("a confirm step times out without clicking and says nothing was applied", a
   const d = driver([apply], { texts: ["Waiting to apply"] });
   const doc = workflow(apply);
   doc.name = "upload note";
-  doc.steps[0] = {
+  doc.steps[0] = fixtureStep({
     id: "c",
     index: 0,
     action: "confirm",
@@ -699,7 +704,7 @@ test("a confirm step times out without clicking and says nothing was applied", a
     identity: apply,
     timeoutMs: 40,
     postcondition: { kind: "text", match: "Applied", timeoutMs: 40 },
-  };
+  });
   const result = await replay(doc, {}, d);
   assert.equal(result.status, "failed");
   assert.equal(result.failure?.reason, "nothing applied");
@@ -721,7 +726,7 @@ test("closing the page during a confirm wait leaves the prompt in place", async 
     return tree([apply], { texts: ["Waiting to apply"] });
   };
   const doc = workflow(apply);
-  doc.steps[0] = {
+  doc.steps[0] = fixtureStep({
     id: "c",
     index: 0,
     action: "confirm",
@@ -731,7 +736,7 @@ test("closing the page during a confirm wait leaves the prompt in place", async 
     identity: apply,
     timeoutMs: 40,
     postcondition: { kind: "text", match: "Applied", timeoutMs: 40 },
-  };
+  });
   await assert.rejects(() => replay(doc, {}, d), /page closed/);
   assert.equal(asks, 1);
   assert.equal(clears, 0);

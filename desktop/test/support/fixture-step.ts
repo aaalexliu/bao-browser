@@ -4,111 +4,328 @@ import { citeIdentity, caption, clickSentence, openSentence, typeSentence } from
 import { locatorsFromIdentity } from "../../src/v1/locators";
 import {
   hintFromIdentity,
+  projectStep,
+  stepTarget,
+  WORKFLOW_SCHEMA_ID,
   type Check,
+  type HealChange,
   type Identity,
+  type InputType,
+  type ReadBack,
   type StepCaption,
   type StepLocator,
+  type StepWhen,
   type Target,
   type TargetBox,
   type TextOf,
   type WorkflowInput,
   type WorkflowStep,
   type WorkflowV2,
-  WORKFLOW_SCHEMA_ID,
 } from "../../src/v1/schema";
 
-export interface FixtureDraft {
-  id: string;
-  action: WorkflowStep["action"];
+export interface LooseCheck {
+  kind?: string;
+  match?: string;
+  state?: string;
+  timeoutMs?: number;
+  identity?: Partial<Identity>;
+  locators?: StepLocator[];
+}
+
+export interface LooseStep {
+  id?: string;
+  action?: string;
   index?: number;
   timeoutMs?: number;
   label?: string;
   caption?: StepCaption;
-  identity?: Identity;
+  identity?: Partial<Identity>;
   locators?: StepLocator[];
+  target?: Target;
   value?: string;
   input?: string;
   key?: string;
   checked?: boolean;
   sensitive?: boolean;
-  expect?: { kind?: string; match?: string; state?: string; timeoutMs?: number; identity?: Identity };
-  postcondition?: { kind?: string; match?: string; timeoutMs?: number; identity?: Identity };
+  expect?: LooseCheck;
+  postcondition?: LooseCheck;
   check?: Check;
   targetBox?: TargetBox;
   url?: string;
-  optional?: "dismiss";
-  heal?: WorkflowStep["heal"];
-  when?: WorkflowStep["when"];
-  text?: string;
+  optional?: string;
+  heal?: string;
+  when?: StepWhen;
+  text?: unknown;
   reason?: string;
   ms?: number;
   literal?: boolean;
+  surface?: string;
   download?: { output: string; name: string; url?: string };
   open?: { target: "url"; url: string } | { target: "file"; file: string; app?: string };
   extract?: Extract<WorkflowStep, { action: "extract" }>["extract"];
   forEach?: Extract<WorkflowStep, { action: "for_each" }>["forEach"];
   date?: { input: string; endInput?: string };
+  datePicker?: { input: string; endInput?: string };
+  file?: { input: string } | { fromOutput: string };
   fileFrom?: string;
   selection?: Extract<WorkflowStep, { action: "click" }>["selection"];
   reveal?: StepLocator;
+  dialog?: { input: string };
+  readBack?: ReadBack;
+  history?: HealChange[];
+  waitFor?: LooseCheck;
+  gone?: LooseCheck;
+  [key: string]: unknown;
 }
 
-export function fixtureStep(draft: FixtureDraft): WorkflowStep {
-  const index = draft.index ?? 0;
-  const timeoutMs = draft.timeoutMs ?? 8000;
-  const target = targetOf(draft);
-  const check = draft.check ?? checkOf(draft);
-  const sentence = draft.caption?.text || draft.label || defaultSentence(draft);
-  const cite = draft.caption?.citation ?? citeIdentity(draft.identity);
-  const box = draft.caption?.targetBox ?? draft.targetBox;
+export interface LooseInput {
+  name: string;
+  type?: InputType;
+  label?: string;
+  supply?: "saved" | "must";
+  default?: string;
+  required?: boolean;
+  askOnImport?: boolean;
+  example?: string;
+  choices?: string[];
+  multiple?: boolean;
+  accept?: string;
+  format?: string;
+  relative?: string;
+  zone?: string;
+  fromOutput?: string;
+  [key: string]: unknown;
+}
+
+export interface LooseDoc {
+  id?: string;
+  name?: string;
+  schema?: string;
+  version?: number;
+  startUrl?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  inputs?: LooseInput[];
+  steps?: LooseStep[];
+  driver?: string;
+  provenance?: string;
+  readBack?: WorkflowV2["readBack"];
+  precondition?: WorkflowV2["precondition"];
+  summary?: string;
+  intent?: string;
+  inference?: WorkflowV2["inference"];
+  heal?: WorkflowV2["heal"];
+  replayed?: boolean;
+  outputs?: WorkflowV2["outputs"];
+  filesDates?: unknown;
+  [key: string]: unknown;
+}
+
+export type FixtureDraft = LooseStep;
+
+export function fixtureStep(draft: object, index = (draft as LooseStep).index ?? 0): WorkflowStep {
+  const raw = draft as LooseStep;
+  const action = mapAction(raw.action);
+  const timeoutMs = typeof raw.timeoutMs === "number" ? raw.timeoutMs : 8000;
+  const target = targetOf(raw);
+  const check = checkOf(raw);
+  const sentence = sentenceOf(raw, action);
+  const noBox = action === "navigate" || action === "login" || action === "wait" || action === "finish" || action === "note" || action === "verify" || action === "extract" || action === "for_each";
+  const cap = raw.caption?.text
+    ? (noBox ? caption(raw.caption.text) : raw.caption)
+    : caption(sentence, noBox ? undefined : citeIdentity(asIdentity(raw.identity)), noBox ? undefined : raw.targetBox);
+  const heal = healOf(raw.heal);
   const base = {
-    id: draft.id,
+    id: raw.id || `step-${index}`,
     index,
     timeoutMs,
-    caption: draft.caption ?? caption(sentence, cite, box),
-    ...(draft.when ? { when: draft.when } : {}),
-    ...(draft.heal ? { heal: draft.heal } : {}),
+    caption: cap,
+    ...(raw.when ? { when: raw.when } : {}),
+    ...(heal ? { heal } : {}),
+    ...(raw.readBack ? { readBack: raw.readBack } : {}),
   };
-  switch (draft.action) {
+  const withCheck = check ? { check } : {};
+  switch (action) {
     case "click":
-      return { ...base, action: "click", target: target ?? { locators: [{ kind: "role", role: "button", name: draft.label || "Click" }] }, ...(check ? { check } : {}), ...(draft.optional ? { optional: draft.optional } : {}), ...(draft.selection ? { selection: draft.selection } : {}) };
+      return {
+        ...base,
+        action: "click",
+        target: target ?? { locators: [{ kind: "role", role: "button", name: raw.label || "Click" }] },
+        ...withCheck,
+        ...(raw.optional === "dismiss" ? { optional: "dismiss" as const } : {}),
+        ...(raw.selection ? { selection: raw.selection } : {}),
+        ...(raw.dialog?.input ? { dialog: raw.dialog } : {}),
+      };
     case "type":
     case "select":
-      return { ...base, action: draft.action, target: target ?? { locators: [{ kind: "role", role: "textbox", name: draft.label || "Field" }] }, text: textOf(draft), ...(draft.sensitive ? { sensitive: true } : {}), ...(check ? { check } : {}) };
+      return {
+        ...base,
+        action,
+        target: target ?? { locators: [{ kind: "role", role: "textbox", name: raw.label || "Field" }] },
+        text: textOf(raw),
+        ...(raw.sensitive ? { sensitive: true } : {}),
+        ...withCheck,
+      };
     case "key":
-      return { ...base, action: "key", key: draft.key || "Enter", ...(target ? { target } : {}), ...(check ? { check } : {}) };
+      return { ...base, action: "key", key: raw.key || "Enter", ...(target ? { target } : {}), ...withCheck };
     case "check":
-      return { ...base, action: "check", target: target ?? { locators: [{ kind: "role", role: "checkbox", name: draft.label || "Check" }] }, checked: draft.checked !== false, ...(check ? { check } : {}) };
+      return {
+        ...base,
+        action: "check",
+        target: target ?? { locators: [{ kind: "role", role: "checkbox", name: raw.label || "Check" }] },
+        checked: raw.checked !== false,
+        ...withCheck,
+      };
     case "navigate":
-      return { ...base, action: "navigate", url: draft.url || draft.value || "https://example.test/", caption: caption(sentence), ...(check ? { check } : {}) };
+      return { ...base, action: "navigate", url: raw.url || raw.value || "https://example.test/", caption: caption(sentence), ...withCheck };
     case "verify":
       return { ...base, action: "verify", check: check ?? { kind: "settled", timeoutMs: 4000 }, caption: caption(sentence) };
     case "login":
-      return { ...base, action: "login", caption: caption(draft.label || "Sign in"), ...(check ? { check } : {}) };
+      return { ...base, action: "login", caption: caption(raw.label || "Sign in"), ...withCheck };
     case "upload":
     case "drop":
-      return { ...base, action: draft.action, target: target ?? { locators: [{ kind: "css", value: "input[type=file]" }] }, file: draft.fileFrom ? { fromOutput: draft.fileFrom } : { input: draft.input || "file" }, ...(check ? { check } : {}) };
+      return {
+        ...base,
+        action,
+        target: target ?? { locators: [{ kind: "css", value: "input[type=file]" }] },
+        file: fileOf(raw),
+        ...withCheck,
+      };
     case "extract":
-      return { ...base, action: "extract", caption: caption(sentence), extract: draft.extract ?? { mode: "element", as: "item", locators: [{ kind: "css", value: "body" }], columns: [{ name: "text", type: "text", read: "text", locators: [{ kind: "css", value: "body" }] }] }, heal: "never" };
+      return {
+        ...base,
+        action: "extract",
+        caption: caption(sentence),
+        heal: "never",
+        extract: raw.extract ?? { mode: "element", as: "item", locators: [{ kind: "css", value: "body" }], columns: [{ name: "text", type: "text", read: "text", locators: [{ kind: "css", value: "body" }] }] },
+      };
     case "for_each":
-      return { ...base, action: "for_each", caption: caption(sentence), forEach: draft.forEach ?? { over: { kind: "extract", name: "item" }, steps: [] } };
+      return { ...base, action: "for_each", caption: caption(sentence), forEach: raw.forEach ?? { over: { kind: "extract", name: "item" }, steps: [] } };
     case "note":
-      return { ...base, action: "note", text: draft.text || draft.label || "Note", caption: caption(sentence) };
+      return { ...base, action: "note", text: typeof raw.text === "string" ? raw.text : (raw.label || "Note"), caption: caption(sentence) };
     case "download":
-      return { ...base, action: "download", caption: caption(sentence), download: draft.download ?? { output: "file", name: "file.txt" }, ...(check ? { check } : {}) };
+      return { ...base, action: "download", caption: caption(sentence), download: raw.download ?? { output: "file", name: "file.txt" }, ...withCheck };
     case "open":
-      return { ...base, action: "open", caption: caption(sentence), open: draft.open ?? { target: "url", url: draft.url || "https://example.test/" }, ...(check ? { check } : {}) };
+      return { ...base, action: "open", caption: caption(sentence), open: raw.open ?? { target: "url", url: raw.url || "https://example.test/" }, ...withCheck };
     case "digits":
-      return { ...base, action: "digits", text: textOf(draft), ...(target ? { target } : {}), ...(check ? { check } : {}) };
+      return { ...base, action: "digits", text: textOf(raw), ...(target ? { target } : {}), ...withCheck };
     case "pickDate":
-      return { ...base, action: "pickDate", date: draft.date ?? { input: draft.input || "date" }, ...(target ? { target } : {}), ...(check ? { check } : {}) };
+      return { ...base, action: "pickDate", date: raw.date ?? raw.datePicker ?? { input: raw.input || "date" }, ...(target ? { target } : {}), ...withCheck };
     case "wait":
-      return { ...base, action: "wait", reason: draft.reason || draft.label || "the page", caption: caption(sentence), ...(draft.ms ? { ms: draft.ms } : {}) };
+      return { ...base, action: "wait", reason: raw.reason || raw.label || "the page", caption: caption(sentence), ...(raw.ms ? { ms: raw.ms } : {}) };
     case "finish":
-      return { ...base, action: "finish", caption: caption(sentence), ...(draft.reason ? { reason: draft.reason } : {}) };
+      return { ...base, action: "finish", caption: caption(sentence), ...(raw.reason ? { reason: raw.reason } : {}) };
     default:
-      return { ...base, action: "note", text: draft.label || "Step", caption: caption(sentence) };
+      return { ...base, action: "note", text: raw.label || action, caption: caption(sentence) };
   }
+}
+
+export function fixtureInput(partial: LooseInput): WorkflowInput {
+  const type = partial.type ?? "text";
+  const secret = type === "secret" || type === "file";
+  const hasDefault = typeof partial.default === "string" && partial.default.length > 0;
+  let supply = partial.supply;
+  if (supply !== "saved" && supply !== "must") {
+    if (secret || partial.required === true || !hasDefault) supply = "must";
+    else supply = "saved";
+  }
+  if (secret) supply = "must";
+  if (supply === "saved" && !hasDefault) supply = "must";
+  return {
+    name: partial.name,
+    type,
+    label: partial.label || partial.name,
+    supply,
+    ...(supply === "saved" && hasDefault ? { default: partial.default } : {}),
+    ...(partial.askOnImport ? { askOnImport: true } : {}),
+    ...(partial.example ? { example: partial.example } : {}),
+    ...(partial.choices ? { choices: partial.choices } : {}),
+    ...(partial.multiple ? { multiple: true } : {}),
+    ...(partial.accept ? { accept: partial.accept } : {}),
+    ...(partial.format ? { format: partial.format } : {}),
+    ...(partial.relative ? { relative: partial.relative } : {}),
+    ...(partial.zone ? { zone: partial.zone } : {}),
+    ...(partial.fromOutput ? { fromOutput: partial.fromOutput } : {}),
+  };
+}
+
+export function fixtureDoc(raw: WorkflowV2): WorkflowV2;
+export function fixtureDoc(raw: Record<string, unknown>): WorkflowV2;
+export function fixtureDoc(raw: WorkflowV2 | Record<string, unknown>): WorkflowV2 {
+  const doc = raw as LooseDoc;
+  const steps = (doc.steps ?? []).map((step, index) => fixtureStep(step as LooseStep, index));
+  const driver = doc.driver === "playwright" || doc.driver === "extension" ? doc.driver : undefined;
+  return {
+    schema: WORKFLOW_SCHEMA_ID,
+    id: doc.id || "wf",
+    name: doc.name || "Workflow",
+    startUrl: doc.startUrl || "https://example.test/",
+    createdAt: doc.createdAt ?? 1,
+    inputs: (doc.inputs ?? []).map((input) => fixtureInput(input as LooseInput)),
+    steps,
+    ...(doc.updatedAt != null ? { updatedAt: doc.updatedAt } : {}),
+    ...(doc.provenance === "fixture" ? { provenance: "fixture" as const } : {}),
+    ...(doc.outputs ? { outputs: doc.outputs } : {}),
+    ...(doc.heal ? { heal: doc.heal } : {}),
+    ...(doc.replayed ? { replayed: true } : {}),
+    ...(doc.readBack ? { readBack: doc.readBack } : {}),
+    ...(doc.precondition ? { precondition: doc.precondition } : {}),
+    ...(doc.summary ? { summary: doc.summary } : {}),
+    ...(doc.intent ? { intent: doc.intent } : {}),
+    ...(doc.inference ? { inference: doc.inference } : {}),
+    ...(driver ? { driver } : {}),
+  };
+}
+
+export function withStep(step: WorkflowStep, patch: object): WorkflowStep {
+  const draft = draftFrom(step);
+  const extra = patch as LooseStep;
+  const merged: LooseStep = { ...draft, ...extra, id: extra.id || step.id, index: extra.index ?? step.index };
+  if (extra.identity || extra.locators || extra.history) delete merged.target;
+  if (extra.label || extra.caption) delete merged.caption;
+  return fixtureStep(merged, merged.index ?? step.index);
+}
+
+export function writeStep(step: WorkflowStep, patch: object): WorkflowStep {
+  const next = withStep(step, patch);
+  for (const key of Object.keys(step)) delete (step as unknown as Record<string, unknown>)[key];
+  return Object.assign(step, next);
+}
+
+function draftFrom(step: WorkflowStep): LooseStep {
+  const view = projectStep(step);
+  return {
+    id: step.id,
+    action: step.action,
+    index: step.index,
+    timeoutMs: step.timeoutMs,
+    caption: step.caption,
+    heal: step.heal,
+    when: step.when,
+    readBack: step.readBack,
+    target: stepTarget(step),
+    identity: view.identity,
+    locators: view.locators,
+    value: view.value,
+    input: view.input,
+    key: view.key,
+    checked: view.checked,
+    sensitive: view.sensitive,
+    check: view.check,
+    text: step.action === "type" || step.action === "select" || step.action === "digits" ? step.text : step.action === "note" ? step.text : undefined,
+    url: step.action === "navigate" ? step.url : undefined,
+    download: step.action === "download" ? step.download : undefined,
+    open: step.action === "open" ? step.open : undefined,
+    extract: step.action === "extract" ? step.extract : undefined,
+    forEach: step.action === "for_each" ? step.forEach : undefined,
+    date: step.action === "pickDate" ? step.date : undefined,
+    file: step.action === "upload" || step.action === "drop" ? step.file : undefined,
+    optional: step.action === "click" ? step.optional : undefined,
+    selection: step.action === "click" ? step.selection : undefined,
+    dialog: step.action === "click" ? step.dialog : undefined,
+    reason: step.action === "wait" || step.action === "finish" ? step.reason : undefined,
+    ms: step.action === "wait" ? step.ms : undefined,
+  };
 }
 
 export function fixtureWorkflow(partial: Partial<WorkflowV2> & Pick<WorkflowV2, "id" | "name" | "steps">): WorkflowV2 {
@@ -122,56 +339,83 @@ export function fixtureWorkflow(partial: Partial<WorkflowV2> & Pick<WorkflowV2, 
   };
 }
 
-export function fixtureInput(partial: Partial<WorkflowInput> & Pick<WorkflowInput, "name" | "type">): WorkflowInput {
-  const saved = partial.supply === "saved" || (partial.supply !== "must" && !!partial.default && partial.type !== "secret" && partial.type !== "file");
-  return {
-    label: partial.label || partial.name,
-    supply: saved ? "saved" : "must",
-    ...partial,
-    supply: partial.supply ?? (saved ? "saved" : "must"),
-  };
+function healOf(value: unknown): "auto" | "ask" | "never" | undefined {
+  return value === "auto" || value === "ask" || value === "never" ? value : undefined;
 }
 
-function targetOf(draft: FixtureDraft): Target | undefined {
-  const locators = draft.locators ?? locatorsFromIdentity(draft.identity);
-  if (!locators?.length && !draft.identity) return undefined;
-  const hint = hintFromIdentity(draft.identity);
+function mapAction(action: string | undefined): WorkflowStep["action"] {
+  if (action === "confirm" || action === "input") return action === "input" ? "type" : "click";
+  if (action === "press") return "key";
+  if (action === "goto") return "navigate";
+  const known: WorkflowStep["action"][] = ["click", "type", "key", "check", "select", "navigate", "verify", "login", "upload", "drop", "extract", "for_each", "note", "download", "open", "digits", "pickDate", "wait", "finish"];
+  return known.includes(action as WorkflowStep["action"]) ? action as WorkflowStep["action"] : "note";
+}
+
+function asIdentity(node: Partial<Identity> | undefined): Identity | undefined {
+  if (!node) return undefined;
+  return { surface: node.surface ?? "dom", role: node.role ?? "unknown", path: node.path ?? [], ...node };
+}
+
+function targetOf(draft: LooseStep): Target | undefined {
+  if (draft.target?.locators?.length || draft.target?.hint) {
+    return {
+      ...draft.target,
+      ...(draft.reveal ? { reveal: draft.reveal } : {}),
+      ...(draft.history ? { history: draft.history } : {}),
+    };
+  }
+  const identity = asIdentity(draft.identity);
+  const locators = draft.locators ?? locatorsFromIdentity(identity);
+  if (!locators?.length && !identity) return draft.history ? { locators: [{ kind: "role", role: "button", name: draft.label || "Click" }], history: draft.history } : undefined;
+  const hint = hintFromIdentity(identity);
   return {
     locators: locators ?? [],
     ...(hint ? { hint } : {}),
     ...(draft.reveal ? { reveal: draft.reveal } : {}),
+    ...(draft.history ? { history: draft.history } : {}),
   };
 }
 
-function textOf(draft: FixtureDraft): TextOf {
+function textOf(draft: LooseStep): TextOf {
+  if (draft.text && typeof draft.text === "object" && ("input" in draft.text || "literal" in draft.text)) return draft.text as TextOf;
   if (draft.input && !draft.literal) return { input: draft.input };
-  return { literal: draft.value ?? draft.text ?? "" };
+  return { literal: draft.value ?? (typeof draft.text === "string" ? draft.text : "") };
 }
 
-function checkOf(draft: FixtureDraft): Check | undefined {
-  const raw = draft.expect ?? draft.postcondition;
+function fileOf(draft: LooseStep): { input: string } | { fromOutput: string } {
+  if (draft.file && typeof draft.file === "object") return draft.file;
+  if (draft.fileFrom) return { fromOutput: draft.fileFrom };
+  return { input: draft.input || "file" };
+}
+
+function checkOf(draft: LooseStep): Check | undefined {
+  if (draft.check) return draft.check;
+  const raw = draft.expect ?? draft.postcondition ?? draft.waitFor;
   if (!raw?.kind) return undefined;
   const timeoutMs = raw.timeoutMs ?? 4000;
   if (raw.kind === "settled") return { kind: "settled", timeoutMs };
-  if (raw.kind === "state" && draft.expect?.state) {
-    const locators = locatorsFromIdentity(raw.identity) ?? targetOf(draft)?.locators ?? [];
-    return { kind: "state", state: draft.expect.state as "checked", locators, timeoutMs };
+  if (raw.kind === "state" && raw.state) {
+    const locators = raw.locators ?? locatorsFromIdentity(asIdentity(raw.identity)) ?? targetOf(draft)?.locators ?? [];
+    return { kind: "state", state: raw.state as "checked", locators, timeoutMs };
   }
   if (raw.kind === "element" || raw.kind === "absent") {
-    return { kind: raw.kind, locators: locatorsFromIdentity(raw.identity) ?? [{ kind: "text", value: raw.match || "item" }], timeoutMs };
+    return { kind: raw.kind, locators: raw.locators ?? locatorsFromIdentity(asIdentity(raw.identity)) ?? [{ kind: "text", value: raw.match || "item" }], timeoutMs };
   }
   if (raw.kind === "text" || raw.kind === "url" || raw.kind === "value") return { kind: raw.kind, match: raw.match || "", timeoutMs };
   return undefined;
 }
 
-function defaultSentence(draft: FixtureDraft): string {
-  if (draft.action === "navigate") return openSentence(draft.url || draft.value);
-  if (draft.action === "type" || draft.action === "select") return typeSentence(draft.identity?.label || draft.identity?.name, draft.sensitive);
-  if (draft.action === "click") return clickSentence(draft.identity?.name || draft.identity?.text || draft.identity?.label);
-  if (draft.action === "key") return `Press ${draft.key || "Enter"}`;
-  if (draft.action === "login") return "Sign in";
-  if (draft.action === "wait") return `Wait ${draft.reason || "the page"}`;
-  if (draft.action === "extract") return `Read ${draft.extract?.as || "the page"}`;
-  if (draft.action === "finish") return draft.reason ? `Finish: ${draft.reason}` : "Finish";
-  return draft.action;
+function sentenceOf(draft: LooseStep, action: WorkflowStep["action"]): string {
+  if (draft.label) return draft.label;
+  if (draft.caption?.text) return draft.caption.text;
+  if (action === "navigate") return openSentence(draft.url || draft.value);
+  if (action === "type" || action === "select") return typeSentence(draft.identity?.label || draft.identity?.name, draft.sensitive);
+  if (action === "click") return clickSentence(draft.identity?.name || draft.identity?.text || draft.identity?.label);
+  if (action === "key") return `Press ${draft.key || "Enter"}`;
+  if (action === "login") return "Sign in";
+  if (action === "wait") return `Wait ${draft.reason || "the page"}`;
+  if (action === "extract") return `Read ${draft.extract?.as || "the page"}`;
+  if (action === "finish") return draft.reason ? `Finish: ${draft.reason}` : "Finish";
+  if (action === "verify") return draft.expect?.match || draft.postcondition?.match ? `Check ${draft.expect?.match || draft.postcondition?.match}` : "Check the page";
+  return action;
 }

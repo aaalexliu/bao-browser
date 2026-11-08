@@ -1,3 +1,4 @@
+import { fixtureDoc } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import path from "node:path";
@@ -11,10 +12,10 @@ test("Workflows reserves native titlebar space and keeps narrow navigation above
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
-    for (let index = 0; index < 60; index++) app.library.save({
+    for (let index = 0; index < 60; index++) app.library.save(fixtureDoc({
       schema: "bao.workflow/v4", version: 2, id: `wf-${index}`, name: `Read statement ${index}`,
       createdAt: index, startUrl: "https://example.test/", inputs: [], steps: [],
-    });
+    }));
     browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
     for (const native of [false, true]) for (const width of [720, 1060, 1061]) for (const theme of ["light", "dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 860 } });

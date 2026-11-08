@@ -1,3 +1,4 @@
+import { fixtureInput, fixtureStep, fixtureDoc } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -32,7 +33,7 @@ test("search excludes retired and fixture workflows while preserving readable re
   try {
     const library = new Library(home);
     const normal = workflow("owner", "Blueberries owner workflow (fixture notes)");
-    const retired = { ...workflow("retired", "Blueberries retired workflow"), driver: "cdp-live" as const };
+    const retired = { ...workflow("retired", "Blueberries retired workflow"), driver: "cdp-live" as unknown as WorkflowV2["driver"] };
     const fixture = { ...workflow("fixture", "Blueberries sample"), provenance: "fixture" as const };
     for (const doc of [normal, retired, fixture]) library.save(doc);
 
@@ -75,7 +76,7 @@ test("remote search preserves local exclusions without document fetches", async 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const library = new Library(home);
-    library.save({ ...documents[1]!, driver: "cdp-live" });
+    library.save({ ...documents[1]!, driver: "cdp-live" as unknown as WorkflowV2["driver"] });
     library.save({ ...documents[2]!, provenance: "fixture" });
     const { port } = server.address() as AddressInfo;
     saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
@@ -394,7 +395,7 @@ test("a passed run stamps last green for search and describe", async () => {
 
 test("a capture-only workflow is not green in search, describe, or run_workflow", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
-  const doc = { ...workflow("wf-recorded", "Recorded workflow"), driver: "cdp-live" as const };
+  const doc = { ...workflow("wf-recorded", "Recorded workflow"), driver: "cdp-live" as unknown as WorkflowV2["driver"] };
   library.save(doc);
   library.saveRun({ id: "recording", kind: "capture", workflowId: doc.id, status: "passed", at: Date.now(), heals: [], steps: [] });
   assert.equal((await describeWorkflow(library, doc.id)).lastGreen, "Not replayed yet");
@@ -420,7 +421,7 @@ for (const driver of [undefined, "extension"] as const) {
 test("describe omits secret defaults and a missing secret does not launch a browser", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
   const doc = workflow("sign-in", "Sign in");
-  doc.inputs.push({ name: "password", type: "secret", label: "Password" });
+  doc.inputs.push(fixtureInput({ name: "password", type: "secret", label: "Password" }));
   library.save(doc);
   const described = await describeWorkflow(library, "sign-in");
   const secret = described.workflow.inputs.find((input) => input.name === "password");
@@ -447,14 +448,14 @@ test("MCP rerun and saved resume require fresh OTP input while keeping local his
   const library = new Library(home);
   const doc = workflow("otp-rerun", "OTP rerun");
   doc.inputs.push(
-    { name: "code", type: "secret", label: "Verification code", default: "123456" },
-    { name: "attachment", type: "file", label: "Attachment" },
+    fixtureInput({ name: "code", type: "secret", label: "Verification code", default: "123456" }),
+    fixtureInput({ name: "attachment", type: "file", label: "Attachment" }),
   );
-  doc.steps.unshift({
+  doc.steps.unshift(fixtureStep({
     id: "code", index: 0, action: "type", label: "Verification code", input: "code", value: "{{code}}",
     surface: "dom", timeoutMs: 0,
     identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login one-time-code", path: [] },
-  });
+  }));
   doc.steps.forEach((step, index) => { step.index = index; });
   library.save(doc);
   library.savePublicInputs(doc.id, { code: "234567", query: "Ada" });
@@ -481,7 +482,7 @@ test("MCP rerun and saved resume require fresh OTP input while keeping local his
   assert.equal(existsSync(path.join(library.root, "chrome-profile")), false);
 });
 
-for (const [driver, reason] of [["cdp-live", CDP_LIVE_SERVER_REFUSAL], ["extension", EXTENSION_NOT_CONNECTED]] as const) {
+for (const [driver, reason] of [["cdp-live" as unknown as WorkflowV2["driver"], CDP_LIVE_SERVER_REFUSAL], ["extension", EXTENSION_NOT_CONNECTED]] as const) {
   test(`run_workflow refuses ${driver} workflows and does not open Bao's Chrome`, async () => {
     const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
     library.save({ ...workflow("wf-driver", "Driver workflow"), driver });
@@ -530,23 +531,23 @@ for (const replaceOnResume of [false, true]) {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     let token = "";
     try {
-      const doc: WorkflowV2 = {
+      const doc: WorkflowV2 = fixtureDoc({
         schema: "bao.workflow/v4", version: 2, id: "otp-live", name: "Live OTP", createdAt: 1,
         startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
-        inputs: [{ name: "code", type: "text", label: "Verification code", default: "123456" }],
+        inputs: [fixtureInput({ name: "code", type: "text", label: "Verification code", default: "123456" })],
         steps: [
-          {
+          fixtureStep({
             id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
             postcondition: { kind: "text", match: "Signed in", timeoutMs: 5000 },
-          },
-          {
+          }),
+          fixtureStep({
             id: "code", index: 1, action: "type", label: "Verification code", surface: "dom", timeoutMs: 5000,
             input: "code", value: "{{code}}",
             identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "one-time-code", path: [] },
             postcondition: { kind: "value", match: "{{code}}", timeoutMs: 5000 },
-          },
+          }),
         ],
-      };
+      });
       library.save(doc);
       const first = await runWorkflow(library, { id: doc.id, inputs: { code: "654321" } });
       token = first.resume_token || "";
@@ -613,7 +614,7 @@ test("a stopped run keeps the saved-values receipt", { timeout: 60_000 }, async 
 });
 
 function clickWorkflow(startUrl: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf-click",
@@ -621,7 +622,7 @@ function clickWorkflow(startUrl: string): WorkflowV2 {
     startUrl,
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "go",
       index: 0,
       action: "click",
@@ -630,8 +631,8 @@ function clickWorkflow(startUrl: string): WorkflowV2 {
       timeoutMs: 5000,
       identity: { surface: "dom", role: "button", testId: "go", text: "Go", path: [] },
       postcondition: { kind: "text", match: "Clicked", timeoutMs: 5000 },
-    }],
-  };
+    })],
+  });
 }
 
 function hit(id: string, source: string, score: number, title: string): SearchHit {
@@ -650,15 +651,15 @@ function hit(id: string, source: string, score: number, title: string): SearchHi
 }
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id,
     name,
     startUrl: "https://example.com",
     createdAt: 1,
-    inputs: [{ name: "query", type: "text", label: "Query" }],
-    steps: [{
+    inputs: [fixtureInput({ name: "query", type: "text", label: "Query" })],
+    steps: [fixtureStep({
       id: "go",
       index: 0,
       action: "key",
@@ -666,6 +667,6 @@ function workflow(id: string, name: string): WorkflowV2 {
       label: `${name} step`,
       surface: "dom",
       timeoutMs: 1000,
-    }],
-  };
+    })],
+  });
 }

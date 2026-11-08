@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -157,7 +158,7 @@ test("a failed action with only viewport movement stays saveable after retry", {
     assert.match(workflow.finish(), /Saved workflow:/);
     const saved = f.library.list().workflows[0]!;
     assert.deepEqual(saved.steps.map((step) => step.action), ["click"]);
-    assert.equal(saved.steps[0]!.identity?.testId, "chosen");
+    assert.equal(projectStep(saved.steps[0]!).identity?.testId, "chosen");
   } finally {
     await context.close();
     await f.close();
@@ -188,8 +189,8 @@ test("native ref capture saves a discoverable workflow that replays with new inp
     assert.equal(workflow.replayed, false);
     assert.deepEqual(workflow.steps.map((step) => step.action), ["navigate", "type", "key", "click"]);
     const clicked = workflow.steps.at(-1)!;
-    assert.equal(clicked.identity?.testId, "chosen");
-    assert.ok(clicked.locators?.some((locator) => locator.kind === "testid" && locator.value === "chosen"));
+    assert.equal(projectStep(clicked).identity?.testId, "chosen");
+    assert.ok(projectStep(clicked).locators?.some((locator) => locator.kind === "testid" && locator.value === "chosen"));
     assert.doesNotMatch(JSON.stringify(workflow), /@e\d+|data-bao-i|nth-of-type/);
     const input = workflow.inputs[0]!;
     assert.equal(input.default, "Ada");
@@ -236,7 +237,7 @@ test("native clicks never substitute a structural ancestor for an unaddressable 
     await passed(f, "click", ["#store-b"]);
     assert.match(await passed(f, "close"), /Saved workflow:/);
     const workflow = f.library.list().workflows[0]!;
-    assert.equal(workflow.steps[0]!.identity?.testId, "store-button");
+    assert.equal(projectStep(workflow.steps[0]!).identity?.testId, "store-button");
     const replay = await f.request("tools/call", { name: "run_workflow", arguments: { id: workflow.id } });
     assert.equal((JSON.parse(text(replay)) as { status: string }).status, "ok", text(replay));
   } finally { await f.close(); }
@@ -264,7 +265,7 @@ test("trial engine finds and replays a saved search fill with a different result
     const workflow = f.library.list().workflows[0]!;
     assert.equal(workflow.driver, "playwright");
     const input = workflow.inputs[0]!;
-    const condition = workflow.steps[0]!.postcondition;
+    const condition = projectStep(workflow.steps[0]!).postcondition;
     assert.ok(condition?.kind === "value");
     assert.equal(condition.match, `{{${input.name}}}`);
     const search = await f.request("tools/call", { name: "search_workflows", arguments: { query: "Browser task" } });
@@ -305,7 +306,7 @@ test("harmless native failures preserve raw failed receipts and save only succes
     assert.match(await passed(f, "close"), /Saved workflow:/);
     const workflow = f.library.list().workflows[0]!;
     assert.deepEqual(workflow.steps.map((step) => step.action), ["click"]);
-    assert.equal(workflow.steps[0]!.identity?.testId, "chosen");
+    assert.equal(projectStep(workflow.steps[0]!).identity?.testId, "chosen");
     const capture = f.library.listRuns()[0]!;
     assert.equal(capture.status, "failed");
     assert.equal((capture.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.isError).length, 2);

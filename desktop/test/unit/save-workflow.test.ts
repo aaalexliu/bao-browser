@@ -1,3 +1,5 @@
+import { projectStep } from "../../src/v1/schema";
+import { fixtureDoc, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -184,7 +186,7 @@ test("a model failure still saves the floor title", async () => {
   assert.equal(named.name, "Reserve a room");
   assert.equal(named.summary, "Reserves a room for tonight.");
   assert.equal(named.intent, "Get a room at the hotel.");
-  assert.equal(named.steps[0]?.intent, "Open the booking page.");
+  assert.equal((named.steps[0] == null ? undefined : projectStep(named.steps[0]).intent), "Open the booking page.");
   assert.equal(named.inference?.status, "ok");
   assert.equal(named.inference?.provider, "grok");
 });
@@ -207,10 +209,10 @@ test("the model prompt and saved titles retain captured values", async () => {
       identity: { surface: "dom", role: "password", name: "Password", path: [] },
     }),
   ], { id: "wf-secret", startUrl: "https://example.com/login" });
-  const leaked: WorkflowV2 = {
+  const leaked: WorkflowV2 = fixtureDoc({
     ...workflow,
-    steps: workflow.steps.map((step) => step.action === "type" ? { ...step, label: `Type ${SECRET}` } : step),
-  };
+    steps: workflow.steps.map((step) => step.action === "type" ? withStep(step, { label: `Type ${SECRET}` }) : step),
+  });
   const prompt = saveIntentPrompt({
     floorTitle: "example.com",
     host: "example.com",
@@ -245,8 +247,8 @@ test("the model prompt and saved titles retain captured values", async () => {
   assert.equal(saved.summary, "Uses code 123456");
   assert.equal(saved.intent, "Sign in to the site.");
   const typed = saved.steps.find((step) => step.action === "type")!;
-  assert.equal(typed.label, `Type ${SECRET}`);
-  assert.equal(typed.value, "{{password}}");
+  assert.equal(projectStep(typed).label, `Type ${SECRET}`);
+  assert.equal(projectStep(typed).value, "{{password}}");
   assert.equal(saved.inputs.find((input) => input.name === "password")!.default, SECRET);
 });
 
@@ -388,7 +390,7 @@ process.stdin.on("end", () => {
     assert.equal(saved.name, "Reserve a room");
     assert.equal(saved.summary, "Books a table through Cursor.");
     assert.equal(saved.intent, "Get a table.");
-    assert.equal(saved.steps[0]?.intent, "Open the booking page.");
+    assert.equal((saved.steps[0] == null ? undefined : projectStep(saved.steps[0]).intent), "Open the booking page.");
     assert.equal(saved.inference?.status, "ok");
     assert.equal(saved.inference?.provider, "cursor");
     assert.equal(saved.inference?.model, "composer-save");
