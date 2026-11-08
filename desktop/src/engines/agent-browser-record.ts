@@ -63,6 +63,7 @@ export class AgentBrowserRun {
   };
   private readonly shots: string;
   private snapshot: string | undefined;
+  private lastSnapshot = "";
   private readonly landmarks = new Map<string, Set<string>>();
 
   constructor(private readonly home: string) {
@@ -99,7 +100,7 @@ export class AgentBrowserRun {
   }
 
   begin(command: string, args: string[]): RecordedAgentBrowserCommand {
-    const spoken = commandSentence(command, args[0], latestSnapshot(this.run.steps));
+    const spoken = commandSentence(command, args[0], this.lastSnapshot || latestSnapshot(this.run.steps));
     const caption: StepCaption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
     const step: RecordedAgentBrowserCommand = {
       id: `command-${this.run.steps.length + 1}`,
@@ -117,6 +118,10 @@ export class AgentBrowserRun {
     context: StepContext = {}): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
+    const snap = step.native.command === "snapshot"
+      ? results.find((result) => result.stdout.includes("[ref="))?.stdout || results.find((result) => result.stderr.includes("[ref="))?.stderr
+      : undefined;
+    if (snap) this.lastSnapshot = snap;
     step.native.isError = results.some((result) => result.exitCode !== 0) || error !== undefined;
     step.status = step.native.isError ? "failed" : "passed";
     if (error !== undefined) {

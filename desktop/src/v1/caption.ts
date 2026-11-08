@@ -108,7 +108,7 @@ export function commandSentence(command: string, arg: string | undefined, snapsh
 function refName(arg: string | undefined, snapshot: string | undefined): string | undefined {
   if (!arg || !snapshot) return undefined;
   const ref = arg.replace(/^@/, "");
-  const line = snapshot.split("\n").find((row) => row.includes(`[ref=${ref}]`));
+  const line = snapshot.split("\n").find((row) => new RegExp(`\\bref=${ref}\\b`).test(row));
   const quoted = line?.match(/"([^\"]+)"/)?.[1]?.trim();
   if (!quoted || isElementRef(quoted) || quoted.startsWith("@e")) return undefined;
   return quoted;
