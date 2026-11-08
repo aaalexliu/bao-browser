@@ -5,7 +5,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test, { type TestContext } from "node:test";
 import { signer } from "../../src/app/doctor";
-import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, type Probe, type SetupIo, type Target } from "../../src/app/setup";
+import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, setupMain, type Probe, type SetupIo, type Target } from "../../src/app/setup";
 
 interface Lab {
   probe: Probe;
@@ -153,4 +153,17 @@ test("the picker keeps every line inside a narrow terminal, so a redraw moves up
   const rows = firstDraw.split("\n").slice(0, -1);
   assert.equal(Number(up[1]), rows.length);
   for (const row of screen.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").split("\n")) assert.ok(row.length < 40, row);
+});
+
+test("setup with --none names the command that runs setup from this shell", async (t) => {
+  const { probe, app, bin } = lab(t);
+  const said = async (): Promise<string> => {
+    const out: string[] = [];
+    const io = { env: probe.env, out: (text: string) => out.push(text), err: (text: string) => out.push(text) } as unknown as SetupIo;
+    assert.equal(await setupMain(["--app", app, "--none"], io, probe), 0);
+    return out.join("");
+  };
+  assert.equal(await said(), "No app was changed. Run `npx bao-browser setup` any time to add Bao to an agent.\n");
+  tool(bin, "bao");
+  assert.equal(await said(), "No app was changed. Run `bao setup` any time to add Bao to an agent.\n");
 });

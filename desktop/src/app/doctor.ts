@@ -140,13 +140,12 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
 export async function doctorMain(argv: readonly string[], io: DoctorIo = { env: process.env, out: (text) => process.stdout.write(text) }): Promise<number> {
   let app: string;
   try {
-    app = parseSetup(argv.filter((arg) => arg !== "--json")).app;
+    app = parseSetup(argv).app;
   } catch (err) {
-    io.out(`${(err as Error).message}\nusage: bao doctor [--app /Applications/Bao.app] [--json]\n`);
+    io.out(`${(err as Error).message}\nusage: bao doctor [--app /Applications/Bao.app]\n`);
     return 1;
   }
   const checks = await doctorChecks(app, defaultProbe(io.env));
-  if (argv.includes("--json")) io.out(`${JSON.stringify(checks, null, 2)}\n`);
-  else for (const check of checks) io.out(`${check.level.padEnd(4)} ${check.name.padEnd(14)} ${check.detail}\n`);
+  for (const check of checks) io.out(`${check.level.padEnd(4)} ${check.name.padEnd(14)} ${check.detail}\n`);
   return checks.some((check) => check.level === "fail") ? 1 : 0;
 }

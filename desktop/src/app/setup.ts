@@ -285,17 +285,14 @@ export function pickInTerminal(targets: readonly Target[], launcher: string, io:
     };
     const onKey = (_text: string | undefined, key: { name?: string; ctrl?: boolean } | undefined): void => {
       const name = key?.name;
-      if (name === "up" || name === "k") at = (at + targets.length - 1) % targets.length;
-      else if (name === "down" || name === "j") at = (at + 1) % targets.length;
+      if (name === "up") at = (at + targets.length - 1) % targets.length;
+      else if (name === "down") at = (at + 1) % targets.length;
       else if (name === "space") {
         if (!targets[at]!.blocked) checked[at] = !checked[at];
-      } else if (name === "a") {
-        const all = targets.every((target, i) => target.blocked || checked[i]);
-        targets.forEach((target, i) => { checked[i] = !target.blocked && !all; });
       } else if (name === "return" || name === "enter") {
         done(targets.filter((_, i) => checked[i]));
         return;
-      } else if (name === "escape" || name === "q" || (key?.ctrl && name === "c")) {
+      } else if (name === "escape" || (key?.ctrl && name === "c")) {
         done(null);
         return;
       } else return;
@@ -417,7 +414,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
     for (const target of targets.filter((item) => item.found && item.blocked)) io.out(`Skipped ${target.label}: it ${target.blocked}.\n`);
   }
   if (!chosen || chosen.length === 0) {
-    io.out("No app was changed. Run `${bao} setup` any time to add Bao to an agent.\n");
+    io.out(`No app was changed. Run \`${bao} setup\` any time to add Bao to an agent.\n`);
     return 0;
   }
   let failed = 0;

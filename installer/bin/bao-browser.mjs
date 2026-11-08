@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(path.join(HERE, "..", "package.json"), "utf8"));
-const USAGE = `usage: npx bao-browser [install] [--dir DIR] [--yes | --agents a,b | --none] [--no-link] [--release FILE_OR_URL]
+const USAGE = `usage: npx bao-browser [install] [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
        npx bao-browser setup|doctor [args]   run the installed Bao's own setup or doctor
 
 install   download Bao.app ${PKG.version}, check it, place it, then pick agents (default)
@@ -23,7 +23,6 @@ install   download Bao.app ${PKG.version}, check it, place it, then pick agents 
 --yes     set up every agent found on this Mac without asking
 --agents  set up these agents: claude-code, codex, claude-desktop, cursor
 --none    install the app and set up no agent
---no-link do not link ~/.local/bin/bao
 --release a release.json (path or URL) instead of the one in this package`;
 
 const bold = (text) => (process.stdout.isTTY ? `\u001b[1m${text}\u001b[0m` : text);
@@ -37,7 +36,7 @@ function home() {
 }
 
 function parse(argv) {
-  const out = { command: "install", dir: "", setup: [], yes: false, link: true, release: "", rest: [] };
+  const out = { command: "install", dir: "", setup: [], yes: false, release: "", rest: [] };
   let i = 0;
   if (argv[0] && !argv[0].startsWith("-")) {
     out.command = argv[0];
@@ -58,7 +57,6 @@ function parse(argv) {
     };
     if (arg === "--dir") out.dir = path.resolve(value());
     else if (arg === "--release") out.release = value();
-    else if (arg === "--no-link") out.link = false;
     else if (arg === "--yes" || arg === "-y" || arg === "--none") {
       out.setup.push(arg);
       if (arg !== "--none") out.yes = true;
@@ -200,7 +198,11 @@ async function replaceSigned(target, old, yes) {
   if (!yes && process.stdin.isTTY && process.stdout.isTTY) {
     const ask = createInterface({ input: process.stdin, output: process.stdout });
     try {
-      if (/^y(es)?$/i.test((await ask.question(`${loss} Replace it? [y/N] `)).trim())) return true;
+      const answer = await new Promise((resolve) => {
+        ask.once("close", () => resolve(""));
+        ask.question(`${loss} Replace it? [y/N] `).then(resolve, () => resolve(""));
+      });
+      if (/^y(es)?$/i.test(answer.trim())) return true;
     } finally {
       ask.close();
     }
@@ -278,8 +280,8 @@ async function install(opts) {
   if (!placed) return 0;
   const { app, signer } = placed;
   step(`Installed ${app} ${dim(`(signed: ${signer})`)}`);
-  const linked = opts.link ? link(app) : { note: "", onPath: false };
-  if (linked.note) step(linked.note);
+  const linked = link(app);
+  step(linked.note);
   step(`Took ${((Date.now() - started) / 1000).toFixed(1)} s. Now pick the agents that should use Bao.\n`);
   const status = runApp(app, ["setup", "--app", app, ...opts.setup]);
   const bao = linked.onPath ? "bao" : "npx bao-browser";
