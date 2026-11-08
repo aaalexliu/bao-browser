@@ -61,6 +61,19 @@ test("the first copy of a repeated name in a flat read stops at the item before 
   assert.equal(describeStep({ command: "click", args: ["@e5"], results: ok("✓ Done\n"), snapshot: header, page }).text, 'Clicked "Edit" (button) for "Barley Tea".');
   assert.equal(describeStep({ command: "fill", args: ["@e5", "2"], results: ok("✓ Done\n"), snapshot: header, page }).text, 'Typed "2" into "Edit" (button) for "Barley Tea".');
   assert.equal(describeStep({ command: "click", args: ["@e7"], results: ok("✓ Done\n"), snapshot: header, page }).text, 'Clicked "Edit" (button) for "Lemon Juice".');
+  const trailing = [
+    "- link \"Subscribe & Save: manage all your deliveries in one place\" [ref=e1]",
+    "- searchbox \"Search subscriptions\" [ref=e2]",
+    "- link \"Barley Tea\" [ref=e3]",
+    "- button \"Edit\" [ref=e4]",
+    "- button \"Skip\" [ref=e5]",
+    "- link \"Lemon Juice\" [ref=e6]",
+    "- button \"Edit\" [ref=e7]",
+    "- button \"Skip\" [ref=e8]",
+  ].join("\n");
+  assert.equal(describeStep({ command: "click", args: ["@e4"], results: ok("✓ Done\n"), snapshot: trailing, page }).text, 'Clicked "Edit" (button) for "Barley Tea".', "a control after the repeated one does not stretch the walk to the header");
+  assert.equal(describeStep({ command: "click", args: ["@e7"], results: ok("✓ Done\n"), snapshot: trailing, page }).text, 'Clicked "Edit" (button) for "Lemon Juice".');
+  assert.equal(describeStep({ command: "click", args: ["@e5"], results: ok("✓ Done\n"), snapshot: trailing, page }).text, 'Clicked "Skip" (button) for "Barley Tea".');
 });
 
 test("a page change that lands after a click's check is not credited to the next step", async () => {

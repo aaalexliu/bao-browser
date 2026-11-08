@@ -104,24 +104,14 @@ export function elementFor(ref: string | undefined, snapshot: string | undefined
   return { role: line.role, name: line.name, ...(context ? { context } : {}) };
 }
 
-/** The longest-named sibling between this element and the previous one with the same name, such as a product title before its "Edit" button. */
+/** The longest-named sibling between this element and the previous one with the same name, such as a product title before its "Edit" button. The first copy takes the position the next copy picks. */
 function neighbor(lines: SnapshotLine[], at: number): string | undefined {
   const line = lines[at]!;
-  const same = (other: SnapshotLine) => other.role === line.role && other.name === line.name;
-  const named: { line: SnapshotLine; seen: number }[] = [];
-  let bounded = false;
-  for (let i = at - 1, seen = 0; i >= 0 && seen < 30; i--) {
-    const other = lines[i]!;
-    if (other.indent < line.indent) break;
-    if (other.indent !== line.indent) continue;
-    seen++;
-    if (same(other)) { bounded = true; break; }
-    if (other.name) named.push({ line: other, seen });
-  }
-  const limit = bounded ? Infinity : period(lines, at) - 1;
-  const best = named.filter((item) => item.seen <= limit)
-    .reduce<SnapshotLine | undefined>((top, item) => !top?.name || item.line.name!.length > top.name.length ? item.line : top, undefined);
-  if (best?.name) return best.name;
+  const own = walk(lines, at);
+  const next = own.bounded ? undefined : nextCopy(lines, at);
+  const offset = next === undefined ? undefined : longest(walk(lines, next).named)?.seen;
+  const best = next === undefined ? longest(own.named) : own.named.find((item) => item.seen === offset);
+  if (best) return best.line.name;
   for (let i = at - 1; i >= 0; i--) {
     const other = lines[i]!;
     if (other.role === "heading" && other.name && other.name !== line.name) return other.name;
@@ -129,17 +119,38 @@ function neighbor(lines: SnapshotLine[], at: number): string | undefined {
   return undefined;
 }
 
-/** Siblings from this element to the next one with the same role and name, or 31 when none follows. */
-function period(lines: SnapshotLine[], at: number): number {
+type Named = { line: SnapshotLine; seen: number };
+
+/** Named siblings before this element, nearest first, stopping at an earlier copy of it. */
+function walk(lines: SnapshotLine[], at: number): { named: Named[]; bounded: boolean } {
+  const line = lines[at]!;
+  const named: Named[] = [];
+  for (let i = at - 1, seen = 0; i >= 0 && seen < 30; i--) {
+    const other = lines[i]!;
+    if (other.indent < line.indent) break;
+    if (other.indent !== line.indent) continue;
+    seen++;
+    if (other.role === line.role && other.name === line.name) return { named, bounded: true };
+    if (other.name) named.push({ line: other, seen });
+  }
+  return { named, bounded: false };
+}
+
+function longest(named: Named[]): Named | undefined {
+  return named.reduce<Named | undefined>((top, item) => !top || item.line.name!.length > top.line.name!.length ? item : top, undefined);
+}
+
+/** The next sibling with the same role and name, within 30 siblings. */
+function nextCopy(lines: SnapshotLine[], at: number): number | undefined {
   const line = lines[at]!;
   for (let i = at + 1, seen = 0; i < lines.length && seen < 30; i++) {
     const other = lines[i]!;
     if (other.indent < line.indent) break;
     if (other.indent !== line.indent) continue;
     seen++;
-    if (other.role === line.role && other.name === line.name) return seen;
+    if (other.role === line.role && other.name === line.name) return i;
   }
-  return 31;
+  return undefined;
 }
 
 function landmarks(snapshot: string | undefined): SnapshotLine[] {
