@@ -89,6 +89,22 @@ test("a click quotes the element's own name and names its item only when the pag
   assert.equal(moved.text, 'Clicked "Search subscriptions" (search box). Now on "Results" (https://shop.example/search).');
 });
 
+test("a long agent value is cut on the card but kept whole in the text sentence", () => {
+  const long = "Great tea. ".repeat(18) + "Would buy again.";
+  assert.equal(long.length, 214);
+  const fill = describeStep({ command: "fill", args: ["@e2", long], results: ok("✓ Done\n"), snapshot: list, page });
+  assert.equal(fill.text, `Typed "${long}" into "Search subscriptions" (search box).`);
+  const value = fill.parts.find((part): part is { value: string } => typeof part === "object" && "value" in part)!.value;
+  assert.ok(value.length <= 61, `card value is ${value.length} characters`);
+  assert.ok(value.endsWith("…"));
+  assert.ok(long.startsWith(value.slice(0, -1)));
+  const url = `https://shop.example/search?q=${"x".repeat(120)}`;
+  const failed = describeStep({ command: "open", args: [url], results: [{ stdout: "", stderr: "✗ net::ERR_NAME_NOT_RESOLVED\n", exitCode: 1 }] });
+  assert.equal(failed.text, `Could not open "${url}".`);
+  const shown = failed.parts.find((part): part is { value: string } => typeof part === "object" && "value" in part)!.value;
+  assert.ok(shown.length <= 61 && shown.endsWith("…"));
+});
+
 test("a page change that lands after a click's check is not credited to the next step", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-describe-"));
   try {

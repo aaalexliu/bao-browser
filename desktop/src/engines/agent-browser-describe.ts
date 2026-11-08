@@ -190,6 +190,11 @@ export function summaryText(parts: readonly SummaryPart[]): string {
   return parts.map((part) => typeof part === "string" ? part : "cite" in part ? `"${part.cite}"` : `"${part.value}"`).join("");
 }
 
+/** The card's copy of the parts: an agent value is cut like an element name. The text sentence keeps it whole. */
+function cardParts(parts: readonly SummaryPart[]): SummaryPart[] {
+  return parts.map((part) => typeof part === "object" && "value" in part ? { value: shortName(part.value) } : part);
+}
+
 function elementParts(element: Element | undefined, arg: string | undefined): SummaryPart[] {
   if (!element) return [arg && !/^@?e\d+$/.test(arg.trim()) ? { cite: arg } : "the element"];
   const head: SummaryPart[] = element.name ? [{ cite: shortName(element.name) }, ` (${roleWord(element.role)})`] : [`the ${roleWord(element.role)}`];
@@ -209,7 +214,7 @@ export function describeStep(facts: StepFacts): StepSummary {
   const failed = facts.error !== undefined || results.some((result) => result.exitCode !== 0);
   const page = facts.page;
   const done = (parts: SummaryPart[], extra = ".", more: Partial<StepSummary> = {}): StepSummary =>
-    ({ parts, text: summaryText(parts) + extra, ...(page ? { page } : {}), ...more });
+    ({ parts: cardParts(parts), text: summaryText(parts) + extra, ...(page ? { page } : {}), ...more });
 
   if (outcome === "halted" || outcome === "waiting") {
     const owner = ownerHandoff(facts.owner, facts.at);
@@ -234,7 +239,7 @@ export function describeStep(facts: StepFacts): StepSummary {
         : command === "press" && args[0] ? [` ${args[0]}`] : [];
     const parts: SummaryPart[] = [`Could not ${verb[command] ?? command}`, ...target];
     // The native error follows in its own block, so the sentence does not repeat it.
-    return { parts, text: `${summaryText(parts)}.`, error, ...(page ? { page } : {}) };
+    return { parts: cardParts(parts), text: `${summaryText(parts)}.`, error, ...(page ? { page } : {}) };
   }
 
   switch (command) {
