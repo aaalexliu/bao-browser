@@ -279,7 +279,7 @@ export async function runWorkflow(
   };
   const given: ReplayArgs = {
     ...reusableInputs(workflow, {
-      ...(request.rerun || resumed ? library.readPublicInputs(id) : {}),
+      ...(request.rerun && !resumed ? library.readPublicInputs(id) : {}),
       ...(resumed?.publicInputs ?? {}),
     }),
     ...(request.inputs ?? {}),
@@ -684,11 +684,14 @@ async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "
   result.ask = live.ask;
   result.reason = reason;
   result.deadline = live.deadline ? formatClock(live.deadline) : "No timeout";
+  const savedValues = savedValueLine(live.workflow, live.inputs);
+  if (savedValues) result.savedValues = savedValues;
   library.saveRun({
     id: live.runId,
     workflowId: live.workflow.id,
     secretInputNames: secretInputNames(live.workflow),
     inputs: Object.fromEntries(Object.entries(publicInputs(live.workflow, live.inputs)).map(([key, value]) => [key, String(value)])),
+    ...(savedValues ? { savedValues } : {}),
     status: status === "timed-out" ? TIMED_OUT_STATUS : "stopped",
     at: Date.now(),
     heals: [],

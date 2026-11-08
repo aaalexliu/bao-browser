@@ -126,7 +126,7 @@ import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolve
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
 import { applyImportAnswers, importQuestions, markImported } from "../../../web/src/lib/import-sheet";
-import { adoptOwnerValues, savedValueLine } from "../v1/saved-inputs";
+import { savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -1210,13 +1210,7 @@ export async function startApp(opts: {
         const browser: RunBrowser | undefined = body.browser === undefined ? undefined : { choice: browserChoice(body.browser), sourceRoot: profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT };
         const saved = library.read(body.id);
         const given = body.args || {};
-        let workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
-        const adoptSubmitted = (): void => {
-          const adopted = adoptOwnerValues(saved, given);
-          if (!adopted) return;
-          library.save(adopted);
-          workflow = body.heal ? { ...adopted, heal: body.heal } : adopted;
-        };
+        const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         if (refusesOwnedBrowser(workflow.driver)) {
           return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
@@ -1242,19 +1236,16 @@ export async function startApp(opts: {
           }
           await releaseSharedProfile({ keepReplays: true });
           if (body.guide) {
-            adoptSubmitted();
             const run = await runGuide(library, workflow, args, replays, prompts);
             return json(res, run);
           }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
           if (workflowDriver(workflow) === "extension") {
             if (!extensionLink?.connected()) return json(res, { error: EXTENSION_NOT_CONNECTED }, 409);
-            adoptSubmitted();
             const run = await runRecorded(library, workflow, args, notices, replays, runId, prompts, undefined, fromStep, extensionLink);
             library.savePublicInputs(workflow.id, keptInputs(workflow, args));
             return json(res, run);
           }
-          adoptSubmitted();
           const run = await runWorkflow(library, workflow, args, notices, replays, runId, prompts, {
             baoProfile,
             sites,

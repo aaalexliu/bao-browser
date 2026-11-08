@@ -122,6 +122,31 @@ test("a prompt past its deadline marks the run stopped, timed out", async () => 
   }
 });
 
+test("a timed-out prompt keeps the saved-values receipt", async () => {
+  const dir = home();
+  const ask = loginAsk("run-saved", Date.now() - 10_000, 1000);
+  writePendingPrompt(dir, prompt(ask));
+  new Library(dir).saveRun({
+    id: ask.runId || "",
+    workflowId: ask.workflowId,
+    status: "paused",
+    at: ask.startedAt,
+    heals: [],
+    steps: [{ id: ask.stepId, status: "paused", label: ask.label }],
+    inputs: { name: "Ada" },
+    savedValues: "Saved values used: name: Ada",
+  });
+  const app = await startApp({ home: dir, port: 0 });
+  try {
+    const run = app.library.readRun("run-saved");
+    assert.equal(run.status, "timed-out");
+    assert.equal(run.savedValues, "Saved values used: name: Ada");
+    assert.equal(run.inputs?.name, "Ada");
+  } finally {
+    await app.close();
+  }
+});
+
 test("an open app expires a restored prompt on the next state read", async () => {
   const dir = home();
   const ask = loginAsk("run-open", Date.now(), 60 * 60 * 1000);

@@ -29,22 +29,3 @@ export function savedValueLine(workflow: WorkflowV2, used: ReplayArgs): string {
   }
   return parts.length ? `Saved values used: ${parts.join(" · ")}` : "";
 }
-
-/** Adopt a submitted value that is not yet the owner's and differs from the imported default. */
-export function adoptOwnerValues(workflow: WorkflowV2, args: ReplayArgs): WorkflowV2 | undefined {
-  if (workflow.imported !== true) return undefined;
-  let changed = false;
-  const inputs = workflow.inputs.map((input) => {
-    if (input.ownerSaved === true || input.type === "file" || oneTimeCodeInput(workflow, input.name)) return input;
-    const value = args[input.name];
-    if (typeof value !== "string" && typeof value !== "number") return input;
-    const text = typeof value === "number" ? String(value) : value;
-    if (!text.trim() || hasStrippedSecret(text) || input.default === text) return input;
-    if (input.type === "number" && text === "0" && !input.default) return input;
-    if (input.type === "date" && text === "today" && !input.default && !input.relative) return input;
-    changed = true;
-    return { ...input, default: text, ownerSaved: true as const };
-  });
-  if (!changed) return undefined;
-  return { ...workflow, inputs, updatedAt: Date.now() };
-}
