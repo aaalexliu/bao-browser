@@ -1,6 +1,6 @@
 # Release Bao
 
-Users install Bao with `npx bao-browser` ([README](../README.md#install)). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
+Users install Bao with the one `npx` command in the [README](../README.md#install). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
 
 ## Pieces
 
@@ -25,10 +25,10 @@ npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browse
 
 A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has any of them, the run stops; publish a new release instead.
 
-A manual run (**Actions → Mac release → Run workflow**) builds the same files and uploads them as the `bao-mac-<sha>` artifact. Its `release.json` names the zip by file name, so it installs from a download folder:
+A manual run (**Actions → Mac release → Run workflow**) builds the same files and uploads them as the `bao-mac-<sha>` artifact. Its `release.json` names the zip by file name, so the latest release's installer installs it from a download folder:
 
 ```sh
-npx bao-browser --release ~/Downloads/bao-mac-<sha>/release.json
+npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz --release ~/Downloads/bao-mac-<sha>/release.json
 ```
 
 The installer package is not on npm yet. The owner decides the npm account, signing, and license first. Publishing would be:

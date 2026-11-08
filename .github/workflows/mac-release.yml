@@ -1,6 +1,6 @@
 name: Mac release
 
-# Builds the prebuilt Bao.app (Apple silicon, Node inside) that `npx bao-browser` installs.
+# Builds the prebuilt Bao.app (Apple silicon, Node inside) that the bao-browser installer installs.
 # A published GitHub release gets Bao-<version>-darwin-arm64.zip, release.json, and the
 # installer as bao-browser.tgz attached, so the latest release installs with
 #   npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz

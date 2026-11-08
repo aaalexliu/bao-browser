@@ -92,7 +92,10 @@ test("the installer places the pinned app, links bao, and hands the picker flags
   assert.equal(readFileSync(path.join(box.home, "bao-cli.log"), "utf8"), `setup --app ${app} --agents codex\n`);
   assert.ok(existsSync(path.join(box.home, "Library", "Caches", "bao", "downloads", "Bao-9.9.1-darwin-arm64.zip")));
   assert.match(run.stdout, /Checked size and SHA-256/);
-  assert.match(run.stdout, /npx bao-browser doctor .* npx bao-browser setup/);
+  const bao = path.join(box.home, ".local", "bin", "bao");
+  assert.ok(run.stdout.endsWith(`Check this install any time: ${bao} doctor   ·   change agents: ${bao} setup\nTo run plain bao, put ~/.local/bin on PATH, then open a new terminal:\n  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc\n`), run.stdout);
+  const onPath = installWith(box, { PATH: `${path.dirname(bao)}:/usr/bin:/bin` }, "--none");
+  assert.ok(onPath.stdout.endsWith("Check this install any time: bao doctor   ·   change agents: bao setup\n"), onPath.stdout);
 });
 
 test("a download that does not match release.json installs nothing", { skip }, (t) => {

@@ -73,9 +73,19 @@ function onPath(probe: Probe, name: string): string {
   return "";
 }
 
-/** How to run bao from this shell: the linked command when it is on PATH, else through npx. */
-export function baoCommand(probe: Probe): string {
-  return onPath(probe, "bao") ? "bao" : "npx bao-browser";
+/** How to run this app's bao from this shell: bao when it is on PATH, else the full path of the installer's link to this app, else the app's own bao-cli. */
+export function baoCommand(probe: Probe, app: string): string {
+  if (onPath(probe, "bao")) return "bao";
+  const cli = path.join(app, "Contents", "MacOS", "bao-cli");
+  const link = path.join(probe.home, ".local", "bin", "bao");
+  let linked = false;
+  try {
+    linked = realpathSync(link) === realpathSync(cli);
+  } catch {
+    // No link, or no bao-cli in this app.
+  }
+  const file = linked ? link : cli;
+  return /^[\w@%+=:,./-]+$/.test(file) ? file : `'${file.replaceAll("'", `'\\''`)}'`;
 }
 
 function appBundle(probe: Probe, name: string): string {
@@ -395,7 +405,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   }
   const targets = detectTargets(probe);
   const others = detectOthers(probe);
-  const bao = baoCommand(probe);
+  const bao = baoCommand(probe, options.app);
   let chosen: Target[] | null | undefined;
   try {
     chosen = chosenByFlags(targets, options);
@@ -405,7 +415,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   }
   if (chosen === undefined) {
     if (!io.stdin.isTTY || !io.stdout.isTTY) {
-      io.out(`No terminal to ask in, so Bao changed no agent config. Run one of these:\n${targets.map((target) => `  ${bao} setup --agents ${target.id}`).join("\n")}\n`);
+      io.out(`No terminal to ask in, so Bao changed no agent config. Run one of these:\n${targets.filter((target) => !target.blocked).map((target) => `  ${bao} setup --agents ${target.id}`).join("\n")}\n`);
       return 0;
     }
     chosen = await pickInTerminal(targets, launcher, io);

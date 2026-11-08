@@ -6,7 +6,8 @@
 # BASE_URL is where the zip will live, such as
 #   https://github.com/aaalexliu/bao-browser/releases/download/v0.2.0
 # Without it, release.json names the zip by file name, and the installer looks for
-# it beside release.json: npx bao-browser --release path/to/release.json
+# it beside release.json:
+#   npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz --release path/to/release.json
 set -euo pipefail
 APP="${1:?usage: make-release-asset.sh path/to/Bao.app OUT_DIR [BASE_URL]}"
 OUT="${2:?usage: make-release-asset.sh path/to/Bao.app OUT_DIR [BASE_URL]}"

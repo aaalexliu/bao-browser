@@ -156,6 +156,15 @@ test("the picker keeps every line inside a narrow terminal, so a redraw moves up
   for (const row of screen.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").split("\n")) assert.ok(row.length < 40, row);
 });
 
+test("with no terminal, setup lists a command for each agent it can set up, not one that would fail", async (t) => {
+  const { probe, app } = lab(t);
+  const out: string[] = [];
+  const io = { env: probe.env, out: (text: string) => out.push(text), err: (text: string) => out.push(text), stdin: { isTTY: false }, stdout: { isTTY: false } } as unknown as SetupIo;
+  assert.equal(await setupMain(["--app", app], io, probe), 0);
+  const bao = path.join(app, "Contents", "MacOS", "bao-cli");
+  assert.equal(out.join(""), `No terminal to ask in, so Bao changed no agent config. Run one of these:\n${["codex", "claude-desktop", "cursor"].map((id) => `  ${bao} setup --agents ${id}`).join("\n")}\n`);
+});
+
 test("setup with --none names the command that runs setup from this shell", async (t) => {
   const { probe, app, bin } = lab(t);
   const said = async (): Promise<string> => {
@@ -164,7 +173,13 @@ test("setup with --none names the command that runs setup from this shell", asyn
     assert.equal(await setupMain(["--app", app, "--none"], io, probe), 0);
     return out.join("");
   };
-  assert.equal(await said(), "No app was changed. Run `npx bao-browser setup` any time to add Bao to an agent.\n");
+  const cli = path.join(app, "Contents", "MacOS", "bao-cli");
+  assert.equal(await said(), `No app was changed. Run \`${cli} setup\` any time to add Bao to an agent.\n`);
+  writeFileSync(cli, "#!/bin/sh\nexit 0\n");
+  const link = path.join(probe.home, ".local", "bin", "bao");
+  mkdirSync(path.dirname(link), { recursive: true });
+  symlinkSync(cli, link);
+  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n`);
   tool(bin, "bao");
   assert.equal(await said(), "No app was changed. Run `bao setup` any time to add Bao to an agent.\n");
 });
