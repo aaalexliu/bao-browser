@@ -213,6 +213,7 @@ export interface ShellState {
   runs?: RunSummary[];
   promotions?: PromotionView[];
   activeRun?: ActiveRun | null;
+  runExecuting?: boolean;
   activeAsk?: HumanAsk | null;
   pendingImport?: ImportPending | null;
   teach?: TeachView;
@@ -370,7 +371,7 @@ export function shellList(screen: Screen, state: ShellState, selectedRun = "", a
       <div class="pane-title"><h1>${place.label}</h1>${place.id === "runs" ? `<p>${available ? needsYouText(shellAttentionCount(state), Boolean(state.runs?.length)) : "Run history unavailable"}</p>` : ""}</div>
       ${place.id === "runs" ? `<button type="button" class="runs-record" data-screen="capture">${icon("record")}Record</button>` : ""}
     </header>
-    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, activeRun: state.activeRun }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
+    ${place.id === "runs" ? available ? runsList(state.runs || [], state.workflows || [], selectedRun, Date.now(), state.activeAsk, state.pendingImport?.phase, { selectedHeal, liveSelected: screen === "live", promotions: state.promotions, activeRun: state.activeRun, runExecuting: state.runExecuting }) : `<p class="run-list-note">Run history is unavailable. Use Retry to reconnect.</p>` : `<nav aria-label="${place.label} screens" class="screen-list">${Object.entries(shellScreens).filter(([, item]) => item.place === place.id).map(([id, item]) => `<button type="button" data-screen="${id}"${id === current ? ` class="on" aria-current="page"` : ""}>
         <span class="screen-name">${id === current ? `<span aria-hidden="true">› </span>` : ""}${item.label}</span>
         <span class="screen-description">${item.description}</span>
       </button>`).join("")}</nav>`}`;
@@ -1900,35 +1901,36 @@ export function runWaitLeft(deadline: number, now = Date.now()): string {
   return Number.isFinite(remaining) ? `${remaining >= 60 ? `${Math.floor(remaining / 60)} h ` : ""}${remaining % 60} min left` : "";
 }
 
-export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; activeRun?: ActiveRun | null } = {}): string {
+export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selectedRun = "", now = Date.now(), ask?: HumanAsk | null, importPhase?: string, selection: { selectedHeal?: { runId: string; healId: string } | null; liveSelected?: boolean; promotions?: PromotionView[]; activeRun?: ActiveRun | null; runExecuting?: boolean } = {}): string {
   const active = selection.activeRun;
+  const live = selection.runExecuting && active ? active : null;
   const attention = runAttention(runs, ask, active);
   const imports = attentionCount({ pendingHeals: 0, importPhase });
   const reviews = reviewItems(runs);
   const count = shellAttentionCount({ runs, activeAsk: ask, activeRun: active, pendingImport: { phase: importPhase } });
   const names = new Map(workflows.map((workflow) => [workflow.id, workflow.name]));
   let selectionShown = false;
-  const row = (run: RunSummary, attentionLabel?: string, kind = run.id === active?.id ? active.phase === "waiting" ? "paused" : "running" : runListKind(run), live = false, healId?: string) => {
-    const selected = !selectionShown && (healId ? selection.selectedHeal?.runId === run.id && selection.selectedHeal.healId === healId : live ? selection.liveSelected : selectedRun === run.id);
+  const row = (run: RunSummary, attentionLabel?: string, kind = live && run.id === live.id ? live.phase === "waiting" ? "paused" : "running" : runListKind(run), openLive = false, healId?: string) => {
+    const selected = !selectionShown && (healId ? selection.selectedHeal?.runId === run.id && selection.selectedHeal.healId === healId : openLive ? selection.liveSelected : selectedRun === run.id);
     if (selected) selectionShown = true;
     const at = runTime(run);
-    const name = names.get(run.workflowId) || (live ? ask?.workflowName : undefined) || runWorkflowName(run, []);
+    const name = names.get(run.workflowId) || (openLive ? ask?.workflowName : undefined) || runWorkflowName(run, []);
     const word = statusLabel(kind);
     const label = attentionLabel || word.charAt(0).toUpperCase() + word.slice(1);
     const when = at === undefined ? "Time unknown" : formatTime(at);
-    const reason = run.id === active?.id && active.phase === "running" ? undefined : (runWaiting(run) ? run.envelope?.ask : undefined) || run.envelope?.reason || run.failure?.reason;
+    const reason = live && run.id === live.id && live.phase === "running" ? undefined : (runWaiting(run) ? run.envelope?.ask : undefined) || run.envelope?.reason || run.failure?.reason;
     const totalSteps = workflows.find((workflow) => workflow.id === run.workflowId)?.steps;
     const stoppedAt = run.failure?.index === undefined ? "" : `Stopped at step ${run.failure.index + 1}${attentionLabel ? "." : totalSteps ? ` of ${totalSteps}` : ""}`;
     const heal = run.heals?.find((item) => healId ? item.id === healId : !run.decisions?.some((decision) => decision.healId === item.id));
     const spoken = plainAgentReason(run);
     const detail = spoken || (kind === "paused" ? reason : kind === "failed" ? stoppedAt || reason : kind === "healed" && heal ? heal.failedStep?.index === undefined ? "Review the repair." : `Step ${heal.failedStep.index + 1} moved.` : reason || runDuration(run));
     const shown = spoken || (detail ? ownerStopText(detail) : "");
-    const deadline = attentionLabel && kind === "paused" && ask && (live || ask.runId === run.id) ? ask.deadline : undefined;
+    const deadline = attentionLabel && kind === "paused" && ask && (openLive || ask.runId === run.id) ? ask.deadline : undefined;
     const promotion = healId ? selection.promotions?.find((item) => item.healId === healId && item.workflowId === run.workflowId) || (run.promotion?.healId === healId ? run.promotion : undefined) : undefined;
     const remaining = promotion?.status === "provisional" ? Math.max(0, (promotion.need ?? DEFAULT_PROMOTE_AFTER) - (promotion.replays ?? 0)) : 0;
     const extra = attentionLabel && kind === "failed" && stoppedAt ? reason : typeof deadline === "number" ? runWaitLeft(deadline, now) : attentionLabel && kind === "paused" && run.envelope?.deadline ? `Waits until ${run.envelope.deadline}` : remaining ? `Kept after ${remaining} more clean run${remaining === 1 ? "" : "s"}` : "";
     const description = `${label}${shown ? ` · ${shown}` : ""}`;
-    return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : live ? `data-open-run="${esc(run.id)}" data-screen="live"` : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
+    return `<li><button type="button" class="run-row${attentionLabel ? " run-pinned" : ""}${selected ? " selected" : ""}" ${healId ? `data-heal="${esc(healId)}" data-run="${esc(run.id)}"` : openLive ? `data-open-run="${esc(run.id)}" data-screen="live"` : `data-open-run="${esc(run.id)}"`} aria-label="${esc(name)}" aria-description="${esc(description)} · ${esc(when)}"${selected ? ` aria-current="true"` : ""}>
       <span class="run-glyph ${esc(kind)}" aria-hidden="true">${runStatusGlyph(kind)}</span>
       <span class="run-name" title="${esc(name)}">${esc(name)}</span><time${at === undefined ? "" : ` title="${esc(formatClock(at))}"`}>${esc(when)}</time>
       <span class="run-meta"><span class="run-state ${esc(kind)}">${esc(label)}</span>${shown ? ` · ${esc(shown)}` : ""}</span>
@@ -1938,9 +1940,9 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   const day = (value: number) => new Date(value).toDateString();
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
   const groups = new Map<string, RunSummary[]>();
-  const isCurrent = (run: RunSummary) => run.id === active?.id || runWaiting(run);
-  const currentRuns = runs.filter(isCurrent).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity));
-  for (const run of [...runs].filter((item) => !isCurrent(item)).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
+  const savedNow = live ? runs.filter((run) => run.id === live.id).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity)) : [];
+  const nowRuns = savedNow.length ? savedNow : live ? [{ id: live.id, workflowId: live.workflowId, status: live.phase === "waiting" ? "paused" : "running", at: live.startedAt }] : [];
+  for (const run of [...runs].filter((item) => item.id !== live?.id).sort((a, b) => (runTime(b) ?? -Infinity) - (runTime(a) ?? -Infinity))) {
     const at = runTime(run);
     const label = at === undefined ? "Date unknown" : day(at) === day(now) ? "Today" : day(at) === day(+yesterday) ? "Yesterday" : new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric", ...(new Date(at).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } : {}) }).format(at);
     const entries = groups.get(label);
@@ -1950,8 +1952,8 @@ export function runsList(runs: RunSummary[], workflows: WorkflowSummary[], selec
   return `<div id="runs" class="runs-list" tabindex="0" aria-label="Run history, newest first">
     <section aria-labelledby="needs-you-heading"><h2 id="needs-you-heading" class="run-group-heading">Needs you <span class="run-count" aria-label="${count} items">${count}</span></h2>
       ${count ? `<ul aria-label="Needs you">${attention.map((item) => row(item.run, item.label, item.kind, item.live, item.kind === "healed" ? item.healId : undefined)).join("")}${imports ? `<li><button type="button" class="run-row" data-screen="logins"><span class="run-glyph paused" aria-hidden="true">${runStatusGlyph("paused")}</span><span class="run-name">Sign-in needs you</span><span class="run-meta">Review the login import</span></button></li>` : ""}${reviews.map((review) => `<li><button type="button" class="run-row" data-screen="library"><span class="run-glyph warning" aria-hidden="true">${runStatusGlyph("warning")}</span><span class="run-name">${esc(review.label)}</span><span class="run-meta">Step needs review after ${review.streak} heals</span></button></li>`).join("")}</ul>` : `<p class="run-list-note">Nothing needs you.</p>`}</section>
-    ${currentRuns.length ? `<section aria-label="Now"><h2 class="run-group-heading">Now</h2><ul>${currentRuns.map((run) => row(run)).join("")}</ul></section>` : ""}
-    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : !runs.length ? `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>` : ""}
+    ${nowRuns.length ? `<section aria-label="Now"><h2 class="run-group-heading">Now</h2><ul>${nowRuns.map((run) => row(run, undefined, undefined, true)).join("")}</ul></section>` : ""}
+    ${groups.size ? [...groups].map(([label, entries]) => `<section aria-label="${esc(label)}"><h2 class="run-group-heading">${esc(label)}</h2><ul>${entries.map((run) => row(run)).join("")}</ul></section>`).join("") : !runs.length && !nowRuns.length ? `<h2 class="run-group-heading">History</h2><p class="run-list-note"><strong>No runs yet</strong><br>When Bao runs a workflow, it shows up here, newest first.</p>` : ""}
   </div>`;
 }
 

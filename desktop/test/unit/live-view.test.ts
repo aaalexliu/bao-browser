@@ -79,6 +79,19 @@ test("live-run output shows recorded progress, local screens and an honest missi
     await page.setContent(liveRunView(waiting({ ...prompt, kind: "wall" }), null, null));
     assert.equal(await page.getByRole("button", { name: "Continue", exact: true }).count(), 1);
     assert.match(await page.locator("#live-steps").innerText(), /unavailable/);
+    await page.setContent(liveRunView({ id: "run-unsaved", workflowId: wf.id, startedAt: 1000, phase: "running", ask: null }, null, wf, 1000));
+    assert.match(await page.locator(".live-state").innerText(), /Running/);
+    assert.equal(await page.getByRole("button", { name: "Continuing" }).count(), 0);
+    assert.equal(await page.getByText("Bao is continuing this run").count(), 0);
+    assert.equal(await page.getByText("Not yet").count(), 0);
+    assert.equal(await page.getByText("No screen captured yet.").count(), 0);
+    assert.equal(await page.getByText("No screens captured yet.").count(), 0);
+    assert.equal(await page.getByText("Steps appear when the run pauses or ends.").count(), 1);
+    assert.equal(await page.getByText("Screens appear when the run pauses or ends.").count(), 2);
+    assert.equal(await page.locator("#live-stop-dialog button[value=cancel]").innerText(), "Keep running");
+    await page.setContent(liveRunView({ id: "run-detail", workflowId: wf.id, startedAt: 1000, phase: "running", ask: prompt }, run, wf, 1000));
+    assert.equal(await page.getByRole("button", { name: "Continuing" }).count(), 1);
+    assert.equal(await page.locator("#live-stop-dialog button[value=cancel]").innerText(), "Keep waiting");
   } finally { await browser.close(); }
 });
 

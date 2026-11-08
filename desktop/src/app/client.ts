@@ -242,6 +242,7 @@ async function loadState(): Promise<void> {
     replaying: state.replaying,
     pending: state.pendingImport,
     activeRun: state.activeRun,
+    runExecuting: state.runExecuting,
     ask: state.activeAsk,
     liveSteps: screen === "live" ? state.runs?.find((run) => run.id === state.activeRun?.id)?.steps : undefined,
     notices: state.notices,
@@ -1996,7 +1997,7 @@ function selectHeal(runId: string, healId: string): void {
 }
 
 function selectRun(id: string, stepId = ""): void {
-  if (state.activeRun?.id === id && state.activeRun.ask && !stepId) {
+  if ((state.runExecuting || state.activeRun?.ask) && state.activeRun?.id === id && !stepId) {
     screen = "live";
     return;
   }

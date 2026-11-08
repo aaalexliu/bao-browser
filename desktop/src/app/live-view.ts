@@ -39,6 +39,7 @@ const chevron = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stro
 export function liveRunView(active: ActiveRun, run?: RunSummary | null, workflow?: WorkflowV2 | null, now = Date.now()): string {
   const ask = active.ask;
   const continuing = active.phase === "running";
+  const unsaved = !run && continuing && !ask;
   const name = ask?.workflowName || workflow?.name || "Running workflow";
   const steps = workflow?.steps || [];
   const results = new Map((run?.steps || []).map((step) => [step.id, step]));
@@ -69,20 +70,20 @@ export function liveRunView(active: ActiveRun, run?: RunSummary | null, workflow
   let location = ask?.site || "";
   try { if (workflow?.startUrl) { const url = new URL(workflow.startUrl); location = url.host + url.pathname; } } catch { /* Keep the ask's site if the workflow has no web URL. */ }
   const deadline = ask?.deadline ? `<span>Bao waits until ${esc(formatTime(ask.deadline))} · <b id="live-wait-left">${esc(runWaitLeft(ask.deadline, now))}</b></span><span class="live-meter" aria-hidden="true"><i style="width:${ask.timeoutMs > 0 ? Math.min(100, Math.max(0, (ask.deadline - now) / ask.timeoutMs * 100)) : 0}%"></i></span>` : `<span>Bao waits for you · no timeout</span>`;
-  const lead = continuing ? "Bao is working through the remaining steps." : ask?.kind === "confirm" ? `Waiting for you to press ${ask.button || "the button"}.` : ownerStopText(ask?.instruction || "");
+  const lead = unsaved ? "This run is running." : continuing ? "Bao is working through the remaining steps." : ask?.kind === "confirm" ? `Waiting for you to press ${ask.button || "the button"}.` : ownerStopText(ask?.instruction || "");
   const continueLabel = ask?.kind === "confirm" ? `I pressed ${ask.button || "the button"}` : ask?.kind === "login" ? "I’m signed in, continue" : "Continue";
-  const currentShot = latest ? `<img src="${esc(latest.src)}" alt="Latest screen from Bao’s Chrome: ${esc(latest.label)}">` : `<p class="live-no-shot">No screen captured yet.</p>`;
+  const currentShot = latest ? `<img src="${esc(latest.src)}" alt="Latest screen from Bao’s Chrome: ${esc(latest.label)}">` : `<p class="live-no-shot">${unsaved ? "Screens appear when the run pauses or ends." : "No screen captured yet."}</p>`;
   return `<section id="live-run" data-run="${esc(active.id)}" data-step="${esc(`${active.id}:${ask?.stepId ?? ""}:${ask?.startedAt ?? ""}`)}" aria-label="Run: ${esc(name)}">
     <p class="live-kicker"><span class="live-state run-glyph ${continuing ? "continuing" : "paused"}">${runStatusGlyph(continuing ? "continuing" : "paused")} ${continuing ? "Running" : "Needs you"}</span>${startedAt != null ? `<span class="live-dot"></span><span>Started ${esc(formatTime(startedAt))}</span>` : ""}${ask ? `<span class="live-dot"></span><span>${continuing ? "Last paused at" : "Paused at"} ${esc(formatTime(ask.startedAt))}</span>` : ""}</p>
     <h1>${esc(name)}</h1><p class="live-lead">${esc(lead)}</p>
     <div class="live-deadline"${continuing ? " hidden" : ""} role="timer" aria-live="off" data-deadline="${ask?.deadline || ""}" data-timeout="${ask?.timeoutMs || 0}">${clockIcon}${deadline}</div>
-    <div class="live-actions"><button id="act-show" class="primary" type="button">${openIcon}Show Bao’s Chrome</button><button id="act-continue" type="button"${continuing ? " disabled" : ""}>${continuing ? "Continuing" : esc(continueLabel)}</button><button id="live-stop" type="button">Stop run…</button></div>
-    <p id="live-action-status" role="status">${continuing ? "Bao is continuing this run" : ""}</p>
-    <div class="live-split"><div><h3>Steps</h3><ol id="live-steps" class="live-progress" aria-label="Step progress">${progress || `<li class="live-loading">Steps are unavailable.</li>`}</ol></div>
+    <div class="live-actions"><button id="act-show" class="primary" type="button">${openIcon}Show Bao’s Chrome</button>${unsaved ? "" : `<button id="act-continue" type="button"${continuing ? " disabled" : ""}>${continuing ? "Continuing" : esc(continueLabel)}</button>`}<button id="live-stop" type="button">Stop run…</button></div>
+    <p id="live-action-status" role="status">${unsaved ? "" : continuing ? "Bao is continuing this run" : ""}</p>
+    <div class="live-split"><div><h3>Steps</h3><ol id="live-steps" class="live-progress" aria-label="Step progress">${unsaved ? `<li class="live-loading">Steps appear when the run pauses or ends.</li>` : progress || `<li class="live-loading">Steps are unavailable.</li>`}</ol></div>
       <figure class="live-preview"><div class="live-shot">${currentShot}</div><figcaption><span class="live-badge"><i aria-hidden="true"></i>Live</span><span>${esc(location)}</span></figcaption></figure></div>
-    <div class="live-screens"><h3>Screens so far</h3><ol id="live-film" style="--n:${Math.max(1, shots.length)}" aria-label="Screens captured during this run">${shots.map((shot) => `<li data-status="${shot.status}"><div class="live-shot"><img src="${esc(shot.src)}" alt="Step ${shot.index + 1}: ${esc(shot.label)}"></div><span class="live-cap"><span class="run-glyph ${shot.status}">${runStatusGlyph(shot.status)}</span>${shot.index + 1}</span></li>`).join("")}</ol>${shots.length ? "" : `<p class="live-empty">No screens captured yet.</p>`}</div>
+    <div class="live-screens"><h3>Screens so far</h3><ol id="live-film" style="--n:${Math.max(1, shots.length)}" aria-label="Screens captured during this run">${shots.map((shot) => `<li data-status="${shot.status}"><div class="live-shot"><img src="${esc(shot.src)}" alt="Step ${shot.index + 1}: ${esc(shot.label)}"></div><span class="live-cap"><span class="run-glyph ${shot.status}">${runStatusGlyph(shot.status)}</span>${shot.index + 1}</span></li>`).join("")}</ol>${shots.length ? "" : `<p class="live-empty">${unsaved ? "Screens appear when the run pauses or ends." : "No screens captured yet."}</p>`}</div>
     <details id="live-run-details"><summary id="live-details-summary">${chevron}Run details</summary><div class="live-code">${inputs.length ? `Inputs: ${inputs.map(([key, value]) => `${esc(key)} = ${esc(value)}`).join(" · ")}<br>` : ""}Driver: Bao’s Chrome (own profile)${run?.modelCalls != null ? ` · ${run.modelCalls} model calls` : ""} · Run ID ${esc(active.id)}</div></details>
-    <dialog id="live-stop-dialog" aria-labelledby="live-stop-title"><h2 id="live-stop-title">Stop this run?</h2><p>Bao stops this run. Anything you already did on the site stays done.</p><form method="dialog"><button value="cancel" type="submit">Keep waiting</button><button value="stop" id="live-stop-confirm" type="submit">Stop run</button></form></dialog>
+    <dialog id="live-stop-dialog" aria-labelledby="live-stop-title"><h2 id="live-stop-title">Stop this run?</h2><p>Bao stops this run. Anything you already did on the site stays done.</p><form method="dialog"><button value="cancel" type="submit">${unsaved ? "Keep running" : "Keep waiting"}</button><button value="stop" id="live-stop-confirm" type="submit">Stop run</button></form></dialog>
   </section>`;
 }
 
