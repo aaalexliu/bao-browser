@@ -1544,6 +1544,7 @@ export async function startApp(opts: {
         }
         if (body.workflow) {
           const next = { ...body.workflow, id, updatedAt: Date.now() };
+          if (library.read(id).driver === "cdp-live") next.driver = "cdp-live";
           const drafted = draftVersion(library, next, "edit");
           return json(res, drafted.document);
         }

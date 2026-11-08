@@ -16,9 +16,9 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
       { name: "password", type: "secret", label: "Password" },
     ],
     steps: [
-      { action: "click", label: "Open", surface: "dom", value: "https://pay.example/checkout" },
-      { action: "click", label: "Save the note", surface: "os" },
-      { action: "confirm", label: "you press Confirm", surface: "dom", gate: "confirm" },
+      { action: "click", caption: { text: "Open" }, target: { hint: { surface: "dom" } } },
+      { action: "click", caption: { text: "Save the note" }, target: { hint: { surface: "ax" } } },
+      { action: "handoff", reason: "owner-press", caption: { text: "you press Confirm" }, target: { hint: { surface: "dom" } } },
     ],
   });
   assert.deepEqual(both.sites, ["https://pay.example"]);
@@ -27,12 +27,12 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
   assert.equal(driverLabel(both.driver), "Browser and computer use");
   assert.equal(both.confirm, true);
   assert.equal(both.submit, false);
-  assert.equal(consequentialCopy(both), "Includes a human confirm step.");
+  assert.equal(consequentialCopy(both), "Includes a button only you press.");
 
   const submit = permissionPreview({
     startUrl: "http://127.0.0.1:9/form",
     inputs: [{ name: "password", label: "Password", type: "secret" }],
-    steps: [{ action: "click", label: "Submit the form", surface: "dom", identity: { surface: "dom", text: "Submit" } }],
+    steps: [{ action: "click", caption: { text: "Submit the form" }, target: { hint: { surface: "dom" }, locators: [{ value: "Submit" }] } }],
   });
   assert.equal(submit.driver, "browser");
   assert.equal(driverLabel(submit.driver), "Browser");
@@ -44,13 +44,13 @@ test("a permissions preview names sites, secrets, the driver, and confirm or sub
   const quiet = permissionPreview({
     startUrl: "https://example.com/search",
     inputs: [],
-    steps: [{ action: "key", label: "Open the fixture", surface: "dom" }],
+    steps: [{ action: "key", caption: { text: "Open the fixture" }, target: { hint: { surface: "dom" } } }],
   });
   assert.equal(quiet.confirm, false);
   assert.equal(quiet.submit, false);
   assert.equal(consequentialCopy(quiet), "Does not press confirm or submit.");
   assert.equal(permissionPreview({
-    steps: [{ action: "click", label: "submission", surface: "ax", value: "not a url" }],
+    steps: [{ action: "click", caption: { text: "submission" }, target: { hint: { surface: "ax" } } }],
   }).driver, "computer-use");
   assert.equal(driverLabel("computer-use"), "Computer use");
   assert.equal(permissionPreview({ startUrl: "https://example.com" }).driver, "browser");
@@ -62,12 +62,13 @@ test("run_workflow installs and runs a marketplace listing without an allow reco
   let submits = 0;
   let approvalRequests = 0;
   const document = {
-    schema: "bao.workflow/v4", version: 2, id: "trust-1", name: "Place Order", createdAt: 1,
+    schema: "bao.workflow/v4", id: "trust-1", name: "Place Order", createdAt: 1,
     get startUrl() { return `${origin}/fixture`; },
     inputs: [],
-    steps: [{ id: "send", index: 0, action: "click", label: "Submit the order", surface: "dom", timeoutMs: 1000,
-      identity: { surface: "dom", role: "button", testId: "send", text: "Place Order", path: [] },
-      expect: { kind: "text", match: "Order placed", timeoutMs: 2000 } }],
+    steps: [{ id: "send", index: 0, action: "click", timeoutMs: 1000,
+      caption: { text: "Click Place Order" },
+      target: { locators: [{ kind: "testid", value: "send" }, { kind: "role", role: "button", name: "Place Order" }], hint: { surface: "dom", role: "button" } },
+      check: { kind: "text", match: "Order placed", timeoutMs: 2000 } }],
   };
   const server = createServer((req, res) => {
     if (req.url === "/fixture") {

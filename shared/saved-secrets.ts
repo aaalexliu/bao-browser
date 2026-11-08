@@ -1,5 +1,5 @@
 import { INPUT_BINDING } from "./bindings";
-import { stepForEach, stepInputName, stepKey, stepQuery, stepValueTemplate } from "../desktop/src/v1/schema";
+import { stepForEach, stepInputName, stepKey, stepQuery, stepTarget, stepValueTemplate } from "./step-read";
 import type { ReplayArgs, WorkflowV2, WorkflowStep } from "../desktop/src/v1/schema";
 
 export const STRIPPED_SECRET = "[secret stripped]";
@@ -25,7 +25,7 @@ export function oneTimeCodeField(value: unknown): boolean {
 export function oneTimeCodeInput(workflow: Pick<WorkflowV2, "steps">, name: string): boolean {
   return workflow.steps.some((step) => {
     const nested = stepForEach(step);
-    if (nested) return oneTimeCodeInput({ steps: nested.steps }, name);
+    if (nested?.steps) return oneTimeCodeInput({ steps: nested.steps as WorkflowStep[] }, name);
     const value = stepValueTemplate(step);
     return oneTimeCodeField(stepQuery(step)) && (stepInputName(step) === name
       || typeof value === "string" && [...value.matchAll(INPUT_BINDING)].some((match) => match[1] === name));
@@ -61,6 +61,7 @@ export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, a
   const input = stepInputName(step);
   const value = stepValueTemplate(step);
   if (hasStrippedSecret(key)) return true;
+  if (step.action === "key" && (step as { sensitive?: boolean }).sensitive && !key) return true;
   const override = input != null && args[input] != null && ["type", "digits", "select"].includes(step.action);
   if (!override && hasStrippedSecret(value)) return true;
   const inputs = new Set<string>();
@@ -74,5 +75,12 @@ export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, a
     const value = args[name] ?? input?.default;
     return input?.type === "table" && tableName === name ? typeof value === "string" && value.trim() === STRIPPED_SECRET : hasStrippedSecret(value);
   })) return true;
+  if ((step.action === "type" || step.action === "digits") && (secretSavedField(stepQuery(step)) || secretSavedField(stepTarget(step)?.hint)) && !hasOwnValue(value)) {
+    return workflow.inputs.some((input) => input.type === "secret" && hasStrippedSecret(args[input.name] ?? input.default) && !hasOwnValue(args[input.name]));
+  }
   return false;
+}
+
+function hasOwnValue(value: unknown): boolean {
+  return typeof value === "string" && value.length > 0 && !hasStrippedSecret(value);
 }

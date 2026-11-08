@@ -415,7 +415,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     const named = identity?.name || identity?.text || identity?.label;
     return {
       id, index, action: "handoff", reason: owner ? "owner-press" : "sign-in", timeoutMs: 8000,
-      ...(owner ? { target } : {}),
+      ...(owner && target.locators.length ? { target } : {}),
       caption: caption(owner ? (named ? `You press ${named}` : "You press the button") : "Sign in", owner ? cite : undefined, owner ? box : undefined),
       ...handoffCheck(observed(event, undefined, false, known, meta.secrets ?? [])),
     };
@@ -439,7 +439,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     return { id, index, action: "verify", timeoutMs: 8000, caption: caption(match ? `Check ${match}` : "Check the page"), check };
   }
   if (event.op === "keypress" || event.op === "key") {
-    const key = event.key || event.value || "Enter";
+    const key = event.key || event.value || (event.sensitive ? "" : "Enter");
     return {
       id, index, action: "key", key, timeoutMs: 8000,
       ...(identity ? { target } : {}),
@@ -494,6 +494,13 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   const name = event.identity?.name || event.identity?.text || event.identity?.label;
+  if (event.gate === "confirm" && event.performed === false) {
+    return {
+      id, index, action: "handoff", reason: "owner-press", timeoutMs: 8000,
+      ...(target.locators.length ? { target } : {}),
+      caption: caption(name ? `You press ${name}` : "You press the button"),
+    };
+  }
   let dialog: { input: string } | undefined;
   if (event.dialogType === "prompt" && event.dialogValue) {
     const input = addInput(inputs, "text", "prompt");

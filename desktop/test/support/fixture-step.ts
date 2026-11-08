@@ -148,6 +148,8 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
     ...(raw.when ? { when: raw.when } : {}),
     ...(heal ? { heal } : {}),
     ...(raw.readBack ? { readBack: raw.readBack } : {}),
+    ...(raw.waitFor ? { waitFor: raw.waitFor } : {}),
+    ...(raw.gone ? { gone: raw.gone } : {}),
   };
   const withCheck = check ? { check } : {};
   switch (action) {
@@ -155,7 +157,10 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
       return {
         ...base,
         action: "click",
-        target: target ?? { locators: [{ kind: "role", role: "button", name: raw.label || "Click" }] },
+        target: {
+          ...(target ?? { locators: [{ kind: "role" as const, role: "button", name: raw.label || "Click" }] }),
+          ...(raw.reveal ? { reveal: raw.reveal } : {}),
+        },
         ...withCheck,
         ...(raw.optional === "dismiss" ? { optional: "dismiss" as const } : {}),
         ...(raw.selection ? { selection: raw.selection } : {}),
@@ -193,10 +198,11 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
         ...base,
         action: "handoff",
         reason,
+        ...(typeof raw.input === "string" ? { input: raw.input } : {}),
         ...(reason === "owner-press" && target ? { target } : {}),
         caption: caption(raw.label || raw.caption?.text || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button")),
         ...withCheck,
-      };
+      } as WorkflowStep;
     }
     case "upload":
     case "drop":
@@ -270,7 +276,7 @@ export function fixtureDoc(raw: Record<string, unknown>): WorkflowV2;
 export function fixtureDoc(raw: WorkflowV2 | Record<string, unknown>): WorkflowV2 {
   const doc = raw as LooseDoc;
   const steps = (doc.steps ?? []).map((step, index) => fixtureStep(step as LooseStep, index));
-  const driver = doc.driver === "playwright" || doc.driver === "extension" ? doc.driver : undefined;
+  const driver = doc.driver === "playwright" || doc.driver === "extension" || doc.driver === "cdp-live" ? doc.driver : undefined;
   return {
     schema: WORKFLOW_SCHEMA_ID,
     id: doc.id || "wf",
@@ -338,7 +344,7 @@ function draftFrom(step: WorkflowStep): LooseStep {
     optional: step.action === "click" ? step.optional : undefined,
     selection: step.action === "click" ? step.selection : undefined,
     dialog: step.action === "click" ? step.dialog : undefined,
-    reason: step.action === "wait" || step.action === "finish" ? step.reason : undefined,
+    reason: step.action === "wait" || step.action === "finish" || step.action === "handoff" ? step.reason : undefined,
     ms: step.action === "wait" ? step.ms : undefined,
   };
 }
@@ -406,7 +412,7 @@ function fileOf(draft: LooseStep): { input: string } | { fromOutput: string } {
 
 function checkOf(draft: LooseStep): Check | undefined {
   if (draft.check) return draft.check;
-  const raw = draft.expect ?? draft.postcondition ?? draft.waitFor;
+  const raw = draft.expect ?? draft.postcondition;
   if (!raw?.kind) return undefined;
   const timeoutMs = raw.timeoutMs ?? 4000;
   if (raw.kind === "settled") return { kind: "settled", timeoutMs };
@@ -415,7 +421,8 @@ function checkOf(draft: LooseStep): Check | undefined {
     return { kind: "state", state: raw.state as "checked", locators, timeoutMs };
   }
   if (raw.kind === "element" || raw.kind === "absent") {
-    return { kind: raw.kind, locators: raw.locators ?? locatorsFromIdentity(asIdentity(raw.identity)) ?? [{ kind: "text", value: raw.match || "item" }], timeoutMs };
+    const locators = raw.locators ?? locatorsFromIdentity(asIdentity(raw.identity)) ?? targetOf(draft)?.locators ?? [{ kind: "text" as const, value: raw.match || "item" }];
+    return { kind: raw.kind, locators, timeoutMs };
   }
   if (raw.kind === "text" || raw.kind === "url" || raw.kind === "value") return { kind: raw.kind, match: raw.match || "", timeoutMs };
   return undefined;

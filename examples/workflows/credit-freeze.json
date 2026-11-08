@@ -1,69 +1,56 @@
 {
-  "schema": "bao.workflow/v2",
-  "version": 2,
+  "schema": "bao.workflow/v4",
   "id": "wf-credit-freeze",
   "name": "Credit freeze",
   "startUrl": "http://127.0.0.1:4787/freeze",
   "createdAt": 1,
   "precondition": { "kind": "url", "match": "/freeze", "phase": "auth" },
   "inputs": [
-    { "name": "username", "type": "text", "label": "Username", "default": "ada" },
-    { "name": "password", "type": "secret", "label": "Password" }
+    { "name": "username", "type": "text", "label": "Username", "supply": "saved", "default": "ada" },
+    { "name": "password", "type": "secret", "label": "Password", "supply": "must" }
   ],
   "steps": [
     {
       "id": "wf-credit-freeze-0",
       "index": 0,
-      "action": "login",
-      "label": "Sign in on the site window",
-      "surface": "dom",
-      "human": true,
-      "input": "password",
-      "value": "{{password}}",
-      "sensitive": true,
+      "action": "handoff",
+      "reason": "sign-in",
       "timeoutMs": 8000,
-      "postcondition": { "kind": "url", "match": "/freeze", "timeoutMs": 8000 }
+      "caption": { "text": "Sign in on the site window" },
+      "check": { "kind": "url", "match": "/freeze", "timeoutMs": 8000 }
     },
     {
       "id": "wf-credit-freeze-1",
       "index": 1,
       "action": "click",
-      "label": "Click Frozen",
-      "surface": "dom",
-      "identity": {
-        "surface": "dom",
-        "role": "radio",
-        "id": "frozen",
-        "nameAttr": "freeze",
-        "path": []
-      },
       "timeoutMs": 4000,
-      "expect": {
+      "caption": { "text": "Click Frozen" },
+      "target": {
+        "locators": [
+          { "kind": "css", "value": "#frozen" },
+          { "kind": "role", "role": "radio", "name": "Frozen" }
+        ],
+        "hint": { "surface": "dom", "role": "radio" }
+      },
+      "check": {
         "kind": "state",
         "state": "checked",
         "timeoutMs": 2000,
-        "identity": {
-          "surface": "dom",
-          "role": "radio",
-          "id": "frozen",
-          "path": []
-        }
+        "locators": [{ "kind": "css", "value": "#frozen" }]
       },
-      "readBack": {
-        "source": "text",
-        "match": "Status: none",
-        "timeoutMs": 2000
-      }
+      "readBack": { "source": "text", "match": "Status: none", "timeoutMs": 2000 }
     },
     {
       "id": "wf-credit-freeze-2",
       "index": 2,
-      "action": "confirm",
-      "label": "Confirm before Apply",
-      "surface": "dom",
-      "identity": { "surface": "dom", "role": "button", "name": "Apply", "path": [] },
-      "human": true,
-      "timeoutMs": 0
+      "action": "handoff",
+      "reason": "owner-press",
+      "timeoutMs": 0,
+      "caption": { "text": "Confirm before Apply" },
+      "target": {
+        "locators": [{ "kind": "role", "role": "button", "name": "Apply" }],
+        "hint": { "surface": "dom", "role": "button", "label": "Apply" }
+      }
     }
   ]
 }
