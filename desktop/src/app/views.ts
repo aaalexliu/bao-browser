@@ -9,7 +9,7 @@ import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatTime, formatWhen } from "../v1/time";
 import { stepTitle } from "../v1/schema";
-import { shotFile, workflowShotName } from "../v1/shots";
+import { shotFile, viewportShotName, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
 import { stepsNeedingReview, type StepReview } from "../v1/triage";
@@ -1595,6 +1595,9 @@ export function workflowDetail(
     const known = meta.shots?.[step.id] || "";
     const captured = `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(workflowShotName(step.id))}`;
     const shot = known || (meta.lastRunId ? `/api/runs/${encodeURIComponent(meta.lastRunId)}/shots/${encodeURIComponent(shotFile(step.id, "after"))}` : captured);
+    const storedBox = step.caption?.targetBox;
+    const viewportShot = storedBox ? `/api/workflows/${encodeURIComponent(doc.id)}/shots/${encodeURIComponent(viewportShotName(step.id))}` : "";
+    const box = storedBox ? `${storedBox.x},${storedBox.y},${storedBox.width},${storedBox.height},${storedBox.viewport.width},${storedBox.viewport.height}` : "";
     const inputName = cardInputName(step);
     const input = inputs.find((item) => item.name === inputName);
     const targetName = cardTargetName(step);
@@ -1614,7 +1617,7 @@ export function workflowDetail(
     return `<section data-step-panel="${esc(step.id)}"${step !== selected ? " hidden" : ""}>
       <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
       <h2>${esc(workflowStepTitle(step, inputs))}</h2>
-      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}></div>
+      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}${viewportShot ? ` data-viewport="${esc(viewportShot)}" data-box="${esc(box)}"` : ""}></div>
       ${step.intent ? `<p>${esc(step.intent)}</p>` : ""}${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
       <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" || step.action === "open" || step.action === "download" ? pageUrl || doc.startUrl || "The saved page" : "No saved target"))}</dd>
         ${input ? `<dt>${inputVerb}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : typeof step.text === "object" && step.text.literal ? `<dt>Value</dt><dd>${esc(step.text.literal)}</dd>` : ""}

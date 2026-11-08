@@ -164,6 +164,7 @@ export interface RunResult {
     endedAt?: number;
     beforeShot?: string;
     afterShot?: string;
+    target?: { rect: { x: number; y: number; width: number; height: number }; viewport: { width: number; height: number } };
     beforeShotError?: string;
     afterShotError?: string;
     triage?: string;
@@ -359,8 +360,9 @@ export async function replay(
     const yieldShot = opts.yieldHuman && !skipReason && step.action === "handoff";
     const before = yieldShot ? { error: "Pictures stay off while you have the page." } : await writeStepShot(driver, opts.shotDir, step, "before");
     const beforeShot = before.ref;
+    const marked = "viewport" in before && before.viewport ? storedShotTarget(step) : undefined;
     const stamp = (patch: RunResult["steps"][number]) => {
-      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error };
+      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error, ...(marked ? { target: marked } : {}) };
     };
     gate.onPause = (ask) => {
       stamp({ id: step.id, status: "paused", reason: ask.kind === "login" ? "sign in" : "confirm" });
@@ -2088,10 +2090,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<{ ref?: string; error?: string }> {
+function storedShotTarget(step: WorkflowStep): NonNullable<RunResult["steps"][number]["target"]> | undefined {
+  const box = step.caption?.targetBox;
+  if (!box || box.viewport.width <= 0 || box.viewport.height <= 0) return undefined;
+  return { rect: { x: box.x, y: box.y, width: box.width, height: box.height }, viewport: box.viewport };
+}
+
+async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<{ ref?: string; error?: string; viewport?: boolean }> {
   if (!dir) return {};
   if (!driver.shot && !driver.pageShot) return { error: "This driver cannot take page pictures." };
   let bytes: Buffer | undefined;
+  let viewport = false;
   try {
     if (process.env.BAO_PROOF_PAGE === "1" && which === "before" && /delete account/i.test(stepTitle(step) || "")) {
       const full = await driver.pageShot?.();
@@ -2100,12 +2109,21 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
         writeFileSync(path.join(dir, "identity.png"), full);
       }
     }
-    bytes = await driver.shot?.({
-      identity: stepQuery(step),
-      action: step.action,
-      label: stepTitle(step),
-    });
-    if (!bytes?.length && driver.pageShot) bytes = await driver.pageShot();
+    if (which === "before" && step.caption?.targetBox && driver.pageShot) {
+      bytes = await driver.pageShot().catch(() => undefined);
+      viewport = !!bytes?.length;
+    }
+    if (!bytes?.length) {
+      bytes = await driver.shot?.({
+        identity: stepQuery(step),
+        action: step.action,
+        label: stepTitle(step),
+      });
+    }
+    if (!bytes?.length && driver.pageShot) {
+      bytes = await driver.pageShot();
+      viewport = !!bytes?.length;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     const reason = /rate.?limit|MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND/i.test(message) ? "Chrome's picture rate limit was reached."
@@ -2122,7 +2140,7 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
     mkdirSync(dir, { recursive: true });
     const name = shotFile(step.id, which, format);
     writeFileSync(path.join(dir, name), bytes);
-    return { ref: name };
+    return { ref: name, viewport };
   } catch {
     return { error: "The picture could not be saved." };
   }

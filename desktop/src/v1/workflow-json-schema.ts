@@ -140,6 +140,7 @@ const column = {
   required: ["name", "type", "read"],
   properties: {
     name,
+    label: { type: "string" },
     type: { enum: ["text", "number", "url"] },
     read: { enum: ["text", "href", "src", "value", "title", "rating"] },
     locators: { type: "array", items: locator },

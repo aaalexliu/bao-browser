@@ -2613,15 +2613,31 @@ async function stepCrops(runId: string): Promise<Record<string, string>> {
   return shots;
 }
 
+function placeShotBox(host: HTMLElement, box: string): void {
+  host.querySelectorAll(".shot-box").forEach((mark) => mark.remove());
+  if (!box) return;
+  const [x, y, width, height, viewW, viewH] = box.split(",").map(Number);
+  if (![x, y, width, height, viewW, viewH].every((n) => Number.isFinite(n)) || viewW <= 0 || viewH <= 0 || width <= 0 || height <= 0) return;
+  const mark = document.createElement("div");
+  mark.className = "shot-box";
+  mark.setAttribute("aria-hidden", "true");
+  mark.style.left = `${x / viewW * 100}%`;
+  mark.style.top = `${y / viewH * 100}%`;
+  mark.style.width = `${width / viewW * 100}%`;
+  mark.style.height = `${height / viewH * 100}%`;
+  host.append(mark);
+}
+
 function mountShots(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>("[data-shot]").forEach((node) => {
     if (node.dataset.shotMounted === "1") return;
     node.dataset.shotMounted = "1";
     const primary = node.dataset.shot || "";
     const fallback = node.dataset.shotFallback || "";
-    const load = (src: string, next?: string) => {
+    const viewport = node.dataset.viewport || "";
+    const load = (src: string, next?: string, framed = false) => {
       if (!src) {
-        if (next) load(next);
+        if (next) load(next, framed ? fallback : undefined, false);
         return;
       }
       const img = new Image();
@@ -2629,14 +2645,15 @@ function mountShots(root: ParentNode = document): void {
       img.onload = () => {
         if (!node.isConnected) return;
         if (img.naturalWidth === 96 && img.naturalHeight === 54) {
-          if (next) load(next);
+          if (next) load(next, framed ? fallback : undefined, false);
           return;
         }
         node.classList.add("has-shot");
         node.prepend(img);
+        placeShotBox(node, framed ? node.dataset.box || "" : "");
       };
       img.onerror = () => {
-        if (next) load(next);
+        if (next) load(next, framed ? fallback : undefined, false);
       };
       img.src = src;
     };
@@ -2672,7 +2689,8 @@ function mountShots(root: ParentNode = document): void {
       });
       return;
     }
-    load(primary, fallback);
+    if (viewport) load(viewport, primary, true);
+    else load(primary, fallback);
   });
 }
 
@@ -2707,23 +2725,7 @@ function mountStage(stage: HTMLElement): void {
   stage.prepend(img);
   img.src = url;
   stage.querySelectorAll(".browser-mark").forEach((mark) => mark.remove());
-  if (which === "before" && stage.dataset.box) {
-    const [x, y, width, height, viewW, viewH] = stage.dataset.box.split(",").map(Number);
-    if ([x, y, width, height, viewW, viewH].every((n) => Number.isFinite(n)) && viewW > 0 && viewH > 0 && width > 0 && height > 0) {
-      const mark = document.createElement("div");
-      mark.className = "browser-mark";
-      mark.setAttribute("aria-hidden", "true");
-      mark.style.left = `${x / viewW * 100}%`;
-      mark.style.top = `${y / viewH * 100}%`;
-      mark.style.width = `${width / viewW * 100}%`;
-      mark.style.height = `${height / viewH * 100}%`;
-      const name = stage.querySelector(".ph-label")?.textContent || "";
-      const span = document.createElement("span");
-      span.textContent = name;
-      mark.append(span);
-      stage.append(mark);
-    }
-  }
+  placeShotBox(stage, which === "before" ? stage.dataset.box || "" : "");
 }
 
 document.addEventListener("keydown", (event) => {
