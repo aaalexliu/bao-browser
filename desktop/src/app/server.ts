@@ -1225,7 +1225,7 @@ export async function startApp(opts: {
           const running = view();
           const ownedWait = running.activeRun?.phase === "waiting" && running.ownedRunId === running.activeRun.id;
           return json(res, {
-            error: !body.guide && ownedWait
+            error: ownedWait
               ? "Another run is waiting for you. Finish or stop it first."
               : "Another run is still going. Finish or stop it first.",
           }, 409);

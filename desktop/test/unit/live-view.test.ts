@@ -428,6 +428,57 @@ test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60
   }
 });
 
+test("Guide me during an owned wait says the run is waiting", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gwait");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let owned = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "waiting" && state.replaying && state.runExecuting && state.activeRun.id) {
+        owned = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(owned);
+    const refused = await fetch(`${base}/api/replay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: wf.id, args: {}, guide: true }),
+    });
+    const body = await refused.json() as { error?: string };
+    assert.equal(refused.status, 409);
+    assert.equal(body.error, "Another run is waiting for you. Finish or stop it first.");
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, owned);
+    assert.equal(after.activeRun?.phase, "waiting");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+  } finally {
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-run-identity");
   process.env.BAO_DRIVE = "1";
