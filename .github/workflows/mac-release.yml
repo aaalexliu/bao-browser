@@ -31,8 +31,14 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - name: Install packages
-        run: npm ci
+        # The desktop TypeScript build also compiles web/src, which needs web's packages.
+        run: |
+          npm ci
+          npm --prefix web ci
       - name: Pick the version and download URL
         id: release
         env:
