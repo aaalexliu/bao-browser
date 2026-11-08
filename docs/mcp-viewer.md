@@ -29,7 +29,7 @@ The same resource renders direct-browser results without changing native command
 |---|---|
 | open, snapshot, click, fill, press, scroll, tab, screenshot, close | The page picture with the target boxed. Click and fill box the target on the **Before click** or **Before typing** picture. A read boxes the first heading or dialog that no earlier read of that page showed since the last `open`. Other steps show the page after the step. |
 | A failed step | The latest earlier picture as **Last seen** and the page after the failure as **Now**, then the native error. The sentence names the step; the native error follows it once. **Last seen** boxes the target only when Bao measured it before the command; an unknown ref gets no box. |
-| An owner wait | The sign-in or check request, with the page title, address, and time waited. No picture: Bao keeps none of sign-in and check pages. |
+| An owner wait | The sign-in or check request, with the page title, address, and how long the owner has kept the agent waiting since the handoff started. No picture: Bao keeps none of sign-in and check pages. |
 | `finish_task` | The agent's outcome and reason, its optional `done` list, and the step counts and duration. |
 
 Only the box goes on the picture; its label, such as **Clicked**, sits in the caption under the picture after an orange key, so no label covers the page text around the target. The box identifies the action; it does not claim that the site finished its work. Take a later snapshot to check the result.

@@ -49,6 +49,38 @@ test("a click quotes the element's own name and adds a neighbor when the page re
   assert.equal(moved.text, 'Clicked "Search subscriptions" (search box). Now on "Results" (https://shop.example/search).');
 });
 
+test("the first copy of a repeated name in a flat read stops at the item before it, not a page header", () => {
+  const header = [
+    "- link \"Subscribe & Save: manage all your deliveries in one place\" [ref=e1]",
+    "- searchbox \"Search subscriptions\" [ref=e2]",
+    "- button \"Barley Tea\" [ref=e4]",
+    "- button \"Edit\" [ref=e5]",
+    "- button \"Lemon Juice\" [ref=e6]",
+    "- button \"Edit\" [ref=e7]",
+  ].join("\n");
+  assert.equal(describeStep({ command: "click", args: ["@e5"], results: ok("✓ Done\n"), snapshot: header, page }).text, 'Clicked "Edit" (button) for "Barley Tea".');
+  assert.equal(describeStep({ command: "fill", args: ["@e5", "2"], results: ok("✓ Done\n"), snapshot: header, page }).text, 'Typed "2" into "Edit" (button) for "Barley Tea".');
+  assert.equal(describeStep({ command: "click", args: ["@e7"], results: ok("✓ Done\n"), snapshot: header, page }).text, 'Clicked "Edit" (button) for "Lemon Juice".');
+});
+
+test("a page change that lands after a click's check is not credited to the next step", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-describe-"));
+  try {
+    const run = new AgentBrowserRun(home);
+    const next = { url: "https://shop.example/edit", title: "Edit subscription" };
+    const noPicture = async () => { throw new Error("no picture"); };
+    const click = run.begin("click", ["@e5"]);
+    await run.complete(click, ok("✓ Done\n"), home, noPicture, undefined, false, { previousPage: page, page });
+    assert.equal(click.summary!.text, "Clicked the element.");
+    const press = run.begin("press", ["Escape"]);
+    await run.complete(press, ok("✓ Done\n"), home, noPicture, undefined, false, { previousPage: next, page: next });
+    assert.equal(press.summary!.text, "Pressed Escape.");
+    const away = run.begin("press", ["Enter"]);
+    await run.complete(away, ok("✓ Done\n"), home, noPicture, undefined, false, { previousPage: next, page });
+    assert.equal(away.summary!.text, 'Pressed Enter. Now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
 test("each command gets a plain sentence, and failures keep the native error", () => {
   const text = (command: string, args: string[], stdout = "✓ Done\n") => describeStep({ command, args, results: ok(stdout), snapshot: list, page }).text;
   assert.equal(text("open", ["https://shop.example/subscriptions"], "✓ Manage Your Deliveries\n  https://shop.example/subscriptions\n"), 'Went to https://shop.example/subscriptions ("Manage Your Deliveries").');
@@ -72,6 +104,12 @@ test("owner waits name the site and page, and the return names where Bao is now"
   const check = describeStep({ command: "open", args: ["https://shop.example"], results: ok(JSON.stringify({ outcome: "halted" })), owner: { url: "https://shop.example/", title: "Just a moment..." } });
   assert.match(check.text, /^Your turn: clear the check on shop\.example in Bao's Chrome window\./);
   const ready = describeStep({ command: "wait_for_owner", args: [], results: ok(JSON.stringify({ outcome: "ready" })), page });
+  const since = Date.UTC(2026, 10, 8, 8, 0, 0);
+  const later = describeStep({ command: "wait_for_owner", args: ["60000"], results: ok(JSON.stringify({ outcome: "waiting" })), owner: { ...owner, since }, at: since + 245_000 });
+  assert.equal(later.text, 'Your turn: sign in to amazon.com in Bao\'s Chrome window. The page is "Amazon Sign-In" (https://www.amazon.com/ap/signin?openid=1), waiting 4:05. Bao reads only the title and address until the page changes.');
+  assert.equal(later.owner?.waitedMs, 245_000);
+  const halted = describeStep({ command: "click", args: ["@e5"], results: ok(JSON.stringify({ outcome: "halted" })), owner: { ...owner, since }, at: since + 61_000 });
+  assert.match(halted.text, /, waiting 1:01\. /, "a halted step counts from the same handoff start");
   assert.equal(ready.text, 'Back from sign-in: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
 });
 

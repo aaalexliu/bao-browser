@@ -303,7 +303,7 @@ function viewerMain(): void {
       const line = el("p", undefined, "muted");
       if (card.owner.title) line.append(el("q", card.owner.title, "cite"), " · ");
       line.append(el("span", card.owner.url, "mono"));
-      if (card.owner.waitedMs !== undefined) line.append(` · waited ${clock(card.owner.waitedMs)}`);
+      if (card.owner.waitedMs !== undefined) line.append(` · waiting ${clock(card.owner.waitedMs)}`);
       body.append(line);
     } else if (card.page?.url) body.append(el("p", card.page.url, "mono"));
     if (card.status === "waiting") body.append(el("p", "Bao keeps no picture of this page. It reads only the title and address until the page changes.", "muted"));

@@ -539,7 +539,7 @@ test("a host that forwards only content and isError still draws each step's card
   await f.recording.complete(missed, unknown, f.home, async () => png, undefined, false, { page: cart });
   const wait = f.recording.begin("wait_for_owner", ["60000"]);
   const waiting = [{ stdout: JSON.stringify({ outcome: "waiting", instruction: "Keep waiting" }), stderr: "", exitCode: 0 }];
-  await f.recording.complete(wait, waiting, f.home, async () => png, undefined, true, { owner: { url: "https://shop.example/signin", title: "Sign in to Shop" } });
+  await f.recording.complete(wait, waiting, f.home, async () => png, undefined, true, { owner: { url: "https://shop.example/signin", title: "Sign in to Shop", since: wait.startedAt - 240_000 } });
   f.recording.finish({ outcome: "passed", reason: "Added blueberries to the cart.", done: ["Added blueberries"] });
   const steps = f.recording.steps;
   const results = [
@@ -550,7 +550,7 @@ test("a host that forwards only content and isError still draws each step's card
   assert.equal(results[0]!.content[0]!.text, 'Clicked "Add blueberries" (button).');
   assert.equal(results[1]!.content[0]!.text, "Could not click the element.");
   assert.deepEqual(results[1]!.content.slice(1, -1).map((block) => block.text), ["✗ Unknown ref: e9\n"], "the native error appears once, after the sentence");
-  assert.match(results[2]!.content[0]!.text, /^Your turn: sign in to shop\.example in Bao's Chrome window\. The page is "Sign in to Shop"/);
+  assert.match(results[2]!.content[0]!.text, /^Your turn: sign in to shop\.example in Bao's Chrome window\. The page is "Sign in to Shop" \(https:\/\/shop\.example\/signin\), waiting 4:00\./);
 
   const page = await browser.newPage({ viewport: { width: 560, height: 900 } });
   await mountViewer(page, { theme: "light" });
@@ -580,6 +580,7 @@ test("a host that forwards only content and isError still draws each step's card
   await forward(results[2]!);
   await answer(2);
   await page.locator(".browser-wait").getByText("Sign in to Shop", { exact: true }).waitFor();
+  assert.match(await page.locator(".browser-wait p.muted").first().textContent() ?? "", / · waiting 4:00$/, "the card counts from the handoff start, not this one call");
   assert.equal(await page.locator(".browser-status").textContent(), "Waiting for you");
   assert.equal(await page.locator("img").count(), 0);
 

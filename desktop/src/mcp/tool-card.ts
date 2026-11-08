@@ -1,5 +1,5 @@
 import type { OwnerPage } from "../cdp-live/owner-wait";
-import { describeStep, ownerOutcome, type OwnerHandoff, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
+import { describeStep, ownerOutcome, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
 import type { AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { StoredRun } from "../v1/store";
@@ -38,7 +38,7 @@ export interface BrowserToolCard {
   /** For a failed step: the latest earlier picture, boxed only when Bao measured the target. */
   lastSeen?: CardPicture;
   error?: string;
-  owner?: OwnerHandoff & { waitedMs?: number };
+  owner?: OwnerHandoff;
   finish?: FinishSummary;
 }
 
@@ -71,7 +71,7 @@ function latestPicture(steps: readonly Partial<RecordedAgentBrowserCommand>[], e
 
 /** The card for one recorded step. The same function serves the tool result and the app's later read. */
 export function stepCard(runId: string | null, step: RecordedAgentBrowserCommand | undefined, options: {
-  command: string; args?: readonly string[]; results: readonly AgentBrowserCommandResult[]; error?: string; owner?: OwnerPage;
+  command: string; args?: readonly string[]; results: readonly AgentBrowserCommandResult[]; error?: string; owner?: OwnerWaitPage;
   steps?: readonly Partial<RecordedAgentBrowserCommand>[]; lastPicture?: StepEvidence["lastPicture"];
 }): BrowserToolCard {
   const { command, results } = options;
@@ -82,8 +82,7 @@ export function stepCard(runId: string | null, step: RecordedAgentBrowserCommand
   const base = { command, status, caption: summary.text, parts: summary.parts, runId, stepId: step?.id ?? null,
     ...(summary.mark ? { mark: summary.mark } : {}), ...(summary.page ? { page: summary.page } : {}) } as const;
   if (outcome) {
-    const owner = summary.owner ? { ...summary.owner, ...(command === "wait_for_owner" && step?.endedAt ? { waitedMs: Math.max(0, step.endedAt - step.startedAt) } : {}) } : undefined;
-    return { ...base, style: outcome === "closed" ? "text" : "wait", picture: unavailable("Bao keeps no picture of sign-in and check pages."), ...(owner ? { owner } : {}) };
+    return { ...base, style: outcome === "closed" ? "text" : "wait", picture: unavailable("Bao keeps no picture of sign-in and check pages."), ...(summary.owner ? { owner: summary.owner } : {}) };
   }
   const steps = options.steps ?? [];
   const index = step ? steps.findIndex((candidate) => candidate.id === step.id) : -1;
@@ -151,12 +150,12 @@ function nativeBlocks(results: readonly AgentBrowserCommandResult[]): { type: "t
 
 /** The sentence that leads every agent_browser result, in MCP Apps hosts and text-only clients alike. */
 export function stepSentence(command: string, results: readonly AgentBrowserCommandResult[], evidence?: StepEvidence, error?: string,
-  options: { args?: readonly string[]; owner?: OwnerPage } = {}): string {
+  options: { args?: readonly string[]; owner?: OwnerWaitPage } = {}): string {
   return evidence?.step.summary?.text ?? describeStep({ command, args: options.args ?? [], results, error, owner: options.owner }).text;
 }
 
 export function browserToolResult(command: string, results: AgentBrowserCommandResult[],
-  evidence?: StepEvidence, activeRunId?: string, error?: string, options: { args?: readonly string[]; owner?: OwnerPage } = {}) {
+  evidence?: StepEvidence, activeRunId?: string, error?: string, options: { args?: readonly string[]; owner?: OwnerWaitPage } = {}) {
   const runId = evidence?.runId ?? activeRunId ?? null;
   const card = stepCard(runId, evidence?.step, { command, args: options.args, results, error, owner: options.owner, steps: evidence?.steps, lastPicture: evidence?.lastPicture });
   return {

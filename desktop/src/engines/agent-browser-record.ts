@@ -4,7 +4,7 @@ import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
-import { describeStep, landmarkKeys, type StepSummary } from "./agent-browser-describe";
+import { describeStep, landmarkKeys, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
 type Viewport = { width: number; height: number };
@@ -12,7 +12,9 @@ type Viewport = { width: number; height: number };
 /** What the proxy learned around a command: Chrome's page metadata and a box measured for a read. */
 export interface StepContext {
   page?: OwnerPage;
-  owner?: OwnerPage;
+  /** Chrome's page just before the command ran. */
+  previousPage?: OwnerPage;
+  owner?: OwnerWaitPage;
   mark?: ShotBox;
 }
 
@@ -58,7 +60,6 @@ export class AgentBrowserRun {
   };
   private readonly shots: string;
   private snapshot: string | undefined;
-  private page: OwnerPage | undefined;
   private readonly landmarks = new Map<string, Set<string>>();
 
   constructor(private readonly home: string) {
@@ -115,7 +116,7 @@ export class AgentBrowserRun {
     }
     step.summary = describeStep({
       command: step.native.command, args: step.native.args, results, error: step.native.error,
-      snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: this.page, owner: context.owner,
+      snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: context.previousPage, owner: context.owner, at: step.endedAt,
     });
     if (step.native.command === "open" && !step.native.isError) this.landmarks.clear();
     const read = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;
@@ -128,7 +129,6 @@ export class AgentBrowserRun {
         this.landmarks.set(key, seen);
       }
     }
-    if (context.page) this.page = context.page;
     this.persist();
     if (privatePage) {
       step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";

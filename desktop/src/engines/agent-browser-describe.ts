@@ -11,7 +11,12 @@ export interface OwnerHandoff {
   site: string;
   url: string;
   title: string;
+  /** Time since the handoff started, when Bao knows that start. */
+  waitedMs?: number;
 }
+
+/** A sign-in or check page, with the time Bao first stopped for it. */
+export type OwnerWaitPage = OwnerPage & { since?: number };
 
 export interface StepSummary {
   parts: SummaryPart[];
@@ -36,7 +41,9 @@ export interface StepFacts {
   seen?: ReadonlySet<string>;
   page?: OwnerPage;
   previousPage?: OwnerPage;
-  owner?: OwnerPage;
+  owner?: OwnerWaitPage;
+  /** When the step ended. Defaults to now. */
+  at?: number;
 }
 
 interface SnapshotLine {
@@ -100,21 +107,39 @@ export function elementFor(ref: string | undefined, snapshot: string | undefined
 /** The longest-named sibling between this element and the previous one with the same name, such as a product title before its "Edit" button. */
 function neighbor(lines: SnapshotLine[], at: number): string | undefined {
   const line = lines[at]!;
-  let best: SnapshotLine | undefined;
+  const same = (other: SnapshotLine) => other.role === line.role && other.name === line.name;
+  const named: { line: SnapshotLine; seen: number }[] = [];
+  let bounded = false;
   for (let i = at - 1, seen = 0; i >= 0 && seen < 30; i--) {
     const other = lines[i]!;
     if (other.indent < line.indent) break;
     if (other.indent !== line.indent) continue;
     seen++;
-    if (other.role === line.role && other.name === line.name) break;
-    if (other.name && (!best?.name || other.name.length > best.name.length)) best = other;
+    if (same(other)) { bounded = true; break; }
+    if (other.name) named.push({ line: other, seen });
   }
+  const limit = bounded ? Infinity : period(lines, at) - 1;
+  const best = named.filter((item) => item.seen <= limit)
+    .reduce<SnapshotLine | undefined>((top, item) => !top?.name || item.line.name!.length > top.name.length ? item.line : top, undefined);
   if (best?.name) return best.name;
   for (let i = at - 1; i >= 0; i--) {
     const other = lines[i]!;
     if (other.role === "heading" && other.name && other.name !== line.name) return other.name;
   }
   return undefined;
+}
+
+/** Siblings from this element to the next one with the same role and name, or 31 when none follows. */
+function period(lines: SnapshotLine[], at: number): number {
+  const line = lines[at]!;
+  for (let i = at + 1, seen = 0; i < lines.length && seen < 30; i++) {
+    const other = lines[i]!;
+    if (other.indent < line.indent) break;
+    if (other.indent !== line.indent) continue;
+    seen++;
+    if (other.role === line.role && other.name === line.name) return seen;
+  }
+  return 31;
 }
 
 function landmarks(snapshot: string | undefined): SnapshotLine[] {
@@ -163,11 +188,18 @@ export function ownerOutcome(results: readonly AgentBrowserCommandResult[]): str
   } catch { return undefined; }
 }
 
-export function ownerHandoff(page: OwnerPage | undefined): OwnerHandoff | undefined {
+export function ownerHandoff(page: OwnerWaitPage | undefined, at = Date.now()): OwnerHandoff | undefined {
   if (!page) return undefined;
   let site = page.url;
   try { site = new URL(page.url).hostname.replace(/^www\./, ""); } catch {}
-  return { kind: ownerWall(page) === "bot_wall" ? "check" : "sign-in", site, url: page.url, title: page.title };
+  return { kind: ownerWall(page) === "bot_wall" ? "check" : "sign-in", site, url: page.url, title: page.title,
+    ...(page.since !== undefined ? { waitedMs: Math.max(0, at - page.since) } : {}) };
+}
+
+/** Minutes and seconds, such as 4:05. */
+export function clock(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function openedPage(results: readonly AgentBrowserCommandResult[], page: OwnerPage | undefined, arg: string | undefined): OwnerPage | undefined {
@@ -203,10 +235,11 @@ export function describeStep(facts: StepFacts): StepSummary {
     ({ parts, text: summaryText(parts) + extra, ...(page ? { page } : {}), ...more });
 
   if (outcome === "halted" || outcome === "waiting") {
-    const owner = ownerHandoff(facts.owner);
+    const owner = ownerHandoff(facts.owner, facts.at);
     if (!owner) return done(["Your turn: finish the sign-in or check in Bao's Chrome window"]);
     const ask = owner.kind === "sign-in" ? `Your turn: sign in to ${owner.site} in Bao's Chrome window` : `Your turn: clear the check on ${owner.site} in Bao's Chrome window`;
-    const where = owner.title ? ` The page is "${owner.title}" (${owner.url}).` : ` The page is ${owner.url}.`;
+    const waiting = owner.waitedMs !== undefined ? `, waiting ${clock(owner.waitedMs)}` : "";
+    const where = owner.title ? ` The page is "${owner.title}" (${owner.url})${waiting}.` : ` The page is ${owner.url}${waiting}.`;
     return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address until the page changes.`, owner };
   }
   if (outcome === "ready") {

@@ -6,7 +6,7 @@ import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, type CurrentChrome } from "../cdp-live/current-chrome";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { newInRead } from "./agent-browser-describe";
+import { newInRead, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -63,6 +63,8 @@ interface SessionData {
   page?: OwnerPage;
   /** The latest sign-in or check page, kept for the owner-wait card. */
   ownerPage?: OwnerPage;
+  /** When Bao first stopped for the current or latest owner handoff. */
+  ownerSince?: number;
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -88,9 +90,11 @@ export class AgentBrowserProxy {
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
   /** The sign-in or check page Bao is waiting on, or the latest one it waited on. URL and title only. */
-  get ownerPage(): OwnerPage | undefined {
-    const wait = this.session?.ownerWait;
-    return wait && wait !== "pending" ? wait.page : this.session?.ownerPage;
+  get ownerPage(): OwnerWaitPage | undefined {
+    const session = this.session;
+    const wait = session?.ownerWait;
+    const page = wait && wait !== "pending" ? wait.page : session?.ownerPage;
+    return page && { ...page, ...(session?.ownerSince !== undefined ? { since: session.ownerSince } : {}) };
   }
   private currentEnded = false;
 
@@ -176,6 +180,7 @@ export class AgentBrowserProxy {
           return results;
         }
       }
+      context.previousPage = session.page;
       step ??= recording.begin(command as string, args);
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
@@ -361,6 +366,7 @@ export class AgentBrowserProxy {
     }
     session.ownerWait = active;
     session.ownerPage = active.page;
+    session.ownerSince = Date.now();
     session.recording.ownerWaiting(true);
     await this.ownerBanner(session, active.targetId, true);
   }
@@ -399,7 +405,10 @@ export class AgentBrowserProxy {
   private async waitForOwner(session: Session, args: string[]): Promise<AgentBrowserCommandResult[]> {
     const deadline = Date.now() + ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
     if (session.abort.signal.aborted) return this.ownerClosed(session);
-    session.ownerWait ??= "pending";
+    if (!session.ownerWait) {
+      session.ownerWait = "pending";
+      session.ownerSince = Date.now();
+    }
     session.recording.ownerWaiting(true);
     let cdp: CdpSocket | undefined;
     const onAbort = () => { if (session.kind === "copy") cdp?.close(); };
