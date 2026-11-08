@@ -52,7 +52,6 @@ async function readState(port: number): Promise<{
     decisions: { kind: string; detail: string; cardId: string }[];
   };
   guide: GuideState | null;
-  loginWait?: { detail?: string } | null;
 }> {
   return await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();
 }
@@ -124,65 +123,17 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     assert.equal(notedCard?.noteAsIntent, true);
 
     await post(app.port, "/api/teach/stop");
-    const taught = await post(app.port, "/api/teach/save", { name: "Noted fixture" }) as WorkflowV2;
+    await post(app.port, "/api/teach/save", { name: "Noted fixture" });
     const cases = loadTeachIntentCases(path.join(home, "evals", "intent", "cases"));
     const saved = cases[0];
     assert.ok(saved, "the intent case was not written");
     assert.equal(saved.workflow.steps.some((item) => item.caption.text === "alpha note"), true);
-    const signIn = taught.steps.find((item) => item.action === "handoff");
-    assert.equal(signIn?.action === "handoff" && signIn.reason, "sign-in");
-    assert.ok(signIn?.action === "handoff" && signIn.target?.locators.length);
-    assert.equal(signIn?.caption.text, "Sign in");
-    assert.equal(signIn?.action === "handoff" && signIn.check?.kind, "text");
-    assert.match(signIn?.action === "handoff" && signIn.check && "match" in signIn.check ? signIn.check.match : "", /^Welcome /);
     assert.equal(saved.events.some((event) => event.op === "note" && event.afterText === "alpha note"), true);
     assert.equal(saved.decisions.some((decision) => decision.detail === "renamed intent"), true);
     assert.equal(saved.workflow.inputs.find((input) => input.type === "secret")?.default, "demo-pass");
     assert.equal(saved.events.find((event) => event.op === "type" && event.sensitive)?.value, "demo-pass");
     assert.equal(JSON.stringify(saved.workflow.steps).includes("demo-pass"), false);
     assert.equal(JSON.stringify(saved).includes("SuperSecretPassword!"), false);
-
-    const pending = post(app.port, "/api/replay", { id: taught.id, args: {} });
-    const asked = await until(
-      () => readState(app.port),
-      (state) => !!state.loginWait?.detail,
-      "sign-in ask",
-    );
-    assert.equal(asked.loginWait?.detail, "Sign in");
-    await post(app.port, "/api/replay/drive", { id: taught.id, click: "#login-btn" });
-    const run = await pending as { status: string; steps: { status: string }[]; failure?: { reason?: string } };
-    assert.equal(run.status, "passed", run.failure?.reason);
-    assert.equal(run.steps.every((step) => step.status === "passed"), true);
-  } finally {
-    await app.close();
-  }
-});
-
-test("you-do-this on the Password card asks the owner to sign in on replay and the run passes", { timeout: 120000 }, async () => {
-  delete process.env.BAO_TEACH_FIXTURE;
-  const home = mkdtempSync(path.join(tmpdir(), "bao-signin-mark-"));
-  const app = await startApp({ home, port: 0 });
-  try {
-    await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });
-    await post(app.port, "/api/sessions/drive", { fill: { selector: "#username", value: "demo" } });
-    await post(app.port, "/api/sessions/drive", { fill: { selector: "#password", value: "demo-pass" } });
-    await post(app.port, "/api/sessions/drive", { click: "#login-btn" });
-    const filled = await readState(app.port);
-    const secret = filled.teach.cards.find((item) => item.values.some((value) => value.role === "secret"));
-    assert.ok(secret, JSON.stringify(filled.teach.cards));
-    await post(app.port, "/api/teach/correct", { kind: "human", cardId: secret.id });
-    await post(app.port, "/api/teach/stop");
-    const taught = await post(app.port, "/api/teach/save", { name: "Password mark" }) as WorkflowV2;
-    assert.deepEqual(taught.steps.map((item) => item.action), ["type", "handoff"]);
-    assert.equal(taught.inputs.some((input) => input.type === "secret"), false);
-    const pending = post(app.port, "/api/replay", { id: taught.id, args: {} });
-    const asked = await until(() => readState(app.port), (state) => !!state.loginWait?.detail, "sign-in ask");
-    assert.equal(asked.loginWait?.detail, "Sign in");
-    await post(app.port, "/api/replay/drive", { id: taught.id, fill: { selector: "#password", value: "demo-pass" } });
-    await post(app.port, "/api/replay/drive", { id: taught.id, click: "#login-btn" });
-    const run = await pending as { status: string; steps: { status: string }[]; failure?: { reason?: string } };
-    assert.equal(run.status, "passed", run.failure?.reason);
-    assert.equal(run.steps.every((step) => step.status === "passed"), true);
   } finally {
     await app.close();
   }

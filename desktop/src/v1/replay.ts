@@ -23,7 +23,7 @@ import { classifyPage, recordingExpectsLogin, type PageClassDecision, type PageC
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import { beginFilesRun, downloadFileName, endFilesRun, fileDigest, filesFor, filesRun, openTarget, placeDownload, prepareFilesDatesRun, renderTemplate, templateScope, type FileOutput } from "./files-dates";
-import { stepOptional, stepDownload, stepOpen, popupDismissName, stepCheck, stepDate, stepForEach, stepInputName, stepKey, stepLocators, stepQuery, stepSensitive, stepTitle, stepValueTemplate, subst, type Check, type FileArg, type Identity, type ReadBack, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepOptional, stepDownload, stepOpen, popupDismissName, stepCheck, stepDate, stepForEach, stepInputName, stepKey, stepLocators, stepQuery, stepTitle, stepValueTemplate, subst, type Check, type FileArg, type Identity, type ReadBack, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, shotFormat } from "./shots";
 import { postKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
 
@@ -1277,7 +1277,7 @@ async function runLogin(
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
   const values = loginValues(workflow, args, stepInputName(step));
   const stripped = Object.values(values).some(hasStrippedSecret);
-  const human = !values.password || stripped || secretTypedBefore(workflow, step);
+  const human = !values.password || stripped;
   if (loginSatisfied(workflow, step, seen, args) && !miss) {
     if (gate.humanReady) endHandoff(driver, gate, step.id);
     return { ok: true, repairs: [] };
@@ -1297,11 +1297,6 @@ async function runLogin(
   const phase = workflow.precondition?.phase === "auth" || miss ? "auth" : "expect";
   const reason = phase === "auth" ? (miss || "redirected to login") : "waiting for you to log in";
   return { ok: false, repairs: [], failure: await fail(driver, step, phase, reason, undefined, secrets) };
-}
-
-function secretTypedBefore(workflow: WorkflowV2, step: WorkflowStep): boolean {
-  const at = workflow.steps.findIndex((item) => item.id === step.id);
-  return workflow.steps.slice(0, Math.max(at, 0)).some((item) => item.action === "type" && stepSensitive(item));
 }
 
 function loginSatisfied(workflow: WorkflowV2, step: WorkflowStep, tree: LiveTree, args: ReplayArgs): boolean {

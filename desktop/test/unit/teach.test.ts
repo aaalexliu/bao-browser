@@ -444,26 +444,6 @@ function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
   };
 }
 
-test("you-do-this on a password or Log in card is a sign-in, not an owner press", () => {
-  const login = { id: "click-login", ts: 6, kind: "act" as const, op: "click", identity: ident({ id: "login-btn", role: "button", text: "Log in" }) };
-  const events = [...fixtureEvents(), login];
-  for (const cardId of ["type-secret", "click-login"]) {
-    const projected = projectTeach(events, decide([], { kind: "human", cardId }, 1), meta);
-    const step = projected.workflow.steps.find((item) => item.action === "handoff");
-    assert.equal(step?.action === "handoff" && step.reason, "sign-in", cardId);
-    assert.ok(step?.action === "handoff" && step.target?.locators.length, cardId);
-    assert.equal(step?.caption.text, "Sign in", cardId);
-    assert.equal(step?.action === "handoff" && step.check?.kind, "absent", cardId);
-  }
-  const welcomed = [...fixtureEvents(), { ...login, afterText: "Welcome ada" }];
-  const signedIn = projectTeach(welcomed, decide([], { kind: "human", cardId: "click-login" }, 1), meta);
-  const handoff = signedIn.workflow.steps.find((item) => item.action === "handoff");
-  assert.deepEqual(handoff?.action === "handoff" && handoff.check && "match" in handoff.check ? [handoff.check.kind, handoff.check.match] : [], ["text", "Welcome ada"]);
-  assert.equal(signedIn.cards.find((card) => card.id === "click-login")?.outcome, "Welcome ada");
-  const press = projectTeach(events, decide([], { kind: "human", cardId: "click-apply" }, 1), meta).workflow.steps.find((item) => item.action === "handoff");
-  assert.equal(press?.action === "handoff" && press.reason, "owner-press");
-});
-
 test("merging keeps the card outcome on the check the step still runs", () => {
   const typed = { id: "type-name", ts: 1, kind: "act" as const, op: "type", value: "alpha", identity: ident({ name: "Name" }) };
   const saved = { id: "click-save", ts: 2, kind: "act" as const, op: "click", afterText: "Saved", identity: ident({ role: "button", name: "Save" }) };
@@ -484,18 +464,4 @@ test("a richer card merged into a click takes that card's outcome with its check
   assert.deepEqual(stepCheck(merged.workflow.steps[0]!), stepCheck(before.workflow.steps[1]!));
   assert.equal(merged.cards[0]?.outcome, before.cards[1]?.outcome);
   assert.notEqual(merged.cards[0]?.outcome, "Display name");
-});
-
-test("you-do-this on any field of a sign-in form makes one sign-in that takes the submit and its observed outcome", () => {
-  const user = { id: "type-user", ts: 1, kind: "act" as const, op: "type", value: "ada", identity: ident({ id: "username", nameAttr: "username", role: "textbox" }) };
-  const pass = { id: "type-pass", ts: 2, kind: "act" as const, op: "type", sensitive: true, value: secret, identity: ident({ id: "password", role: "password", nameAttr: "password" }) };
-  const login = { id: "click-login", ts: 3, kind: "act" as const, op: "click", afterText: "Welcome back", identity: ident({ id: "login-btn", role: "button", testId: "login", text: "Log in" }) };
-  for (const [cardId, before] of [["type-pass", ["type"]], ["type-user", []]] as const) {
-    const steps = projectTeach([user, pass, login], decide([], { kind: "human", cardId }, 1), meta).workflow.steps;
-    assert.deepEqual(steps.map((step) => step.action), [...before, "handoff"], cardId);
-    const handoff = steps.at(-1)!;
-    assert.equal(handoff.action === "handoff" && handoff.reason, "sign-in", cardId);
-    assert.equal(handoff.caption.text, "Sign in", cardId);
-    assert.deepEqual(handoff.action === "handoff" && handoff.check && "match" in handoff.check ? [handoff.check.kind, handoff.check.match] : [], ["text", "Welcome back"], cardId);
-  }
 });

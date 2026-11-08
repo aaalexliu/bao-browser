@@ -5,7 +5,7 @@
 
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
-import { finishInput, stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Check, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { finishInput, stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -517,23 +517,11 @@ function applyDecision(
     return;
   }
   if (decision.kind === "human") {
-    const kept = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code") ? draft.step.reason : undefined;
-    const form = kept ? [draft] : signInForm(drafts, draft);
-    const reason = kept || (form.some((item) => signInMark(item.step)) ? "sign-in" : "owner-press");
-    const target = reason === "code" ? undefined : stepTarget(draft.step);
+    const reason = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code")
+      ? draft.step.reason
+      : "owner-press";
+    const target = reason === "owner-press" ? stepTarget(draft.step) : undefined;
     const timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
-    const signIn = !kept && reason === "sign-in";
-    const check = signIn ? signInCheck(form, timeoutMs) : draft.card.outcome ? { kind: "text" as const, match: draft.card.outcome, timeoutMs } : undefined;
-    if (signIn) {
-      for (const item of form.slice(1)) {
-        item.merged = true;
-        item.card.merged = true;
-        draft.events = [...draft.events, ...item.events];
-      }
-      draft.card.eventIds = draft.events.map((event) => event.id);
-      draft.card.intent = "Sign in";
-      draft.card.outcome = check && "match" in check ? check.match : "";
-    }
     draft.step = {
       id: draft.step.id,
       index: draft.step.index,
@@ -542,7 +530,7 @@ function applyDecision(
       timeoutMs,
       caption: { text: draft.card.intent || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button") },
       ...(target ? { target } : {}),
-      ...(check ? { check } : {}),
+      ...(draft.card.outcome ? { check: { kind: "text" as const, match: draft.card.outcome, timeoutMs } } : {}),
     };
     draft.card.human = true;
     draft.card.action = draft.step.action;
@@ -600,32 +588,6 @@ function applyDecision(
     }];
     draft.card.action = draft.step.action;
   }
-}
-
-function signInForm(drafts: Draft[], draft: Draft): Draft[] {
-  const form = [draft];
-  if (draft.step.action !== "type") return form;
-  for (const item of drafts.slice(drafts.indexOf(draft) + 1)) {
-    if (item.dropped || item.merged) continue;
-    if (item.step.action !== "type" && item.step.action !== "click") break;
-    form.push(item);
-    if (item.step.action === "click") break;
-  }
-  return form;
-}
-
-function signInCheck(form: Draft[], timeoutMs: number): Check | undefined {
-  const last = form[form.length - 1]!;
-  const seen = last.step.action === "click" || form.length === 1 ? stepCheck(last.step) : undefined;
-  if (seen && (seen.kind === "text" || seen.kind === "url")) return { kind: seen.kind, match: seen.match, timeoutMs };
-  const field = form.find((item) => signInMark(item.step)) || form[0]!;
-  const locators = stepTarget(field.step)?.locators;
-  return locators?.length ? { kind: "absent", locators, timeoutMs } : undefined;
-}
-
-function signInMark(step: WorkflowStep): boolean {
-  const query = stepQuery(step);
-  return stepSensitive(step) || query?.role === "password" || query?.inputType === "password" || /login/i.test(query?.testId || "") || /login/i.test(query?.id || "");
 }
 
 function absorb(previous: Draft, current: Draft): void {
