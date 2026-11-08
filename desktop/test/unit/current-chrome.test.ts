@@ -821,7 +821,7 @@ test("idle backstop never interrupts an active agent command", async (t) => {
 test("disconnect during an owner wait closes task tabs before detaching", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
-  await f.proxy.execute("wait_for_owner", ["1"]);
+  await f.proxy.execute("wait_for_owner", ["100"]);
   assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner wait brings the background task tab forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.timers.tick(1_800_000);
@@ -883,6 +883,21 @@ test("failed tracking of an agent-opened tab forwards commands without repeating
   assert.equal(f.state.closes, 1);
   assert.equal(f.proxy.hasSession(), false);
   assert.equal(f.library.listRuns()[0]!.status, "passed");
+});
+
+test("a closed current task tab ends the session instead of driving another tab", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const before = f.state.commands.length;
+  f.state.noActivePage = true;
+  const [result] = await f.proxy.execute("click", ["#b"]);
+  assert.deepEqual(JSON.parse(result!.stdout).outcome, "closed");
+  assert.match(JSON.parse(result!.stdout).instruction, /task tab was closed/);
+  assert.equal(f.state.commands.slice(before).includes("click"), false, "the click never reached another tab");
+  assert.equal(f.proxy.hasSession(), false);
+  assert.equal(f.state.closed, true);
+  assert.equal(f.library.listRuns()[0]!.status, "failed");
+  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
 });
 
 test("unexpected current disconnect requires a browser choice, unlike fresh or explicitly closed sessions", async (t) => {

@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
@@ -27,11 +27,12 @@ async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string)
   } finally { await cdp.send("Target.detachFromTarget", { sessionId }); }
 }
 
-test("the owner's Chrome keeps its active tab while the agent works in a background task tab", { skip: !binary, timeout: 60_000 }, async (t) => {
+async function withCurrentChrome(t: TestContext, body: (context: { base: string; probe: CdpSocket; proxy: AgentBrowserProxy; owner: string;
+  pages: () => Promise<{ targetId: string; url: string }[]> }) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-background-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
-    response.end(request.url === "/task" ? TASK : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
+    response.end(request.url?.startsWith("/task") ? TASK : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -44,8 +45,23 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
     isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
     withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "chrome"), executable: binary });
+  const pages = async () => (await probe.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
+    .filter(target => target.type === "page").map(({ targetId, url }) => ({ targetId, url }));
   try {
     const { targetId: owner } = await probe.send<{ targetId: string }>("Target.createTarget", { url: `${base}/owner` });
+    await body({ base, probe, proxy, owner, pages });
+  } finally {
+    await proxy.end();
+    probe.close();
+    cdp.close();
+    await chrome.close();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("the owner's Chrome keeps its active tab while the agent works in a background task tab", { skip: !binary, timeout: 60_000 }, (t) =>
+  withCurrentChrome(t, async ({ base, probe, proxy, owner, pages }) => {
     const ownerState = () => evaluate<{ visibility: string; events: string[] }>(probe, owner, "({ visibility: document.visibilityState, events: window.ownerEvents })");
     assert.equal(await evaluate(probe, owner, `window.ownerEvents = [];
       document.addEventListener('visibilitychange', () => ownerEvents.push(document.visibilityState));
@@ -57,8 +73,7 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
       const [result] = await proxy.execute(command, [...args]);
       assert.equal(result!.exitCode, 0, result!.stderr);
     }
-    const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
-    const task = targetInfos.find(target => target.url === `${base}/task`)?.targetId;
+    const task = (await pages()).find(target => target.url === `${base}/task`)?.targetId;
     assert.ok(task, "the agent drove a task tab of its own");
     assert.deepEqual(await evaluate(probe, task, `new Promise(resolve => { const start = frames; setTimeout(() => resolve({
       text: out.textContent, visibility: document.visibilityState, painting: frames > start }), 300); })`),
@@ -67,21 +82,40 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
 
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
     const deadline = Date.now() + 2000;
-    let pages: string[] = [];
+    let left: string[] = [];
     while (Date.now() < deadline) {
-      pages = (await probe.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets")).targetInfos
-        .filter(target => target.type === "page").map(target => target.targetId);
-      if (!pages.includes(task)) break;
+      left = (await pages()).map(target => target.targetId);
+      if (!left.includes(task)) break;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    assert.deepEqual(pages, [owner], "only the task tab closes");
+    assert.deepEqual(left, [owner], "only the task tab closes");
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] });
-  } finally {
-    await proxy.end();
-    probe.close();
-    cdp.close();
-    await chrome.close();
-    server.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
+  }));
+
+test("the agent stays in its task tab when the owner opens a tab, and stops when the task tab closes", { skip: !binary, timeout: 60_000 }, (t) =>
+  withCurrentChrome(t, async ({ base, probe, proxy, owner, pages }) => {
+    const opened = await proxy.execute("open", [`${base}/task`], "current");
+    assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
+    const task = (await pages()).find(target => target.url === `${base}/task`)?.targetId;
+    assert.ok(task);
+
+    const { targetId: later } = await probe.send<{ targetId: string }>("Target.createTarget", { url: `${base}/owner?later` });
+    const [moved] = await proxy.execute("open", [`${base}/task?second`]);
+    assert.equal(moved!.exitCode, 0, moved!.stderr);
+    const [filled] = await proxy.execute("fill", ["#q", "Grace"]);
+    assert.equal(filled!.exitCode, 0, filled!.stderr);
+    const urls = new Map((await pages()).map(target => [target.targetId, target.url]));
+    assert.equal(urls.get(task), `${base}/task?second`, "open navigated the task tab");
+    assert.equal(urls.get(later), `${base}/owner?later`, "the owner's new tab kept its page");
+    assert.equal(await evaluate(probe, task, "q.value"), "Grace");
+
+    await probe.send("Target.closeTarget", { targetId: task });
+    while ((await pages()).some(target => target.targetId === task)) await new Promise(resolve => setTimeout(resolve, 50));
+    const [stopped] = await proxy.execute("snapshot");
+    assert.equal(stopped!.exitCode, 0);
+    assert.equal(JSON.parse(stopped!.stdout).outcome, "closed");
+    assert.match(JSON.parse(stopped!.stdout).instruction, /task tab was closed/);
+    await assert.rejects(proxy.execute("snapshot"), /Reconnect with command=open and browser=current/);
+    assert.deepEqual(new Map((await pages()).map(target => [target.targetId, target.url])),
+      new Map([[owner, `${base}/owner`], [later, `${base}/owner?later`]]), "the owner's tabs stay open and untouched");
+  }));
