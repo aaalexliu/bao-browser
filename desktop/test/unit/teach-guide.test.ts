@@ -158,6 +158,36 @@ test("a note lands on the step within a second and a fix is a labelled correctio
   }
 });
 
+test("you-do-this on the Password card asks the owner to sign in on replay and the run passes", { timeout: 120000 }, async () => {
+  delete process.env.BAO_TEACH_FIXTURE;
+  const home = mkdtempSync(path.join(tmpdir(), "bao-signin-mark-"));
+  const app = await startApp({ home, port: 0 });
+  try {
+    await post(app.port, "/api/sessions", { url: `http://127.0.0.1:${app.port}/fixture`, teach: true });
+    await post(app.port, "/api/sessions/drive", { fill: { selector: "#username", value: "demo" } });
+    await post(app.port, "/api/sessions/drive", { fill: { selector: "#password", value: "demo-pass" } });
+    await post(app.port, "/api/sessions/drive", { click: "#login-btn" });
+    const filled = await readState(app.port);
+    const secret = filled.teach.cards.find((item) => item.values.some((value) => value.role === "secret"));
+    assert.ok(secret, JSON.stringify(filled.teach.cards));
+    await post(app.port, "/api/teach/correct", { kind: "human", cardId: secret.id });
+    await post(app.port, "/api/teach/stop");
+    const taught = await post(app.port, "/api/teach/save", { name: "Password mark" }) as WorkflowV2;
+    assert.deepEqual(taught.steps.map((item) => item.action), ["type", "handoff"]);
+    assert.equal(taught.inputs.some((input) => input.type === "secret"), false);
+    const pending = post(app.port, "/api/replay", { id: taught.id, args: {} });
+    const asked = await until(() => readState(app.port), (state) => !!state.loginWait?.detail, "sign-in ask");
+    assert.equal(asked.loginWait?.detail, "Sign in");
+    await post(app.port, "/api/replay/drive", { id: taught.id, fill: { selector: "#password", value: "demo-pass" } });
+    await post(app.port, "/api/replay/drive", { id: taught.id, click: "#login-btn" });
+    const run = await pending as { status: string; steps: { status: string }[]; failure?: { reason?: string } };
+    assert.equal(run.status, "passed", run.failure?.reason);
+    assert.equal(run.steps.every((step) => step.status === "passed"), true);
+  } finally {
+    await app.close();
+  }
+});
+
 for (const driver of ["playwright", "extension"] as const) {
 test(`old-engine guide me highlights the ${driver} fixture without an extension link`, { timeout: 120000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-guide-"));

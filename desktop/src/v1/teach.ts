@@ -517,15 +517,23 @@ function applyDecision(
     return;
   }
   if (decision.kind === "human") {
-    const reason = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code")
-      ? draft.step.reason
-      : signInMark(draft.step) ? "sign-in" : "owner-press";
+    const kept = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code") ? draft.step.reason : undefined;
+    const form = kept ? [draft] : signInForm(drafts, draft);
+    const reason = kept || (form.some((item) => signInMark(item.step)) ? "sign-in" : "owner-press");
     const target = reason === "code" ? undefined : stepTarget(draft.step);
     const timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
-    const signIn = reason === "sign-in" && !(draft.step.action === "handoff" && draft.step.reason === "sign-in");
-    if (signIn) draft.card.intent = "Sign in";
-    const check = signIn ? signInCheck(draft.step, timeoutMs) : draft.card.outcome ? { kind: "text" as const, match: draft.card.outcome, timeoutMs } : undefined;
-    if (signIn) draft.card.outcome = check && "match" in check ? check.match : "";
+    const signIn = !kept && reason === "sign-in";
+    const check = signIn ? signInCheck(form, timeoutMs) : draft.card.outcome ? { kind: "text" as const, match: draft.card.outcome, timeoutMs } : undefined;
+    if (signIn) {
+      for (const item of form.slice(1)) {
+        item.merged = true;
+        item.card.merged = true;
+        draft.events = [...draft.events, ...item.events];
+      }
+      draft.card.eventIds = draft.events.map((event) => event.id);
+      draft.card.intent = "Sign in";
+      draft.card.outcome = check && "match" in check ? check.match : "";
+    }
     draft.step = {
       id: draft.step.id,
       index: draft.step.index,
@@ -594,10 +602,24 @@ function applyDecision(
   }
 }
 
-function signInCheck(step: WorkflowStep, timeoutMs: number): Check | undefined {
-  const seen = stepCheck(step);
+function signInForm(drafts: Draft[], draft: Draft): Draft[] {
+  const form = [draft];
+  if (draft.step.action !== "type") return form;
+  for (const item of drafts.slice(drafts.indexOf(draft) + 1)) {
+    if (item.dropped || item.merged) continue;
+    if (item.step.action !== "type" && item.step.action !== "click") break;
+    form.push(item);
+    if (item.step.action === "click") break;
+  }
+  return form;
+}
+
+function signInCheck(form: Draft[], timeoutMs: number): Check | undefined {
+  const last = form[form.length - 1]!;
+  const seen = last.step.action === "click" || form.length === 1 ? stepCheck(last.step) : undefined;
   if (seen && (seen.kind === "text" || seen.kind === "url")) return { kind: seen.kind, match: seen.match, timeoutMs };
-  const locators = stepTarget(step)?.locators;
+  const field = form.find((item) => signInMark(item.step)) || form[0]!;
+  const locators = stepTarget(field.step)?.locators;
   return locators?.length ? { kind: "absent", locators, timeoutMs } : undefined;
 }
 

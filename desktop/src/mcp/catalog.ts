@@ -806,6 +806,7 @@ function saveWorkflowRun(
 ): void {
   const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
   const needsHuman = run.pausedKind === "wall" || run.pausedKind === "confirm";
+  const finished = run.status === "failed" && outcome.status === "needs_signin";
   library.saveRun({
     schema: "bao.run/v4",
     id: run.runId,
@@ -813,7 +814,7 @@ function saveWorkflowRun(
     traceUnavailable: run.traceUnavailable,
     videoTruncated: run.videoTruncated,
     workflowId: workflow.id,
-    status: run.pausedKind === "signin" || outcome.status === "needs_signin" ? "waiting-for-sign-in" : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status === "failed" ? "failed" : run.status,
+    status: run.pausedKind === "signin" ? "waiting-for-sign-in" : finished ? "failed" : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
     at: Date.now(),
     heals: run.heals,
     failure: run.failure,
@@ -827,7 +828,7 @@ function saveWorkflowRun(
     ...(run.outputs ? { outputs: run.outputs } : {}),
     ...(run.pageLeftOpen ? { pageLeftOpen: true } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {
-      status: outcome.status,
+      status: finished ? "failed" : outcome.status,
       run_id: outcome.run_id || run.runId,
       step: outcome.step,
       reason: outcome.reason,

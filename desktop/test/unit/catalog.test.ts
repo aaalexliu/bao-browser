@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
+import { runAttention, type RunSummary } from "../../src/app/views";
 import { EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, getRun, greenLabel, originLabel, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
@@ -689,6 +690,9 @@ test("a run that stops on a password or Log in step asks the agent to send the o
       const outcome = await runWorkflow(library, { id: `signin-${id}` });
       if (outcome.resume_token) await runWorkflow(library, { resume: outcome.resume_token, cancel: true });
       assert.equal(outcome.outcome, id === "other" ? "failed" : "needs_signin", `${id}: ${outcome.reason}`);
+      const stored = library.listRuns().find((run) => run.workflowId === `signin-${id}`);
+      assert.equal(stored?.status, "failed", id);
+      assert.deepEqual(runAttention([stored as RunSummary]).map((item) => item.label), ["Failed"], id);
     }
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
