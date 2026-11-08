@@ -99,8 +99,7 @@
             ]
           },
           "default": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           },
           "ownerSaved": {
             "const": true
@@ -152,17 +151,7 @@
             "then": {
               "required": [
                 "default"
-              ],
-              "not": {
-                "properties": {
-                  "type": {
-                    "const": "file"
-                  }
-                },
-                "required": [
-                  "type"
-                ]
-              }
+              ]
             }
           },
           {
@@ -535,6 +524,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -546,6 +538,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -751,6 +747,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -1040,6 +1039,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -1177,10 +1179,6 @@
                     "type": "string"
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -1507,6 +1505,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -1518,6 +1519,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -1723,6 +1728,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -2012,6 +2020,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -2145,10 +2156,6 @@
               },
               "sensitive": {
                 "type": "boolean"
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -2474,6 +2481,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -2485,6 +2495,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -2690,6 +2704,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -2983,6 +3000,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -3084,10 +3104,6 @@
                     "type": "array"
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -3414,6 +3430,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -3425,6 +3444,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -3630,6 +3653,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -3919,6 +3945,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -4023,10 +4052,6 @@
               },
               "checked": {
                 "type": "boolean"
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -4353,6 +4378,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -4364,6 +4392,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -4569,6 +4601,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -4858,6 +4893,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -4988,10 +5026,6 @@
                     }
                   }
                 ]
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -5317,6 +5351,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -5328,6 +5365,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -5534,6 +5575,9 @@
                           },
                           "placeholder": {
                             "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
                           }
                         }
                       },
@@ -5671,10 +5715,6 @@
               },
               "url": {
                 "type": "string"
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -6000,6 +6040,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -6011,6 +6054,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -6217,6 +6264,9 @@
                           },
                           "placeholder": {
                             "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
                           }
                         }
                       },
@@ -6351,10 +6401,6 @@
                     }
                   }
                 ]
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -6378,10 +6424,6 @@
               },
               "action": {
                 "const": "handoff"
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "caption": {
                 "type": "object",
@@ -6684,6 +6726,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -6695,6 +6740,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -6900,6 +6949,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -7195,6 +7247,9 @@
                         "type": "string"
                       },
                       "placeholder": {
+                        "type": "string"
+                      },
+                      "id": {
                         "type": "string"
                       }
                     }
@@ -7623,6 +7678,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -7634,6 +7692,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -7839,6 +7901,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -8128,6 +8193,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -8259,10 +8327,6 @@
                     }
                   }
                 ]
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -8589,6 +8653,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -8600,6 +8667,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -8805,6 +8876,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -9094,6 +9168,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -9225,10 +9302,6 @@
                     }
                   }
                 ]
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -9554,6 +9627,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -9565,6 +9641,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "extract": {
                 "type": "object",
@@ -9937,10 +10017,6 @@
                     }
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -10266,6 +10342,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -10277,6 +10356,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "forEach": {
                 "type": "object",
@@ -10329,10 +10412,6 @@
                     "minItems": 1
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -10658,6 +10737,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -10670,13 +10752,13 @@
                   }
                 }
               },
-              "text": {
-                "type": "string",
-                "minLength": 1
-              },
               "input": {
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
               }
             }
           },
@@ -11002,6 +11084,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -11013,6 +11098,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -11218,6 +11307,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -11528,6 +11620,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -11629,10 +11724,6 @@
                     "type": "array"
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -11958,6 +12049,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -11969,6 +12063,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -12175,6 +12273,9 @@
                           },
                           "placeholder": {
                             "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
                           }
                         }
                       },
@@ -12350,10 +12451,6 @@
                     }
                   }
                 ]
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -12679,6 +12776,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -12690,6 +12790,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -12895,6 +12999,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -13213,6 +13320,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -13314,10 +13424,6 @@
                     "type": "array"
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -13643,6 +13749,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -13654,6 +13763,10 @@
                     "type": "number"
                   }
                 }
+              },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               },
               "check": {
                 "oneOf": [
@@ -13859,6 +13972,9 @@
                             "type": "string"
                           },
                           "placeholder": {
+                            "type": "string"
+                          },
+                          "id": {
                             "type": "string"
                           }
                         }
@@ -14165,6 +14281,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -14266,10 +14385,6 @@
                     "type": "array"
                   }
                 }
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -14595,6 +14710,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -14607,15 +14725,15 @@
                   }
                 }
               },
+              "input": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
               "reason": {
                 "type": "string"
               },
               "ms": {
                 "type": "number"
-              },
-              "input": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
               }
             }
           },
@@ -14940,6 +15058,9 @@
                       },
                       "placeholder": {
                         "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
                       }
                     }
                   },
@@ -14952,12 +15073,12 @@
                   }
                 }
               },
-              "reason": {
-                "type": "string"
-              },
               "input": {
                 "type": "string",
                 "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "reason": {
+                "type": "string"
               }
             }
           }
@@ -15186,6 +15307,9 @@
               "type": "string"
             },
             "placeholder": {
+              "type": "string"
+            },
+            "id": {
               "type": "string"
             }
           }

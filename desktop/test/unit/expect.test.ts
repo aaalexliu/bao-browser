@@ -67,7 +67,7 @@ test("a checked change is the check, ahead of a url change", () => {
   ], { id: "wf", startUrl: "https://example.com/form" });
   assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "state");
   assert.equal(checkState(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "checked");
-  assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), undefined);
+  assert.notEqual((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "url");
 });
 
 test("a url template uses a param only when the recorded url contained that value", () => {
@@ -143,7 +143,8 @@ test("a browser error page is not an oracle", () => {
   ], { id: "wf", startUrl: "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html" });
   assert.equal((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "settled");
   assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), SETTLED_EXPECT);
-  assert.equal((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), undefined);
+  assert.notEqual((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "text");
+  assert.notEqual((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "url");
 });
 
 test("nothing observed settles at low confidence instead of an element oracle", () => {
@@ -157,7 +158,8 @@ test("nothing observed settles at low confidence instead of an element oracle", 
     }),
   ], { id: "wf", startUrl: "https://example.com/app" });
   assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), SETTLED_EXPECT);
-  assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, undefined);
+  assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "settled");
+  assert.notEqual((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "element");
 });
 
 test("a javascript dialog counts as an effect and keeps the click", () => {

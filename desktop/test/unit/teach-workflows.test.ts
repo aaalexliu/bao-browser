@@ -150,14 +150,15 @@ test("teach a new workflow, correct three cards, and replay twice", { timeout: 1
     const saved = await post(app.port, "/api/teach/save", { name: "Fixture teach" }) as {
       id: string;
       inputs: { name: string; type: string }[];
-      steps: { action: string; intent?: string; human?: boolean; input?: string; postcondition?: { match?: string } }[];
+      steps: { action: string; reason?: string; caption?: { text?: string }; text?: { input?: string }; check?: { match?: string } }[];
     };
     const savedBlob = JSON.stringify(saved);
     assert.equal(savedBlob.includes(secret), true);
     assert.equal(savedBlob.includes(file), false);
-    assert.equal(saved.steps.find((step) => step.input === "note")?.intent, "type the note");
-    assert.equal(saved.steps.some((step) => step.action === "confirm" && step.human), true);
-    assert.equal(saved.steps.find((step) => step.action === "verify")?.postcondition?.match, "Applied");
+    const noted = saved.steps.find((step) => step.action === "type" && step.text && typeof step.text === "object" && "input" in step.text && step.text.input === "note");
+    assert.equal(noted?.caption?.text, "type the note");
+    assert.equal(saved.steps.some((step) => step.action === "handoff" && step.reason === "owner-press"), true);
+    assert.equal(saved.steps.find((step) => step.action === "verify")?.check?.match, "Applied");
     const pair = app.library.readIntentEval(saved.id) as {
       decisions: { kind: string; detail: string }[];
       workflow: { steps: { intent?: string }[] };

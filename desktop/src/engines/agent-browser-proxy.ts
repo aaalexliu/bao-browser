@@ -452,7 +452,7 @@ export class AgentBrowserProxy {
       if (!frame.viewport) return;
       const box = targetBox({ x, y, width, height }, frame.viewport);
       if (!box) return;
-      await session.recording.actionPicture(step, frame.bytes, { rect: box, viewport: frame.viewport });
+      await session.recording.actionPicture(step, frame.bytes, { rect: { x: box.x, y: box.y, width: box.width, height: box.height }, viewport: frame.viewport });
     } catch (error) {
       // A disconnect aborts the box read. That abort is the command's result.
       if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;

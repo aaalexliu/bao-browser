@@ -63,8 +63,9 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
     picture = { kind: "captured", ...evidence.lastPicture };
   }
   const spoken = step?.caption ? stepTitle(step) : "";
-  const lead = outcome || failed ? fallbackCaption(command, failed, outcome) : "";
-  const caption = [lead, spoken].filter(Boolean).join(" ") || fallbackCaption(command, failed, outcome);
+  const lead = fallbackCaption(command, failed, outcome);
+  const named = spoken && spoken !== lead && !/^(?:Click|Type|Press|Open)$/.test(spoken) ? spoken : "";
+  const caption = [lead, named].filter(Boolean).join(" ");
   const card: BrowserToolCard = { command, status, caption, runId, stepId: step?.id ?? null, picture };
   return {
     content: [
