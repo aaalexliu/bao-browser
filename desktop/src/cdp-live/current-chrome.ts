@@ -1,6 +1,7 @@
 import path from "node:path";
-import { chromeHelper, INSPECT_URL, logAx, type ChromeAx } from "./ax";
+import { chromeHelper, CHROME_BUNDLE, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
+import type { AxNode } from "../proxy/os-macos";
 import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
 import { dailyChromePids } from "./remote-debugging";
 import { connectCdp, type CdpSocket } from "./socket";
@@ -56,6 +57,39 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
   }
 }
 
+const INSPECT_TAB = "Inspect with Chrome Developer Tools";
+
+function labeled(node: AxNode): string {
+  return node.name || node.title || node.description || "";
+}
+
+function inspectTabs(nodes: AxNode[]): AxNode[] {
+  return nodes.filter((node) => node.role === "AXRadioButton" && node.subrole === "AXTabButton" && labeled(node).includes(INSPECT_TAB));
+}
+
+/** Press arguments for the only inspect tab. No press when another inspect tab is open, and never the window close button. */
+export function inspectTabCloseArgs(nodes: AxNode[], pid: number): string[] | undefined {
+  const tabs = inspectTabs(nodes);
+  if (tabs.length !== 1) return undefined;
+  const label = labeled(tabs[0]!);
+  const button = nodes.find((node) => node.role === "AXButton"
+    && [node.name, node.title, node.description].includes("Close")
+    && node.subrole !== "AXCloseButton"
+    && node.path.some((seg) => seg.role === "AXRadioButton" && seg.name === label));
+  if (!button?.path.length) return undefined;
+  return ["press", "--bundle", CHROME_BUNDLE, "--pid", String(pid), "--role", "AXButton", "--name", "Close", "--path", JSON.stringify(button.path)];
+}
+
+async function closeOpenedInspect(helper: CurrentChromeDeps["helper"], pid: number): Promise<void> {
+  try {
+    const tree = await helper.exec(["nodes", "--bundle", CHROME_BUNDLE, "--pid", String(pid)], 30_000);
+    const args = inspectTabCloseArgs(tree.nodes || [], pid);
+    if (args) await helper.exec(args, 15_000);
+  } catch {
+    // The startup error stays the caller-visible error.
+  }
+}
+
 export async function openCurrentChrome(options: {
   root: string;
   defaultRoot: string;
@@ -78,63 +112,68 @@ export async function openCurrentChrome(options: {
   const pids = await deps.findChrome(options.root);
   if (pids.length !== 1) throw new Error(pids.length ? "More than one Chrome runs on this profile root" : "Chrome is not open. Open Google Chrome, then try again");
   const pid = pids[0]!;
-  const portFile = path.join(options.root, "DevToolsActivePort");
-  const endpointForChrome = async () => {
-    const endpoint = await deps.readPort(portFile).catch(() => undefined);
-    return endpoint && await deps.listener(endpoint.port) === pid ? endpoint : undefined;
-  };
-  let endpoint = await endpointForChrome();
   let openedInspect = false;
-  if (!endpoint) {
-    const helper = deps.helper;
-    options.signal?.throwIfAborted();
-    await helper.exec(["inspect-open-ax", "--pid", String(pid)], 30_000);
-    openedInspect = true;
-    const deadline = Date.now() + 60_000;
-    for (;;) {
-      options.signal?.throwIfAborted();
-      if (Date.now() >= deadline) throw new Error("Chrome's remote-debugging checkbox did not appear");
-      const box = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 30_000);
-      if (box.found) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    const checkbox = await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 30_000);
-    if (!checkbox.found) throw new Error("Chrome's remote-debugging checkbox was not found");
-    if (checkbox.pressed) await logAx(options.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
-    const portDeadline = Date.now() + 10_000;
-    for (;;) {
-      options.signal?.throwIfAborted();
-      endpoint = await endpointForChrome();
-      if (endpoint) break;
-      if (Date.now() >= portDeadline) throw new Error("Chrome did not open its debugging port");
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  }
-  const consent = <T>(operation: (signal: AbortSignal) => Promise<T>, signal = options.signal,
-    failureContext?: (result: T, context: string) => T) =>
-    withConsent(deps.helper, pid, options.axLog, operation, signal, failureContext);
-  const cdp = await consent(async (parent) => {
-    const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
-    const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });
-    const cancel = () => socket.close();
-    signal.addEventListener("abort", cancel, { once: true });
-    try {
-      signal.throwIfAborted();
-      await socket.send("Browser.getVersion", {}, undefined, 20_000);
-      return socket;
-    } catch (error) { socket.close(); throw error; }
-    finally { signal.removeEventListener("abort", cancel); }
-  });
   try {
-    if (openedInspect) {
-      const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets", {}, undefined, 5000);
-      const inspect = targetInfos.filter((target) => target.url === INSPECT_URL);
-      if (inspect.length === 1) await cdp.send("Target.closeTarget", { targetId: inspect[0]!.targetId }, undefined, 5000);
+    const portFile = path.join(options.root, "DevToolsActivePort");
+    const endpointForChrome = async () => {
+      const endpoint = await deps.readPort(portFile).catch(() => undefined);
+      return endpoint && await deps.listener(endpoint.port) === pid ? endpoint : undefined;
+    };
+    let endpoint = await endpointForChrome();
+    if (!endpoint) {
+      const helper = deps.helper;
+      options.signal?.throwIfAborted();
+      await helper.exec(["inspect-open-ax", "--pid", String(pid)], 30_000);
+      openedInspect = true;
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        options.signal?.throwIfAborted();
+        if (Date.now() >= deadline) throw new Error("Chrome's remote-debugging checkbox did not appear");
+        const box = await helper.exec(["checkbox-read", "--pid", String(pid), "--name", REMOTE_CHECKBOX], 30_000);
+        if (box.found) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      const checkbox = await helper.exec(["checkbox-set", "--pid", String(pid), "--name", REMOTE_CHECKBOX, "--value", "1"], 30_000);
+      if (!checkbox.found) throw new Error("Chrome's remote-debugging checkbox was not found");
+      if (checkbox.pressed) await logAx(options.axLog, { what: "AXPress", role: "AXCheckBox", name: REMOTE_CHECKBOX, window: "Inspect with Chrome Developer Tools", at: new Date().toISOString(), via: "BaoOSHelper" });
+      const portDeadline = Date.now() + 10_000;
+      for (;;) {
+        options.signal?.throwIfAborted();
+        endpoint = await endpointForChrome();
+        if (endpoint) break;
+        if (Date.now() >= portDeadline) throw new Error("Chrome did not open its debugging port");
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
     }
-    return { pid, endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
-      detach: () => cdp.close(), withConsent: consent };
+    const consent = <T>(operation: (signal: AbortSignal) => Promise<T>, signal = options.signal,
+      failureContext?: (result: T, context: string) => T) =>
+      withConsent(deps.helper, pid, options.axLog, operation, signal, failureContext);
+    const cdp = await consent(async (parent) => {
+      const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
+      const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });
+      const cancel = () => socket.close();
+      signal.addEventListener("abort", cancel, { once: true });
+      try {
+        signal.throwIfAborted();
+        await socket.send("Browser.getVersion", {}, undefined, 20_000);
+        return socket;
+      } catch (error) { socket.close(); throw error; }
+      finally { signal.removeEventListener("abort", cancel); }
+    });
+    try {
+      if (openedInspect) {
+        const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets", {}, undefined, 5000);
+        const inspect = targetInfos.filter((target) => target.url === INSPECT_URL);
+        if (inspect.length === 1) await cdp.send("Target.closeTarget", { targetId: inspect[0]!.targetId }, undefined, 5000);
+      }
+      return { pid, endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
+        detach: () => cdp.close(), withConsent: consent };
+    } catch (error) {
+      cdp.close();
+      throw error;
+    }
   } catch (error) {
-    cdp.close();
+    if (openedInspect) await closeOpenedInspect(deps.helper, pid);
     throw error;
   }
 }
