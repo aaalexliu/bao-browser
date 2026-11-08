@@ -386,6 +386,7 @@ export async function startApp(opts: {
           failure?: { reason?: string };
           reason?: string;
         };
+        if (result.status === "passed" || result.status === "failed") clearPromptFor(library.root, runId);
         const status = result.status || "failed";
         const outcome = status === "passed" ? "ok" : status === "paused" ? "needs_human" : "failed";
         return {
@@ -2865,7 +2866,6 @@ async function runExtension(
     secretList,
   });
   library.saveRun(saved);
-  if (result.status !== "paused") clearPromptFor(library.root, result.runId || runId);
   return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs };
 }
 
@@ -2885,7 +2885,11 @@ async function runRecorded(
   const engineName = pageEngineName(library.settings().pageEngine);
   const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link), pageEngine: engineName });
   if (refusal) throw new Error(refusal);
-  if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, runId, prompts, link, fromStep);
+  if (link && workflowDriver(workflow) === "extension") {
+    const result = await runExtension(library, workflow, args, notices, runId, prompts, link, fromStep);
+    if (result.status === "passed" || result.status === "failed") clearPendingPrompt(library.root);
+    return result;
+  }
   const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl);
   try {
     const page = session.page;

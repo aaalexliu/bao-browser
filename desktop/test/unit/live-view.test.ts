@@ -382,6 +382,52 @@ test("a relay clear does not remove a local hold or its pending prompt", { timeo
   }
 });
 
+test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("grant");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const base = `http://127.0.0.1:${app.port}`;
+  let opens = 0;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async (op) => {
+      if (op === "open") {
+        opens += 1;
+        if (opens === 1) return { needsHuman: true, pattern: "https://example.test/*" };
+      }
+      return { nodes: [], texts: [], url: "https://example.test/" };
+    };
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 1000 }];
+    app.library.save(wf);
+    const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(first.status, "needs_human");
+    const held = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(held.activeRun?.id, first.runId);
+    assert.equal(held.activeRun?.phase, "waiting");
+    assert.equal(held.activeAsk?.kind, "wall");
+    assert.equal(readPendingPrompt(dirs.home)?.runId, first.runId);
+    const second = await post(`${base}/api/replay`, { id: wf.id, args: {} });
+    assert.equal(second.status, "passed");
+    assert.notEqual(second.runId, first.runId);
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun, null);
+    assert.equal(after.activeAsk, null);
+    assert.equal(readPendingPrompt(dirs.home), null);
+  } finally {
+    await stop(base).catch(() => undefined);
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-run-identity");
   process.env.BAO_DRIVE = "1";
