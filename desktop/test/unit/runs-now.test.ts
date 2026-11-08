@@ -113,6 +113,11 @@ test("a replay waiting in this process is under Needs you and Now, and opens liv
     }, "replay did not wait inside the live process");
     const now = page.locator(`#runs section[aria-label="Now"] [data-open-run="${runId}"]`);
     await now.waitFor();
+    await page.waitForFunction((id) => {
+      const state = document.querySelector(`#runs section[aria-label="Now"] [data-open-run="${id}"] .run-state`);
+      const needs = document.querySelector(`#runs ul[aria-label="Needs you"] [data-open-run="${id}"]`);
+      return state?.textContent === "Needs you" && Boolean(needs);
+    }, runId);
     assert.equal(await now.locator(".run-state").innerText(), "Needs you");
     assert.equal(await page.locator(`#runs ul[aria-label="Needs you"] [data-open-run="${runId}"]`).count(), 1);
     assert.equal(await page.locator(`#runs section[aria-label="Today"] [data-open-run="${runId}"]`).count(), 0);
