@@ -120,11 +120,14 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   checks.push(chrome
     ? { level: "ok", name: "chrome", detail: chrome }
     : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. agent_browser copies a Chrome profile by default" });
-  const bao = baoCommand(probe);
+  const bao = baoCommand(probe, app);
   for (const target of detectTargets(probe)) {
     if (target.command === launcher) checks.push({ level: "ok", name: target.id, detail: `${target.file} starts this Bao` });
-    else if (target.command) checks.push({ level: "warn", name: target.id, detail: `${target.file} starts ${target.command}. Run ${bao} setup --agents ${target.id}` });
-    else if (target.found) checks.push({ level: "warn", name: target.id, detail: `found (${target.found}) but not set up. Run ${bao} setup --agents ${target.id}` });
+    else if (target.command || target.found) {
+      const state = target.command ? `${target.file} starts ${target.command}` : `found (${target.found}) but not set up`;
+      const next = target.blocked ? `${target.label} ${target.blocked}` : `Run ${bao} setup --agents ${target.id}`;
+      checks.push({ level: "warn", name: target.id, detail: `${state}. ${next}` });
+    }
   }
   try {
     const env = { ...probe.env };

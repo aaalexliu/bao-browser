@@ -1,6 +1,6 @@
 # Build Bao on a Mac
 
-This is the contributor rebuild. Users install with `npx bao-browser` ([README](../README.md#install)); [Release Bao](release.md) covers that build. The pass on an installed app is [Test Bao on a Mac](mac-test.md).
+This is the contributor rebuild. Users install with the one `npx` command in the [README](../README.md#install); [Release Bao](release.md) covers that build. The pass on an installed app is [Test Bao on a Mac](mac-test.md).
 
 Do not open the listen address in a browser. The product is the [Bao window](#launch), with no address bar. A second double-click focuses that window. It does not start a second server.
 

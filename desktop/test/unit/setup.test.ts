@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import test, { type TestContext } from "node:test";
-import { signer } from "../../src/app/doctor";
+import { doctorChecks, signer } from "../../src/app/doctor";
 import { applyTarget, chosenByFlags, detectOthers, detectTargets, parseSetup, pickInTerminal, setupMain, type Probe, type SetupIo, type Target } from "../../src/app/setup";
 
 interface Lab {
@@ -156,6 +156,15 @@ test("the picker keeps every line inside a narrow terminal, so a redraw moves up
   for (const row of screen.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").split("\n")) assert.ok(row.length < 40, row);
 });
 
+test("with no terminal, setup lists a command for each agent it can set up, not one that would fail", async (t) => {
+  const { probe, app } = lab(t);
+  const out: string[] = [];
+  const io = { env: probe.env, out: (text: string) => out.push(text), err: (text: string) => out.push(text), stdin: { isTTY: false }, stdout: { isTTY: false } } as unknown as SetupIo;
+  assert.equal(await setupMain(["--app", app], io, probe), 0);
+  const bao = path.join(app, "Contents", "MacOS", "bao-cli");
+  assert.equal(out.join(""), `No terminal to ask in, so Bao changed no agent config. Run one of these:\n${["codex", "claude-desktop", "cursor"].map((id) => `  ${bao} setup --agents ${id}`).join("\n")}\n`);
+});
+
 test("setup with --none names the command that runs setup from this shell", async (t) => {
   const { probe, app, bin } = lab(t);
   const said = async (): Promise<string> => {
@@ -164,7 +173,32 @@ test("setup with --none names the command that runs setup from this shell", asyn
     assert.equal(await setupMain(["--app", app, "--none"], io, probe), 0);
     return out.join("");
   };
-  assert.equal(await said(), "No app was changed. Run `npx bao-browser setup` any time to add Bao to an agent.\n");
+  const cli = path.join(app, "Contents", "MacOS", "bao-cli");
+  assert.equal(await said(), `No app was changed. Run \`${cli} setup\` any time to add Bao to an agent.\n`);
+  writeFileSync(cli, "#!/bin/sh\nexit 0\n");
+  chmodSync(cli, 0o755);
+  const link = path.join(probe.home, ".local", "bin", "bao");
+  mkdirSync(path.dirname(link), { recursive: true });
+  symlinkSync(cli, link);
+  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n`);
   tool(bin, "bao");
+  assert.equal(await said(), `No app was changed. Run \`${link} setup\` any time to add Bao to an agent.\n`);
+  rmSync(path.join(bin, "bao"));
+  symlinkSync(link, path.join(bin, "bao"));
   assert.equal(await said(), "No app was changed. Run `bao setup` any time to add Bao to an agent.\n");
+});
+
+test("doctor tells the owner what Claude Code is missing instead of a setup command that would fail", async (t) => {
+  const { probe, app, launcher } = lab(t);
+  writeFileSync(launcher, `#!/bin/sh\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'\nread line\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}'\n`);
+  mkdirSync(path.join(probe.home, ".claude"));
+  const detail = async (): Promise<string | undefined> => (await doctorChecks(app, probe)).find((check) => check.name === "claude-code")?.detail;
+  assert.equal(await detail(), "found (~/.claude) but not set up. Claude Code needs the claude command on PATH");
+  const servers = path.join(probe.home, ".claude.json");
+  writeFileSync(servers, JSON.stringify({ mcpServers: { bao: { command: "/Applications/Other.app/Contents/MacOS/bao-mcp" } } }));
+  assert.equal(await detail(), `${servers} starts /Applications/Other.app/Contents/MacOS/bao-mcp. Claude Code needs the claude command on PATH`);
+  const cli = path.join(app, "Contents", "MacOS", "bao-cli");
+  assert.equal((await doctorChecks(app, probe)).find((check) => check.name === "codex")?.detail, undefined);
+  mkdirSync(path.join(probe.home, ".codex"));
+  assert.equal((await doctorChecks(app, probe)).find((check) => check.name === "codex")?.detail, `found (~/.codex) but not set up. Run ${cli} setup --agents codex`);
 });

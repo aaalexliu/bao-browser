@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// npx bao-browser: download the prebuilt Bao.app this package pins, check its size and SHA-256,
+// The bao-browser installer: download the prebuilt Bao.app this package pins, check its size and SHA-256,
 // put it in /Applications (or ~/Applications), link ~/.local/bin/bao, then run the app's own
 // `bao setup` so the owner picks which agents start Bao. No build tools, no certificate.
 
@@ -15,8 +15,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(path.join(HERE, "..", "package.json"), "utf8"));
-const USAGE = `usage: npx bao-browser [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
-       npx bao-browser setup|doctor [args]   run the installed Bao's own setup or doctor
+/** The command that runs this installer. bao-browser is not on npm, so it runs the copy attached to the latest release. */
+const NPX = "npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz";
+const USAGE = `usage: ${NPX} [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
+       ${NPX} setup|doctor [args]   run the installed Bao's own setup or doctor
 
 With no command, download Bao.app ${PKG.version}, check it, place it, then pick agents.
 
@@ -221,7 +223,7 @@ async function replaceSigned(target, old, signer, yes) {
       ask.close();
     }
   } else process.stdout.write(`${loss}\n`);
-  process.stdout.write(`Kept ${target}. Nothing was installed. To replace it: quit Bao, remove ${target}, then run npx bao-browser again.\n`);
+  process.stdout.write(`Kept ${target}. Nothing was installed. To replace it: quit Bao, remove ${target}, then run ${NPX} again.\n`);
   return false;
 }
 
@@ -251,28 +253,36 @@ async function place(zip, dir, yes) {
   }
 }
 
-/** ~/.local/bin/bao -> Bao.app/Contents/MacOS/bao-cli. A file there that is not Bao's link stays. */
+/** A path as one shell word, so a printed command runs when pasted. */
+function shellWord(text) {
+  return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * ~/.local/bin/bao -> Bao.app/Contents/MacOS/bao-cli. A file there that is not Bao's link stays.
+ * bao is the full path that runs this app. offPath is true when the link is made but ~/.local/bin is not on PATH.
+ */
 function link(app) {
   const bin = path.join(home(), ".local", "bin");
   const file = path.join(bin, "bao");
   const target = path.join(app, "Contents", "MacOS", "bao-cli");
-  if (!existsSync(target)) return { note: `${target} is missing, so no bao command was linked`, onPath: false };
+  if (!existsSync(target)) return { note: `${target} is missing, so no bao command was linked`, bao: "", offPath: false };
+  const unlinked = { bao: shellWord(target), offPath: false };
   mkdirSync(bin, { recursive: true });
   try {
     const stat = lstatSync(file);
-    if (!stat.isSymbolicLink() || !/Bao\.app\/Contents\/MacOS\/bao-cli$/.test(readlinkSync(file))) return { note: `${file} exists and is not Bao's, so it was left alone`, onPath: false };
+    if (!stat.isSymbolicLink() || !/Bao\.app\/Contents\/MacOS\/bao-cli$/.test(readlinkSync(file))) return { note: `${file} exists and is not Bao's, so it was left alone`, ...unlinked };
     unlinkSync(file);
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
   symlinkSync(target, file);
-  const onPath = (process.env.PATH || "").split(":").includes(bin);
-  return { note: `linked ${file}${onPath ? "" : dim(` (add ${bin} to PATH to run bao)`)}`, onPath };
+  return { note: `linked ${file}`, bao: shellWord(file), offPath: !(process.env.PATH || "").split(":").includes(bin) };
 }
 
 function runApp(app, args) {
   const cli = path.join(app, "Contents", "MacOS", "bao-cli");
-  if (!existsSync(cli)) throw new InstallError(`${cli} is missing. Install Bao first: npx bao-browser`);
+  if (!existsSync(cli)) throw new InstallError(`${cli} is missing. Install Bao first: ${NPX}`);
   const result = spawnSync(cli, args, { stdio: "inherit" });
   return result.status ?? 1;
 }
@@ -299,8 +309,8 @@ async function install(opts) {
   step(linked.note);
   step(`Took ${((Date.now() - started) / 1000).toFixed(1)} s. Now pick the agents that should use Bao.\n`);
   const status = runApp(app, ["setup", "--app", app, ...opts.setup]);
-  const bao = linked.onPath ? "bao" : "npx bao-browser";
-  process.stdout.write(`\n${dim(`Check this install any time: ${bao} doctor   ·   change agents: ${bao} setup`)}\n`);
+  if (linked.bao) process.stdout.write(`\n${dim(`Check this install any time: ${linked.bao} doctor   ·   change agents: ${linked.bao} setup`)}\n`);
+  if (linked.offPath) process.stdout.write(`${dim("To run plain bao, add ~/.local/bin to your PATH.")}\n`);
   return status;
 }
 
@@ -313,7 +323,7 @@ async function main() {
   if (opts.command === "setup" || opts.command === "doctor") {
     const named = opts.rest.indexOf("--app");
     const app = named >= 0 && opts.rest[named + 1] ? path.resolve(opts.rest[named + 1]) : installedApp();
-    if (!app) throw new InstallError("Bao is not installed. Run: npx bao-browser");
+    if (!app) throw new InstallError(`Bao is not installed. Run: ${NPX}`);
     return runApp(app, [opts.command, ...opts.rest]);
   }
   return install(opts);
