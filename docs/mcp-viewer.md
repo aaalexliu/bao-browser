@@ -23,7 +23,7 @@ Read errors keep the loaded receipt or history visible. For a failed read, try *
 
 ## Browser tool cards
 
-The same resource renders direct-browser results without changing native commands. Every card leads with one sentence, such as `Clicked "Edit" (button) for "McCabe Organic Coix Seed…"`. Bao builds it from native output, Chrome's own page title and address, and the latest snapshot line for the ref. When the page repeats the element's name and the snapshot tree puts the element inside a list item, row, article, or named group or region, the sentence adds that item's own name, or else the first name inside it that differs from the element's. A flat `snapshot -i` read or a plain container shows no item, so the sentence names only the element. Long names are cut with an ellipsis. Text-only clients get the same sentence as the first text block.
+The same resource renders direct-browser results without changing native commands. Every card leads with one sentence, such as `Clicked "Edit" (button) for "McCabe Organic Coix Seed…"`. Bao builds it from native output, Chrome's own page title and address, and the latest snapshot line for the ref. When the page repeats the element's name and the snapshot tree puts the element inside a list item, row, article, or named group or region, the sentence adds that item's own name. When that item has no name of its own, or a flat `snapshot -i` read or a plain container shows no item, the sentence names only the element. Long names are cut with an ellipsis. Text-only clients get the same sentence as the first text block.
 
 | Step | Card |
 |---|---|

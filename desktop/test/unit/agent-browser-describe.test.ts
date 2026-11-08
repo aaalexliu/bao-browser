@@ -33,19 +33,31 @@ const flat = [
   "- button \"Edit\" [ref=e7]",
 ].join("\n");
 
-// The same items as list items, with uneven numbers of controls.
+// The same items as named list items, with uneven numbers of controls.
 const items = [
   "- heading \"Your Subscriptions\" [level=1, ref=e1]",
   "- list",
-  "  - listitem",
+  "  - listitem \"McCabe Organic Coix Seed - Job's Tears 2 Lbs| High Protein and Fiber | USDA and CCOF Certified\"",
   "    - link \"McCabe Organic Coix Seed - Job's Tears 2 Lbs| High Protein and Fiber | USDA and CCOF Certified\" [ref=e28]",
   "    - button \"Next delivery: Nov 8\" [ref=e30]",
   "    - button \"1 unit every 6 weeks\" [ref=e31]",
   "    - button \"Edit\" [ref=e32]",
-  "  - listitem",
+  "  - listitem \"365 by Whole Foods Market Organic Lemon Juice\"",
   "    - button \"Edit\" [ref=e35]",
   "    - link \"365 by Whole Foods Market Organic Lemon Juice\" [ref=e33]",
   "- searchbox \"Search subscriptions\" [ref=e2]",
+].join("\n");
+// List items with no name of their own, each with a leading control before its title.
+const unnamed = [
+  "- list",
+  "  - listitem",
+  "    - button \"Skip\" [ref=e3]",
+  "    - button \"Edit\" [ref=e4]",
+  "    - link \"Barley Tea\" [ref=e5]",
+  "  - listitem",
+  "    - button \"Skip\" [ref=e6]",
+  "    - button \"Edit\" [ref=e7]",
+  "    - link \"Lemon Juice\" [ref=e8]",
 ].join("\n");
 
 test("a click quotes the element's own name and names its item only when the page structure shows the item", () => {
@@ -57,7 +69,9 @@ test("a click quotes the element's own name and names its item only when the pag
   assert.equal(first.text, 'Clicked "Edit" (button) for "McCabe Organic Coix Seed - Job\'s Tears 2 Lbs…".');
   assert.deepEqual(first.parts, ["Clicked ", { cite: "Edit" }, " (button)", " for ", { cite: "McCabe Organic Coix Seed - Job's Tears 2 Lbs…" }]);
   assert.equal(first.mark, "Clicked");
-  assert.equal(click("@e35", items).text, 'Clicked "Edit" (button) for "365 by Whole Foods Market Organic Lemon Juice".', "the title can follow the control");
+  assert.equal(click("@e35", items).text, 'Clicked "Edit" (button) for "365 by Whole Foods Market Organic Lemon Juice".');
+  assert.equal(click("@e7", unnamed).text, 'Clicked "Edit" (button).', "an item with no name of its own names nothing, never a sibling control");
+  assert.equal(click("@e6", unnamed).text, 'Clicked "Skip" (button).');
   const groups = [
     "- group \"Barley Tea subscription\"",
     "  - button \"Edit\" [ref=e5]",

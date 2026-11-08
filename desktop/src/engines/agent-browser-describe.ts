@@ -107,21 +107,14 @@ export function elementFor(ref: string | undefined, snapshot: string | undefined
 const ITEM_ROLES = new Set(["listitem", "row", "article"]);
 const LABELLED_ROLES = new Set(["group", "region"]);
 
-/** The name of the list item, row, article, or labelled group that holds this element in the snapshot tree. A flat read has no such item. */
+/** The own name of the nearest list item, row, article, or labelled group or region that holds this element in the snapshot tree. */
 function itemName(lines: SnapshotLine[], at: number): string | undefined {
-  const line = lines[at]!;
-  let indent = line.indent;
+  let indent = lines[at]!.indent;
   for (let i = at - 1; i >= 0 && indent > 0; i--) {
     const parent = lines[i]!;
     if (parent.indent >= indent) continue;
     indent = parent.indent;
-    if (!ITEM_ROLES.has(parent.role) && !(LABELLED_ROLES.has(parent.role) && parent.name)) continue;
-    if (parent.name) return parent.name;
-    for (let j = i + 1; j < lines.length && lines[j]!.indent > parent.indent; j++) {
-      const name = lines[j]!.name;
-      if (name && name !== line.name) return name;
-    }
-    return undefined;
+    if (ITEM_ROLES.has(parent.role) || LABELLED_ROLES.has(parent.role) && parent.name) return parent.name;
   }
   return undefined;
 }
