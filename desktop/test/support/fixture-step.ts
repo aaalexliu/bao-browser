@@ -130,6 +130,15 @@ export interface LooseDoc {
 export type FixtureDraft = LooseStep;
 
 export function fixtureStep(draft: object, index = (draft as LooseStep).index ?? 0): WorkflowStep {
+  const step = builtFixtureStep(draft, index);
+  const raw = draft as LooseStep;
+  const extra = step as WorkflowStep & { waitFor?: LooseCheck; gone?: LooseCheck };
+  if (raw.waitFor) extra.waitFor = raw.waitFor;
+  if (raw.gone) extra.gone = raw.gone;
+  return extra;
+}
+
+function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0): WorkflowStep {
   const raw = draft as LooseStep;
   const action = mapAction(raw.action);
   const timeoutMs = typeof raw.timeoutMs === "number" ? raw.timeoutMs : 8000;
@@ -304,6 +313,7 @@ export function withStep(step: WorkflowStep, patch: object): WorkflowStep {
   const extra = patch as LooseStep;
   const merged: LooseStep = { ...draft, ...extra, id: extra.id || step.id, index: extra.index ?? step.index };
   if (extra.identity || extra.locators || extra.history) delete merged.target;
+  if ("postcondition" in extra || "expect" in extra) delete merged.check;
   if (extra.label || extra.caption) delete merged.caption;
   if ("value" in extra) delete merged.text;
   if ("input" in extra) delete merged.text;
@@ -382,6 +392,13 @@ function asIdentity(node: Partial<Identity> | undefined): Identity | undefined {
   return { surface: node.surface ?? "dom", role: node.role ?? "unknown", path: node.path ?? [], ...node };
 }
 
+/** A css path on the identity is a weak score. It is not a stored unique selector unless the draft stored locators. */
+function withoutRecordedPath(list: StepLocator[] | undefined, identity: Identity | undefined): StepLocator[] | undefined {
+  if (!list || !identity?.cssPath || identity.cssPath.startsWith("#")) return list;
+  const filtered = list.filter((locator) => !(locator.kind === "css" && locator.value === identity.cssPath));
+  return filtered.length ? filtered : undefined;
+}
+
 function targetOf(draft: LooseStep): Target | undefined {
   if (draft.target?.locators?.length || draft.target?.hint) {
     return {
@@ -391,7 +408,7 @@ function targetOf(draft: LooseStep): Target | undefined {
     };
   }
   const identity = asIdentity(draft.identity);
-  const locators = draft.locators ?? locatorsFromIdentity(identity);
+  const locators = draft.locators ?? withoutRecordedPath(locatorsFromIdentity(identity), identity);
   if (!locators?.length && !identity) return draft.history ? { locators: [{ kind: "role", role: "button", name: draft.label || "Click" }], history: draft.history } : undefined;
   const hint = hintFromIdentity(identity);
   return {
@@ -416,7 +433,7 @@ function fileOf(draft: LooseStep): { input: string } | { fromOutput: string } {
 
 function checkOf(draft: LooseStep): Check | undefined {
   if (draft.check) return draft.check;
-  const raw = draft.expect ?? draft.postcondition ?? draft.waitFor;
+  const raw = draft.expect ?? draft.postcondition;
   if (!raw?.kind) return undefined;
   const timeoutMs = raw.timeoutMs ?? 4000;
   if (raw.kind === "settled") return { kind: "settled", timeoutMs };

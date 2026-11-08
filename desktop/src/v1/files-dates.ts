@@ -12,8 +12,8 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
-import { stepInputName, stepFileFrom, stepQuery, stepTarget } from "./schema";
-import type { FileArg, Identity, ReplayArgs, Target, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { stepInputName, stepFileFrom, stepTarget } from "./schema";
+import type { FileArg, ReplayArgs, Target, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { FILE_BINDING } from "./bindings";
 import { addDays, civilInZone, datePreview, defaultZone, diffDays, formatCivil, isoOf, looksLikeDateField, parseRecordedDate, relativeBetween, resolveRelative, zoneOk, type Civil } from "./dates";
 
@@ -87,6 +87,7 @@ export interface ShapeEvent {
     role?: string;
     tag?: string;
     testId?: string;
+    href?: string;
   };
 }
 
@@ -283,7 +284,7 @@ function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
  * That node is gone on the next run, and its query string is the recorded search.
  * The button the person pressed is the trigger replay can press again.
  */
-function isGeneratedDownloadLink(identity: Identity | undefined): boolean {
+function isGeneratedDownloadLink(identity: { id?: string; testId?: string; tag?: string; role?: string; text?: string; name?: string; label?: string; href?: string } | undefined): boolean {
   if (!identity || identity.id || identity.testId) return false;
   const tag = (identity.tag || "").toLowerCase();
   if (tag !== "a" && identity.role !== "link") return false;
@@ -299,8 +300,9 @@ function keptTarget(target: Target | undefined): Target | undefined {
 
 function takeDownloadTrigger(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): Target | undefined {
   const generated = outSteps[outSteps.length - 1];
+  const recorded = lastEvent(outGroups[outGroups.length - 1])?.identity;
   let linkTarget: Target | undefined;
-  if (generated?.action === "click" && isGeneratedDownloadLink(stepQuery(generated))) {
+  if (generated?.action === "click" && isGeneratedDownloadLink(recorded)) {
     linkTarget = stepTarget(generated);
     outSteps.pop();
     outGroups.pop();
