@@ -205,3 +205,65 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("replay on the owner's Chrome starts and finishes while another owner tab never answers, and attaches none of the owner's tabs", { skip: replaySkip, timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-current-stuck-"));
+  let blocked!: () => void;
+  const stuckPage = new Promise<void>(resolve => { blocked = resolve; });
+  const server = createServer((request, response) => {
+    // The stuck page's synchronous request never gets an answer, so its page thread never returns.
+    if (request.url === "/hang") return blocked();
+    response.setHeader("content-type", "text/html");
+    response.end(request.url === "/task" ? TASK : request.url === "/stuck"
+      ? "<!doctype html><title>Stuck</title><script>const hang = new XMLHttpRequest(); hang.open('GET', '/hang', false); hang.send();</script>"
+      : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    return { pid: 7, endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
+      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+  });
+  const priorSource = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+  process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = path.join(root, "chrome");
+  const library = new Library(path.join(root, "home"));
+  const base = `http://127.0.0.1:${port}`;
+  library.save(fixtureDoc({ id: "stuck-neighbor", name: "Replay next to a stuck tab", startUrl: `${base}/task`, steps: [FILL, SAVE] }));
+  try {
+    const { owner, ownerState } = await openOwnerTab(probe, `${base}/owner`);
+    // Another site keeps the stuck page out of the task tab's process.
+    const { targetId: stuck } = await probe.send<{ targetId: string }>("Target.createTarget", { url: `http://localhost:${port}/stuck`, background: true });
+    await stuckPage;
+    const { sessionId } = await probe.send<{ sessionId: string }>("Target.attachToTarget", { targetId: stuck, flatten: true });
+    await assert.rejects(probe.send("Page.enable", {}, sessionId, 1000), /cdp timeout Page.enable/, "the stuck tab never answers");
+    await probe.send("Target.detachFromTarget", { sessionId });
+
+    const attached: string[] = [];
+    probe.on("Target.targetInfoChanged", undefined, (params) => {
+      const info = params.targetInfo as { targetId: string; attached: boolean };
+      if (info.attached && [owner, stuck].includes(info.targetId)) attached.push(info.targetId);
+    });
+    await probe.send("Target.setDiscoverTargets", { discover: true });
+    const started = Date.now();
+    const done = await runWorkflow(library, { id: "stuck-neighbor", browser: "current" });
+    assert.equal(done.outcome, "ok", done.reason);
+    assert.ok(Date.now() - started < 15_000, `replay took ${Date.now() - started} ms`);
+    await probe.send("Target.setDiscoverTargets", { discover: false });
+    assert.deepEqual(attached, [], "replay never attached the owner's tabs");
+    const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
+    assert.equal(targetInfos.find(target => target.targetId === stuck)?.url, `http://localhost:${port}/stuck`, "the stuck tab stays open where it was");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
+  } finally {
+    if (priorSource === undefined) delete process.env.BAO_AGENT_BROWSER_PROFILE_ROOT; else process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = priorSource;
+    probe.close();
+    await chrome.close();
+    server.closeAllConnections();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -33,6 +33,8 @@ export class ServerFrameDecoder {
   private fragments: Buffer[] = [];
   private fragOp = 0;
 
+  constructor(private readonly maxFrame = MAX_FRAME) {}
+
   push(chunk: Buffer): DecodedFrame[] {
     this.buf = Buffer.concat([this.buf, chunk]);
     const out: DecodedFrame[] = [];
@@ -51,11 +53,11 @@ export class ServerFrameDecoder {
       } else if (len === 127) {
         if (this.buf.length < 10) break;
         const big = this.buf.readBigUInt64BE(2);
-        if (big > BigInt(MAX_FRAME)) throw new Error("cdp frame too large");
+        if (big > BigInt(this.maxFrame)) throw new Error("cdp frame too large");
         len = Number(big);
         offset = 10;
       }
-      if (len > MAX_FRAME) throw new Error("cdp frame too large");
+      if (len > this.maxFrame) throw new Error("cdp frame too large");
       const maskLen = masked ? 4 : 0;
       if (this.buf.length < offset + maskLen + len) break;
       let payload = Buffer.from(this.buf.subarray(offset + maskLen, offset + maskLen + len));
@@ -92,7 +94,7 @@ export class ServerFrameDecoder {
   }
 }
 
-function clientFrame(opcode: number, payload: Buffer): Buffer {
+export function clientFrame(opcode: number, payload: Buffer): Buffer {
   const mask = randomBytes(4);
   let header: Buffer;
   if (payload.length < 126) {
