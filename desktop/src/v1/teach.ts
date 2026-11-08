@@ -740,7 +740,7 @@ function targetName(event: TrailEvent | undefined): string {
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
   const fromLabel = (stepTitle(step) || "").trim().replace(/^Click "(.+)"$/, "Click $1");
-  if (fromLabel && fromLabel !== "Click") return fromLabel;
+  if (fromLabel.startsWith("Click ") && fromLabel !== "Click") return fromLabel;
   const target = targetName(event);
   if (target) return `Click ${target}`;
   if (fromLabel) return fromLabel;

@@ -48,6 +48,7 @@ const target = {
         inputType: { type: "string" },
         autocomplete: { type: "string" },
         placeholder: { type: "string" },
+        id: { type: "string" },
       },
     },
     reveal: locator,
@@ -81,6 +82,7 @@ const hint = {
     inputType: { type: "string" },
     autocomplete: { type: "string" },
     placeholder: { type: "string" },
+    id: { type: "string" },
   },
 };
 const check = {
@@ -174,6 +176,7 @@ function step(action: string, required: string[], properties: Record<string, unk
       when,
       heal: { enum: ["auto", "ask", "never"] },
       readBack,
+      input: name,
       ...(withCheck ? { check } : {}),
       ...properties,
     },
@@ -200,7 +203,7 @@ export function workflowJsonSchema(): Record<string, unknown> {
       replayed: { type: "boolean" },
       summary: { type: "string" },
       intent: { type: "string" },
-      driver: { enum: ["playwright", "extension"] },
+      driver: { enum: ["playwright", "extension", "cdp-live"] },
       imported: { const: true },
       inputs: { type: "array", items: {
         type: "object",
@@ -210,7 +213,7 @@ export function workflowJsonSchema(): Record<string, unknown> {
           type: { enum: ["text", "secret", "number", "choice", "file", "date", "table"] },
           label: { type: "string", minLength: 1 },
           supply: { enum: ["saved", "must"] },
-          default: { type: "string", minLength: 1 },
+          default: { type: "string" },
           ownerSaved: { const: true },
           askOnImport: { type: "boolean" },
           example: { type: "string" },
@@ -223,7 +226,7 @@ export function workflowJsonSchema(): Record<string, unknown> {
           fromOutput: name,
         },
         allOf: [
-          { if: { properties: { supply: { const: "saved" } }, required: ["supply"] }, then: { required: ["default"], not: { properties: { type: { const: "file" } }, required: ["type"] } } },
+          { if: { properties: { supply: { const: "saved" } }, required: ["supply"] }, then: { required: ["default"] } },
           { if: { properties: { supply: { const: "must" } }, required: ["supply"] }, then: { not: { required: ["default"] } } },
           { if: { properties: { type: { const: "choice" } }, required: ["type"] }, then: { required: ["choices"], properties: { choices: { minItems: 1 } } } },
         ],

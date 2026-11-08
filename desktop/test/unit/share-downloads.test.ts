@@ -19,14 +19,14 @@ const fileBytes = `{
   "steps": [
     {
       "action": "note",
+      "caption": { "text": "Read café notes" },
       "id": "note",
       "index": 0,
-      "label": "Read café notes",
-      "surface": "dom"
+      "text": "Read café notes",
+      "timeoutMs": 8000
     }
-  ],
-  "version": 2
-}`;
+  ]
+}`
 
 test("Share, guide, editor export, and import preserve saved evidence", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-share-download-"));

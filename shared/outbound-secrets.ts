@@ -1,6 +1,6 @@
 import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
-import { isSensitiveField, type FieldHint } from "./mask";
+import { isSensitiveField, SENSITIVE_RE, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
 import { fixedSavedChoice, isSealedArtifact, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
 import { stepForEach, stepInputName, stepQuery, stepSensitive, stepValueTemplate, type StepRead } from "./step-read";
@@ -221,7 +221,9 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (entry) {
       select(node, event ? "event" : "step", { secret: structural });
       const text = record(node.text);
-      if ("literal" in text) select(text, "text", { secret: structural || secretNode(node) });
+      const literal = typeof text.literal === "string" ? text.literal : "";
+      const tokenSecret = literal.length > 0 && !/\s/.test(literal) && SENSITIVE_RE.test(literal);
+      if ("literal" in text) select(text, "text", { secret: structural || secretNode(node) || tokenSecret });
       const fields = slots.get(node)!;
       if (fixedSavedChoice(node) && !structural) for (const key of ["value", "valueBefore", "valueAfter"]) fields.delete(key);
       if (scope && bindingTokens(node.value, scope.names, scope.row).size) fields.delete("value");
