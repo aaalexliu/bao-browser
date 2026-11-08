@@ -203,9 +203,9 @@ export function parseSetup(argv: readonly string[], selfFile: string = __filenam
   let none = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--yes" || arg === "-y") yes = true;
+    if (arg === "--yes") yes = true;
     else if (arg === "--none") none = true;
-    else if (arg === "--app" || arg === "--agents" || arg === "-a") {
+    else if (arg === "--app" || arg === "--agents") {
       const value = argv[i + 1];
       if (!value || value.startsWith("-")) throw new Error(`${arg} needs a value`);
       // The real path, so /tmp and /private/tmp name one app, as the launcher sees itself.

@@ -78,8 +78,9 @@ test("flags pick targets by name and refuse unknown or blocked ones", (t) => {
   assert.deepEqual(chosenByFlags(targets, parseSetup(["--none"], "/nowhere/cli.js")), []);
   assert.throws(() => chosenByFlags(targets, parseSetup(["--agents", "emacs"], "/nowhere/cli.js")), /unknown agent: emacs/);
   for (const name of ["claude", "chatgpt", "all", "*"]) assert.throws(() => chosenByFlags(targets, parseSetup(["--agents", name], "/nowhere/cli.js")), /unknown agent/);
-  assert.throws(() => chosenByFlags(targets, parseSetup(["-a", "claude-code"], "/nowhere/cli.js")), /Claude Code needs the claude command on PATH/);
+  assert.throws(() => chosenByFlags(targets, parseSetup(["--agents", "claude-code"], "/nowhere/cli.js")), /Claude Code needs the claude command on PATH/);
   assert.throws(() => parseSetup(["--yes", "--none"]), /only one of/);
+  for (const short of ["-y", "-a"]) assert.throws(() => parseSetup([short, "codex"]), /unknown argument/);
 });
 
 test("the app comes from the server copy that runs setup, unless --app names one", () => {

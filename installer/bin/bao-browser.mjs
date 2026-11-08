@@ -15,10 +15,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG = JSON.parse(readFileSync(path.join(HERE, "..", "package.json"), "utf8"));
-const USAGE = `usage: npx bao-browser [install] [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
+const USAGE = `usage: npx bao-browser [--dir DIR] [--yes | --agents a,b | --none] [--release FILE_OR_URL]
        npx bao-browser setup|doctor [args]   run the installed Bao's own setup or doctor
 
-install   download Bao.app ${PKG.version}, check it, place it, then pick agents (default)
+With no command, download Bao.app ${PKG.version}, check it, place it, then pick agents.
+
 --dir     the Applications folder to use (default: /Applications, else ~/Applications)
 --yes     set up every agent found on this Mac without asking
 --agents  set up these agents: claude-code, codex, claude-desktop, cursor
@@ -37,17 +38,13 @@ function home() {
 
 function parse(argv) {
   const out = { command: "install", dir: "", setup: [], yes: false, release: "", rest: [] };
-  let i = 0;
   if (argv[0] && !argv[0].startsWith("-")) {
+    if (argv[0] !== "setup" && argv[0] !== "doctor") throw new InstallError(`unknown command: ${argv[0]}`);
     out.command = argv[0];
-    i = 1;
-  }
-  if (out.command === "setup" || out.command === "doctor") {
-    out.rest = argv.slice(i);
+    out.rest = argv.slice(1);
     return out;
   }
-  if (out.command !== "install") throw new InstallError(`unknown command: ${out.command}`);
-  for (; i < argv.length; i++) {
+  for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
       const next = argv[i + 1];
@@ -57,11 +54,11 @@ function parse(argv) {
     };
     if (arg === "--dir") out.dir = path.resolve(value());
     else if (arg === "--release") out.release = value();
-    else if (arg === "--yes" || arg === "-y" || arg === "--none") {
+    else if (arg === "--yes" || arg === "--none") {
       out.setup.push(arg);
       if (arg !== "--none") out.yes = true;
     }
-    else if (arg === "--agents" || arg === "-a") out.setup.push("--agents", value());
+    else if (arg === "--agents") out.setup.push("--agents", value());
     else if (arg === "--help" || arg === "-h") out.command = "help";
     else throw new InstallError(`unknown argument: ${arg}`);
   }
