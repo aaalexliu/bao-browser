@@ -50,7 +50,7 @@ import { workflowFloorTitle } from "../v1/workflow-name";
 import { decide, decisionEvent, intentEvalPair, mergeDemonstrations, narratorFromEnv, projectTeach, publicTrail, teachIntentCase, teachSummaryFrom, type Spoken, type TeachCorrection, type TeachDecision } from "../v1/teach";
 import { guideCrops, guideHtml } from "../v1/guide";
 import { guideMe, type GuideProgress } from "../v1/guide-me";
-import { guideShotName, shotFile, shotFormat, workflowShotName } from "../v1/shots";
+import { guideShotName, shotFile, shotFormat, viewportShotName, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
@@ -139,6 +139,8 @@ function copyMergedShots(
       if (width === 96 && height === 54) continue;
     }
     copyFileSync(from, path.join(destDir, workflowShotName(source.stepId)));
+    const viewFrom = path.join(root, "shots", "workflows", source.workflowId, viewportShotName(source.sourceStepId));
+    if (existsSync(viewFrom)) copyFileSync(viewFrom, path.join(destDir, viewportShotName(source.stepId)));
     const guideFrom = path.join(root, "shots", "workflows", source.workflowId, guideShotName(source.sourceStepId));
     if (existsSync(guideFrom)) copyFileSync(guideFrom, path.join(destDir, guideShotName(source.stepId)));
   }
@@ -202,6 +204,7 @@ export async function startApp(opts: {
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
+  const captureViews = new Map<string, string>();
   const pendingShots = new Set<Promise<unknown>>();
   const replays = new Map<string, WorkflowBrowser>();
   let pending: PendingImport | undefined;
@@ -1755,6 +1758,7 @@ export async function startApp(opts: {
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
+    captureViews.clear();
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
@@ -1842,6 +1846,12 @@ export async function startApp(opts: {
     const dest = path.join(dir, `${stored.id}.png`);
     if (sessionMode === "teach") void narrateSoon();
     try {
+      const frame = await page.screenshot({ type: "png", timeout: 4000 }).catch(() => undefined);
+      if (frame?.length) {
+        const view = path.join(dir, `${stored.id}.viewport.png`);
+        writeFileSync(view, frame);
+        captureViews.set(stored.id, view);
+      }
       const target = { identity: payload.identity, action: payload.op, label: payload.identity?.text };
       const png = await elementShot(page, target);
       if (!png) return;
@@ -1943,6 +1953,8 @@ export async function startApp(opts: {
         copyFileSync(src, dest);
         shots.set(step.id, dest);
       }
+      const view = event ? captureViews.get(event.id) : undefined;
+      if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDir, viewportShotName(step.id)));
     }
     let poster = "";
     if (capturePosterPath && existsSync(capturePosterPath)) {
@@ -1962,6 +1974,7 @@ export async function startApp(opts: {
     };
     capture.discard();
     captureShots.clear();
+    captureViews.clear();
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
@@ -1982,8 +1995,13 @@ export async function startApp(opts: {
     }, pending.floor);
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
     mkdirSync(shotDest, { recursive: true });
+    const pendingDir = path.join(opts.home, "shots", "pending", workflow.id);
     for (const [stepId, src] of pending.shots) {
       if (existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(stepId)));
+    }
+    for (const step of workflow.steps) {
+      const view = path.join(pendingDir, viewportShotName(step.id));
+      if (existsSync(view)) copyFileSync(view, path.join(shotDest, viewportShotName(step.id)));
     }
     if (pending.poster && existsSync(pending.poster)) {
       const bytes = readFileSync(pending.poster);
@@ -2245,6 +2263,8 @@ export async function startApp(opts: {
       stepIndex += 1;
       const src = captureShots.get(card.id);
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+      const view = captureViews.get(card.id);
+      if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDest, viewportShotName(step.id)));
     }
     library.save(workflow);
     const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];

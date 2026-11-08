@@ -180,7 +180,10 @@ export function recorderSource(): string {
       if (placeholder) return { text: placeholder.slice(0, 80), source: "placeholder" };
       return { text: "", source: "" };
     };
-    const accName = (el) => citedName(el).text;
+    const accName = (el) => {
+      const cited = citedName(el);
+      return cited.source === "placeholder" ? "" : cited.text;
+    };
     const roleOf = (el) => {
       const aria = el.getAttribute("role");
       if (aria) return aria;
@@ -218,7 +221,7 @@ export function recorderSource(): string {
       const buttonValue = el.tagName === "INPUT" && (kind === "button" || kind === "submit" || kind === "reset")
         ? norm(String(el.value || "")).slice(0, 80)
         : "";
-      const shown = cited.text || buttonValue;
+      const shown = (cited.source === "placeholder" ? "" : cited.text) || buttonValue;
       const placeholder = norm(el.getAttribute("placeholder") || "").slice(0, 80);
       return {
         surface: "dom",
