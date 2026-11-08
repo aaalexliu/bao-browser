@@ -373,6 +373,23 @@ export class AgentBrowserProxy {
     } finally { if (session.kind === "copy") cdp.close(); }
   }
 
+  private async agentPage(session: Session): Promise<Awaited<ReturnType<AgentBrowserProxy["activePage"]>>> {
+    if (session.kind === "copy") return this.activePage(session);
+    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string; type?: string; openerId?: string }[] }>("Target.getTargets", {}, undefined, 5000);
+    const opened = targetInfos.filter((target) => target.type === "page" && target.openerId && session.taskTabs.has(target.openerId) && !session.taskTabs.has(target.targetId));
+    for (const target of opened) session.taskTabs.add(target.targetId);
+    let next = opened.at(-1)?.targetId;
+    if (!next) {
+      const active = await this.activePage(session);
+      const taskTab = session.taskTabs.values().next().value!;
+      if (active || !targetInfos.some((target) => target.targetId === taskTab)) return active;
+      next = taskTab;
+    }
+    const switched = await this.run(session, "tab", [next], 5000);
+    if (switched.exitCode !== 0) throw new Error(`Native tab switch failed (exit ${switched.exitCode}): ${switched.stderr || switched.stdout}`);
+    return this.activePage(session);
+  }
+
   private taskTabClosed(session: Session): AgentBrowserCommandResult[] {
     session.outcome = { outcome: "failed", reason: "Bao's task tab closed before the task finished." };
     session.workflow.unavailable("the task tab closed before the task finished");
@@ -386,7 +403,7 @@ export class AgentBrowserProxy {
       if (session.kind === "current") return false;
       throw new Error("no active Bao page metadata");
     };
-    let active = await this.activePage(session);
+    let active = await this.agentPage(session);
     if (!active) return noPage();
     if (!ownerWall(active.page)) return true;
     if (openedSite && ownerWall(active.page) === "login_wall" && "importLogin" in session.chrome) {
