@@ -1252,16 +1252,17 @@ async function ownerDone(step: WorkflowStep, args: ReplayArgs, driver: Driver): 
 async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<boolean> {
   const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
   const start = Date.now();
+  const check = step.action === "handoff" && step.check && step.check.kind !== "settled" ? step.check : undefined;
   while (Date.now() - start < timeout) {
-    if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
+    if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
     if (driver.shouldStop?.()) return false;
     const tree = await driver.tree();
-    if (step.action === "handoff" && step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args)) return true;
+    if (check && checkHolds(check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
-  if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
+  if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
   const tree = await driver.tree();
-  return step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
+  return !!check && checkHolds(check, tree, args);
 }
 
 async function runLogin(

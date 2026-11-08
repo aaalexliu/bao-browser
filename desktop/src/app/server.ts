@@ -289,6 +289,7 @@ export async function startApp(opts: {
     },
     clearConfirm(runId: string) {
       humanConfirm = null;
+      apply({ type: "clear-continued" });
       const ask = currentAsk();
       if (ask?.kind === "confirm" && ask.runId === runId) {
         apply({ type: "clear-ask", kind: "confirm", runId });
