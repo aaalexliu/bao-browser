@@ -499,6 +499,7 @@ function applyDecision(
     const intent = fileText(decision.note, events);
     draft.card.note = intent;
     draft.card.noteAsIntent = true;
+    draft.card.intent = citedSentence(intent, draft.step.caption.citation?.text);
     draft.step.caption = { ...draft.step.caption, text: intent };
     return;
   }
@@ -736,14 +737,23 @@ function targetName(event: TrailEvent | undefined): string {
     .trim();
 }
 
+/** The caption, with the element's own string in parentheses when the sentence does not already cite it. */
+function citedSentence(text: string, citation: string | undefined): string {
+  const sentence = text.replace(/\s+/g, " ").trim();
+  const cite = citation?.replace(/\s+/g, " ").trim();
+  if (!sentence) return "";
+  if (!cite || sentence.includes(cite)) return sentence;
+  return `${sentence} ("${cite}")`;
+}
+
 /** The interpret label, with a named target when that label is only "Click". */
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
-  const fromLabel = (stepTitle(step) || "").trim().replace(/^Click "(.+)"$/, "Click $1");
-  if (fromLabel.startsWith("Click ") && fromLabel !== "Click") return fromLabel;
+  const spoken = citedSentence(step.caption?.text || "", step.caption?.citation?.text);
+  if (spoken && spoken !== "Click" && spoken !== "Step") return spoken;
   const target = targetName(event);
   if (target) return `Click ${target}`;
-  if (fromLabel) return fromLabel;
+  if (spoken) return spoken;
   if (step.action === "verify") return "Check";
   if (step.action === "handoff" && step.reason === "sign-in") return "Sign in";
   if (step.action === "drop") return "Drop file";
