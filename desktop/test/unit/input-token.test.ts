@@ -84,6 +84,18 @@ test("the selected step and input summary offer tokens with the run form's defau
   assert.match(runField({ ...retained, default: "[secret stripped]" }), /value=""/);
 });
 
+test("editing an imported input marks it saved only when the value changes", () => {
+  const imported: WorkflowV2 = { ...doc(), imported: true };
+  const labelOnly = editInput(imported, { name: "note", label: "Desk note", default: "ada" });
+  assert.equal(labelOnly.doc?.inputs.find((input) => input.name === "note")?.label, "Desk note");
+  assert.equal(labelOnly.doc?.inputs.find((input) => input.name === "note")?.ownerSaved, undefined);
+  const changed = editInput(imported, { name: "note", default: "mine" });
+  assert.equal(changed.doc?.inputs.find((input) => input.name === "note")?.default, "mine");
+  assert.equal(changed.doc?.inputs.find((input) => input.name === "note")?.ownerSaved, true);
+  const kept = editInput(changed.doc!, { name: "note", label: "Still mine", default: "mine" });
+  assert.equal(kept.doc?.inputs.find((input) => input.name === "note")?.ownerSaved, true);
+});
+
 test("editing a token saves ordinary and secret defaults for the run form", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-token-"));
   const library = new Library(home);

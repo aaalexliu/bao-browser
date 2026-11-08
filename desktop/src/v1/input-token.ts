@@ -62,7 +62,7 @@ export function editInput(
     const value = nextInput.type === "secret" ? edit.default : edit.default.trim();
     if (value) {
       nextInput.default = value;
-      if (doc.imported) nextInput.ownerSaved = true;
+      if (doc.imported && value !== current.default) nextInput.ownerSaved = true;
     } else {
       delete nextInput.default;
       delete nextInput.ownerSaved;

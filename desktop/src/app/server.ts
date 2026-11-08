@@ -961,7 +961,10 @@ export async function startApp(opts: {
         return opened ? json(res, { ok: true }) : json(res, { error: "Could not open the workflow folder. Open File details and recovery to find its path." }, 500);
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
-        const imported = markImported(migrate(JSON.parse(String(await readBody(req, true))))) as WorkflowV2;
+        const parsed = migrate(JSON.parse(String(await readBody(req, true))));
+        let existing: WorkflowV2 | undefined;
+        try { existing = library.read(parsed.id); } catch { existing = undefined; }
+        const imported = existing && existing.imported !== true ? keepOwnerImport(parsed) : markImported(parsed) as WorkflowV2;
         library.save(imported);
         return json(res, library.read(imported.id));
       }
@@ -1207,10 +1210,13 @@ export async function startApp(opts: {
         const browser: RunBrowser | undefined = body.browser === undefined ? undefined : { choice: browserChoice(body.browser), sourceRoot: profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT };
         const saved = library.read(body.id);
         const given = body.args || {};
-        const adopted = adoptOwnerValues(saved, given);
-        if (adopted) library.save(adopted);
-        const base = adopted ?? saved;
-        const workflow: WorkflowV2 = body.heal ? { ...base, heal: body.heal } : base;
+        let workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
+        const adoptSubmitted = (): void => {
+          const adopted = adoptOwnerValues(saved, given);
+          if (!adopted) return;
+          library.save(adopted);
+          workflow = body.heal ? { ...adopted, heal: body.heal } : adopted;
+        };
         if (refusesOwnedBrowser(workflow.driver)) {
           return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
@@ -1236,16 +1242,19 @@ export async function startApp(opts: {
           }
           await releaseSharedProfile({ keepReplays: true });
           if (body.guide) {
+            adoptSubmitted();
             const run = await runGuide(library, workflow, args, replays, prompts);
             return json(res, run);
           }
           const fromStep = typeof body.fromStep === "string" && body.fromStep ? body.fromStep : undefined;
           if (workflowDriver(workflow) === "extension") {
             if (!extensionLink?.connected()) return json(res, { error: EXTENSION_NOT_CONNECTED }, 409);
+            adoptSubmitted();
             const run = await runRecorded(library, workflow, args, notices, replays, runId, prompts, undefined, fromStep, extensionLink);
             library.savePublicInputs(workflow.id, keptInputs(workflow, args));
             return json(res, run);
           }
+          adoptSubmitted();
           const run = await runWorkflow(library, workflow, args, notices, replays, runId, prompts, {
             baoProfile,
             sites,
@@ -3469,6 +3478,12 @@ function slimRun(run: ReturnType<Library["readRun"]>) {
     return { ...row, snapshot: undefined, beforeShot: undefined };
   }) : [];
   return { ...withoutOutputs, steps, failure, heals };
+}
+
+function keepOwnerImport(doc: WorkflowV2): WorkflowV2 {
+  const copy = { ...doc };
+  delete copy.imported;
+  return copy;
 }
 
 function maskedInputs(workflow: WorkflowV2, args: ReplayArgs): Record<string, string> {

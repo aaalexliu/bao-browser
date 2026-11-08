@@ -109,6 +109,7 @@ export function markImported(document: unknown, answers: Record<string, unknown>
   const doc = structuredClone(document) as { imported?: true; inputs?: InputRow[] };
   doc.imported = true;
   for (const input of doc.inputs ?? []) {
+    delete input.ownerSaved;
     const answer = answers[input.name];
     if (typeof answer === "string" && answer.trim() && input.default && input.type !== "file") input.ownerSaved = true;
   }

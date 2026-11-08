@@ -8,6 +8,8 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, greenLabel, originLabel, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
+import { withInputDefaults } from "../../src/v1/replay";
+import { adoptOwnerValues } from "../../src/v1/saved-inputs";
 import { Library } from "../../src/v1/store";
 import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { loadState, saveState } from "../../src/v1/sync";
@@ -107,6 +109,131 @@ test("search uses the caller's extension connection and selected engine", async 
     assert.deepEqual((await searchWorkflows(library, "Blueberries", {}, { extensionLinked: true, relay: true })).map((hit) => hit.id), [extension.id]);
     assert.match(workflowReplayRefusal(library, extension)!, /pass-through/);
   } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("an app replay fills an imported author default and adopts only a changed value", () => {
+  const doc: WorkflowV2 = {
+    ...workflow("imp", "Imported"),
+    imported: true,
+    inputs: [
+      { name: "who", type: "text", label: "Who", required: true, default: "front desk" },
+      { name: "note", type: "text", label: "Note", required: true, default: "author" },
+    ],
+  };
+  assert.deepEqual(withInputDefaults(doc, {}), { who: "front desk", note: "author" });
+  assert.equal(adoptOwnerValues(doc, { who: "front desk", note: "author" }), undefined);
+  const changed = adoptOwnerValues(doc, { who: "me", note: "author" });
+  assert.equal(changed?.inputs.find((input) => input.name === "who")?.default, "me");
+  assert.equal(changed?.inputs.find((input) => input.name === "who")?.ownerSaved, true);
+  assert.equal(changed?.inputs.find((input) => input.name === "note")?.ownerSaved, undefined);
+  assert.equal(changed?.inputs.find((input) => input.name === "note")?.default, "author");
+});
+
+test("the first marketplace run asks for the author's values", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-market-"));
+  const listing: WorkflowV2 = {
+    ...workflow("listing", "Front desk"),
+    inputs: [
+      { name: "who", type: "text", label: "Who", required: true, default: "front desk", ownerSaved: true },
+      { name: "note", type: "text", label: "Note", required: true, default: "author note" },
+    ],
+  };
+  const server = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/api/marketplace/listing") {
+      res.end(JSON.stringify({ document: listing, version: 3 }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const library = new Library(home);
+    const { port } = server.address() as AddressInfo;
+    saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
+    const first = await runWorkflow(library, { id: "listing" });
+    assert.equal(first.outcome, "needs_human", first.reason);
+    assert.match(first.reason || "", /Who/);
+    assert.equal(first.savedValues, undefined);
+    const stored = library.read("listing");
+    assert.equal(stored.imported, true);
+    assert.equal(stored.inputs.find((input) => input.name === "who")?.ownerSaved, undefined);
+    assert.equal(stored.inputs.find((input) => input.name === "note")?.default, "author note");
+    const again = await runWorkflow(library, { resume: first.resume_token });
+    assert.equal(again.outcome, "needs_human", again.reason);
+    assert.match(again.reason || "", /Who/);
+    assert.equal(library.listRuns().length, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a refused app run does not adopt an imported author value", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-refuse-"));
+  const library = new Library(home);
+  library.save({
+    ...workflow("extension", "Imported extension"),
+    driver: "extension",
+    imported: true,
+    inputs: [{ name: "who", type: "text", label: "Who", required: true, default: "front desk" }],
+  });
+  library.updateSettings({ pageEngine: "agent-browser" });
+  const app = await startApp({ home, port: 0, extensionHost: false });
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "extension", args: { who: "me" } }),
+    });
+    assert.equal(response.status, 409);
+    const stored = library.read("extension");
+    assert.equal(stored.inputs[0]?.default, "front desk");
+    assert.equal(stored.inputs[0]?.ownerSaved, undefined);
+  } finally {
+    await app.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("file import keeps an owner's workflow unmarked and marks a new file", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-file-"));
+  const library = new Library(home);
+  const owner = workflow("mine", "Mine");
+  library.save(owner);
+  const app = await startApp({ home, port: 0, extensionHost: false });
+  try {
+    const base = `http://127.0.0.1:${app.port}`;
+    const replaced = await fetch(`${base}/api/workflows/import`, {
+      method: "POST",
+      body: JSON.stringify({ ...owner, name: "Mine edited", imported: true }),
+    });
+    assert.equal(replaced.status, 200, await replaced.clone().text());
+    assert.equal(library.read("mine").imported, undefined);
+    assert.equal(library.read("mine").name, "Mine edited");
+    const shared = {
+      ...workflow("shared", "Shared"),
+      inputs: [{ name: "who", type: "text", label: "Who", required: true, default: "author", ownerSaved: true }],
+    };
+    const imported = await fetch(`${base}/api/workflows/import`, {
+      method: "POST",
+      body: JSON.stringify(shared),
+    });
+    assert.equal(imported.status, 200, await imported.clone().text());
+    assert.equal(library.read("shared").imported, true);
+    assert.equal(library.read("shared").inputs[0]?.ownerSaved, undefined);
+    const again = await fetch(`${base}/api/workflows/import`, {
+      method: "POST",
+      body: JSON.stringify({ ...shared, imported: undefined, name: "Shared again" }),
+    });
+    assert.equal(again.status, 200, await again.clone().text());
+    assert.equal(library.read("shared").imported, true);
+    assert.equal(library.read("shared").name, "Shared again");
+  } finally {
+    await app.close();
     rmSync(home, { recursive: true, force: true });
   }
 });

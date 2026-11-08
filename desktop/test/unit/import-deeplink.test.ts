@@ -11,7 +11,7 @@ import { decideOpen, parseBaoLink } from "../../src/app/deeplink";
 import { runThrowawayGate } from "../../src/v1/publish-gate";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
-import { applyImportAnswers, importQuestions, missingAnswers, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { applyImportAnswers, importQuestions, markImported, missingAnswers, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
 import { plainReplayReason } from "../../../web/src/lib/review-gate";
 
 function workflow(id: string, name: string): WorkflowV2 {
@@ -178,6 +178,22 @@ test("bao open round trip", { timeout: 30_000 }, async () => {
   } finally {
     await app.close();
   }
+});
+
+test("markImported drops a previous owner's saved flag and keeps only this answer", () => {
+  const source = {
+    ...workflow("shared", "Shared"),
+    inputs: [
+      { name: "who", type: "text" as const, label: "Who", required: true, default: "Ada", ownerSaved: true as const },
+      { name: "note", type: "text" as const, label: "Note", required: true, default: "inbox", ownerSaved: true as const },
+    ],
+  };
+  const marked = markImported(applyImportAnswers(source, { note: "mine" }), { note: "mine" }) as WorkflowV2;
+  assert.equal(marked.imported, true);
+  assert.equal(marked.inputs.find((input) => input.name === "who")?.ownerSaved, undefined);
+  assert.equal(marked.inputs.find((input) => input.name === "who")?.default, "Ada");
+  assert.equal(marked.inputs.find((input) => input.name === "note")?.ownerSaved, true);
+  assert.equal(marked.inputs.find((input) => input.name === "note")?.default, "mine");
 });
 
 test("bao open round trip fills non-secret inputs", { timeout: 30_000 }, async () => {

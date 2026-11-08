@@ -30,7 +30,7 @@ export function savedValueLine(workflow: WorkflowV2, used: ReplayArgs): string {
   return parts.length ? `Saved values used: ${parts.join(" · ")}` : "";
 }
 
-/** Write values the owner submitted in the app onto an imported workflow. */
+/** Write a submitted value onto an imported workflow when it differs from the current default. */
 export function adoptOwnerValues(workflow: WorkflowV2, args: ReplayArgs): WorkflowV2 | undefined {
   if (workflow.imported !== true) return undefined;
   let changed = false;
@@ -39,8 +39,7 @@ export function adoptOwnerValues(workflow: WorkflowV2, args: ReplayArgs): Workfl
     const value = args[input.name];
     if (typeof value !== "string" && typeof value !== "number") return input;
     const text = typeof value === "number" ? String(value) : value;
-    if (!text.trim() || hasStrippedSecret(text)) return input;
-    if (input.ownerSaved === true && input.default === text) return input;
+    if (!text.trim() || hasStrippedSecret(text) || input.default === text) return input;
     changed = true;
     return { ...input, default: text, ownerSaved: true as const };
   });

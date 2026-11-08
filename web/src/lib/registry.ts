@@ -690,7 +690,7 @@ export async function forkPublic(principal: Principal, id: string, answers: Reco
   const user = await mustUser(principal.userId);
   const installed = answered(pub.document, answers);
   const nextId = `wf-${randomUUID()}`;
-  const doc = { ...(installed as Record<string, unknown>), id: nextId, name: `Fork of ${pub.name}` };
+  const doc = markImported({ ...(installed as Record<string, unknown>), id: nextId, name: `Fork of ${pub.name}` }, answers);
   const errors = workflowErrors(doc);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
   await insertOwned(principal.userId, doc, 0, null, [], user.name, pub.category, id, principal.deviceId ?? null);
