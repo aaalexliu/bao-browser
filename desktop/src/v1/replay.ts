@@ -104,6 +104,7 @@ export interface Driver {
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
+  ownerContinued?(): boolean;
   /** Page PNG or JPEG of the target. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
   /** Full viewport. Unit-test drivers omit this. */
@@ -1165,9 +1166,10 @@ async function readExpect(
   gate: ApplyGate,
   recovery: RecoveryBudget,
 ): Promise<{ ok: boolean; recovered?: string; cancelled?: boolean }> {
-  if (!stepCheck(step) && !stepCheck(step)) return { ok: true };
+  const check = stepCheck(step);
+  if (!check) return { ok: true };
   if (await expectationsHold(step, await driver.tree(), args)) return { ok: true };
-  const timeout = stepCheck(step)?.timeoutMs || stepCheck(step)?.timeoutMs || 0;
+  const timeout = check.timeoutMs || 0;
   const start = Date.now();
   if (driver.waitIdle) await driver.waitIdle(Math.min(timeout || step.timeoutMs || 1000, 2000));
   while (Date.now() - start < timeout) {
@@ -1228,13 +1230,13 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
   const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    if (driver.loginContinued?.()) return true;
+    if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
     if (driver.shouldStop?.()) return false;
     const tree = await driver.tree().catch(() => undefined);
     if (tree && step.action === "handoff" && step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
-  if (driver.loginContinued?.()) return true;
+  if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
   const tree = await driver.tree().catch(() => undefined);
   return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
 }

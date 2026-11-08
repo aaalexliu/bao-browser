@@ -73,26 +73,16 @@ test("csv, column choices, and the run table", () => {
   assert.match(html, /data-rows="1"/);
 });
 
-test("the published schema keeps version 2 and adds the data names", () => {
+test("the published schema accepts data steps", () => {
   const published = JSON.parse(readFileSync("schema/workflow.schema.json", "utf8")) as {
-    properties: { version: { enum: number[] }; outputs: unknown };
-    $defs: { input: { properties: { type: { enum: string[] } } }; step: { properties: { action: { enum: string[] }; extract: unknown; forEach: unknown } }; extractSpec: { required: string[] }; forEachSpec: unknown; workflowOutput: unknown };
+    properties: { outputs: unknown; version?: unknown };
+    $defs: { input: { properties: { type: { enum: string[] } } }; step: { properties: { action: { enum: string[] } } }; extractSpec: { required: string[] } };
   };
-  const fragment = JSON.parse(readFileSync("schema/data-steps.schema.json", "utf8")) as {
-    actions: string[];
-    inputTypes: string[];
-    version: { enum: number[] };
-    $defs: Record<string, { required?: string[] }>;
-  };
-  assert.deepEqual(published.properties.version.enum, [2, 3]);
-  assert.deepEqual(fragment.version.enum, [2, 3]);
+  assert.equal(published.properties.version, undefined);
   assert.ok(published.$defs.input.properties.type.enum.includes("table"));
-  assert.ok(fragment.inputTypes.includes("table"));
-  for (const action of fragment.actions) assert.ok(published.$defs.step.properties.action.enum.includes(action));
+  for (const action of ["extract", "for_each"]) assert.ok(published.$defs.step.properties.action.enum.includes(action));
   assert.ok(published.properties.outputs);
-  assert.ok(published.$defs.step.properties.extract);
-  assert.ok(published.$defs.step.properties.forEach);
-  assert.deepEqual(published.$defs.extractSpec.required, fragment.$defs.extractSpec?.required);
+  assert.ok(published.$defs.extractSpec.required.includes("output"));
 });
 
 test("interpret proposes extract and for_each, and leaves an ordinary trail on version 2", () => {

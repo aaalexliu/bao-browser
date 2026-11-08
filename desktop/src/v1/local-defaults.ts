@@ -1,6 +1,6 @@
 import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
 import { stripUnsafe } from "../../../shared/sync-guard";
-import { stepValueTemplate } from "./schema";
+import { finishInput, stepValueTemplate } from "./schema";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 
 export function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
@@ -12,7 +12,13 @@ export function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): Workfl
     const saved = inputs.get(input.name);
     const stripped = projectedInputs.get(input.name);
     if (!saved || saved.type !== input.type || saved.default === undefined || !stripped) continue;
-    if (input.default === stripped.default) input.default = saved.default;
+    if (input.default === stripped.default) {
+      input.default = saved.default;
+      const finished = finishInput(input);
+      input.supply = finished.supply;
+      if (finished.default === undefined) delete input.default;
+      else input.default = finished.default;
+    }
   }
   const steps = new Map<string, WorkflowStep>();
   const projectedSteps = new Map<string, WorkflowStep>();

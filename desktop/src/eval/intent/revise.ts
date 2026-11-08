@@ -111,9 +111,8 @@ function allowStepGate(step: WorkflowStep, gate: "login" | "confirm"): boolean {
 
 function noEffectStep(step: WorkflowStep): boolean {
   if (step.action !== "click") return false;
-  if (stepCheck(step)) return false;
-  const expect = stepCheck(step);
-  return !expect || expect.kind === "settled";
+  const check = stepCheck(step);
+  return !check || check.kind === "settled";
 }
 
 function stepText(step: WorkflowStep): string {

@@ -28,7 +28,7 @@ export function cite(fields: CiteFields): StepCaption["citation"] | undefined {
 
 export function citeIdentity(node: Identity | undefined, extra?: CiteFields): StepCaption["citation"] | undefined {
   if (!node && !extra) return undefined;
-  return cite({
+  const fields = {
     text: extra?.text ?? node?.text,
     name: extra?.name ?? node?.name,
     label: extra?.label ?? node?.label,
@@ -36,6 +36,17 @@ export function citeIdentity(node: Identity | undefined, extra?: CiteFields): St
     placeholder: extra?.placeholder ?? node?.placeholder,
     alt: extra?.alt,
     title: extra?.title ?? node?.title,
+  };
+  const form = node?.role === "textbox" || node?.role === "searchbox" || node?.role === "combobox" || node?.role === "listbox" || node?.role === "spinbutton";
+  if (!form) return cite(fields);
+  return cite({
+    label: fields.label,
+    name: fields.name,
+    ariaLabel: fields.ariaLabel,
+    placeholder: fields.placeholder,
+    title: fields.title,
+    alt: fields.alt,
+    text: fields.text,
   });
 }
 
@@ -109,9 +120,10 @@ export function commandSentence(command: string, arg: string | undefined, snapsh
 }
 
 function refName(arg: string | undefined, snapshot: string | undefined): string | undefined {
-  if (!arg || !snapshot) return undefined;
-  const ref = arg.replace(/^@/, "");
-  const line = snapshot.split("\n").find((row) => new RegExp(`\\bref=${ref}\\b`).test(row));
+  const ref = arg?.trim();
+  if (!ref || !snapshot || !isElementRef(ref)) return undefined;
+  const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const line = snapshot.split("\n").find((row) => new RegExp(`\\bref=${escaped}\\b`).test(row));
   const quoted = line?.match(/"([^\"]+)"/)?.[1]?.trim();
   if (!quoted || isElementRef(quoted) || quoted.startsWith("@e")) return undefined;
   return quoted;

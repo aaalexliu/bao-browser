@@ -636,11 +636,35 @@ function retarget(step: WorkflowStep, from: string | undefined, to: string): voi
   const swap = (value: string) => value.split(`{{${from}}}`).join(`{{${to}}}`);
   if (step.caption?.text) step.caption = { ...step.caption, text: swap(step.caption.text) };
   const checked = stepCheck(step);
-  const match = checked && "match" in checked ? checked.match : undefined;
-  if (match) setTextCheck(step, swap(match));
-  if ((step.action === "type" || step.action === "select" || step.action === "digits") && "literal" in step.text) {
-    step.text = { literal: swap(step.text.literal) };
+  if (checked && "match" in checked && checked.match) {
+    const next = { ...checked, match: swap(checked.match) };
+    switch (step.action) {
+      case "click":
+      case "type":
+      case "key":
+      case "check":
+      case "select":
+      case "navigate":
+      case "handoff":
+      case "upload":
+      case "drop":
+      case "download":
+      case "open":
+      case "digits":
+      case "pickDate":
+      case "verify":
+        step.check = next;
+        break;
+      default:
+        break;
+    }
   }
+  if ((step.action === "type" || step.action === "select" || step.action === "digits") && "input" in step.text && step.text.input === from) step.text = { input: to };
+  if ((step.action === "type" || step.action === "select" || step.action === "digits") && "literal" in step.text) step.text = { literal: swap(step.text.literal) };
+  if ((step.action === "upload" || step.action === "drop") && "input" in step.file && step.file.input === from) step.file = { input: to };
+  if (step.action === "pickDate") step.date = { ...step.date, input: step.date.input === from ? to : step.date.input, ...(step.date.endInput === from ? { endInput: to } : {}) };
+  if (step.action === "click" && step.selection?.input === from) step.selection = { ...step.selection, input: to };
+  if (step.action === "click" && step.dialog?.input === from) step.dialog = { ...step.dialog, input: to };
 }
 
 function inputsFor(steps: WorkflowStep[], existing: WorkflowInput[], overrides: Map<string, WorkflowInput>): WorkflowInput[] {

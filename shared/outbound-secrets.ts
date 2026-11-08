@@ -2,7 +2,7 @@ import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
 import { isSensitiveField, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
-import { fixedSavedChoice, hasStrippedSecret, isSealedArtifact, NEEDS_SECRET_VALUE, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
+import { fixedSavedChoice, isSealedArtifact, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
 import { stepForEach, stepQuery, stepSensitive } from "../desktop/src/v1/schema";
 import type { WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
 import type { TrailEvent } from "../desktop/src/v1/interpret";
@@ -71,10 +71,6 @@ function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordV
 
 function secretNode(node: RecordValue): boolean {
   return node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field);
-}
-
-function missingBoundValue(value: unknown, table: boolean): boolean {
-  return table ? typeof value === "string" && value.trim() === STRIPPED_SECRET : hasStrippedSecret(value);
 }
 
 export function redactSavedValue(value: string): string {
@@ -293,12 +289,6 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       const policy = slots.get(raw)?.get(key);
       return [key, policy ? cleanValue(child, policy) : clean(child)];
     }));
-    if (ENTRY.has(String(node.action || "")) && [node.value, node.key].some(hasStrippedSecret)) node.unresolved = { reason: NEEDS_SECRET_VALUE };
-    if (workflows.has(raw) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const { step, inputs, rows } of boundSteps(node.steps)) {
-        if (node.inputs.map(record).some((input) => typeof input.name === "string" && inputs.has(input.name) && missingBoundValue(input.default, input.type === "table" && rows.has(input.name)))) step.unresolved = { reason: NEEDS_SECRET_VALUE };
-      }
-    }
     return node;
   };
   return (rootData ? cleanArgs(value) : clean(value)) as T;

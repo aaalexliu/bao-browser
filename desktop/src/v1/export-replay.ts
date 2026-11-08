@@ -55,7 +55,7 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
     if (!held || !match || step.action === "type") continue;
     const text = subst(match, args);
     if (!text) continue;
-    const url = (stepCheck(step)?.kind || stepCheck(step)?.kind) === "url";
+    const url = held?.kind === "url";
     steps.push({
       type: "waitForExpression",
       expression: url

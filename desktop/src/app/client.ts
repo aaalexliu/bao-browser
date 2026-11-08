@@ -2634,7 +2634,6 @@ function mountShots(root: ParentNode = document): void {
         }
         node.classList.add("has-shot");
         node.prepend(img);
-        markStoredBox(node);
       };
       img.onerror = () => {
         if (next) load(next);
@@ -2646,7 +2645,6 @@ function mountShots(root: ParentNode = document): void {
       const show = () => {
         if (!node.isConnected) return;
         node.classList.add("has-shot");
-        markStoredBox(node);
       };
       if (existing.complete && existing.naturalWidth > 0) {
         if (existing.naturalWidth === 96 && existing.naturalHeight === 54) {
@@ -2676,23 +2674,6 @@ function mountShots(root: ParentNode = document): void {
     }
     load(primary, fallback);
   });
-}
-
-function markStoredBox(node: HTMLElement): void {
-  if (node.querySelector(".shot-box")) return;
-  const box = node.dataset.box;
-  const view = node.dataset.view;
-  if (!box || !view) return;
-  const [x, y, width, height] = box.split(",").map(Number);
-  const [viewWidth, viewHeight] = view.split(",").map(Number);
-  if (![x, y, width, height, viewWidth, viewHeight].every(Number.isFinite) || viewWidth <= 0 || viewHeight <= 0 || width <= 0 || height <= 0) return;
-  const mark = document.createElement("span");
-  mark.className = "shot-box";
-  mark.style.left = `${(x / viewWidth) * 100}%`;
-  mark.style.top = `${(y / viewHeight) * 100}%`;
-  mark.style.width = `${(width / viewWidth) * 100}%`;
-  mark.style.height = `${(height / viewHeight) * 100}%`;
-  node.append(mark);
 }
 
 function mountStage(stage: HTMLElement): void {

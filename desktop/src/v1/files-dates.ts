@@ -1,6 +1,4 @@
-// Files and dates. Version 3 when a document uses this revision or data steps.
-// schema/workflow-v3.schema.json references this file and schema/data-steps.schema.json.
-// workflow-v2.schema.json stays the version 2 contract.
+// Files and dates. The contract is schema/workflow.schema.json.
 //
 // Download follows the same CDP events Playwright uses (Browser.setDownloadBehavior,
 // Browser.downloadWillBegin, Browser.downloadProgress). Power Automate Desktop renames a
@@ -36,8 +34,6 @@ export {
   type Civil,
 };
 
-export const FILES_DATES_REVISION = 1;
-export const FILES_DATES_WORKFLOW_VERSION = 3;
 export const NEEDS_MAC_TEST = "needs Mac test";
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -277,83 +273,6 @@ export function filesFor(
   return [{ name: output.name, path: output.path }];
 }
 
-interface JsonSchema {
-  $id?: string;
-  title?: string;
-  properties?: Record<string, unknown>;
-  $defs?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-interface FilesDatesSchema {
-  filesDates: number;
-  workflowVersion: number;
-  inputTypes: string[];
-  actions: string[];
-  documentProperties: Record<string, unknown>;
-  inputProperties: Record<string, unknown>;
-  stepProperties: Record<string, unknown>;
-  $defs: Record<string, unknown>;
-}
-
-/** Clone a schema and add one revision. Stub fragments do not replace full definitions. */
-export function composeFilesDatesSchema(base: JsonSchema, addon?: FilesDatesSchema): JsonSchema {
-  const extra = addon || (JSON.parse(readFileSync(path.join(process.cwd(), "schema/files-dates.schema.json"), "utf8")) as FilesDatesSchema);
-  const schema = structuredClone(base);
-  schema.$id = "bao.workflow/v3";
-  schema.title = "Bao workflow v3";
-  mergeRevision(schema, extra);
-  return schema;
-}
-
-/** One v3 schema. schema/workflow-v3.schema.json names both revision files. */
-export function composeV3Schema(base?: JsonSchema): JsonSchema {
-  const index = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v3.schema.json"), "utf8")) as JsonSchema & {
-    revisions?: { $ref?: string }[];
-  };
-  const v2 = base || (JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8")) as JsonSchema);
-  const schema = structuredClone(v2);
-  schema.$id = typeof index.$id === "string" ? index.$id : "bao.workflow/v3";
-  schema.title = typeof index.title === "string" ? index.title : "Bao workflow v3";
-  if (typeof index.description === "string") schema.description = index.description;
-  for (const revision of index.revisions ?? []) {
-    if (!revision.$ref) continue;
-    const extra = JSON.parse(readFileSync(path.join(process.cwd(), "schema", revision.$ref), "utf8")) as FilesDatesSchema;
-    mergeRevision(schema, {
-      filesDates: extra.filesDates ?? FILES_DATES_REVISION,
-      workflowVersion: extra.workflowVersion ?? FILES_DATES_WORKFLOW_VERSION,
-      inputTypes: extra.inputTypes ?? [],
-      actions: extra.actions ?? [],
-      documentProperties: extra.documentProperties ?? {},
-      inputProperties: extra.inputProperties ?? {},
-      stepProperties: extra.stepProperties ?? {},
-      $defs: extra.$defs ?? {},
-    });
-  }
-  return schema;
-}
-
-function mergeRevision(schema: JsonSchema, extra: FilesDatesSchema): void {
-  const properties = schema.properties as Record<string, unknown>;
-  properties.version = { enum: [2, 3] };
-  Object.assign(properties, extra.documentProperties);
-  const defs = schema.$defs as Record<string, { properties?: Record<string, unknown>; enum?: string[] } & Record<string, unknown>>;
-  const input = defs.input?.properties;
-  const inputType = input?.type as { enum?: string[] } | undefined;
-  if (inputType?.enum) for (const type of extra.inputTypes) if (!inputType.enum.includes(type)) inputType.enum.push(type);
-  if (input) Object.assign(input, extra.inputProperties);
-  const step = defs.step?.properties;
-  const action = step?.action as { enum?: string[] } | undefined;
-  if (action?.enum) for (const name of extra.actions) if (!action.enum.includes(name)) action.enum.push(name);
-  if (step) Object.assign(step, extra.stepProperties);
-  for (const [key, value] of Object.entries(extra.$defs)) {
-    if (!value || typeof value !== "object") continue;
-    const def = value as { type?: unknown };
-    if (def.type !== "object" && def.type !== "array") continue;
-    defs[key] = value as (typeof defs)[string];
-  }
-}
-
 function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
   if (!group || group.length === 0) return undefined;
   return group[group.length - 1];
@@ -372,6 +291,12 @@ function isGeneratedDownloadLink(identity: Identity | undefined): boolean {
   return /\/download\b|[?&]format=csv/i.test(identity.href || "");
 }
 
+function keptTarget(target: Target | undefined): Target | undefined {
+  if (!target) return undefined;
+  if (target.locators.length > 0 || target.hint) return target;
+  return undefined;
+}
+
 function takeDownloadTrigger(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): Target | undefined {
   const generated = outSteps[outSteps.length - 1];
   let linkTarget: Target | undefined;
@@ -382,12 +307,12 @@ function takeDownloadTrigger(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]
   }
   const prev = outSteps[outSteps.length - 1];
   if (prev?.action === "click") {
-    const target = stepTarget(prev);
+    const target = keptTarget(stepTarget(prev));
     outSteps.pop();
     outGroups.pop();
     if (target) return target;
   }
-  return linkTarget;
+  return keptTarget(linkTarget);
 }
 
 function carried(step: WorkflowStep, text: string, timeoutMs: number): Pick<WorkflowStep, "id" | "index" | "caption" | "timeoutMs" | "when" | "heal" | "readBack"> {
@@ -534,7 +459,7 @@ export function shapeFilesDates(
       const suggested = event.suggestedFilename || event.fileName || "download";
       const output = outputName(suggested, usedOutputs);
       const step = steps[i]!;
-      const target = takeDownloadTrigger(outSteps, outGroups) ?? stepTarget(step);
+      const target = keptTarget(takeDownloadTrigger(outSteps, outGroups) ?? stepTarget(step));
       outSteps.push({
         ...carried(step, "Download", 30_000),
         action: "download",
