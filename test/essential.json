@@ -32,9 +32,10 @@
   },
   "experian": {
     "kind": "desktop",
-    "reason": "Safety: pass-through workflow recording, sign-in and bot-wall handoffs, and Experian redirects.",
+    "reason": "Safety: pass-through workflow recording, sign-in and bot-wall handoffs, Experian redirects, and the owner's Chrome keeping its active tab while the agent works in a background task tab.",
     "tests": [
       "desktop/test/unit/agent-browser-workflow.test.ts",
+      "desktop/test/unit/current-chrome-background.test.ts",
       "desktop/test/unit/experian-proxy.test.ts"
     ]
   },

@@ -449,7 +449,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
     for (const guidance of [first.result?.instructions, advertised?.find(tool => tool.name === "agent_browser")?.description]) {
       assert.match(guidance!, /For browser=copy, [^.]+signed-in copied tab with tab <id>/);
       assert.match(guidance!, /task tab, which shares the owner's sign-ins; use another tab only when the owner asks/);
-      assert.match(guidance!, /native daemon restart opens a new task tab[^.]+navigate that task tab again/);
+      assert.match(guidance!, /native daemon restart returns to the task tab but loses refs; take a fresh snapshot/);
     }
     const search = await legacy.tool("search_workflows", { query: "missing" });
     assert.equal(search.isError, false);
