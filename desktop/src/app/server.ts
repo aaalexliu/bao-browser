@@ -1544,7 +1544,6 @@ export async function startApp(opts: {
         }
         if (body.workflow) {
           const next = { ...body.workflow, id, updatedAt: Date.now() };
-          if (library.read(id).driver === "cdp-live") next.driver = "cdp-live";
           const drafted = draftVersion(library, next, "edit");
           return json(res, drafted.document);
         }
@@ -3432,16 +3431,8 @@ function croppedPng(file: string): boolean {
 }
 
 function workflowPoster(library: Library, id: string): string | undefined {
-  const dir = path.join(library.root, "shots", "workflows", id);
-  const poster = path.join(dir, "poster.png");
+  const poster = path.join(library.root, "shots", "workflows", id, "poster.png");
   if (existsSync(poster) && isClearPageShot(readFileSync(poster))) return poster;
-  let doc: { driver?: string; steps: { id: string }[] };
-  try { doc = library.read(id); } catch { return; }
-  if (doc.driver !== "cdp-live") return;
-  for (const step of doc.steps) {
-    const file = path.join(dir, `${step.id}.png`);
-    if (existsSync(file) && isClearPageShot(readFileSync(file))) return file;
-  }
   return;
 }
 

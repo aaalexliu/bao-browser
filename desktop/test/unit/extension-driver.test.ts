@@ -226,25 +226,18 @@ test("the run form shows Playwright unless the workflow asks for the extension",
   assert.match(playwright, /value="playwright"[^>]*selected/);
   const extension = runDriverField("extension");
   assert.match(extension, /value="extension"[^>]*selected/);
-  const live = runDriverField("cdp-live");
-  assert.match(live, /<select id="wf-driver" data-testid="run-driver" disabled>/);
-  assert.match(live, /value="cdp-live" selected>Retired live driver</);
-  assert.doesNotMatch(live, /Playwright|Extension/);
+  assert.doesNotMatch(playwright, /Retired live driver/);
+  assert.doesNotMatch(extension, /Retired live driver/);
 });
 
-test("the run form disables healing for a retired workflow and keeps the choice for the others", () => {
-  for (const driver of [undefined, "playwright", "extension"]) {
-    const field = runHealField(driver, "approve", "auto");
-    assert.match(field, /<select id="wf-heal" data-testid="run-heal">/);
-    assert.match(field, /Use the global setting \(Heal it\)/);
-    assert.match(field, /value="auto"[^>]*>Heal it/);
-    assert.match(field, /value="approve" selected>Ask me/);
-    assert.match(runHealField(driver, "", "approve"), /Use the global setting \(Ask me\)/);
-  }
-  const live = runHealField("cdp-live", "approve", "auto");
-  assert.match(live, /<select id="wf-heal" data-testid="run-heal" disabled>/);
-  assert.match(live, /value="" selected>Unavailable - retired live driver</);
-  assert.doesNotMatch(live, /Ask me|Heal it|global setting/);
+test("the run form keeps the heal choice", () => {
+  const field = runHealField("approve", "auto");
+  assert.match(field, /<select id="wf-heal" data-testid="run-heal">/);
+  assert.match(field, /Use the global setting \(Heal it\)/);
+  assert.match(field, /value="auto"[^>]*>Heal it/);
+  assert.match(field, /value="approve" selected>Ask me/);
+  assert.match(runHealField("", "approve"), /Use the global setting \(Ask me\)/);
+  assert.doesNotMatch(field, /retired live driver/);
 });
 
 test("the bridge accepts the token file and drops a bad token", async () => {

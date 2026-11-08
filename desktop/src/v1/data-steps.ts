@@ -410,7 +410,7 @@ function rewriteTemplates(step: WorkflowStep, row: Record<string, string>): void
 }
 
 function rewriteMatch(step: WorkflowStep, apply: (match: string) => string): void {
-  if (step.action === "extract" || step.action === "for_each" || step.action === "note" || step.action === "wait" || step.action === "finish") return;
+  if (step.action === "extract" || step.action === "for_each" || step.action === "note") return;
   if (!step.check || !("match" in step.check) || !step.check.match) return;
   step.check = { ...step.check, match: apply(step.check.match) };
 }

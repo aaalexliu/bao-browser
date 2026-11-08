@@ -91,7 +91,7 @@ test("AX summary drops other window titles", () => {
   assert.equal(summary.checkbox.value, "0");
 });
 
-test("historical cdp-live workflows stay valid but cannot launch replay", () => {
+test("cdp-live is not a workflow driver", () => {
   const doc = migrate({
     id: "wf-cdp-live",
     name: "Live",
@@ -102,7 +102,7 @@ test("historical cdp-live workflows stay valid but cannot launch replay", () => 
     inputs: [],
     steps: [],
   });
-  assert.deepEqual(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }), []);
+  assert.ok(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }).includes("driver"));
   assert.ok(validateWorkflow({ ...doc, driver: "cdp" as unknown as WorkflowV2["driver"] }).includes("driver"));
   assert.equal(workflowDriver({ driver: "cdp-live" }), "playwright");
   assert.equal(workflowDriver({ driver: "cdp" }), "playwright");

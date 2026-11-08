@@ -630,11 +630,9 @@ function setTextCheck(step: WorkflowStep, match: string): void {
       step.check = { kind: "text", match, timeoutMs: 4000 };
       return;
     case "extract":
-    case "finish":
     case "for_each":
     case "navigate":
     case "note":
-    case "wait":
       return;
   }
 }
@@ -664,10 +662,8 @@ function retarget(step: WorkflowStep, from: string | undefined, to: string): voi
         step.check = next;
         break;
       case "extract":
-      case "finish":
       case "for_each":
       case "note":
-      case "wait":
         break;
     }
   }

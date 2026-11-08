@@ -133,7 +133,7 @@
       document.getElementById("apply-status").textContent = "Applied";
     });
     if (params.get("drift") === "1") {
-      document.getElementById("drift").innerHTML = '<button id="file-submit" type="button">Upload file</button> <button id="other-upload" type="button">Upload</button>';
+      document.getElementById("drift").innerHTML = '<button type="button">Upload</button> <button type="button">Upload</button>';
     }
     document.getElementById("note-form").addEventListener("submit", (event) => {
       event.preventDefault();

@@ -372,7 +372,7 @@ test("every replay exit waits for capture before copying without stripping value
   const base: WorkflowStep = fixtureStep({ id: "entry", index: 0, action: "click", label: secret, surface: "dom", timeoutMs: 0, identity: { ...field, role: "button", id: "missing" } });
   const cases: { name: string; step?: object; opts?: ReplayOptions; expected: string; triage?: string }[] = [
     { name: "never", step: { heal: "never" }, expected: "failed", triage: "never" },
-    { name: "blocker", step: { heal: "never", waitFor: { kind: "text", match: "Ready", timeoutMs: 0 } }, expected: "failed", triage: "never" },
+    { name: "blocker", step: { action: "verify", expect: { kind: "text", match: "waiting", timeoutMs: 0 } }, expected: "failed", triage: "blocker" },
     { name: "circuit", opts: { circuitOpen: true }, expected: "failed", triage: "circuit" },
     { name: "unresolved", step: { unresolved: { reason: "recorded miss" } }, expected: "failed", triage: "never" },
     { name: "stripped", step: { action: "type", value: STRIPPED_SECRET }, expected: "failed" },

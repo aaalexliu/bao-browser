@@ -131,7 +131,7 @@ test("a visible target does not click the search toggle", async () => {
   assert.equal(result.repairs.some((item) => item.repair === "reveal"), false);
 });
 
-test("wait_for fails in that phase and gone fails in expect", async () => {
+test("a text check and an absent check fail in expect", async () => {
   const waiting = doc([step({
     id: "w",
     action: "click",
@@ -140,22 +140,23 @@ test("wait_for fails in that phase and gone fails in expect", async () => {
   })]);
   const missed = await replay(waiting, {}, fake([tree([ident({ testId: "go", text: "Go" })], { texts: [] })]), { heal: unavailableHeal() });
   assert.equal(missed.status, "failed");
-  assert.equal(missed.failure?.phase, "wait_for");
-  assert.equal(missed.steps[0]?.phase, "wait_for");
-  assert.match(missed.steps[0]?.reason || "", /^wait_for:/);
+  assert.equal(missed.failure?.phase, "expect");
+  assert.equal(missed.failure?.reason, "Ready");
+  assert.equal(missed.steps[0]?.phase, "expect");
+  assert.match(missed.steps[0]?.reason || "", /^expect:/);
 
   const covering = doc([step({
     id: "g",
     action: "click",
     identity: ident({ testId: "go", text: "Go" }),
-    gone: { kind: "text", match: "Loading", timeoutMs: 0 },
+    check: { kind: "absent", locators: [{ kind: "testid", value: "go" }], timeoutMs: 0 },
   })]);
   const stuck = await replay(covering, {}, fake([
-    tree([ident({ testId: "go", text: "Go" })], { texts: ["Loading"] }),
-    tree([ident({ testId: "go", text: "Go" })], { texts: ["Loading"] }),
+    tree([ident({ testId: "go", text: "Go" })]),
+    tree([ident({ testId: "go", text: "Go" })]),
   ]), { heal: unavailableHeal() });
   assert.equal(stuck.failure?.phase, "expect");
-  assert.match(stuck.failure?.reason || "", /^gone:/);
+  assert.equal(stuck.failure?.reason, "postcondition");
   assert.equal(stuck.steps[0]?.phase, "expect");
 });
 
