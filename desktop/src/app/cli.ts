@@ -21,6 +21,16 @@ async function main(): Promise<void> {
     process.exitCode = agentMain(rest);
     return;
   }
+  if (cmd === "setup") {
+    const { setupMain } = await import("./setup");
+    process.exitCode = await setupMain(rest);
+    return;
+  }
+  if (cmd === "doctor") {
+    const { doctorMain } = await import("./doctor");
+    process.exitCode = await doctorMain(rest);
+    return;
+  }
   if (cmd === "mcp-ax") {
     await mcpBaoMain();
     return;

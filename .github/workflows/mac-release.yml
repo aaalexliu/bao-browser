@@ -1,0 +1,86 @@
+name: Mac release
+
+# Builds the prebuilt Bao.app (Apple silicon, Node inside) that `npx bao-browser` installs.
+# A published GitHub release gets Bao-<version>-darwin-arm64.zip and release.json attached.
+# A manual run uploads the same two files as a workflow artifact. Pull requests never run it.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mac-app:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      BAO_HEAL_CURSOR_ACCOUNT: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install packages
+        run: npm ci
+      - name: Pick the version and download URL
+        id: release
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$EVENT" = release ]; then
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "base=https://github.com/$REPO/releases/download/$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "base=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Choose the signing identity
+        env:
+          BAO_SIGNING_P12: ${{ secrets.BAO_SIGNING_P12 }}
+          BAO_SIGNING_P12_PASSWORD: ${{ secrets.BAO_SIGNING_P12_PASSWORD }}
+        run: bash desktop/packaging/macos/ci-signing.sh import
+      - name: Build BaoOSHelper
+        run: CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" sh desktop/os-helper-macos/package-app.sh
+      - name: Fetch the Node that Bao.app carries
+        run: echo "BAO_BUNDLE_NODE=$(bash desktop/packaging/macos/fetch-node.sh "$RUNNER_TEMP/node" | tail -1)" >> "$GITHUB_ENV"
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+      - name: Build Bao.app
+        env:
+          BAO_VERSION: ${{ steps.release.outputs.version }}
+        run: bash desktop/packaging/macos/package-app.sh
+      - name: Make the release asset
+        env:
+          BASE: ${{ steps.release.outputs.base }}
+        run: bash desktop/packaging/macos/make-release-asset.sh desktop/packaging/macos/dist/Bao.app "$RUNNER_TEMP/release" "$BASE"
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" "$RUNNER_TEMP"/release/Bao-*-darwin-arm64.zip "$RUNNER_TEMP/release/release.json" --clobber --repo "$REPO"
+      - name: Upload the build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bao-mac-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/release/Bao-*-darwin-arm64.zip
+            ${{ runner.temp }}/release/release.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove the signing keychain
+        if: always()
+        run: bash desktop/packaging/macos/ci-signing.sh delete

@@ -1,0 +1,23 @@
+{
+  "name": "bao-browser",
+  "version": "0.1.0",
+  "description": "Install Bao on a Mac and add it to your coding agents with one command.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aaalexliu/bao-browser.git",
+    "directory": "installer"
+  },
+  "type": "module",
+  "bin": {
+    "bao-browser": "bin/bao-browser.mjs"
+  },
+  "files": [
+    "bin",
+    "release.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
