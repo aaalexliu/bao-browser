@@ -1,3 +1,5 @@
+import { projectStep } from "../../src/v1/schema";
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Live narration latency, a typed note as intent, and Guide Me on the fixture.
 // The fixture page only. No vendor network and no real login.
 
@@ -125,7 +127,7 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     const cases = loadTeachIntentCases(path.join(home, "evals", "intent", "cases"));
     const saved = cases[0];
     assert.ok(saved, "the intent case was not written");
-    assert.equal(saved.workflow.steps.some((item) => item.intent === "alpha note"), true);
+    assert.equal(saved.workflow.steps.some((item) => projectStep(item).intent === "alpha note"), true);
     assert.equal(saved.events.some((event) => event.op === "note" && event.afterText === "alpha note"), true);
     assert.equal(saved.decisions.some((decision) => decision.detail === "renamed intent"), true);
     assert.equal(saved.workflow.inputs.find((input) => input.type === "secret")?.default, "demo-pass");
@@ -144,7 +146,7 @@ test(`old-engine guide me highlights the ${driver} fixture without an extension 
   try {
     const user: Identity = { surface: "dom", role: "textbox", path: [], id: "username", nameAttr: "username" };
     const login: Identity = { surface: "dom", role: "button", path: [], id: "login-btn", name: "Log in", text: "Log in", testId: "login" };
-    const doc: WorkflowV2 = {
+    const doc: WorkflowV2 = fixtureDoc({
       schema: "bao.workflow/v4",
       version: 2,
       id: "wf-guide-me",
@@ -154,11 +156,11 @@ test(`old-engine guide me highlights the ${driver} fixture without an extension 
       inputs: [],
       createdAt: 1,
       steps: [
-        { id: "focus-user", index: 0, action: "click", label: "Click Username", intent: "Focus the username field", surface: "dom", timeoutMs: 8000, identity: user },
-        { id: "type-user", index: 1, action: "type", label: "Type demo", intent: "Type the demo username", surface: "dom", timeoutMs: 8000, value: "demo", identity: user },
-        { id: "login", index: 2, action: "click", label: "Click Log in", intent: "Log in", surface: "dom", timeoutMs: 8000, identity: login },
+        fixtureStep({ id: "focus-user", index: 0, action: "click", label: "Click Username", intent: "Focus the username field", surface: "dom", timeoutMs: 8000, identity: user }),
+        fixtureStep({ id: "type-user", index: 1, action: "type", label: "Type demo", intent: "Type the demo username", surface: "dom", timeoutMs: 8000, value: "demo", identity: user }),
+        fixtureStep({ id: "login", index: 2, action: "click", label: "Click Log in", intent: "Log in", surface: "dom", timeoutMs: 8000, identity: login }),
       ],
-    };
+    });
     app.library.save(doc);
     if (driver === "extension") {
       const refused = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: doc.id }) });

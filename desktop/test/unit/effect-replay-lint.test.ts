@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep, fixtureInput } from "../support/fixture-step";
 import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -7,7 +8,7 @@ import { GOOD_INTENTS } from "../../src/eval/intent/good-intents";
 import { BAD_INTENT_TEXTS } from "../../src/eval/heldout/bad-judge";
 import { buildLocators, matchLabeledControl } from "../../src/v1/locators";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, StepLocator, WorkflowV2 } from "../../src/v1/schema";
 import type { TrailEvent } from "../../src/v1/interpret";
 
 const url = "https://example.test/page";
@@ -256,8 +257,8 @@ test("stored locators find an id-less control by css and reveal a collapsed sear
   assert.equal(result.status, "passed");
 });
 
-function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]["locators"]): WorkflowV2 {
-  return {
+function clickWorkflow(identity: Identity, locators?: StepLocator[]): WorkflowV2 {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
@@ -265,7 +266,7 @@ function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number
     startUrl: url,
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -274,20 +275,20 @@ function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number
       identity,
       locators,
       timeoutMs: 0,
-    }],
-  };
+    })],
+  });
 }
 
-function typeWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]["locators"]): WorkflowV2 {
-  return {
+function typeWorkflow(identity: Identity, locators?: StepLocator[]): WorkflowV2 {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "wf",
     startUrl: url,
     createdAt: 1,
-    inputs: [{ name: "text", type: "text", required: true }],
-    steps: [{
+    inputs: [fixtureInput({ name: "text", type: "text", required: true })],
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "type",
@@ -297,8 +298,8 @@ function typeWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]
       locators,
       input: "text",
       timeoutMs: 0,
-    }],
-  };
+    })],
+  });
 }
 
 function memory(

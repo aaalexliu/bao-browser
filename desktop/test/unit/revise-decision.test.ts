@@ -1,3 +1,4 @@
+import { fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { heldoutSplit } from "../../src/eval/heldout/split";
@@ -198,8 +199,8 @@ function act(id: string, op: string, extra: Partial<TrailEvent> & { name?: strin
   };
 }
 
-function step(id: string, action: WorkflowStep["action"], name: string, extra: Partial<WorkflowStep> = {}): WorkflowStep {
-  return {
+function step(id: string, action: WorkflowStep["action"], name: string, extra: object = {}): WorkflowStep {
+  return fixtureStep({
     id,
     index: 0,
     action,
@@ -209,5 +210,5 @@ function step(id: string, action: WorkflowStep["action"], name: string, extra: P
     identity: { surface: "dom", role: action === "type" ? "textbox" : "button", name, path: [] },
     expect: { kind: "settled", timeoutMs: 8000 },
     ...extra,
-  };
+  });
 }

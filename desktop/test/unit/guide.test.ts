@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { guideCrops, guideHtml } from "../../src/v1/guide";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { guideShotName, shotFile, workflowShotName } from "../../src/v1/shots";
 import { Library } from "../../src/v1/store";
 
@@ -19,18 +19,18 @@ function step(partial: FixtureDraft, index: number): WorkflowStep {
   return fixtureStep({ timeoutMs: 8000, index, ...partial });
 }
 
-function field(name: string): WorkflowStep["identity"] {
+function field(name: string): Identity {
   return { surface: "dom", role: "input", tag: "input", id: name, nameAttr: name, path: [] };
 }
 
 function document(): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4", version: 2, id: "guide-wf", name: "Sign in and apply", startUrl: "http://127.0.0.1:9/fixture", createdAt: 1,
     inputs: [
-      { name: "username", type: "text", default: "demo" },
-      { name: "password", type: "secret", default: secret },
-      { name: "note", type: "text", default: "alpha note" },
-      { name: "upload", type: "text", default: file },
+      fixtureInput({ name: "username", type: "text", default: "demo" }),
+      fixtureInput({ name: "password", type: "secret", default: secret }),
+      fixtureInput({ name: "note", type: "text", default: "alpha note" }),
+      fixtureInput({ name: "upload", type: "text", default: file }),
     ],
     steps: [
       step({ id: "username", action: "type", label: "Type {{username}}", input: "username", value: "{{username}}" }, 0),
@@ -38,7 +38,7 @@ function document(): WorkflowV2 {
       step({ id: "note", action: "type", label: "Type {{note}}", input: "note", value: "{{note}}" }, 2),
       step({ id: "apply", action: "click", label: "Click Apply" }, 3),
     ],
-  };
+  });
 }
 
 function embedded(html: string): Buffer[] {
@@ -48,7 +48,7 @@ function embedded(html: string): Buffer[] {
 test("an exported guide keeps saved values, paths, labels, choices, and exact picture bytes", () => {
   const doc = document();
   doc.name = `Notes ${secret} ${home}`;
-  doc.inputs.push({ name: "route", type: "choice", choices: ["Log in first", "Already signed in", secret] });
+  doc.inputs.push(fixtureInput({ name: "route", type: "choice", choices: ["Log in first", "Already signed in", secret] }));
   doc.steps.push(
     step({ id: "open", action: "click", label: `Click ${home}` }, 4),
     step({ id: "win", action: "click", label: "Click C:\\Users\\alex\\notes.txt" }, 5),
@@ -116,9 +116,9 @@ test("a focus click folds into typing without rewriting typed or password pictur
 test("guides use human login copy and list defaults rather than import examples", () => {
   const doc = document();
   doc.inputs = [
-    { name: "saved", type: "text", default: "captured-value", example: "import-example" },
-    { name: "sample", type: "text", example: "sample-only" },
-    { name: "empty", type: "text", default: "", example: "empty-example" },
+    fixtureInput({ name: "saved", type: "text", default: "captured-value", example: "import-example" }),
+    fixtureInput({ name: "sample", type: "text", example: "sample-only" }),
+    fixtureInput({ name: "empty", type: "text", default: "", example: "empty-example" }),
   ];
   doc.steps = [
     step({ id: "login", action: "login", label: "ensure logged in (import from chrome, else wait for user)" }, 0),

@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep, type FixtureDraft } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,22 +20,17 @@ const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 const liveOnly = process.env.BAO_LIVE_TESTS === "1" ? false : "set BAO_LIVE_TESTS=1";
 
 function workflow(partial: Pick<WorkflowV2, "id" | "name" | "startUrl" | "inputs" | "steps">): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: WORKFLOW_SCHEMA_ID,
     version: 3,
     filesDates: 1,
     createdAt: CLOCK.getTime(),
     ...partial,
-  };
+  });
 }
 
-function step(partial: Omit<WorkflowStep, "index" | "timeoutMs" | "surface"> & { index?: number; timeoutMs?: number; surface?: WorkflowStep["surface"] }): WorkflowStep {
-  return {
-    index: partial.index ?? 0,
-    timeoutMs: partial.timeoutMs ?? 20000,
-    surface: partial.surface ?? "dom",
-    ...partial,
-  };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: partial.timeoutMs ?? 20000, index: partial.index ?? 0, ...partial });
 }
 
 async function withBrowser(fn: (browser: Browser) => Promise<void>): Promise<void> {
@@ -89,8 +85,8 @@ test("restful-booker selects the replayed check-in and check-out cells", { timeo
       name: "Restful booker dates",
       startUrl: start,
       inputs: [
-        { name: "checkIn", type: "date", label: "Check in", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true },
-        { name: "checkOut", type: "date", label: "Check out", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true },
+        fixtureInput({ name: "checkIn", type: "date", label: "Check in", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
+        fixtureInput({ name: "checkOut", type: "date", label: "Check out", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
       ],
       steps: [
         step({
@@ -159,7 +155,7 @@ test("the IRS W-9 downloads twice to the same templated hash", { timeout: 120_00
     id: "wf-w9",
     name: "W-9",
     startUrl: url,
-    inputs: [{ name: "company", type: "text", default: "irs" }],
+    inputs: [fixtureInput({ name: "company", type: "text", default: "irs" })],
     steps: [step({
       id: "dl",
       action: "download",
@@ -222,8 +218,8 @@ test("a downloaded file uploads to the-internet and the filename is shown", { ti
     name: "Download then upload",
     startUrl: uploadUrl,
     inputs: [
-      { name: "company", type: "text", default: "acme" },
-      { name: "upload", type: "file", fromOutput: "note", required: false },
+      fixtureInput({ name: "company", type: "text", default: "acme" }),
+      fixtureInput({ name: "upload", type: "file", fromOutput: "note", required: false }),
     ],
     steps: [
       step({

@@ -1,3 +1,4 @@
+import { fixtureStep } from "../support/fixture-step";
 // Cursor-account heal. The binary here is a local stand-in. No network, no API key.
 
 import assert from "node:assert/strict";
@@ -17,7 +18,7 @@ import type { WorkflowStep } from "../../src/v1/schema";
 
 const SECRET = "SuperSecretPassword!";
 
-const step: WorkflowStep = {
+const step: WorkflowStep = fixtureStep({
   id: "s1",
   index: 0,
   action: "click",
@@ -25,7 +26,7 @@ const step: WorkflowStep = {
   surface: "dom",
   timeoutMs: 8000,
   identity: { surface: "dom", role: "button", testId: "missing", path: [] },
-};
+});
 
 const failure = {
   stepId: "s1",

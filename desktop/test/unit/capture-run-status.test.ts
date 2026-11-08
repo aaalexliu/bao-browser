@@ -11,7 +11,7 @@ import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browse
 import { Library, type StoredRun } from "../../src/v1/store";
 
 const command: RecordedAgentBrowserCommand = {
-  id: "command-1", label: 'click "@e7"', status: "passed", startedAt: 1, endedAt: 2,
+  id: "command-1", label: 'click "@e7"', caption: { text: "Click Milk" }, status: "passed", startedAt: 1, endedAt: 2,
   target: { rect: { x: 10, y: 20, width: 30, height: 40 }, viewport: { width: 800, height: 600 } },
   native: { command: "click", args: ["@e7"], results: [{ stdout: "Clicked Milk\n", stderr: "native detail", exitCode: 0 }], isError: false, screenshots: [] },
 };

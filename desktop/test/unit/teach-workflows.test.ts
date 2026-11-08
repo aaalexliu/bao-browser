@@ -156,7 +156,7 @@ test("teach a new workflow, correct three cards, and replay twice", { timeout: 1
     assert.equal(savedBlob.includes(secret), true);
     assert.equal(savedBlob.includes(file), false);
     assert.equal(saved.steps.find((step) => step.input === "note")?.intent, "type the note");
-    assert.equal(saved.steps.some((step) => step.action === "confirm" && projectStep(step).human), true);
+    assert.equal(saved.steps.some((step) => step.action === "confirm" && step.human), true);
     assert.equal(saved.steps.find((step) => step.action === "verify")?.postcondition?.match, "Applied");
     const pair = app.library.readIntentEval(saved.id) as {
       decisions: { kind: string; detail: string }[];

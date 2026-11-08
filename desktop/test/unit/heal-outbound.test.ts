@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -25,15 +26,15 @@ type CursorRequest = { prompt: string; dom: PromptDom; intent: string; reason: s
 const reply = JSON.stringify({ identity: { surface: "dom", role: "button", testId: "fixed", path: [] } });
 
 function fixture(secret: string) {
-  const workflow: WorkflowV2 = {
+  const workflow: WorkflowV2 = fixtureDoc({
     schema: "bao.workflow/v4", version: 2, id: "heal-outbound", name: secret, createdAt: 1,
-    startUrl: "https://example.test/", inputs: [{ name: "password", type: "secret", label: "Password", default: secret }],
-    steps: [{
+    startUrl: "https://example.test/", inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", default: secret })],
+    steps: [fixtureStep({
       id: "missing", index: 0, action: "type", label: secret, surface: "dom", timeoutMs: 0,
       input: "password", value: "{{password}}",
       identity: { surface: "dom", role: "textbox", testId: "missing", path: [] },
-    }],
-  };
+    })],
+  });
   const dom = [
     { op: "type", value: secret, identity: { surface: "dom", role: "textbox", value: secret } },
     { op: "type", value: "sk-generatedOutboundToken" },
@@ -130,7 +131,7 @@ for (const mode of ["logged-out", "print-fails"] as const) {
     assert.equal(request.dom[0].identity.value, secret);
     assert.equal(request.intent, secret);
     assert.equal(request.reason, secret);
-    assert.equal(request.step.value, "{{password}}");
+    assert.equal(projectStep(request.step).value, "{{password}}");
     assert.equal(readFileSync(path.join(dir, "heal-shot.png"), "base64"), Buffer.from(data.failure.snapshot.screenshot!, "base64").toString("base64"));
     assert.deepEqual(data, original);
   });

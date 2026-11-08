@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,19 +8,19 @@ import { startApp } from "../../src/app/server";
 import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import { subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4", version: 2, driver: "cdp-live", id: "wf-live", name: "Saved live form",
     startUrl: "https://example.test/", createdAt: 1,
-    inputs: [{ name: "text", type: "text", default: "value" }],
+    inputs: [fixtureInput({ name: "text", type: "text", default: "value" })],
     steps: identities.map((identity, index) => ({
       id: `live-${index}`, index, action: "type", label: "Saved field", surface: "dom", timeoutMs: 1000,
       identity: { surface: "dom", role: "textbox", path: [], ...identity }, input: "text", value: "{{text}}",
     })),
-  };
+  });
 }
 
 async function pagePng(width: number, height: number, veiled = false): Promise<Buffer> {
@@ -36,12 +37,12 @@ test("saved generic input tokens stay usable without a migration", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
   try {
     const workflow = recorded([{}]);
-    workflow.steps[0]!.identity!.label = "App name";
+    projectStep(workflow.steps[0]!).identity!.label = "App name";
     const library = new Library(home);
     library.save(workflow);
     const saved = library.read(workflow.id);
     assert.equal(saved.inputs[0]?.name, "text");
-    assert.equal(subst(saved.steps[0]!.value!, { text: "existing argument" }), "existing argument");
+    assert.equal(subst(projectStep(saved.steps[0]!).value!, { text: "existing argument" }), "existing argument");
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

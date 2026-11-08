@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep, fixtureInput, withStep, writeStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -17,23 +18,23 @@ import { Library } from "../../src/v1/store";
 import { saveState, syncAll } from "../../src/v1/sync";
 
 function workflow(id: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4", version: 2, id, name: "Synthetic picture upload", createdAt: 1,
     startUrl: "http://127.0.0.1:9/fixture", inputs: [],
-    steps: [{ id: "go", index: 0, action: "click", label: "Click Pay", surface: "dom", timeoutMs: 1000 }],
-  };
+    steps: [fixtureStep({ id: "go", index: 0, action: "click", label: "Click Pay", surface: "dom", timeoutMs: 1000 })],
+  });
 }
 
 test("the shared outbound picture rule recognizes private input kinds and nested field identities", () => {
   for (const name of ["password", "card", "cc-exp", "one time code", "SSN", "CVV", "routing number", "PIN"]) {
     const doc = workflow("declaration");
-    doc.inputs = [{ name: "answer", label: name, type: "text" }];
+    doc.inputs = [fixtureInput({ name: "answer", label: name, type: "text" })];
     assert.equal(hasPrivatePictureInput(doc), true, name);
-    doc.inputs = [{ name, type: "text" }];
+    doc.inputs = [fixtureInput({ name, type: "text" })];
     assert.equal(hasPrivatePictureInput(doc), true, name);
   }
   const secret = workflow("secret");
-  secret.inputs = [{ name: "answer", type: "secret" }];
+  secret.inputs = [fixtureInput({ name: "answer", type: "secret" })];
   assert.equal(hasPrivatePictureInput(secret), true);
   const hints: Partial<Identity>[] = [
     { inputType: "password" },
@@ -43,14 +44,14 @@ test("the shared outbound picture rule recognizes private input kinds and nested
   ];
   for (const hint of hints) {
     const doc = workflow("field");
-    const typed = { ...doc.steps[0]!, action: "type" as const, identity: { surface: "dom" as const, role: "textbox", tag: "input", path: [], ...hint } };
+    const typed = withStep(doc.steps[0]!, { action: "type" as const, identity: { surface: "dom" as const, role: "textbox", tag: "input", path: [], ...hint } });
     doc.steps = [typed];
     assert.equal(hasPrivatePictureInput(doc), true, JSON.stringify(hint));
-    doc.steps = [{ ...doc.steps[0]!, action: "for_each", identity: undefined, forEach: { over: { kind: "input", name: "rows" }, steps: [typed] } }];
+    doc.steps = [fixtureStep(withStep(doc.steps[0]!, { action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [typed] }, identity: undefined }))];
     assert.equal(hasPrivatePictureInput(doc), true, `nested ${JSON.stringify(hint)}`);
   }
   const ordinary = workflow("ordinary");
-  ordinary.inputs = [{ name: "email", type: "text" }, { name: "attachment", type: "file" }];
+  ordinary.inputs = [fixtureInput({ name: "email", type: "text" }), fixtureInput({ name: "attachment", type: "file" })];
   assert.equal(hasPrivatePictureInput(ordinary), false);
 });
 
@@ -82,11 +83,8 @@ test("sync omits private-workflow step pictures from versions and runs without c
     const localFiles: string[] = [];
     for (const id of ["private-declared", "private-field", "ordinary"]) {
       const doc = workflow(id);
-      if (id === "private-declared") doc.inputs = [{ name: "PIN", type: "text" }];
-      if (id === "private-field") doc.steps.push({
-        ...doc.steps[0]!, id: "card", index: 1, action: "type",
-        identity: { surface: "dom", role: "textbox", tag: "input", autocomplete: "cc-number", path: [] },
-      });
+      if (id === "private-declared") doc.inputs = [fixtureInput({ name: "PIN", type: "text" })];
+      if (id === "private-field") doc.steps.push(fixtureStep(withStep(doc.steps[0]!, { id: "card", index: 1, action: "type", identity: { surface: "dom", role: "textbox", tag: "input", autocomplete: "cc-number", path: [] } })));
       library.save(doc);
       const runId = `run-${id}`;
       library.saveRun({ id: runId, workflowId: id, status: "passed", at: 1, heals: [], steps: doc.steps.map((step) => ({ id: step.id, status: "passed" })) });
@@ -164,8 +162,8 @@ test("relay run results omit private-input pictures and reject unreadable workfl
     for (const id of ["private", "ordinary"]) {
       const doc = workflow(id);
       doc.startUrl = `http://127.0.0.1:${address.port}/`;
-      if (id === "private") doc.inputs = [{ name: "PIN", type: "text" }];
-      doc.steps[0]!.identity = { surface: "dom", role: "button", tag: "button", id: "go", path: [] };
+      if (id === "private") doc.inputs = [fixtureInput({ name: "PIN", type: "text" })];
+      writeStep(doc.steps[0]!, { identity: { surface: "dom", role: "button", tag: "button", id: "go", path: [] } });
       doc.steps[0]!.heal = "never";
       library.save(doc);
     }

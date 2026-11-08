@@ -1,23 +1,24 @@
+import { fixtureDoc, fixtureStep, type FixtureDraft } from "../support/fixture-step";
 // Guide Me highlights the next target and waits. It does not click or type.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import { guideMe } from "../../src/v1/guide-me";
 import type { Driver, GuideAct } from "../../src/v1/replay";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "textbox", path: [], ...partial };
 }
 
-function step(partial: Omit<WorkflowV2["steps"][number], "index" | "surface" | "timeoutMs">, index: number): WorkflowV2["steps"][number] {
-  return { surface: "dom", timeoutMs: 8000, ...partial, index };
+function step(partial: FixtureDraft, index: number): WorkflowStep {
+  return fixtureStep({ timeoutMs: 8000, ...partial, index });
 }
 
 test("guide me advances when the person acts and the action counter stays 0", async () => {
   const user = ident({ id: "username", nameAttr: "username", role: "textbox" });
   const login = ident({ id: "login-btn", role: "button", name: "Log in", testId: "login" });
-  const doc: WorkflowV2 = {
+  const doc: WorkflowV2 = fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf-guide",
@@ -31,7 +32,7 @@ test("guide me advances when the person acts and the action counter stays 0", as
       step({ id: "type-user", action: "type", label: "Type demo", intent: "Type the demo username", value: "demo", identity: user }, 2),
       step({ id: "login", action: "click", label: "Click Log in", intent: "Log in", identity: login }, 3),
     ],
-  };
+  });
   const outlined: string[] = [];
   const acts: GuideAct[] = [];
   let actions = 0;
@@ -79,7 +80,7 @@ test("guide me advances when the person acts and the action counter stays 0", as
 
 test("guide me rings the control itself when the driver can", async () => {
   const user = ident({ id: "username", role: "textbox" });
-  const doc: WorkflowV2 = {
+  const doc: WorkflowV2 = fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf-ring",
@@ -90,7 +91,7 @@ test("guide me rings the control itself when the driver can", async () => {
     steps: [
       step({ id: "focus-user", action: "click", label: "Click Username", intent: "Focus the username field", identity: user }, 0),
     ],
-  };
+  });
   const outlined: string[] = [];
   const rings: string[] = [];
   const acts: GuideAct[] = [];
