@@ -239,6 +239,7 @@ export async function liveMcpMain(): Promise<void> {
           performed: false,
           beforeUrl: url,
           afterUrl: url,
+          afterText: await page.locator("#login-btn").getAttribute("data-bao-after") || undefined,
         });
       }
     }

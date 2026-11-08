@@ -954,7 +954,7 @@ function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
       type: input.type,
       label: input.label || input.name,
       supply: input.supply,
-      required: (input.supply !== "saved" || authorValue || oneTimeCodeInput(doc, input.name)) && !saved,
+      required: authorValue || oneTimeCodeInput(doc, input.name) || !saved,
       ...(saved ? {
         saved: true as const,
         description: input.type === "secret"

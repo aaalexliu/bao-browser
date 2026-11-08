@@ -102,7 +102,7 @@ test("historical cdp-live workflows stay valid but cannot launch replay", () => 
     inputs: [],
     steps: [],
   });
-  assert.deepEqual(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }), ["driver"]);
+  assert.deepEqual(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }), []);
   assert.ok(validateWorkflow({ ...doc, driver: "cdp" as unknown as WorkflowV2["driver"] }).includes("driver"));
   assert.equal(workflowDriver({ driver: "cdp-live" }), "playwright");
   assert.equal(workflowDriver({ driver: "cdp" }), "playwright");

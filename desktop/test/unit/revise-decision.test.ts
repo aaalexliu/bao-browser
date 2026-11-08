@@ -208,7 +208,7 @@ function step(id: string, action: WorkflowStep["action"], name: string, extra: o
     surface: "dom",
     timeoutMs: 8000,
     identity: { surface: "dom", role: action === "type" ? "textbox" : "button", name, path: [] },
-    expect: { kind: "settled", timeoutMs: 8000 },
+    ...("postcondition" in extra ? {} : { expect: { kind: "settled", timeoutMs: 8000 } }),
     ...extra,
   });
 }

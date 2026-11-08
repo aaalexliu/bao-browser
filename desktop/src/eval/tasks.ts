@@ -208,7 +208,7 @@ export function taskHtml(id: string): string | null {
       <input id="username" name="username" data-testid="username" autocomplete="username">
       <label for="password">Password</label>
       <input id="password" name="password" type="password" data-testid="password" autocomplete="current-password">
-      <button id="login-btn" type="button" data-testid="login-btn" data-bao-gate="login">Log in</button>`,
+      <button id="login-btn" type="button" data-testid="login-btn" data-bao-gate="login" data-bao-after="Welcome {{username}}">Log in</button>`,
     confirm: `
       <h1>Delete</h1>
       <label for="note">Note</label>

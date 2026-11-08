@@ -1,5 +1,6 @@
 // Builds a v4 step for tests. Not a reader of old workflow files.
 
+import { redactSavedValue } from "../../../shared/outbound-secrets";
 import { citeIdentity, caption, clickSentence, openSentence, typeSentence } from "../../src/v1/caption";
 import { locatorsFromIdentity } from "../../src/v1/locators";
 import {
@@ -139,7 +140,7 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
   const cap = raw.caption?.text
     ? (noBox ? caption(raw.caption.text) : raw.caption)
     : caption(sentence, noBox ? undefined : citeIdentity(asIdentity(raw.identity)), noBox ? undefined : raw.targetBox);
-  const heal = healOf(raw.heal);
+  const heal = healOf(raw.heal) ?? (raw.unresolved ? "never" : undefined);
   const base = {
     id: raw.id || `step-${index}`,
     index,
@@ -148,8 +149,7 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
     ...(raw.when ? { when: raw.when } : {}),
     ...(heal ? { heal } : {}),
     ...(raw.readBack ? { readBack: raw.readBack } : {}),
-    ...(raw.waitFor ? { waitFor: raw.waitFor } : {}),
-    ...(raw.gone ? { gone: raw.gone } : {}),
+    ...(typeof raw.input === "string" ? { input: raw.input } : {}),
   };
   const withCheck = check ? { check } : {};
   switch (action) {
@@ -245,13 +245,12 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
 export function fixtureInput(partial: LooseInput): WorkflowInput {
   const type = partial.type ?? "text";
   const file = type === "file";
-  const hasDefault = typeof partial.default === "string" && partial.default.length > 0;
+  const hasDefault = typeof partial.default === "string" && partial.default.length > 0 && partial.default !== "[secret stripped]";
   let supply = partial.supply;
   if (supply !== "saved" && supply !== "must") {
-    if (file || partial.required === true || !hasDefault) supply = "must";
-    else supply = "saved";
+    supply = file || !hasDefault ? "must" : "saved";
   }
-  if (file) supply = "must";
+  if (file || !hasDefault) supply = "must";
   if (supply === "saved" && !hasDefault) supply = "must";
   return {
     name: partial.name,
@@ -259,6 +258,7 @@ export function fixtureInput(partial: LooseInput): WorkflowInput {
     label: partial.label || partial.name,
     supply,
     ...(supply === "saved" && hasDefault ? { default: partial.default } : {}),
+    ...(supply === "must" && (partial.default === "[secret stripped]" || (file && typeof partial.default === "string" && redactSavedValue(partial.default) === "[secret stripped]")) ? { default: "[secret stripped]" } : {}),
     ...(partial.askOnImport ? { askOnImport: true } : {}),
     ...(partial.example ? { example: partial.example } : {}),
     ...(partial.choices ? { choices: partial.choices } : {}),
@@ -305,6 +305,10 @@ export function withStep(step: WorkflowStep, patch: object): WorkflowStep {
   const merged: LooseStep = { ...draft, ...extra, id: extra.id || step.id, index: extra.index ?? step.index };
   if (extra.identity || extra.locators || extra.history) delete merged.target;
   if (extra.label || extra.caption) delete merged.caption;
+  if ("value" in extra) delete merged.text;
+  if ("input" in extra) delete merged.text;
+  if ("value" in extra && !("input" in extra)) delete merged.input;
+  if ("input" in extra && extra.input == null) delete merged.input;
   return fixtureStep(merged, merged.index ?? step.index);
 }
 
@@ -412,7 +416,7 @@ function fileOf(draft: LooseStep): { input: string } | { fromOutput: string } {
 
 function checkOf(draft: LooseStep): Check | undefined {
   if (draft.check) return draft.check;
-  const raw = draft.expect ?? draft.postcondition;
+  const raw = draft.expect ?? draft.postcondition ?? draft.waitFor;
   if (!raw?.kind) return undefined;
   const timeoutMs = raw.timeoutMs ?? 4000;
   if (raw.kind === "settled") return { kind: "settled", timeoutMs };
