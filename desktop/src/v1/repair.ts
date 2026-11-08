@@ -74,11 +74,13 @@ export function anchorCandidate(
   if (!found.ok || found.index == null) return undefined;
   const origin = center(boxes[found.index]);
   if (!origin) return undefined;
-  const role = normRole(targetRole(stepTarget(step)));
+  const recordedRole = targetRole(stepTarget(step));
+  if (!recordedRole) return undefined;
+  const role = normRole(recordedRole);
   let best: { index: number; distance: number } | undefined;
   nodes.forEach((node, index) => {
     if (index === found.index) return;
-    if (role && normRole(node.role) !== role) return;
+    if (normRole(node.role) !== role) return;
     const point = center(boxes[index]);
     if (!point || !onSide(origin, point, anchor.relation)) return;
     const distance = Math.hypot(point.x - origin.x, point.y - origin.y);
@@ -177,7 +179,10 @@ export function intentText(step: WorkflowStep): string {
 }
 
 function scoreNode(want: string, node: Identity, step: WorkflowStep): number {
-  const role = normRole(targetRole(stepTarget(step)));
+  const target = stepTarget(step);
+  const recordedRole = targetRole(target);
+  if (target && !recordedRole) return 0;
+  const role = normRole(recordedRole);
   if (role && normRole(node.role) && normRole(node.role) !== role) return 0;
   const texts = [node.name, node.text, node.label, node.title, node.description].filter((item): item is string => !!item);
   if (!texts.length) return 0;

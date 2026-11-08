@@ -851,7 +851,8 @@ async function runStepAction(
   if (step.action === "digits") {
     const text = "input" in step.text ? String(args[step.text.input] ?? "") : subst(step.text.literal, args);
     try {
-      await driver.digits(targetRole(stepTarget(step)) || "button", text);
+      const target = stepTarget(step);
+      await driver.digits(target ? targetRole(target) || "unknown" : "button", text);
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
@@ -1555,7 +1556,7 @@ function locate(
     const roleHits = wantRole ? picked.filter((node) => rolesCompatible(wantRole, node.role)) : [];
     // The listbox and the option both show the typed word. The option is the choice.
     const chosen = roleHits.length === 1 ? roleHits[0] : picked.length === 1 ? picked[0] : undefined;
-    if (chosen && (!wantRole || rolesCompatible(wantRole, chosen.role))) {
+    if (chosen && wantRole && rolesCompatible(wantRole, chosen.role)) {
       const index = nodes.indexOf(chosen);
       const label = chosen.name || chosen.text || chosen.role || "selection";
       return {
@@ -1605,11 +1606,11 @@ function locate(
           tried,
         };
       }
-      const recordedRole = targetRole(target) || "";
+      const recordedRole = targetRole(target);
       const compatible = perfect.find((row) => {
         const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
         const node = found ? nodes[found.index] : undefined;
-        return !!node && rolesCompatible(recordedRole, node.role);
+        return !!node && !!recordedRole && rolesCompatible(recordedRole, node.role);
       });
       if (indexes.length === 0 && !compatible) {
         return {

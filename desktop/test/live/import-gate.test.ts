@@ -13,6 +13,8 @@ import { pinTestBrowser } from "../../src/launch";
 import { prepareImport } from "../../../web/src/lib/import-sheet";
 import { releaseHash } from "../../../web/src/lib/publish";
 import { testArtifacts } from "../artifacts";
+import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import { targetFor, testWorkflow } from "../support/workflow";
 
 process.env.TZ = "America/New_York";
 process.env.BAO_CHROME_NO_SANDBOX = "1";
@@ -173,60 +175,51 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
   }
 });
 
-function sheetWorkflow(startUrl: string) {
-  return {
-    schema: "bao.workflow/v4",
-    version: 2,
+function sheetWorkflow(startUrl: string): WorkflowV2 {
+  return testWorkflow({
     id: "import-mail",
     name: "Mail the desk",
     startUrl,
     createdAt: 1710000000000,
     inputs: [
-      { name: "email", type: "text", label: "Email", required: true, default: "ada@acme.com" },
-      { name: "who", type: "text", label: "Name", required: true, default: "Ada Lovelace" },
-      { name: "note", type: "text", label: "Note", required: true, default: "/home/ada/note.txt" },
-      { name: "desk", type: "text", label: "Desk", required: true, default: "front", askOnImport: true },
+      { name: "email", type: "text", label: "Email", supply: "saved", default: "ada@acme.com" },
+      { name: "who", type: "text", label: "Name", supply: "saved", default: "Ada Lovelace" },
+      { name: "note", type: "text", label: "Note", supply: "saved", default: "/home/ada/note.txt" },
+      { name: "desk", type: "text", label: "Desk", supply: "saved", default: "front", askOnImport: true },
     ],
     steps: [click("see", "Click Log in", { id: "login-btn", testId: "login", role: "button", text: "Log in", tag: "button" }, "Missing credentials")],
-  };
+  });
 }
 
-function blockedWorkflow(startUrl: string) {
-  return {
-    schema: "bao.workflow/v4",
-    version: 2,
+function blockedWorkflow(startUrl: string): WorkflowV2 {
+  return testWorkflow({
     id: "bao-missing",
     name: "Missing control",
     startUrl,
     createdAt: 1710000000000,
-    inputs: [],
     steps: [click("missing", "Click the missing control", { role: "button", name: "This control is not on the page", text: "This control is not on the page" }, "never shown")],
-  };
+  });
 }
 
-function passingWorkflow(startUrl: string) {
-  return {
-    schema: "bao.workflow/v4",
-    version: 2,
+function passingWorkflow(startUrl: string): WorkflowV2 {
+  return testWorkflow({
     id: "bao-fixture-ok",
     name: "Read the fixture",
     startUrl,
     createdAt: 1710000000000,
-    inputs: [],
     steps: [click("see", "Click Log in", { id: "login-btn", testId: "login", role: "button", text: "Log in", tag: "button" }, "Missing credentials")],
-  };
+  });
 }
 
-function click(id: string, label: string, identity: Record<string, unknown>, match: string) {
+function click(id: string, text: string, node: Omit<Identity, "surface" | "path">, match: string): WorkflowStep {
   return {
     id,
     index: 0,
     action: "click",
-    label,
-    surface: "dom",
+    caption: { text },
     timeoutMs: 8000,
-    identity: { surface: "dom", path: [], ...identity },
-    postcondition: { kind: "text", match, timeoutMs: 8000 },
+    target: targetFor({ surface: "dom", path: [], ...node }),
+    check: { kind: "text", match, timeoutMs: 8000 },
   };
 }
 

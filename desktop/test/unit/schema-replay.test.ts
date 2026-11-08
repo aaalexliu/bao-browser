@@ -723,3 +723,35 @@ test("a repeated field snapshot stays one value and a suggestion click uses that
   assert.equal(parseRecordedDate("01/15/2020")?.format, "MM/DD/YYYY");
   assert.equal(parseRecordedDate("1/5/2020")?.format, "D/M/YYYY");
 });
+
+test("a role-less target whose css locator misses is not filled by a label or anchor guess", async () => {
+  const email: Identity = { surface: "dom", role: "textbox", label: "Email", name: "Email", id: "email-new", path: [] };
+  const saveButton: Identity = { surface: "dom", role: "button", name: "Save", text: "Save", id: "save", path: [] };
+  const acts: string[] = [];
+  const live: Driver = {
+    tree: async () => ({ nodes: [email, saveButton], texts: [], values: [], boxes: [{ x: 10, y: 10, w: 200, h: 30 }, { x: 10, y: 60, w: 80, h: 30 }] }),
+    snapshot: async () => ({ dom: {}, ax: [] }),
+    click: async (node) => { acts.push(`click ${node.id}`); },
+    fill: async (node, text) => { acts.push(`fill ${node.id} ${text}`); },
+    key: async () => {},
+    upload: async () => {},
+    drop: async () => {},
+    digits: async () => {},
+    check: async () => {},
+    notify: async () => {},
+    sleep: async () => {},
+  };
+  const doc = testWorkflow({
+    steps: [{
+      id: "email", index: 0, timeoutMs: 0, heal: "never", action: "type",
+      caption: { text: "Type Email" },
+      target: { locators: [{ kind: "css", value: "#email" }, { kind: "anchor", relation: "above", anchor: { role: "button", name: "Save" } }] },
+      text: { literal: "ada@example.test" },
+    }],
+  });
+  assert.deepEqual(validateWorkflow(doc), []);
+  const result = await replay(doc, {}, live);
+  assert.notEqual(result.status, "passed");
+  assert.equal(result.steps[0]?.status, "failed");
+  assert.deepEqual(acts, []);
+});
