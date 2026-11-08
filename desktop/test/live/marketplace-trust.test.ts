@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -132,12 +132,16 @@ test("a marketplace listing installs and runs without a Bao approval", { timeout
     assert.equal(copied.status, 200, await copied.text());
 
     await pairDevice(buyer, { code: await pairCode(origin, buyerCookie), server: origin, name: "Buyer Mac" });
+    const sourceRoot = path.join(root, "chrome-source");
+    mkdirSync(path.join(sourceRoot, "Default"), { recursive: true });
+    writeFileSync(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture" } } } }));
     mcp = spawn(process.execPath, [path.join(process.cwd(), "desktop/dist/desktop/src/app/cli.js"), "mcp"], {
       env: {
         ...env,
         HOME: buyerHome,
         PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
         BAO_HOME: buyerHome,
+        BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot,
         BAO_HEAL_CURSOR_ACCOUNT: "0",
         OPENAI_API_KEY: "",
         ANTHROPIC_API_KEY: "",

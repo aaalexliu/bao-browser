@@ -218,6 +218,7 @@ export function applyHermeticApp(name: string, env: NodeJS.ProcessEnv = process.
   const dirs = freshAppDirs(name);
   env.BAO_HOME = dirs.home;
   env.BAO_CHROME_USER_DATA = dirs.chromeUserData;
+  env.BAO_AGENT_BROWSER_PROFILE_ROOT = dirs.chromeUserData;
   env.BAO_HEADED = "0";
   env.BAO_HEAL_CURSOR_ACCOUNT = "0";
   delete env.BAO_OS_HELPER;

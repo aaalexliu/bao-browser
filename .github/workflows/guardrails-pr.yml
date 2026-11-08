@@ -122,9 +122,10 @@ jobs:
         shell: bash
         run: |
           unset OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY XAI_API_KEY CURSOR_API_KEY
-          export HOME="$(mktemp -d)"
+          HOME="$(mktemp -d)"
+          export HOME
           trap 'rm -rf "$HOME"' EXIT
-          if [ "$GROUP" = experian ]; then
+          if [ "$GROUP" = browser ] || [ "$GROUP" = experian ]; then
             xvfb-run --auto-servernum node scripts/test-essential.mjs "$GROUP"
           else
             node scripts/test-essential.mjs "$GROUP"

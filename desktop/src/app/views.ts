@@ -59,7 +59,7 @@ export function runDriverField(driver: string | undefined): string {
   }
   const extension = driver === "extension";
   return `<label>Driver <select id="wf-driver" data-testid="run-driver">
-      <option value="playwright" ${extension ? "" : "selected"}>Playwright — Bao's Chrome</option>
+      <option value="playwright" ${extension ? "" : "selected"}>Playwright - selected Chrome</option>
       <option value="extension" ${extension ? "selected" : ""}>Extension — this Chrome profile</option>
     </select></label>`;
 }

@@ -267,7 +267,7 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
   const sourceRoot = path.join(home, "source");
   await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
   proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
-  await proxy.execute("open", ["about:blank"], undefined, true);
+  await proxy.execute("open", ["about:blank"], "copy", true);
   const runId = proxy.activeRunId;
   assert.ok(runId);
   const results = await proxy.execute("click", ["@e1"], undefined, true);

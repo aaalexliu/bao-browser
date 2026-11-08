@@ -156,7 +156,7 @@ if (command === 'tab' && args.includes('--json')) {
   });
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   try {
-    await proxy.execute("open");
+    await proxy.execute("open", [], "copy");
     assert.equal((await proxy.execute("open", [], "copy"))[0]!.stdout, "native success\n");
     await assert.rejects(proxy.execute("open", [], "current"), /close the current session before choosing a different browser/);
     const chrome = chromes[0]!;
@@ -187,7 +187,7 @@ if (command === 'tab' && args.includes('--json')) {
     assert.equal(currentStarts, 1);
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "close after manual window close succeeds");
     assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "repeated close succeeds");
-    const reopened = await proxy.execute("open");
+    const reopened = await proxy.execute("open", [], "copy");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
     assert.notEqual(copies[0], copies[1]);
@@ -243,7 +243,7 @@ if (command === 'tab' && args.includes('--json')) {
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   let stoppedPid: number | undefined;
   try {
-    await proxy.execute("open");
+    await proxy.execute("open", [], "copy");
     const copy = copies[0]!;
     const rows = launch.pidsForDataDir(copy).map((pid) => ({ pid, ppid: 0, command: launch.readOwnedCommand(pid, copy, process.platform) }));
     stoppedPid = launch.guiChromeBrowserPid(process.env.BAO_TEST_BROWSER!, copy, rows);
@@ -256,7 +256,7 @@ if (command === 'tab' && args.includes('--json')) {
     await assert.rejects(access(copy), /ENOENT/, "the stopped browser's copy is removed only after its processes exit");
     await assert.rejects(access(stateDir), /ENOENT/);
     assert.ok(new Library(home).listRuns().every((run) => run.status === "passed"));
-    const reopened = await proxy.execute("open");
+    const reopened = await proxy.execute("open", [], "copy");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
     assert.notEqual(copies[0], copies[1]);

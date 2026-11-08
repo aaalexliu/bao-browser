@@ -11,6 +11,7 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { openBaoChromeForProxy } from "./bao-profile";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
+import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -18,7 +19,7 @@ export interface AgentBrowserCommandResult { stdout: string; stderr: string; exi
 
 const SESSION_IDLE_MS = 10 * 60 * 1000;
 
-const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=copy explicitly to start a copied-profile session.";
+const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 
 const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",
@@ -35,7 +36,7 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
   }
 }
 
-export const AGENT_BROWSERS = ["copy", "bao", "current"] as const;
+export const AGENT_BROWSERS = BROWSER_CHOICES;
 export type AgentBrowser = typeof AGENT_BROWSERS[number];
 
 function webSite(value: string | undefined): string | undefined {
@@ -131,7 +132,7 @@ export class AgentBrowserProxy {
     if (step) this.latest = { runId: recording.id, step };
     if (!this.session) {
       try {
-        const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? "copy", webSite(args[0])));
+        const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? DEFAULT_BROWSER, webSite(args[0])));
         this.session = session;
         this.currentEnded = false;
         void session.chrome.closed.then(() => {

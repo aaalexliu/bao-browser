@@ -89,7 +89,7 @@ async function fixture(ui = false) {
     pending.set(id, (result) => { clearTimeout(timer); resolve(result); });
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
   });
-  const call = (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } });
+  const call = (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}) } });
   await request("initialize", ui ? { capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } } : {});
   return {
     root, home, url, actions, call, request, library: new Library(home),

@@ -10,6 +10,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
+import * as baoProfile from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit } from "../../src/proxy/os-macos";
@@ -443,9 +444,10 @@ if (command === 'tab' && args.includes('new')) {
 for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy retries task-tab setup, handles daemon resets, and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-proxy-"));
   const home = path.join(root, "home");
-  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true });
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
   const endpoint = await readDevToolsActivePort(chrome.portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  await cdp.send("Target.createTarget", { url: "about:blank" });
   const before = await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
   const marker = path.join(root, "native-close-called");
   const firstTab = path.join(root, "first-tab");
@@ -547,16 +549,29 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     for (const owner of before.targetInfos.filter(target => target.type === "page")) {
       assert.equal(afterReset.targetInfos.find(target => target.targetId === owner.targetId)?.url, owner.url);
     }
-    if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." });
-    else if (ending === "disconnect") await proxy.end();
-    else await proxy.execute("close");
-    assert.equal(chrome.isClosed(), false);
-    await assert.rejects(access(marker), /ENOENT/);
     const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+    const taskTargets = new Set(pageIds(afterReset).filter(id => !pageIds(before).includes(id)));
+    let allDestroyed!: () => void;
+    const destroyed = new Promise<void>(resolve => { allDestroyed = resolve; });
+    probe.on("Target.targetDestroyed", undefined, params => {
+      taskTargets.delete(String(params.targetId));
+      if (!taskTargets.size) allDestroyed();
+    });
+    await probe.send("Target.setDiscoverTargets", { discover: true });
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
+      if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+      else if (ending === "disconnect") await proxy.end();
+      else await proxy.execute("close");
+      assert.equal(chrome.isClosed(), false);
+      await assert.rejects(access(marker), /ENOENT/);
+      // Target.closeTarget acknowledges the request before Chromium destroys the tab.
+      await Promise.race([destroyed, new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => reject(new Error(`task tabs did not close: ${[...taskTargets].join(", ")}`)), 1000);
+      })]);
       const afterClose = await probe.send<typeof afterOpen>("Target.getTargets");
       assert.deepEqual(pageIds(afterClose), pageIds(before), "all Bao-created task tabs close; every pre-existing owner tab survives");
-    } finally { probe.close(); }
+    } finally { clearTimeout(deadline); probe.close(); }
     const library = new Library(home);
     const runs = library.listRuns();
     assert.equal(runs.length, 1);
@@ -847,8 +862,10 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
   await writeFile(executable, `#!${process.execPath}\nconsole.error('tab setup failed'); process.exitCode = 1;\n`, { mode: 0o700 });
   const fixtures: Awaited<ReturnType<typeof fixture>>[] = [];
   let copies = 0;
+  let lasting = 0;
   t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => { copies++; throw new Error("copy startup reached"); });
+  t.mock.method(baoProfile, "openBaoChromeForProxy", async () => { lasting++; throw new Error("Bao startup reached"); });
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const f = await fixture(true);
     fixtures.push(f);
@@ -860,22 +877,25 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: root, executable });
   const fresh = new AgentBrowserProxy({ home: path.join(root, "fresh"), sourceRoot: root, executable });
   try {
-    await assert.rejects(fresh.execute("open"), /copy startup reached/);
-    assert.equal(copies, 1);
+    await assert.rejects(fresh.execute("open"), /Bao startup reached/);
+    assert.equal(lasting, 1);
+    assert.equal(copies, 0);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
     fixtures[0]!.socket.close();
-    await assert.rejects(proxy.execute("snapshot"), /owner's Chrome session ended.*browser=current.*browser=copy/);
+    await assert.rejects(proxy.execute("snapshot"), /owner's Chrome session ended.*browser=current.*browser=bao/);
     await assert.rejects(proxy.execute("open"), /owner's Chrome session ended/);
-    assert.equal(copies, 1);
+    assert.equal(copies, 0);
+    assert.equal(lasting, 1);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
     assert.equal(fixtures.length, 2);
     fixtures[1]!.socket.close();
     await assert.rejects(proxy.execute("open", [], "copy"), /copy startup reached/);
-    assert.equal(copies, 2);
+    assert.equal(copies, 1);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
     await proxy.execute("close");
-    await assert.rejects(proxy.execute("open"), /copy startup reached/);
-    assert.equal(copies, 3);
+    await assert.rejects(proxy.execute("open"), /Bao startup reached/);
+    assert.equal(lasting, 2);
+    assert.equal(copies, 1);
   } finally {
     await proxy.end();
     await fresh.end();

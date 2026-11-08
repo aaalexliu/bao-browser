@@ -58,6 +58,8 @@ import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } fr
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
+import { browserChoice, type BrowserChoice } from "../browser-choice";
+import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -127,6 +129,8 @@ import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
+
+type RunBrowser = { choice: BrowserChoice; sourceRoot?: string };
 
 export interface Notice extends HealNotice {
   id: string;
@@ -242,7 +246,7 @@ export async function startApp(opts: {
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
   const pendingShots = new Set<Promise<unknown>>();
-  const replays = new Map<string, { context: BrowserContext; page: Page; profile: string }>();
+  const replays = new Map<string, WorkflowBrowser>();
   let pending: PendingImport | undefined;
   let importing = false;
   let loginWait: { message: string; detail?: string } | null = null;
@@ -694,6 +698,7 @@ export async function startApp(opts: {
         const capture = profile ? pidsForDataDir(profile)[0] ?? null : null;
         const replay: Record<string, number> = {};
         for (const [id, session] of replays) {
+          if (session.kind !== "owned") continue;
           const pid = pidsForDataDir(session.profile)[0];
           if (pid) replay[id] = pid;
         }
@@ -1195,7 +1200,8 @@ export async function startApp(opts: {
         return json(res, { saved: false });
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
-        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean; leaveOpen?: boolean };
+        const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean; leaveOpen?: boolean; browser?: unknown };
+        const browser: RunBrowser | undefined = body.browser === undefined ? undefined : { choice: browserChoice(body.browser), sourceRoot: profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT };
         const saved = library.read(body.id);
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
         if (refusesOwnedBrowser(workflow.driver)) {
@@ -1217,7 +1223,7 @@ export async function startApp(opts: {
           if (body.fresh) {
             const existing = replays.get(saved.id);
             if (existing) {
-              await existing.context.close().catch(() => undefined);
+              await existing.close().catch(() => undefined);
               replays.delete(saved.id);
             }
           }
@@ -1240,7 +1246,7 @@ export async function startApp(opts: {
               await signIn?.close();
               signIn = undefined;
             },
-          }, fromStep);
+          }, fromStep, browser);
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
         } finally {
@@ -1254,7 +1260,7 @@ export async function startApp(opts: {
         const current = new URL(session.page.url());
         const hasPassword = await session.page.locator("input[type=password]:visible").count().then((count) => count > 0).catch(() => false);
         const status = await session.page.locator("#status").innerText().catch(() => "");
-        const openPages = session.context.pages().filter((item) => !item.isClosed());
+        const openPages = session.kind === "current" ? [session.page] : session.context.pages().filter((item) => !item.isClosed());
         const views = [];
         for (const item of openPages) views.push(await drivePageView(item));
         const view = views[0] || await drivePageView(session.page);
@@ -1471,7 +1477,7 @@ export async function startApp(opts: {
         const session = replays.get(id);
         if (!session || session.page.isClosed()) return json(res, { error: "replay window is not open" }, 409);
         const want: WindowBounds = { x: Number(body.x), y: Number(body.y), width: Number(body.width), height: Number(body.height) };
-        const placed = await placeReplayWindow(session.page, session.profile, want);
+        const placed = await placeReplayWindow(session.page, session.kind === "owned" ? session.profile : undefined, want);
         if (placed.applied && placed.after) library.writeBounds(id, placed.after);
         return json(res, placed);
       }
@@ -1758,8 +1764,8 @@ export async function startApp(opts: {
     }
     if (opts.keepReplays) return;
     for (const [id, session] of replays) {
-      if (path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
-      await session.context.close().catch(() => undefined);
+      if (session.kind !== "owned" || path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
+      await session.close().catch(() => undefined);
       replays.delete(id);
     }
   }
@@ -2287,7 +2293,7 @@ export async function startApp(opts: {
     library: Library,
     workflow: WorkflowV2,
     args: ReplayArgs,
-    replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+    replays: Map<string, WorkflowBrowser>,
     prompts?: PersonPrompts,
   ) {
     if (refusesOwnedBrowser(workflow.driver)) throw new Error(CDP_LIVE_SERVER_REFUSAL);
@@ -2355,7 +2361,7 @@ export async function startApp(opts: {
       return page;
     }
     for (const session of replays.values()) {
-      if (session.page.isClosed()) continue;
+      if (session.kind !== "owned" || session.page.isClosed()) continue;
       if (path.resolve(session.profile) !== path.resolve(baoProfile)) continue;
       site = session;
       return session.page;
@@ -2516,11 +2522,11 @@ export async function startApp(opts: {
         await rm(watch.profile, { recursive: true, force: true }).catch(() => undefined);
       }
       watch = undefined;
-      for (const session of replays.values()) {
-        await session.context.close().catch(() => undefined);
-        await keepReplayClip(library.root, session.profile);
-        if (path.resolve(session.profile) !== path.resolve(baoProfile)) {
-          await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
+      for (const session of new Set(replays.values())) {
+        await session.close().catch(() => undefined);
+        if (session.kind === "owned") {
+          await keepReplayClip(library.root, session.profile);
+          if (!session.persistent) await rm(session.profile, { recursive: true, force: true }).catch(() => undefined);
         }
       }
       replays.clear();
@@ -2566,12 +2572,16 @@ async function runWorkflow(
   workflow: WorkflowV2,
   args: ReplayArgs,
   notices: Notice[],
-  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  replays: Map<string, WorkflowBrowser>,
   runId: string,
   prompts?: PersonPrompts,
   gate?: LoginGate,
   fromStep?: string,
+  browser?: RunBrowser,
 ) {
+  if (browser && browser.choice !== "bao") {
+    return runRecorded(library, workflow, args, notices, replays, runId, prompts, undefined, fromStep, undefined, browser);
+  }
   if (gate) {
     const gated = await gateSavedLogin(library, workflow, args, notices, replays, runId, prompts, gate, fromStep);
     if (gated) return gated;
@@ -2584,7 +2594,7 @@ async function gateSavedLogin(
   workflow: WorkflowV2,
   args: ReplayArgs,
   notices: Notice[],
-  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  replays: Map<string, WorkflowBrowser>,
   runId: string,
   prompts: PersonPrompts | undefined,
   gate: LoginGate,
@@ -2836,103 +2846,124 @@ async function runRecorded(
   workflow: WorkflowV2,
   args: ReplayArgs,
   notices: Notice[],
-  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  replays: Map<string, WorkflowBrowser>,
   runId: string,
   prompts?: PersonPrompts,
   profileDir?: string,
   fromStep?: string,
   link?: ExtensionLink,
+  browser?: RunBrowser,
 ) {
   const engineName = pageEngineName(library.settings().pageEngine);
   const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(link), pageEngine: engineName });
   if (refusal) throw new Error(refusal);
   if (link && workflowDriver(workflow) === "extension") return runExtension(library, workflow, args, notices, runId, prompts, link, fromStep);
-  const session = await openReplay(library, workflow.id, replays, profileDir);
-  const page = session.page;
-  const shotDir = path.join(library.root, "shots", "runs", runId);
-  const onNotify = (notice: HealNotice) => {
-    notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
-  };
-  const driver = new BrowserDriver(page, onNotify, prompts);
-  driver.markStep("open");
-  if (workflow.startUrl.startsWith("http")) await navigateOwned(page, workflow.startUrl);
-  const secretList = workflow.inputs.flatMap((input) => {
-    if (input.type !== "secret") return [];
-    const value = args[input.name];
-    return typeof value === "string" && value ? [value] : [];
-  });
-  const heal = await healFromSource(library.settings().healSource, healProvider);
-  const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
-  const clip = replayClips.get(session.profile);
-  if (clip) clip.runId = runId;
-  const videoStartedAt = Date.now();
-  const video = await openReplayVideo(pidsForDataDir(session.profile), path.join(library.root, "videos", `${runId}.webm`));
-  const settings = library.settings();
-  const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
-  const reviewSteps = new Set(stepsNeedingReview(recent as Parameters<typeof stepsNeedingReview>[0]).map((item) => item.stepId));
-  let result: Awaited<ReturnType<typeof replay>>;
-  let recorded = { wrote: false, frames: 0 };
+  const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl);
   try {
-    result = await replay(workflow, args, driver, {
-      runId,
-      shotDir,
-      settings,
-      heal,
-      now: () => Date.now(),
-      receipts: receiptLog,
-      fromStepId: fromStep,
-      reviewSteps,
-      circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
-      // The desktop waits. The proof scores the pause and must not sit on a bot wall.
-      holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
-      onPause: (partial) => {
-        library.saveRun(persistedRun(partial, workflow, args, {
-          promotion: undefined,
-          recorded: { wrote: false },
-          videoStartedAt,
-          secretList,
-        }));
-      },
-    } satisfies ReplayOptions);
+    const page = session.page;
+    const shotDir = path.join(library.root, "shots", "runs", runId);
+    const onNotify = (notice: HealNotice) => {
+      notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
+    };
+    const driver = new BrowserDriver(page, onNotify, prompts);
+    driver.markStep("open");
+    if (workflow.startUrl.startsWith("http")) await navigateWorkflowBrowser(session, workflow.startUrl);
+    const secretList = workflow.inputs.flatMap((input) => {
+      if (input.type !== "secret") return [];
+      const value = args[input.name];
+      return typeof value === "string" && value ? [value] : [];
+    });
+    const heal = await healFromSource(library.settings().healSource, healProvider);
+    const receiptLog = new ReceiptLog(path.join(library.root, "trails", `${workflow.id}.receipts.jsonl`));
+    const clip = session.kind === "owned" ? replayClips.get(session.profile) : undefined;
+    if (clip) clip.runId = runId;
+    const videoStartedAt = Date.now();
+    const video = await openReplayVideo(session.kind === "owned" ? pidsForDataDir(session.profile) : [], path.join(library.root, "videos", `${runId}.webm`));
+    const settings = library.settings();
+    const recent = library.listRuns().filter((run) => run.workflowId === workflow.id);
+    const reviewSteps = new Set(stepsNeedingReview(recent as Parameters<typeof stepsNeedingReview>[0]).map((item) => item.stepId));
+    let result: Awaited<ReturnType<typeof replay>>;
+    let recorded = { wrote: false, frames: 0 };
+    try {
+      result = await replay(workflow, args, driver, {
+        runId,
+        shotDir,
+        settings,
+        heal,
+        now: () => Date.now(),
+        receipts: receiptLog,
+        fromStepId: fromStep,
+        reviewSteps,
+        circuitOpen: circuitOpen(recent, Date.now(), { limit: settings.circuitLimit, windowMs: settings.circuitWindowMs }),
+        // The desktop waits. The proof scores the pause and must not sit on a bot wall.
+        holdForPerson: process.env.BAO_PROOF_PAGE !== "1",
+        onPause: (partial) => {
+          library.saveRun(persistedRun(partial, workflow, args, {
+            promotion: undefined,
+            recorded: { wrote: false },
+            videoStartedAt,
+            secretList,
+          }));
+        },
+      } satisfies ReplayOptions);
+    } finally {
+      recorded = await video.stop();
+    }
+    spillBinaryShots(result, shotDir);
+    for (const repair of result.repairs) {
+      library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
+    }
+    for (const receipt of result.receipts) {
+      library.appendTrail(workflow.id, receipt);
+    }
+    const promotion = recordProvisional(library, workflow, result.heals);
+    result.pageEngine = engineName;
+    const saved = persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList });
+    library.saveRun(saved);
+    if (result.status !== "paused") clearPendingPrompt(library.root);
+    const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
+    if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
+    const bounds = await readOwnedWindow(page).catch(() => null);
+    if (bounds) library.writeBounds(workflow.id, bounds);
+    return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds, pageEngine: engineName };
   } finally {
-    recorded = await video.stop();
+    if (session.kind === "owned") await session.keepOpen?.();
   }
-  spillBinaryShots(result, shotDir);
-  for (const repair of result.repairs) {
-    library.appendTrail(workflow.id, { kind: "repair", ts: Date.now(), ...repair });
-  }
-  for (const receipt of result.receipts) {
-    library.appendTrail(workflow.id, receipt);
-  }
-  const promotion = recordProvisional(library, workflow, result.heals);
-  result.pageEngine = engineName;
-  const saved = persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList });
-  library.saveRun(saved);
-  if (result.status !== "paused") clearPendingPrompt(library.root);
-  const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
-  if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
-  const bounds = await readOwnedWindow(page).catch(() => null);
-  if (bounds) library.writeBounds(workflow.id, bounds);
-  return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds, pageEngine: engineName };
 }
 
 async function openReplay(
   library: Library,
   id: string,
-  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  replays: Map<string, WorkflowBrowser>,
   fixedDir?: string,
-): Promise<{ context: BrowserContext; page: Page; profile: string }> {
+  browser?: RunBrowser,
+  site = "about:blank",
+): Promise<WorkflowBrowser> {
+  for (const [key, session] of replays) {
+    if (session.kind !== "owned") continue;
+    if (!(browser?.choice === "copy" && session.choice === "copy") && !session.page.isClosed()) continue;
+    await session.close();
+    if (!session.persistent) await rm(session.profile, { recursive: true, force: true });
+    replays.delete(key);
+  }
   const existing = replays.get(id);
-  const sameDir = Boolean(existing && fixedDir && path.resolve(existing.profile) === path.resolve(fixedDir));
-  if (existing && !existing.page.isClosed() && (!fixedDir || sameDir)) return existing;
+  const sameDir = Boolean(existing?.kind === "owned" && fixedDir && path.resolve(existing.profile) === path.resolve(fixedDir));
+  if (existing && existing.choice === (browser?.choice ?? "owned") && !existing.page.isClosed() && (!fixedDir || sameDir)) {
+    return existing;
+  }
   if (existing) {
-    await existing.context.close().catch(() => undefined);
-    if (!sameDir) await rm(existing.profile, { recursive: true, force: true }).catch(() => undefined);
+    await existing.close();
+    if (existing.kind === "owned" && !existing.persistent) await rm(existing.profile, { recursive: true, force: true });
     replays.delete(id);
+  }
+  if (browser) {
+    const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile });
+    replays.set(id, session);
+    return session;
   }
   if (fixedDir) {
     for (const session of replays.values()) {
-      if (session.page.isClosed()) continue;
+      if (session.kind !== "owned" || session.page.isClosed()) continue;
       if (path.resolve(session.profile) !== path.resolve(fixedDir)) continue;
       replays.set(id, session);
       return session;
@@ -2953,12 +2984,12 @@ async function openReplay(
   if (video) replayClips.set(profile, { video });
   const saved = library.readBounds(id);
   if (saved) await moveOwnedWindow(page, saved).catch(() => undefined);
-  const session = { context, page, profile };
+  const session: WorkflowBrowser = { kind: "owned", choice: "owned", context, page, profile, persistent: Boolean(fixedDir), close: () => context.close() };
   replays.set(id, session);
   return session;
 }
 
-async function placeReplayWindow(page: Page, profile: string, want: WindowBounds) {
+async function placeReplayWindow(page: Page, profile: string | undefined, want: WindowBounds) {
   const attempts: { method: string; applied: boolean; error?: string; after?: unknown }[] = [];
   try {
     const cdp = await moveOwnedWindow(page, want);
@@ -2967,7 +2998,7 @@ async function placeReplayWindow(page: Page, profile: string, want: WindowBounds
     attempts.push({ method: "cdp", applied: false, error: err instanceof Error ? err.message : String(err) });
   }
   const helper = process.platform === "darwin" ? bundledHelperApp() : undefined;
-  const pid = pidsForDataDir(profile)[0];
+  const pid = profile ? pidsForDataDir(profile)[0] : undefined;
   if (helper && pid) {
     try {
       const ax = await new MacOsHelper(helper).moveWindow("", {
@@ -3604,13 +3635,13 @@ function httpOrigin(startUrl: string): string | null {
 }
 
 async function releaseProfile(
-  replays: Map<string, { context: BrowserContext; page: Page; profile: string }>,
+  replays: Map<string, WorkflowBrowser>,
   dir: string,
 ): Promise<void> {
   const resolved = path.resolve(dir);
   for (const [id, session] of replays) {
-    if (path.resolve(session.profile) !== resolved) continue;
-    await session.context.close().catch(() => undefined);
+    if (session.kind !== "owned" || path.resolve(session.profile) !== resolved) continue;
+    await session.close().catch(() => undefined);
     replays.delete(id);
   }
 }
