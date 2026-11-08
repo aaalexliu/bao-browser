@@ -38,7 +38,7 @@ export function publicSite(site: string): string {
 
 export function visibleCopy(value: string): string {
   return value
-    .replace(/\b(Open)\s+(\S+)/gi, (all, verb: string, raw: string) => {
+    .replace(/\b(Open)\s+([^\s"'<>]+)/gi, (all, verb: string, raw: string) => {
       const place = loopbackPlace(raw.includes("://") ? raw : `http://${raw}`);
       return place ? `${verb} ${place === "Fixture" ? "the fixture" : place}` : all;
     })

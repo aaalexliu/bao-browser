@@ -2628,6 +2628,24 @@ function placeShotBox(host: HTMLElement, box: string): void {
   host.append(mark);
 }
 
+function zoomShot(host: HTMLElement, img: HTMLImageElement, box: string): void {
+  placeShotBox(host, "");
+  const [x, y, width, height, viewW, viewH] = box.split(",").map(Number);
+  if (![x, y, width, height, viewW, viewH].every((n) => Number.isFinite(n)) || viewW <= 0 || viewH <= 0 || width <= 0 || height <= 0) return;
+  const aspect = viewW / viewH;
+  const pad = 160;
+  const cropW = Math.min(viewW, Math.max(width + pad * 2, (height + pad * 2) * aspect, 640));
+  const cropH = cropW / aspect;
+  const cropX = Math.min(Math.max(x + width / 2 - cropW / 2, 0), viewW - cropW);
+  const cropY = Math.min(Math.max(y + height / 2 - cropH / 2, 0), viewH - cropH);
+  host.classList.add("zoomed");
+  host.style.aspectRatio = `${viewW} / ${viewH}`;
+  img.style.width = `${viewW / cropW * 100}%`;
+  img.style.left = `${-cropX / cropW * 100}%`;
+  img.style.top = `${-cropY / cropH * 100}%`;
+  placeShotBox(host, [x - cropX, y - cropY, width, height, cropW, cropH].join(","));
+}
+
 function mountShots(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>("[data-shot]").forEach((node) => {
     if (node.dataset.shotMounted === "1") return;
@@ -2650,7 +2668,8 @@ function mountShots(root: ParentNode = document): void {
         }
         node.classList.add("has-shot");
         node.prepend(img);
-        placeShotBox(node, framed ? node.dataset.box || "" : "");
+        if (framed) zoomShot(node, img, node.dataset.box || "");
+        else placeShotBox(node, "");
       };
       img.onerror = () => {
         if (next) load(next, framed ? fallback : undefined, false);

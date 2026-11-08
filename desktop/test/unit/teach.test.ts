@@ -451,8 +451,15 @@ test("you-do-this on a password or Log in card is a sign-in, not an owner press"
     const projected = projectTeach(events, decide([], { kind: "human", cardId }, 1), meta);
     const step = projected.workflow.steps.find((item) => item.action === "handoff");
     assert.equal(step?.action === "handoff" && step.reason, "sign-in", cardId);
-    assert.equal(step?.action === "handoff" && step.target, undefined, cardId);
+    assert.ok(step?.action === "handoff" && step.target?.locators.length, cardId);
+    assert.equal(step?.caption.text, "Sign in", cardId);
+    assert.equal(step?.action === "handoff" && step.check?.kind, "absent", cardId);
   }
+  const welcomed = [...fixtureEvents(), { ...login, afterText: "Welcome ada" }];
+  const signedIn = projectTeach(welcomed, decide([], { kind: "human", cardId: "click-login" }, 1), meta);
+  const handoff = signedIn.workflow.steps.find((item) => item.action === "handoff");
+  assert.deepEqual(handoff?.action === "handoff" && handoff.check && "match" in handoff.check ? [handoff.check.kind, handoff.check.match] : [], ["text", "Welcome ada"]);
+  assert.equal(signedIn.cards.find((card) => card.id === "click-login")?.outcome, "Welcome ada");
   const press = projectTeach(events, decide([], { kind: "human", cardId: "click-apply" }, 1), meta).workflow.steps.find((item) => item.action === "handoff");
   assert.equal(press?.action === "handoff" && press.reason, "owner-press");
 });
@@ -466,4 +473,15 @@ test("merging keeps the card outcome on the check the step still runs", () => {
   assert.equal(merged.workflow.steps.length, 1);
   assert.deepEqual(stepCheck(merged.workflow.steps[0]!), stepCheck(before.workflow.steps[0]!));
   assert.equal(merged.cards[0]?.outcome, before.cards[0]?.outcome);
+});
+
+test("a richer card merged into a click takes that card's outcome with its check", () => {
+  const edit = { id: "click-edit", ts: 1, kind: "act" as const, op: "click", afterText: "Display name", identity: ident({ role: "button", name: "Edit" }) };
+  const typed = { id: "type-name", ts: 2, kind: "act" as const, op: "type", value: "alpha", identity: ident({ name: "Name" }) };
+  const before = projectTeach([edit, typed], [], meta);
+  const merged = projectTeach([edit, typed], decide([], { kind: "merge", cardId: "type-name" }, 1), meta);
+  assert.equal(merged.workflow.steps.length, 1);
+  assert.deepEqual(stepCheck(merged.workflow.steps[0]!), stepCheck(before.workflow.steps[1]!));
+  assert.equal(merged.cards[0]?.outcome, before.cards[1]?.outcome);
+  assert.notEqual(merged.cards[0]?.outcome, "Display name");
 });

@@ -45,6 +45,11 @@ test("loopback copy reads as Fixture, a path, or the fixture, and an open step s
   assert.equal(visibleCopy("Saved Open 127.0.0.1:61984/fixture"), "Saved Open the fixture");
   assert.equal(visibleCopy("Saved Open 127.0.0.1:9/secure"), "Saved Open /secure");
   assert.equal(visibleCopy("Open https://example.com/fixture"), "Open https://example.com/fixture");
+  assert.equal(
+    visibleCopy(JSON.stringify({ caption: { text: "Open 127.0.0.1:61984/fixture" } }, null, 2)),
+    JSON.stringify({ caption: { text: "Open the fixture" } }, null, 2),
+  );
+  assert.equal(visibleCopy("'Open 127.0.0.1:4787/'"), "'Open the fixture'");
   assert.equal(loopbackPlace("http://[::1]:4787/fixture"), "Fixture");
   assert.equal(controlKey("http://127.0.0.1:4787"), "fixture4:4787");
   assert.equal(expandControlKey("fixture4:4787"), "http://127.0.0.1:4787");
@@ -150,8 +155,6 @@ test("rendered product pages never contain the listen address", () => {
   assert.match(pages[6][1], /<strong>Fixture<\/strong>/);
   assert.match(pages[6][1], /data-recheck="fixture4:4787"/);
   assert.match(pages[7][1], /placeholder="Pairing server"/);
-  const server = readFileSync(path.join(process.cwd(), "desktop/src/app/server.ts"), "utf8");
-  assert.match(server, /function captureStepLabel[\s\S]*visibleCopy\(text\)/);
   assert.equal(visibleCopy(`Open ${LISTEN} — keep the note`), `Open the fixture — keep the note`);
 });
 

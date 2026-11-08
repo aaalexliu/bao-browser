@@ -52,6 +52,7 @@ async function readState(port: number): Promise<{
     decisions: { kind: string; detail: string; cardId: string }[];
   };
   guide: GuideState | null;
+  loginWait?: { detail?: string } | null;
 }> {
   return await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();
 }
@@ -130,13 +131,28 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     assert.equal(saved.workflow.steps.some((item) => item.caption.text === "alpha note"), true);
     const signIn = taught.steps.find((item) => item.action === "handoff");
     assert.equal(signIn?.action === "handoff" && signIn.reason, "sign-in");
-    assert.equal(signIn?.action === "handoff" && signIn.target, undefined);
+    assert.ok(signIn?.action === "handoff" && signIn.target?.locators.length);
+    assert.equal(signIn?.caption.text, "Sign in");
+    assert.equal(signIn?.action === "handoff" && signIn.check?.kind, "text");
+    assert.match(signIn?.action === "handoff" && signIn.check && "match" in signIn.check ? signIn.check.match : "", /^Welcome /);
     assert.equal(saved.events.some((event) => event.op === "note" && event.afterText === "alpha note"), true);
     assert.equal(saved.decisions.some((decision) => decision.detail === "renamed intent"), true);
     assert.equal(saved.workflow.inputs.find((input) => input.type === "secret")?.default, "demo-pass");
     assert.equal(saved.events.find((event) => event.op === "type" && event.sensitive)?.value, "demo-pass");
     assert.equal(JSON.stringify(saved.workflow.steps).includes("demo-pass"), false);
     assert.equal(JSON.stringify(saved).includes("SuperSecretPassword!"), false);
+
+    const pending = post(app.port, "/api/replay", { id: taught.id, args: {} });
+    const asked = await until(
+      () => readState(app.port),
+      (state) => !!state.loginWait?.detail,
+      "sign-in ask",
+    );
+    assert.equal(asked.loginWait?.detail, "Sign in");
+    await post(app.port, "/api/replay/drive", { id: taught.id, click: "#login-btn" });
+    const run = await pending as { status: string; steps: { status: string }[]; failure?: { reason?: string } };
+    assert.equal(run.status, "passed", run.failure?.reason);
+    assert.equal(run.steps.every((step) => step.status === "passed"), true);
   } finally {
     await app.close();
   }

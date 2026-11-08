@@ -5,7 +5,7 @@
 
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
-import { finishInput, stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { finishInput, stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Check, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -520,8 +520,12 @@ function applyDecision(
     const reason = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code")
       ? draft.step.reason
       : signInMark(draft.step) ? "sign-in" : "owner-press";
-    const target = reason === "owner-press" ? stepTarget(draft.step) : undefined;
+    const target = reason === "code" ? undefined : stepTarget(draft.step);
     const timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
+    const signIn = reason === "sign-in" && !(draft.step.action === "handoff" && draft.step.reason === "sign-in");
+    if (signIn) draft.card.intent = "Sign in";
+    const check = signIn ? signInCheck(draft.step, timeoutMs) : draft.card.outcome ? { kind: "text" as const, match: draft.card.outcome, timeoutMs } : undefined;
+    if (signIn) draft.card.outcome = check && "match" in check ? check.match : "";
     draft.step = {
       id: draft.step.id,
       index: draft.step.index,
@@ -530,7 +534,7 @@ function applyDecision(
       timeoutMs,
       caption: { text: draft.card.intent || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button") },
       ...(target ? { target } : {}),
-      ...(draft.card.outcome ? { check: { kind: "text" as const, match: draft.card.outcome, timeoutMs } } : {}),
+      ...(check ? { check } : {}),
     };
     draft.card.human = true;
     draft.card.action = draft.step.action;
@@ -590,6 +594,13 @@ function applyDecision(
   }
 }
 
+function signInCheck(step: WorkflowStep, timeoutMs: number): Check | undefined {
+  const seen = stepCheck(step);
+  if (seen && (seen.kind === "text" || seen.kind === "url")) return { kind: seen.kind, match: seen.match, timeoutMs };
+  const locators = stepTarget(step)?.locators;
+  return locators?.length ? { kind: "absent", locators, timeoutMs } : undefined;
+}
+
 function signInMark(step: WorkflowStep): boolean {
   const query = stepQuery(step);
   return stepSensitive(step) || query?.role === "password" || query?.inputType === "password" || /login/i.test(query?.testId || "") || /login/i.test(query?.id || "");
@@ -604,7 +615,7 @@ function absorb(previous: Draft, current: Draft): void {
     previous.card.values = current.card.values.map((value) => ({ ...value }));
     previous.card.human = current.card.human;
     previous.card.verify = current.card.verify;
-    if (!previous.card.outcome) previous.card.outcome = current.card.outcome;
+    previous.card.outcome = current.card.outcome;
     previous.card.intent = intent || current.card.intent;
     previous.step.caption = { ...previous.step.caption, text: previous.card.intent };
   } else if (current.card.outcome && setTextCheck(previous.step, current.card.outcome)) {
@@ -750,8 +761,9 @@ function citedSentence(text: string, citation: string | undefined): string {
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
   const spoken = citedSentence(step.caption?.text || "", step.caption?.citation?.text);
-  if (spoken && spoken !== "Click" && spoken !== "Step") return spoken;
   const target = targetName(event);
+  const unnamedClick = step.action === "click" && !step.caption?.citation;
+  if (spoken && spoken !== "Click" && spoken !== "Step" && !(unnamedClick && target)) return spoken;
   if (target) return `Click ${target}`;
   if (spoken) return spoken;
   if (step.action === "verify") return "Check";

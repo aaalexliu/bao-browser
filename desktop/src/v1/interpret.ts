@@ -6,7 +6,7 @@ import { inferExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
 import { caption, citeIdentity, clickSentence, openSentence, targetBox, typeSentence } from "./caption";
 import { locatorsFromIdentity } from "./locators";
-import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepSensitive, stepSurface, stepForEach, finishInput, hintFromIdentity, WORKFLOW_SCHEMA_ID, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepSensitive, stepSurface, stepForEach, finishInput, hintFromIdentity, WORKFLOW_SCHEMA_ID, type AnchorLocator, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { fixedSavedChoice, hasStrippedSecret, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 
@@ -540,7 +540,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   }
   return {
     id, index, action: "click", timeoutMs: 8000, target,
-    caption: caption(clickSentence(name), cite, box),
+    caption: caption(clickSentence(name, event.identity?.role, nearText(target)), cite, box),
     ...(event.optional ? { optional: event.optional } : {}),
     ...(dialog ? { dialog } : {}),
     ...observed(event, undefined, false, known, meta.secrets ?? []),
@@ -551,6 +551,11 @@ function targetFor(identity: Identity | undefined, locators: StepLocator[] | und
   const list = locators?.length ? locators : (locatorsFromIdentity(identity) ?? []);
   const hint = hintFromIdentity(identity);
   return { locators: list, ...(hint ? { hint } : {}) };
+}
+
+function nearText(target: Target): { relation: AnchorLocator["relation"]; text?: string } | undefined {
+  const anchor = target.locators.find((locator): locator is AnchorLocator => locator.kind === "anchor");
+  return anchor ? { relation: anchor.relation, text: anchor.anchor.name || anchor.anchor.text } : undefined;
 }
 
 function handoffCheck(result: { check?: Check }): { check?: Check } {
