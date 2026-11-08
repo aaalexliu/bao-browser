@@ -42,6 +42,12 @@ test("inspect tab close presses that tab's Close button, not the window or anoth
   assert.doesNotMatch(encoded, /Owner tab/);
   assert.equal(args[0], "press");
   assert.equal(args.includes("close-window"), false);
+  const second = axNode({
+    role: "AXRadioButton", subrole: "AXTabButton",
+    name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools",
+    description: "Inspect with Chrome Developer Tools", value: "true",
+  });
+  assert.equal(currentChrome.inspectTabCloseArgs([...nodes, second], 7), undefined);
 });
 
 async function fixture(on = false) {

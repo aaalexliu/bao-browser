@@ -16,7 +16,7 @@ import {
   summarizeAx,
   type AxLike,
 } from "../../src/cdp-live/consent";
-import { assertActivePortFile, LISTEN_PID_BIN, listenPid, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
+import { assertActivePortFile, listenPid, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../../src/cdp-live/launch-guard";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
 
@@ -199,16 +199,16 @@ test("the browser lock is exclusive and a stale lock can be taken", async () => 
   releaseCdpLock("agent-b", file);
 });
 
-test("listenPid calls lsof by its absolute macOS path", async (t) => {
+test("listenPid calls /usr/sbin/lsof on macOS and lsof by name on Linux", async (t) => {
   const calls: string[] = [];
   t.mock.method(childProcess, "execFile", ((file: string, _args: readonly string[], _opts: unknown, callback: (err: Error | null, stdout: string) => void) => {
     calls.push(file);
     callback(null, "Google 7 alexliu 1u IPv4 0x1 0t0 TCP 127.0.0.1:9222 (LISTEN)\n");
     return {} as childProcess.ChildProcess;
   }) as typeof childProcess.execFile);
-  assert.equal(await listenPid(9222), 7);
-  assert.deepEqual(calls, ["/usr/sbin/lsof"]);
-  assert.equal(LISTEN_PID_BIN, "/usr/sbin/lsof");
+  assert.equal(await listenPid(9222, "darwin"), 7);
+  assert.equal(await listenPid(9222, "linux"), 7);
+  assert.deepEqual(calls, ["/usr/sbin/lsof", "lsof"]);
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {

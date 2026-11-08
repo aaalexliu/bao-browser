@@ -57,11 +57,13 @@ export function parseListenPid(text: string, port: number): number | null {
 }
 
 /** Absolute on macOS: a background agent PATH of /usr/bin:/bin cannot see /usr/sbin/lsof. */
-export const LISTEN_PID_BIN = process.platform === "darwin" ? "/usr/sbin/lsof" : "lsof";
+export function listenPidBin(platform: string): string {
+  return platform === "darwin" ? "/usr/sbin/lsof" : "lsof";
+}
 
-export function listenPid(port: number): Promise<number | undefined> {
+export function listenPid(port: number, platform = process.platform): Promise<number | undefined> {
   return new Promise((resolve) => {
-    execFile(LISTEN_PID_BIN, ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { timeout: 5000 }, (err, stdout) => {
+    execFile(listenPidBin(platform), ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { timeout: 5000 }, (err, stdout) => {
       if (err) {
         resolve(undefined);
         return;

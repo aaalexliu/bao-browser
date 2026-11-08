@@ -63,30 +63,21 @@ function labeled(node: AxNode): string {
   return node.name || node.title || node.description || "";
 }
 
-function selectedTab(node: AxNode): boolean {
-  const value = (node.value || "").trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
-}
-
 function inspectTabs(nodes: AxNode[]): AxNode[] {
   return nodes.filter((node) => node.role === "AXRadioButton" && node.subrole === "AXTabButton" && labeled(node).includes(INSPECT_TAB));
 }
 
-/** Press arguments for the inspect tab this start opened. Never the window close button. */
+/** Press arguments for the only inspect tab. No press when another inspect tab is open, and never the window close button. */
 export function inspectTabCloseArgs(nodes: AxNode[], pid: number): string[] | undefined {
   const tabs = inspectTabs(nodes);
-  const ordered = [...tabs.filter(selectedTab), ...tabs.filter((tab) => !selectedTab(tab)).reverse()];
-  for (const tab of ordered) {
-    const label = labeled(tab);
-    if (!label.includes(INSPECT_TAB)) continue;
-    const button = nodes.find((node) => node.role === "AXButton"
-      && [node.name, node.title, node.description].includes("Close")
-      && node.subrole !== "AXCloseButton"
-      && node.path.some((seg) => seg.role === "AXRadioButton" && seg.name === label));
-    if (!button?.path.length) continue;
-    return ["press", "--bundle", CHROME_BUNDLE, "--pid", String(pid), "--role", "AXButton", "--name", "Close", "--path", JSON.stringify(button.path)];
-  }
-  return undefined;
+  if (tabs.length !== 1) return undefined;
+  const label = labeled(tabs[0]!);
+  const button = nodes.find((node) => node.role === "AXButton"
+    && [node.name, node.title, node.description].includes("Close")
+    && node.subrole !== "AXCloseButton"
+    && node.path.some((seg) => seg.role === "AXRadioButton" && seg.name === label));
+  if (!button?.path.length) return undefined;
+  return ["press", "--bundle", CHROME_BUNDLE, "--pid", String(pid), "--role", "AXButton", "--name", "Close", "--path", JSON.stringify(button.path)];
 }
 
 async function closeOpenedInspect(helper: CurrentChromeDeps["helper"], pid: number): Promise<void> {
