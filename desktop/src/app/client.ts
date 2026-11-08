@@ -1501,7 +1501,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   const inputs = host.querySelector("[data-run-tab=inputs]");
   if (inputs) (inputs as HTMLButtonElement).onclick = () => {
     const extra = document.getElementById("run-extra");
-    if (extra) extra.innerHTML = inputsPane(run.inputs, run.savedValues);
+    if (extra) extra.innerHTML = inputsPane(run.inputs);
   };
   const consoleTab = host.querySelector("[data-run-tab=console]");
   if (consoleTab) (consoleTab as HTMLButtonElement).onclick = () => {
@@ -1954,7 +1954,9 @@ async function runReplay(): Promise<void> {
       let bin = "";
       for (const byte of bytes) bin += String.fromCharCode(byte);
       args[el.name] = { name: file.name, base64: btoa(bin) };
-    } else if (el instanceof HTMLInputElement && el.type === "number") args[el.name] = Number(el.value);
+    } else if (el instanceof HTMLInputElement && el.type === "number") {
+      if (el.value.trim()) args[el.name] = Number(el.value);
+    }
     else args[el.name] = el.value;
   }
   const live = document.getElementById("live");

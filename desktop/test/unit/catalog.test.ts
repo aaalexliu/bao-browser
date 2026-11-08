@@ -129,6 +129,16 @@ test("an app replay fills an imported author default and adopts only a changed v
   assert.equal(changed?.inputs.find((input) => input.name === "who")?.ownerSaved, true);
   assert.equal(changed?.inputs.find((input) => input.name === "note")?.ownerSaved, undefined);
   assert.equal(changed?.inputs.find((input) => input.name === "note")?.default, "author");
+  assert.equal(adoptOwnerValues(changed!, { who: "Beth", note: "author" }), undefined);
+  const untouched = adoptOwnerValues({
+    ...doc,
+    inputs: [
+      ...doc.inputs,
+      { name: "count", type: "number", label: "Count", required: true },
+      { name: "when", type: "date", label: "When", required: true },
+    ],
+  }, { who: "front desk", note: "author", count: 0, when: "today" });
+  assert.equal(untouched, undefined);
 });
 
 test("the first marketplace run asks for the author's values", async () => {
@@ -166,6 +176,58 @@ test("the first marketplace run asks for the author's values", async () => {
     assert.equal(again.outcome, "needs_human", again.reason);
     assert.match(again.reason || "", /Who/);
     assert.equal(library.listRuns().length, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("an owned fork keeps the owner's import answers", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-fork-"));
+  const fork: WorkflowV2 = {
+    ...workflow("forked", "Fork of Front desk"),
+    imported: true,
+    inputs: [
+      { name: "name", type: "text", label: "Name", required: true, default: "Alex", ownerSaved: true },
+      { name: "note", type: "text", label: "Note", required: true, default: "author note" },
+    ],
+  };
+  const legacy: WorkflowV2 = {
+    ...workflow("legacy", "Old fork"),
+    inputs: [{ name: "name", type: "text", label: "Name", required: true, default: "Alex", ownerSaved: true }],
+  };
+  const server = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/api/workflows/forked") {
+      res.end(JSON.stringify({ document: fork, forkedFrom: "listing", owned: true, version: 2 }));
+      return;
+    }
+    if (req.url === "/api/workflows/legacy") {
+      res.end(JSON.stringify({ document: legacy, forkedFrom: "listing", owned: true, version: 1 }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const library = new Library(home);
+    const { port } = server.address() as AddressInfo;
+    saveState(home, { ...loadState(home), server: `http://127.0.0.1:${port}`, deviceToken: "fixture" });
+    const kept = await runWorkflow(library, { id: "forked" });
+    assert.equal(kept.outcome, "needs_human", kept.reason);
+    assert.match(kept.reason || "", /Note/);
+    assert.equal((kept.reason || "").includes("Name"), false);
+    const stored = library.read("forked");
+    assert.equal(stored.imported, true);
+    assert.equal(stored.inputs.find((input) => input.name === "name")?.ownerSaved, true);
+    assert.equal(stored.inputs.find((input) => input.name === "name")?.default, "Alex");
+    const marked = await runWorkflow(library, { id: "legacy" });
+    assert.equal(marked.outcome, "needs_human", marked.reason);
+    assert.match(marked.reason || "", /Name/);
+    const old = library.read("legacy");
+    assert.equal(old.imported, true);
+    assert.equal(old.inputs[0]?.ownerSaved, undefined);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     rmSync(home, { recursive: true, force: true });

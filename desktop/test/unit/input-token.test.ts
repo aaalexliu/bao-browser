@@ -84,6 +84,15 @@ test("the selected step and input summary offer tokens with the run form's defau
   assert.match(runField({ ...retained, default: "[secret stripped]" }), /value=""/);
 });
 
+test("an untouched choice submits the saved default, not the first option", () => {
+  const field = runField({ name: "size", type: "choice", label: "Size", choices: ["S", "M", "L"], default: "M" });
+  assert.match(field, /<option selected>M<\/option>/);
+  assert.equal(field.includes("<option selected>S</option>"), false);
+  const previous = runField({ name: "size", type: "choice", label: "Size", choices: ["S", "M", "L"], default: "M" }, "L");
+  assert.match(previous, /<option selected>L<\/option>/);
+  assert.equal(previous.includes("<option selected>M</option>"), false);
+});
+
 test("editing an imported input marks it saved only when the value changes", () => {
   const imported: WorkflowV2 = { ...doc(), imported: true };
   const labelOnly = editInput(imported, { name: "note", label: "Desk note", default: "ada" });

@@ -973,7 +973,8 @@ export function runField(input: TokenInput, previous?: string, now = new Date())
   if (shown.masked) return secretInput(input.name, shown.label, previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default);
   if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || shown.default)}"></label>`;
   if (input.type === "choice") {
-    const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
+    const selected = previous || shown.default;
+    const opts = (input.choices || []).map((choice) => `<option ${choice === selected ? "selected" : ""}>${esc(choice)}</option>`).join("");
     return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
   }
   if (input.type === "file" && input.fromOutput) {
@@ -1061,11 +1062,10 @@ export function networkPane(lines: NetworkLine[] | undefined, stepId?: string): 
   return `${note}<ol id="network-log">${rows}</ol>`;
 }
 
-export function inputsPane(inputs: Record<string, string> | undefined, savedValues?: string): string {
+export function inputsPane(inputs: Record<string, string> | undefined): string {
   const rows = Object.entries(inputs || {});
-  const line = savedValuesLine(savedValues);
-  if (rows.length === 0) return `${line}<p class="quiet">This run stored no inputs.</p>`;
-  return `${line}<table class="identity">${rows.map(([key, value]) => `<tr><th>${esc(key)}</th><td>${esc(value)}</td></tr>`).join("")}</table>`;
+  if (rows.length === 0) return `<p class="quiet">This run stored no inputs.</p>`;
+  return `<table class="identity">${rows.map(([key, value]) => `<tr><th>${esc(key)}</th><td>${esc(value)}</td></tr>`).join("")}</table>`;
 }
 
 export function trailPane(events: { id?: string; ts?: number; op?: string; kind?: string; text?: string; reason?: string }[]): string {

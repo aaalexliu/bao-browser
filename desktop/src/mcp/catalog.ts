@@ -1200,7 +1200,8 @@ async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): 
 
 function materializeWorkflow(library: Library, found: Located): WorkflowV2 {
   const migrated = migrate(found.document);
-  const doc = originLabel(found) === "marketplace" ? markImported(migrated) as WorkflowV2 : migrated;
+  const legacyFork = Boolean(found.forkedFrom) && migrated.imported !== true;
+  const doc = found.bucket === "public" || legacyFork ? markImported(migrated) as WorkflowV2 : migrated;
   library.save(doc);
   const saved = library.read(doc.id);
   if (!found.version) return saved;
