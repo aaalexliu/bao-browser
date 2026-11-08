@@ -63,10 +63,18 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
         assert.equal(await page.locator("#automation-ask, #perm-dot, #onboarding").count(), 0);
       }
     }
-    await page.route("**/api/state", async (route) => {
-      const response = await route.fetch();
-      const current = await response.json() as Record<string, unknown>;
-      await route.fulfill({ json: { ...current, helper: { label: "helper off", platform: "linux", capabilities: [] } } });
+    await page.addInitScript(() => {
+      const original = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const target = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (new URL(target, location.href).pathname !== "/api/state") return original(input, init);
+        const response = await original(input, init);
+        const current = await response.json() as Record<string, unknown>;
+        return new Response(JSON.stringify({
+          ...current,
+          helper: { label: "helper off", platform: "linux", capabilities: [] },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      };
     });
     await page.reload();
     await page.locator('#rail [data-place="settings"]').click();
