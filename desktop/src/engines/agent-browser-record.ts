@@ -43,6 +43,7 @@ export class AgentBrowserRun {
     status: "recording", at: Date.now(), steps: [], heals: [],
   };
   private readonly shots: string;
+  private lastSnapshot = "";
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -71,7 +72,7 @@ export class AgentBrowserRun {
   }
 
   begin(command: string, args: string[]): RecordedAgentBrowserCommand {
-    const spoken = commandSentence(command, args[0], latestSnapshot(this.run.steps));
+    const spoken = commandSentence(command, args[0], this.lastSnapshot || latestSnapshot(this.run.steps));
     const caption: StepCaption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
     const step: RecordedAgentBrowserCommand = {
       id: `command-${this.run.steps.length + 1}`,
@@ -88,6 +89,10 @@ export class AgentBrowserRun {
     screenshot: () => Promise<Buffer>, error?: unknown, privatePage = false): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
+    const snap = step.native.command === "snapshot"
+      ? results.find((result) => result.stdout.includes("[ref="))?.stdout || results.find((result) => result.stderr.includes("[ref="))?.stderr
+      : undefined;
+    if (snap) this.lastSnapshot = snap;
     step.native.isError = results.some((result) => result.exitCode !== 0) || error !== undefined;
     step.status = step.native.isError ? "failed" : "passed";
     if (error !== undefined) {

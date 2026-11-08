@@ -18,6 +18,9 @@ test("a type sentence cites the field name from the snapshot", () => {
   const spoken = commandSentence("fill", "@e18", snapshot);
   assert.equal(spoken.text, "Type into Search issues");
   assert.equal(spoken.citation?.text, "Search issues");
+  const combo = commandSentence("fill", "@e414", '- combobox "Search issues" [expanded=false, ref=e414]: is:issue');
+  assert.equal(combo.text, "Type into Search issues");
+  assert.equal(combo.citation?.text, "Search issues");
 });
 
 test("open uses the host and path", () => {
