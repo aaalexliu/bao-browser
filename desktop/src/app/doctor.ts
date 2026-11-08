@@ -4,7 +4,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
-import { mcpLauncher } from "./bundle";
+import { appVersion, mcpLauncher } from "./bundle";
 import { baoCommand, defaultProbe, detectTargets, parseSetup, type Probe } from "./setup";
 
 type Level = "ok" | "warn" | "fail";
@@ -33,12 +33,6 @@ export function signer(details: string): string {
   if (!authority) return "unsigned";
   if (authority.startsWith("Developer ID Application")) return `signed by ${authority} (team ${team})`;
   return `signed by ${authority} (self-signed, not notarized)`;
-}
-
-function appVersion(app: string): string {
-  const plist = path.join(app, "Contents", "Info.plist");
-  const result = run("/usr/bin/plutil", ["-extract", "CFBundleShortVersionString", "raw", "-o", "-", plist]);
-  return result.status === 0 ? result.stdout.trim() : "unknown version";
 }
 
 function signatureCheck(name: string, bundle: string): Check {
@@ -95,7 +89,7 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   const launcher = mcpLauncher(app);
   try {
     accessSync(launcher, constants.X_OK);
-    checks.push({ level: "ok", name: "Bao.app", detail: `${app} (${appVersion(app)})` });
+    checks.push({ level: "ok", name: "Bao.app", detail: `${app} (${appVersion(app) ?? "unknown version"})` });
   } catch {
     checks.push({ level: "fail", name: "Bao.app", detail: `${launcher} is missing. Install Bao again.` });
     return checks;
