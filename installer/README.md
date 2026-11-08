@@ -8,6 +8,12 @@ npx bao-browser
 bunx bao-browser
 ```
 
+Until the package is on npm, run the copy attached to the latest GitHub release:
+
+```sh
+npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
+```
+
 The command downloads the prebuilt `Bao.app` this package version pins, checks its size and SHA-256, and puts it in `/Applications` (or `~/Applications` when `/Applications` is not writable). It links `~/.local/bin/bao`. Then it runs the app's own `bao setup`, which lists the agents and desktop apps it found on this Mac and lets you pick which ones start Bao.
 
 You need no Xcode, Rust, Node 24, or signing certificate. `Bao.app` carries its own Node. The installer asks for no macOS permission. With no terminal and no flag, setup changes no agent and prints the commands to run.

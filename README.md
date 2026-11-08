@@ -10,14 +10,12 @@ Supported pass-through tasks save replayable workflows in Workflows; see [Workfl
 On an Apple silicon Mac:
 
 ```sh
-npx bao-browser
-# or
-bunx bao-browser
+npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
 ```
 
 The command downloads a prebuilt `Bao.app` with Node inside, checks its SHA-256, and puts it in `/Applications`. Then it asks which agents and desktop apps should use Bao: Claude Code, Codex and ChatGPT, Claude Desktop, and Cursor. You need no Xcode, Rust, Node 24, or signing certificate. `--yes` sets up every agent it finds, `--agents codex` names them, and `--none` skips the question. Run it again to update. `bao doctor` checks the install. See [installer/README.md](installer/README.md).
 
-`bao-browser` is not on npm until the first release. Until then, build from source with [Build Bao on a Mac](docs/mac-build.md).
+That URL is the installer attached to the latest GitHub release. Once `bao-browser` is on npm, `npx bao-browser` and `bunx bao-browser` run the same installer. To build from source, see [Build Bao on a Mac](docs/mac-build.md).
 
 ## Agent quickstart
 

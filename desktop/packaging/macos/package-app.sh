@@ -118,7 +118,10 @@ codesign --force --sign "$IDENTITY" --identifier dev.bao.cli "$APP/Contents/MacO
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 node "$ROOT/desktop/packaging/macos/prove-apple-events.mjs" "$APP"
-hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
+# The release workflow ships a zip, not the dmg, so it sets BAO_SKIP_DMG=1.
+if [[ "${BAO_SKIP_DMG:-}" != 1 ]]; then
+  hdiutil create -volname Bao -srcfolder "$APP" -ov -format UDZO "$DIST/Bao.dmg"
+fi
 echo "WROTE $APP"
-echo "WROTE $DIST/Bao.dmg"
+[[ "${BAO_SKIP_DMG:-}" == 1 ]] || echo "WROTE $DIST/Bao.dmg"
 echo "WROTE $DIST/bao.mcpb"
