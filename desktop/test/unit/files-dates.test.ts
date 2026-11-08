@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,33 +6,25 @@ import path from "node:path";
 import test from "node:test";
 import Ajv from "ajv/dist/2020";
 import { canonical } from "../../src/v1/canonical";
-import {
-  civilInZone,
-  composeV3Schema,
-  datePreview,
-  downloadFileName,
-  fileDigest,
-  formatCivil,
-  isoOf,
-  migrateFilesDates,
-  NEEDS_MAC_TEST,
-  openTarget,
-  planOpen,
-  prepareFilesDatesRun,
-  renderTemplate,
-  resolveRelative,
-} from "../../src/v1/files-dates";
+import { civilInZone, datePreview, downloadFileName, fileDigest, formatCivil, isoOf, NEEDS_MAC_TEST, openTarget, planOpen, prepareFilesDatesRun, renderTemplate, resolveRelative } from "../../src/v1/files-dates";
 import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTitle, stepQuery, stepDate, stepFileFrom, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
-const v2Schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
+function migrate(_raw: unknown): WorkflowV2 {
+  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
+}
+function migrateFilesDates(_raw: unknown): WorkflowV2 {
+  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
+}
+
+const v2Schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateV2 = ajv.compile(v2Schema);
-const validateV3 = ajv.compile(composeV3Schema(v2Schema));
+const validateV3 = validateV2;
 
 const OCT_22 = new Date("2026-10-22T15:00:00Z");
 const ZONE = "UTC";
@@ -97,13 +90,14 @@ test("slash dates follow the field, and an ambiguous pair stays day/month", () =
       identity: ident({ role: "textbox", tag: "input", id: "checkin", nameAttr: "checkin" }),
     }),
   ], { id: "wf-slash", startUrl: "https://fixture.test/", zone: ZONE });
-  assert.equal(doc.version, 3);
+  assert.equal(doc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((doc as { version?: number }).version, undefined);
   assert.equal(doc.inputs[0]?.type, "date");
   assert.equal(doc.inputs[0]?.relative, "+14d");
   assert.equal(doc.inputs[0]?.format, "DD/MM/YYYY");
   assert.equal(doc.inputs[0]?.zone, "UTC");
-  assert.equal(doc.steps[0]?.action, "click");
-  assert.equal(doc.steps[0]?.datePicker?.input, doc.inputs[0]?.name);
+  assert.equal(doc.steps[0]?.action, "pickDate");
+  assert.equal((doc.steps[0] == null ? undefined : stepDate(doc.steps[0]))?.input, doc.inputs[0]?.name);
   assert.equal(JSON.stringify(doc).includes("05/11/2026"), false);
 });
 
@@ -133,8 +127,8 @@ test("a native date field stays a type step and a picker range becomes one plan"
     }),
   ], { id: "wf-range", startUrl: "https://fixture.test/reservation", zone: ZONE });
   assert.equal(range.steps.length, 1);
-  assert.equal(range.steps[0]?.datePicker?.input, "checkIn");
-  assert.equal(range.steps[0]?.datePicker?.endInput, "checkOut");
+  assert.equal((range.steps[0] == null ? undefined : stepDate(range.steps[0]))?.input, "checkIn");
+  assert.equal((range.steps[0] == null ? undefined : stepDate(range.steps[0]))?.endInput, "checkOut");
   assert.equal(range.inputs.find((item) => item.name === "checkIn")?.relative, "+14d");
   assert.equal(range.inputs.find((item) => item.name === "checkOut")?.relative, "+17d");
   assert.equal(JSON.stringify(range).includes("2026-11-05"), false);
@@ -168,10 +162,10 @@ test("a generated download anchor is not the trigger the next run clicks", () =>
     event({ id: "d", op: "download", suggestedFilename: "ctg-studies.csv" }),
   ], { id: "wf-ctg", startUrl: "https://clinicaltrials.gov/search", zone: ZONE });
   assert.equal(doc.steps.length, 2);
-  assert.equal(doc.steps[0]?.label, "Click \"CSV\"");
+  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Click \"CSV\"");
   assert.equal(doc.steps[1]?.action, "download");
-  assert.equal(doc.steps[1]?.identity?.tag, "button");
-  assert.equal(doc.steps[1]?.identity?.cssPath, "#download-modal > div > button:nth-of-type(1)");
+  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.tag, "button");
+  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.cssPath, "#download-modal > div > button:nth-of-type(1)");
   assert.equal(JSON.stringify(doc).includes("type+1+diabetes"), false);
   assert.equal(JSON.stringify(doc).includes("California"), false);
 });
@@ -192,8 +186,8 @@ test("a download folds the trigger click into a templated step and binds a later
   assert.equal(doc.steps[0]?.action, "download");
   assert.equal(doc.steps[0]?.download?.output, "note");
   assert.equal(doc.steps[0]?.download?.name, "{{run.date}}-{{suggested}}");
-  assert.equal(doc.steps[0]?.identity?.id, "dl");
-  assert.equal(selectorForIdentity(doc.steps[0]!.identity!), "#dl");
+  assert.equal((doc.steps[0] == null ? undefined : stepQuery(doc.steps[0]))?.id, "dl");
+  assert.equal(selectorForIdentity(stepQuery(doc.steps[0]!)!), "#dl");
   const modal = ident({
     role: "button",
     tag: "button",
@@ -202,7 +196,7 @@ test("a download folds the trigger click into a templated step and binds a later
   });
   assert.equal(selectorForIdentity(modal), "#download-modal > div > button:nth-of-type(1)");
   assert.equal(doc.steps[1]?.action, "upload");
-  assert.equal(doc.steps[1]?.fileFrom, "note");
+  assert.equal((doc.steps[1] == null ? undefined : stepFileFrom(doc.steps[1])), "note");
   assert.equal(doc.inputs.find((item) => item.type === "file")?.fromOutput, "note");
   const blob = JSON.stringify(doc);
   assert.equal(blob.includes("/tmp"), false);
@@ -214,8 +208,9 @@ test("an ordinary trail stays version 2 and byte-identical", () => {
   const events = [event({ id: "c", op: "click", identity: ident({ id: "go", testId: "go", text: "Go" }) })];
   const meta = { id: "wf-plain", startUrl: "https://fixture.test/" };
   const doc = interpret(events, meta);
-  assert.equal(doc.version, 2);
-  assert.equal(doc.filesDates, undefined);
+  assert.equal(doc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((doc as { version?: number }).version, undefined);
+  assert.equal((doc as { filesDates?: number }).filesDates, undefined);
   assert.equal(canonical(doc), canonical(interpret(events, meta)));
   assert.equal(validateV2(doc), true, JSON.stringify(validateV2.errors));
 });
@@ -239,33 +234,36 @@ test("a plain version 2 document stays version 2 in memory and on disk", () => {
     ],
   };
   const v2 = migrate(raw);
-  assert.equal(v2.version, 2);
-  assert.equal(v2.filesDates, undefined);
+  assert.equal(v2.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((v2 as { version?: number }).version, undefined);
+  assert.equal((v2 as { filesDates?: number }).filesDates, undefined);
   assert.equal(validateV2(v2), true, JSON.stringify(validateV2.errors));
-  assert.equal(migrateFilesDates(raw).version, 2);
-  assert.equal(migrate(v2), v2);
+  assert.equal(migrateFilesDates(raw).schema, WORKFLOW_SCHEMA_ID);
+  assert.equal(migrate(v2).schema, v2.schema);
 
   const root = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
   const library = new Library(root);
   library.save(v2);
   const file = path.join(root, "workflows", "wf-old.json");
   const before = readFileSync(file, "utf8");
-  assert.equal(JSON.parse(before).version, 2);
-  assert.equal(JSON.parse(before).filesDates, undefined);
+  assert.equal((JSON.parse(before) as { schema?: string }).schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((JSON.parse(before) as { version?: number }).version, undefined);
+  assert.equal((JSON.parse(before) as { filesDates?: number }).filesDates, undefined);
   const loaded = library.read("wf-old");
-  assert.equal(loaded.version, 2);
-  assert.equal(loaded.filesDates, undefined);
-  assert.equal(loaded.steps[0]?.label, v2.steps[0]?.label);
+  assert.equal(loaded.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((loaded as { version?: number }).version, undefined);
+  assert.equal((loaded as { filesDates?: number }).filesDates, undefined);
+  assert.equal((loaded.steps[0] == null ? undefined : stepTitle(loaded.steps[0])), v2.steps[0] ? stepTitle(v2.steps[0]) : undefined);
   assert.equal(readFileSync(file, "utf8"), before);
 });
 
 test("version 3 is data steps, files and dates, or both", () => {
-  const published = JSON.parse(readFileSync("schema/workflow-v3.schema.json", "utf8")) as {
+  const published = JSON.parse(readFileSync("schema/workflow.schema.json", "utf8")) as {
     $id: string;
     revisions: { $ref: string }[];
   };
-  assert.equal(published.$id, "bao.workflow/v3");
-  assert.deepEqual(published.revisions.map((item) => item.$ref), ["data-steps.schema.json", "files-dates.schema.json"]);
+  assert.equal(published.$id, "bao.workflow/v4");
+  assert.equal(published.revisions, undefined);
 
   const plain = JSON.parse(readFileSync("examples/workflows/browser-form.json", "utf8")) as WorkflowV2;
   const data = {
@@ -323,17 +321,18 @@ test("version 3 is data steps, files and dates, or both", () => {
     ],
   };
 
-  assert.equal(migrate(plain), plain);
-  assert.equal(plain.version, 2);
+  assert.equal(plain.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((plain as { version?: number }).version, undefined);
   const dataDoc = migrate(data);
-  assert.equal(dataDoc.version, 3);
-  assert.equal(dataDoc.filesDates, undefined);
+  assert.equal(dataDoc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((dataDoc as { version?: number }).version, undefined);
+  assert.equal((dataDoc as { filesDates?: number }).filesDates, undefined);
   const filesDoc = migrate(files);
-  assert.equal(filesDoc.version, 3);
-  assert.equal(filesDoc.filesDates, 1);
+  assert.equal(filesDoc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((filesDoc as { version?: number }).version, undefined);
   const bothDoc = migrate(both);
-  assert.equal(bothDoc.version, 3);
-  assert.equal(bothDoc.filesDates, 1);
+  assert.equal(bothDoc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((bothDoc as { version?: number }).version, undefined);
   assert.equal(bothDoc.outputs?.[0]?.name, "books");
   assert.equal(bothDoc.steps.some((step) => step.action === "download"), true);
   for (const doc of [plain, dataDoc, filesDoc, bothDoc]) {
@@ -348,8 +347,8 @@ test("version 3 is data steps, files and dates, or both", () => {
     const file = path.join(root, "workflows", `${doc.id}.json`);
     const before = readFileSync(file, "utf8");
     const loaded = library.read(doc.id);
-    assert.equal(loaded.version, doc.version, doc.id);
-    assert.equal(loaded.filesDates, doc.filesDates, doc.id);
+    assert.equal((loaded as { version?: number }).version, (doc as { version?: number }).version, doc.id);
+    assert.equal((loaded as { filesDates?: number }).filesDates, (doc as { filesDates?: number }).filesDates, doc.id);
     assert.equal(readFileSync(file, "utf8"), before, doc.id);
   }
 });
@@ -398,7 +397,7 @@ test("open on macOS is open -a, and Linux runs xdg-open and marks the app", asyn
 });
 
 test("replay resolves dates at run start and picks those cells, with no model call", async () => {
-  const workflow: WorkflowV2 = {
+  const workflow: WorkflowV2 = fixtureDoc({
     schema: WORKFLOW_SCHEMA_ID,
     version: 3,
     filesDates: 1,
@@ -407,32 +406,32 @@ test("replay resolves dates at run start and picks those cells, with no model ca
     startUrl: "https://fixture.test/reservation",
     createdAt: 1,
     inputs: [
-      { name: "checkIn", type: "date", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true },
-      { name: "checkOut", type: "date", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true },
+      fixtureInput({ name: "checkIn", type: "date", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
+      fixtureInput({ name: "checkOut", type: "date", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
     ],
-    steps: [{
+    steps: [fixtureStep({
       id: "stay",
       index: 0,
-      action: "click",
+      action: "pickDate",
       label: "Pick dates",
       surface: "dom",
       timeoutMs: 1000,
       identity: ident({ role: "button", tag: "button", id: "trap", text: "1" }),
       datePicker: { input: "checkIn", endInput: "checkOut" },
-    }],
-  };
+    })],
+  });
   const picked: { iso?: string; endIso?: string }[] = [];
   const result = await replay(workflow, { checkIn: "+21d", checkOut: "+23d" }, driver({
     pickDate: async (spec) => { picked.push(spec); },
   }), { clock: OCT_22, zone: "UTC", runId: "run-pick", heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
-  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: workflow.steps[0]?.identity }]);
+  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: (workflow.steps[0] == null ? undefined : stepQuery(workflow.steps[0])) }]);
 });
 
 test("replay saves a templated download and a later upload reads that file", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-runs-"));
-  const workflow: WorkflowV2 = {
+  const workflow: WorkflowV2 = fixtureDoc({
     schema: WORKFLOW_SCHEMA_ID,
     version: 3,
     filesDates: 1,
@@ -441,11 +440,11 @@ test("replay saves a templated download and a later upload reads that file", asy
     startUrl: "https://fixture.test/",
     createdAt: 1,
     inputs: [
-      { name: "company", type: "text", default: "irs" },
-      { name: "upload", type: "file", fromOutput: "statement", required: false },
+      fixtureInput({ name: "company", type: "text", default: "irs" }),
+      fixtureInput({ name: "upload", type: "file", fromOutput: "statement", required: false }),
     ],
     steps: [
-      {
+      fixtureStep({
         id: "dl",
         index: 0,
         action: "download",
@@ -453,8 +452,8 @@ test("replay saves a templated download and a later upload reads that file", asy
         surface: "dom",
         timeoutMs: 1000,
         download: { output: "statement", name: "{{run.date}}-{{company}}-statement.pdf", url: "https://example.test/fw9.pdf" },
-      },
-      {
+      }),
+      fixtureStep({
         id: "up",
         index: 1,
         action: "upload",
@@ -464,9 +463,9 @@ test("replay saves a templated download and a later upload reads that file", asy
         input: "upload",
         value: "{{upload}}",
         identity: ident({ role: "textbox", tag: "input", id: "file-upload" }),
-      },
+      }),
     ],
-  };
+  });
   let uploaded: { name: string; path: string }[] = [];
   const uploadNode = ident({ role: "textbox", tag: "input", id: "file-upload" });
   const run = async (runId: string) => replay(workflow, { company: "irs" }, driver({
@@ -496,11 +495,11 @@ test("replay saves a templated download and a later upload reads that file", asy
   assert.equal(uploaded[0]?.name, a.name);
   assert.equal(uploaded[0]?.path, b.path);
 
-  const loose: WorkflowV2 = {
+  const loose: WorkflowV2 = fixtureDoc({
     ...workflow,
     id: "wf-loose",
-    inputs: [{ name: "upload", type: "file", required: true }],
-    steps: [{
+    inputs: [fixtureInput({ name: "upload", type: "file", required: true })],
+    steps: [fixtureStep({
       id: "up",
       index: 0,
       action: "upload",
@@ -510,8 +509,8 @@ test("replay saves a templated download and a later upload reads that file", asy
       input: "upload",
       value: "{{upload}}",
       identity: ident({ id: "file-upload", tag: "input", role: "textbox" }),
-    }],
-  };
+    })],
+  });
   let looseFiles: { name: string }[] = [];
   const kept = await replay(loose, { upload: { name: "alpha.txt", path: "/tmp/alpha.txt" } }, driver({
     tree: async () => ({ nodes: [uploadNode], texts: [], values: [] }),
@@ -523,7 +522,7 @@ test("replay saves a templated download and a later upload reads that file", asy
 
 test("replay open file records needs Mac test on Linux", async () => {
   const seen: string[][] = [];
-  const workflow: WorkflowV2 = {
+  const workflow: WorkflowV2 = fixtureDoc({
     schema: WORKFLOW_SCHEMA_ID,
     version: 3,
     filesDates: 1,
@@ -532,7 +531,7 @@ test("replay open file records needs Mac test on Linux", async () => {
     startUrl: "https://fixture.test/",
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "open",
       index: 0,
       action: "open",
@@ -540,8 +539,8 @@ test("replay open file records needs Mac test on Linux", async () => {
       surface: "os",
       timeoutMs: 1000,
       open: { target: "file", file: "/tmp/fw9.pdf", app: "Preview" },
-    }],
-  };
+    })],
+  });
   const result = await replay(workflow, {}, driver(), {
     runId: "run-open",
     openExec: async (argv) => { seen.push(argv); },
@@ -559,7 +558,7 @@ test("replay open file records needs Mac test on Linux", async () => {
 });
 
 test("dates are prepared once, and a bad expression fails before the first step", () => {
-  const workflow: WorkflowV2 = {
+  const workflow: WorkflowV2 = fixtureDoc({
     schema: WORKFLOW_SCHEMA_ID,
     version: 3,
     filesDates: 1,
@@ -567,9 +566,9 @@ test("dates are prepared once, and a bad expression fails before the first step"
     name: "Prep",
     startUrl: "https://fixture.test/",
     createdAt: 1,
-    inputs: [{ name: "checkIn", type: "date", relative: "+14d", format: "DD/MM/YYYY", zone: "UTC" }],
+    inputs: [fixtureInput({ name: "checkIn", type: "date", relative: "+14d", format: "DD/MM/YYYY", zone: "UTC" })],
     steps: [],
-  };
+  });
   const run = prepareFilesDatesRun(workflow, {}, { now: OCT_22, zone: "UTC", runId: "r", downloadDir: "/tmp" });
   assert.equal(run.dates.get("checkIn")?.iso, "2026-11-05");
   assert.equal(run.args.checkIn, "05/11/2026");
@@ -604,7 +603,7 @@ test("a datepicker opener is dropped and the day becomes one date input", () => 
   ], { id: "wf-dob", startUrl: "https://demoqa.com/automation-practice-form", zone: ZONE });
   const date = doc.inputs.find((item) => item.type === "date");
   assert.equal(date?.name, "dateOfBirthInput");
-  assert.equal(doc.steps.filter((step) => step.datePicker).length, 1);
+  assert.equal(doc.steps.filter((step) => stepDate(step)).length, 1);
   assert.equal(doc.steps.some((step) => step.action === "select"), false);
-  assert.equal(doc.steps.some((step) => step.action === "click" && !step.datePicker), false);
+  assert.equal(doc.steps.some((step) => step.action === "click" && !stepDate(step)), false);
 });

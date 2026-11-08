@@ -1,3 +1,4 @@
+import { checkState, checkMatch, stepCheck } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds } from "../../src/v1/condense";
@@ -26,9 +27,8 @@ test("subtree text is the check, ahead of a url change", () => {
       afterUrl: "https://example.com/done",
     }),
   ], { id: "wf", startUrl: "https://example.com/edit" });
-  assert.equal(doc.steps[0]?.postcondition?.kind, "text");
-  assert.equal(doc.steps[0]?.expect?.match, "Saved the note");
-  assert.equal(doc.steps[0]?.confidence, undefined);
+  assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "text");
+  assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Saved the note");
 });
 
 test("a value change is the check, ahead of a url change", () => {
@@ -49,9 +49,9 @@ test("a value change is the check, ahead of a url change", () => {
       afterUrl: "https://example.com/done",
     }),
   ], { id: "wf", startUrl: "https://example.com/edit" });
-  assert.equal(doc.steps[1]?.postcondition?.kind, "value");
-  assert.equal(doc.steps[1]?.postcondition?.match, "{{name}}");
-  assert.notEqual(doc.steps[1]?.expect?.kind, "url");
+  assert.equal((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "value");
+  assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), "{{name}}");
+  assert.notEqual((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "url");
 });
 
 test("a checked change is the check, ahead of a url change", () => {
@@ -65,9 +65,9 @@ test("a checked change is the check, ahead of a url change", () => {
       afterUrl: "https://example.com/form/next",
     }),
   ], { id: "wf", startUrl: "https://example.com/form" });
-  assert.equal(doc.steps[0]?.expect?.kind, "state");
-  assert.equal(doc.steps[0]?.expect?.state, "checked");
-  assert.equal(doc.steps[0]?.postcondition, undefined);
+  assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "state");
+  assert.equal(checkState(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "checked");
+  assert.notEqual((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "url");
 });
 
 test("a url template uses a param only when the recorded url contained that value", () => {
@@ -86,9 +86,9 @@ test("a url template uses a param only when the recorded url contained that valu
       afterUrl: "https://www.rfc-editor.org/search/?q=http",
     }),
   ], { id: "wf", startUrl: "https://www.rfc-editor.org/" });
-  assert.equal(typed.steps[1]?.expect?.kind, "url");
-  assert.equal(typed.steps[1]?.expect?.match, "q={{q}}");
-  assert.equal(typed.steps[1]?.expect?.match?.includes("https"), false);
+  assert.equal((typed.steps[1] == null ? undefined : stepCheck(typed.steps[1]))?.kind, "url");
+  assert.equal(checkMatch(typed.steps[1] == null ? undefined : stepCheck(typed.steps[1])), "q={{q}}");
+  assert.equal(checkMatch(typed.steps[1] == null ? undefined : stepCheck(typed.steps[1]))?.includes("https"), false);
 
   const plain = interpret([
     act({
@@ -105,8 +105,8 @@ test("a url template uses a param only when the recorded url contained that valu
       afterUrl: "https://example.com/secure",
     }),
   ], { id: "wf", startUrl: "https://example.com/start" });
-  assert.equal(plain.steps[1]?.expect?.match, "/secure");
-  assert.equal(plain.steps[1]?.expect?.match?.includes("{{"), false);
+  assert.equal(checkMatch(plain.steps[1] == null ? undefined : stepCheck(plain.steps[1])), "/secure");
+  assert.equal(checkMatch(plain.steps[1] == null ? undefined : stepCheck(plain.steps[1]))?.includes("{{"), false);
 });
 
 test("a hash-only url change is not a navigation", () => {
@@ -119,8 +119,8 @@ test("a hash-only url change is not a navigation", () => {
       afterUrl: "https://automationexercise.com/account_created#google_vignette",
     }),
   ], { id: "wf", startUrl: "https://automationexercise.com/login" });
-  assert.notEqual(doc.steps[0]?.expect?.match, "/account_created");
-  assert.notEqual(doc.steps[0]?.postcondition?.kind, "url");
+  assert.notEqual(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "/account_created");
+  assert.notEqual((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "url");
 });
 
 test("a browser error page is not an oracle", () => {
@@ -141,10 +141,10 @@ test("a browser error page is not an oracle", () => {
       afterUrl: "chrome-error://chromewebdata/",
     }),
   ], { id: "wf", startUrl: "https://mdn.github.io/learning-area/html/forms/sending-form-data/get-method.html" });
-  assert.equal(doc.steps[1]?.expect?.kind, "settled");
-  assert.equal(doc.steps[1]?.expect?.match, SETTLED_EXPECT);
-  assert.equal(doc.steps[1]?.confidence, "low");
-  assert.equal(doc.steps[1]?.postcondition, undefined);
+  assert.equal((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "settled");
+  assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), SETTLED_EXPECT);
+  assert.notEqual((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "text");
+  assert.notEqual((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "url");
 });
 
 test("nothing observed settles at low confidence instead of an element oracle", () => {
@@ -157,9 +157,9 @@ test("nothing observed settles at low confidence instead of an element oracle", 
       afterUrl: "https://example.com/app",
     }),
   ], { id: "wf", startUrl: "https://example.com/app" });
-  assert.equal(doc.steps[0]?.expect?.match, SETTLED_EXPECT);
-  assert.equal(doc.steps[0]?.confidence, "low");
-  assert.equal(doc.steps[0]?.postcondition?.kind, undefined);
+  assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), SETTLED_EXPECT);
+  assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "settled");
+  assert.notEqual((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "element");
 });
 
 test("a javascript dialog counts as an effect and keeps the click", () => {

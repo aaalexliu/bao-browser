@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -13,7 +14,7 @@ import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { circuitOpen, classifyFailure } from "../../src/v1/triage";
 
-const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
+const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validate = ajv.compile(schema);
 
@@ -21,13 +22,13 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return { index: 0, label: partial.label || partial.action, surface: "dom", timeoutMs: 0, ...partial };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: 0, ...partial });
 }
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Freeze",
@@ -35,7 +36,7 @@ function doc(steps: WorkflowStep[]): WorkflowV2 {
     createdAt: 1,
     inputs: [],
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
@@ -141,11 +142,11 @@ test("never, a blocker, and an open circuit do not call a model", async () => {
     id: "w",
     action: "click",
     identity: ident({ testId: "go", text: "Go" }),
-    waitFor: { kind: "text", match: "Ready", timeoutMs: 0 },
+    check: { kind: "text", match: "waiting", timeoutMs: 0 },
   })]);
   const blocked = await replay(waiting, {}, fake([tree([ident({ testId: "go", text: "Go" })], { texts: [] })]), { heal: healer });
   assert.equal(blocked.steps[0]?.triage, "blocker");
-  assert.match(blocked.steps[0]?.reason || "", /^wait_for:/);
+  assert.match(blocked.steps[0]?.reason || "", /waiting/);
 
   const burst = await replay(doc([click]), {}, fake([missing]), { heal: healer, circuitOpen: true });
   assert.equal(burst.steps[0]?.triage, "circuit");

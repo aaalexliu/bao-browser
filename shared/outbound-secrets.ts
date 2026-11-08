@@ -1,8 +1,9 @@
 import { bindingTokens, INPUT_BINDING, ROW_BINDING } from "./bindings";
 import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
-import { isSensitiveField, type FieldHint } from "./mask";
+import { isSensitiveField, SENSITIVE_RE, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
-import { fixedSavedChoice, hasStrippedSecret, isSealedArtifact, NEEDS_SECRET_VALUE, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
+import { fixedSavedChoice, isSealedArtifact, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
+import { stepForEach, stepInputName, stepQuery, stepSensitive, stepValueTemplate, type StepRead } from "./step-read";
 import type { WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
 import type { TrailEvent } from "../desktop/src/v1/interpret";
 import type { ReceiptBody } from "../desktop/src/v1/receipt";
@@ -11,12 +12,13 @@ const ENTRY = new Set(["type", "input", "fill", "key", "keypress", "digits", "os
 const TOKENS = /^(?:(?:sk-|gh[pousr]_|github_pat_|xox[a-z]-|AKIA|GOCSPX-)[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})$/;
 
 type ValueFields = {
-  step: readonly (keyof WorkflowStep)[];
+  step: readonly string[];
   event: readonly (keyof (TrailEvent & { text?: string }))[];
   effect: readonly (keyof TrailEvent)[];
   dialog: readonly (keyof TrailEvent)[];
   input: readonly (keyof WorkflowInput)[];
   field: readonly "value"[];
+  text: readonly "literal"[];
   receipt: readonly (keyof ReceiptBody)[];
   result: readonly (keyof WorkflowReceipt)[];
   runtime: readonly ("inputs" | "publicInputs" | "args" | "raw")[];
@@ -32,6 +34,7 @@ const USER_VALUE_FIELDS = {
   dialog: ["dialogValue"],
   input: ["default"],
   field: ["value"],
+  text: ["literal"],
   receipt: ["expected", "actual"],
   result: ["readBack"],
   runtime: ["inputs", "publicInputs", "args", "raw"],
@@ -54,13 +57,15 @@ function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordV
     const source = over.kind === "input" && typeof over.name === "string" ? over.name : undefined;
     const inputs = new Set<string>();
     const rows = new Set<string>();
-    if (typeof step.input === "string") inputs.add(step.input);
+    const input = stepInputName(step as StepRead);
+    const value = stepValueTemplate(step as StepRead);
+    if (input) inputs.add(input);
     if (source) rows.add(source);
-    if (typeof step.value === "string") {
-      for (const match of step.value.matchAll(INPUT_BINDING)) {
+    if (typeof value === "string") {
+      for (const match of value.matchAll(INPUT_BINDING)) {
         if (rowInput === undefined || match[1] !== "row_index") inputs.add(match[1]!);
       }
-      if (rowInput && [...step.value.matchAll(ROW_BINDING)].length) rows.add(rowInput);
+      if (rowInput && [...value.matchAll(ROW_BINDING)].length) rows.add(rowInput);
     }
     for (const name of inputs) rows.delete(name);
     for (const name of rows) inputs.add(name);
@@ -69,11 +74,8 @@ function boundSteps(steps: unknown[], rowInput?: string | null): { step: RecordV
 }
 
 function secretNode(node: RecordValue): boolean {
-  return node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field);
-}
-
-function missingBoundValue(value: unknown, table: boolean): boolean {
-  return table ? typeof value === "string" && value.trim() === STRIPPED_SECRET : hasStrippedSecret(value);
+  const query = stepQuery(node as StepRead);
+  return stepSensitive(node as StepRead) || node.sensitive === true || secretSavedField(node) || secretSavedField(node.identity) || secretSavedField(node.field) || secretSavedField(query);
 }
 
 export function redactSavedValue(value: string): string {
@@ -95,18 +97,19 @@ export function hasPrivatePictureInput(workflow: Pick<WorkflowV2, "inputs" | "st
     || /\bcard\b|\bcc-/i.test([hint.name, hint.id, hint.autocomplete, hint.ariaLabel, hint.placeholder].filter(Boolean).join(" "));
   if (workflow.inputs.some((input) => input.type === "secret" || privateField({ name: input.name, ariaLabel: input.label }))) return true;
   const privateSteps = (steps: WorkflowStep[]): boolean => steps.some((step) => {
-    const identity = step.identity;
+    const identity = stepQuery(step as StepRead);
+    const nested = stepForEach(step as StepRead);
     const field = step.action === "type" || step.action === "digits" || identity && (identity.inputType || identity.autocomplete
       || ["input", "textarea", "select"].includes(identity.tag || "")
       || /^(input|textbox|searchbox|combobox|password|axtextfield|axsecuretextfield|axtextarea)$/i.test(identity.role));
-    return !!field && (step.sensitive === true || !!identity && privateField({
+    return !!field && (stepSensitive(step) || !!identity && privateField({
       type: identity.inputType || identity.role,
       autocomplete: identity.autocomplete,
       name: [identity.nameAttr, identity.name].filter(Boolean).join(" "),
       id: identity.id,
       ariaLabel: identity.label,
       placeholder: identity.placeholder,
-    })) || !!step.forEach && privateSteps(step.forEach.steps);
+    })) || !!nested?.steps && privateSteps(nested.steps as WorkflowStep[]);
   });
   return privateSteps(workflow.steps);
 }
@@ -164,7 +167,8 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
           if (!rows.has(name)) {
             for (const row of [...parseTable(input.default), ...parseTable(args?.[name])]) for (const column of Object.keys(row)) policy.columns.add(column);
           }
-          if (typeof step.value === "string") for (const match of step.value.matchAll(ROW_BINDING)) policy.columns.add(match[1]!);
+          const value = stepValueTemplate(step as StepRead);
+          if (typeof value === "string") for (const match of value.matchAll(ROW_BINDING)) policy.columns.add(match[1]!);
         }
       }
       select(input, "input", policy);
@@ -203,7 +207,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (Array.isArray(item)) { item.forEach(collect); return; }
     const node = record(item);
     if (isSealedArtifact(node)) return;
-    if ((node.schema === "bao.workflow/v2" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
+    if ((node.schema === "bao.workflow/v4" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
       workflows.add(node);
       bind(node);
     }
@@ -216,6 +220,10 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (event && node.dialogType === "prompt") select(node, "dialog", { secret: structural });
     if (entry) {
       select(node, event ? "event" : "step", { secret: structural });
+      const text = record(node.text);
+      const literal = typeof text.literal === "string" ? text.literal : "";
+      const tokenSecret = literal.length > 0 && !/\s/.test(literal) && SENSITIVE_RE.test(literal);
+      if ("literal" in text) select(text, "text", { secret: structural || secretNode(node) || tokenSecret });
       const fields = slots.get(node)!;
       if (fixedSavedChoice(node) && !structural) for (const key of ["value", "valueBefore", "valueAfter"]) fields.delete(key);
       if (scope && bindingTokens(node.value, scope.names, scope.row).size) fields.delete("value");
@@ -291,12 +299,6 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
       const policy = slots.get(raw)?.get(key);
       return [key, policy ? cleanValue(child, policy) : clean(child)];
     }));
-    if (ENTRY.has(String(node.action || "")) && [node.value, node.key].some(hasStrippedSecret)) node.unresolved = { reason: NEEDS_SECRET_VALUE };
-    if (workflows.has(raw) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
-      for (const { step, inputs, rows } of boundSteps(node.steps)) {
-        if (node.inputs.map(record).some((input) => typeof input.name === "string" && inputs.has(input.name) && missingBoundValue(input.default, input.type === "table" && rows.has(input.name)))) step.unresolved = { reason: NEEDS_SECRET_VALUE };
-      }
-    }
     return node;
   };
   return (rootData ? cleanArgs(value) : clean(value)) as T;

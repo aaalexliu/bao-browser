@@ -14,6 +14,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { openBaoChromeForProxy } from "./bao-profile";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
+import { targetBox } from "../v1/caption";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -191,7 +192,7 @@ export class AgentBrowserProxy {
         results.push(...await this.waitForOwner(session, args));
         return results;
       }
-      if (visual && (command === "click" || command === "fill") && args[0]) {
+      if ((command === "click" || command === "fill") && args[0]) {
         await this.captureTarget(session, step, args[0]);
         if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
       }
@@ -220,8 +221,14 @@ export class AgentBrowserProxy {
     } finally {
       try {
         if (step) {
-          await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string, visual), failure,
-            !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage });
+          try {
+            await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string, visual), failure,
+              !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage });
+          } catch (completeError) {
+            // A hung command already failed with AbortError. The completion
+            // screenshot throws page closed after disconnect and must not replace it.
+            if (failure === undefined) throw completeError;
+          }
           if (command === "close") this.latest = { runId: recording.id, step, steps: recording.steps, lastPicture: recording.lastPicture };
         }
       } finally {
@@ -495,12 +502,15 @@ export class AgentBrowserProxy {
   private async captureTarget(session: Session, step: RecordedAgentBrowserCommand, target: string): Promise<void> {
     try {
       const rect = await this.box(session, target);
-      if (!rect) return;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       const frame = await this.screenshot(session, step.native.command, true);
-      if (!frame.viewport || rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0
-          || rect.x + rect.width > frame.viewport.width || rect.y + rect.height > frame.viewport.height) return;
-      await session.recording.actionPicture(step, frame.bytes, { rect, viewport: frame.viewport });
-    } catch {
+      if (!frame.viewport) return;
+      const box = targetBox(rect, frame.viewport);
+      if (!box) return;
+      await session.recording.actionPicture(step, frame.bytes, { rect: { x: box.x, y: box.y, width: box.width, height: box.height }, viewport: frame.viewport });
+    } catch (error) {
+      // A disconnect aborts the box read. That abort is the command's result.
+      if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
       // Missing action evidence must not change the native command.
     }
   }

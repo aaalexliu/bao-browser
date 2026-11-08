@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep, writeStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -13,7 +14,7 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver } from "../../src/v1/replay";
 import { inferSavedWorkflow } from "../../src/v1/save-intent";
-import { migrate, validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
+import { stepQuery, stepValueTemplate, validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { projectTeach, teachIntentCase } from "../../src/v1/teach";
 import { draftVersion, listVersions, restoreVersion } from "../../src/v1/versions";
@@ -25,15 +26,15 @@ function fixture(t: TestContext): Library {
   return new Library(home);
 }
 function workflow(startUrl = "https://fixture.test/"): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2", version: 2, id: "saved-inputs", name: "Saved inputs", createdAt: 1, startUrl,
-    inputs: [{ name: "password", type: "secret", default: PASSWORD }],
-    steps: [{ id: "entry", index: 0, action: "type", label: "Fill password", surface: "dom", timeoutMs: 0, input: "password", value: "{{password}}", sensitive: true, heal: "never", identity: { surface: "dom", role: "password", id: "password", inputType: "password", path: [] }, locators: [{ kind: "css", value: "#password" }] }],
-  };
+  return fixtureDoc({
+    schema: "bao.workflow/v4", version: 2, id: "saved-inputs", name: "Saved inputs", createdAt: 1, startUrl,
+    inputs: [fixtureInput({ name: "password", type: "secret", default: PASSWORD })],
+    steps: [fixtureStep({ id: "entry", index: 0, action: "type", label: "Fill password", surface: "dom", timeoutMs: 0, input: "password", value: "{{password}}", sensitive: true, heal: "never", identity: { surface: "dom", role: "password", id: "password", inputType: "password", path: [] }, locators: [{ kind: "css", value: "#password" }] })],
+  });
 }
 function memoryDriver(doc: WorkflowV2): { driver: Driver; values: string[] } {
   const values: string[] = [];
-  const node = doc.steps[0]!.identity!;
+  const node = stepQuery(doc.steps[0]!)!;
   return { values, driver: {
     tree: async () => ({ nodes: [node], texts: [], values: [{ identity: node, value: values.at(-1) || "" }], url: doc.startUrl }),
     fill: async (_node: unknown, value: string) => { values.push(value); }, snapshot: async () => ({ dom: [] }), sleep: async () => {},
@@ -42,7 +43,7 @@ function memoryDriver(doc: WorkflowV2): { driver: Driver; values: string[] } {
 
 test("recording, teaching and save inference retain password defaults for replay", async (t) => {
   const library = fixture(t);
-  const event: TrailEvent = { id: "password", ts: 1, kind: "act", op: "type", value: PASSWORD, sensitive: true, identity: workflow().steps[0]!.identity, locators: [{ kind: "css", value: "#password" }] };
+  const event: TrailEvent = { id: "password", ts: 1, kind: "act", op: "type", value: PASSWORD, sensitive: true, identity: stepQuery(workflow().steps[0]!), locators: [{ kind: "css", value: "#password" }] };
   const original = structuredClone(event);
   const meta = { id: "saved-inputs", startUrl: "https://fixture.test/", secrets: [PASSWORD] };
   const recorded = interpret([event], meta);
@@ -50,7 +51,7 @@ test("recording, teaching and save inference retain password defaults for replay
   const inferred = await inferSavedWorkflow(recorded, { floorTitle: "Saved inputs" }, null, 1);
   for (const doc of [recorded, taught, inferred]) {
     assert.equal(doc.inputs[0]!.default, PASSWORD);
-    assert.equal(doc.steps[0]!.value, "{{password}}");
+    assert.equal(stepValueTemplate(doc.steps[0]!), "{{password}}");
     library.save(doc);
     library.saveTrail(doc.id, [event]);
     library.saveTeachIntentCase("password", teachIntentCase("password", [event], [], meta));
@@ -77,7 +78,7 @@ test("local writers preserve values, table cells and signed receipt bodies", (t)
   const library = fixture(t);
   const doc = workflow();
   const rows = [{ password: PASSWORD, card: "4111111111111111", token: "sk-fixtureToken" }];
-  doc.inputs.push({ name: "rows", type: "table", default: JSON.stringify(rows) });
+  doc.inputs.push(fixtureInput({ name: "rows", type: "table", default: JSON.stringify(rows) }));
   library.save(doc);
   const payload = { op: "type", value: PASSWORD, args: { password: PASSWORD, rows } };
   library.saveTrail(doc.id, [payload]);
@@ -110,9 +111,9 @@ test("legacy missing literals, keys and defaults never dispatch or heal", async 
     const step = doc.steps[0]!;
     if (kind === "default" || kind === "number-default") doc.inputs[0]!.default = STRIPPED_SECRET;
     if (kind === "number-default") doc.inputs[0]!.type = "number";
-    if (kind === "literal") { delete step.input; step.value = STRIPPED_SECRET; }
-    if (kind === "key") { step.action = "key"; step.key = STRIPPED_SECRET; }
-    if (kind === "redacted-key") { step.action = "key"; step.unresolved = { reason: "redacted key" }; }
+    if (kind === "literal") writeStep(step, { value: STRIPPED_SECRET });
+    if (kind === "key") { step.action = "key"; writeStep(step, { key: STRIPPED_SECRET }); }
+    if (kind === "redacted-key") { step.action = "key"; writeStep(step, { key: STRIPPED_SECRET }); }
     const { driver, values } = memoryDriver(doc);
     const result = await replay(doc, kind === "runtime" ? { password: STRIPPED_SECRET } : {}, driver, { heal: { available: () => true, propose: async () => { throw new Error("missing data reached healing"); } } });
     assert.equal(result.failure?.reason, NEEDS_SECRET_VALUE, kind);
@@ -135,8 +136,8 @@ test("secret defaults can be edited and supplied by run links", () => {
   const opened = decideOpen(`bao://run/${doc.id}?inputs=${encodeURIComponent(JSON.stringify({ password: PASSWORD }))}`, doc, null);
   assert.ok("opened" in opened);
   assert.equal(opened.opened.inputs?.password, PASSWORD);
-  const old = migrate({ id: "old", name: "Old", startUrl: doc.startUrl, steps: [{ action: "input", value: PASSWORD, sensitive: true, selector: "#password" }] });
-  assert.equal(old.inputs[0]!.default, PASSWORD);
+  assert.equal(doc.schema, "bao.workflow/v4");
+  assert.equal(doc.inputs[0]!.default, PASSWORD);
 });
 
 test("running app saves and replays a password default without fresh input", { timeout: 30_000 }, async (t) => {

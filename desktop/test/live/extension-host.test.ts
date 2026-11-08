@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Throwaway Chrome profile. Public pages and a local fixture only.
 // No daily profile, no captcha solving, no fingerprint spoofing.
 
@@ -58,8 +59,8 @@ interface HostInfo {
 }
 
 function workflow(id: string, name: string, steps: WorkflowV2["steps"], startUrl = BOOKS): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,
@@ -68,7 +69,7 @@ function workflow(id: string, name: string, steps: WorkflowV2["steps"], startUrl
     inputs: [],
     driver: "extension",
     steps,
-  };
+  });
 }
 
 test("extension replay asks for one origin and does not error with no host permission", { timeout: 300_000 }, async () => {
@@ -154,7 +155,7 @@ test("extension replay asks for one origin and does not error with no host permi
     await page.screenshot({ path: path.join(shotDir, "errors.png"), fullPage: true });
 
     app.library.save(workflow("wf-host-deny", "Host deny", []));
-    app.library.save(workflow("wf-host-grant", "Host grant", [{
+    app.library.save(workflow("wf-host-grant", "Host grant", [fixtureStep({
       id: "see-books",
       index: 0,
       action: "verify",
@@ -162,7 +163,7 @@ test("extension replay asks for one origin and does not error with no host permi
       surface: "dom",
       timeoutMs: 20_000,
       expect: { kind: "text", match: "Books", timeoutMs: 20_000 },
-    }]));
+    })]));
 
     process.env.BAO_HOST_GRANT_MS = "4000";
     const deniedPromise = postReplay(app.port, "wf-host-deny");

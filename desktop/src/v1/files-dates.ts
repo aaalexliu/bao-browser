@@ -1,6 +1,4 @@
-// Files and dates. Version 3 when a document uses this revision or data steps.
-// schema/workflow-v3.schema.json references this file and schema/data-steps.schema.json.
-// workflow-v2.schema.json stays the version 2 contract.
+// Files and dates. The contract is schema/workflow.schema.json.
 //
 // Download follows the same CDP events Playwright uses (Browser.setDownloadBehavior,
 // Browser.downloadWillBegin, Browser.downloadProgress). Power Automate Desktop renames a
@@ -14,23 +12,10 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
-import type { FileArg, ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { stepInputName, stepFileFrom, stepTarget } from "./schema";
+import type { FileArg, ReplayArgs, Target, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { FILE_BINDING } from "./bindings";
-import {
-  addDays,
-  civilInZone,
-  datePreview,
-  defaultZone,
-  diffDays,
-  formatCivil,
-  isoOf,
-  looksLikeDateField,
-  parseRecordedDate,
-  relativeBetween,
-  resolveRelative,
-  zoneOk,
-  type Civil,
-} from "./dates";
+import { addDays, civilInZone, datePreview, defaultZone, diffDays, formatCivil, isoOf, looksLikeDateField, parseRecordedDate, relativeBetween, resolveRelative, zoneOk, type Civil } from "./dates";
 
 export { filesDatesErrors } from "./files-dates-check";
 export {
@@ -49,8 +34,6 @@ export {
   type Civil,
 };
 
-export const FILES_DATES_REVISION = 1;
-export const FILES_DATES_WORKFLOW_VERSION = 3;
 export const NEEDS_MAC_TEST = "needs Mac test";
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -104,6 +87,7 @@ export interface ShapeEvent {
     role?: string;
     tag?: string;
     testId?: string;
+    href?: string;
   };
 }
 
@@ -283,94 +267,11 @@ export function filesFor(
   step: WorkflowStep,
   workflow: WorkflowV2,
 ): FileArg[] | undefined {
-  const bound = step.fileFrom || workflow.inputs.find((input) => input.name === step.input)?.fromOutput;
+  const bound = stepFileFrom(step) || workflow.inputs.find((input) => input.name === stepInputName(step))?.fromOutput;
   if (!bound) return undefined;
   const output = runs.get(runId)?.outputs.get(bound);
   if (!output) throw new Error(`file is bound to ${bound}, which has no download yet`);
   return [{ name: output.name, path: output.path }];
-}
-
-interface JsonSchema {
-  $id?: string;
-  title?: string;
-  properties?: Record<string, unknown>;
-  $defs?: Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-interface FilesDatesSchema {
-  filesDates: number;
-  workflowVersion: number;
-  inputTypes: string[];
-  actions: string[];
-  documentProperties: Record<string, unknown>;
-  inputProperties: Record<string, unknown>;
-  stepProperties: Record<string, unknown>;
-  $defs: Record<string, unknown>;
-}
-
-/** Clone a schema and add one revision. Stub fragments do not replace full definitions. */
-export function composeFilesDatesSchema(base: JsonSchema, addon?: FilesDatesSchema): JsonSchema {
-  const extra = addon || (JSON.parse(readFileSync(path.join(process.cwd(), "schema/files-dates.schema.json"), "utf8")) as FilesDatesSchema);
-  const schema = structuredClone(base);
-  schema.$id = "bao.workflow/v3";
-  schema.title = "Bao workflow v3";
-  mergeRevision(schema, extra);
-  return schema;
-}
-
-/** One v3 schema. schema/workflow-v3.schema.json names both revision files. */
-export function composeV3Schema(base?: JsonSchema): JsonSchema {
-  const index = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v3.schema.json"), "utf8")) as JsonSchema & {
-    revisions?: { $ref?: string }[];
-  };
-  const v2 = base || (JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8")) as JsonSchema);
-  const schema = structuredClone(v2);
-  schema.$id = typeof index.$id === "string" ? index.$id : "bao.workflow/v3";
-  schema.title = typeof index.title === "string" ? index.title : "Bao workflow v3";
-  if (typeof index.description === "string") schema.description = index.description;
-  for (const revision of index.revisions ?? []) {
-    if (!revision.$ref) continue;
-    const extra = JSON.parse(readFileSync(path.join(process.cwd(), "schema", revision.$ref), "utf8")) as FilesDatesSchema;
-    mergeRevision(schema, {
-      filesDates: extra.filesDates ?? FILES_DATES_REVISION,
-      workflowVersion: extra.workflowVersion ?? FILES_DATES_WORKFLOW_VERSION,
-      inputTypes: extra.inputTypes ?? [],
-      actions: extra.actions ?? [],
-      documentProperties: extra.documentProperties ?? {},
-      inputProperties: extra.inputProperties ?? {},
-      stepProperties: extra.stepProperties ?? {},
-      $defs: extra.$defs ?? {},
-    });
-  }
-  return schema;
-}
-
-function mergeRevision(schema: JsonSchema, extra: FilesDatesSchema): void {
-  const properties = schema.properties as Record<string, unknown>;
-  properties.version = { enum: [2, 3] };
-  Object.assign(properties, extra.documentProperties);
-  const defs = schema.$defs as Record<string, { properties?: Record<string, unknown>; enum?: string[] } & Record<string, unknown>>;
-  const input = defs.input?.properties;
-  const inputType = input?.type as { enum?: string[] } | undefined;
-  if (inputType?.enum) for (const type of extra.inputTypes) if (!inputType.enum.includes(type)) inputType.enum.push(type);
-  if (input) Object.assign(input, extra.inputProperties);
-  const step = defs.step?.properties;
-  const action = step?.action as { enum?: string[] } | undefined;
-  if (action?.enum) for (const name of extra.actions) if (!action.enum.includes(name)) action.enum.push(name);
-  if (step) Object.assign(step, extra.stepProperties);
-  for (const [key, value] of Object.entries(extra.$defs)) {
-    if (!value || typeof value !== "object") continue;
-    const def = value as { type?: unknown };
-    if (def.type !== "object" && def.type !== "array") continue;
-    defs[key] = value as (typeof defs)[string];
-  }
-}
-
-/** Same door as migrate(). A plain version 2 document stays version 2. */
-export function migrateFilesDates(raw: unknown): WorkflowV2 {
-  const { migrate } = require("./schema") as typeof import("./schema");
-  return migrate(raw);
 }
 
 function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
@@ -383,7 +284,7 @@ function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
  * That node is gone on the next run, and its query string is the recorded search.
  * The button the person pressed is the trigger replay can press again.
  */
-function isGeneratedDownloadLink(identity: WorkflowStep["identity"]): boolean {
+function isGeneratedDownloadLink(identity: { id?: string; testId?: string; tag?: string; role?: string; text?: string; name?: string; label?: string; href?: string } | undefined): boolean {
   if (!identity || identity.id || identity.testId) return false;
   const tag = (identity.tag || "").toLowerCase();
   if (tag !== "a" && identity.role !== "link") return false;
@@ -391,23 +292,51 @@ function isGeneratedDownloadLink(identity: WorkflowStep["identity"]): boolean {
   return /\/download\b|[?&]format=csv/i.test(identity.href || "");
 }
 
-function takeDownloadTrigger(
-  outSteps: WorkflowStep[],
-  outGroups: ShapeEvent[][],
-  identity: WorkflowStep["identity"],
-): WorkflowStep["identity"] {
-  const prev = outSteps[outSteps.length - 1];
-  if (!prev || prev.action !== "click" || prev.datePicker) return identity;
-  outSteps.pop();
-  outGroups.pop();
-  if (!isGeneratedDownloadLink(prev.identity)) return prev.identity || identity;
-  const button = outSteps[outSteps.length - 1];
-  if (!button || button.action !== "click" || button.datePicker || isGeneratedDownloadLink(button.identity)) {
-    return prev.identity || identity;
+function keptTarget(target: Target | undefined): Target | undefined {
+  if (!target) return undefined;
+  if (target.locators.length > 0 || target.hint) return target;
+  return undefined;
+}
+
+function takeDownloadTrigger(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): Target | undefined {
+  const generated = outSteps[outSteps.length - 1];
+  const recorded = lastEvent(outGroups[outGroups.length - 1])?.identity;
+  let linkTarget: Target | undefined;
+  if (generated?.action === "click" && isGeneratedDownloadLink(recorded)) {
+    linkTarget = stepTarget(generated);
+    outSteps.pop();
+    outGroups.pop();
   }
-  outSteps.pop();
-  outGroups.pop();
-  return button.identity || identity;
+  const prev = outSteps[outSteps.length - 1];
+  if (prev?.action === "click") {
+    const target = keptTarget(stepTarget(prev));
+    outSteps.pop();
+    outGroups.pop();
+    if (target) return target;
+  }
+  return keptTarget(linkTarget);
+}
+
+function carried(step: WorkflowStep, text: string, timeoutMs: number): Pick<WorkflowStep, "id" | "index" | "caption" | "timeoutMs" | "when" | "heal" | "readBack"> {
+  return {
+    id: step.id,
+    index: step.index,
+    caption: { ...step.caption, text },
+    timeoutMs,
+    when: step.when,
+    heal: step.heal,
+    readBack: step.readBack,
+  };
+}
+
+function pickDateFrom(step: WorkflowStep, date: { input: string; endInput?: string }, text: string): WorkflowStep {
+  const target = stepTarget(step);
+  return {
+    ...carried(step, text, step.timeoutMs),
+    action: "pickDate",
+    date,
+    ...(target ? { target } : {}),
+  };
 }
 
 function dateInput(inputs: WorkflowInput[], hint: string, event: ShapeEvent, zone: string): WorkflowInput {
@@ -415,16 +344,17 @@ function dateInput(inputs: WorkflowInput[], hint: string, event: ShapeEvent, zon
   if (!parsed) throw new Error("date value");
   const today = civilInZone(new Date(event.ts || 0), zone);
   const name = uniqueName(inputs, hint);
+  const relative = relativeBetween(today, parsed.civil);
   const input: WorkflowInput = {
     name,
     type: "date",
-    required: true,
+    supply: "saved",
     label: name,
     format: event.format || parsed.format,
-    relative: relativeBetween(today, parsed.civil),
+    relative,
     zone,
+    default: relative,
   };
-  input.default = input.relative;
   inputs.push(input);
   return input;
 }
@@ -460,8 +390,8 @@ function outputName(suggested: string, used: Set<string>): string {
 }
 
 /**
- * Turn a typed or picked date into a date input, fold picker clicks into one cell plan,
- * and turn a download event into a download step. Unrelated workflows stay version 2.
+ * Turn a typed or picked date into a date input, fold picker clicks into one pickDate step,
+ * and turn a download event into a download step.
  */
 export function shapeFilesDates(
   doc: WorkflowV2,
@@ -479,7 +409,7 @@ export function shapeFilesDates(
     const group = groups[index] || [];
     const event = lastEvent(group);
     if (!event?.picker || !event.value) return undefined;
-    const start = dateInput(inputs, hintFor(event, outSteps.some((step) => step.datePicker) ? "checkOut" : "checkIn"), event, zone);
+    const start = dateInput(inputs, hintFor(event, outSteps.some((step) => step.action === "pickDate") ? "checkOut" : "checkIn"), event, zone);
     let endName: string | undefined;
     const bundled = [...group];
     if (event.endValue) {
@@ -489,24 +419,10 @@ export function shapeFilesDates(
     }
     const step = steps[index]!;
     changed = true;
+    const text = endName ? `Pick {{${start.name}}} to {{${endName}}}` : `Pick {{${start.name}}}`;
     return {
       group: bundled,
-      step: {
-        ...step,
-        action: "click",
-        input: start.name,
-        value: `{{${start.name}}}`,
-        label: endName ? `Pick {{${start.name}}} to {{${endName}}}` : `Pick {{${start.name}}}`,
-        datePicker: endName ? { input: start.name, endInput: endName } : { input: start.name },
-        identity: event.identity
-          ? {
-              surface: "dom",
-              ...event.identity,
-              role: event.identity.role || "group",
-              path: [],
-            }
-          : step.identity,
-      },
+      step: pickDateFrom(step, endName ? { input: start.name, endInput: endName } : { input: start.name }, text),
     };
   };
 
@@ -545,14 +461,12 @@ export function shapeFilesDates(
       const suggested = event.suggestedFilename || event.fileName || "download";
       const output = outputName(suggested, usedOutputs);
       const step = steps[i]!;
-      const identity = takeDownloadTrigger(outSteps, outGroups, step.identity);
+      const target = keptTarget(takeDownloadTrigger(outSteps, outGroups) ?? stepTarget(step));
       outSteps.push({
-        ...step,
+        ...carried(step, "Download", 30_000),
         action: "download",
-        label: "Download",
-        identity,
+        ...(target ? { target } : {}),
         download: { output, name: "{{run.date}}-{{suggested}}" },
-        timeoutMs: 30_000,
       });
       outGroups.push(group);
       i += 1;
@@ -561,16 +475,13 @@ export function shapeFilesDates(
     if (event?.op === "open") {
       changed = true;
       const step = steps[i]!;
-      const target = event.value && /^https?:\/\//i.test(event.value) ? "url" : "file";
+      const open = event.value && /^https?:\/\//i.test(event.value)
+        ? { target: "url" as const, url: event.value }
+        : { target: "file" as const, file: event.fileFrom ? `{{${event.fileFrom}.path}}` : event.value || "", app: event.format };
       outSteps.push({
-        ...step,
+        ...carried(step, open.target === "url" ? "Open url" : "Open file", 15_000),
         action: "open",
-        surface: target === "url" ? "dom" : "os",
-        label: target === "url" ? "Open url" : "Open file",
-        open: target === "url"
-          ? { target, url: event.value }
-          : { target, file: event.fileFrom ? `{{${event.fileFrom}.path}}` : event.value, app: event.format },
-        timeoutMs: 15_000,
+        open,
       });
       outGroups.push(group);
       i += 1;
@@ -579,8 +490,8 @@ export function shapeFilesDates(
     const step = steps[i]!;
     if (step.action === "type" && event && (event.dateField || looksLikeDateField(event.identity))) {
       const parsed = event.value ? parseRecordedDate(event.value) : undefined;
-      if (parsed && step.input) {
-        const input = inputs.find((item) => item.name === step.input);
+      if (parsed && stepInputName(step)) {
+        const input = inputs.find((item) => item.name === stepInputName(step));
         if (input && input.type !== "secret") {
           const today = civilInZone(new Date(event.ts || 0), zone);
           input.type = "date";
@@ -588,15 +499,10 @@ export function shapeFilesDates(
           input.relative = relativeBetween(today, parsed.civil);
           input.default = input.relative;
           input.zone = zone;
+          input.supply = "saved";
           changed = true;
           if (event.dateField && event.inputType !== "date") {
-            outSteps.push({
-              ...step,
-              action: "click",
-              value: `{{${input.name}}}`,
-              label: `Pick {{${input.name}}}`,
-              datePicker: { input: input.name },
-            });
+            outSteps.push(pickDateFrom(step, { input: input.name }, `Pick {{${input.name}}}`));
             outGroups.push(group);
             i += 1;
             continue;
@@ -605,11 +511,13 @@ export function shapeFilesDates(
       }
     }
     if ((step.action === "upload" || step.action === "drop") && event?.fileFrom) {
-      step.fileFrom = event.fileFrom;
-      const input = inputs.find((item) => item.name === step.input);
+      const inputName = "input" in step.file ? step.file.input : undefined;
+      step.file = { fromOutput: event.fileFrom };
+      const input = inputName ? inputs.find((item) => item.name === inputName) : undefined;
       if (input) {
         input.fromOutput = event.fileFrom;
-        input.required = false;
+        input.supply = "must";
+        delete input.default;
       }
       changed = true;
     }
@@ -623,8 +531,6 @@ export function shapeFilesDates(
   return {
     doc: {
       ...doc,
-      version: FILES_DATES_WORKFLOW_VERSION,
-      filesDates: FILES_DATES_REVISION,
       inputs,
       steps: nextSteps,
     },

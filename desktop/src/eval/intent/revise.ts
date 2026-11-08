@@ -6,6 +6,7 @@
 // Nothing here names a fixture.
 
 import { sameTrailPage, type TrailEvent } from "../../v1/interpret";
+import { stepTitle, stepQuery, stepCheck, handoffReason, stepSensitive } from "../../v1/schema";
 import type { WorkflowStep } from "../../v1/schema";
 
 export interface HumanMark {
@@ -101,21 +102,22 @@ export function reviseStepGates(steps: readonly WorkflowStep[], human: readonly 
 }
 
 function allowStepGate(step: WorkflowStep, gate: "login" | "confirm"): boolean {
-  if (step.gate === gate) return true;
+  if (gate === "login" && handoffReason(step) === "sign-in") return true;
+  if (gate === "confirm" && (handoffReason(step) === "owner-press" || handoffReason(step) === "code")) return true;
   if (noEffectStep(step)) return false;
-  if (gate === "login") return step.sensitive === true || credentialText(stepText(step)) || loginText(stepText(step));
+  if (gate === "login") return stepSensitive(step) === true || credentialText(stepText(step)) || loginText(stepText(step));
   return confirmText(stepText(step));
 }
 
 function noEffectStep(step: WorkflowStep): boolean {
   if (step.action !== "click") return false;
-  if (step.postcondition) return false;
-  return !step.expect || step.expect.kind === "settled";
+  const check = stepCheck(step);
+  return !check || check.kind === "settled";
 }
 
 function stepText(step: WorkflowStep): string {
-  const id = step.identity;
-  return [id?.name, id?.text, id?.label, id?.nameAttr, id?.id, id?.testId, step.label].filter(Boolean).join(" ");
+  const id = stepQuery(step);
+  return [id?.name, id?.text, id?.label, id?.nameAttr, id?.id, id?.testId, stepTitle(step)].filter(Boolean).join(" ");
 }
 
 interface TypoGroup {

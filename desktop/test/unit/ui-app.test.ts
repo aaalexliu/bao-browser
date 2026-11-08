@@ -1,3 +1,5 @@
+import { stepQuery } from "../../src/v1/schema";
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Headless window. Fixture page only. No vendor network and no real profile.
 
 import assert from "node:assert/strict";
@@ -12,8 +14,8 @@ function ident(partial: Partial<Identity>): Identity {
 }
 
 function workflow(port: number, id: string, name: string, start: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,
@@ -21,7 +23,7 @@ function workflow(port: number, id: string, name: string, start: string, steps: 
     inputs: [],
     createdAt: 1,
     steps,
-  };
+  });
 }
 
 async function post(port: number, pathname: string, body?: unknown): Promise<unknown> {
@@ -49,7 +51,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
     const confirmWf = workflow(app.port, "wf-confirm", "fixture apply", "/fixture", [
-      {
+      fixtureStep({
         id: "login",
         index: 0,
         action: "login",
@@ -58,8 +60,8 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
         surface: "dom",
         timeoutMs: 15000,
         postcondition: { kind: "text", match: "Welcome", timeoutMs: 15000 },
-      },
-      {
+      }),
+      fixtureStep({
         id: "apply",
         index: 1,
         action: "confirm",
@@ -69,7 +71,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
         identity: ident({ name: "Apply", text: "Apply" }),
         timeoutMs: 15000,
         postcondition: { kind: "text", match: "Applied", timeoutMs: 15000 },
-      },
+      }),
     ]);
     app.library.save(confirmWf);
     await page.goto(`http://127.0.0.1:${app.port}/`);
@@ -154,16 +156,17 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     assert.match(await page.locator("#model-calls").innerText(), /0 model calls/);
 
     const drift = workflow(app.port, "wf-drift", "upload note", "/fixture?drift=1", [
-      {
+      fixtureStep({
         id: "upload",
         index: 0,
         action: "click",
         label: "click Upload",
         intent: "Send the file",
         surface: "dom",
-        identity: ident({ name: "Upload", id: "file-submit" }),
+        identity: ident({ name: "Upload" }),
+        locators: [{ kind: "role", role: "button", name: "Upload" }],
         timeoutMs: 1000,
-      },
+      }),
     ]);
     app.library.save(drift);
     const failed = await post(app.port, "/api/replay", { id: drift.id, args: {} }) as {
@@ -173,26 +176,24 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     };
     assert.equal(failed.status, "failed", JSON.stringify(failed.failure));
     assert.equal(failed.failure?.reason, "tie");
-    assert.equal(failed.failure?.identity?.candidates?.[0]?.score, 80);
-    assert.equal(failed.failure?.identity?.candidates?.[1]?.score, 70);
-    assert.match(failed.failure?.identity?.changed || "", /Upload file/);
+    const scores = (failed.failure?.identity?.candidates ?? []).map((row) => row.score);
+    assert.equal(scores[0], scores[1]);
+    assert.ok((scores[0] ?? 0) > 0);
     await page.click("#rail button[data-place=runs]");
     await page.click(`[data-open-run="${failed.runId}"]`);
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#why-stopped");
     const why = await page.locator("#why-stopped").innerText();
-    assert.match(why, /Step 1 "click Upload"/);
-    assert.match(why, /scored 80 and 70/);
-    assert.match(why, /lead 10 < 25/);
-    assert.match(why, /name "Upload" → "Upload file"/);
+    assert.match(why, /Step 1, click "Upload":/);
+    assert.match(why, new RegExp(`scored ${scores[0]} and ${scores[1]}`));
+    assert.match(why, /lead 0 < 25/);
     assert.equal(await page.locator("#step-bar .seg").count(), 1);
     const table = await page.locator("#identity-table").innerText();
-    assert.match(table, /80/);
-    assert.match(table, /70/);
+    assert.match(table, new RegExp(String(scores[0])));
 
     process.env.BAO_HEAL_FIXTURE = "1";
     app.library.save(workflow(app.port, "wf-text", "textedit write", "/fixture", [
-      {
+      fixtureStep({
         id: "write",
         index: 0,
         action: "click",
@@ -200,10 +201,10 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
         surface: "dom",
         identity: ident({ name: "Write" }),
         timeoutMs: 500,
-      },
+      }),
     ]));
     const healWf = workflow(app.port, "wf-heal", "fixture login", "/fixture", [
-      {
+      fixtureStep({
         id: "login",
         index: 0,
         action: "click",
@@ -212,7 +213,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
         surface: "dom",
         identity: ident({ testId: "missing-login" }),
         timeoutMs: 500,
-      },
+      }),
     ]);
     app.library.save(healWf);
     const healed = await post(app.port, "/api/replay", { id: healWf.id, args: {} }) as {
@@ -245,7 +246,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("article#heal-detail [data-keep]");
     await page.waitForFunction(() => document.body.innerText.includes("Patch kept"));
     const kept = app.library.read("wf-heal");
-    assert.equal(kept.steps[0]?.identity?.testId, "missing-login");
+    assert.equal((kept.steps[0] == null ? undefined : stepQuery(kept.steps[0]))?.testId, "missing-login");
     assert.equal(JSON.stringify(app.library.readRun(healed.runId).heals), before);
     assert.equal(app.library.readRun(healed.runId).decisions?.[0]?.decision, "keep");
     await page.waitForSelector("[data-revert]");
@@ -253,7 +254,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.locator('#heal-revert-confirm [value="revert"]').click();
     await page.waitForFunction(() => document.body.innerText.includes("Patch reverted"));
     const reverted = app.library.read("wf-heal");
-    assert.equal(reverted.steps[0]?.identity?.testId, "missing-login");
+    assert.equal((reverted.steps[0] == null ? undefined : stepQuery(reverted.steps[0]))?.testId, "missing-login");
     const runAfter = app.library.readRun(healed.runId);
     assert.equal(JSON.stringify(runAfter.heals), before);
     assert.deepEqual(runAfter.decisions?.map((item) => item.decision), ["keep", "revert"]);

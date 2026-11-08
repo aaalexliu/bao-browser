@@ -244,7 +244,7 @@ test("a tie names both scores and the attribute that changed", () => {
   assert.equal(hit.margin, 10);
   const view = viewFromLookup(query, nodes);
   const line = stopHeadline({ stepNumber: 1, label: "click Upload", identity: view, reason: hit.reason, brokenAttr: hit.brokenAttr });
-  assert.match(line, /Step 1 "click Upload": two candidates scored 80 and 70 \(lead 10 < 25\)/);
+  assert.match(line, /Step 1, click Upload: two candidates scored 80 and 70 \(lead 10 < 25\)/);
   assert.match(line, /What changed since recording: name "Upload" → "Upload file"/);
   const table = identityTable(view);
   assert.match(table, />80</);
@@ -285,7 +285,7 @@ test("run viewer shows the stop, one segment per step, and zero model calls", ()
   assert.match(refused, /id="why-stopped"/);
   assert.match(refused, /Nothing after step 2 ran/);
   assert.equal(refused.includes("Nothing after step 0"), false);
-  assert.match(refused, /Step 3 (&quot;|")click Upload(&quot;|")/);
+  assert.match(refused, /Step 3, click Upload/);
   assert.match(refused, /name (&quot;|")Upload(&quot;|") → (&quot;|")Upload file(&quot;|")/);
   assert.equal((refused.match(/class="seg /g) || []).length, 4);
   assert.match(refused, /data-steps="4"/);

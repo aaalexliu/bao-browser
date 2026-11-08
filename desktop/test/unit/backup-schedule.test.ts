@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
@@ -11,15 +12,15 @@ import { loadState, restoreScheduledBackup, revealBackup, runScheduledBackup, sa
 const DAY = 24 * 60 * 60 * 1000;
 
 function workflow(): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-backup",
     name: "Backup me",
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -27,8 +28,8 @@ function workflow(): WorkflowV2 {
       surface: "dom",
       identity: { surface: "dom", role: "button", path: [], testId: "go" },
       timeoutMs: 1000,
-    }],
-  };
+    })],
+  });
 }
 
 test("a daily backup file appears and restores the workflow", () => {

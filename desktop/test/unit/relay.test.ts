@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep, fixtureInput } from "../support/fixture-step";
 // Hermetic relay. No browser, no registry process, no real Chrome profile.
 
 import assert from "node:assert/strict";
@@ -262,7 +263,6 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
   const library = new Library(root);
   library.save(workflow("books"));
   library.save(workflow("ext", "extension"));
-  library.save(workflow("live", "cdp-live"));
   library.saveRun({
     id: "run-1",
     workflowId: "books",
@@ -281,10 +281,9 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
     assert.ok(agent);
     saveRelay(root, { server: server.origin, token: paired.token, deviceId: paired.deviceId, tokenId: paired.tokenId });
     writeFileSync(path.join(root, "settings.json"), JSON.stringify({ remoteMcp: true, remotePermission: "deny" }));
-    const calls = { extension: 0, live: 0, playwright: 0 };
+    const calls = { extension: 0, playwright: 0 };
     const runners = {
       extension: async () => { calls.extension += 1; return { outcome: "ok", via: "extension" }; },
-      live: async () => { calls.live += 1; throw new Error("retired live runner called"); },
       playwright: async (_id: string, inputs: Record<string, unknown>) => {
         calls.playwright += 1;
         assert.equal(inputs.routing, "021000021");
@@ -322,12 +321,6 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
       const disconnected = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(disconnected.json.reason, "extension is not connected");
       assert.equal(calls.extension, 2);
-      const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
-      assert.equal(live.json.outcome, "failed", JSON.stringify(live.json));
-      assert.equal(live.json.reason, "this workflow used the retired live driver");
-      assert.equal(live.json.runId, undefined);
-      assert.equal(calls.live, 0);
-      assert.throws(() => library.readRun("run-live"), /run not found/);
       assert.equal(calls.playwright, 1);
     } finally {
       await auto.stop();
@@ -341,12 +334,6 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
       const ext = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(ext.json.outcome, "failed");
       assert.match(String(ext.json.reason), /extension is not connected/);
-      const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
-      assert.equal(live.json.outcome, "failed");
-      assert.equal(live.json.reason, "this workflow used the retired live driver");
-      assert.equal(live.json.runId, undefined);
-      assert.equal(calls.live, 0);
-      assert.throws(() => library.readRun("run-live"), /run not found/);
       assert.equal(calls.playwright, 1);
     } finally {
       await missing.stop();
@@ -359,10 +346,10 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
 test("remote resume observes an explicit human step and unblocks queued runs after it completes", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-relay-confirm-"));
   const library = new Library(root);
-  const confirming: WorkflowV2 = { ...workflow("books"), steps: [{
+  const confirming: WorkflowV2 = fixtureDoc({ ...workflow("books"), steps: [fixtureStep({
     id: "confirm", index: 0, action: "confirm", human: true, surface: "dom", label: "Place order", timeoutMs: 0,
     postcondition: { kind: "text", match: "Placed", timeoutMs: 0 },
-  }] };
+  })] });
   library.save(confirming);
   library.save(workflow("next"));
   const token = "confirm-token";
@@ -478,11 +465,11 @@ for (const pause of ["signin", "wall", "deadline", "kill"] as const) {
         assert.equal(paused.json.outcome, "needs_human");
         if (pause === "deadline" || pause === "kill") {
           assert.equal(remote.view().phase, "waiting");
-          const local = replay({ ...workflow("local"), steps: [{
+          const local = replay(fixtureDoc({ ...workflow("local"), steps: [fixtureStep({
             id: "go", index: 0, action: "click", label: "Go", surface: "dom", timeoutMs: 0,
             identity: { surface: "dom", role: "button", name: "Go", path: [] },
             postcondition: { kind: "text", match: "Done", timeoutMs: 5000 },
-          }] }, {}, {
+          })] }), {}, {
             tree: async () => ({ nodes: [{ surface: "dom", role: "button", name: "Go", path: [] }], texts: remote.view().phase === "idle" ? ["Done"] : [], values: [] }),
             snapshot: async () => ({}), click: async () => {}, fill: async () => {}, key: async () => {},
             upload: async () => {}, drop: async () => {}, digits: async () => {}, check: async () => {}, notify: async () => {},
@@ -743,17 +730,17 @@ test("a longer upgrade path is not swallowed by the relay hook", async () => {
 });
 
 function workflow(id: string, driver?: WorkflowV2["driver"]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: id,
     startUrl: "https://books.toscrape.com/",
     inputs: [],
     createdAt: 1,
-    steps: [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 0 }],
+    steps: [fixtureStep({ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 0 })],
     ...(driver ? { driver } : {}),
-  };
+  });
 }
 
 for (const mode of ["extension", "playwright", "cached", "get_run"] as const) {
@@ -796,7 +783,7 @@ for (const mode of ["extension", "playwright", "cached", "get_run"] as const) {
       for (const seed of fc.sample(fc.integer({ min: 1, max: 1000000 }), { seed: 739, numRuns: 3 })) {
         const secret = `relay-password-${seed}`;
         const doc = workflow(`outbound-${seed}`, mode === "extension" ? "extension" : undefined);
-        doc.inputs = [{ name: "credential", type: "secret", label: "Credential", default: `default-${secret}` }];
+        doc.inputs = [fixtureInput({ name: "credential", type: "secret", label: "Credential", default: `default-${secret}` })];
         const runId = `run-${seed}`;
         const outputs = [
           { name: secret, type: "text" as const, value: secret },

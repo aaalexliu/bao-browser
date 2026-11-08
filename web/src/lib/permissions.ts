@@ -17,11 +17,14 @@ export interface PermissionPreview {
 
 interface StepLike {
   action?: string;
-  label?: string;
+  reason?: string;
+  caption?: { text?: string };
   surface?: string;
-  gate?: string;
-  value?: string;
-  identity?: { surface?: string; name?: string; text?: string };
+  text?: { literal?: string; input?: string };
+  url?: string;
+  open?: { url?: string };
+  download?: { url?: string };
+  target?: { hint?: { name?: string; surface?: string }; locators?: { name?: string; value?: string }[] };
 }
 
 interface DocLike {
@@ -38,7 +41,7 @@ export function permissionPreview(document: unknown): PermissionPreview {
   let confirm = false;
   let submit = false;
   for (const step of steps) {
-    const surface = step.surface || step.identity?.surface || "dom";
+    const surface = step.surface || step.target?.hint?.surface || "dom";
     if (surface === "dom") browser = true;
     else computer = true;
     const hit = consequentialStep(step);
@@ -72,17 +75,18 @@ export function driverLabel(driver: PermissionPreview["driver"]): string {
 }
 
 export function consequentialStep(step: StepLike): { confirm: boolean; submit: boolean } {
-  const labels = `${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""}`;
-  const text = `${labels} ${step.value || ""}`;
+  const named = step.target?.locators?.map((locator) => locator.name || locator.value || "").join(" ") || "";
+  const labels = `${step.caption?.text || ""} ${step.target?.hint?.name || ""} ${named}`;
+  const text = `${labels} ${step.text?.literal || step.text?.input || ""}`;
   return {
-    confirm: step.action === "confirm" || step.gate === "confirm",
+    confirm: step.action === "handoff" && step.reason === "owner-press",
     submit: /\bsubmit\b/i.test(text) || (step.action === "click" && /\b(?:place\s+order|buy|pay|reserve|confirm)\b/i.test(labels)),
   };
 }
 
 export function consequentialCopy(preview: Pick<PermissionPreview, "confirm" | "submit">): string {
-  if (preview.confirm && preview.submit) return "Includes a human confirm step and can press submit.";
-  if (preview.confirm) return "Includes a human confirm step.";
+  if (preview.confirm && preview.submit) return "Includes a button only you press and can press submit.";
+  if (preview.confirm) return "Includes a button only you press.";
   if (preview.submit) return "Can press submit.";
   return "Does not press confirm or submit.";
 }
@@ -99,6 +103,11 @@ function visitOrigins(doc: DocLike): string[] {
     }
   };
   add(doc.startUrl);
-  for (const step of doc.steps ?? []) add(step.value);
+  for (const step of doc.steps ?? []) {
+    add(step.url);
+    add(step.open?.url);
+    add(step.download?.url);
+    add(step.text?.literal);
+  }
   return [...origins].sort();
 }

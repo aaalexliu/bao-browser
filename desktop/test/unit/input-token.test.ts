@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 // Step text tokens and the run form share one default. A secret stays masked.
 
 import assert from "node:assert/strict";
@@ -12,19 +13,19 @@ import { Library } from "../../src/v1/store";
 import { draftVersion, promoteVersion } from "../../src/v1/versions";
 
 function doc(): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-note",
     name: "Note",
     startUrl: "http://127.0.0.1/fixture",
     createdAt: 1,
     inputs: [
-      { name: "note", type: "text", label: "Note", default: "ada", required: true },
-      { name: "password", type: "secret", label: "Password", required: true },
+      fixtureInput({ name: "note", type: "text", label: "Note", default: "ada", required: true }),
+      fixtureInput({ name: "password", type: "secret", label: "Password", required: true }),
     ],
     steps: [
-      {
+      fixtureStep({
         id: "type",
         index: 0,
         action: "type",
@@ -33,8 +34,8 @@ function doc(): WorkflowV2 {
         input: "note",
         surface: "dom",
         timeoutMs: 0,
-      },
-      {
+      }),
+      fixtureStep({
         id: "secret",
         index: 1,
         action: "type",
@@ -43,9 +44,9 @@ function doc(): WorkflowV2 {
         sensitive: true,
         surface: "dom",
         timeoutMs: 0,
-      },
+      }),
     ],
-  };
+  });
 }
 
 test("the selected step and input summary offer tokens with the run form's default", () => {
@@ -57,7 +58,7 @@ test("the selected step and input summary offer tokens with the run form's defau
   assert.match(headline, /token-label">Note/);
   assert.match(headline, /token-meta">text/);
   assert.match(headline, /token-meta">ada/);
-  assert.match(headline, /token-meta">required/);
+  assert.match(headline, /token-meta">optional/);
   assert.match(headline, /<h2>Type Note<\/h2>/);
   const secret = html.slice(html.indexOf('data-step-panel="secret"'));
   assert.match(secret, /class="token secret"/);
@@ -109,14 +110,14 @@ test("editing a token saves ordinary and secret defaults for the run form", () =
   const home = mkdtempSync(path.join(tmpdir(), "bao-token-"));
   const library = new Library(home);
   library.save(doc());
-  const edited = editInput(library.read("wf-note"), { name: "note", label: "Note", type: "text", default: "ada lovelace", required: true });
+  const edited = editInput(library.read("wf-note"), { name: "note", label: "Note", type: "text", default: "ada lovelace" });
   assert.ok(edited.doc);
   const drafted = draftVersion(library, edited.doc!, "edit");
   promoteVersion(library, "wf-note", drafted.n);
   const live = library.read("wf-note");
   assert.equal(live.inputs[0]?.default, "ada lovelace");
   assert.match(runField(live.inputs[0]!), />ada lovelace</);
-  const masked = editInput(live, { name: "password", type: "secret", label: "Password", default: "BaoSecretFixture9kQ7m", required: true });
+  const masked = editInput(live, { name: "password", type: "secret", label: "Password", default: "BaoSecretFixture9kQ7m" });
   assert.ok(masked.doc);
   assert.equal(masked.doc?.inputs.find((input) => input.name === "password")?.default, "BaoSecretFixture9kQ7m");
   assert.equal(JSON.stringify(masked.doc).includes("BaoSecretFixture9kQ7m"), true);

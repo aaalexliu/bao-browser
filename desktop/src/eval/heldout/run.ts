@@ -10,24 +10,14 @@ import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
 import { replay, type RunResult } from "../../v1/replay";
 import type { TrajectoryStep } from "../../v1/trajectory";
-import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
-import { validateWorkflow } from "../../v1/schema";
+import { stepTitle, stepQuery, stepInputName, stepKey, stepCheck, handoffReason, validateWorkflow, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";
 import { caseJudgePrompt } from "../intent/labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "../intent/model";
 import { HYBRID_GATE_RULE, modelCondensePrompt, reviseDecision, reviseStepGates } from "../intent/revise";
-import {
-  expectedHuman,
-  humanKeys,
-  keepEvents,
-  multisetScore,
-  scoreParams,
-  targetOf,
-  textDefaults,
-  truthTexts,
-} from "../intent/score";
+import { expectedHuman, humanKeys, keepEvents, multisetScore, scoreParams, targetOf, textDefaults, truthTexts } from "../intent/score";
 import { BAD_INTENT_TEXTS, badJudgePrompt } from "./bad-judge";
 import { urlHasPhrase } from "./url-oracle";
 import type { HeldTruth } from "./capture";
@@ -75,9 +65,9 @@ function hybridPrompt(workflow: WorkflowV2): string {
     step.id,
     step.action,
     targetOf(step) || "-",
-    step.input || "-",
-    step.gate || "-",
-    step.label,
+    stepInputName(step) || "-",
+    handoffReason(step) || "-",
+    stepTitle(step),
   ].join(" "));
   return [
     "This workflow was condensed deterministically. Step identity, inputs, and secret tags are fixed.",
@@ -94,7 +84,7 @@ function hybridPrompt(workflow: WorkflowV2): string {
 }
 
 function heldSignature(step: WorkflowStep): string {
-  const id = step.identity;
+  const id = stepQuery(step);
   const text = (id?.text || "").replace(/\s+/g, " ").trim().slice(0, 60);
   return [
     step.action,
@@ -103,9 +93,9 @@ function heldSignature(step: WorkflowStep): string {
     id?.name || "",
     text,
     id?.cssPath || "",
-    step.gate || "-",
-    step.input || "-",
-    step.action === "key" ? step.key || "" : "",
+    handoffReason(step) || "-",
+    stepInputName(step) || "-",
+    step.action === "key" ? stepKey(step) || "" : "",
   ].join("|");
 }
 
@@ -707,23 +697,23 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
   const failed = new Set<string>();
   const passing: { id: string; intent: string }[] = [];
   for (const step of workflow.steps) {
-    const input = workflow.inputs.find((item) => item.name === step.input);
+    const input = workflow.inputs.find((item) => item.name === stepInputName(step));
     const target: LintTarget = {
       action: step.action,
-      name: step.identity?.name || step.identity?.text || step.identity?.label,
-      label: step.identity?.label,
-      text: step.identity?.text,
-      input: step.input,
+      name: stepQuery(step)?.name || stepQuery(step)?.text || stepQuery(step)?.label,
+      label: stepQuery(step)?.label,
+      text: stepQuery(step)?.text,
+      input: stepInputName(step),
       literal: input?.default,
     };
     const reason = prejudgeLint({
-      text: step.intent || "",
+      text: stepTitle(step),
       target,
       secrets,
-      effect: step.confidence === "low" ? false : undefined,
-    }) || lintIntent(step.intent || "", target, secrets);
+      effect: stepCheck(step)?.kind === "settled" ? false : undefined,
+    }) || lintIntent(stepTitle(step), target, secrets);
     if (reason) failed.add(step.id);
-    else passing.push({ id: step.id, intent: step.intent || "" });
+    else passing.push({ id: step.id, intent: stepTitle(step) });
   }
   const summary = workflow.summary || "";
   const summaryFail = prejudgeLint({ text: summary, secrets })

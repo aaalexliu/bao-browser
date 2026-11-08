@@ -1,3 +1,4 @@
+import { fixtureDoc, writeStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -24,8 +25,8 @@ test("review samples preserve ordinary choice and fixed values", () => {
 });
 
 function workflow(origin: string): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2", version: 2, id: "review-text-values", name: "Review text values",
+  return fixtureDoc({
+    schema: "bao.workflow/v4", version: 2, id: "review-text-values", name: "Review text values",
     startUrl: `${origin}/fixture`, createdAt: 1,
     inputs: values.map((value, index) => ({ name: `sample${index}`, type: "text", default: value })),
     steps: values.map((value, index) => ({
@@ -34,7 +35,7 @@ function workflow(origin: string): WorkflowV2 {
       identity: { surface: "dom", role: "textbox", testId: `field${index}`, path: [] },
       postcondition: { kind: "text", match: `Received ${value}`, timeoutMs: 5000 }, timeoutMs: 5000,
     })),
-  };
+  });
 }
 
 test("review crop eligibility covers literal, default and actual run text values", () => {
@@ -45,8 +46,7 @@ test("review crop eligibility covers literal, default and actual run text values
       const step = document.steps[index]!;
       if (source !== "default") delete document.inputs[index]!.default;
       if (source === "literal") {
-        delete step.input;
-        step.value = value;
+        writeStep(step, { value: value });
       } else if (source === "run") run.inputs[`sample${index}`] = value;
       assert.equal(privateReviewStep(document, step, run), index < 3, `${source}: ${index}`);
     }

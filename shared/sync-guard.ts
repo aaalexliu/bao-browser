@@ -1,6 +1,7 @@
 import { isSealedArtifact, STRIPPED_SECRET } from "./saved-secrets";
 import { redactSavedValue, scrubSaved, type SavedContext } from "./outbound-secrets";
 import { isElementCrop } from "./png";
+import { stepInputName, stepValueTemplate, type StepRead } from "./step-read";
 
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|args|params)$/i;
 
@@ -73,8 +74,10 @@ function stepShots(
   const byId = new Map((crops || []).map((crop) => [crop.stepId, crop.png]));
   const shots: SyncShot[] = [];
   steps.forEach((step, index) => {
-    if (step.sensitive || redactSavedValue(step.value ?? "") === STRIPPED_SECRET) return;
-    if (step.input && secrets.has(step.input)) return;
+    const value = stepValueTemplate(step as StepRead) ?? step.value ?? "";
+    const input = stepInputName(step as StepRead);
+    if (step.sensitive || redactSavedValue(value) === STRIPPED_SECRET) return;
+    if (input && secrets.has(input)) return;
     const id = String(step.id ?? index);
     const png = byId.get(id);
     if (png && isElementCrop(png)) shots.push({ stepId: id, png: png.toString("base64") });
@@ -95,6 +98,7 @@ export function stripUnsafe(value: unknown, secrets: string[] = [], context?: Sa
     if (next.type === "secret") {
       delete next.default;
       delete next.value;
+      if ("supply" in next) next.supply = "must";
     }
     if (next.sensitive === true && typeof next.value === "string" && !next.value.includes("{{")) delete next.value;
     return next;

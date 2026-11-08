@@ -1,3 +1,5 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { stepTitle, stepValueTemplate } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,15 +26,15 @@ type CursorRequest = { prompt: string; dom: PromptDom; intent: string; reason: s
 const reply = JSON.stringify({ identity: { surface: "dom", role: "button", testId: "fixed", path: [] } });
 
 function fixture(secret: string) {
-  const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "heal-outbound", name: secret, createdAt: 1,
-    startUrl: "https://example.test/", inputs: [{ name: "password", type: "secret", label: "Password", default: secret }],
-    steps: [{
+  const workflow: WorkflowV2 = fixtureDoc({
+    schema: "bao.workflow/v4", version: 2, id: "heal-outbound", name: secret, createdAt: 1,
+    startUrl: "https://example.test/", inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", default: secret })],
+    steps: [fixtureStep({
       id: "missing", index: 0, action: "type", label: secret, surface: "dom", timeoutMs: 0,
       input: "password", value: "{{password}}",
       identity: { surface: "dom", role: "textbox", testId: "missing", path: [] },
-    }],
-  };
+    })],
+  });
   const dom = [
     { op: "type", value: secret, identity: { surface: "dom", role: "textbox", value: secret } },
     { op: "type", value: "sk-generatedOutboundToken" },
@@ -63,8 +65,8 @@ function assertPrompt(prompt: string, secret: string): void {
   assert.ok(prompt.includes(`Reason: ${secret}`));
   assert.equal(prompt.includes("AAAALOCALSCREENSHOT"), false);
   const step = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Step: "))!.slice(6)) as WorkflowStep;
-  assert.equal(step.value, "{{password}}");
-  assert.equal(step.label, secret);
+  assert.equal(stepValueTemplate(step), "{{password}}");
+  assert.equal(stepTitle(step), secret);
 }
 
 for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"] as const) {
@@ -129,7 +131,7 @@ for (const mode of ["logged-out", "print-fails"] as const) {
     assert.equal(request.dom[0].identity.value, secret);
     assert.equal(request.intent, secret);
     assert.equal(request.reason, secret);
-    assert.equal(request.step.value, "{{password}}");
+    assert.equal(stepValueTemplate(request.step), "{{password}}");
     assert.equal(readFileSync(path.join(dir, "heal-shot.png"), "base64"), Buffer.from(data.failure.snapshot.screenshot!, "base64").toString("base64"));
     assert.deepEqual(data, original);
   });

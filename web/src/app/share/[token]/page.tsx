@@ -15,7 +15,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
     if (err instanceof HttpError && err.status === 404) notFound();
     throw err;
   }
-  const doc = share.document as { name?: string; steps?: { label?: string }[] };
+  const doc = share.document as { name?: string; steps?: { caption?: { text?: string } }[] };
   return (
     <article>
       <h1>Import</h1>
@@ -39,7 +39,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
         <h2>Steps</h2>
         <ol className="preview-steps">
           {(doc.steps ?? []).map((step, index) => (
-            <li key={index}><span className="n">{index + 1}</span><span>{step.label}</span></li>
+            <li key={index}><span className="n">{index + 1}</span><span>{step.caption?.text}</span></li>
           ))}
         </ol>
       </section>

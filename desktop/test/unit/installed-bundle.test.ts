@@ -312,7 +312,7 @@ test("an installed bundle serves extension settings and imports synthetic localS
       assert.deepEqual(stripUnsafe(record), { ...record, value: value === 'short-password' ? value : STRIPPED_SECRET });
       library.saveTrail('staged-input', [record]);
       assert.deepEqual(library.readTrail('staged-input'), [record]);
-      assert.equal(stepNeedsSecretValue({ action: 'type', value: STRIPPED_SECRET }, { inputs: [] }, {}), true);
+      assert.equal(stepNeedsSecretValue({ action: 'type', text: { literal: STRIPPED_SECRET } }, { inputs: [], steps: [] }, {}), true);
       assert.deepEqual(record, original);
     }
     const owners = Object.keys(require.cache).filter(file => file.endsWith('/saved-secrets.js'));

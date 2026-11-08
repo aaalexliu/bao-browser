@@ -17,63 +17,7 @@ import { captureTrailOwnsSteps, livePageFromQuery, liveRunView, liveSessionView,
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
-import {
-  actBar,
-  remoteBanner,
-  commandItems,
-  esc,
-  healDetail,
-  healInbox,
-  healWorkflowName,
-  importCard,
-  consolePane,
-  runConsoleLines,
-  inputsPane,
-  guidePanel,
-  libraryTable,
-  networkPane,
-  liveStepList,
-  captureView,
-  captureStream,
-  notices,
-  paletteView,
-  rail,
-  shellList,
-  recordBar,
-  saveSheetView,
-  runsWelcome,
-  connectionError,
-  runReceipt,
-  receiptError,
-  runWorkflowName,
-  runAttention,
-  shellAttentionCount,
-  runWaitLeft,
-  reviewItems,
-  runViewer,
-  runField,
-  hostAccessPanel,
-  tryResult,
-  fixtureStartValue,
-  productWindowTitle,
-  teachHome,
-  teachPanel,
-  teachReview,
-  trailPane,
-  imageRef,
-  versionsPanel,
-  workflowDetail,
-  workflowConflicts,
-  workflowSidebarToggle,
-  runDriverField,
-  runHealField,
-  type CommandItem,
-  type HealView,
-  type ImportPending,
-  type RunSummary,
-  type ShellState,
-  type WorkflowSummary,
-} from "./views";
+import { actBar, remoteBanner, commandItems, esc, healDetail, healInbox, healWorkflowName, importCard, consolePane, runConsoleLines, inputsPane, guidePanel, libraryTable, networkPane, liveStepList, captureView, captureStream, notices, paletteView, rail, shellList, recordBar, saveSheetView, runsWelcome, connectionError, runReceipt, receiptError, runWorkflowName, runAttention, shellAttentionCount, runWaitLeft, reviewItems, runViewer, runField, hostAccessPanel, tryResult, fixtureStartValue, productWindowTitle, teachHome, teachPanel, teachReview, trailPane, imageRef, versionsPanel, workflowDetail, workflowConflicts, workflowSidebarToggle, runDriverField, runHealField, type CommandItem, type HealView, type ImportPending, type RunSummary, type ShellState, type WorkflowSummary } from "./views";
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
@@ -569,7 +513,7 @@ function replayForm(): string {
     ${current?.driver === "extension" ? "" : `<fieldset class="browser-choice"><legend>Browser for this run</legend>
       ${BROWSER_CHOICES.map((choice) => `<label class="browser-option"><input type="radio" name="run-browser" value="${choice}"${runBrowser === choice ? " checked" : ""} aria-labelledby="browser-${choice}-label" aria-describedby="browser-${choice}-help"><span><strong id="browser-${choice}-label">${APP_BROWSER_OPTIONS[choice].label}${choice === DEFAULT_BROWSER ? " (default)" : ""}</strong><span class="quiet" id="browser-${choice}-help">${APP_BROWSER_OPTIONS[choice].description}</span></span></label>`).join("")}
     </fieldset>`}
-    ${runHealField(current?.driver, mode, globalHeal)}
+    ${runHealField(mode, globalHeal)}
     <form id="args"></form>
     <p class="mono" data-testid="deeplink">bao://workflow/${esc(selected)}</p>
     <p class="mono" data-testid="import-link">bao://import/${esc(selected)}</p>
@@ -1833,7 +1777,7 @@ async function fillArgs(id: string): Promise<void> {
   form.innerHTML = doc.inputs.map((input) => {
     const fresh = oneTimeCodeInput(doc, input.name);
     const previous = input.type === "secret" ? deeplinkInputs[input.name] ?? pinnedArgs?.[input.name] : prev[input.name];
-    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, previous, doc.steps || []);
+    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, previous, (doc.steps || []).map((step) => ({ label: step.action === "download" ? step.caption.text : step.caption?.text, download: step.action === "download" ? step.download : undefined })));
   }).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
@@ -2669,15 +2613,31 @@ async function stepCrops(runId: string): Promise<Record<string, string>> {
   return shots;
 }
 
+function placeShotBox(host: HTMLElement, box: string): void {
+  host.querySelectorAll(".shot-box").forEach((mark) => mark.remove());
+  if (!box) return;
+  const [x, y, width, height, viewW, viewH] = box.split(",").map(Number);
+  if (![x, y, width, height, viewW, viewH].every((n) => Number.isFinite(n)) || viewW <= 0 || viewH <= 0 || width <= 0 || height <= 0) return;
+  const mark = document.createElement("div");
+  mark.className = "shot-box";
+  mark.setAttribute("aria-hidden", "true");
+  mark.style.left = `${x / viewW * 100}%`;
+  mark.style.top = `${y / viewH * 100}%`;
+  mark.style.width = `${width / viewW * 100}%`;
+  mark.style.height = `${height / viewH * 100}%`;
+  host.append(mark);
+}
+
 function mountShots(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>("[data-shot]").forEach((node) => {
     if (node.dataset.shotMounted === "1") return;
     node.dataset.shotMounted = "1";
     const primary = node.dataset.shot || "";
     const fallback = node.dataset.shotFallback || "";
-    const load = (src: string, next?: string) => {
+    const viewport = node.dataset.viewport || "";
+    const load = (src: string, next?: string, framed = false) => {
       if (!src) {
-        if (next) load(next);
+        if (next) load(next, framed ? fallback : undefined, false);
         return;
       }
       const img = new Image();
@@ -2685,21 +2645,23 @@ function mountShots(root: ParentNode = document): void {
       img.onload = () => {
         if (!node.isConnected) return;
         if (img.naturalWidth === 96 && img.naturalHeight === 54) {
-          if (next) load(next);
+          if (next) load(next, framed ? fallback : undefined, false);
           return;
         }
         node.classList.add("has-shot");
         node.prepend(img);
+        placeShotBox(node, framed ? node.dataset.box || "" : "");
       };
       img.onerror = () => {
-        if (next) load(next);
+        if (next) load(next, framed ? fallback : undefined, false);
       };
       img.src = src;
     };
     const existing = node.querySelector("img");
     if (existing) {
       const show = () => {
-        if (node.isConnected) node.classList.add("has-shot");
+        if (!node.isConnected) return;
+        node.classList.add("has-shot");
       };
       if (existing.complete && existing.naturalWidth > 0) {
         if (existing.naturalWidth === 96 && existing.naturalHeight === 54) {
@@ -2727,7 +2689,8 @@ function mountShots(root: ParentNode = document): void {
       });
       return;
     }
-    load(primary, fallback);
+    if (viewport) load(viewport, primary, true);
+    else load(primary, fallback);
   });
 }
 
@@ -2761,6 +2724,8 @@ function mountStage(stage: HTMLElement): void {
   };
   stage.prepend(img);
   img.src = url;
+  stage.querySelectorAll(".browser-mark").forEach((mark) => mark.remove());
+  placeShotBox(stage, which === "before" ? stage.dataset.box || "" : "");
 }
 
 document.addEventListener("keydown", (event) => {

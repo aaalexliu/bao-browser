@@ -26,7 +26,7 @@ export default async function PublicWorkflowPage({
     throw err;
   }
   const doc = workflow.document as {
-    steps?: (Parameters<typeof consequentialStep>[0] & { id?: string; label?: string })[];
+    steps?: (Parameters<typeof consequentialStep>[0] & { id?: string; caption?: { text?: string } })[];
   };
   const steps = doc.steps ?? [];
   const shots = new Map(workflow.shots.map((shot) => [shot.stepId, shot.url]));
@@ -59,7 +59,7 @@ export default async function PublicWorkflowPage({
           <ol className="listing-steps" data-testid="steps">
             {steps.map((step, index) => {
               const src = shots.get(String(step.id || ""));
-              const label = step.label || step.id || "Step";
+              const label = step.caption?.text || step.id || "Step";
               return (
                 <li key={step.id || index}>
                   <span className="n">{index + 1}</span>

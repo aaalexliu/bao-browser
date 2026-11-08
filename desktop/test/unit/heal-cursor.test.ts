@@ -1,10 +1,11 @@
+import { fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cursorSessionHeal } from "../../src/v1/heal";
 import type { StepFailure } from "../../src/v1/heal";
 import type { WorkflowStep } from "../../src/v1/schema";
 
-const step: WorkflowStep = {
+const step: WorkflowStep = fixtureStep({
   id: "s1",
   index: 0,
   action: "click",
@@ -12,7 +13,7 @@ const step: WorkflowStep = {
   surface: "dom",
   timeoutMs: 8000,
   identity: { surface: "dom", role: "button", testId: "missing", path: [] },
-};
+});
 
 const failure = {
   stepId: "s1",

@@ -1,7 +1,7 @@
 // One description of an input. The step token and the run form both read it.
 
 import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
-import { validateWorkflow, type InputType, type WorkflowV2 } from "./schema";
+import { finishInput, validateWorkflow, type InputType, type WorkflowV2 } from "./schema";
 
 export interface TokenInput {
   name: string;
@@ -15,6 +15,7 @@ export interface TokenInput {
   relative?: string;
   zone?: string;
   fromOutput?: string;
+  supply?: "saved" | "must";
   /** Label of the download step this file is filled from. */
   boundStep?: string;
   fresh?: boolean;
@@ -37,7 +38,7 @@ export function tokenFields(input: TokenInput): TokenFields {
     label: input.label || input.name,
     type,
     default: input.fresh || hasStrippedSecret(input.default) ? "" : input.default || "",
-    required: input.required === true,
+    required: input.supply ? input.supply === "must" : input.required === true,
     masked,
   };
 }
@@ -54,10 +55,7 @@ export function editInput(
   if (typeof edit.label === "string") {
     const label = edit.label.trim();
     if (label) nextInput.label = label;
-    else delete nextInput.label;
   }
-  if (edit.required === true) nextInput.required = true;
-  else if (edit.required === false) delete nextInput.required;
   if (typeof edit.default === "string") {
     const value = nextInput.type === "secret" ? edit.default : edit.default.trim();
     if (value) {
@@ -68,10 +66,11 @@ export function editInput(
       delete nextInput.ownerSaved;
     }
   }
-  if (oneTimeCodeInput(doc, nextInput.name)) delete nextInput.default;
+  if (edit.required === true || oneTimeCodeInput(doc, nextInput.name)) delete nextInput.default;
+  const finished = finishInput(nextInput);
   const next: WorkflowV2 = {
     ...doc,
-    inputs: doc.inputs.map((input) => input.name === edit.name ? nextInput : input),
+    inputs: doc.inputs.map((input) => input.name === edit.name ? finished : input),
     updatedAt: Date.now(),
   };
   const errors = validateWorkflow(next);

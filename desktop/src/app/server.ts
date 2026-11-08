@@ -22,39 +22,13 @@ import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } 
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { visibleStatusLines } from "../v1/dom-page";
-import {
-  cookieHeader,
-  loginDocument,
-  loginRedirect,
-  newToken,
-  PENDING_COOKIE,
-  readCookie,
-  safeNext,
-  SESSION_COOKIE,
-  SESSION_TTL_MS,
-  sessionExpiry,
-  sessionStatus,
-  type FreezeSession,
-} from "../v1/freeze-session";
+import { cookieHeader, loginDocument, loginRedirect, newToken, PENDING_COOKIE, readCookie, safeNext, SESSION_COOKIE, SESSION_TTL_MS, sessionExpiry, sessionStatus, type FreezeSession } from "../v1/freeze-session";
 import { dismissCoveringAds } from "../v1/page-class";
 import { clickInDrive } from "../v1/drive-click";
 import { recorderSource } from "../v1/recorder";
 import { armBrowserDownloads, captureDownloads } from "../v1/files-dates";
 import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
-import {
-  auditLine,
-  chooseProfile,
-  chromeUserDataDir,
-  assertDomain,
-  importConfirmText,
-  injectCookies,
-  loadChromeSiteCookies,
-  readChromeSafeStoragePassword,
-  readProfileNames,
-  safeImportError,
-  type ChromeProfile,
-  type ImportAudit,
-} from "../v1/chrome-login";
+import { auditLine, chooseProfile, chromeUserDataDir, assertDomain, importConfirmText, injectCookies, loadChromeSiteCookies, readChromeSafeStoragePassword, readProfileNames, safeImportError, type ChromeProfile, type ImportAudit } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
@@ -73,23 +47,10 @@ import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
 import { isClearPageShot, isPageAct, selectCardPoster } from "../v1/poster";
 import { applySaveEdits, inferSavedWorkflow, saveCompleter } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
-import {
-  decide,
-  decisionEvent,
-  intentEvalPair,
-  mergeDemonstrations,
-  narratorFromEnv,
-  projectTeach,
-  publicTrail,
-  teachIntentCase,
-  teachSummaryFrom,
-  type Spoken,
-  type TeachCorrection,
-  type TeachDecision,
-} from "../v1/teach";
+import { decide, decisionEvent, intentEvalPair, mergeDemonstrations, narratorFromEnv, projectTeach, publicTrail, teachIntentCase, teachSummaryFrom, type Spoken, type TeachCorrection, type TeachDecision } from "../v1/teach";
 import { guideCrops, guideHtml } from "../v1/guide";
 import { guideMe, type GuideProgress } from "../v1/guide-me";
-import { guideShotName, shotFile, shotFormat, workflowShotName } from "../v1/shots";
+import { guideShotName, shotFile, shotFormat, viewportShotName, workflowShotName } from "../v1/shots";
 import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion } from "../v1/promote";
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
@@ -101,13 +62,7 @@ import { SiteStore, siteOrigin } from "../login-import/sites";
 import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { replay, withInputDefaults, type HealNotice, type ReplayOptions, type RunResult } from "../v1/replay";
-import {
-  clearPendingPrompt,
-  markPromptTimedOut,
-  promptDue,
-  readPendingPrompt,
-  writePendingPrompt,
-} from "../v1/pending-prompt";
+import { clearPendingPrompt, markPromptTimedOut, promptDue, readPendingPrompt, writePendingPrompt } from "../v1/pending-prompt";
 import { editInput } from "../v1/input-token";
 import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
@@ -125,7 +80,8 @@ import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
-import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
+import { stepTitle, stepInputName, stepValueTemplate, stepCheck, stepSensitive, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+
 import { applyImportAnswers, importQuestions, markImported } from "../../../web/src/lib/import-sheet";
 import { savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
@@ -184,6 +140,8 @@ function copyMergedShots(
       if (width === 96 && height === 54) continue;
     }
     copyFileSync(from, path.join(destDir, workflowShotName(source.stepId)));
+    const viewFrom = path.join(root, "shots", "workflows", source.workflowId, viewportShotName(source.sourceStepId));
+    if (existsSync(viewFrom)) copyFileSync(viewFrom, path.join(destDir, viewportShotName(source.stepId)));
     const guideFrom = path.join(root, "shots", "workflows", source.workflowId, guideShotName(source.sourceStepId));
     if (existsSync(guideFrom)) copyFileSync(guideFrom, path.join(destDir, guideShotName(source.stepId)));
   }
@@ -247,6 +205,7 @@ export async function startApp(opts: {
   let profile: string | undefined;
   let fileChooser: unknown;
   const captureShots = new Map<string, string>();
+  const captureViews = new Map<string, string>();
   const pendingShots = new Set<Promise<unknown>>();
   const replays = new Map<string, WorkflowBrowser>();
   let pending: PendingImport | undefined;
@@ -330,6 +289,7 @@ export async function startApp(opts: {
     },
     clearConfirm(runId: string) {
       humanConfirm = null;
+      apply({ type: "clear-continued" });
       const ask = currentAsk();
       if (ask?.kind === "confirm" && ask.runId === runId) {
         apply({ type: "clear-ask", kind: "confirm", runId });
@@ -359,6 +319,7 @@ export async function startApp(opts: {
     },
     shouldStop: () => view().stop,
     loginContinued: () => view().continued,
+    ownerContinued: () => view().continued,
     pauseCapture() {
       capture.pause();
       capture.handoff(`Handoff started ${formatClock(Date.now())}`);
@@ -577,7 +538,7 @@ export async function startApp(opts: {
         if (!pendingDoc) return json(res, { ok: false, error: "nothing to import" }, 400);
         const body = await readBody(req) as { answers?: Record<string, unknown> };
         try {
-          const installed = markImported(migrate(applyImportAnswers(pendingDoc, body.answers || {})), body.answers || {}) as WorkflowV2;
+          const installed = markImported(parseWorkflow(applyImportAnswers(pendingDoc, body.answers || {})), body.answers || {}) as WorkflowV2;
           library.save(installed);
           pendingDoc = null;
           opened = {
@@ -961,7 +922,7 @@ export async function startApp(opts: {
         return opened ? json(res, { ok: true }) : json(res, { error: "Could not open the workflow folder. Open File details and recovery to find its path." }, 500);
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
-        const parsed = migrate(JSON.parse(String(await readBody(req, true))));
+        const parsed = parseWorkflow(JSON.parse(String(await readBody(req, true))));
         let existing: WorkflowV2 | undefined;
         try { existing = library.read(parsed.id); } catch { existing = undefined; }
         const imported = existing && existing.imported !== true ? keepOwnerImport(parsed) : markImported(parsed) as WorkflowV2;
@@ -1291,7 +1252,7 @@ export async function startApp(opts: {
         if (!activeRun || body.runId !== activeRun.id || !ask || body.stepId !== ask.stepId || body.startedAt !== ask.startedAt) {
           return json(res, { error: "This run is no longer waiting for that action." }, 409);
         }
-        if (ask.kind !== "confirm") apply({ type: "continue" });
+        apply({ type: "continue" });
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/pair") {
@@ -1577,12 +1538,7 @@ export async function startApp(opts: {
         if (body.stepHeal?.stepId) {
           const doc = library.read(id);
           const policy = stepHealChoice(body.stepHeal.heal);
-          const steps = doc.steps.map((step) => {
-            if (step.id !== body.stepHeal?.stepId) return step;
-            if (policy) return { ...step, heal: policy };
-            const { heal: _drop, ...rest } = step;
-            return rest;
-          });
+          const steps = doc.steps.map((step) => step.id === body.stepHeal?.stepId ? applyStepHeal(step, policy) : step);
           const next = { ...doc, steps, updatedAt: Date.now() };
           draftVersion(library, next, "edit");
           return json(res, next);
@@ -1800,6 +1756,7 @@ export async function startApp(opts: {
     capture.start();
     recordingSince = Date.now();
     captureShots.clear();
+    captureViews.clear();
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
@@ -1887,6 +1844,12 @@ export async function startApp(opts: {
     const dest = path.join(dir, `${stored.id}.png`);
     if (sessionMode === "teach") void narrateSoon();
     try {
+      const frame = await page.screenshot({ type: "png", timeout: 4000 }).catch(() => undefined);
+      if (frame?.length) {
+        const view = path.join(dir, `${stored.id}.viewport.png`);
+        writeFileSync(view, frame);
+        captureViews.set(stored.id, view);
+      }
       const target = { identity: payload.identity, action: payload.op, label: payload.identity?.text };
       const png = await elementShot(page, target);
       if (!png) return;
@@ -1988,6 +1951,8 @@ export async function startApp(opts: {
         copyFileSync(src, dest);
         shots.set(step.id, dest);
       }
+      const view = event ? captureViews.get(event.id) : undefined;
+      if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDir, viewportShotName(step.id)));
     }
     let poster = "";
     if (capturePosterPath && existsSync(capturePosterPath)) {
@@ -2007,6 +1972,7 @@ export async function startApp(opts: {
     };
     capture.discard();
     captureShots.clear();
+    captureViews.clear();
     capturePosterPath = "";
     capturePageTitle = "";
     posterTried = false;
@@ -2027,8 +1993,13 @@ export async function startApp(opts: {
     }, pending.floor);
     const shotDest = path.join(opts.home, "shots", "workflows", workflow.id);
     mkdirSync(shotDest, { recursive: true });
+    const pendingDir = path.join(opts.home, "shots", "pending", workflow.id);
     for (const [stepId, src] of pending.shots) {
       if (existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(stepId)));
+    }
+    for (const step of workflow.steps) {
+      const view = path.join(pendingDir, viewportShotName(step.id));
+      if (existsSync(view)) copyFileSync(view, path.join(shotDest, viewportShotName(step.id)));
     }
     if (pending.poster && existsSync(pending.poster)) {
       const bytes = readFileSync(pending.poster);
@@ -2220,13 +2191,13 @@ export async function startApp(opts: {
           inputs: projected.workflow.inputs.map((input) => ({ name: input.name, type: input.type })),
           steps: projected.workflow.steps.map((step) => ({
             id: step.id,
-            label: step.label,
-            intent: step.intent,
+            label: stepTitle(step),
+            intent: step.caption.text,
             action: step.action,
-            human: step.human,
-            value: step.value,
-            input: step.input,
-            sensitive: step.sensitive,
+            human: (step.action === "handoff"),
+            value: stepValueTemplate(step),
+            input: stepInputName(step),
+            sensitive: stepSensitive(step),
           })),
         },
       } : undefined,
@@ -2290,6 +2261,8 @@ export async function startApp(opts: {
       stepIndex += 1;
       const src = captureShots.get(card.id);
       if (src && step && existsSync(src)) copyFileSync(src, path.join(shotDest, workflowShotName(step.id)));
+      const view = captureViews.get(card.id);
+      if (view && step && existsSync(view)) copyFileSync(view, path.join(shotDest, viewportShotName(step.id)));
     }
     library.save(workflow);
     const trail = [...publicTrail(capture.events), ...decisions.map((decision, index) => decisionEvent(decision, index))];
@@ -2332,7 +2305,7 @@ export async function startApp(opts: {
       index: 0,
       total: workflow.steps.length,
       stepId: first?.id || "",
-      intent: first?.intent || first?.label || "",
+      intent: first ? stepTitle(first) : "",
       status: "highlight",
       actions: 0,
     };
@@ -2348,10 +2321,7 @@ export async function startApp(opts: {
       index: Math.max(0, workflow.steps.length - 1),
       total: workflow.steps.length,
       stepId: result.steps[result.steps.length - 1]?.id || first?.id || "",
-      intent: first ? (workflow.steps.find((step) => step.id === (result.steps[result.steps.length - 1]?.id || ""))?.intent
-        || workflow.steps.find((step) => step.id === (result.steps[result.steps.length - 1]?.id || ""))?.label
-        || guideLive?.intent
-        || "") : "",
+      intent: guideIntent(workflow, result.steps[result.steps.length - 1]?.id || "", guideLive?.intent || ""),
       status: result.status,
       actions: result.actions,
     };
@@ -2588,6 +2558,25 @@ function stepHealChoice(value: string | null | undefined): "auto" | "ask" | "nev
   return undefined;
 }
 
+function applyStepHeal(step: WorkflowStep, policy: "auto" | "ask" | "never" | undefined): WorkflowStep {
+  if (step.action === "extract") {
+    if (policy === "never") return { ...step, heal: "never" };
+    if (policy) return step;
+    const cleared = { ...step };
+    delete cleared.heal;
+    return cleared;
+  }
+  if (policy) return { ...step, heal: policy };
+  const cleared = { ...step };
+  delete cleared.heal;
+  return cleared;
+}
+
+function guideIntent(workflow: WorkflowV2, stepId: string, fallback: string): string {
+  const step = workflow.steps.find((item) => item.id === stepId);
+  return step ? stepTitle(step) : fallback;
+}
+
 interface LoginGate {
   baoProfile: string;
   sites: SiteStore;
@@ -2679,12 +2668,13 @@ function persistedRun(
   const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm";
   const savedValues = savedValueLine(workflow, args);
   const stored: Parameters<Library["saveRun"]>[0] & { console: unknown; network: unknown } = {
+    schema: "bao.run/v4",
     id: result.runId,
     pageEngine: result.pageEngine,
     traceUnavailable: result.traceUnavailable,
     videoTruncated: result.videoTruncated,
     workflowId: workflow.id,
-    status: needsHuman ? "needs_human" : result.status,
+    status: result.pausedKind === "signin" ? "waiting-for-sign-in" : needsHuman ? "needs_human" : result.status === "failed" ? "failed" : result.status,
     at: Date.now(),
     heals: result.heals,
     failure: result.failure,
@@ -2739,7 +2729,7 @@ function rememberHostGrant(
 ) {
   const step = workflow.steps[0];
   const stepId = step?.id || "open";
-  const label = step?.label || "Open the site";
+  const label = (step ? stepTitle(step) : undefined) || "Open the site";
   const ask: HumanAsk = {
     kind: "wall",
     workflowId: workflow.id,
@@ -2767,7 +2757,7 @@ function rememberHostGrant(
     failure: {
       stepId,
       index: step?.index ?? 0,
-      intent: step?.intent || label,
+      intent: (step ? step.caption.text : undefined) || label,
       phase: "find",
       reason: message,
       snapshot: {},
@@ -3335,11 +3325,11 @@ function summary(doc: WorkflowV2) {
     steps: doc.steps.length,
     inputs: doc.inputs,
     heal: doc.heal,
-    heals: doc.steps.filter((step) => step.label.startsWith("healed")).length,
+    heals: doc.steps.filter((step) => stepTitle(step).startsWith("healed")).length,
     replayed: doc.replayed,
-    waits: doc.steps.filter((step) => step.action === "login" || step.action === "confirm").length,
-    expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
-    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
+    waits: doc.steps.filter((step) => step.action === "handoff").length,
+    expects: doc.steps.filter((step) => step.action === "verify" || stepCheck(step) || step.readBack).length,
+    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: stepTitle(doc.steps[0]) } : undefined,
     startUrl: doc.startUrl,
     driver: refusesOwnedBrowser(doc.driver) ? doc.driver : workflowDriver(doc),
   };
@@ -3443,13 +3433,9 @@ function croppedPng(file: string): boolean {
 }
 
 function workflowPoster(library: Library, id: string): string | undefined {
-  const workflow = library.read(id);
-  const dir = path.join(library.root, "shots", "workflows", id);
-  const poster = path.join(dir, "poster.png");
-  const live = workflow.driver === "cdp-live";
-  const candidates = live ? [poster, ...workflow.steps.map((step) => path.join(dir, workflowShotName(step.id)))] : [poster];
-  const usable = live ? isClearPageShot : isFullPageShot;
-  return candidates.find((file) => existsSync(file) && usable(readFileSync(file)));
+  const poster = path.join(library.root, "shots", "workflows", id, "poster.png");
+  if (existsSync(poster) && isClearPageShot(readFileSync(poster))) return poster;
+  return;
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

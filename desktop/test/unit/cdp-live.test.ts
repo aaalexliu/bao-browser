@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { workflowDriver } from "../../src/extension/protocol";
-import { migrate, validateWorkflow } from "../../src/v1/schema";
+import { fixtureDoc } from "../support/fixture-step";
+import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
 import { liveShotUrl, publicLiveSession, liveLabel, shotNameOk } from "../../src/cdp-live/live-record";
 import { acquireCdpLock, lockIsStale, lockText, parseLock, releaseCdpLock } from "../../src/cdp-live/lock";
 import { liveSessionView, screenFromQuery } from "../../src/app/live-view";
@@ -19,6 +20,10 @@ import {
 import { assertActivePortFile, listenPid, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../../src/cdp-live/launch-guard";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
+
+function migrate(_raw: unknown): WorkflowV2 {
+  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
+}
 
 const ready = {
   openedByBao: true,
@@ -86,19 +91,19 @@ test("AX summary drops other window titles", () => {
   assert.equal(summary.checkbox.value, "0");
 });
 
-test("historical cdp-live workflows stay valid but cannot launch replay", () => {
+test("cdp-live is not a workflow driver", () => {
   const doc = migrate({
     id: "wf-cdp-live",
     name: "Live",
     version: 2,
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     startUrl: "https://books.toscrape.com/",
     createdAt: 1,
     inputs: [],
     steps: [],
   });
-  assert.deepEqual(validateWorkflow({ ...doc, driver: "cdp-live" }), []);
-  assert.ok(validateWorkflow({ ...doc, driver: "cdp" as "cdp-live" }).includes("driver"));
+  assert.ok(validateWorkflow({ ...doc, driver: "cdp-live" as unknown as WorkflowV2["driver"] }).includes("driver"));
+  assert.ok(validateWorkflow({ ...doc, driver: "cdp" as unknown as WorkflowV2["driver"] }).includes("driver"));
   assert.equal(workflowDriver({ driver: "cdp-live" }), "playwright");
   assert.equal(workflowDriver({ driver: "cdp" }), "playwright");
   assert.equal(refusesOwnedBrowser("cdp-live"), true);

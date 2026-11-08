@@ -8,9 +8,9 @@
 
 import { normRole, normText, withoutPrice } from "./identity";
 import type { Box } from "./repair";
-import type { AnchorLocator, Identity, RoleLocator, StepLocator } from "./schema";
+import { anchorRef, type AnchorLocator, type Identity, type RoleLocator, type StepLocator } from "./schema";
 
-type LocatorRelation = NonNullable<StepLocator["relation"]>;
+type LocatorRelation = AnchorLocator["relation"];
 
 export function locatorsFromIdentity(identity: Identity | undefined): StepLocator[] | undefined {
   if (!identity) return undefined;
@@ -111,7 +111,7 @@ function oneHit(
  */
 function preferExactControl(locator: StepLocator, hits: number[], nodes: Identity[], dropPrice: boolean): number | undefined {
   if (hits.length < 2 || (locator.kind !== "text" && locator.kind !== "role")) return undefined;
-  const want = normText(locator.kind === "text" ? locator.value || "" : locator.name || "");
+  const want = normText(locator.kind === "text" ? locator.value || "" : locator.kind === "role" ? locator.name || "" : "");
   if (!want) return undefined;
   const exact = hits.filter((index) => exactVisible(nodes[index], want, dropPrice));
   const controls = exact.filter((index) => isControl(nodes[index]));
@@ -285,15 +285,7 @@ function anchorLocator(
     kind: "anchor",
     role: target.role,
     relation: best.relation,
-    anchor: {
-      surface: neighbor.surface,
-      role: neighbor.role,
-      name: neighbor.name,
-      text: neighbor.text,
-      testId: neighbor.testId,
-      id: neighbor.id,
-      path: [],
-    },
+    anchor: anchorRef(neighbor),
   };
 }
 
@@ -328,7 +320,7 @@ function matchAnchor(
   return { index, detail: `${relation} ${shown(nodes[index])}` };
 }
 
-function sameNode(query: Identity, node: Identity): boolean {
+function sameNode(query: { role: string; name?: string; text?: string; testId?: string; id?: string }, node: Identity): boolean {
   if (query.testId && node.testId === query.testId) return true;
   if (query.id && node.id === query.id) return true;
   if (query.role && normRole(query.role) === normRole(node.role) && query.text && same(query.text, [node.text, node.name], false)) return true;

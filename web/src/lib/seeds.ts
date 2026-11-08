@@ -14,68 +14,64 @@ export const SEED_WORKFLOWS: Seed[] = [
     input("username", "text", "Username"),
     input("password", "secret", "Password"),
   ], [
-    typeStep("user", 0, "username", "Type the username", { id: "username", nameAttr: "username" }, { kind: "value", match: "{{username}}" }),
-    typeStep("pass", 1, "password", "Type the password", { id: "password", nameAttr: "password" }, { kind: "element", identity: ident({ id: "password" }) }, true),
-    clickStep("go", 2, "Click Log in", { id: "login-btn", testId: "login", role: "button", text: "Log in", tag: "button" }, { kind: "text", match: "Welcome {{username}}" }),
+    typeStep("user", 0, "username", "Type the username", css("#username"), { kind: "value", match: "{{username}}" }),
+    typeStep("pass", 1, "password", "Type the password", css("#password"), { kind: "element", locators: [css("#password")] }, true),
+    clickStep("go", 2, "Click Log in", role("button", "Log in"), { kind: "text", match: "Welcome {{username}}" }),
   ]),
   seed("fixture-row", "Pick a row on the Bao fixture", "Fixture", FIXTURE, [
-    { name: "row", type: "choice", label: "Row", required: true, choices: ["Ada", "Grace"] },
+    input("row", "choice", "Row", ["Ada", "Grace"]),
   ], [
     {
       id: "row",
       index: 0,
       action: "click",
-      label: "Click the row named {{row}}",
-      surface: "dom",
+      caption: cap("Click the row named {{row}}"),
       timeoutMs: 8000,
-      identity: ident({ role: "li", testId: "row", tag: "li" }),
+      target: { locators: [css("[data-testid=row]")] },
       selection: { by: "text", input: "row" },
-      postcondition: { kind: "text", match: "Picked {{row}}", timeoutMs: 4000 },
+      check: { kind: "text", match: "Picked {{row}}", timeoutMs: 4000 },
     },
   ]),
   seed("fixture-username", "Fill the fixture username", "Fixture", FIXTURE, [
     input("username", "text", "Username"),
   ], [
-    typeStep("user", 0, "username", "Type the username", { id: "username", nameAttr: "username" }, { kind: "value", match: "{{username}}" }),
+    typeStep("user", 0, "username", "Type the username", css("#username"), { kind: "value", match: "{{username}}" }),
   ]),
   seed("fixture-upload", "Upload a file on the Bao fixture", "Fixture", FIXTURE, [
-    { name: "file", type: "file", label: "File", required: true },
+    input("file", "file", "File"),
   ], [
     {
       id: "file",
       index: 0,
       action: "upload",
-      label: "Upload a file",
-      surface: "dom",
+      caption: cap("Upload a file"),
       timeoutMs: 8000,
-      input: "file",
-      value: "{{file}}",
-      identity: ident({ id: "file", nameAttr: "file", testId: "file", tag: "input" }),
-      postcondition: { kind: "element", timeoutMs: 4000, identity: ident({ id: "file", testId: "file" }) },
+      file: { input: "file" },
+      target: { locators: [css("#file")] },
+      check: { kind: "element", timeoutMs: 4000, locators: [css("#file")] },
     },
   ]),
   seed("wikipedia-search", "Search Wikipedia", "Research", "https://en.wikipedia.org/wiki/Main_Page", [
     input("query", "text", "Search query"),
   ], [
-    typeStep("q", 0, "query", "Type the search query", { id: "searchInput", nameAttr: "search", label: "Search Wikipedia", role: "input" }, { kind: "element", identity: ident({ id: "searchInput", role: "input" }) }),
+    typeStep("q", 0, "query", "Type the search query", css("#searchInput"), { kind: "element", locators: [css("#searchInput")] }),
     {
       id: "go",
       index: 1,
       action: "key",
       key: "Enter",
-      label: "Submit the search",
-      surface: "dom",
+      caption: cap("Submit the search"),
       timeoutMs: 8000,
-      postcondition: { kind: "url", match: "{{query}}", timeoutMs: 12000 },
+      check: { kind: "url", match: "{{query}}", timeoutMs: 12000 },
     },
   ]),
   seed("public-form", "Submit a public form", "Forms", "https://httpbin.org/forms/post", [
     input("name", "text", "Customer name"),
     input("note", "text", "Delivery note"),
   ], [
-    typeStep("name", 0, "name", "Type the customer name", { nameAttr: "custname", label: "Customer name:", tag: "input" }, { kind: "value", match: "{{name}}" }),
-    typeStep("note", 1, "note", "Type the delivery note", { nameAttr: "comments", label: "Delivery instructions:", tag: "textarea", role: "textbox" }, { kind: "value", match: "{{note}}" }),
-    clickStep("send", 2, "Submit the order", { role: "button", text: "Submit order", tag: "button" }, { kind: "url", match: "/post" }),
+    typeStep("name", 0, "name", "Type the customer name", role("textbox", "Customer name:"), { kind: "value", match: "{{name}}" }),
+    typeStep("note", 1, "note", "Type the delivery note", role("textbox", "Delivery instructions:"), { kind: "value", match: "{{note}}" }),
+    clickStep("send", 2, "Submit the order", role("button", "Submit order"), { kind: "url", match: "/post" }),
   ]),
 ];
 
@@ -84,8 +80,7 @@ function seed(id: string, name: string, category: string, startUrl: string, inpu
     id,
     category,
     document: {
-      schema: "bao.workflow/v2",
-      version: 2,
+      schema: "bao.workflow/v4",
       id,
       name,
       startUrl,
@@ -96,12 +91,20 @@ function seed(id: string, name: string, category: string, startUrl: string, inpu
   };
 }
 
-function input(name: string, type: string, label: string) {
-  return { name, type, label, required: true };
+function input(name: string, type: string, label: string, choices?: string[]) {
+  return { name, type, label, supply: "must", ...(choices ? { choices } : {}) };
 }
 
-function ident(partial: Record<string, unknown>) {
-  return { surface: "dom", role: "textbox", path: [], ...partial };
+function css(value: string) {
+  return { kind: "css", value };
+}
+
+function role(roleName: string, name: string) {
+  return { kind: "role", role: roleName, name };
+}
+
+function cap(text: string) {
+  return { text, citation: { text, source: "text" } };
 }
 
 function typeStep(
@@ -109,22 +112,20 @@ function typeStep(
   index: number,
   inputName: string,
   label: string,
-  identity: Record<string, unknown>,
-  post: { kind: string; match?: string; identity?: unknown },
+  locator: { kind: string; value?: string; role?: string; name?: string },
+  post: { kind: string; match?: string; locators?: unknown[] },
   sensitive = false,
 ) {
   return {
     id,
     index,
     action: "type",
-    label: sensitive ? "Type the password" : label,
-    surface: "dom",
+    caption: cap(label),
     timeoutMs: 8000,
-    input: inputName,
-    value: `{{${inputName}}}`,
+    text: { input: inputName },
     ...(sensitive ? { sensitive: true } : {}),
-    identity: ident(identity),
-    postcondition: { ...post, timeoutMs: 8000 },
+    target: { locators: [locator] },
+    check: { ...post, timeoutMs: 8000 },
   };
 }
 
@@ -132,17 +133,16 @@ function clickStep(
   id: string,
   index: number,
   label: string,
-  identity: Record<string, unknown>,
+  locator: { kind: string; value?: string; role?: string; name?: string },
   post: { kind: string; match?: string },
 ) {
   return {
     id,
     index,
     action: "click",
-    label,
-    surface: "dom",
+    caption: cap(label),
     timeoutMs: 8000,
-    identity: ident(identity),
-    postcondition: { ...post, timeoutMs: 8000 },
+    target: { locators: [locator] },
+    check: { ...post, timeoutMs: 8000 },
   };
 }
