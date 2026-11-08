@@ -191,7 +191,7 @@ export class AgentBrowserProxy {
         results.push(...await this.waitForOwner(session, args));
         return results;
       }
-      if (visual && (command === "click" || command === "fill") && args[0]) {
+      if ((command === "click" || command === "fill") && args[0]) {
         await this.captureTarget(session, step, args[0]);
         if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
       }
