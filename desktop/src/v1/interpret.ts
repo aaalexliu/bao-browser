@@ -474,7 +474,9 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity)) {
       input.default = event.value;
     }
-    Object.assign(input, finishInput(input));
+    const finished = finishInput(input);
+    const at = inputs.indexOf(input);
+    if (at >= 0) inputs[at] = finished;
     return {
       id, index, action: "type", timeoutMs: 8000, target,
       caption: caption(typeSentence(field, secret), secret ? undefined : cite, box),

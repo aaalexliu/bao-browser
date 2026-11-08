@@ -43,6 +43,7 @@ export interface PersonPrompts {
   showAsk?(ask: HumanAsk): void;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
+  ownerContinued?(): boolean;
   /** Drop UI trail events while a person has the page. */
   pauseCapture?(): void;
   resumeCapture?(): void;
@@ -586,6 +587,10 @@ export class BrowserDriver implements Driver {
 
   loginContinued(): boolean {
     return this.prompts?.loginContinued?.() ?? false;
+  }
+
+  ownerContinued(): boolean {
+    return this.prompts?.ownerContinued?.() ?? false;
   }
 
   pauseCapture(): void {

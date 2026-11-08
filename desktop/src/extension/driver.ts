@@ -256,6 +256,10 @@ export class ExtensionDriver implements Driver {
     return this.prompts?.loginContinued?.() ?? false;
   }
 
+  ownerContinued(): boolean {
+    return this.prompts?.ownerContinued?.() ?? false;
+  }
+
   pauseCapture(): void {
     this.prompts?.pauseCapture?.();
   }

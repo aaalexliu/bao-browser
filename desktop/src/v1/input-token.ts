@@ -67,10 +67,10 @@ export function editInput(
     }
   }
   if (edit.required === true || oneTimeCodeInput(doc, nextInput.name)) delete nextInput.default;
-  Object.assign(nextInput, finishInput(nextInput));
+  const finished = finishInput(nextInput);
   const next: WorkflowV2 = {
     ...doc,
-    inputs: doc.inputs.map((input) => input.name === edit.name ? nextInput : input),
+    inputs: doc.inputs.map((input) => input.name === edit.name ? finished : input),
     updatedAt: Date.now(),
   };
   const errors = validateWorkflow(next);

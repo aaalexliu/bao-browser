@@ -113,14 +113,6 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const READS = new Set(["text", "href", "src", "value", "title", "rating"]);
 const COL_TYPES = new Set(["text", "number", "url"]);
 
-export function documentUsesDataSteps(doc: {
-  outputs?: unknown;
-  steps?: { action?: string; extract?: unknown; forEach?: unknown }[];
-}): boolean {
-  if (Array.isArray(doc.outputs) && doc.outputs.length > 0) return true;
-  return (doc.steps ?? []).some((step) => step.action === "extract" || step.action === "for_each" || step.extract || step.forEach);
-}
-
 export function validateDataSteps(doc: WorkflowV2): string[] {
   const errors: string[] = [];
   const names = new Set(doc.inputs.map((input) => input.name));
