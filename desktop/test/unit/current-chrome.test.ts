@@ -821,7 +821,8 @@ test("idle backstop never interrupts an active agent command", async (t) => {
 test("disconnect during an owner wait closes task tabs before detaching", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
-  await f.proxy.execute("wait_for_owner", ["1"]);
+  // A 1 ms wait can expire before the first poll reaches the banner, so give that poll room to run.
+  await f.proxy.execute("wait_for_owner", ["200"]);
   assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner wait brings the background task tab forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.timers.tick(1_800_000);
