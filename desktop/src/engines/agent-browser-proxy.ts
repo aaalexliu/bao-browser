@@ -12,7 +12,7 @@ import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { openBaoChromeForProxy } from "./bao-profile";
-import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
+import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
 
@@ -89,7 +89,7 @@ export class AgentBrowserProxy {
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
   /** The open session drives the owner's own running Chrome. */
-  get currentChrome(): boolean { return this.session?.kind === "current"; }
+  get currentChrome(): boolean { return this.session?.kind === "current" || this.closedCurrent; }
   /** The sign-in or check page Bao is waiting on, or the latest one it waited on. URL and title only. */
   get ownerPage(): OwnerWaitPage | undefined {
     const session = this.session;
@@ -98,6 +98,7 @@ export class AgentBrowserProxy {
     return page && { ...page, ...(session?.ownerSince !== undefined ? { since: session.ownerSince } : {}) };
   }
   private currentEnded = false;
+  private closedCurrent = false;
 
   constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean }) {}
 
@@ -120,6 +121,7 @@ export class AgentBrowserProxy {
     if (this.session && browser !== undefined && browser !== this.session.browser) {
       throw new Error("close the current session before choosing a different browser");
     }
+    this.closedCurrent = command === "close" && this.currentEnded;
     if (command === "close") {
       this.currentEnded = false;
       if (this.session) this.session.closing = true;
@@ -177,7 +179,7 @@ export class AgentBrowserProxy {
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
         if (session.ownerWait) {
-          results.push(...this.ownerResult("halted"));
+          results.push(...this.ownerResult("halted", session.kind === "current"));
           return results;
         }
       }
@@ -194,7 +196,7 @@ export class AgentBrowserProxy {
       }
       if ((command === "click" || command === "fill") && args[0]) {
         await this.captureTarget(session, step, args[0]);
-        if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
+        if (session.ownerWait) { results.push(...this.ownerResult("halted", session.kind === "current")); return results; }
       }
       await session.workflow.record(command as string, args, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
@@ -205,7 +207,7 @@ export class AgentBrowserProxy {
         return result;
       }, () => !!session.ownerWait);
       if (session.ownerWait) {
-        results.splice(0, results.length, ...this.ownerResult("halted"));
+        results.splice(0, results.length, ...this.ownerResult("halted", session.kind === "current"));
         return results;
       }
       if (visual && command === "snapshot" && results[0]?.exitCode === 0) context.mark = await this.readMark(session, recording.seenOn(session.page?.url), results[0].stdout);
@@ -351,7 +353,7 @@ export class AgentBrowserProxy {
   }
 
   private ownerResult(kind: "halted" | "waiting" | "ready" | "closed", current = false): AgentBrowserCommandResult[] {
-    return [{ stdout: JSON.stringify({ outcome: kind, instruction: kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication." : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue." : OWNER_WAIT_INSTRUCTION }), stderr: "", exitCode: 0 }];
+    return [{ stdout: JSON.stringify({ outcome: kind, instruction: kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication." : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue." : ownerWaitInstruction(current) }), stderr: "", exitCode: 0 }];
   }
 
   private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
@@ -473,7 +475,7 @@ export class AgentBrowserProxy {
         }
         await new Promise((resolve) => setTimeout(resolve, Math.min(250, Math.max(1, deadline - Date.now()))));
       }
-      return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.ownerResult("waiting");
+      return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.ownerResult("waiting", session.kind === "current");
     } finally {
       session.abort.signal.removeEventListener("abort", onAbort);
       if (session.kind === "copy") cdp?.close();

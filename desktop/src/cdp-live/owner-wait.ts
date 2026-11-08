@@ -23,7 +23,7 @@ export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {
   return before.url !== now.url || before.title !== now.title;
 }
 
-export const OWNER_WAIT_INSTRUCTION = "Keep this session open. Ask the owner to sign in or clear the check in this Bao window, then call agent_browser with command=wait_for_owner and args=[\"60000\"]. Repeat it while the result is waiting; do not end your turn or start another session. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that the owner closed the window.";
+export const ownerWaitInstruction = (current: boolean) => `Keep this session open. Ask the owner to sign in or clear the check in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner and args=[\"60000\"]. Repeat it while the result is waiting; do not end your turn or start another session. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
 
 export function ownerWaitTimeout(value: unknown): number {
   if (value === undefined) return 60_000;

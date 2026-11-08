@@ -10,7 +10,7 @@ import * as bao from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { ownerWall, ownerCanResume, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
+import { ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -194,4 +194,14 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
       }
     }
   }
+});
+
+test("the owner-wait instruction sends the owner to the browser the session drives", () => {
+  const current = ownerWaitInstruction(true);
+  assert.match(current, /sign in or clear the check in Bao's task tab in their own Chrome,/);
+  assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
+  assert.doesNotMatch(current, /Bao window/);
+  const bao = ownerWaitInstruction(false);
+  assert.match(bao, /sign in or clear the check in this Bao window,/);
+  assert.match(bao, /On closed, report that the owner closed the window\.$/);
 });
