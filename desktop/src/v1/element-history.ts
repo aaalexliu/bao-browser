@@ -46,8 +46,14 @@ export function changedAttrs(before: WorkflowStep, after: WorkflowStep): string[
   for (const attr of HINT_ATTRS) {
     if ((left?.hint?.[attr] || "") !== (right?.hint?.[attr] || "")) changed.push(attr);
   }
+  if (testidOf(left?.locators) !== testidOf(right?.locators)) changed.push("testId");
   if (locatorKey(left?.locators) !== locatorKey(right?.locators)) changed.push("locators");
   return changed;
+}
+
+function testidOf(list: StepLocator[] | undefined): string {
+  const locator = list?.find((item) => item.kind === "testid");
+  return locator?.kind === "testid" ? locator.value : "";
 }
 
 export function withHealVersion(

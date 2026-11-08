@@ -1049,23 +1049,23 @@ async function findTarget(
       located = locate(step, tree, args, "all");
     }
   }
-  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden)) {
+  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden) && testIdAgrees(stepQuery(step)?.testId, tree.nodes[located.hit.index])) {
     if (located.via) locatorHits.push(located.via);
     return { ...located, recovered };
   }
   const labeled = labelCandidate(step, tree.nodes, tree.boxes);
-  if (labeled) {
+  if (labeled && testIdAgrees(stepQuery(step)?.testId, tree.nodes[labeled.index])) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
-  if (anchored) {
+  if (anchored && testIdAgrees(stepQuery(step)?.testId, tree.nodes[anchored.index])) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
-  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden)) {
+  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden) && testIdAgrees(stepQuery(step)?.testId, waited.nodes[waited.hit.index])) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
     if (waited.via) locatorHits.push(waited.via);
     return { ...waited, recovered };
@@ -1604,10 +1604,21 @@ function locate(
       if (compatible) preferred = compatible.index;
     }
     const idWinner = idAt >= 0 && tried[idAt]!.score === 100 ? idAt : -1;
-    const winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
+    let winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
+    if (identity?.testId) {
+      const exact = perfect.find((row) => {
+        const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
+        return !!found && nodes[found.index]?.testId === identity.testId;
+      });
+      if (exact) winner = exact.index;
+      else if (winner >= 0) {
+        const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
+        if (found && nodes[found.index]?.testId && nodes[found.index]?.testId !== identity.testId) winner = -1;
+      }
+    }
     if (winner >= 0) {
       const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
-      if (found) {
+      if (found && testIdAgrees(identity?.testId, nodes[found.index])) {
         return {
           nodes,
           hit: { ok: true, index: found.index, ranked: [] },
@@ -1625,9 +1636,12 @@ function locate(
         tried,
       };
     }
-    if (identity) {
+    // Primary mode tries only the first locator. A later locator must not
+    // become an identity hit, or the label repair never runs.
+    if (identity && locatorMode !== "primary") {
       const hit = lookup(identity, nodes);
-      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden)) {
+      if (hit.reason === "tie") return { nodes, hit, tried };
+      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden) && testIdAgrees(identity.testId, nodes[hit.index])) {
         const node = nodes[hit.index];
         const detail = node?.name || node?.label || node?.text || node?.nameAttr || node?.id || "identity";
         return {
@@ -1676,6 +1690,12 @@ function rolesCompatible(recorded: string, live: string): boolean {
   // A button that only shares the words is still not the field.
   const fields = new Set(["textbox", "input", "combobox", "searchbox"]);
   return fields.has(left) && fields.has(right);
+}
+
+/** A live node with a different test id is not the saved target. A node that has none can still match. */
+function testIdAgrees(want: string | undefined, node: Identity | undefined): boolean {
+  if (!want || !node?.testId) return true;
+  return node.testId === want;
 }
 
 function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | undefined {

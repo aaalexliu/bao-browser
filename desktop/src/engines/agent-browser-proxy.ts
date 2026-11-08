@@ -203,7 +203,13 @@ export class AgentBrowserProxy {
     } finally {
       try {
         if (step) {
-          await session.recording.complete(step, results, session.stateDir, async () => (await this.screenshot(session, command as string, visual)).bytes, failure, !!session.ownerWait || command === "wait_for_owner");
+          try {
+            await session.recording.complete(step, results, session.stateDir, async () => (await this.screenshot(session, command as string, visual)).bytes, failure, !!session.ownerWait || command === "wait_for_owner");
+          } catch (completeError) {
+            // A hung command already failed with AbortError. The completion
+            // screenshot throws page closed after disconnect and must not replace it.
+            if (failure === undefined) throw completeError;
+          }
           if (command === "close") this.latest = { runId: recording.id, step, lastPicture: recording.lastPicture };
         }
       } finally {
@@ -447,7 +453,9 @@ export class AgentBrowserProxy {
       const box = targetBox({ x, y, width, height }, frame.viewport);
       if (!box) return;
       await session.recording.actionPicture(step, frame.bytes, { rect: box, viewport: frame.viewport });
-    } catch {
+    } catch (error) {
+      // A disconnect aborts the box read. That abort is the command's result.
+      if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
       // Missing action evidence must not change the native command.
     }
   }
