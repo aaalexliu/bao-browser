@@ -4,7 +4,7 @@ The contract is `schema/workflow.schema.json`, id `bao.workflow/v4`. `desktop/sr
 
 ## Document
 
-`schema`, `id`, `name`, `startUrl`, `inputs`, `steps`, `createdAt`. There is no `version` field. Optional document `heal` is `auto` or `approve`. A step `heal` is `auto`, `ask`, or `never`. Optional `driver` is `playwright` or `extension`.
+`schema`, `id`, `name`, `startUrl`, `inputs`, `steps`, `createdAt`. There is no `version` field. Optional document `heal` is `auto` or `approve`. A step `heal` is `auto`, `ask`, or `never`. Optional `driver` is `playwright` or `extension`. Optional `imported: true` means this copy was installed from someone else. Absent means the owner recorded it. An input's `ownerSaved: true` means the owner saved that value after import. Author defaults omit it.
 
 `provenance: "fixture"` stays in Library and is left out of agent search. Search also leaves out a workflow the caller cannot replay for its driver or selected engine. Search and replay share that check. Relay search uses the current extension connection. The registry filters candidates before its five-hit limit.
 
@@ -18,7 +18,7 @@ Collected before replay starts. Each input has `name`, `type`, `label`, and `sup
 | `secret` | A password. A local default may stay saved. An outbound copy drops that default and sets `supply` to `must`. |
 | `number` | A number. |
 | `choice` | One of `choices`. |
-| `file` | A file the owner supplies. `supply` is `must`. |
+| `file` | A file. `supply` is `must`. A step may bind `file.fromOutput` to an earlier download instead of asking the owner. |
 | `date` | A date. Replay resolves `relative` or `default` in `zone`. |
 | `table` | Rows for `extract` and `for_each`. |
 
