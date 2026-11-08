@@ -139,6 +139,7 @@ let theme: "light" | "dark" = "light";
 let login: LoginForm = emptyLogin();
 let gateNote = "";
 let gateUrl = "";
+let replayError = "";
 let pinnedRunId = "";
 let pinnedInputs: Record<string, string> | null = null;
 let debugStepId = "";
@@ -575,7 +576,7 @@ function replayForm(): string {
       <button class="primary" id="run" type="button">Run</button>
       <button id="rerun" type="button">Re-run with past inputs</button>
     </div>
-    <div id="live">${gateNote ? needsSignInHtml(gateNote) : ""}</div>
+    <div id="live">${replayError ? esc(replayError) : gateNote ? needsSignInHtml(gateNote) : ""}</div>
   </section>`;
 }
 
@@ -1933,6 +1934,12 @@ async function startGuide(id: string): Promise<void> {
     body: JSON.stringify({ id, args: {}, guide: true }),
   }));
   const run = await res.json() as { status?: string; actions?: number; error?: string };
+  if (!res.ok) {
+    replayError = run.error || "The run did not start.";
+    navigate("replay");
+    return;
+  }
+  replayError = "";
   const live = document.getElementById("guide-actions");
   if (live && typeof run.actions === "number") live.textContent = `${run.actions} automated actions`;
   renderKey = "";
@@ -1960,6 +1967,7 @@ async function runReplay(): Promise<void> {
   const live = document.getElementById("live");
   if (live) live.textContent = "Running…";
   gateNote = "";
+  replayError = "";
   const fromStep = debugStepId;
   const res = await statePoller.track(fetch("/api/replay", {
     method: "POST",
