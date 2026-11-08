@@ -40,6 +40,29 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
   }
 }
 
+async function stopDaemon(stateDir: string): Promise<void> {
+  try {
+    const pid = Number((await readFile(path.join(stateDir, "bao.pid"), "utf8")).trim());
+    if (!Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid) return;
+    const running = () => {
+      try { process.kill(pid, 0); return true; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+        throw error;
+      }
+    };
+    for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
+      process.kill(pid, signal);
+      const deadline = performance.now() + 1000;
+      while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+      if (!running()) break;
+    }
+    if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
+  } catch (error) {
+    if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+}
+
 export const AGENT_BROWSERS = BROWSER_CHOICES;
 export type AgentBrowser = typeof AGENT_BROWSERS[number];
 
@@ -375,18 +398,20 @@ export class AgentBrowserProxy {
 
   private async agentPage(session: Session): Promise<Awaited<ReturnType<AgentBrowserProxy["activePage"]>>> {
     if (session.kind === "copy") return this.activePage(session);
-    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string; type?: string; openerId?: string }[] }>("Target.getTargets", {}, undefined, 5000);
+    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string; url: string; type?: string; openerId?: string }[] }>("Target.getTargets", {}, undefined, 5000);
     const opened = targetInfos.filter((target) => target.type === "page" && target.openerId && session.taskTabs.has(target.openerId) && !session.taskTabs.has(target.targetId));
     for (const target of opened) session.taskTabs.add(target.targetId);
-    let next = opened.at(-1)?.targetId;
-    if (!next) {
-      const active = await this.activePage(session);
-      const taskTab = session.taskTabs.values().next().value!;
-      if (active || !targetInfos.some((target) => target.targetId === taskTab)) return active;
-      next = taskTab;
+    const popup = opened.at(-1)?.targetId;
+    if (popup) {
+      const switched = await this.run(session, "tab", [popup], 5000);
+      if (switched.exitCode !== 0) throw new Error(`Native tab switch failed (exit ${switched.exitCode}): ${switched.stderr || switched.stdout}`);
+      return this.activePage(session);
     }
-    const switched = await this.run(session, "tab", [next], 5000);
-    if (switched.exitCode !== 0) throw new Error(`Native tab switch failed (exit ${switched.exitCode}): ${switched.stderr || switched.stdout}`);
+    const active = await this.activePage(session);
+    const taskTab = targetInfos.find((target) => target.targetId === session.taskTabs.values().next().value);
+    if (active || !taskTab) return active;
+    await stopDaemon(session.stateDir);
+    await writeFile(path.join(session.stateDir, "bao.target"), JSON.stringify({ targetId: taskTab.targetId, url: taskTab.url, pinned: true }), { mode: 0o600 });
     return this.activePage(session);
   }
 
@@ -474,7 +499,7 @@ export class AgentBrowserProxy {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
         try {
           if (!session.ownerWait || session.ownerWait === "pending") {
-            const active = await this.activePage(session);
+            const active = await this.agentPage(session);
             if (!active) return this.ownerClosed(session);
             session.ownerWait = active;
             session.ownerPage = active.page;
@@ -487,7 +512,14 @@ export class AgentBrowserProxy {
           if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
           const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
-          if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+          if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+          if (!page) {
+            const taskTab = session.kind === "current" ? session.taskTabs.values().next().value : undefined;
+            if (!taskTab || taskTab === waiting.targetId || !targetInfos.some((tab) => tab.targetId === taskTab)) return this.ownerClosed(session);
+            session.ownerWait = undefined;
+            session.recording.ownerWaiting(false);
+            return this.ownerResult("ready");
+          }
           const ready = ownerCanResume(waiting.page, page);
           const signature = ready ? JSON.stringify([page.url, page.title]) : "";
           if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }
@@ -651,25 +683,7 @@ export class AgentBrowserProxy {
         if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
         try {
           try {
-            const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
-            if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) {
-              const running = () => {
-                try { process.kill(pid, 0); return true; }
-                catch (error) {
-                  if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-                  throw error;
-                }
-              };
-              for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
-                process.kill(pid, signal);
-                const deadline = performance.now() + 1000;
-                while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-                if (!running()) break;
-              }
-              if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
-            }
-          } catch (error) {
-            if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+            await stopDaemon(session.stateDir);
           } finally {
             if (session.kind === "current") {
               try {

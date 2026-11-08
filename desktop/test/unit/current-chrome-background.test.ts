@@ -16,7 +16,7 @@ pinTestBrowser();
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 
-const TASK = `<!doctype html><title>Task</title><input id=q aria-label=Name><button id=b>Save</button><button id=p onclick="window.open('/popup')">Sign in</button><p id=out>not clicked</p>
+const TASK = `<!doctype html><title>Task</title><input id=q aria-label=Name><button id=b>Save</button><button id=p onclick="window.open('/popup')">More</button><button id=l onclick="window.open('/login')">Sign in</button><p id=out>not clicked</p>
 <script>let frames=0;(function f(){frames++;requestAnimationFrame(f)})();b.onclick=()=>{out.textContent='clicked, typed: '+q.value};</script>`;
 
 async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string): Promise<T> {
@@ -27,12 +27,22 @@ async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string)
   } finally { await cdp.send("Target.detachFromTarget", { sessionId }); }
 }
 
+async function ownerInFront(probe: CdpSocket, owner: string): Promise<() => Promise<{ visibility: string; events: string[] }>> {
+  await probe.send("Target.activateTarget", { targetId: owner });
+  for (let i = 0; i < 40 && await evaluate(probe, owner, "document.visibilityState") !== "visible"; i++) await new Promise(resolve => setTimeout(resolve, 50));
+  await evaluate(probe, owner, `window.ownerEvents = []; if (!window.watching) { window.watching = true;
+    document.addEventListener('visibilitychange', () => ownerEvents.push(document.visibilityState));
+    addEventListener('blur', () => ownerEvents.push('blur')); }`);
+  return () => evaluate(probe, owner, "({ visibility: document.visibilityState, events: window.ownerEvents })");
+}
+
 async function withCurrentChrome(t: TestContext, body: (context: { base: string; probe: CdpSocket; proxy: AgentBrowserProxy; owner: string;
   pages: () => Promise<{ targetId: string; url: string }[]> }) => Promise<void>): Promise<void> {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-background-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
     response.end(request.url?.startsWith("/task") ? TASK : request.url === "/popup" ? "<!doctype html><title>Popup</title><h1>Popup page</h1>"
+      : request.url === "/login" ? "<!doctype html><title>Sign in</title><h1>Sign in</h1>"
       : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -137,18 +147,46 @@ test("the agent follows tabs its own pages open and returns to the task tab when
     const popupTab = (await pages()).find(target => target.url === `${base}/popup`)?.targetId;
     assert.ok(popupTab);
 
+    let ownerState = await ownerInFront(probe, owner);
     const [closed] = await proxy.execute("tab", ["close"]);
     assert.equal(closed!.exitCode, 0, closed!.stderr);
     assert.doesNotMatch(closed!.stdout, /"outcome"/);
     const [back] = await proxy.execute("snapshot");
     assert.match(back!.stdout, /Save/, "closing the popup returns to the task tab");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the return leaves the owner's tab in front");
 
     const [second] = await proxy.execute("tab", ["new", `${base}/task?second`]);
     assert.equal(second!.exitCode, 0, second!.stderr);
+    ownerState = await ownerInFront(probe, owner);
     assert.equal((await proxy.execute("tab", ["close"]))[0]!.exitCode, 0);
     const [filled] = await proxy.execute("fill", ["#q", "Lin"]);
     assert.equal(filled!.exitCode, 0, filled!.stderr);
     assert.equal(await evaluate(probe, task, "q.value"), "Lin", "closing the agent's second tab returns to the task tab");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the return leaves the owner's tab in front");
     assert.deepEqual(new Map((await pages()).map(target => [target.targetId, target.url])),
       new Map([[task, `${base}/task`], [owner, `${base}/owner`], [later, `${base}/owner?later`]]), "the owner's tabs stay untouched");
+  }));
+
+test("a sign-in popup that closes during the owner wait returns the agent to the task tab", { skip: !binary, timeout: 60_000 }, (t) =>
+  withCurrentChrome(t, async ({ base, probe, proxy, owner, pages }) => {
+    const opened = await proxy.execute("open", [`${base}/task`], "current");
+    assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
+    const task = (await pages()).find(target => target.url === `${base}/task`)?.targetId;
+    assert.ok(task);
+    assert.equal((await proxy.execute("click", ["#l"]))[0]!.exitCode, 0);
+    while (!(await pages()).some(target => target.url === `${base}/login`)) await new Promise(resolve => setTimeout(resolve, 50));
+    const [halted] = await proxy.execute("snapshot");
+    assert.equal(JSON.parse(halted!.stdout).outcome, "halted", "the sign-in popup hands off to the owner");
+    const login = (await pages()).find(target => target.url === `${base}/login`)!.targetId;
+
+    const waiting = proxy.execute("wait_for_owner", ["10000"]);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await probe.send("Target.closeTarget", { targetId: login });
+    const [ready] = await waiting;
+    assert.equal(JSON.parse(ready!.stdout).outcome, "ready");
+    const ownerState = await ownerInFront(probe, owner);
+    const [back] = await proxy.execute("snapshot");
+    assert.match(back!.stdout, /Save/, "the session continues in the task tab");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] });
+    assert.deepEqual((await pages()).map(target => target.targetId).sort(), [owner, task].sort());
   }));
