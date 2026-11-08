@@ -4,7 +4,7 @@ The contract is `schema/workflow-v2.schema.json`, id `bao.workflow/v2`. A docume
 
 ## Document
 
-`schema`, `version` (2), `id`, `name`, `startUrl`, `inputs`, `steps`, `createdAt`. Optional `heal`: `auto` or `approve`. Absent means the global setting, whose default is `auto`.
+`schema`, `version` (2), `id`, `name`, `startUrl`, `inputs`, `steps`, `createdAt`. Optional `heal`: `auto` or `approve`. Absent means the global setting, whose default is `auto`. Optional `imported: true` means this copy was installed from someone else. Absent means the owner recorded it. An input's `ownerSaved: true` means the owner saved that value after import. Author defaults omit it.
 
 The schema still accepts `driver: "cdp-live"` so historical workflows remain readable. That driver is retired. App and MCP replay, step Try, and promotion checks refuse it before opening Chrome with `this workflow used the retired live driver`. Replacing an existing retired workflow through edits, imports, conflict resolution, or version promotion preserves its `cdp-live` tag; removing or changing the tag cannot enable replay. `desktop/test/unit/retired-live-driver.test.ts` covers these boundaries. The `agent_browser` pass-through records runs and saves supported single-page tasks as `playwright` workflows for current-engine replay. See [the recording boundary](agent-browser-engine.md).
 

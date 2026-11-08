@@ -5,7 +5,7 @@ import { isElementCrop, isPicture } from "./png";
 import { syncPicture } from "./sync-pictures";
 import { query } from "./db";
 import type { SyncShot } from "./guard";
-import { applyRegistryImportAnswers, importQuestions, prepareImport, publicSamples } from "./import-sheet";
+import { applyRegistryImportAnswers, importQuestions, markImported, prepareImport, publicSamples } from "./import-sheet";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
 import { runPublishGate } from "./review-gate";
 import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
@@ -512,7 +512,7 @@ export async function installShare(principal: Principal, token: string, answers:
   const user = await mustUser(principal.userId);
   const installed = answered(share.document, answers);
   const id = `wf-${randomUUID()}`;
-  const doc = { ...(installed as Record<string, unknown>), id, name: `Fork of ${(installed as { name?: string }).name || "workflow"}` };
+  const doc = markImported({ ...(installed as Record<string, unknown>), id, name: `Fork of ${(installed as { name?: string }).name || "workflow"}` }, answers);
   const errors = workflowErrors(doc);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
   await insertOwned(principal.userId, doc, 0, null, [], user.name, categoryFor(doc), undefined, principal.deviceId ?? null);
@@ -690,7 +690,7 @@ export async function forkPublic(principal: Principal, id: string, answers: Reco
   const user = await mustUser(principal.userId);
   const installed = answered(pub.document, answers);
   const nextId = `wf-${randomUUID()}`;
-  const doc = { ...(installed as Record<string, unknown>), id: nextId, name: `Fork of ${pub.name}` };
+  const doc = markImported({ ...(installed as Record<string, unknown>), id: nextId, name: `Fork of ${pub.name}` }, answers);
   const errors = workflowErrors(doc);
   if (errors.length) throw new HttpError(errors.join("; "), 400);
   await insertOwned(principal.userId, doc, 0, null, [], user.name, pub.category, id, principal.deviceId ?? null);

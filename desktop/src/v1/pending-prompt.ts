@@ -72,6 +72,7 @@ export function markPromptTimedOut(store: PromptRunStore, prompt: PendingPrompt,
     steps,
     decisions: existing?.decisions,
     inputs: existing?.inputs,
+    savedValues: existing?.savedValues,
     failure: {
       stepId: prompt.ask.stepId,
       index: Math.max(0, prompt.ask.stepIndex - 1),

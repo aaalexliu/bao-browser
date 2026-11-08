@@ -6,9 +6,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { runViewer } from "../../src/app/views";
+import { inputsPane, runViewer } from "../../src/app/views";
 import { scoreLocator } from "../../src/v1/locators";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
+import { savedValueLine } from "../../src/v1/saved-inputs";
 import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 
 function ident(partial: Partial<Identity>): Identity {
@@ -67,6 +68,32 @@ test("a stored input is name, colon, value", () => {
   }, { name: "upload note", steps: [{ id: "type", label: "type the note" }] });
   assert.match(html, /id="stored-inputs"[^>]*>note: ada · password: ••••\./);
   assert.equal(html.includes("note ada"), false);
+  const secret = "plain-secret-9kQ7";
+  const savedWorkflow: WorkflowV2 = {
+    ...doc([]),
+    name: "Fill the form",
+    inputs: [
+      { name: "name", type: "text", default: "Ada" },
+      { name: "email", type: "text", default: "ada@example.com" },
+      { name: "password", type: "secret", default: secret },
+    ],
+  };
+  const line = savedValueLine(savedWorkflow, { name: "Ada", email: "ada@example.com", password: secret });
+  const listed = runViewer({
+    id: "run-saved",
+    workflowId: "wf",
+    status: "passed",
+    inputs: { name: "Ada", email: "ada@example.com", password: "••••" },
+    savedValues: line,
+    steps: [{ id: "type", status: "passed", label: "type the note" }],
+  }, { name: savedWorkflow.name, inputs: savedWorkflow.inputs, steps: savedWorkflow.steps });
+  assert.equal(line, "Saved values used: name: Ada · email: ada@example.com · password: saved password");
+  assert.match(listed, /id="saved-values"[^>]*>Saved values used: name: Ada · email: ada@example.com · password: saved password</);
+  assert.equal(listed.includes(secret), false);
+  const pane = inputsPane({ name: "Ada", email: "ada@example.com" });
+  assert.equal(pane.includes("id=\"saved-values\""), false);
+  assert.equal(pane.includes("Saved values used"), false);
+  assert.match(pane, /<th>name<\/th><td>Ada<\/td>/);
 });
 
 test("a filmstrip frame uses the cropped shot and an icon when the step has none", () => {

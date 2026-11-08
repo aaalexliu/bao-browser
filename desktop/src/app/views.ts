@@ -104,6 +104,8 @@ export interface RunSummary {
   decisions?: { ts: number; healId: string; decision: "keep" | "revert" }[];
   failure?: FailureView;
   inputs?: Record<string, string>;
+  /** Saved values this run used. Secrets are listed as "saved password". */
+  savedValues?: string;
   video?: string;
   videoStartedAt?: number;
   videoTruncated?: boolean;
@@ -703,6 +705,7 @@ export function runViewer(
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
     </div>`}
     ${storedInputsLine(run.inputs)}
+    ${savedValuesLine(run.savedValues)}
     <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed && !workflow.recordedOnly ? `<p class="quiet">${stopped <= 1 ? "No steps ran." : `Nothing after step ${stopped - 1} ran.`}</p>` : ""}${failed ? `<button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
@@ -970,7 +973,8 @@ export function runField(input: TokenInput, previous?: string, now = new Date())
   if (shown.masked) return secretInput(input.name, shown.label, previous && previous !== "••••" && !hasStrippedSecret(previous) ? previous : shown.default);
   if (input.type === "number") return `<label>${label} <input name="${esc(input.name)}" type="number" value="${esc(previous || shown.default)}"></label>`;
   if (input.type === "choice") {
-    const opts = (input.choices || []).map((choice) => `<option ${choice === previous ? "selected" : ""}>${esc(choice)}</option>`).join("");
+    const selected = previous || shown.default;
+    const opts = (input.choices || []).map((choice) => `<option ${choice === selected ? "selected" : ""}>${esc(choice)}</option>`).join("");
     return `<label>${label} <select name="${esc(input.name)}">${opts}</select></label>`;
   }
   if (input.type === "file" && input.fromOutput) {
@@ -1002,6 +1006,11 @@ function storedInputsLine(inputs: Record<string, string> | undefined): string {
   if (!rows.length) return "";
   const bits = rows.map(([key, value]) => `${esc(key)}: ${esc(value)}`);
   return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}.</p>`;
+}
+
+function savedValuesLine(line: string | undefined): string {
+  if (!line) return "";
+  return `<p class="quiet" id="saved-values">${esc(line)}</p>`;
 }
 
 export function reviewItems(runs: RunSummary[] | undefined): StepReview[] {
