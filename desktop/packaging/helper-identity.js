@@ -6,6 +6,8 @@ const path = require("node:path");
 
 const BUNDLE_ID = "dev.bao.oshelper";
 const PINNED_CERT_HASH = "a522e15d431a2f36ace451dd575a02e9e877fbd1";
+/** codesign's selector for an ad-hoc signature. A release built without a signing secret uses it. */
+const ADHOC = "-";
 
 function normalizeCertHash(raw) {
   const hex = String(raw || "").replace(/:/g, "").toLowerCase();
@@ -26,6 +28,13 @@ function expectedRequirement(certHash) {
 function acceptHelper(report, identity, certHash) {
   if (!report.exists) return { ok: false, reason: "helper is absent" };
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
+  // An ad-hoc build signs everything ad-hoc. macOS then keys a helper grant to one build, so it
+  // does not survive an update; the default copied-profile mode needs no grant.
+  if (identity === ADHOC) {
+    if (!report.adhoc) return { ok: false, reason: "an ad-hoc build (BAO_SIGN_IDENTITY=-) needs an ad-hoc helper" };
+    if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
+    return { ok: true, reason: "" };
+  }
   if (report.adhoc) return { ok: false, reason: "helper signature is ad-hoc" };
   if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
   const hash = normalizeCertHash(certHash);
@@ -102,6 +111,7 @@ function main() {
     process.stderr.write(`package-app.sh: ${verdict.reason}\n`);
     process.exit(1);
   }
+  if (identity === ADHOC) process.stderr.write("package-app.sh: ad-hoc build. macOS will not keep the helper's Accessibility grant across updates.\n");
 }
 
 if (require.main === module) main();
@@ -112,6 +122,7 @@ module.exports = {
   readBundle,
   helperCertHash,
   expectedRequirement,
+  ADHOC,
   BUNDLE_ID,
   PINNED_CERT_HASH,
 };

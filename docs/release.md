@@ -1,0 +1,79 @@
+# Release Bao
+
+Users install Bao with the one `npx` command in the [README](../README.md#install). This page covers how that release is built, signed, and checked. [Build Bao on a Mac](mac-build.md) stays the contributor path.
+
+## Pieces
+
+| Piece | File | Job |
+| --- | --- | --- |
+| Release build | `.github/workflows/mac-release.yml` | Runs on a published GitHub release or a manual run, never on a pull request. Apple silicon only (`macos-15`). It installs a minimal Rust toolchain for the helper and sets `BAO_SKIP_DMG=1`, so `package-app.sh` skips `Bao.dmg`. |
+| Bundled Node | `desktop/packaging/macos/fetch-node.sh`, `node-pin.json` | Downloads the pinned nodejs.org Node and checks its SHA-256. `package-app.sh` copies it to `Contents/Resources/node/bin/node` when `BAO_BUNDLE_NODE` names it. It keeps the Node.js Foundation Developer ID signature. |
+| Node lookup | `bao_node_hint` in `desktop/packaging/macos/bao-launch.c` | `BAO_NODE`, then the bundled Node, then the lookup in [Build Bao on a Mac](mac-build.md#launch). |
+| `bao-cli` | `bao-mcp.c` built with `-DBAO_CLI` | Runs `node src/app/cli.js [args]` from inside the app. The installer links `~/.local/bin/bao` to it. |
+| `bao setup` | `desktop/src/app/setup.ts` | Finds agents and desktop apps, shows the picker, and writes each pick through `agentMain` and `DesktopMcpInstaller`. |
+| `bao doctor` | `desktop/src/app/doctor.ts` | Checks the app, its signatures, the quarantine mark, Node, Chrome, each agent entry, and one MCP handshake. |
+| Release asset | `desktop/packaging/macos/make-release-asset.sh` | Zips `Bao.app` with `ditto` and writes `release.json` with the zip's URL, size, and SHA-256. |
+| Installer | `installer/`, packed by `desktop/packaging/macos/pack-installer.sh` | The `bao-browser` package: no dependencies and no install script. It reads the `release.json` packed inside it. |
+
+## Build a release
+
+Publishing a GitHub release runs `mac-release.yml`. It strips a leading `v` from the tag and sets that as the app version, so the tag must look like `v1.2.3`. It attaches `Bao-<version>-darwin-arm64.zip`, `release.json`, and the installer packed with that `release.json` as `bao-browser.tgz`. That `release.json` names the zip by its full release URL, so the latest release installs with:
+
+```sh
+npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
+```
+
+A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has any of them, the run stops; publish a new release instead.
+
+A manual run (**Actions → Mac release → Run workflow**) builds the same files and uploads them as the `bao-mac-<sha>` artifact. Its `release.json` names the zip by file name, so the latest release's installer installs it from a download folder:
+
+```sh
+npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz --release ~/Downloads/bao-mac-<sha>/release.json
+```
+
+The installer package is not on npm yet. The owner decides the npm account, signing, and license first. Publishing would be:
+
+```sh
+bash desktop/packaging/macos/pack-installer.sh path/to/release.json /tmp/bao-installer
+npm publish /tmp/bao-installer/bao-browser-<version>.tgz
+```
+
+`pack-installer.sh` refuses a `release.json` whose URL is a bare file name.
+
+## Signing
+
+Without a signing secret, the release build signs every part ad-hoc (`BAO_SIGN_IDENTITY=-`). `desktop/packaging/helper-identity.js` then accepts only an ad-hoc `dev.bao.oshelper` helper.
+
+- `npx` and `curl` downloads carry no quarantine mark, so Gatekeeper does not stop an ad-hoc app. A copy downloaded in a browser needs System Settings → Privacy & Security → Open Anyway.
+- macOS keys an ad-hoc helper's Accessibility grant to one build, so the grant does not survive an update. The default copied-profile mode needs no grant. Only running-Chrome mode uses the helper's Accessibility grant.
+- The app still runs `BaoOSHelper permissions-ax` for the Settings label. That reads Accessibility without a prompt.
+
+To sign with one project certificate, add two repository secrets: `BAO_SIGNING_P12`, a base64 `.p12` of the certificate and key, and `BAO_SIGNING_P12_PASSWORD`. `desktop/packaging/macos/ci-signing.sh` imports it into a temporary keychain and sets `BAO_SIGN_IDENTITY` and `BAO_HELPER_CERT_HASH` to its SHA-1. A self-signed certificate like `bao dev signing` works as is. Every update signed by it keeps the helper grant. Gatekeeper treats it like an ad-hoc signature.
+
+Apple Developer ID also opens from a browser download and keeps the grant across certificate renewal. It needs three more changes:
+
+1. `helper-identity.js` must accept Apple's requirement form, which names the team id instead of a certificate hash.
+2. Every executable needs the hardened runtime: `bao`, `bao-mcp`, `bao-cli`, BaoCaptureBar, BaoWindowVideo, agent-browser, and Chromium. The helper and Node already have it.
+3. A `notarytool submit --wait` step, then `stapler staple`, before `make-release-asset.sh`.
+
+## Build the release locally
+
+This builds what `mac-release.yml` builds, with an ad-hoc signature. Copy the helper and sign the copy ad-hoc, so the signed helper and its grant stay as they are:
+
+```sh
+cp -a desktop/os-helper-macos/BaoOSHelper.app /tmp/BaoOSHelper.app
+codesign --force --options runtime --entitlements desktop/os-helper-macos/entitlements.plist \
+  --identifier dev.bao.oshelper -s - /tmp/BaoOSHelper.app
+BAO_SIGN_IDENTITY=- BAO_HELPER_APP=/tmp/BaoOSHelper.app BAO_DIST=/tmp/bao-dist \
+  BAO_BUNDLE_NODE="$(bash desktop/packaging/macos/fetch-node.sh /tmp/bao-node)" \
+  bash desktop/packaging/macos/package-app.sh
+bash desktop/packaging/macos/make-release-asset.sh /tmp/bao-dist/Bao.app /tmp/bao-release
+```
+
+Install it into a temp HOME and a temp Applications folder, never `/Applications`:
+
+```sh
+mkdir -p /tmp/bao-home /tmp/bao-apps
+env -u CODEX_HOME -u CLAUDE_CONFIG_DIR HOME=/tmp/bao-home \
+  node installer/bin/bao-browser.mjs --dir /tmp/bao-apps --release /tmp/bao-release/release.json
+```

@@ -3,11 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import type { Page } from "playwright";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
-import { browserToolResult, type BrowserToolCard } from "../../src/mcp/tool-card";
+import { browserToolResult, finishToolContent, type BrowserToolCard } from "../../src/mcp/tool-card";
 import { callViewerTool } from "../../src/mcp/viewer-tools";
 import { getRun } from "../../src/mcp/catalog";
-import { BROWSER_PICTURE_BYTES, inspectRunView, listRunViews } from "../../src/mcp/run-view";
+import { BROWSER_PICTURE_BYTES, finishCardFor, inspectRunView, listRunViews } from "../../src/mcp/run-view";
 import { Library } from "../../src/v1/store";
 import { viewerHtml } from "../../src/mcp/viewer";
 import { testChromium } from "../../src/test-browser";
@@ -303,6 +304,16 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
   assert.equal(BROWSER_PICTURE_BYTES, 2 * 1024 * 1024);
   assert.ok(image.center[0]! > 240 && image.center[1]! < 20 && image.center[2]! < 20, "the scrolled target is in the marked picture position");
   assert.equal(browserToolResult("click", results, evidence, proxy.activeRunId)._meta.baoToolCard.picture.kind, "captured");
+  await page.evaluate(() => { document.querySelector("canvas")!.remove(); });
+  await proxy.execute("click", ["@e1"], undefined, true);
+  const plain = proxy.lastCommand!;
+  const sharp: Buffer = await readFile(path.join(home, "shots", "runs", runId, plain.step.beforeShot!));
+  const size = await page.evaluate(async (data) => {
+    const image = new Image(); image.src = `data:image/jpeg;base64,${data}`; await image.decode();
+    return { width: image.width, height: image.height };
+  }, sharp.toString("base64"));
+  assert.deepEqual(size, { width: viewport.width * 2, height: viewport.height * 2 }, "a plain page keeps its device pixels on a 2x screen");
+  assert.deepEqual(plain.step.target?.viewport, { width: viewport.width, height: viewport.height }, "boxes stay in CSS pixels");
   await assert.rejects(proxy.execute("snapshot", ["--cdp", "forbidden"]));
   assert.equal(proxy.lastCommand, undefined);
   assert.equal(browserToolResult("snapshot", [], proxy.lastCommand, proxy.activeRunId, "validation failed").structuredContent.run_id, runId);
@@ -423,71 +434,164 @@ test("recording captures do not present recovered failures as current stops", as
   } finally { await f.close(); }
 });
 
-test("the host resource renders an annotated card, keeps it on a failed run read, and opens the exact run", async (t) => {
+
+type HostRequest = { id: number; params: { name: string; arguments: Record<string, unknown> } };
+
+async function mountViewer(page: Page, hostContext: object): Promise<void> {
+  await page.addInitScript((context) => {
+    const host = window as unknown as { baoRequests: unknown[] };
+    host.baoRequests = [];
+    window.addEventListener("message", (event) => {
+      const msg = event.data as { method?: string; id?: number };
+      if (event.source !== window || msg.id === undefined || !msg.method) return;
+      event.stopImmediatePropagation();
+      if (msg.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: msg.id, result: { hostCapabilities: { serverTools: {} }, hostContext: context } }, "*");
+      if (msg.method === "tools/call") host.baoRequests.push(msg);
+    });
+  }, hostContext);
+  await page.goto(`data:text/html;base64,${Buffer.from(viewerHtml()).toString("base64")}`);
+  await page.waitForFunction(() => document.documentElement.dataset.theme !== undefined);
+}
+
+async function hostRequests(page: Page, count: number): Promise<HostRequest[]> {
+  await page.waitForFunction((size) => (window as unknown as { baoRequests: unknown[] }).baoRequests.length >= size, count);
+  return page.evaluate(() => (window as unknown as { baoRequests: HostRequest[] }).baoRequests);
+}
+
+async function hostDeliver(page: Page, data: unknown): Promise<void> {
+  await page.evaluate((message) => window.dispatchEvent(new MessageEvent("message", { source: window, data: message })), data);
+}
+
+test("the host resource renders a step card from result metadata, keeps it on a failed run read, and opens the exact run", async (t) => {
   pinTestBrowser();
   const browser = await testChromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 640, height: 800 } });
-  await page.addInitScript(() => {
-    window.addEventListener("message", (event) => {
-      const msg = event.data as { jsonrpc?: string; method?: string; id?: number; params?: { name?: string; arguments?: unknown } };
-      if (event.source !== window || msg.id === undefined || !msg.method) return;
-      event.stopImmediatePropagation();
-      if (msg.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: msg.id, result: { hostCapabilities: { serverTools: {} }, hostContext: { theme: "light" } } }, "*");
-      if (msg.method === "tools/call") document.body.dataset.request = JSON.stringify(msg);
-    });
-  });
-  await page.goto(`data:text/html;base64,${Buffer.from(viewerHtml()).toString("base64")}`);
-  await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
-  const card: BrowserToolCard = { command: "click", status: "complete", caption: "Clicked the requested element.", runId: "run-exact", stepId: "command-5", picture: { kind: "captured", phase: "before", target } };
-  const deliver = async (data: unknown) => page.evaluate((message) => window.dispatchEvent(new MessageEvent("message", { source: window, data: message })), data);
-  await deliver({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card }, structuredContent: { command: "click", status: "complete", run_id: "run-exact", step_id: "command-5" } } });
+  await mountViewer(page, { theme: "light" });
+  const card: BrowserToolCard = { command: "click", status: "complete", style: "frame", caption: 'Clicked "Add blueberries" (button).',
+    parts: ["Clicked ", { cite: "Add blueberries" }, " (button)"], mark: "Clicked", runId: "run-exact", stepId: "command-5", picture: { kind: "captured", phase: "before", target } };
+  const picture = { main: { mimeType: "image/png", data: png.toString("base64") } };
+  await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card }, structuredContent: { command: "click", status: "complete", run_id: "run-exact", step_id: "command-5" } } });
   await page.getByText("Loading page picture", { exact: true }).waitFor();
-  await page.waitForFunction(() => Boolean(document.body.dataset.request));
-  const pictureRequest = JSON.parse(await page.locator("body").getAttribute("data-request") || "null") as { id: number; params: { name: string; arguments: unknown } };
-  assert.equal(pictureRequest.params.name, "open_browser_picture");
-  assert.deepEqual(pictureRequest.params.arguments, { run_id: "run-exact", step_id: "command-5", phase: "before" });
-  await deliver({ jsonrpc: "2.0", id: pictureRequest.id, result: { _meta: { baoPictures: { runId: "run-exact", stepId: "command-5", pictures: [{ phase: "before", mimeType: "image/png", data: png.toString("base64") }] } } } });
-  await page.getByText("Clicked here", { exact: true }).waitFor();
-  await page.evaluate(() => { delete document.body.dataset.request; });
+  const first = (await hostRequests(page, 1))[0]!;
+  assert.equal(first.params.name, "open_browser_card");
+  assert.deepEqual(first.params.arguments, { run_id: "run-exact", step_id: "command-5" });
+  await hostDeliver(page, { jsonrpc: "2.0", id: first.id, result: { _meta: { baoToolCard: card, baoCardPictures: picture } } });
+  await page.locator("figcaption").getByText("Clicked", { exact: true }).waitFor();
   assert.equal(await page.locator(".browser-mark").evaluate((node) => (node as HTMLElement).style.left), "20%");
+  assert.equal(await page.locator(".browser-mark").textContent(), "", "no label sits on the page picture");
+  assert.equal(await page.locator("figcaption").textContent(), "Clicked · Before click");
+  assert.equal(await page.locator(".browser-caption q.cite").textContent(), "Add blueberries");
   assert.equal(await page.getByText(/ref=e280/).count(), 0);
   assert.match(await page.locator("img").getAttribute("alt") || "", /Before click/);
+  assert.equal(await page.locator("header .muted").textContent(), "Step 5 · click");
+
   await page.getByRole("button", { name: "View run", exact: true }).click();
-  await page.waitForFunction(() => Boolean(document.body.dataset.request));
-  const request = JSON.parse(await page.locator("body").getAttribute("data-request") || "null") as { id: number; params: { name: string; arguments: { run_id: string } } };
-  assert.equal(request.params.name, "inspect_run"); assert.equal(request.params.arguments.run_id, "run-exact");
-  await deliver({ jsonrpc: "2.0", id: request.id, result: { isError: true, content: [{ text: "Run read failed" }] } });
+  const inspect = (await hostRequests(page, 2))[1]!;
+  assert.equal(inspect.params.name, "inspect_run"); assert.equal(inspect.params.arguments.run_id, "run-exact");
+  await hostDeliver(page, { jsonrpc: "2.0", id: inspect.id, result: { isError: true, content: [{ text: "Run read failed" }] } });
   await page.getByRole("alert").filter({ hasText: "Run read failed" }).waitFor();
   await page.getByText("Try View run again.", { exact: false }).waitFor();
   assert.equal(await page.locator(".browser-mark").count(), 1);
-  await deliver({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "dark" } });
+  await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: { theme: "dark" } });
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
   await page.setViewportSize({ width: 320, height: 800 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
-  await page.evaluate(() => { delete document.body.dataset.request; });
   await page.getByRole("button", { name: "View run", exact: true }).click();
-  await page.waitForFunction(() => Boolean(document.body.dataset.request));
-  const next = JSON.parse(await page.locator("body").getAttribute("data-request") || "null") as { id: number };
-  await deliver({ jsonrpc: "2.0", id: next.id, result: { _meta: { baoViewer: { view: "receipt", run: { id: "run-exact", name: "Exact browser session", status: "recording", stepCount: 1, at: 1, modelCalls: null }, steps: [], workflow: null, handoff: null, stepOffset: 0, nextStepOffset: null } } } });
+  const next = (await hostRequests(page, 3))[2]!;
+  await hostDeliver(page, { jsonrpc: "2.0", id: next.id, result: { _meta: { baoViewer: { view: "receipt", run: { id: "run-exact", name: "Exact browser session", status: "recording", stepCount: 1, at: 1, modelCalls: null }, steps: [], workflow: null, handoff: null, stepOffset: 0, nextStepOffset: null } } } });
   await page.getByRole("heading", { name: "Exact browser session" }).waitFor();
   assert.equal(await page.locator(".browser-mark").count(), 0);
-  await page.evaluate(() => { delete document.body.dataset.request; });
-  await deliver({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card } } });
-  await page.waitForFunction(() => Boolean(document.body.dataset.request));
-  const unavailable = JSON.parse(await page.locator("body").getAttribute("data-request") || "null") as { id: number };
-  await deliver({ jsonrpc: "2.0", id: unavailable.id, result: { _meta: { baoPictures: { runId: "run-exact", stepId: "command-5", pictures: [] } } } });
+
+  await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: card } } });
+  const unavailable = (await hostRequests(page, 4))[3]!;
+  await hostDeliver(page, { jsonrpc: "2.0", id: unavailable.id, result: { _meta: { baoToolCard: card, baoCardPictures: {} } } });
   await page.getByText("Page picture unavailable", { exact: true }).waitFor();
   assert.equal(await page.locator("img").count(), 0);
-  await page.evaluate(() => { delete document.body.dataset.request; });
-  const closedCard: BrowserToolCard = { command: "close", status: "complete", caption: "Closed the Bao browser session.", runId: "run-exact", stepId: "command-6", picture: { kind: "captured", stepId: "command-5", phase: "before" } };
-  await deliver({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: closedCard } } });
-  await page.waitForFunction(() => Boolean(document.body.dataset.request));
-  const closedRequest = JSON.parse(await page.locator("body").getAttribute("data-request") || "null") as { id: number; params: { arguments: unknown } };
-  assert.deepEqual(closedRequest.params.arguments, { run_id: "run-exact", step_id: "command-5", phase: "before" });
-  await deliver({ jsonrpc: "2.0", id: closedRequest.id, result: { _meta: { baoPictures: { runId: "run-exact", stepId: "command-5", pictures: [{ phase: "before", mimeType: "image/png", data: png.toString("base64") }] } } } });
-  await page.getByAltText("Last recorded page: Closed the Bao browser session.").waitFor();
+
+  const closedCard: BrowserToolCard = { command: "close", status: "complete", style: "frame", caption: "Closed the Bao browser window.", parts: ["Closed the Bao browser window"],
+    runId: "run-exact", stepId: "command-6", picture: { kind: "captured", stepId: "command-5", phase: "before" } };
+  await hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { _meta: { baoToolCard: closedCard } } });
+  const closed = (await hostRequests(page, 5))[4]!;
+  assert.deepEqual(closed.params.arguments, { run_id: "run-exact", step_id: "command-6" });
+  await hostDeliver(page, { jsonrpc: "2.0", id: closed.id, result: { _meta: { baoToolCard: closedCard, baoCardPictures: picture } } });
+  await page.getByAltText("Last recorded page: Closed the Bao browser window.").waitFor();
   assert.equal(await page.locator(".browser-mark").count(), 0);
   assert.equal(await page.getByRole("button", { name: "View run", exact: true }).count(), 1);
   assert.equal(await page.getByText("Page picture unavailable", { exact: true }).count(), 0);
+});
+
+test("a host that forwards only content and isError still draws each step's card, never run history", async (t) => {
+  // Claude Desktop sends an MCP App only content and isError, so every Bao step used to fall back to Run history.
+  const f = await recorded("snapshot");
+  pinTestBrowser();
+  const browser = await testChromium.launch({ headless: true, executablePath: process.env.BAO_TEST_BROWSER });
+  t.after(async () => { await browser.close(); await f.close(); });
+  const library = new Library(f.home);
+  const cart = { url: "https://shop.example/cart", title: "Cart" };
+  await f.recording.complete(f.step, native, f.home, async () => png, undefined, false, { page: cart });
+  const click = f.recording.begin("click", ["@e280"]);
+  await f.recording.actionPicture(click, png, target);
+  const clicked = [{ stdout: "✓ Done\n", stderr: "", exitCode: 0 }];
+  await f.recording.complete(click, clicked, f.home, async () => png, undefined, false, { page: cart });
+  const missed = f.recording.begin("click", ["@e9"]);
+  const unknown = [{ stdout: "", stderr: "✗ Unknown ref: e9\n", exitCode: 1 }];
+  await f.recording.complete(missed, unknown, f.home, async () => png, undefined, false, { page: cart });
+  const wait = f.recording.begin("wait_for_owner", ["60000"]);
+  const waiting = [{ stdout: JSON.stringify({ outcome: "waiting", instruction: "Keep waiting" }), stderr: "", exitCode: 0 }];
+  await f.recording.complete(wait, waiting, f.home, async () => png, undefined, true, { owner: { url: "https://shop.example/signin", title: "Sign in to Shop", since: wait.startedAt - 240_000 } });
+  f.recording.finish({ outcome: "passed", reason: "Added blueberries to the cart.", done: ["Added blueberries"] });
+  const steps = f.recording.steps;
+  const results = [
+    browserToolResult("click", clicked, { runId: f.recording.id, step: click, steps }),
+    browserToolResult("click", unknown, { runId: f.recording.id, step: missed, steps }),
+    browserToolResult("wait_for_owner", waiting, { runId: f.recording.id, step: wait, steps }),
+  ];
+  assert.equal(results[0]!.content[0]!.text, 'Clicked "Add blueberries" (button).');
+  assert.equal(results[1]!.content[0]!.text, "Could not click the element.");
+  assert.deepEqual(results[1]!.content.slice(1, -1).map((block) => block.text), ["✗ Unknown ref: e9\n"], "the native error appears once, after the sentence");
+  assert.match(results[2]!.content[0]!.text, /^Your turn: sign in to shop\.example in Bao's Chrome window\. The page is "Sign in to Shop" \(https:\/\/shop\.example\/signin\), waiting 4:00\./);
+
+  const page = await browser.newPage({ viewport: { width: 560, height: 900 } });
+  await mountViewer(page, { theme: "light" });
+  const answer = async (index: number) => {
+    const request = (await hostRequests(page, index + 1))[index]!;
+    assert.equal(request.params.name, "open_browser_card");
+    await hostDeliver(page, { jsonrpc: "2.0", id: request.id, result: callViewerTool(library, request.params.name, request.params.arguments) });
+  };
+  const forward = (result: { content: unknown; isError: boolean }) => hostDeliver(page, { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { content: result.content, isError: result.isError } });
+
+  await forward(results[0]!);
+  assert.equal(await page.locator(".browser-caption").textContent(), 'Clicked "Add blueberries" (button).');
+  await answer(0);
+  await page.locator("figcaption").getByText("Clicked", { exact: true }).waitFor();
+  assert.equal(await page.locator(".browser-mark").count(), 1);
+  assert.equal(await page.locator(".browser-caption q.cite").textContent(), "Add blueberries");
+  assert.equal(await page.locator("header .muted").textContent(), `Step 2 · click`);
+
+  await forward(results[1]!);
+  await answer(1);
+  await page.getByText("Last seen", { exact: true }).waitFor();
+  await page.getByText("Now", { exact: true }).waitFor();
+  assert.equal(await page.locator(".browser-error").textContent(), "✗ Unknown ref: e9");
+  assert.equal(await page.locator(".browser-mark").count(), 0, "no last-seen box without a measured target");
+  assert.equal(await page.locator(".browser-status").textContent(), "Failed");
+
+  await forward(results[2]!);
+  await answer(2);
+  await page.locator(".browser-wait").getByText("Sign in to Shop", { exact: true }).waitFor();
+  assert.match(await page.locator(".browser-wait p.muted").first().textContent() ?? "", / · waiting 4:00$/, "the card counts from the handoff start, not this one call");
+  assert.equal(await page.locator(".browser-status").textContent(), "Waiting for you");
+  assert.equal(await page.locator("img").count(), 0);
+
+  const card = finishCardFor(library, f.recording.id);
+  await forward({ content: finishToolContent(card, { run_id: f.recording.id, status: "passed" }, true), isError: false });
+  await answer(3);
+  await page.locator(".browser-done").getByText("Added blueberries", { exact: true }).waitFor();
+  assert.equal(await page.locator(".browser-status").textContent(), "Passed");
+
+  await page.waitForTimeout(700);
+  const names = (await hostRequests(page, 4)).map((request) => request.params.name);
+  assert.deepEqual(names, ["open_browser_card", "open_browser_card", "open_browser_card", "open_browser_card"]);
+  assert.equal(await page.getByRole("heading", { name: "Run history" }).count(), 0);
 });

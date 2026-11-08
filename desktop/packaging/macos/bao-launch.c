@@ -161,6 +161,13 @@ static int best_tree(const char *root, const BaoDiscoverHooks *hooks, char *out,
   return 0;
 }
 
+const char *bao_node_hint(const char *env_node, const char *resources, char *buf, size_t n) {
+  if (env_node && env_node[0]) return env_node;
+  if (!resources || !buf || n == 0) return NULL;
+  if (path_join(buf, n, resources, "node/bin/node") != 0) return NULL;
+  return access(buf, X_OK) == 0 ? buf : NULL;
+}
+
 int bao_discover_node(const char *bao_node, const char *home, const char *env_shell,
                       const BaoDiscoverHooks *hooks, char *out, size_t out_n) {
   if (!hooks || !out || out_n == 0) return -1;

@@ -758,6 +758,16 @@ static void test_bundle(const char *home) {
   check(bao_find_browser(found, sizeof found, resources) == 1 && strcmp(found, want) == 0, "prefers Chromium");
   check(bao_find_browser(found, 8, resources) == 0, "a short buffer finds nothing");
 
+  char bundled[4096];
+  check(bao_node_hint(NULL, resources, bundled, sizeof bundled) == NULL, "no bundled node gives no hint");
+  check(strcmp(bao_node_hint("/opt/x/node", resources, bundled, sizeof bundled), "/opt/x/node") == 0, "BAO_NODE wins");
+  char node[sizeof resources + sizeof "/node/bin/node" - 1];
+  snprintf(node, sizeof node, "%s/node/bin/node", resources);
+  touch_x(node);
+  const char *hint = bao_node_hint("", resources, bundled, sizeof bundled);
+  check(hint && strcmp(hint, node) == 0, "an empty BAO_NODE picks the bundled node");
+  check(bao_node_hint(NULL, resources, bundled, 8) == NULL, "a short buffer gives no hint");
+
   char saved[4096];
   const char *env = getenv("HOME");
   snprintf(saved, sizeof saved, "%s", env ? env : "");

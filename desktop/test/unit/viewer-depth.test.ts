@@ -142,11 +142,11 @@ test("never, a blocker, and an open circuit do not call a model", async () => {
     id: "w",
     action: "click",
     identity: ident({ testId: "go", text: "Go" }),
-    waitFor: { kind: "text", match: "Ready", timeoutMs: 0 },
+    check: { kind: "text", match: "waiting", timeoutMs: 0 },
   })]);
   const blocked = await replay(waiting, {}, fake([tree([ident({ testId: "go", text: "Go" })], { texts: [] })]), { heal: healer });
   assert.equal(blocked.steps[0]?.triage, "blocker");
-  assert.match(blocked.steps[0]?.reason || "", /^wait_for:/);
+  assert.match(blocked.steps[0]?.reason || "", /waiting/);
 
   const burst = await replay(doc([click]), {}, fake([missing]), { heal: healer, circuitOpen: true });
   assert.equal(burst.steps[0]?.triage, "circuit");

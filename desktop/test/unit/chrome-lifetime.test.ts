@@ -6,7 +6,7 @@ import test from "node:test";
 import ts from "typescript";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
-import { launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 
 pinTestBrowser();
 
@@ -79,6 +79,30 @@ test("concurrent close callers share completion before and after shutdown", { ti
     assert.deepEqual(pidsForDataDir(userDataDir), []);
   } finally {
     await chrome?.close();
+    assert.deepEqual(pidsForDataDir(userDataDir), [], "test must leave no owned Chrome processes");
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test("closing an owned context finishes when Chrome disconnects before it answers Browser.close", { timeout: 20_000 }, async (t) => {
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "bao-lifetime-unanswered-"));
+  const context = await launchOwnedChrome({ userDataDir, headless: true });
+  try {
+    const browser = context.browser()!;
+    const newBrowserCDPSession = browser.newBrowserCDPSession.bind(browser);
+    t.mock.method(browser, "newBrowserCDPSession", async () => {
+      const session = await newBrowserCDPSession();
+      const send = session.send.bind(session);
+      t.mock.method(session, "send", async (method: "Browser.close") => {
+        await send(method);
+        return new Promise(() => {});
+      });
+      return session;
+    });
+    await context.close();
+    assert.deepEqual(pidsForDataDir(userDataDir), []);
+  } finally {
+    await context.close();
     assert.deepEqual(pidsForDataDir(userDataDir), [], "test must leave no owned Chrome processes");
     await rm(userDataDir, { recursive: true, force: true });
   }

@@ -75,7 +75,7 @@ function stepShots(
   const shots: SyncShot[] = [];
   steps.forEach((step, index) => {
     const value = stepValueTemplate(step as StepRead) ?? step.value ?? "";
-    const input = stepInputName(step as StepRead) ?? step.input;
+    const input = stepInputName(step as StepRead);
     if (step.sensitive || redactSavedValue(value) === STRIPPED_SECRET) return;
     if (input && secrets.has(input)) return;
     const id = String(step.id ?? index);

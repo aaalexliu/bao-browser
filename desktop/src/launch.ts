@@ -10,7 +10,7 @@ import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync
 import path from "node:path";
 import { userInfo } from "node:os";
 import { createServer } from "node:net";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { parseDevToolsActivePort, readDevToolsActivePort } from "./cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "./cdp-live/socket";
 import { assertNotDailyChrome } from "./profile";
@@ -469,12 +469,7 @@ export async function launchAccountChrome(opts: {
     context.close = () => closing ??= (async () => {
       const openPages = context.pages().filter((page) => !page.isClosed()).length;
       if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
-      let browserCloseSent = false;
-      try {
-        const session = await browser.newBrowserCDPSession();
-        await session.send("Browser.close");
-        browserCloseSent = true;
-      } catch {}
+      const browserCloseSent = await requestBrowserClose(browser);
       const released = await releaseProfileProcesses(owner, browserCloseSent, ownedPids);
       await browser.close().catch(() => undefined);
       console.error(formatShutdown({ browserClose: browserCloseSent ? "sent" : "failed", openPages, ...released, profile: opts.userDataDir }));
@@ -698,12 +693,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     context.close = () => closing ??= (async () => {
       const open = context.pages().filter((page) => !page.isClosed());
       if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
-      let browserClose: ShutdownTrace["browserClose"] = "failed";
-      try {
-        const session = await browser.newBrowserCDPSession();
-        await session.send("Browser.close");
-        browserClose = "sent";
-      } catch {}
+      const browserClose: ShutdownTrace["browserClose"] = await requestBrowserClose(browser) ? "sent" : "failed";
       const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
       await browser.close().catch(() => undefined);
       console.error(formatShutdown({
@@ -719,6 +709,18 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
   } catch (err) {
     await stop().catch(() => undefined);
     throw err;
+  }
+}
+
+/** Chrome can drop the connection before it answers Browser.close, and Playwright then never settles the call. */
+async function requestBrowserClose(browser: Browser): Promise<boolean> {
+  const disconnected = new Promise<void>((resolve) => browser.once("disconnected", () => resolve()));
+  try {
+    const session = await browser.newBrowserCDPSession();
+    await Promise.race([session.send("Browser.close"), disconnected]);
+    return true;
+  } catch {
+    return false;
   }
 }
 

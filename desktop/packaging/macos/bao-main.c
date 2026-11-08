@@ -2,9 +2,8 @@
  * Starts the local Node server and shows the UI in a native WebKit window.
  * Task browsers launch only when a session or run needs one.
  *
- * Node is the one already on this Mac. A runtime copied into Resources would
- * be a second binary to sign, and codesign --deep on this bundle would change
- * the helper CDHash. See bao-launch.h. */
+ * Node is Resources/node/bin/node when the build bundles one, else the one
+ * already on this Mac. See bao-launch.h. */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -187,7 +186,9 @@ int main(void) {
   hooks.major = bao_real_major;
   hooks.shell = bao_real_shell;
   hooks.ctx = NULL;
-  if (bao_discover_node(getenv("BAO_NODE"), user_home, getenv("SHELL"), &hooks, node_bin, sizeof node_bin) != 0) {
+  char bundled[4096];
+  const char *hint = bao_node_hint(getenv("BAO_NODE"), resources, bundled, sizeof bundled);
+  if (bao_discover_node(hint, user_home, getenv("SHELL"), &hooks, node_bin, sizeof node_bin) != 0) {
     bao_show_alert(kNeedNodeTitle, kNeedNodeBody);
     return 1;
   }

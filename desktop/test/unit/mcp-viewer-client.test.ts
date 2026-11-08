@@ -42,7 +42,7 @@ test("viewer keeps the latest host view and user request when replies arrive out
       const message: unknown = event.data;
       if (typeof message !== "object" || message === null || !("method" in message) || !("id" in message)) return;
       if (message.method && message.id !== undefined) event.stopImmediatePropagation();
-      if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostCapabilities: { serverTools: {} }, hostContext: {} } }, "*");
+      if (message.method === "ui/initialize") window.postMessage({ jsonrpc: "2.0", id: message.id, result: { hostCapabilities: { serverTools: {} }, hostContext: { toolInfo: { tool: { name: "list_runs" } } } } }, "*");
       if (message.method === "tools/call" && typeof message.id === "number" && "params" in message &&
           typeof message.params === "object" && message.params !== null && "name" in message.params &&
           typeof message.params.name === "string") {

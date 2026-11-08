@@ -1,0 +1,7 @@
+{
+  "version": "24.22.2",
+  "darwin-arm64": {
+    "file": "node-v24.22.2-darwin-arm64.tar.xz",
+    "sha256": "1f5ac075be50bed4780ea3be19a007fda95ea4d527d28d76d0b91de47d915115"
+  }
+}

@@ -13,7 +13,7 @@ import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
   return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, driver: "cdp-live", id: "wf-live", name: "Saved live form",
+    schema: "bao.workflow/v4", version: 2, id: "wf-live", name: "Saved live form",
     startUrl: "https://example.test/", createdAt: 1,
     inputs: [fixtureInput({ name: "text", type: "text", default: "value" })],
     steps: identities.map((identity, index) => ({
@@ -94,21 +94,13 @@ test("live card posters use stored full-page workflow pictures, never crops or s
   try {
     assert.equal((await fetch(url)).status, 404);
     writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), page);
-    let response = await fetch(url);
-    assert.equal(response.status, 200);
-    assert.deepEqual(Buffer.from(await response.arrayBuffer()), page);
-    writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), blankPng(80, 40));
     assert.equal((await fetch(url)).status, 404);
-    writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), redactedPng(1));
-    assert.equal((await fetch(url)).status, 404);
-    writeFileSync(path.join(shots, `${workflow.steps[0]!.id}.png`), page);
     for (const rejected of [blankPng(80, 40), redactedPng(1)]) {
       writeFileSync(path.join(shots, "poster.png"), rejected);
-      response = await fetch(url);
-      assert.equal(response.status, 200);
-      assert.deepEqual(Buffer.from(await response.arrayBuffer()), page);
+      assert.equal((await fetch(url)).status, 404);
     }
     writeFileSync(path.join(shots, "poster.png"), poster);
+    let response = await fetch(url);
     response = await fetch(url);
     assert.equal(response.status, 200);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), poster);
@@ -129,7 +121,7 @@ test("live card posters use stored full-page workflow pictures, never crops or s
   } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
 });
 
-test("live posters choose the first clear step and hide blank or privacy-veiled pictures", async () => {
+test("a veiled poster is hidden and a clear poster is the card", async () => {
   const clear = await pagePng(800, 600);
   const later = await pagePng(900, 700);
   const veiled = await pagePng(800, 600, true);
@@ -144,10 +136,10 @@ test("live posters choose the first clear step and hide blank or privacy-veiled 
   const app = await startApp({ home, port: 0 });
   const url = `http://127.0.0.1:${app.port}/api/workflows/${workflow.id}/poster`;
   try {
+    assert.equal((await fetch(url)).status, 404);
+    writeFileSync(path.join(shots, "poster.png"), clear);
     const response = await fetch(url);
     assert.equal(response.status, 200);
-    assert.ok(Buffer.from(await response.arrayBuffer()).equals(clear), "the first clear step must win over blank, veiled, or later pictures");
-    for (const step of workflow.steps.slice(2)) rmSync(path.join(shots, `${step.id}.png`));
-    assert.equal((await fetch(url)).status, 404);
+    assert.ok(Buffer.from(await response.arrayBuffer()).equals(clear));
   } finally { await app.close(); rmSync(home, { recursive: true, force: true }); }
 });

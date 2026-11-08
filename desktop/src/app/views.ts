@@ -47,31 +47,20 @@ export interface WorkflowSummary {
   firstStep?: { action?: string; label?: string };
   inputs?: { name: string; type: string; label?: string; default?: string; required?: boolean; choices?: string[]; multiple?: boolean }[];
   startUrl?: string;
-  /** cdp-live is historical and cannot replay. Absent is Playwright. */
-  driver?: "playwright" | "extension" | "cdp-live" | string;
+  /** Absent is Playwright. */
+  driver?: "playwright" | "extension" | string;
 }
 
-/** Keep retired workflows readable without offering a different replay driver. */
 export function runDriverField(driver: string | undefined): string {
-  if (driver === "cdp-live") {
-    return `<label>Driver <select id="wf-driver" data-testid="run-driver" disabled>
-      <option value="cdp-live" selected>Retired live driver</option>
-    </select></label><p role="status">This workflow used the retired live driver. Replay on the pass-through is not yet available.</p>`;
-  }
   const extension = driver === "extension";
   return `<label>Driver <select id="wf-driver" data-testid="run-driver">
       <option value="playwright" ${extension ? "" : "selected"}>Playwright - selected Chrome</option>
-      <option value="extension" ${extension ? "selected" : ""}>Extension — this Chrome profile</option>
+      <option value="extension" ${extension ? "selected" : ""}>Extension - this Chrome profile</option>
     </select></label>`;
 }
 
-/** The run form's heal line. A live workflow replays with no heal and no approval, so its line offers no choice. */
-export function runHealField(driver: string | undefined, mode: string, globalHeal: string): string {
-  if (driver === "cdp-live") {
-    return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal" disabled>
-      <option value="" selected>Unavailable - retired live driver</option>
-    </select></label>`;
-  }
+/** The run form's heal line. */
+export function runHealField(mode: string, globalHeal: string): string {
   return `<label>Healing for this workflow <select id="wf-heal" data-testid="run-heal">
       <option value="" ${mode === "" ? "selected" : ""}>Use the global setting (${globalHeal === "never" ? "Stop" : globalHeal === "approve" ? "Ask me" : "Heal it"})</option>
       <option value="auto" ${mode === "auto" ? "selected" : ""}>Heal it</option>
@@ -512,7 +501,7 @@ export function stopHeadline(input: {
 }): string {
   const name = input.label || input.action || "step";
   const identity = input.identity;
-  const head = `Step ${input.stepNumber} "${name}"`;
+  const head = `Step ${input.stepNumber}, ${name}`;
   const bits: string[] = [];
   if (identity && identity.candidates.length >= 2 && !identity.accepted) {
     const lead = identity.lead ?? 0;
@@ -1262,7 +1251,7 @@ export function libraryTable(workflows: WorkflowSummary[], runs: RunSummary[], p
       ? `<time datetime="${new Date(at).toISOString()}">${esc(formatClock(at))}</time>`
       : run ? "Time not saved" : "";
     return `<tr class="workflow-row" data-workflow="${esc(workflow.id)}" role="row">
-      <td role="cell"><button type="button" class="link workflow-name" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button>${workflow.driver === "cdp-live" ? `<p class="workflow-note">This workflow used the retired live driver.</p>` : ""}</td>
+      <td role="cell"><button type="button" class="link workflow-name" data-open-workflow="${esc(workflow.id)}">${esc(workflow.name)}</button></td>
       <td role="cell"><span class="status ${esc(kind)}">${workflowStatusGlyph(kind)}${esc(label.charAt(0).toUpperCase() + label.slice(1))}</span></td>
       <td role="cell" class="workflow-when">${when}</td>
     </tr>`;
@@ -1540,7 +1529,7 @@ function workflowInputLabels(text: string, inputs: TokenInput[]): string {
 
 function cardInputName(step: StepCard): string {
   const typed = typeof step.text === "string" ? undefined : step.text;
-  return typed?.input || step.file?.input || step.input || mustacheName(typed?.literal) || mustacheName(step.value) || mustacheName(step.caption?.text) || mustacheName(step.label);
+  return typed?.input || step.file?.input || mustacheName(typed?.literal) || mustacheName(step.value) || mustacheName(step.caption?.text) || mustacheName(step.label);
 }
 
 function cardTargetName(step: StepCard): string {

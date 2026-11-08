@@ -63,10 +63,7 @@ export function stepTarget(step: StepRead): StepTargetRead | undefined {
 }
 
 export function stepInputName(step: StepRead): string | undefined {
-  const named = inputOn(step);
-  if (named) return named;
-  const raw = (step as { input?: unknown }).input;
-  return typeof raw === "string" ? raw : undefined;
+  return inputOn(step);
 }
 
 function inputOn(step: StepRead): string | undefined {
@@ -82,8 +79,6 @@ function inputOn(step: StepRead): string | undefined {
       return step.dialog?.input ?? step.selection?.input;
     case "pickDate":
       return step.date?.input;
-    case "handoff":
-      return step.input;
     case undefined:
     default:
       return undefined;

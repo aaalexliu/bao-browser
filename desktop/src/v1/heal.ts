@@ -335,13 +335,11 @@ export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): Wo
     case "handoff":
       return { ...step, target, ...(check ? { check } : {}) };
     case "extract":
-    case "finish":
     case "for_each":
     case "navigate":
     case "note":
     case "open":
     case "verify":
-    case "wait":
       return step;
   }
 }

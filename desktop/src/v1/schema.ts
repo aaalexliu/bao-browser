@@ -229,7 +229,7 @@ export type WorkflowStep =
   | StepBase & { action: "select"; target: Target; text: TextOf; check?: Check }
   | StepBase & { action: "navigate"; url: string; check?: Check }
   | StepBase & { action: "verify"; check: Check }
-  | StepBase & { action: "handoff"; reason: HandoffReason; input?: string; target?: Target; check?: Check }
+  | StepBase & { action: "handoff"; reason: HandoffReason; target?: Target; check?: Check }
   | StepBase & { action: "upload" | "drop"; target: Target; file: FileOf; check?: Check }
   | StepBase & { action: "extract"; extract: ExtractSpec; heal?: "never" }
   | StepBase & { action: "for_each"; forEach: ForEachSpec }
@@ -237,9 +237,7 @@ export type WorkflowStep =
   | StepBase & { action: "download"; target?: Target; download: { output: string; name: string; url?: string }; check?: Check }
   | StepBase & { action: "open"; open: { target: "url"; url: string } | { target: "file"; file: string; app?: string }; check?: Check }
   | StepBase & { action: "digits"; text: TextOf; target?: Target; check?: Check }
-  | StepBase & { action: "pickDate"; date: { input: string; endInput?: string }; target?: Target; check?: Check }
-  | StepBase & { action: "wait"; reason: string; ms?: number }
-  | StepBase & { action: "finish"; reason?: string };
+  | StepBase & { action: "pickDate"; date: { input: string; endInput?: string }; target?: Target; check?: Check };
 
 export type StepAction = WorkflowStep["action"];
 
@@ -261,8 +259,8 @@ export interface WorkflowV2 {
   summary?: string;
   intent?: string;
   inference?: WorkflowInference;
-  /** cdp-live is a retired driver tag kept so a saved file can be refused. Absent means Playwright. */
-  driver?: "playwright" | "extension" | "cdp-live";
+  /** Absent means Playwright. */
+  driver?: "playwright" | "extension";
   /** Set when this copy was installed from someone else. Absent means the owner recorded it. */
   imported?: true;
 }
@@ -352,13 +350,11 @@ export function stepTarget(step: WorkflowStep): Target | undefined {
     case "download":
       return step.target;
     case "extract":
-    case "finish":
     case "for_each":
     case "navigate":
     case "note":
     case "open":
     case "verify":
-    case "wait":
       return undefined;
   }
 }
@@ -493,11 +489,9 @@ export function parseWorkflow(raw: unknown): WorkflowV2 {
   return doc;
 }
 
-/** Drop retired document keys and give a default the supply it needs. */
+/** Give a default the supply it needs. */
 export function normalizeWorkflow(doc: WorkflowV2): WorkflowV2 {
-  const next = { ...doc } as WorkflowV2 & { version?: unknown; filesDates?: unknown };
-  delete next.version;
-  delete next.filesDates;
+  const next = { ...doc };
   if (Array.isArray(next.inputs)) next.inputs = next.inputs.map((input) => finishInput(input));
   return next;
 }
@@ -511,7 +505,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   if (!doc.name) errors.push("name");
   if (doc.provenance !== undefined && doc.provenance !== "fixture") errors.push("provenance");
   if (doc.imported !== undefined && doc.imported !== true) errors.push("imported");
-  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension" && doc.driver !== "cdp-live") errors.push("driver");
+  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension") errors.push("driver");
   if (!Array.isArray(doc.inputs) || !Array.isArray(doc.steps)) {
     errors.push("steps");
     return errors;
@@ -551,7 +545,7 @@ const STEP_KEYS: Record<string, string[]> = {
   select: ["target", "text", "check"],
   navigate: ["url", "check"],
   verify: ["check"],
-  handoff: ["reason", "input", "target", "check"],
+  handoff: ["reason", "target", "check"],
   upload: ["target", "file", "check"],
   drop: ["target", "file", "check"],
   extract: ["extract"],
@@ -561,10 +555,8 @@ const STEP_KEYS: Record<string, string[]> = {
   open: ["open", "check"],
   digits: ["text", "target", "check"],
   pickDate: ["date", "target", "check"],
-  wait: ["reason", "ms"],
-  finish: ["reason"],
 };
-const STEP_BASE = ["id", "index", "action", "caption", "timeoutMs", "when", "heal", "readBack", "input"];
+const STEP_BASE = ["id", "index", "action", "caption", "timeoutMs", "when", "heal", "readBack"];
 
 function unknownKeys(value: object, allowed: Set<string>): string[] {
   return Object.keys(value).filter((key) => !allowed.has(key));
@@ -622,12 +614,9 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>, input
       if (step.target) errors.push(...targetErrors(step.target, step.id));
       if (step.check) errors.push(...checkErrors(step.check, step.id));
       break;
-    case "wait":
-    case "finish":
     case "note":
       if (step.caption?.targetBox || step.caption?.citation) errors.push(`caption ${step.id}`);
-      if (step.action === "wait" && !step.reason) errors.push(`wait ${step.id}`);
-      if (step.action === "note" && !step.text) errors.push(`note ${step.id}`);
+      if (!step.text) errors.push(`note ${step.id}`);
       break;
     case "upload":
     case "drop":

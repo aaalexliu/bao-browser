@@ -133,8 +133,7 @@ export function rollbackTo(
 function withTarget(step: WorkflowStep, target: Target): WorkflowStep {
   if (!stepTarget(step) && step.action !== "key" && step.action !== "digits" && step.action !== "pickDate") return step;
   if (step.action === "navigate" || step.action === "verify" || step.action === "handoff" || step.action === "extract"
-    || step.action === "for_each" || step.action === "note" || step.action === "download" || step.action === "open"
-    || step.action === "wait" || step.action === "finish") return step;
+    || step.action === "for_each" || step.action === "note" || step.action === "download" || step.action === "open") return step;
   return { ...step, target };
 }
 

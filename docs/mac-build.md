@@ -1,6 +1,6 @@
 # Build Bao on a Mac
 
-This is the rebuild. The pass on an installed app is [Test Bao on a Mac](mac-test.md).
+This is the contributor rebuild. Users install with the one `npx` command in the [README](../README.md#install); [Release Bao](release.md) covers that build. The pass on an installed app is [Test Bao on a Mac](mac-test.md).
 
 Do not open the listen address in a browser. The product is the [Bao window](#launch), with no address bar. A second double-click focuses that window. It does not start a second server.
 
@@ -12,12 +12,12 @@ The native window keeps the title **Bao** but hides the title text and makes the
 
 `bao-main.c` finds Node 24 or newer on its own:
 
-1. `BAO_NODE`, when it is an absolute path to Node 24 or newer. A relative path is ignored.
+1. `BAO_NODE`, when it is an absolute path to Node 24 or newer. A relative path is ignored. Without `BAO_NODE`, `Contents/Resources/node/bin/node` when the build bundled one.
 2. `/opt/homebrew/bin/node`, then `/usr/local/bin/node`. Then the keg-only prefixes `/opt/homebrew/opt/node@24/bin/node` and `/usr/local/opt/node@24/bin/node`, because `brew install node@24` does not link `node` into `bin`.
 3. The newest Node 24 or newer under `~/.local/share/mise/installs/node/*/bin/node`, then `~/.nvm/versions/node/*/bin/node`, then `~/.volta/tools/image/node/*/bin/node`, then `~/.volta/bin/node`.
 4. One login shell: `$SHELL -lc 'command -v node'`. Finder often leaves `SHELL` unset, so the fallback is `/bin/zsh`, then `/bin/bash`. An alias is ignored. The shell is not asked when an earlier path already works.
 
-Node is not copied into the app. The machine that builds Bao already has Node 24, and a second runtime inside the bundle would be another binary to sign. `codesign --deep` on `Bao.app` would change the helper CDHash and drop the grant. Leave the helper's signature alone.
+By default Node is not copied into the app. Set `BAO_BUNDLE_NODE` to a nodejs.org `node` binary (24 or newer) to copy it to `Contents/Resources/node/bin/node`; it keeps its own Developer ID signature, and the [release build](release.md) uses it. `codesign --deep` on `Bao.app` would change the helper CDHash and drop the grant. Leave the helper's signature alone.
 
 If Node 24 is not found, Bao shows a native alert that says to install it. If the server never accepts a connection, Bao shows an alert and does not open the window. Opening Bao starts no Chrome or Chromium process. Its UI runs in a native `WKWebView` owned by Bao.app. Closing the window keeps Bao open; clicking its Dock icon reopens that window. Quit Bao stops the local server. Clicked external HTTP and HTTPS links open in the default browser; `mailto` links open in the default mail app. Clicked `x-apple.systempreferences` links open System Settings. Redirects and scripts cannot open another app.
 
@@ -91,7 +91,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-mod
 
 ### Signing identity `bao dev signing`
 
-Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. Keep that certificate. The grant follows it plus the bundle id. A new certificate is a different app, and the helper grant does not follow it.
+Both package scripts sign with `BAO_SIGN_IDENTITY`, which defaults to the login-keychain certificate `bao dev signing`. Keep that certificate. The grant follows it plus the bundle id. A new certificate is a different app, and the helper grant does not follow it. `BAO_SIGN_IDENTITY=-` signs ad-hoc, as a release without a signing secret does; [Release Bao](release.md#signing) explains what that costs.
 
 ```sh
 security find-certificate -c 'bao dev signing' >/dev/null && echo 'certificate present'

@@ -456,6 +456,5 @@ export function clearConflict(library: Library, id: string): void {
 export function restoreVersion(library: Library, id: string, n: number): WorkflowVersion {
   const source = versionDocument(library, id, n);
   const document = { ...source, id, updatedAt: Date.now() };
-  if (library.read(id).driver === "cdp-live") document.driver = "cdp-live";
   return draftVersion(library, document, "restore");
 }

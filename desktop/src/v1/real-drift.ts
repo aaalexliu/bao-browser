@@ -872,10 +872,8 @@ function setCheck(step: WorkflowStep, check: Check | undefined): void {
       step.check = check;
       return;
     case "extract":
-    case "finish":
     case "for_each":
     case "note":
-    case "wait":
       return;
   }
 }

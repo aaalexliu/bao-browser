@@ -6,8 +6,8 @@ import { AGENT_BROWSER_COMMANDS, AgentBrowserProxy, type AgentBrowserCommandResu
 import { BROWSER_CHOICES, BROWSER_CHOICE_DESCRIPTION, DEFAULT_BROWSER, browserChoice } from "../browser-choice";
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
-import { inspectMcpRunView, listRunViews } from "./run-view";
-import { BROWSER_RESULT_SCHEMA, browserToolResult } from "./tool-card";
+import { finishCardFor, inspectMcpRunView, listRunViews } from "./run-view";
+import { BROWSER_RESULT_SCHEMA, browserToolResult, finishToolContent, stepSentence } from "./tool-card";
 import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
 
 interface Rpc {
@@ -74,12 +74,14 @@ const AGENT_BROWSER_TOOL = {
 
 const FINISH_TASK_TOOL = {
   name: "finish_task",
-  description: "Finish the current Bao browser task before your final reply, whether it succeeded, failed, or was cancelled. Use this, not agent_browser close, to end a task. It also saves an eligible workflow. If the browser session is already fully removed, this returns no_session and leaves earlier runs unchanged. Supply passed or failed and a short reason based on what you verified. Optional task is a short name for the run, such as the request you carried out. Omit task when you have no task name. This finalizes the Library run and closes the browser session while keeping this MCP client available for the next task. Keep window open after agent finishes in Bao Settings leaves an owned window open but still ends recording. For current Chrome, only Bao-created task tabs close; the owner's tabs and Chrome stay open. Do not finish during wait_for_owner, sign-in handoffs, or a pending owner confirmation. MCP has no conversation-turn-end event, so a final chat reply alone cannot end the task. Client disconnect also finalizes any open run. Call get_run with the returned run_id to read the saved receipt.",
+  description: "Finish the current Bao browser task before your final reply, whether it succeeded, failed, or was cancelled. Use this, not agent_browser close, to end a task. It also saves an eligible workflow. If the browser session is already fully removed, this returns no_session and leaves earlier runs unchanged. Supply passed or failed and a short reason based on what you verified. Optional task is a short name for the run, such as the request you carried out. Omit task when you have no task name. Optional done lists what the task did, one short item per thing, such as each subscription cancelled; Bao shows the list on the finished card. Omit done when there is no list to report. This finalizes the Library run and closes the browser session while keeping this MCP client available for the next task. Keep window open after agent finishes in Bao Settings leaves an owned window open but still ends recording. For current Chrome, only Bao-created task tabs close; the owner's tabs and Chrome stay open. Do not finish during wait_for_owner, sign-in handoffs, or a pending owner confirmation. MCP has no conversation-turn-end event, so a final chat reply alone cannot end the task. Client disconnect also finalizes any open run. Call get_run with the returned run_id to read the saved receipt.",
   inputSchema: {
     type: "object", properties: {
       outcome: { type: "string", enum: ["passed", "failed"] },
       reason: { type: "string", minLength: 1 },
       task: { type: "string", description: "Short name for this run. Omit it when you have no task name." },
+      done: { type: "array", items: { type: "string", minLength: 1, maxLength: 200 }, maxItems: 50,
+        description: "What the task did, one short item per thing, such as each subscription cancelled. Omit it when there is no list." },
     }, required: ["outcome", "reason"], additionalProperties: false,
   },
 } as const;
@@ -91,7 +93,7 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 export const INSTRUCTIONS = [
   "Call finish_task with outcome=passed or failed, a short reason, and optional task as a short name for the run when you have one, before your final answer whenever a Bao browser task ends, including a cancelled or unsuccessful task. Do not rely on the conversation ending: long-lived MCP clients have no turn-end event. finish_task ends recording, returns the saved run receipt, and releases the browser session without stopping MCP. It honors Keep window open after agent finishes; explicit agent_browser close overrides that setting. Do not finish while waiting for owner input, sign-in, or confirmation. No idle timer ends those waits.",
   BROWSER_CHOICE_DESCRIPTION + " For direct agent-browser control, use agent_browser with its native command and args array. Start with open. Bao checks the selected Chrome profile on every explicit open, keeps sign-ins across runs, and retries recognized login walls once with the source sign-in. An unreadable source keeps saved Bao state. For browser=copy, inspect the returned tab list and select the signed-in copied tab with tab <id>. Bao-profile sessions also return the native tab list. On first open, browser=current drives the owner's own running Chrome. Bao's helper enables debugging and presses Allow through existing Accessibility access, without Screen Recording or Automation. For browser=current, stay in the new task tab, which shares the owner's sign-ins; use another tab only when the owner asks. A native daemon restart opens a new task tab; navigate that task tab again and take a fresh snapshot. finish_task, close, and agent exit close only Bao-created task tabs and disconnect, leaving the owner's Chrome and pre-existing tabs open. Later calls inherit the browser choice. Close before changing browser. close removes a copy but keeps the Bao profile. Both use visible installed Google Chrome. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report the returned session-ended instruction. If the owner's Chrome session ended unexpectedly, reconnect with open and browser=current or explicitly choose browser=copy or browser=bao; do not silently start a copy. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact. End the task with finish_task instead of close. A successful, representable single-document task saves a workflow; finish_task returns its id or the reason it was not saved. Never claim a workflow exists without that saved result. It needs no running Bao app. Bao does not block final clicks.",
-  "In MCP Apps hosts, agent_browser shows a page picture and caption. Exact native stdout/stderr, snapshot refs, and thrown errors remain in content blocks after the caption, followed by a short run_id and step_id block, then a workflow save notice when the session ends. structuredContent contains only command, status, run_id, step_id, and optional error metadata, not another copy of native output. Picture bytes are fetched separately by the app and never included in ordinary agent_browser results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. finish_task saves a successful single-document task as a WorkflowV2 for open, click, fill, and press when every action has a durable target. Its result says saved with its id, or not saved with the reason. Stateful scroll, second tabs, popups, unsupported options, and missing targets remain capture-only.",
+  "Every agent_browser result starts with one plain sentence of what the step did, quoting the element's own text from the latest snapshot, such as Clicked \"Save\" (button). In MCP Apps hosts, a card shows that sentence with the page picture and the target boxed; a failed step shows the last picture before it and the page now; an owner wait shows the sign-in or check page's title and address; finish_task shows the run's result and its optional done list. Exact native stdout/stderr, snapshot refs, and thrown errors remain in content blocks after the sentence, followed by a short run_id and step_id block, then a workflow save notice when the session ends. structuredContent contains only command, status, run_id, step_id, and optional error metadata, not another copy of native output. Picture bytes are fetched separately by the app and never included in ordinary agent_browser results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. finish_task saves a successful single-document task as a WorkflowV2 for open, click, fill, and press when every action has a durable target. Its result says saved with its id, or not saved with the reason. Stateful scroll, second tabs, popups, unsupported options, and missing targets remain capture-only.",
   "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. get_run also reads browser capture sessions. Workflows from the retired live driver cannot replay. Workflows saved from pass-through tasks replay through run_workflow on the current engine, not through the native pass-through.",
 ].join("\n");
 
@@ -221,7 +223,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
   }
   if (msg.method === "tools/list") {
     const tools = ctx.ui ? [
-      ...TOOLS.map((tool) => ({ ...tool, ...(tool.name === "agent_browser" ? { outputSchema: BROWSER_RESULT_SCHEMA } : {}), _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs", "agent_browser"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
+      ...TOOLS.map((tool) => ({ ...tool, ...(tool.name === "agent_browser" ? { outputSchema: BROWSER_RESULT_SCHEMA } : {}), _meta: { ui: { visibility: tool.name === "list_runs" ? ["model", "app"] : ["model"], ...(["get_run", "list_runs", "agent_browser", "finish_task"].includes(tool.name) ? { resourceUri: VIEWER_URI } : {}) } } })),
       ...VIEWER_TOOLS,
     ] : TOOLS;
     send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
@@ -248,9 +250,14 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
           throw new Error("finish_task requires outcome passed or failed and a non-empty reason");
         }
         const task = typeof args.task === "string" ? args.task.trim() : "";
-        const runId = await ctx.proxy.finishTask({ outcome: args.outcome, reason: args.reason.trim(), ...(task ? { task } : {}) });
+        const done = doneList(args.done);
+        const runId = await ctx.proxy.finishTask({ outcome: args.outcome, reason: args.reason.trim(), ...(task ? { task } : {}), ...(done.length ? { done } : {}) });
         const receipt = runId ? getRun(ctx.library, runId) : { outcome: "no_session", reason: "No browser task is open." };
-        result = { content: [{ type: "text", text: JSON.stringify(withLibrary({ ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.identity)) }], isError: false };
+        let card;
+        try { card = runId ? finishCardFor(ctx.library, runId) : undefined; }
+        catch { card = undefined; }
+        const content = finishToolContent(card, withLibrary({ ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.identity), ctx.ui);
+        result = { content, isError: false, ...(ctx.ui && card ? { _meta: { baoToolCard: card } } : {}) };
       }
       else {
         const data = await callTool(ctx.library, ctx.identity, name, args);
@@ -295,11 +302,15 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
     error = cause instanceof Error ? cause.message : String(cause);
   }
   const notice = ctx.proxy.lastWorkflowOutcome ? [{ type: "text" as const, text: ctx.proxy.lastWorkflowOutcome }] : [];
+  const command = String(args.command || "");
+  const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [], owner: ctx.proxy.ownerPage };
   if (!ctx.ui) return {
-    content: [...(args.browser === "current" ? [{ type: "text", text: "Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open." }] : []), ...results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))), ...notice],
+    content: [...(args.browser === "current" ? [{ type: "text", text: "Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open." }] : []),
+      { type: "text", text: stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts) },
+      ...results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))), ...notice],
     isError: results.some((result) => result.exitCode !== 0),
   };
-  const result = browserToolResult(String(args.command || ""), results, ctx.proxy.lastCommand, ctx.proxy.activeRunId ?? activeRunId, error);
+  const result = browserToolResult(command, results, ctx.proxy.lastCommand, ctx.proxy.activeRunId ?? activeRunId, error, facts);
   return { ...result, content: [...result.content, ...notice] };
 }
 
@@ -340,6 +351,14 @@ function withLibrary(result: object, identity: LibraryIdentity): object {
     active: { path: tildePath(identity.active.path, prefix) },
     inactive: identity.inactive.map((item) => ({ ...item, path: tildePath(item.path, prefix) })),
   } };
+}
+
+function doneList(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 50 || !value.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= 200)) {
+    throw new Error("finish_task done must be a list of at most 50 non-empty items, each at most 200 characters");
+  }
+  return value.map((item: string) => item.replace(/\s+/g, " ").trim());
 }
 
 function stringArg(value: unknown): string | undefined {

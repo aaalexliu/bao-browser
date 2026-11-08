@@ -11,7 +11,7 @@ import type { ApplyGate as BaseApplyGate, RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
-import { lookup, normRole, normText, pathEq, sameRecordedControl, unstableId } from "./identity";
+import { lookup, normRole, pathEq, sameRecordedControl, unstableId } from "./identity";
 import { actWaitMs, confirmButton, makeAsk, siteHost, wallInstruction, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
 import { identityView } from "./run-trace";
@@ -802,8 +802,6 @@ async function runStep(
   }
   const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery);
   if (!outcome.ok || outcome.skipped) return outcome;
-  const waited = await looseGate(step, args, driver, secrets);
-  if (waited) return { ok: false, repairs: outcome.repairs, acted: outcome.acted, failure: waited };
   for (const read of [step.readBack, extra]) {
     if (!read) continue;
     const failure = await takeReadBack(workflow, step, read, args, driver, secrets, receiptLog, runId);
@@ -1612,17 +1610,6 @@ function locate(
       if (compatible) preferred = compatible.index;
     }
     const idWinner = idAt >= 0 && tried[idAt]!.score === 100 ? idAt : -1;
-    if (idWinner >= 0 && identity && locatorMode !== "primary") {
-      const found = matchLocator(list[idWinner]!, nodes, tree.boxes, tree.hidden);
-      const recordedName = identity.name || identity.text || identity.label || "";
-      const got = found ? nodes[found.index]?.name || nodes[found.index]?.text || nodes[found.index]?.label || "" : "";
-      if (recordedName && got && normText(recordedName) !== normText(got)) {
-        const hit = lookup(identity, nodes);
-        const idIndex = nodes.findIndex((node) => node.id === identity.id);
-        const ranked = idIndex >= 0 ? [...hit.ranked.filter((row) => row.index === idIndex), ...hit.ranked.filter((row) => row.index !== idIndex)] : hit.ranked;
-        return { nodes, hit: { ...hit, ok: false, reason: "tie", brokenAttr: "text", ranked }, tried };
-      }
-    }
     const perfectNodes = new Set(perfect.flatMap((row) => {
       const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
       return found ? [found.index] : [];
@@ -2054,22 +2041,6 @@ function phaseReason(failure: StepFailure): string {
   return `${failure.phase}: ${failure.reason}`;
 }
 
-function checkMatch(check: Check): string {
-  return "match" in check && check.match ? check.match : check.kind;
-}
-
-async function looseGate(step: WorkflowStep, args: ReplayArgs, driver: Driver, secrets: string[]): Promise<StepFailure | undefined> {
-  const extra = step as WorkflowStep & { waitFor?: Check; gone?: Check };
-  const tree = await driver.tree();
-  if (extra.waitFor && !checkHolds(extra.waitFor, tree, args)) {
-    return fail(driver, step, "wait_for", checkMatch(extra.waitFor), undefined, secrets);
-  }
-  if (extra.gone && checkHolds(extra.gone, tree, args)) {
-    return fail(driver, step, "expect", `gone: ${checkMatch(extra.gone)}`, undefined, secrets);
-  }
-  return undefined;
-}
-
 function expectReason(step: WorkflowStep): string {
   const expect = stepCheck(step);
   if (expect && (expect.kind === "text" || expect.kind === "url")) return expect.match || expect.kind;
@@ -2145,7 +2116,7 @@ async function classifyLive(driver: Driver, workflow: WorkflowV2, step?: Workflo
 
 /** True when the recorded control is on the page, including an ambiguous match. */
 async function targetHere(driver: Driver, step?: WorkflowStep): Promise<boolean | undefined> {
-  if (!step || step.action === "note" || step.action === "navigate" || step.action === "verify" || step.action === "wait" || step.action === "finish") {
+  if (!step || step.action === "note" || step.action === "navigate" || step.action === "verify") {
     return undefined;
   }
   if (step.action === "handoff" && !step.target) return undefined;

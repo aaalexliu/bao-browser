@@ -657,7 +657,6 @@ function adoptIfNeeded(library: Library, state: SyncState, id: string, remote: P
   try {
     local = library.read(id);
   } catch {
-    if (existsSync(path.join(library.root, "workflows", `${safeId(id)}.json`))) return "skip";
     local = undefined;
   }
   const dirty = local ? !known || known.hash !== docHash(local) : false;

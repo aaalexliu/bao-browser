@@ -513,7 +513,7 @@ function replayForm(): string {
     ${current?.driver === "extension" ? "" : `<fieldset class="browser-choice"><legend>Browser for this run</legend>
       ${BROWSER_CHOICES.map((choice) => `<label class="browser-option"><input type="radio" name="run-browser" value="${choice}"${runBrowser === choice ? " checked" : ""} aria-labelledby="browser-${choice}-label" aria-describedby="browser-${choice}-help"><span><strong id="browser-${choice}-label">${APP_BROWSER_OPTIONS[choice].label}${choice === DEFAULT_BROWSER ? " (default)" : ""}</strong><span class="quiet" id="browser-${choice}-help">${APP_BROWSER_OPTIONS[choice].description}</span></span></label>`).join("")}
     </fieldset>`}
-    ${runHealField(current?.driver, mode, globalHeal)}
+    ${runHealField(mode, globalHeal)}
     <form id="args"></form>
     <p class="mono" data-testid="deeplink">bao://workflow/${esc(selected)}</p>
     <p class="mono" data-testid="import-link">bao://import/${esc(selected)}</p>

@@ -5,7 +5,11 @@
  * checkout and does not need node on PATH.
  *
  * Once node runs, stdout is the agent's JSON-RPC channel, so this file
- * writes only to stderr. */
+ * writes only to stderr.
+ *
+ * Built with -DBAO_CLI it is Contents/MacOS/bao-cli instead: the same Node
+ * and the same server copy, as `node src/app/cli.js [args]`. The installer
+ * runs `bao-cli setup`, and ~/.local/bin/bao can link to it. */
 
 #include <errno.h>
 #include <mach-o/dyld.h>
@@ -25,8 +29,16 @@ static void dirname_inplace(char *path) {
   *slash = '\0';
 }
 
+#ifdef BAO_CLI
+#define LAUNCHER "bao-cli"
+#define FIXED_ARGS 2
+#else
+#define LAUNCHER "bao-mcp"
+#define FIXED_ARGS 3
+#endif
+
 static int fail(const char *what) {
-  fprintf(stderr, "bao-mcp: %s\n", what);
+  fprintf(stderr, LAUNCHER ": %s\n", what);
   return 1;
 }
 
@@ -50,7 +62,7 @@ int main(int argc, char *argv[]) {
   snprintf(cli, sizeof cli, "%s/src/app/cli.js", root);
   snprintf(helper, sizeof helper, "%s/BaoOSHelper.app", resources);
   if (access(cli, R_OK) != 0) {
-    fprintf(stderr, "bao-mcp: %s is missing. Install Bao again.\n", cli);
+    fprintf(stderr, LAUNCHER ": %s is missing. Install Bao again.\n", cli);
     return 1;
   }
 
@@ -67,8 +79,10 @@ int main(int argc, char *argv[]) {
   hooks.major = bao_real_major;
   hooks.shell = bao_real_shell;
   hooks.ctx = NULL;
+  char bundled[4096];
+  const char *hint = bao_node_hint(getenv("BAO_NODE"), resources, bundled, sizeof bundled);
   char node[4096];
-  if (bao_discover_node(getenv("BAO_NODE"), user_home, getenv("SHELL"), &hooks, node, sizeof node) != 0) {
+  if (bao_discover_node(hint, user_home, getenv("SHELL"), &hooks, node, sizeof node) != 0) {
     return fail("Bao needs Node.js 24 or newer. Install it with `brew install node@24`, or set BAO_NODE to its absolute path.");
   }
 
@@ -76,18 +90,20 @@ int main(int argc, char *argv[]) {
    * beside it, such as ../BaoOSHelper.app, from the working directory, and
    * the agent's own directory cannot pick a .bao-mcp library. */
   if (chdir(root) != 0) {
-    fprintf(stderr, "bao-mcp: cannot enter %s: %s\n", root, strerror(errno));
+    fprintf(stderr, LAUNCHER ": cannot enter %s: %s\n", root, strerror(errno));
     return 1;
   }
 
-  char **args = calloc((size_t)argc + 3, sizeof *args);
+  char **args = calloc((size_t)argc + FIXED_ARGS, sizeof *args);
   if (!args) return fail("out of memory");
   args[0] = "node";
   args[1] = cli;
+#ifndef BAO_CLI
   args[2] = "mcp";
-  for (int i = 1; i < argc; i++) args[i + 2] = argv[i];
-  args[argc + 2] = NULL;
+#endif
+  for (int i = 1; i < argc; i++) args[i + FIXED_ARGS - 1] = argv[i];
+  args[argc + FIXED_ARGS - 1] = NULL;
   execv(node, args);
-  fprintf(stderr, "bao-mcp: cannot start %s: %s\n", node, strerror(errno));
+  fprintf(stderr, LAUNCHER ": cannot start %s: %s\n", node, strerror(errno));
   return 1;
 }

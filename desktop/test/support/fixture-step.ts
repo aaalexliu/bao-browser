@@ -131,12 +131,7 @@ export interface LooseDoc {
 export type FixtureDraft = LooseStep;
 
 export function fixtureStep(draft: object, index = (draft as LooseStep).index ?? 0): WorkflowStep {
-  const step = builtFixtureStep(draft, index);
-  const raw = draft as LooseStep;
-  const extra = step as WorkflowStep & { waitFor?: LooseCheck; gone?: LooseCheck };
-  if (raw.waitFor) extra.waitFor = raw.waitFor;
-  if (raw.gone) extra.gone = raw.gone;
-  return extra;
+  return builtFixtureStep(draft, index);
 }
 
 function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0): WorkflowStep {
@@ -146,7 +141,7 @@ function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0
   const target = targetOf(raw);
   const check = checkOf(raw);
   const sentence = sentenceOf(raw, action);
-  const noBox = action === "navigate" || action === "wait" || action === "finish" || action === "note" || action === "verify" || action === "extract" || action === "for_each" || (action === "handoff" && raw.action !== "confirm" && raw.reason !== "owner-press");
+  const noBox = action === "navigate" || action === "note" || action === "verify" || action === "extract" || action === "for_each" || (action === "handoff" && raw.action !== "confirm" && raw.reason !== "owner-press");
   const cap = raw.caption?.text
     ? (noBox ? caption(raw.caption.text) : raw.caption)
     : caption(sentence, noBox ? undefined : citeIdentity(asIdentity(raw.identity)), noBox ? undefined : raw.targetBox);
@@ -159,7 +154,6 @@ function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0
     ...(raw.when ? { when: raw.when } : {}),
     ...(heal ? { heal } : {}),
     ...(raw.readBack ? { readBack: raw.readBack } : {}),
-    ...(typeof raw.input === "string" ? { input: raw.input } : {}),
   };
   const withCheck = check ? { check } : {};
   switch (action) {
@@ -174,7 +168,7 @@ function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0
         ...withCheck,
         ...(raw.optional === "dismiss" ? { optional: "dismiss" as const } : {}),
         ...(raw.selection ? { selection: raw.selection } : {}),
-        ...(raw.dialog?.input ? { dialog: raw.dialog } : {}),
+        ...(raw.dialog?.input ? { dialog: raw.dialog } : typeof raw.input === "string" ? { dialog: { input: raw.input } } : {}),
       };
     case "type":
     case "select":
@@ -208,7 +202,6 @@ function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0
         ...base,
         action: "handoff",
         reason,
-        ...(typeof raw.input === "string" ? { input: raw.input } : {}),
         ...(reason === "owner-press" && target ? { target } : {}),
         caption: caption(raw.label || raw.caption?.text || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button")),
         ...withCheck,
@@ -243,10 +236,6 @@ function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0
       return { ...base, action: "digits", text: textOf(raw), ...(target ? { target } : {}), ...withCheck };
     case "pickDate":
       return { ...base, action: "pickDate", date: raw.date ?? raw.datePicker ?? { input: raw.input || "date" }, ...(target ? { target } : {}), ...withCheck };
-    case "wait":
-      return { ...base, action: "wait", reason: raw.reason || raw.label || "the page", caption: caption(sentence), ...(raw.ms ? { ms: raw.ms } : {}) };
-    case "finish":
-      return { ...base, action: "finish", caption: caption(sentence), ...(raw.reason ? { reason: raw.reason } : {}) };
     default:
       return { ...base, action: "note", text: raw.label || action, caption: caption(sentence) };
   }
@@ -286,7 +275,7 @@ export function fixtureDoc(raw: Record<string, unknown>): WorkflowV2;
 export function fixtureDoc(raw: WorkflowV2 | Record<string, unknown>): WorkflowV2 {
   const doc = raw as LooseDoc;
   const steps = (doc.steps ?? []).map((step, index) => fixtureStep(step as LooseStep, index));
-  const driver = doc.driver === "playwright" || doc.driver === "extension" || doc.driver === "cdp-live" ? doc.driver : undefined;
+  const driver = doc.driver === "playwright" || doc.driver === "extension" ? doc.driver : undefined;
   return {
     schema: WORKFLOW_SCHEMA_ID,
     id: doc.id || "wf",
@@ -360,8 +349,7 @@ function draftFrom(step: WorkflowStep): LooseStep {
     optional: step.action === "click" ? step.optional : undefined,
     selection: step.action === "click" ? step.selection : undefined,
     dialog: step.action === "click" ? step.dialog : undefined,
-    reason: step.action === "wait" || step.action === "finish" || step.action === "handoff" ? step.reason : undefined,
-    ms: step.action === "wait" ? step.ms : undefined,
+    reason: step.action === "handoff" ? step.reason : undefined,
   };
 }
 
@@ -385,7 +373,7 @@ function mapAction(action: string | undefined): WorkflowStep["action"] {
   if (action === "input") return "type";
   if (action === "press") return "key";
   if (action === "goto") return "navigate";
-  const known: WorkflowStep["action"][] = ["click", "type", "key", "check", "select", "navigate", "verify", "handoff", "upload", "drop", "extract", "for_each", "note", "download", "open", "digits", "pickDate", "wait", "finish"];
+  const known: WorkflowStep["action"][] = ["click", "type", "key", "check", "select", "navigate", "verify", "handoff", "upload", "drop", "extract", "for_each", "note", "download", "open", "digits", "pickDate"];
   return known.includes(action as WorkflowStep["action"]) ? action as WorkflowStep["action"] : "note";
 }
 
@@ -445,7 +433,7 @@ function fileOf(draft: LooseStep): { input: string } | { fromOutput: string } {
 
 function checkOf(draft: LooseStep): Check | undefined {
   if (draft.check) return draft.check;
-  const raw = draft.expect ?? draft.postcondition;
+  const raw = draft.expect ?? draft.postcondition ?? draft.waitFor;
   if (!raw?.kind) return undefined;
   const timeoutMs = raw.timeoutMs ?? 4000;
   if (raw.kind === "settled") return { kind: "settled", timeoutMs };
@@ -469,9 +457,7 @@ function sentenceOf(draft: LooseStep, action: WorkflowStep["action"]): string {
   if (action === "click") return clickSentence(draft.identity?.name || draft.identity?.text || draft.identity?.label);
   if (action === "key") return `Press ${draft.key || "Enter"}`;
   if (action === "handoff") return draft.action === "login" || draft.reason === "sign-in" ? "Sign in" : "You press the button";
-  if (action === "wait") return `Wait ${draft.reason || "the page"}`;
   if (action === "extract") return `Read ${draft.extract?.as || "the page"}`;
-  if (action === "finish") return draft.reason ? `Finish: ${draft.reason}` : "Finish";
-  if (action === "verify") return draft.expect?.match || draft.postcondition?.match ? `Check ${draft.expect?.match || draft.postcondition?.match}` : "Check the page";
+  if (action === "verify") return draft.expect?.match || draft.postcondition?.match || draft.waitFor?.match ? `Check ${draft.expect?.match || draft.postcondition?.match || draft.waitFor?.match}` : "Check the page";
   return action;
 }

@@ -1,11 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { OwnerPage } from "../cdp-live/owner-wait";
 import { commandSentence } from "../v1/caption";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
+import { describeStep, landmarkKeys, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
+
+type Viewport = { width: number; height: number };
+
+/** What the proxy learned around a command: Chrome's page metadata and a box measured for a read. */
+export interface StepContext {
+  page?: OwnerPage;
+  /** Chrome's page just before the command ran. */
+  previousPage?: OwnerPage;
+  owner?: OwnerWaitPage;
+  mark?: ShotBox;
+}
 
 export interface RecordedAgentBrowserCommand {
   id: string;
@@ -16,9 +29,13 @@ export interface RecordedAgentBrowserCommand {
   endedAt?: number;
   reason?: string;
   beforeShot?: string;
-  target?: { rect: ShotBox; viewport: { width: number; height: number } };
+  target?: { rect: ShotBox; viewport: Viewport };
   afterShot?: string;
+  /** A box on the after picture, such as the heading a read found new. */
+  afterTarget?: { rect: ShotBox; viewport: Viewport };
   afterShotError?: string;
+  /** The plain sentence for this step, with the element's own text cited. */
+  summary?: StepSummary;
   native: {
     command: string;
     args: string[];
@@ -33,6 +50,8 @@ export interface AgentBrowserTaskOutcome {
   outcome: "passed" | "failed";
   reason: string;
   task?: string;
+  /** What the task did, one short item each, as listed by the agent. */
+  done?: string[];
 }
 
 export class AgentBrowserRun {
@@ -43,7 +62,9 @@ export class AgentBrowserRun {
     status: "recording", at: Date.now(), steps: [], heals: [],
   };
   private readonly shots: string;
+  private snapshot: string | undefined;
   private lastSnapshot = "";
+  private readonly landmarks = new Map<string, Set<string>>();
 
   constructor(private readonly home: string) {
     this.shots = path.join(home, "shots", "runs", this.run.id);
@@ -51,6 +72,13 @@ export class AgentBrowserRun {
   }
 
   get id(): string { return this.run.id; }
+
+  get steps(): readonly RecordedAgentBrowserCommand[] { return this.run.steps; }
+
+  /** Headings and dialogs earlier reads saw on a page since the last open, kept in memory so captions never depend on stored snapshot text. */
+  seenOn(url: string | undefined): ReadonlySet<string> | undefined {
+    return url ? this.landmarks.get(pageKey(url)) : undefined;
+  }
 
   get lastPicture(): { stepId: string; phase: "before" | "after" } | undefined {
     for (let i = this.run.steps.length - 1; i >= 0; i--) {
@@ -86,7 +114,8 @@ export class AgentBrowserRun {
   }
 
   async complete(step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], stateDir: string,
-    screenshot: () => Promise<Buffer>, error?: unknown, privatePage = false): Promise<void> {
+    screenshot: () => Promise<Buffer | { bytes: Buffer; viewport?: Viewport }>, error?: unknown, privatePage = false,
+    context: StepContext = {}): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
     const snap = step.native.command === "snapshot"
@@ -100,6 +129,21 @@ export class AgentBrowserRun {
       step.reason = step.native.error;
     } else if (step.native.isError) {
       step.reason = "Native agent-browser command failed.";
+    }
+    step.summary = describeStep({
+      command: step.native.command, args: step.native.args, results, error: step.native.error,
+      snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: context.previousPage, owner: context.owner, at: step.endedAt,
+    });
+    if (step.native.command === "open" && !step.native.isError) this.landmarks.clear();
+    const read = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;
+    if (read) {
+      this.snapshot = read;
+      if (context.page?.url) {
+        const key = pageKey(context.page.url);
+        const seen = this.landmarks.get(key) ?? new Set<string>();
+        for (const landmark of landmarkKeys(read)) seen.add(landmark);
+        this.landmarks.set(key, seen);
+      }
     }
     this.persist();
     if (privatePage) {
@@ -119,7 +163,14 @@ export class AgentBrowserRun {
       }
     }
     try {
-      step.afterShot = await this.picture(step, await screenshot(), "after");
+      const shot = await screenshot();
+      const frame = Buffer.isBuffer(shot) ? { bytes: shot } : shot;
+      step.afterShot = await this.picture(step, frame.bytes, "after");
+      const rect = context.mark;
+      if (rect && frame.viewport && rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0
+        && rect.x + rect.width <= frame.viewport.width && rect.y + rect.height <= frame.viewport.height) {
+        step.afterTarget = { rect, viewport: frame.viewport };
+      }
     } catch {
       step.afterShotError = step.native.command === "close" ? "Session closed; no page remains." : "Page screenshot unavailable.";
       if (step.native.command !== "close") this.warn("page screenshot");
@@ -145,6 +196,7 @@ export class AgentBrowserRun {
       this.run.envelope = { status: result.outcome, run_id: this.run.id, reason: result.reason };
       const task = result.task?.trim();
       if (task) this.run.task = task;
+      if (result.done?.length) this.run.done = result.done;
     } else this.run.status = this.run.steps.some((step) => step.status === "failed") ? "failed"
       : this.run.steps.some((step) => step.status === "pending") ? "paused" : "passed";
     this.persist();
@@ -180,6 +232,10 @@ export class AgentBrowserRun {
   private warn(operation: string): void {
     process.stderr.write(`Bao recording unavailable: ${operation}. Command forwarding continues.\n`);
   }
+}
+
+function pageKey(url: string): string {
+  return url.replace(/#.*$/, "");
 }
 
 function latestSnapshot(steps: RecordedAgentBrowserCommand[]): string | undefined {
