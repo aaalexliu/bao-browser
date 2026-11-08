@@ -68,6 +68,8 @@ export interface Identity {
   inputType?: string;
   autocomplete?: string;
   label?: string;
+  ariaLabel?: string;
+  nameSource?: CitationSource;
   text?: string;
   cssPath?: string;
   xpath?: string;

@@ -32,11 +32,28 @@ export function citeIdentity(node: Identity | undefined, extra?: CiteFields): St
     text: extra?.text ?? node?.text,
     name: extra?.name ?? node?.name,
     label: extra?.label ?? node?.label,
-    ariaLabel: extra?.ariaLabel,
+    ariaLabel: extra?.ariaLabel ?? node?.ariaLabel,
     placeholder: extra?.placeholder ?? node?.placeholder,
     alt: extra?.alt,
     title: extra?.title ?? node?.title,
   };
+  if (node?.nameSource === "aria-label") {
+    fields.ariaLabel = node.ariaLabel || node.name;
+    fields.name = undefined;
+    fields.label = undefined;
+  } else if (node?.nameSource === "title") {
+    fields.title = node.title || node.name;
+    fields.name = undefined;
+    fields.label = undefined;
+  } else if (node?.nameSource === "label") {
+    fields.label = node.label || node.name;
+    fields.name = undefined;
+  } else if (node?.nameSource === "placeholder") {
+    fields.placeholder = node.placeholder || node.name;
+    fields.name = undefined;
+    fields.label = undefined;
+  }
+  if (node?.role === "listbox") fields.text = undefined;
   const form = node?.role === "textbox" || node?.role === "searchbox" || node?.role === "combobox" || node?.role === "listbox" || node?.role === "spinbutton";
   if (!form) return cite(fields);
   return cite({
@@ -122,8 +139,14 @@ export function commandSentence(command: string, arg: string | undefined, snapsh
 function refName(arg: string | undefined, snapshot: string | undefined): string | undefined {
   const ref = arg?.trim();
   if (!ref || !snapshot || !isElementRef(ref)) return undefined;
-  const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const line = snapshot.split("\n").find((row) => new RegExp(`\\bref=${escaped}\\b`).test(row));
+  const id = ref.slice(1);
+  const needle = `ref=${id}`;
+  const line = snapshot.split("\n").find((row) => {
+    const at = row.indexOf(needle);
+    if (at < 0) return false;
+    const after = row[at + needle.length];
+    return !after || !/\d/.test(after);
+  });
   const quoted = line?.match(/"([^\"]+)"/)?.[1]?.trim();
   if (!quoted || isElementRef(quoted) || quoted.startsWith("@e")) return undefined;
   return quoted;

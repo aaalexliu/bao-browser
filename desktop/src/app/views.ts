@@ -21,7 +21,6 @@ import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
-import { runStatusWord } from "../v1/run-status";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 import type { Identity } from "../v1/schema";
 
@@ -629,7 +628,7 @@ export function runViewer(
         brokenAttr: failure?.brokenAttr,
       })
       : `${esc(workflow.name)} ${run.kind === "capture" ? "recorded" : "passed"}`;
-  const statusWord = run.kind === "capture" ? statusLabel(runKind(run)) : runStatusWord(run.status);
+  const statusWord = statusLabel(runKind(run));
   const badge = modelCalls === undefined ? "" : modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -1316,12 +1315,12 @@ function countedModelCalls(run: RunSummary): number | undefined {
 }
 
 export function runKind(run: RunSummary, promotion?: PromotionView): string {
-  if (run.status === "timed-out") return "timed-out";
+  if (run.status === "timed-out" || run.status === "timeout") return "timed-out";
+  if (run.status === "waiting-for-sign-in" || run.status === "needs-sign-in" || run.status === "needs_signin") return "waiting-for-sign-in";
   if (run.kind === "capture") return run.status === "needs_human" ? "paused" : run.status;
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
-  if (run.status === "waiting-for-sign-in" || run.status === "needs-sign-in" || run.status === "needs_signin") return "waiting-for-sign-in";
-  if (run.status === "needs_human" || run.status === "paused") return "paused";
-  if (run.status === "failed") return "failed";
+  if (run.status === "needs_human" || run.status === "paused" || run.status === "waiting") return "paused";
+  if (run.status === "failed" || run.status === "refused") return "failed";
   if ((run.heals || []).length > 0) return "healed";
   return "passed";
 }
@@ -1899,7 +1898,10 @@ export function runAttention(runs: RunSummary[], ask?: HumanAsk | null, activeRu
     const items: RunAttentionItem[] = [];
     const agent = isAgentBrowserSession(run);
     const waiting = run.id === activeRun?.id ? activeRun.phase === "waiting" : agent ? agentOwnerWait(run) : runWaiting(run);
-    if (waiting) items.push({ run, label: "Needs you", kind: "paused" });
+    if (waiting) {
+      const signIn = runKind(run) === "waiting-for-sign-in";
+      items.push({ run, label: signIn ? statusLabel("waiting-for-sign-in") : "Needs you", kind: "paused" });
+    }
     if (agent) return items;
     const decided = new Set((run.decisions || []).map((decision) => decision.healId));
     for (const heal of run.heals || []) if (!decided.has(heal.id)) items.push({ run, label: "Heal to keep", kind: "healed", healId: heal.id });
@@ -1916,6 +1918,7 @@ export function runAttention(runs: RunSummary[], ask?: HumanAsk | null, activeRu
 }
 
 function runListKind(run: RunSummary): string {
+  if (runKind(run) === "waiting-for-sign-in") return "waiting-for-sign-in";
   if (runWaiting(run)) return "paused";
   if (run.status === "timeout") return "timed-out";
   if (!["passed", "ok", "completed", "failed", "timed-out"].includes(run.status)) return run.status;
