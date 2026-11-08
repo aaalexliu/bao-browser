@@ -20,7 +20,7 @@ import { AtspiDriver } from "./os-driver";
 import { osNodes, osPress, type OsNode } from "../proxy/os";
 import { DEFAULT_PROMOTE_AFTER, noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
 import { replay, type LocatorMode } from "./replay";
-import { projectStep, WORKFLOW_SCHEMA_ID } from "./schema";
+import { stepTitle, stepLocators, stepCheck, WORKFLOW_SCHEMA_ID } from "./schema";
 import type { Check, StepLocator, WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface CapturedWeb {
@@ -198,7 +198,7 @@ async function runWorkflow(
   });
   onTrajectory?.(result.trajectory);
   const first: Record<string, string | undefined> = {};
-  for (const step of workflow.steps) first[step.id] = projectStep(step).locators?.[0]?.kind;
+  for (const step of workflow.steps) first[step.id] = stepLocators(step)?.[0]?.kind;
   const rows = recoveryRows({
     workflow: name,
     change,
@@ -677,7 +677,7 @@ async function recordCalculator(bin: string, screen: string, nodes: OsNode[]): P
   }
   const doc = interpret(events, { id: "wf-gnome-calculator", name: "GNOME Calculator", startUrl: "desktop://gnome-calculator" });
   for (const step of doc.steps) {
-    if (projectStep(step).postcondition?.kind === "value") setCheck(step, undefined);
+    if (stepCheck(step)?.kind === "value") setCheck(step, undefined);
   }
   const last = doc.steps[doc.steps.length - 1];
   if (last) setCheck(last, { kind: "text", match: "12", timeoutMs: 6000 });
@@ -848,7 +848,7 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
 }
 
 function labelOf(step: WorkflowStep | undefined): string | undefined {
-  return step ? projectStep(step).label : undefined;
+  return step ? stepTitle(step) : undefined;
 }
 
 function setCheck(step: WorkflowStep, check: Check | undefined): void {
@@ -862,7 +862,7 @@ function setCheck(step: WorkflowStep, check: Check | undefined): void {
     case "check":
     case "select":
     case "navigate":
-    case "login":
+    case "handoff":
     case "upload":
     case "drop":
     case "download":

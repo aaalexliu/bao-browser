@@ -1,5 +1,5 @@
 import { writeStep } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
+import { stepQuery, stepLocators } from "../../src/v1/schema";
 // The test Chromium, local fixture page, no model, no vendor network.
 // Capture through the recorder, then replay twice with different inputs.
 
@@ -101,17 +101,16 @@ test("capture login, upload, and drop, then replay with two input sets", async (
       writeExample("examples/workflows/browser-form.json", JSON.stringify(app.library.read(workflow.id), null, 2));
     }
     const saved = app.library.read(workflow.id);
-    const login = saved.steps.find((step) => projectStep(step).identity?.testId === "login" || projectStep(step).identity?.id === "login-btn");
+    const login = saved.steps.find((step) => stepQuery(step)?.testId === "login" || stepQuery(step)?.id === "login-btn");
     assert.ok(login);
     writeStep(login, { label: "Click missing control" });
     writeStep(login, { intent: "missing control" });
-    delete projectStep(login).anchor;
     login.timeoutMs = 0;
     writeStep(login, { identity: { surface: "dom", role: "button", testId: "missing-login", name: "Missing login", path: [] } });
-    writeStep(login, { locators: breakStoredLocators(projectStep(login).locators) });
-    const kinds = new Set((projectStep(login).locators || []).map((locator) => locator.kind));
+    writeStep(login, { locators: breakStoredLocators(stepLocators(login)) });
+    const kinds = new Set((stepLocators(login) || []).map((locator) => locator.kind));
     assert.ok(kinds.has("testid") && kinds.has("css") && kinds.has("role"));
-    for (const locator of projectStep(login).locators || []) {
+    for (const locator of stepLocators(login) || []) {
       if (locator.kind === "testid") assert.equal(locator.value, "missing-login");
       if (locator.kind === "css") assert.equal(locator.value?.includes("missing-login"), true);
       if (locator.kind === "role") assert.equal(locator.name, "Missing login");

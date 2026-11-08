@@ -1,8 +1,8 @@
 // Locator versions for one step. A heal, a revert, and a rollback append a row.
 // A row stores the changed names and the locator list after the change.
 
-import type { StepLocator, Target, TargetHint, WorkflowStep } from "./schema";
 import { stepTarget } from "./schema";
+import type { StepLocator, Target, TargetHint, WorkflowStep } from "./schema";
 
 export type VersionSource = "recorded" | "heal" | "revert" | "rollback";
 
@@ -126,7 +126,7 @@ export function rollbackTo(
 
 function withTarget(step: WorkflowStep, target: Target): WorkflowStep {
   if (!stepTarget(step) && step.action !== "key" && step.action !== "digits" && step.action !== "pickDate") return step;
-  if (step.action === "navigate" || step.action === "verify" || step.action === "login" || step.action === "extract"
+  if (step.action === "navigate" || step.action === "verify" || step.action === "handoff" || step.action === "extract"
     || step.action === "for_each" || step.action === "note" || step.action === "download" || step.action === "open"
     || step.action === "wait" || step.action === "finish") return step;
   return { ...step, target };

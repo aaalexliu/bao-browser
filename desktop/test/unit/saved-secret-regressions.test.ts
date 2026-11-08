@@ -13,7 +13,7 @@ import { editInput } from "../../src/v1/input-token";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, withInputDefaults, type Driver, type ReplayOptions } from "../../src/v1/replay";
-import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { checkMatch, stepQuery, stepLocators, stepInputName, stepValueTemplate, stepCheck, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testChromium } from "../../src/test-browser";
 import { applyHermeticApp } from "../runtime";
 
@@ -67,26 +67,26 @@ test("secret slots keep typed values and replay beside an unchanged ordinary fie
       assert.deepEqual(events, original, entry.name);
       assert.deepEqual(validateWorkflow(workflow), [], entry.name);
       const slot = workflow.steps[0]!;
-      assert.equal(workflow.inputs.find((input) => input.name === projectStep(slot).input)?.type, "secret", entry.name);
-      assert.equal(projectStep(slot).value, `{{${projectStep(slot).input}}}`);
-      assert.equal(projectStep(slot).identity?.id, "credential");
-      assert.equal(projectStep(slot).identity?.nameAttr, "credential");
+      assert.equal(workflow.inputs.find((input) => input.name === stepInputName(slot))?.type, "secret", entry.name);
+      assert.equal(stepValueTemplate(slot), `{{${stepInputName(slot)}}}`);
+      assert.equal(stepQuery(slot)?.id, "credential");
+      assert.equal(stepQuery(slot)?.nameAttr, "credential");
       const { text, value, ...structure } = events[0]!.identity!;
-      assert.deepEqual(projectStep(slot).identity, structure);
-      assert.deepEqual(projectStep(slot).locators, [{ kind: "role", role: "textbox", name: "Credential" }, { kind: "css", value: "#credential" }]);
-      assert.equal(projectStep(slot).expect, undefined);
-      assert.equal(projectStep(slot).postcondition, undefined);
+      assert.deepEqual(stepQuery(slot), structure);
+      assert.deepEqual(stepLocators(slot), [{ kind: "role", role: "textbox", name: "Credential" }, { kind: "css", value: "#credential" }]);
+      assert.equal(stepCheck(slot), undefined);
+      assert.equal(stepCheck(slot), undefined);
       assert.equal(slot.when, undefined);
       const ordinary = interpret([events[1]!], { id: "ordinary", startUrl: url }).steps[0]!;
       assert.deepEqual(workflow.steps[1], { ...ordinary, id: "slots-1", index: 1 }, entry.name);
-      assert.ok(projectStep(ordinary).locators?.some((locator) => locator.kind === "role" && locator.name === "Display name"));
-      assert.equal(projectStep(ordinary).expect?.match, "Saved display name");
+      assert.ok(stepLocators(ordinary)?.some((locator) => locator.kind === "role" && locator.name === "Display name"));
+      assert.equal(checkMatch(stepCheck(ordinary)), "Saved display name");
 
       const page = await browser.newPage();
       try {
         await page.goto(url);
         const args = Object.fromEntries(workflow.inputs.map((input) => [input.name, input.default ?? ""]));
-        args[projectStep(slot).input!] = secret;
+        args[stepInputName(slot)!] = secret;
         const result = await replay(workflow, args, new BrowserDriver(page));
         assert.equal(result.status, "passed", `${entry.name}: ${result.failure?.phase}: ${result.failure?.reason}`);
         assert.equal(result.modelCalls, 0);
@@ -121,7 +121,7 @@ test("OTP history never supplies defaults or past-run inputs, while fresh input 
     assert.equal(edited.doc.inputs[0]!.default, undefined);
     const fills: string[] = [];
     const driver: Driver = {
-      tree: async () => ({ nodes: [projectStep(workflow.steps[0]!).identity!], texts: [], values: [] }),
+      tree: async () => ({ nodes: [stepQuery(workflow.steps[0]!)!], texts: [], values: [] }),
       snapshot: async () => ({}),
       click: async () => {}, fill: async (_node, value) => { fills.push(value); }, key: async () => {},
       upload: async () => {}, drop: async () => {}, digits: async () => {}, check: async () => {},
@@ -167,7 +167,7 @@ test("past-input route filters current OTP fields without changing saved history
     for (const type of ["text", "secret"] as const) {
       for (const binding of ["input", "value"] as const) {
         workflow.inputs[0]!.type = type;
-        projectStep(workflow.steps[0]!).identity!.autocomplete = "section-login ONE-TIME-CODE";
+        stepQuery(workflow.steps[0]!)!.autocomplete = "section-login ONE-TIME-CODE";
         writeStep(workflow.steps[0]!, { input: binding === "input" ? "code" : undefined });
         app.library.save(workflow);
         const saved = app.library.read(workflow.id);
@@ -346,15 +346,15 @@ test("secret-entry locator echoes use the typed value without changing structura
         };
         const original = structuredClone(event);
         const meta = { id: "locator-echo", startUrl: "http://127.0.0.1/", preserveActions };
-        const fallback = projectStep(interpret([{ ...event, locators: undefined }], meta).steps[0]!).locators;
+        const fallback = stepLocators(interpret([{ ...event, locators: undefined }], meta).steps[0]!);
         for (const workflow of [interpret([event], meta), explain([event], meta).workflow]) {
           assert.equal(workflow.inputs[0]!.default, secret);
-          assert.deepEqual(projectStep(workflow.steps[0]!).identity, identity);
-          assert.deepEqual(projectStep(workflow.steps[0]!).locators, neighbors.length ? safe : fallback);
+          assert.deepEqual(stepQuery(workflow.steps[0]!), identity);
+          assert.deepEqual(stepLocators(workflow.steps[0]!), neighbors.length ? safe : fallback);
           assert.deepEqual(validateWorkflow(workflow), []);
         }
         const ordinary = interpret([{ ...event, sensitive: false }], meta);
-        assert.deepEqual(projectStep(ordinary.steps[0]!).locators, event.locators);
+        assert.deepEqual(stepLocators(ordinary.steps[0]!), event.locators);
         assert.deepEqual(event, original);
       }
     }

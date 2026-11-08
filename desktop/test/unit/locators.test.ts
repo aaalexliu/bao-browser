@@ -12,7 +12,7 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildLocators, matchLabeledControl, matchLocator } from "../../src/v1/locators";
 import { uniqueNamedRole } from "../../src/v1/os-driver";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepQuery, stepLocators, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -89,7 +89,7 @@ test("locators are stored in role, text, test id, css, xpath order and validate"
   const workflow = interpret(events, { id: "wf-search", name: "Search", startUrl: "https://en.wikipedia.org/" });
   assert.deepEqual(validateWorkflow(workflow), []);
   assert.equal(validate(workflow), true, JSON.stringify(validate.errors));
-  assert.equal((workflow.steps[0] == null ? undefined : projectStep(workflow.steps[0]).locators)?.[0]?.kind, "role");
+  assert.equal((workflow.steps[0] == null ? undefined : stepLocators(workflow.steps[0]))?.[0]?.kind, "role");
   const exported = toPuppeteerReplay(workflow, {});
   const click = exported.steps.find((item) => item.type === "click");
   const selectors = click?.selectors as string[][];
@@ -296,8 +296,8 @@ test("a healed identity replaces the locators instead of keeping the miss", () =
   const patched = applyPatch(before, {
     identity: ident({ role: "button", text: "Add Element" }),
   });
-  assert.equal(projectStep(patched).identity?.testId, undefined);
-  const first = projectStep(patched).locators?.[0];
+  assert.equal(stepQuery(patched)?.testId, undefined);
+  const first = stepLocators(patched)?.[0];
   assert.equal(first?.kind, "role");
   assert.equal(first?.kind === "role" ? first.name : undefined, "Add Element");
   assert.equal(JSON.stringify(patched).includes("missing"), false);

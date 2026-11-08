@@ -8,7 +8,7 @@ import { startApp } from "../../src/app/server";
 import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import { projectStep, subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepQuery, stepValueTemplate, subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
@@ -37,12 +37,12 @@ test("saved generic input tokens stay usable without a migration", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
   try {
     const workflow = recorded([{}]);
-    projectStep(workflow.steps[0]!).identity!.label = "App name";
+    stepQuery(workflow.steps[0]!)!.label = "App name";
     const library = new Library(home);
     library.save(workflow);
     const saved = library.read(workflow.id);
     assert.equal(saved.inputs[0]?.name, "text");
-    assert.equal(subst(projectStep(saved.steps[0]!).value!, { text: "existing argument" }), "existing argument");
+    assert.equal(subst(stepValueTemplate(saved.steps[0]!)!, { text: "existing argument" }), "existing argument");
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

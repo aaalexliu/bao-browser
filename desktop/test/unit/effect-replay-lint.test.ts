@@ -1,5 +1,5 @@
 import { fixtureDoc, fixtureStep, fixtureInput } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
+import { stepQuery, stepLocators } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
@@ -57,11 +57,11 @@ test("effect filter drops a still click and keeps one that changed state", () =>
   const dropped = droppedNoEffectIds(events);
   assert.deepEqual(dropped, ["head"]);
   const workflow = condense(events, { id: "fx", name: "fx", startUrl: url });
-  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.text === "Title"), false);
-  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.nameAttr === "size"), true);
-  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.id === "go"), true);
-  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.name === "Help"), true);
-  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.cssPath === "details"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.text === "Title"), false);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.nameAttr === "size"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.id === "go"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.name === "Help"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.cssPath === "details"), true);
 });
 
 test("a shared radio name resolves to the input inside the recorded label", async () => {
@@ -92,10 +92,10 @@ test("a shared radio name resolves to the input inside the recorded label", asyn
   ], { id: "order", name: "order", startUrl: url });
   const step = workflow.steps[0];
   assert.equal(step?.action, "check");
-  assert.equal((step ? projectStep(step).locators : undefined)?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
+  assert.equal((step ? stepLocators(step) : undefined)?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
   const nodes = [label, small, medium, large];
   const ambiguous = matchLabeledControl(
-    (step ? projectStep(step).locators : undefined) || [],
+    (step ? stepLocators(step) : undefined) || [],
     { ...recorded, label: "Small" },
     [small, { ...small, cssPath: "form label.other input" }, medium],
   );

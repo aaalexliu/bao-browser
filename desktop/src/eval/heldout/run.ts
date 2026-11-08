@@ -10,24 +10,16 @@ import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
 import { replay, type RunResult } from "../../v1/replay";
 import type { TrajectoryStep } from "../../v1/trajectory";
+import { stepTitle, stepQuery, stepInputName, stepKey, stepCheck, handoffReason } from "../../v1/schema"
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
-import { projectStep, validateWorkflow } from "../../v1/schema";
+import { validateWorkflow } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";
 import { caseJudgePrompt } from "../intent/labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "../intent/model";
 import { HYBRID_GATE_RULE, modelCondensePrompt, reviseDecision, reviseStepGates } from "../intent/revise";
-import {
-  expectedHuman,
-  humanKeys,
-  keepEvents,
-  multisetScore,
-  scoreParams,
-  targetOf,
-  textDefaults,
-  truthTexts,
-} from "../intent/score";
+import { expectedHuman, humanKeys, keepEvents, multisetScore, scoreParams, targetOf, textDefaults, truthTexts } from "../intent/score";
 import { BAD_INTENT_TEXTS, badJudgePrompt } from "./bad-judge";
 import { urlHasPhrase } from "./url-oracle";
 import type { HeldTruth } from "./capture";
@@ -75,9 +67,9 @@ function hybridPrompt(workflow: WorkflowV2): string {
     step.id,
     step.action,
     targetOf(step) || "-",
-    projectStep(step).input || "-",
-    projectStep(step).gate || "-",
-    projectStep(step).label,
+    stepInputName(step) || "-",
+    handoffReason(step) || "-",
+    stepTitle(step),
   ].join(" "));
   return [
     "This workflow was condensed deterministically. Step identity, inputs, and secret tags are fixed.",
@@ -94,7 +86,7 @@ function hybridPrompt(workflow: WorkflowV2): string {
 }
 
 function heldSignature(step: WorkflowStep): string {
-  const id = projectStep(step).identity;
+  const id = stepQuery(step);
   const text = (id?.text || "").replace(/\s+/g, " ").trim().slice(0, 60);
   return [
     step.action,
@@ -103,9 +95,9 @@ function heldSignature(step: WorkflowStep): string {
     id?.name || "",
     text,
     id?.cssPath || "",
-    projectStep(step).gate || "-",
-    projectStep(step).input || "-",
-    step.action === "key" ? projectStep(step).key || "" : "",
+    handoffReason(step) || "-",
+    stepInputName(step) || "-",
+    step.action === "key" ? stepKey(step) || "" : "",
   ].join("|");
 }
 
@@ -707,23 +699,23 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
   const failed = new Set<string>();
   const passing: { id: string; intent: string }[] = [];
   for (const step of workflow.steps) {
-    const input = workflow.inputs.find((item) => item.name === projectStep(step).input);
+    const input = workflow.inputs.find((item) => item.name === stepInputName(step));
     const target: LintTarget = {
       action: step.action,
-      name: projectStep(step).identity?.name || projectStep(step).identity?.text || projectStep(step).identity?.label,
-      label: projectStep(step).identity?.label,
-      text: projectStep(step).identity?.text,
-      input: projectStep(step).input,
+      name: stepQuery(step)?.name || stepQuery(step)?.text || stepQuery(step)?.label,
+      label: stepQuery(step)?.label,
+      text: stepQuery(step)?.text,
+      input: stepInputName(step),
       literal: input?.default,
     };
     const reason = prejudgeLint({
-      text: projectStep(step).label,
+      text: stepTitle(step),
       target,
       secrets,
-      effect: projectStep(step).expect?.kind === "settled" ? false : undefined,
-    }) || lintIntent(projectStep(step).label, target, secrets);
+      effect: stepCheck(step)?.kind === "settled" ? false : undefined,
+    }) || lintIntent(stepTitle(step), target, secrets);
     if (reason) failed.add(step.id);
-    else passing.push({ id: step.id, intent: projectStep(step).label });
+    else passing.push({ id: step.id, intent: stepTitle(step) });
   }
   const summary = workflow.summary || "";
   const summaryFail = prejudgeLint({ text: summary, secrets })

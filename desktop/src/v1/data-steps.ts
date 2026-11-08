@@ -580,9 +580,8 @@ export function bindStep(step: WorkflowStep, row: Record<string, string>, index:
   const replace = (text: string): string => text
     .replace(ROW_BINDING, (_all, name: string) => row[name] ?? "")
     .replace(ROW_INDEX_BINDING, String(index + 1));
-  if (copy.action === "type" || copy.action === "select" || copy.action === "digits") {
-    const raw = "literal" in copy.text ? copy.text.literal : `{{${copy.text.input}}}`;
-    copy.text = { literal: replace(raw) };
+  if ((copy.action === "type" || copy.action === "select" || copy.action === "digits") && "literal" in copy.text) {
+    copy.text = { literal: replace(copy.text.literal) };
   }
   if (copy.caption?.text) copy.caption = { ...copy.caption, text: replace(copy.caption.text) };
   rewriteMatch(copy, replace);

@@ -1,4 +1,3 @@
-import { projectStep } from "../../src/v1/schema";
 import { fixtureDoc, fixtureStep, writeStep, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -64,7 +63,6 @@ for (const locatorOnly of [false, true]) {
     workflow.steps = workflow.steps.map((step) => ({ ...step, timeoutMs: 0 }));
     if (locatorOnly) {
       const confirm = workflow.steps.find((step) => (step.action as string) === "confirm")!;
-      delete projectStep(confirm).identity;
       writeStep(confirm, { locators: [{ kind: "role", role: "button", name: "Apply" }] });
     }
     const driver = counting();

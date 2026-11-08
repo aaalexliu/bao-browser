@@ -46,6 +46,9 @@ export function targetBox(rect: { x: number; y: number; width?: number; height?:
   if (width == null || height == null) return undefined;
   if (![rect.x, rect.y, width, height].every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
   if (width <= 0 || height <= 0) return undefined;
+  const right = rect.x + width;
+  const bottom = rect.y + height;
+  if (right <= 0 || bottom <= 0 || rect.x >= viewport.width || rect.y >= viewport.height) return undefined;
   return { x: rect.x, y: rect.y, width, height, viewport: { width: viewport.width, height: viewport.height } };
 }
 

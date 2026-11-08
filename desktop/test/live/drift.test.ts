@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepTitle } from "../../src/v1/schema";
 // Replay one captured workflow under scripted page changes.
 // Reports which attribute would have been the one that broke.
 
@@ -80,7 +80,7 @@ test("drift: shift, theme, font, order, slow network, and 2x scale", async () =>
             workflow: "browser-form",
             change: change.name,
             stepId: step.id,
-            label: (savedStep == null ? undefined : projectStep(savedStep).label),
+            label: (savedStep == null ? undefined : stepTitle(savedStep)),
             passed: step.status === "passed",
             brokenAttr: result.failure?.stepId === step.id ? result.failure.brokenAttr : undefined,
             reason: step.reason,

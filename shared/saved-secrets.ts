@@ -1,5 +1,5 @@
 import { INPUT_BINDING } from "./bindings";
-import { projectStep } from "../desktop/src/v1/schema";
+import { stepForEach, stepInputName, stepKey, stepQuery, stepValueTemplate } from "../desktop/src/v1/schema";
 import type { ReplayArgs, WorkflowV2, WorkflowStep } from "../desktop/src/v1/schema";
 
 export const STRIPPED_SECRET = "[secret stripped]";
@@ -24,10 +24,11 @@ export function oneTimeCodeField(value: unknown): boolean {
 
 export function oneTimeCodeInput(workflow: Pick<WorkflowV2, "steps">, name: string): boolean {
   return workflow.steps.some((step) => {
-    const view = projectStep(step);
-    return oneTimeCodeField(view.identity) && (view.input === name
-      || typeof view.value === "string" && [...view.value.matchAll(INPUT_BINDING)].some((match) => match[1] === name)
-      || !!view.forEach && oneTimeCodeInput(view.forEach, name));
+    const nested = stepForEach(step);
+    if (nested) return oneTimeCodeInput({ steps: nested.steps }, name);
+    const value = stepValueTemplate(step);
+    return oneTimeCodeField(stepQuery(step)) && (stepInputName(step) === name
+      || typeof value === "string" && [...value.matchAll(INPUT_BINDING)].some((match) => match[1] === name));
   });
 }
 
@@ -56,15 +57,16 @@ export function hasStrippedSecret(value: unknown): boolean {
 }
 
 export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, args: ReplayArgs): boolean {
-  const view = projectStep(step);
-  const reason = view.unresolved?.reason;
-  if (reason === "redacted key" || hasStrippedSecret(view.key)) return true;
-  const override = view.input != null && args[view.input] != null && ["type", "digits", "select"].includes(step.action);
-  if (!override && hasStrippedSecret(view.value)) return true;
+  const key = stepKey(step);
+  const input = stepInputName(step);
+  const value = stepValueTemplate(step);
+  if (hasStrippedSecret(key)) return true;
+  const override = input != null && args[input] != null && ["type", "digits", "select"].includes(step.action);
+  if (!override && hasStrippedSecret(value)) return true;
   const inputs = new Set<string>();
-  if (view.input) inputs.add(view.input);
-  if (typeof view.value === "string") for (const match of view.value.matchAll(INPUT_BINDING)) inputs.add(match[1]!);
-  const source = view.forEach?.over;
+  if (input) inputs.add(input);
+  if (typeof value === "string") for (const match of value.matchAll(INPUT_BINDING)) inputs.add(match[1]!);
+  const source = stepForEach(step)?.over;
   const tableName = source?.kind === "input" ? source.name : undefined;
   if (tableName) inputs.add(tableName);
   if ([...inputs].some((name) => {
@@ -72,5 +74,5 @@ export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, a
     const value = args[name] ?? input?.default;
     return input?.type === "table" && tableName === name ? typeof value === "string" && value.trim() === STRIPPED_SECRET : hasStrippedSecret(value);
   })) return true;
-  return reason === NEEDS_SECRET_VALUE && (!inputs.size || [...inputs].some((name) => args[name] == null || args[name] === ""));
+  return false;
 }

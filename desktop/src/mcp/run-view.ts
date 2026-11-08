@@ -1,7 +1,7 @@
 import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
-import { projectStep, stepTitle } from "../v1/schema";
+import { stepTitle } from "../v1/schema";
 import type { WorkflowV2 } from "../v1/schema";
 import { BROWSER_PICTURE_BYTES, shotFile, shotFormat } from "../v1/shots";
 import { Library, secretInputNames, type StoredRun } from "../v1/store";
@@ -123,7 +123,7 @@ function runView(
       id: viewerId(workflow.id), name: text(workflow.name, 120), stepCount: workflow.steps.length,
       steps: workflow.steps.slice(workflowOffset, workflowOffset + STEP_PAGE_SIZE).map((step, index) => ({
         index: workflowOffset + index + 1, action: text(step.action, 40),
-        label: text(projectStep(step).label, 160),
+        label: text(stepTitle(step), 160),
       })),
       offset: workflowOffset, nextOffset: workflowOffset + STEP_PAGE_SIZE < workflow.steps.length ? workflowOffset + STEP_PAGE_SIZE : null,
     } : null,

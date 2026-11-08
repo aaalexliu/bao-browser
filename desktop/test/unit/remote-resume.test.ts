@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepTitle } from "../../src/v1/schema";
 import { fixtureStep, fixtureDoc, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -197,7 +197,7 @@ test("production remote confirms continue locally once and reject non-held order
     await waitFor(() => remote.view().phase === "waiting");
     assert.equal(followups, 3, "local Continue skipped a later human step");
     assert.equal(remote.view().stepId, "second-confirm");
-    assert.equal(remote.view().stepLabel, projectStep(confirm).label);
+    assert.equal(remote.view().stepLabel, stepTitle(confirm));
     assert.equal(remote.view().stepNumber, 2);
     assert.equal(remote.view().stepCount, 3);
     assert.equal(remote.view().canDetectCompletion, false);

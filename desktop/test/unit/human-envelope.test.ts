@@ -1,4 +1,3 @@
-import { projectStep } from "../../src/v1/schema";
 import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // A human step returns an envelope and does not block. Resume continues the same
 // page. Confirm is never pressed by resume. The fixture is 127.0.0.1 only.
@@ -56,7 +55,7 @@ test("a yielded confirm does not shoot or press, and resume applies nothing", as
 
 test("explicit resume completes a recorded confirm without a postcondition", async () => {
   const workflow = confirmWorkflow("http://127.0.0.1/fixture");
-  delete projectStep(workflow.steps[0]!).postcondition;
+  if ("check" in workflow.steps[0]!) delete workflow.steps[0]!.check;
   const clicks: string[] = [];
   const driver = fakeDriver(clicks, [], () => {}, new Capture());
   const first = await replay(workflow, {}, driver, { yieldHuman: true });
@@ -258,7 +257,7 @@ test("clearing a wall at a recorded confirm asks for the confirm instead of comp
     const address = fixture.address();
     assert.ok(address && typeof address === "object");
     const workflow = confirmWorkflow(`http://127.0.0.1:${address.port}/`, "wall-confirm");
-    delete projectStep(workflow.steps[0]!).postcondition;
+    if ("check" in workflow.steps[0]!) delete workflow.steps[0]!.check;
     app.library.save(workflow);
     const first = await runWorkflow(app.library, { id: workflow.id }, undefined, {
       prompts: {

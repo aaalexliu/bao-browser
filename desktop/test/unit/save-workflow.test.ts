@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepTitle, stepValueTemplate } from "../../src/v1/schema";
 import { fixtureDoc, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -186,7 +186,7 @@ test("a model failure still saves the floor title", async () => {
   assert.equal(named.name, "Reserve a room");
   assert.equal(named.summary, "Reserves a room for tonight.");
   assert.equal(named.intent, "Get a room at the hotel.");
-  assert.equal((named.steps[0] == null ? undefined : projectStep(named.steps[0]).intent), "Open the booking page.");
+  assert.equal((named.steps[0] == null ? undefined : named.steps[0].caption.text), "Open the booking page.");
   assert.equal(named.inference?.status, "ok");
   assert.equal(named.inference?.provider, "grok");
 });
@@ -247,8 +247,8 @@ test("the model prompt and saved titles retain captured values", async () => {
   assert.equal(saved.summary, "Uses code 123456");
   assert.equal(saved.intent, "Sign in to the site.");
   const typed = saved.steps.find((step) => step.action === "type")!;
-  assert.equal(projectStep(typed).label, `Type ${SECRET}`);
-  assert.equal(projectStep(typed).value, "{{password}}");
+  assert.equal(stepTitle(typed), `Type ${SECRET}`);
+  assert.equal(stepValueTemplate(typed), "{{password}}");
   assert.equal(saved.inputs.find((input) => input.name === "password")!.default, SECRET);
 });
 
@@ -390,7 +390,7 @@ process.stdin.on("end", () => {
     assert.equal(saved.name, "Reserve a room");
     assert.equal(saved.summary, "Books a table through Cursor.");
     assert.equal(saved.intent, "Get a table.");
-    assert.equal((saved.steps[0] == null ? undefined : projectStep(saved.steps[0]).intent), "Open the booking page.");
+    assert.equal((saved.steps[0] == null ? undefined : saved.steps[0].caption.text), "Open the booking page.");
     assert.equal(saved.inference?.status, "ok");
     assert.equal(saved.inference?.provider, "cursor");
     assert.equal(saved.inference?.model, "composer-save");

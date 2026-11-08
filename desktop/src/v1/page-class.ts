@@ -116,9 +116,9 @@ export function siteName(urlOrHost: string): string {
   return raw.split(/[-_]+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
-export function recordingExpectsLogin(steps: { action?: string; identity?: PageNode }[]): { password: boolean; login: boolean } {
+export function recordingExpectsLogin(steps: { action?: string; reason?: string; identity?: PageNode }[]): { password: boolean; login: boolean } {
   const password = steps.some((step) => isPasswordIdentity(step.identity));
-  const login = steps.some((step) => step.action === "login");
+  const login = steps.some((step) => step.action === "handoff" && step.reason === "sign-in");
   return { password, login };
 }
 

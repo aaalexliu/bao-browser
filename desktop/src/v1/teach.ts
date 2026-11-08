@@ -5,7 +5,7 @@
 
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
-import { projectStep, looksLikePath, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepTitle, stepValueTemplate, stepSensitive, looksLikePath, stepCheck, stepInputName, stepQuery, stepTarget, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -148,7 +148,7 @@ export function projectTeach(
       modelName: voice?.modelName,
       intent: guess,
       outcome: fileText(voice?.outcome || outcome, events),
-      human: step.action === "login",
+      human: step.action === "handoff",
       verify: step.action === "verify",
       dropped: false,
       merged: false,
@@ -173,7 +173,7 @@ export function projectTeach(
     ...draft.step,
     index,
     id: `${meta.id}-${index}`,
-    intent: draft.card.noteAsIntent ? (draft.card.note || projectStep(draft.step).intent) : (draft.card.intent || projectStep(draft.step).intent),
+    intent: draft.card.noteAsIntent ? (draft.card.note || draft.step.caption.text) : (draft.card.intent || draft.step.caption.text),
   }));
   const inputs = inputsFor(steps, baseline.inputs, overrides);
   const workflow: WorkflowV2 = {
@@ -259,16 +259,16 @@ export function measureIntentPair(pair: IntentEvalPair): {
     const match = pair.workflow.steps.findIndex((item, index) => !used.has(index) && sameTarget(step, item));
     if (match < 0) continue;
     used.add(match);
-    const from = projectStep(step).label;
+    const from = stepTitle(step);
     const matched = pair.workflow.steps[match];
-    const to = matched ? projectStep(matched).label : "";
+    const to = matched ? stepTitle(matched) : "";
     if (from !== to) intentChanges.push({ from, to });
   }
   return {
     corrections: pair.decisions.length,
     intentChanges,
     droppedSteps: Math.max(0, pair.baseline.steps.length - pair.workflow.steps.length),
-    humanSteps: pair.workflow.steps.filter((step) => step.action === "login").length,
+    humanSteps: pair.workflow.steps.filter((step) => step.action === "handoff").length,
     checks: pair.workflow.steps.filter((step) => step.action === "verify").length,
     branches: pair.workflow.steps.filter((step) => step.when).length,
   };
@@ -513,12 +513,21 @@ function applyDecision(
     return;
   }
   if (decision.kind === "human") {
-    const login = draft.step.action === "login"
-      || projectStep(draft.step).identity?.role === "password"
-      || /login/i.test(projectStep(draft.step).identity?.testId || "")
-      || /login/i.test(projectStep(draft.step).identity?.id || "");
-    if (!login) return;
-    draft.step = { id: draft.step.id, index: draft.step.index, action: "login", timeoutMs: Math.max(draft.step.timeoutMs || 0, 15000), caption: { text: draft.card.intent || "Sign in" }, ...(draft.card.outcome ? { check: { kind: "text" as const, match: draft.card.outcome, timeoutMs: Math.max(draft.step.timeoutMs || 0, 15000) } } : {}) };
+    const reason = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code")
+      ? draft.step.reason
+      : "owner-press";
+    const target = reason === "owner-press" ? stepTarget(draft.step) : undefined;
+    const timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
+    draft.step = {
+      id: draft.step.id,
+      index: draft.step.index,
+      action: "handoff",
+      reason,
+      timeoutMs,
+      caption: { text: draft.card.intent || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button") },
+      ...(target ? { target } : {}),
+      ...(draft.card.outcome ? { check: { kind: "text" as const, match: draft.card.outcome, timeoutMs } } : {}),
+    };
     draft.card.human = true;
     draft.card.action = draft.step.action;
     return;
@@ -552,9 +561,9 @@ function applyDecision(
   }
   if (decision.kind === "input" || decision.kind === "secret") {
     const secret = decision.kind === "secret" || draft.card.values.some((value) => value.role === "secret");
-    const current = projectStep(draft.step).input || draft.card.values.find((value) => value.name)?.name || (secret ? "secret" : "text");
+    const current = stepInputName(draft.step) || draft.card.values.find((value) => value.name)?.name || (secret ? "secret" : "text");
     const name = decision.name && NAME_RE.test(decision.name) ? decision.name : current;
-    retarget(draft.step, projectStep(draft.step).input, name);
+    retarget(draft.step, stepInputName(draft.step), name);
     if (draft.step.action === "type" || draft.step.action === "select" || draft.step.action === "digits") {
       draft.step.text = { input: name };
       if (draft.step.action === "type" && secret) draft.step.sensitive = true;
@@ -566,7 +575,7 @@ function applyDecision(
       type: secret ? "secret" : prior?.type === "file" ? "file" : prior?.type === "number" ? "number" : "text",
       supply: secret || !literal ? "must" : "saved",
       label: name,
-      default: oneTimeCodeField(projectStep(draft.step).identity) ? undefined : literal ?? prior?.default,
+      default: oneTimeCodeField(stepQuery(draft.step)) ? undefined : literal ?? prior?.default,
     });
     draft.card.values = [{
       role: secret ? "secret" : "input",
@@ -604,7 +613,7 @@ function setTextCheck(step: WorkflowStep, match: string): void {
     case "key":
     case "check":
     case "select":
-    case "login":
+    case "handoff":
     case "upload":
     case "drop":
     case "download":
@@ -623,7 +632,8 @@ function retarget(step: WorkflowStep, from: string | undefined, to: string): voi
   if (!from || from === to) return;
   const swap = (value: string) => value.split(`{{${from}}}`).join(`{{${to}}}`);
   if (step.caption?.text) step.caption = { ...step.caption, text: swap(step.caption.text) };
-  const match = projectStep(step).expect?.match;
+  const checked = stepCheck(step);
+  const match = checked && "match" in checked ? checked.match : undefined;
   if (match) setTextCheck(step, swap(match));
   if ((step.action === "type" || step.action === "select" || step.action === "digits") && "literal" in step.text) {
     step.text = { literal: swap(step.text.literal) };
@@ -636,9 +646,11 @@ function inputsFor(steps: WorkflowStep[], existing: WorkflowInput[], overrides: 
     if (name && NAME_RE.test(name) && !names.includes(name)) names.push(name);
   };
   for (const step of steps) {
-    push(projectStep(step).input);
+    push(stepInputName(step));
     push(step.when?.input);
-    for (const token of tokens(projectStep(step).value, projectStep(step).postcondition?.match, projectStep(step).expect?.match, step.readBack?.match)) push(token);
+    const check = stepCheck(step);
+    const match = check && "match" in check ? check.match : undefined;
+    for (const token of tokens(stepValueTemplate(step), match, match, step.readBack?.match)) push(token);
   }
   return names.map((name) => {
     const override = overrides.get(name);
@@ -659,11 +671,11 @@ function tokens(...values: (string | undefined)[]): string[] {
 
 function valuesOf(step: WorkflowStep, event: TrailEvent | undefined): TeachValue[] {
   if (step.action === "drop" || step.action === "upload") {
-    return [{ role: "input", name: projectStep(step).input || "file", label: `{{${projectStep(step).input || "file"}}}` }];
+    return [{ role: "input", name: stepInputName(step) || "file", label: `{{${stepInputName(step) || "file"}}}` }];
   }
-  const input = projectStep(step).input;
-  const value = projectStep(step).value;
-  if (projectStep(step).sensitive || event?.sensitive || step.action === "type" && /pass|secret/i.test(input || "")) {
+  const input = stepInputName(step);
+  const value = stepValueTemplate(step);
+  if (stepSensitive(step) || event?.sensitive || step.action === "type" && /pass|secret/i.test(input || "")) {
     return [{ role: "secret", name: input || "secret", label: "secret" }];
   }
   if (input) return [{ role: "input", name: input, label: `{{${input}}}` }];
@@ -689,13 +701,13 @@ function targetName(event: TrailEvent | undefined): string {
 /** The interpret label, with a named target when that label is only "Click". */
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
-  const fromLabel = (projectStep(step).label || "").trim().replace(/^Click "(.+)"$/, "Click $1");
+  const fromLabel = (stepTitle(step) || "").trim().replace(/^Click "(.+)"$/, "Click $1");
   if (fromLabel && fromLabel !== "Click") return fromLabel;
   const target = targetName(event);
   if (target) return `Click ${target}`;
   if (fromLabel) return fromLabel;
   if (step.action === "verify") return "Check";
-  if (step.action === "login") return "Sign in";
+  if (step.action === "handoff" && step.reason === "sign-in") return "Sign in";
   if (step.action === "drop") return "Drop file";
   if (step.action === "upload") return "Upload file";
   return "Click";
@@ -703,16 +715,16 @@ function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): str
 
 function typeIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   const where = fieldName(step, event);
-  const secret = projectStep(step).sensitive || event?.sensitive || /pass|secret/i.test(projectStep(step).input || "");
+  const secret = stepSensitive(step) || event?.sensitive || /pass|secret/i.test(stepInputName(step) || "");
   if (secret) return where ? `Type secret into ${where}` : "Type secret";
-  const token = projectStep(step).input ? `{{${projectStep(step).input}}}` : (projectStep(step).value || "").trim();
+  const token = stepInputName(step) ? `{{${stepInputName(step)}}}` : (stepValueTemplate(step) || "").trim();
   if (token && where) return `Type ${token} into ${where}`;
   if (token) return token.startsWith("Type ") ? token : `Type ${token}`;
   return where ? `Type into ${where}` : "Type";
 }
 
 function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
-  const identity = event?.identity || projectStep(step).identity;
+  const identity = event?.identity || stepQuery(step);
   const raw = [identity?.label, identity?.name, identity?.nameAttr, identity?.id].find((bit) => bit && bit.trim()) || "";
   const clean = raw.replace(/\s+/g, " ").trim();
   if (!clean || clean.includes("{{")) return "";
@@ -721,13 +733,14 @@ function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
 }
 
 function heuristicOutcome(step: WorkflowStep, event: TrailEvent | undefined): string {
-  const view = projectStep(step);
-  if (step.action === "verify") return view.expect?.match || event?.afterText || "the check holds";
-  if (step.action === "drop" || step.action === "upload") return view.postcondition?.match || "the file lands";
-  if (step.action === "type" && (view.sensitive || event?.sensitive)) return "the secret is filled";
-  if (step.action === "type" && view.input) return `the field shows {{${view.input}}}`;
+  const check = stepCheck(step);
+  if (step.action === "verify") return (check && "match" in check ? check.match : undefined) || event?.afterText || "the check holds";
+  if (step.action === "drop" || step.action === "upload") return (check && "match" in check ? check.match : undefined) || "the file lands";
+  if (step.action === "type" && (step.sensitive || event?.sensitive)) return "the secret is filled";
+  const input = stepInputName(step);
+  if (step.action === "type" && input) return `the field shows {{${input}}}`;
   if (event?.afterText) return event.afterText;
-  if (view.postcondition?.kind === "text" && view.postcondition.match) return view.postcondition.match;
+  if (check?.kind === "text" && check.match) return check.match;
   return "";
 }
 
@@ -754,8 +767,8 @@ function fileText(value: string, events: readonly TrailEvent[]): string {
 
 function sameTarget(a: WorkflowStep, b: WorkflowStep): boolean {
   if (a.action !== b.action) return false;
-  const left = projectStep(a).identity;
-  const right = projectStep(b).identity;
+  const left = stepQuery(a);
+  const right = stepQuery(b);
   if (!left || !right) return a.action === b.action && !left && !right;
   return (left.id != null && left.id === right.id)
     || (left.testId != null && left.testId === right.testId)
@@ -778,14 +791,14 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
   let i = 0;
   let j = 0;
   while (i < rows.length || j < incoming.length) {
-    if (i < rows.length && j < incoming.length && stepKey(rows[i]!.step) === stepKey(incoming[j]!)) {
+    if (i < rows.length && j < incoming.length && mergeKey(rows[i]!.step) === mergeKey(incoming[j]!)) {
       out.push({ step: rows[i]!.step, takes: [...rows[i]!.takes, take], workflowId: rows[i]!.workflowId });
       i += 1;
       j += 1;
       continue;
     }
-    const aAhead = j < incoming.length ? rows.slice(i, i + 6).findIndex((row) => stepKey(row.step) === stepKey(incoming[j]!)) : -1;
-    const bAhead = i < rows.length ? incoming.slice(j, j + 6).findIndex((step) => stepKey(step) === stepKey(rows[i]!.step)) : -1;
+    const aAhead = j < incoming.length ? rows.slice(i, i + 6).findIndex((row) => mergeKey(row.step) === mergeKey(incoming[j]!)) : -1;
+    const bAhead = i < rows.length ? incoming.slice(j, j + 6).findIndex((step) => mergeKey(step) === mergeKey(rows[i]!.step)) : -1;
     if (aAhead > 0 && (bAhead < 0 || aAhead <= bAhead)) {
       for (let n = 0; n < aAhead; n++) out.push(rows[i++]!);
       continue;
@@ -800,8 +813,8 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
   return out;
 }
 
-function stepKey(step: WorkflowStep): string {
-  const identity = projectStep(step).identity;
+function mergeKey(step: WorkflowStep): string {
+  const identity = stepQuery(step);
   const target = identity?.testId || identity?.id || identity?.nameAttr || identity?.name || identity?.text || "";
   return `${step.action}|${target}`;
 }

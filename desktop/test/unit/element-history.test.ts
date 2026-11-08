@@ -10,7 +10,7 @@ import { runViewer, versionsPanel } from "../../src/app/views";
 import { rollbackTo } from "../../src/v1/element-history";
 import { keepPatch, revertPatch, type HealProposal } from "../../src/v1/heal";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepQuery, stepHistory, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { formatClock } from "../../src/v1/time";
 import { draftVersion, listVersions, restoreVersion, versionDocument } from "../../src/v1/versions";
@@ -84,7 +84,7 @@ test("heal twice, roll back to the recorded version, and replay with no model ca
   const patch = (text: string, testId: string): HealProposal["patch"] => ({ identity: ident({ text, testId }) });
   workflow = keepPatch(workflow, "save", patch("Save v2", "save-v2"), { at: recordedAt + 60_000, runId: "run-1", score: 100 });
   workflow = keepPatch(workflow, "save", patch("Save v3", "save-v3"), { at: recordedAt + 120_000, runId: "run-2", score: 88 });
-  const history = (workflow.steps[0] == null ? undefined : projectStep(workflow.steps[0]).history) || [];
+  const history = (workflow.steps[0] == null ? undefined : stepHistory(workflow.steps[0])) || [];
   assert.equal(history.length, 3);
   assert.equal(history[0]?.source, "recorded");
   assert.equal(history[1]?.source, "heal");
@@ -94,18 +94,18 @@ test("heal twice, roll back to the recorded version, and replay with no model ca
   assert.equal(history[2]?.runId, "run-2");
   const snap = structuredClone(history[0]);
   const rolled = rollbackTo(workflow.steps[0]!, history[0]!.id, { at: recordedAt + 180_000, recordedAt });
-  assert.equal(projectStep(rolled).history?.length, 4);
-  assert.deepEqual(projectStep(rolled).history?.[0], snap);
+  assert.equal(stepHistory(rolled)?.length, 4);
+  assert.deepEqual(stepHistory(rolled)?.[0], snap);
   assert.deepEqual(history[0], snap);
-  assert.equal(projectStep(rolled).history?.[3]?.source, "rollback");
-  assert.equal(projectStep(rolled).identity?.text, "Save");
-  assert.equal(projectStep(rolled).identity?.testId, "save");
-  assert.notEqual(projectStep(rolled).history?.[3]?.id, history[0]?.id);
+  assert.equal(stepHistory(rolled)?.[3]?.source, "rollback");
+  assert.equal(stepQuery(rolled)?.text, "Save");
+  assert.equal(stepQuery(rolled)?.testId, "save");
+  assert.notEqual(stepHistory(rolled)?.[3]?.id, history[0]?.id);
   workflow = fixtureDoc({ ...workflow, steps: [{ ...rolled, index: 0 }] });
   const reverted = revertPatch(workflow, workflow.steps[0]!, { at: recordedAt + 200_000, runId: "run-3" });
-  assert.equal((reverted.steps[0] == null ? undefined : projectStep(reverted.steps[0]).history)?.at(-1)?.source, "revert");
-  assert.equal((reverted.steps[0] == null ? undefined : projectStep(reverted.steps[0]).history)?.[0]?.id, snap?.id);
-  assert.deepEqual((reverted.steps[0] == null ? undefined : projectStep(reverted.steps[0]).history)?.[0], snap);
+  assert.equal((reverted.steps[0] == null ? undefined : stepHistory(reverted.steps[0]))?.at(-1)?.source, "revert");
+  assert.equal((reverted.steps[0] == null ? undefined : stepHistory(reverted.steps[0]))?.[0]?.id, snap?.id);
+  assert.deepEqual((reverted.steps[0] == null ? undefined : stepHistory(reverted.steps[0]))?.[0], snap);
   workflow = fixtureDoc({ ...workflow, steps: [rolled] });
   assert.deepEqual(validateWorkflow(workflow), []);
   assert.equal(validate(workflow), true, ajv.errorsText(validate.errors));
@@ -240,10 +240,10 @@ test("the versions panel holds the locator versions and the run viewer keeps the
   const twice = keepPatch(once, "apply", { identity: ident({ testId: "apply-3", text: "Continue" }) }, { at: at + 2000, runId: "run-2", score: 88 });
   draftVersion(library, twice, "heal");
   const reverted = revertPatch(twice, withStep(workflow.steps[0]!, {
-    history: twice.steps[0] ? projectStep(twice.steps[0]).history : undefined,
+    history: twice.steps[0] ? stepHistory(twice.steps[0]) : undefined,
   }), { at: at + 3000, runId: "run-2" });
   draftVersion(library, reverted, "restore");
-  const recorded = (twice.steps[0] == null ? undefined : projectStep(twice.steps[0]).history)?.[0];
+  const recorded = (twice.steps[0] == null ? undefined : stepHistory(twice.steps[0]))?.[0];
   const rolled = {
     ...twice,
     steps: [rollbackTo(twice.steps[0]!, recorded!.id, { at: at + 4000, recordedAt: at })],
@@ -266,12 +266,12 @@ test("the versions panel holds the locator versions and the run viewer keeps the
   const restored = restoreVersion(library, "wf-history", 1);
   assert.deepEqual(versionDocument(library, "wf-history", 1), snap);
   assert.notEqual(restored.n, 1);
-  assert.equal((restored.document.steps[0] == null ? undefined : projectStep(restored.document.steps[0]).identity)?.testId, "apply");
+  assert.equal((restored.document.steps[0] == null ? undefined : stepQuery(restored.document.steps[0]))?.testId, "apply");
   const result = await replay(restored.document, {}, fake([tree([ident({ testId: "apply", text: "Apply" })])]), { heal: throwingHeal });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
   assert.equal(result.heals.length, 0);
-  assert.equal((() => { const _step = library.read("wf-history").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "apply");
+  assert.equal((() => { const _step = library.read("wf-history").steps[0]; return _step == null ? undefined : stepQuery(_step); })()?.testId, "apply");
   const viewer = runViewer({
     id: "run-banner",
     workflowId: "wf-history",

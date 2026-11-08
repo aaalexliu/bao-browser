@@ -5,6 +5,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { HumanAsk } from "./human-ask";
+import { RUN_SCHEMA_ID } from "./schema";
 import type { StoredRun } from "./store";
 
 export const TIMED_OUT = "stopped, timed out";
@@ -64,6 +65,7 @@ export function markPromptTimedOut(store: PromptRunStore, prompt: PendingPrompt,
   if (idx >= 0) steps[idx] = { ...steps[idx], ...failed };
   else steps.push(failed);
   const run: StoredRun = {
+    schema: existing?.schema ?? RUN_SCHEMA_ID,
     id: prompt.runId,
     workflowId: prompt.ask.workflowId,
     status: TIMED_OUT_STATUS,

@@ -4,8 +4,13 @@ import { citeIdentity, caption, clickSentence, openSentence, typeSentence } from
 import { locatorsFromIdentity } from "../../src/v1/locators";
 import {
   hintFromIdentity,
-  projectStep,
+  stepCheck,
+  stepInputName,
+  stepKey,
+  stepLocators,
+  stepQuery,
   stepTarget,
+  stepValueTemplate,
   WORKFLOW_SCHEMA_ID,
   type Check,
   type HealChange,
@@ -130,7 +135,7 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
   const target = targetOf(raw);
   const check = checkOf(raw);
   const sentence = sentenceOf(raw, action);
-  const noBox = action === "navigate" || action === "login" || action === "wait" || action === "finish" || action === "note" || action === "verify" || action === "extract" || action === "for_each";
+  const noBox = action === "navigate" || action === "wait" || action === "finish" || action === "note" || action === "verify" || action === "extract" || action === "for_each" || (action === "handoff" && raw.action !== "confirm" && raw.reason !== "owner-press");
   const cap = raw.caption?.text
     ? (noBox ? caption(raw.caption.text) : raw.caption)
     : caption(sentence, noBox ? undefined : citeIdentity(asIdentity(raw.identity)), noBox ? undefined : raw.targetBox);
@@ -180,8 +185,19 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
       return { ...base, action: "navigate", url: raw.url || raw.value || "https://example.test/", caption: caption(sentence), ...withCheck };
     case "verify":
       return { ...base, action: "verify", check: check ?? { kind: "settled", timeoutMs: 4000 }, caption: caption(sentence) };
-    case "login":
-      return { ...base, action: "login", caption: caption(raw.label || "Sign in"), ...withCheck };
+    case "handoff": {
+      const reason = raw.action === "login" || raw.reason === "sign-in"
+        ? "sign-in"
+        : raw.reason === "code" ? "code" : "owner-press";
+      return {
+        ...base,
+        action: "handoff",
+        reason,
+        ...(reason === "owner-press" && target ? { target } : {}),
+        caption: caption(raw.label || (reason === "sign-in" ? "Sign in" : "You press the button")),
+        ...withCheck,
+      };
+    }
     case "upload":
     case "drop":
       return {
@@ -222,14 +238,14 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
 
 export function fixtureInput(partial: LooseInput): WorkflowInput {
   const type = partial.type ?? "text";
-  const secret = type === "secret" || type === "file";
+  const file = type === "file";
   const hasDefault = typeof partial.default === "string" && partial.default.length > 0;
   let supply = partial.supply;
   if (supply !== "saved" && supply !== "must") {
-    if (secret || partial.required === true || !hasDefault) supply = "must";
+    if (file || partial.required === true || !hasDefault) supply = "must";
     else supply = "saved";
   }
-  if (secret) supply = "must";
+  if (file) supply = "must";
   if (supply === "saved" && !hasDefault) supply = "must";
   return {
     name: partial.name,
@@ -293,7 +309,6 @@ export function writeStep(step: WorkflowStep, patch: object): WorkflowStep {
 }
 
 function draftFrom(step: WorkflowStep): LooseStep {
-  const view = projectStep(step);
   return {
     id: step.id,
     action: step.action,
@@ -304,14 +319,14 @@ function draftFrom(step: WorkflowStep): LooseStep {
     when: step.when,
     readBack: step.readBack,
     target: stepTarget(step),
-    identity: view.identity,
-    locators: view.locators,
-    value: view.value,
-    input: view.input,
-    key: view.key,
-    checked: view.checked,
-    sensitive: view.sensitive,
-    check: view.check,
+    identity: stepQuery(step),
+    locators: stepLocators(step),
+    value: stepValueTemplate(step),
+    input: stepInputName(step),
+    key: stepKey(step),
+    checked: step.action === "check" ? step.checked : undefined,
+    sensitive: step.action === "type" ? step.sensitive : undefined,
+    check: stepCheck(step),
     text: step.action === "type" || step.action === "select" || step.action === "digits" ? step.text : step.action === "note" ? step.text : undefined,
     url: step.action === "navigate" ? step.url : undefined,
     download: step.action === "download" ? step.download : undefined,
@@ -344,10 +359,11 @@ function healOf(value: unknown): "auto" | "ask" | "never" | undefined {
 }
 
 function mapAction(action: string | undefined): WorkflowStep["action"] {
-  if (action === "confirm" || action === "input") return action === "input" ? "type" : "click";
+  if (action === "confirm" || action === "login") return "handoff";
+  if (action === "input") return "type";
   if (action === "press") return "key";
   if (action === "goto") return "navigate";
-  const known: WorkflowStep["action"][] = ["click", "type", "key", "check", "select", "navigate", "verify", "login", "upload", "drop", "extract", "for_each", "note", "download", "open", "digits", "pickDate", "wait", "finish"];
+  const known: WorkflowStep["action"][] = ["click", "type", "key", "check", "select", "navigate", "verify", "handoff", "upload", "drop", "extract", "for_each", "note", "download", "open", "digits", "pickDate", "wait", "finish"];
   return known.includes(action as WorkflowStep["action"]) ? action as WorkflowStep["action"] : "note";
 }
 
@@ -412,7 +428,7 @@ function sentenceOf(draft: LooseStep, action: WorkflowStep["action"]): string {
   if (action === "type" || action === "select") return typeSentence(draft.identity?.label || draft.identity?.name, draft.sensitive);
   if (action === "click") return clickSentence(draft.identity?.name || draft.identity?.text || draft.identity?.label);
   if (action === "key") return `Press ${draft.key || "Enter"}`;
-  if (action === "login") return "Sign in";
+  if (action === "handoff") return draft.action === "login" || draft.reason === "sign-in" ? "Sign in" : "You press the button";
   if (action === "wait") return `Wait ${draft.reason || "the page"}`;
   if (action === "extract") return `Read ${draft.extract?.as || "the page"}`;
   if (action === "finish") return draft.reason ? `Finish: ${draft.reason}` : "Finish";
