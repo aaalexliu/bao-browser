@@ -6,7 +6,7 @@ import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, type CurrentChrome } from "../cdp-live/current-chrome";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { newInRead, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, newInRead, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -21,8 +21,6 @@ export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
 export interface AgentBrowserCommandResult { stdout: string; stderr: string; exitCode: number }
 
 const SESSION_IDLE_MS = 10 * 60 * 1000;
-
-const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 
 const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",

@@ -3,10 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { describeStep, elementFor, shortName } from "../../src/engines/agent-browser-describe";
+import { CURRENT_CHROME_ENDED, describeStep, elementFor, shortName } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 
 const ok = (stdout: string) => [{ stdout, stderr: "", exitCode: 0 }];
+const reply = (outcome: string, instruction = "Keep this session open.") => ok(JSON.stringify({ outcome, instruction }));
 const page = { url: "https://shop.example/subscriptions", title: "Manage Your Deliveries" };
 
 // The shape of a real full snapshot: each product card is a generic container whose last button is a bare "Edit".
@@ -140,19 +141,34 @@ test("each command gets a plain sentence, and failures keep the native error", (
 
 test("owner waits name the site and page, and the return names where Bao is now", () => {
   const owner = { url: "https://www.amazon.com/ap/signin?openid=1", title: "Amazon Sign-In" };
-  const waiting = describeStep({ command: "wait_for_owner", args: ["60000"], results: ok(JSON.stringify({ outcome: "waiting" })), owner });
+  const waiting = describeStep({ command: "wait_for_owner", args: ["60000"], results: reply("waiting"), owner });
   assert.equal(waiting.text, 'Your turn: sign in to amazon.com in Bao\'s Chrome window. The page is "Amazon Sign-In" (https://www.amazon.com/ap/signin?openid=1). Bao reads only the title and address until the page changes.');
   assert.deepEqual(waiting.owner, { kind: "sign-in", site: "amazon.com", url: owner.url, title: owner.title });
-  const check = describeStep({ command: "open", args: ["https://shop.example"], results: ok(JSON.stringify({ outcome: "halted" })), owner: { url: "https://shop.example/", title: "Just a moment..." } });
+  const check = describeStep({ command: "open", args: ["https://shop.example"], results: reply("halted"), owner: { url: "https://shop.example/", title: "Just a moment..." } });
   assert.match(check.text, /^Your turn: clear the check on shop\.example in Bao's Chrome window\./);
-  const ready = describeStep({ command: "wait_for_owner", args: [], results: ok(JSON.stringify({ outcome: "ready" })), page });
+  const ready = describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page });
   const since = Date.UTC(2026, 10, 8, 8, 0, 0);
-  const later = describeStep({ command: "wait_for_owner", args: ["60000"], results: ok(JSON.stringify({ outcome: "waiting" })), owner: { ...owner, since }, at: since + 245_000 });
+  const later = describeStep({ command: "wait_for_owner", args: ["60000"], results: reply("waiting"), owner: { ...owner, since }, at: since + 245_000 });
   assert.equal(later.text, 'Your turn: sign in to amazon.com in Bao\'s Chrome window. The page is "Amazon Sign-In" (https://www.amazon.com/ap/signin?openid=1), waiting 4:05. Bao reads only the title and address until the page changes.');
   assert.equal(later.owner?.waitedMs, 245_000);
-  const halted = describeStep({ command: "click", args: ["@e5"], results: ok(JSON.stringify({ outcome: "halted" })), owner: { ...owner, since }, at: since + 61_000 });
+  const halted = describeStep({ command: "click", args: ["@e5"], results: reply("halted"), owner: { ...owner, since }, at: since + 61_000 });
   assert.match(halted.text, /, waiting 1:01\. /, "a halted step counts from the same handoff start");
   assert.equal(ready.text, 'Back from sign-in: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
+  const cleared = describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page, owner: { url: "https://shop.example/", title: "Just a moment..." } });
+  assert.equal(cleared.text, 'Back from the check: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
+});
+
+test("a closed session names the browser that ended", () => {
+  assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("closed", "The owner closed the Bao window. Report that this session cannot continue.") }).text,
+    "The Bao window closed. This session cannot continue.");
+  assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("closed", CURRENT_CHROME_ENDED) }).text,
+    "Your Chrome session ended. This session cannot continue.");
+});
+
+test("a selector target is the agent's value, not page text", () => {
+  const clicked = describeStep({ command: "click", args: ["button.primary"], results: ok("✓ Done\n") });
+  assert.deepEqual(clicked.parts, ["Clicked ", { value: "button.primary" }]);
+  assert.equal(clicked.text, 'Clicked "button.primary".');
 });
 
 test("a read boxes only what no earlier read of the page showed since the last open", async () => {

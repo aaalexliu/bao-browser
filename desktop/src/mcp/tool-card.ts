@@ -1,5 +1,5 @@
 import type { OwnerPage } from "../cdp-live/owner-wait";
-import { describeStep, ownerOutcome, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
+import { describeStep, ownerOutcome, ownerReply, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
 import type { AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { StoredRun } from "../v1/store";
@@ -15,7 +15,8 @@ export interface FinishSummary {
   task?: string;
   done: string[];
   steps: number;
-  durationMs: number | null;
+  /** How long the run took, such as "1 min 38 s". The card and the text sentence both show this string. */
+  duration?: string;
   pageLoads: number;
   reads: number;
   clicks: number;
@@ -106,8 +107,7 @@ export function stepCard(runId: string | null, step: RecordedAgentBrowserCommand
   return { ...base, style: "frame", picture: unavailable(step.afterShotError || "No page picture is available for this call.") };
 }
 
-function duration(ms: number | null): string {
-  if (ms === null) return "";
+function duration(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   const minutes = Math.floor(seconds / 60);
   return minutes ? `${minutes} min ${seconds % 60} s` : `${seconds} s`;
@@ -124,14 +124,14 @@ export function finishCard(run: StoredRun): BrowserToolCard {
   const done = Array.isArray(run.done) ? run.done.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
   const finish: FinishSummary = {
     outcome: status, reason, ...(run.task ? { task: run.task } : {}), done, steps: steps.length,
-    durationMs: ends.length && Number.isFinite(run.at) ? Math.max(0, Math.max(...ends) - run.at) : null,
+    ...(ends.length && Number.isFinite(run.at) ? { duration: duration(Math.max(0, Math.max(...ends) - run.at)) } : {}),
     pageLoads: tally("open"), reads: tally("snapshot"), clicks: tally("click"), typed: tally("fill"),
     failedSteps: steps.filter((step) => step.status === "failed").length,
   };
   const word = status === "passed" ? "Passed" : status === "failed" ? "Failed" : status === "recording" ? "Still recording" : status;
   const lead = reason ? `${word}: ${reason.replace(/\.$/, "")}` : word;
   const list = done.length ? ` Done: ${done.join("; ")}.` : "";
-  const took = finish.durationMs === null ? "" : ` in ${duration(finish.durationMs)}`;
+  const took = finish.duration ? ` in ${finish.duration}` : "";
   const caption = `${lead}.${list} ${finish.steps} ${finish.steps === 1 ? "step" : "steps"}${took}.`;
   return {
     command: "finish_task", status: status === "passed" ? "complete" : status === "failed" ? "failed" : "waiting", style: "finish",
@@ -144,8 +144,10 @@ function cardKey(card: BrowserToolCard): { type: "text"; text: string } {
   return { type: "text", text: JSON.stringify(card.style === "finish" ? { run_id: card.runId, card: "finish" } : { run_id: card.runId, step_id: card.stepId }) };
 }
 
+const textBlock = (text: string) => ({ type: "text" as const, text });
+
 function nativeBlocks(results: readonly AgentBrowserCommandResult[]): { type: "text"; text: string }[] {
-  return results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text" as const, text })));
+  return results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map(textBlock));
 }
 
 /** The sentence that leads every agent_browser result, in MCP Apps hosts and text-only clients alike. */
@@ -171,11 +173,25 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
   };
 }
 
-export function finishToolContent(card: BrowserToolCard | undefined, receipt: unknown, ui: boolean) {
+/**
+ * The result for a client without MCP Apps: words only. An owner wait gives its outcome and instruction as structuredContent,
+ * which Codex and Claude Code hand the model in place of the text blocks, and its instruction in words for clients that read text.
+ */
+export function textToolResult(results: readonly AgentBrowserCommandResult[], sentence: string, notices: readonly string[]) {
+  const reply = ownerReply(results);
+  return {
+    content: [textBlock(sentence), ...(reply ? [textBlock(reply.instruction)] : nativeBlocks(results)), ...notices.map(textBlock)],
+    ...(reply ? { structuredContent: { summary: sentence, ...reply } } : {}),
+    isError: results.some((result) => result.exitCode !== 0),
+  };
+}
+
+/** finish_task: the sentence and the workflow outcome in words; the full receipt as structuredContent. */
+export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean) {
   const sentence = card?.caption ?? "No browser task was open.";
-  return [
-    { type: "text", text: sentence },
-    { type: "text", text: JSON.stringify(receipt) },
-    ...(ui && card ? [cardKey(card)] : []),
-  ];
+  return {
+    content: [textBlock(sentence), ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...(ui && card ? [cardKey(card)] : [])],
+    structuredContent: { summary: sentence, ...receipt },
+    isError: false,
+  };
 }

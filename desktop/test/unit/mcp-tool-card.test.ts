@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import type { Page } from "playwright";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
-import { browserToolResult, finishToolContent, type BrowserToolCard } from "../../src/mcp/tool-card";
+import { browserToolResult, finishToolResult, type BrowserToolCard } from "../../src/mcp/tool-card";
 import { callViewerTool } from "../../src/mcp/viewer-tools";
 import { getRun } from "../../src/mcp/catalog";
 import { BROWSER_PICTURE_BYTES, finishCardFor, inspectRunView, listRunViews } from "../../src/mcp/run-view";
@@ -583,12 +583,18 @@ test("a host that forwards only content and isError still draws each step's card
   assert.match(await page.locator(".browser-wait p.muted").first().textContent() ?? "", / · waiting 4:00$/, "the card counts from the handoff start, not this one call");
   assert.equal(await page.locator(".browser-status").textContent(), "Waiting for you");
   assert.equal(await page.locator("img").count(), 0);
+  assert.equal(await page.locator("footer").count(), 0);
 
   const card = finishCardFor(library, f.recording.id);
-  await forward({ content: finishToolContent(card, { run_id: f.recording.id, status: "passed" }, true), isError: false });
+  const finished = finishToolResult(card, { run_id: f.recording.id, status: "passed" }, true);
+  await forward(finished);
   await answer(3);
   await page.locator(".browser-done").getByText("Added blueberries", { exact: true }).waitFor();
   assert.equal(await page.locator(".browser-status").textContent(), "Passed");
+  const took = card.finish?.duration;
+  assert.ok(took);
+  assert.ok(finished.content[0]!.text.endsWith(` in ${took}.`), finished.content[0]!.text);
+  assert.equal((await page.locator("p.muted").filter({ hasText: /step/ }).textContent())?.split(" · ")[1], took, "the card shows the sentence's duration");
 
   await page.waitForTimeout(700);
   const names = (await hostRequests(page, 4)).map((request) => request.params.name);

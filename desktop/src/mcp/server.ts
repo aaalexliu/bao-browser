@@ -7,7 +7,7 @@ import { BROWSER_CHOICES, BROWSER_CHOICE_DESCRIPTION, DEFAULT_BROWSER, browserCh
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
 import { finishCardFor, inspectMcpRunView, listRunViews } from "./run-view";
-import { BROWSER_RESULT_SCHEMA, browserToolResult, finishToolContent, stepSentence } from "./tool-card";
+import { BROWSER_RESULT_SCHEMA, browserToolResult, finishToolResult, stepSentence, textToolResult } from "./tool-card";
 import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
 
 interface Rpc {
@@ -93,7 +93,7 @@ export const TOOL_NAMES = TOOLS.map((tool) => tool.name);
 export const INSTRUCTIONS = [
   "Call finish_task with outcome=passed or failed, a short reason, and optional task as a short name for the run when you have one, before your final answer whenever a Bao browser task ends, including a cancelled or unsuccessful task. Do not rely on the conversation ending: long-lived MCP clients have no turn-end event. finish_task ends recording, returns the saved run receipt, and releases the browser session without stopping MCP. It honors Keep window open after agent finishes; explicit agent_browser close overrides that setting. Do not finish while waiting for owner input, sign-in, or confirmation. No idle timer ends those waits.",
   BROWSER_CHOICE_DESCRIPTION + " For direct agent-browser control, use agent_browser with its native command and args array. Start with open. Bao checks the selected Chrome profile on every explicit open, keeps sign-ins across runs, and retries recognized login walls once with the source sign-in. An unreadable source keeps saved Bao state. For browser=copy, inspect the returned tab list and select the signed-in copied tab with tab <id>. Bao-profile sessions also return the native tab list. On first open, browser=current drives the owner's own running Chrome. Bao's helper enables debugging and presses Allow through existing Accessibility access, without Screen Recording or Automation. For browser=current, stay in the new task tab, which shares the owner's sign-ins; use another tab only when the owner asks. A native daemon restart returns to the task tab but loses refs; take a fresh snapshot. finish_task, close, and agent exit close only Bao-created task tabs and disconnect, leaving the owner's Chrome and pre-existing tabs open. Later calls inherit the browser choice. Close before changing browser. close removes a copy but keeps the Bao profile. Both use visible installed Google Chrome. Each session records commands, native results, and screenshots in Bao's Library Runs. Sign-in or a human check returns halted with an instruction to call agent_browser command=wait_for_owner args=[\"60000\"]. Keep calling it on waiting; do not end your turn or restart. On ready take a fresh snapshot and continue in this same session. On closed report the returned session-ended instruction. If the owner's Chrome session ended unexpectedly, reconnect with open and browser=current or explicitly choose browser=copy or browser=bao; do not silently start a copy. While waiting only URL and title are read, and no page pictures or content are saved. This path otherwise does not redact. End the task with finish_task instead of close. A successful, representable single-document task saves a workflow; finish_task returns its id or the reason it was not saved. Never claim a workflow exists without that saved result. It needs no running Bao app. Bao does not block final clicks.",
-  "Every agent_browser result starts with one plain sentence of what the step did, quoting the element's own text from the latest snapshot, such as Clicked \"Save\" (button). In MCP Apps hosts, a card shows that sentence with the page picture and the target boxed; a failed step shows the last picture before it and the page now; an owner wait shows the sign-in or check page's title and address; finish_task shows the run's result and its optional done list. Exact native stdout/stderr, snapshot refs, and thrown errors remain in content blocks after the sentence, followed by a short run_id and step_id block, then a workflow save notice when the session ends. structuredContent contains only command, status, run_id, step_id, and optional error metadata, not another copy of native output. Picture bytes are fetched separately by the app and never included in ordinary agent_browser results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. finish_task saves a successful single-document task as a WorkflowV2 for open, click, fill, and press when every action has a durable target. Its result says saved with its id, or not saved with the reason. Stateful scroll, second tabs, popups, unsupported options, and missing targets remain capture-only.",
+  "Every agent_browser result starts with one plain sentence of what the step did, quoting the element's own text from the latest snapshot, such as Clicked \"Save\" (button). In MCP Apps hosts, a card shows that sentence with the page picture and the target boxed; a failed step shows the last picture before it and the page now; an owner wait shows the sign-in or check page's title and address; finish_task shows the run's result and its optional done list. Exact native stdout/stderr, snapshot refs, and thrown errors remain in content blocks after the sentence, followed by a short run_id and step_id block, then a workflow save notice when the session ends. structuredContent contains only command, status, run_id, step_id, and optional error metadata, not another copy of native output. Without MCP Apps, a sign-in or check wait returns the sentence and the instruction as text, with outcome and instruction in structuredContent. finish_task returns the sentence and the workflow save result as text, with its full receipt in structuredContent. Picture bytes are fetched separately by the app and never included in ordinary agent_browser results. A visual result includes run_id: use get_run with that id when asked to show the session, not filesystem access. finish_task saves a successful single-document task as a WorkflowV2 for open, click, fill, and press when every action has a durable target. Its result says saved with its id, or not saved with the reason. Stateful scroll, second tabs, popups, unsupported options, and missing targets remain capture-only.",
   "Use Bao's tools to find and read runs and workflows, not filesystem browsing. Catalog replies identify library.active, the one Library Bao uses for search, get_run, and replay. library.inactive lists other roots with data, their contents, and the latest data-file update time; Bao does not use or search those roots. Nothing is merged or migrated. search_workflows, describe_workflow, run_workflow, list_runs, and get_run work on saved workflows and runs. get_run also reads browser capture sessions. Workflows from the retired live driver cannot replay. Workflows saved from pass-through tasks replay through run_workflow on the current engine, not through the native pass-through.",
 ].join("\n");
 
@@ -256,8 +256,8 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
         let card;
         try { card = runId ? finishCardFor(ctx.library, runId) : undefined; }
         catch { card = undefined; }
-        const content = finishToolContent(card, withLibrary({ ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.identity), ctx.ui);
-        result = { content, isError: false, ...(ctx.ui && card ? { _meta: { baoToolCard: card } } : {}) };
+        result = { ...finishToolResult(card, withLibrary({ ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.identity), ctx.ui),
+          ...(ctx.ui && card ? { _meta: { baoToolCard: card } } : {}) };
       }
       else {
         const data = await callTool(ctx.library, ctx.identity, name, args);
@@ -301,17 +301,15 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
     results = ctx.proxy.lastCommand?.step.native.results ?? [];
     error = cause instanceof Error ? cause.message : String(cause);
   }
-  const notice = ctx.proxy.lastWorkflowOutcome ? [{ type: "text" as const, text: ctx.proxy.lastWorkflowOutcome }] : [];
+  const notice = ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : [];
   const command = String(args.command || "");
   const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [], owner: ctx.proxy.ownerPage };
-  if (!ctx.ui) return {
-    content: [...(args.browser === "current" ? [{ type: "text", text: "Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open." }] : []),
-      { type: "text", text: stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts) },
-      ...results.flatMap((result) => [result.stdout, result.stderr].filter((text) => text.length > 0).map((text) => ({ type: "text", text }))), ...notice],
-    isError: results.some((result) => result.exitCode !== 0),
-  };
+  if (!ctx.ui) {
+    const current = args.browser === "current" ? ["Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open."] : [];
+    return textToolResult(results, stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts), [...current, ...notice]);
+  }
   const result = browserToolResult(command, results, ctx.proxy.lastCommand, ctx.proxy.activeRunId ?? activeRunId, error, facts);
-  return { ...result, content: [...result.content, ...notice] };
+  return { ...result, content: [...result.content, ...notice.map((text) => ({ type: "text" as const, text }))] };
 }
 
 async function callTool(library: Library, identity: LibraryIdentity, name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -345,7 +343,7 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
   throw new Error("unknown tool");
 }
 
-function withLibrary(result: object, identity: LibraryIdentity): object {
+function withLibrary(result: object, identity: LibraryIdentity): Record<string, unknown> {
   const prefix = baoUserHome();
   return { ...result, library: {
     active: { path: tildePath(identity.active.path, prefix) },
