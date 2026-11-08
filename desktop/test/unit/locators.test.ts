@@ -1,5 +1,5 @@
-import { targetOf, testWorkflow,  } from "../support/workflow";
-import { type Identity, locatorValue, stepLocators, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, type Identity, locatorValue, stepLocators, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -298,7 +298,7 @@ test("a healed identity replaces the locators instead of keeping the miss", () =
   const patched = applyPatch(before, {
     identity: ident({ role: "button", text: "Add Element" }),
   });
-  assert.equal(locatorValue(targetOf(patched), "testid"), undefined);
+  assert.equal(locatorValue(stepTarget(patched), "testid"), undefined);
   const first = stepLocators(patched)?.[0];
   assert.equal(first?.kind, "role");
   assert.equal(first?.kind === "role" ? first.name : undefined, "Add Element");

@@ -2,16 +2,15 @@
 
 import { interpret, isConstantType, type TrailEvent } from "../../v1/interpret";
 import { replay, type Driver } from "../../v1/replay";
-import { stepEnteredLiteral } from "../../../../shared/step-read";
-import { targetQuery } from "../../v1/identity";
-import { handoffReason, type Identity, type ReplayArgs, stepInputName, stepTarget, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
+import { stepEnteredLiteral, targetElementId } from "../../../../shared/step-read";
+import { handoffReason, type Identity, locatorValue, type ReplayArgs, stepInputName, stepTarget, targetName, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
 import { condense } from "../../v1/condense";
 import { INTENT_CASES, noisyTrail, type IntentCase, type World } from "./cases";
 
 export function targetOf(step: { identity?: Identity } | WorkflowStep): string {
-  const target = "caption" in step ? stepTarget(step) : undefined;
-  const id = "caption" in step ? target && targetQuery(target) : step.identity;
-  return id?.testId || id?.id || id?.name || id?.nameAttr || "";
+  if (!("caption" in step)) return step.identity?.testId || step.identity?.id || step.identity?.name || step.identity?.nameAttr || "";
+  const target = stepTarget(step);
+  return locatorValue(target, "testid") || targetElementId(target) || targetName(target) || target?.hint?.nameAttr || "";
 }
 
 export function stepSignature(step: WorkflowStep): string {

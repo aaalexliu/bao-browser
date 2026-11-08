@@ -1,4 +1,4 @@
-import { targetFor, testWorkflow,  } from "../support/workflow";
+import { targetFor, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";

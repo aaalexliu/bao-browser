@@ -3,7 +3,7 @@
 
 import { lookup, targetQuery } from "./identity";
 import { isCollapsedBox, locatorIndexes, matchLocator } from "./locators";
-import { type Identity, type StepLocator, stepLocators, stepReveal, stepTarget, stepTitle, type WorkflowStep } from "./schema";
+import { type Identity, type StepLocator, stepLocators, stepReveal, stepTarget, stepTitle, targetRole, type WorkflowStep } from "./schema";
 
 export interface Box {
   x: number;
@@ -74,7 +74,7 @@ export function anchorCandidate(
   if (!found.ok || found.index == null) return undefined;
   const origin = center(boxes[found.index]);
   if (!origin) return undefined;
-  const role = normRole(matchRole(step));
+  const role = normRole(targetRole(stepTarget(step)));
   let best: { index: number; distance: number } | undefined;
   nodes.forEach((node, index) => {
     if (index === found.index) return;
@@ -86,12 +86,6 @@ export function anchorCandidate(
   });
   if (!best) return undefined;
   return { index: best.index, detail: `${anchor.relation} ${shown(nodes[best.index])}` };
-}
-
-/** The role the matcher looks for on this step's target. */
-function matchRole(step: WorkflowStep): string | undefined {
-  const target = stepTarget(step);
-  return target ? targetQuery(target).role : undefined;
 }
 
 const TOGGLE = /^(search|buscar)$/;
@@ -183,7 +177,7 @@ export function intentText(step: WorkflowStep): string {
 }
 
 function scoreNode(want: string, node: Identity, step: WorkflowStep): number {
-  const role = normRole(matchRole(step));
+  const role = normRole(targetRole(stepTarget(step)));
   if (role && normRole(node.role) && normRole(node.role) !== role) return 0;
   const texts = [node.name, node.text, node.label, node.title, node.description].filter((item): item is string => !!item);
   if (!texts.length) return 0;

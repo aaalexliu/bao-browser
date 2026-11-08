@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import type { WorkflowV2 } from "../../src/v1/schema";
 // Live narration latency, a typed note as intent, and Guide Me on the fixture.
 // The fixture page only. No vendor network and no real login.

@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Device B's MCP search finds and runs a workflow that lives on device A.
 // Local `vercel dev` only. Nothing is deployed.
 // Run after `tsc -p tsconfig.desktop.json`. Chrome needs BAO_CHROME_NO_SANDBOX=1.

@@ -1,6 +1,5 @@
-import { targetOf } from "../support/workflow";
 import { targetElementId } from "../../../shared/step-read";
-import { checkMatch, stepInputName, stepCheck } from "../../src/v1/schema";
+import { stepTarget, checkMatch, stepInputName, stepCheck } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
@@ -62,11 +61,11 @@ test("describe omits a generated token check while retaining local data and expl
     library.saveTrail(document.id, events);
     const saved = library.read(document.id);
     const trail = JSON.stringify(library.readTrail(document.id));
-    const generated = saved.steps.find((step) => targetElementId(targetOf(step)) === "generate");
+    const generated = saved.steps.find((step) => targetElementId(stepTarget(step)) === "generate");
     assert.ok(generated);
     assert.equal(checkMatch(stepCheck(generated)), token);
     assert.equal(checkMatch(stepCheck(generated)), token);
-    const guests = saved.steps.find((step) => targetElementId(targetOf(step)) === "guests");
+    const guests = saved.steps.find((step) => targetElementId(stepTarget(step)) === "guests");
     assert.ok(guests);
     assert.equal(saved.inputs.find((input) => input.name === stepInputName(guests))?.default, "2");
     assert.ok(events.some((event) => event.op === "type" && event.value === "2"));
@@ -76,7 +75,7 @@ test("describe omits a generated token check while retaining local data and expl
     assert.ok(projected);
     assert.equal(stepCheck(projected), undefined);
     assert.equal(stepCheck(projected), undefined);
-    const ordinary = described.workflow.steps.find((step) => targetElementId(targetOf(step)) === "ordinary");
+    const ordinary = described.workflow.steps.find((step) => targetElementId(stepTarget(step)) === "ordinary");
     assert.equal(checkMatch(ordinary == null ? undefined : stepCheck(ordinary)), "Saved ordinary fixture");
     assert.equal(checkMatch(ordinary == null ? undefined : stepCheck(ordinary)), "Saved ordinary fixture");
     assert.ok(described.workflow.steps.some((step) => step.caption.text === explicit));

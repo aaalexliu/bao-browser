@@ -1,5 +1,5 @@
-import { stepText, targetOf, testWorkflow,  } from "../support/workflow";
-import { locatorValue, stepSensitive, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepText, testWorkflow } from "../support/workflow";
+import { stepTarget, locatorValue, stepSensitive, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -102,7 +102,7 @@ test("push accepts saved passwords that also occur in metadata", () => {
     assert.equal(pushed.inputs[0]!.name, "password");
     assert.equal(pushed.inputs[0]!.type, "secret");
     assert.deepEqual(stepText(pushed.steps[0]), { input: "password" });
-    assert.equal(locatorValue(targetOf(pushed.steps[0]), "testid"), "password");
+    assert.equal(locatorValue(stepTarget(pushed.steps[0]), "testid"), "password");
     assert.equal(pushed.steps[0]!.timeoutMs, 8000);
     assert.equal(pushed.steps[1]!.timeoutMs, 5000);
     assert.deepEqual(stepText(pushed.steps[1]), { literal: "[secret stripped]" });
@@ -143,12 +143,12 @@ test("workflow pictures skip private steps and retain control crops without mark
 test("known-secret values strip without refusing or corrupting metadata and bindings", () => {
   const body = buildPushBody({
     inputs: [{ name: "password", type: "secret", default: "pass" }],
-    steps: [{ id: "pass", input: "password", value: "{{password}}" }],
+    steps: [{ id: "pass", action: "type", caption: { text: "Enter the secret" }, text: { input: "password" }, sensitive: true }],
     args: { password: "pass" },
   }, { baseVersion: 0 });
-  const document = body.document as { steps: { id: string; input: string; value: string }[]; args?: unknown };
+  const document = body.document as { steps: unknown[]; args?: unknown };
   assert.equal(document.args, undefined);
-  assert.deepEqual(document.steps, [{ id: "pass", input: "password", value: "{{password}}" }]);
+  assert.deepEqual(document.steps, [{ id: "pass", action: "type", caption: { text: "Enter the secret" }, text: { input: "password" }, sensitive: true }]);
 });
 
 test("picture sizing preserves samples, nested data and sealed references", async () => {

@@ -1,7 +1,7 @@
 // v4 workflow values for tests.
 
 import { locatorsFromIdentity } from "../../src/v1/locators";
-import { hintFromIdentity, stepTarget, WORKFLOW_SCHEMA_ID, type Identity, type Target, type TextOf, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { hintFromIdentity, WORKFLOW_SCHEMA_ID, type Identity, type Target, type TextOf, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 /** A workflow with test defaults. Steps are numbered by position. */
 export function testWorkflow(doc: Partial<WorkflowV2>): WorkflowV2 {
@@ -26,8 +26,4 @@ export function targetFor(node: Identity): Target {
 /** The text a type, select or digits step enters. */
 export function stepText(step: WorkflowStep | undefined): TextOf | undefined {
   return step?.action === "type" || step?.action === "select" || step?.action === "digits" ? step.text : undefined;
-}
-
-export function targetOf(step: WorkflowStep | undefined): Target | undefined {
-  return step && stepTarget(step);
 }

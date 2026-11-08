@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 // Two Macs edit one workflow against a local `vercel dev`. No deploy.
 // Run: node --test desktop/dist/desktop/test/live/sync-conflict.test.js
@@ -176,7 +176,7 @@ function relabel(doc: WorkflowV2, stepId: string, label: string): WorkflowV2 {
   return testWorkflow({
     ...doc,
     updatedAt: Date.now(),
-    steps: doc.steps.map((item) => item.id === stepId ? { ...item, label } : item),
+    steps: doc.steps.map((item) => item.id === stepId ? { ...item, caption: { ...item.caption, text: label } } : item),
   });
 }
 

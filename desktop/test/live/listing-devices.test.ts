@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Marketplace listing and Devices against a local `vercel dev`. No deploy.
 // Run: node --test desktop/test/live/listing-devices.test.ts
 

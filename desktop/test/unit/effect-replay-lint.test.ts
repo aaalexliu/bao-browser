@@ -1,6 +1,6 @@
-import { targetOf, testWorkflow } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { targetElementId } from "../../../shared/step-read";
-import { hintFromIdentity, type Identity, locatorValue, roleLocator, stepLocators, type Target, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, hintFromIdentity, type Identity, locatorValue, targetName, stepLocators, type Target, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
@@ -57,11 +57,11 @@ test("effect filter drops a still click and keeps one that changed state", () =>
   const dropped = droppedNoEffectIds(events);
   assert.deepEqual(dropped, ["head"]);
   const workflow = condense(events, { id: "fx", name: "fx", startUrl: url });
-  assert.equal(workflow.steps.some((step) => locatorValue(targetOf(step), "text") === "Title"), false);
-  assert.equal(workflow.steps.some((step) => targetOf(step)?.hint?.nameAttr === "size"), true);
-  assert.equal(workflow.steps.some((step) => targetElementId(targetOf(step)) === "go"), true);
-  assert.equal(workflow.steps.some((step) => roleLocator(targetOf(step))?.name === "Help"), true);
-  assert.equal(workflow.steps.some((step) => targetOf(step)?.locators.some((locator) => locator.kind === "css" && locator.value === "details")), true);
+  assert.equal(workflow.steps.some((step) => locatorValue(stepTarget(step), "text") === "Title"), false);
+  assert.equal(workflow.steps.some((step) => stepTarget(step)?.hint?.nameAttr === "size"), true);
+  assert.equal(workflow.steps.some((step) => targetElementId(stepTarget(step)) === "go"), true);
+  assert.equal(workflow.steps.some((step) => targetName(stepTarget(step)) === "Help"), true);
+  assert.equal(workflow.steps.some((step) => stepTarget(step)?.locators.some((locator) => locator.kind === "css" && locator.value === "details")), true);
 });
 
 test("a shared radio name resolves to the input inside the recorded label", async () => {

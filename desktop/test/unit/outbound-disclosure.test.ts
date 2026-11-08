@@ -1,4 +1,4 @@
-import { stepText, testWorkflow,  } from "../support/workflow";
+import { stepText, testWorkflow } from "../support/workflow";
 import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

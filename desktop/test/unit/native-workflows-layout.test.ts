@@ -53,7 +53,7 @@ test("Workflows reserves native titlebar space and keeps narrow navigation above
     for (let index = 1; index <= 3; index++) app.library.saveRun({
       id: `review-${index}`, workflowId: "wf-0", at: index, status: "passed",
       steps: [{ id: "read", status: "passed" }],
-      heals: [{ id: `heal-${index}`, failedStep: { id: "read", label: "Read statement" } }],
+      heals: [{ id: `heal-${index}`, failedStep: { id: "read", action: "click", caption: { text: "Read statement" } } }],
     });
     for (const width of [720, 1060]) {
       const page = await browser.newPage({ viewport: { width, height: 860 } });

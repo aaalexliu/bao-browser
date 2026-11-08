@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Audit redaction. No database.
 
 import assert from "node:assert/strict";

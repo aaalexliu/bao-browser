@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Finished runs open their failed step; a separate active login opens its live detail.
 
 import assert from "node:assert/strict";

@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Guide Me highlights the next target and waits. It does not click or type.
 
 import assert from "node:assert/strict";

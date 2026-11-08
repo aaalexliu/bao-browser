@@ -1,5 +1,5 @@
-import { targetOf, testWorkflow } from "../support/workflow";
-import { locatorValue, type WorkflowV2 } from "../../src/v1/schema";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, locatorValue, type WorkflowV2 } from "../../src/v1/schema";
 // Headless window. Fixture page only. No vendor network and no real profile.
 
 import assert from "node:assert/strict";
@@ -241,7 +241,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.click("article#heal-detail [data-keep]");
     await page.waitForFunction(() => document.body.innerText.includes("Patch kept"));
     const kept = app.library.read("wf-heal");
-    assert.equal(locatorValue(targetOf(kept.steps[0]), "testid"), "missing-login");
+    assert.equal(locatorValue(stepTarget(kept.steps[0]), "testid"), "missing-login");
     assert.equal(JSON.stringify(app.library.readRun(healed.runId).heals), before);
     assert.equal(app.library.readRun(healed.runId).decisions?.[0]?.decision, "keep");
     await page.waitForSelector("[data-revert]");
@@ -249,7 +249,7 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     await page.locator('#heal-revert-confirm [value="revert"]').click();
     await page.waitForFunction(() => document.body.innerText.includes("Patch reverted"));
     const reverted = app.library.read("wf-heal");
-    assert.equal(locatorValue(targetOf(reverted.steps[0]), "testid"), "missing-login");
+    assert.equal(locatorValue(stepTarget(reverted.steps[0]), "testid"), "missing-login");
     const runAfter = app.library.readRun(healed.runId);
     assert.equal(JSON.stringify(runAfter.heals), before);
     assert.deepEqual(runAfter.decisions?.map((item) => item.decision), ["keep", "revert"]);

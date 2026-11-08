@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Hermetic relay. No browser, no registry process, no real Chrome profile.
 
 import assert from "node:assert/strict";

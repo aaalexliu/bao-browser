@@ -7,7 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 import { buildPushBody } from "../../../shared/sync-guard";
 import { retainLocalDefaults } from "./local-defaults";
 import { targetElementId } from "../../../shared/step-read";
-import { locatorValue, roleLocator, stepHistory, stepTarget, stepTitle, parseWorkflow, targetRole, validateWorkflow, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { locatorValue, targetName, stepHistory, stepTarget, stepTitle, parseWorkflow, targetRole, validateWorkflow, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
 export type VersionRole = "live" | "draft" | "past";
@@ -172,7 +172,7 @@ function conflictSides(theirs: WorkflowV2, mine: WorkflowV2): ConflictSide[] {
 }
 
 function targetWords(target: Target | undefined): string {
-  return roleLocator(target)?.name || locatorValue(target, "text") || target?.hint?.label || "";
+  return targetName(target) || locatorValue(target, "text") || target?.hint?.label || "";
 }
 
 /** How a step is found, in one phrase. A test id wins, then an id, then the role and its name. */

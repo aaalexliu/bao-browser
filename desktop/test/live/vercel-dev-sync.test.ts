@@ -1,5 +1,5 @@
-import { targetOf, testWorkflow,  } from "../support/workflow";
-import { locatorValue, type WorkflowV2 } from "../../src/v1/schema";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, locatorValue, type WorkflowV2 } from "../../src/v1/schema";
 // Pair, push, and pull against a local `vercel dev` (no deploy, no linked project).
 // Not part of test:v1. Run: node --test desktop/test/live/vercel-dev-sync.test.ts
 
@@ -66,8 +66,8 @@ test("pair, push, and pull against local vercel dev", { timeout: 600_000 }, asyn
     const pulledDoc = libB.read("vercel-roundtrip");
     assert.equal(pulledDoc.name, "From the first Mac");
     const step = pulledDoc.steps[0];
-    assert.ok(targetOf(step));
-    assert.equal(step ? locatorValue(targetOf(step), "testid") : undefined, "go");
+    assert.ok(stepTarget(step));
+    assert.equal(step ? locatorValue(stepTarget(step), "testid") : undefined, "go");
   } finally {
     await stop(web);
   }

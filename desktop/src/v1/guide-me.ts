@@ -4,7 +4,7 @@
 import { stepEnteredLiteral, targetElementId } from "../../../shared/step-read";
 import { lookup, targetQuery } from "./identity";
 import { checkHolds, type Driver, type GuideAct, type PageGuard, pageShows, pageWhen } from "./replay";
-import { argText, locatorValue, roleLocator, stepTitle, stepInputName, stepKey, stepCheck, stepSensitive, stepTarget, subst, targetRole, type Identity, type Target, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { argText, locatorValue, targetName, stepTitle, stepInputName, stepKey, stepCheck, stepSensitive, stepTarget, subst, targetRole, type Identity, type Target, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface GuideStepResult {
   id: string;
@@ -214,7 +214,7 @@ function sameTarget(target: Target | undefined, act: { id?: string; testId?: str
   const id = targetElementId(target);
   const testId = locatorValue(target, "testid");
   const nameAttr = target.hint?.nameAttr;
-  const name = roleLocator(target)?.name;
+  const name = targetName(target);
   if (id && act.id && id === act.id) return true;
   if (testId && act.testId && testId === act.testId) return true;
   if (nameAttr && act.name && nameAttr === act.name) return true;

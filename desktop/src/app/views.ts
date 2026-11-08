@@ -9,7 +9,7 @@ import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatTime, formatWhen } from "../v1/time";
 import { targetElementId } from "../../../shared/step-read";
-import { type Identity, locatorValue, roleLocator, stepTitle, type Target, targetRole } from "../v1/schema";
+import { type Identity, locatorValue, targetName, stepTitle, type Target, targetRole } from "../v1/schema";
 import { shotFile, viewportShotName, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -152,7 +152,7 @@ export interface HealView {
   prompt?: string;
   rawResponse?: string;
   model?: { name?: string; version?: string; provider?: string };
-  proposedPatch?: { identity?: HealTarget; label?: string };
+  proposedPatch?: { identity?: HealTarget };
   failedStep?: { id?: string; index?: number; action?: string; caption?: { text?: string; citation?: { text?: string } }; target?: Target };
   postconditionPassed?: boolean;
   snapshot?: { screenshot?: string; screenshotRef?: string };
@@ -1219,18 +1219,17 @@ function healRecorded(step: HealView["failedStep"] | HealView["proposedPatch"]):
   if (!("target" in step) || !step.target) return "identity" in step ? step.identity : undefined;
   const target = step.target;
   return {
-    name: roleLocator(target)?.name,
+    name: targetName(target),
     text: locatorValue(target, "text"),
     testId: locatorValue(target, "testid"),
     id: targetElementId(target),
-    role: targetRole(target) || "unknown",
+    role: targetRole(target),
     path: target.hint?.path ?? [],
   };
 }
 
 function healStepLabel(step: HealView["failedStep"] | HealView["proposedPatch"]): string | undefined {
   if (!step) return undefined;
-  if ("label" in step && step.label) return step.label;
   if ("caption" in step && step.caption?.text) return stepTitle(step);
   return undefined;
 }
@@ -2106,7 +2105,7 @@ export interface TeachView {
     workflow: {
       name: string;
       inputs: { name: string; type: string }[];
-      steps: { id: string; label?: string; intent?: string; action?: string; human?: boolean; value?: string; input?: string; sensitive?: boolean }[];
+      steps: { id: string; action?: string; caption?: { text?: string }; input?: string; sensitive?: boolean }[];
     };
   };
 }

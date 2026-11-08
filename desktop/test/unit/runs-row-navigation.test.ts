@@ -1,4 +1,4 @@
-import { targetOf, testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { targetQuery } from "../../src/v1/identity";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, type WorkflowV2 } from "../../src/v1/schema";
 import { formatClock } from "../../src/v1/time";
 
 const workflow: WorkflowV2 = testWorkflow({
@@ -33,7 +33,7 @@ test("Runs rows open the exact target proposal, preserve receipts, keep keyboard
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   try {
     app.library.save(workflow);
-    const heal = { id: "first", intent: "Open statements", failedStep: { ...workflow.steps[0]!, index: 2 }, proposedPatch: { identity: { ...targetQuery(targetOf(workflow.steps[0])!), name: "New statements" } } };
+    const heal = { id: "first", intent: "Open statements", failedStep: { ...workflow.steps[0]!, index: 2 }, proposedPatch: { identity: { ...targetQuery(stepTarget(workflow.steps[0])!), name: "New statements" } } };
     app.library.saveRun({ id: "run-targets", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [heal, { ...heal, id: "second", failedStep: workflow.steps[0]! }] });
     app.library.saveRun({ id: "run-other", workflowId: workflow.id, status: "passed", at: 1, steps: [], heals: [heal] });
     const promotion = { workflowId: workflow.id, healId: "first", status: "provisional", drift: "passed", replays: 1, need: 3 };

@@ -1,4 +1,3 @@
-import { targetOf } from "../support/workflow";
 import { targetElementId } from "../../../shared/step-read";
 // Teach a new workflow, correct it, and replay twice.
 // A second test merges demonstrations into a login route.
@@ -12,7 +11,7 @@ import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { startApp } from "../../src/app/server";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, type WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 
@@ -256,7 +255,7 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     const route = merged.inputs.find((input) => input.type === "choice");
     assert.deepEqual(route?.choices, ["Log in first", "Already signed in"]);
     assert.ok(merged.steps.some((step) => step.when?.value === "Log in first"));
-    assert.equal(merged.steps.find((step) => targetElementId(targetOf(step)) === "apply-btn")?.when, undefined);
+    assert.equal(merged.steps.find((step) => targetElementId(stepTarget(step)) === "apply-btn")?.when, undefined);
     await page.goto(`${base}/`);
     await page.click('#rail button[data-place="workflows"]');
     await page.click(`[data-open-workflow="${merged.id}"]`);

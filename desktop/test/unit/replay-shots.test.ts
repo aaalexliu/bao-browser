@@ -1,4 +1,4 @@
-import { targetOf, testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { targetQuery } from "../../src/v1/identity";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +15,7 @@ import { replay, type Driver } from "../../src/v1/replay";
 import { shotFormat, workflowShotName } from "../../src/v1/shots";
 import { Library } from "../../src/v1/store";
 import { syncAll } from "../../src/v1/sync";
-import type { WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, type WorkflowV2 } from "../../src/v1/schema";
 
 const workflow: WorkflowV2 = testWorkflow({
   schema: "bao.workflow/v4", id: "wf-shots", name: "Run pictures",
@@ -170,7 +170,7 @@ test("workflow sync keeps the recorded control crop after a replay navigates awa
       }],
     });
     library.save(doc);
-    const crop = await driver.shot({ identity: targetQuery(targetOf(doc.steps[0])!) });
+    const crop = await driver.shot({ identity: targetQuery(stepTarget(doc.steps[0])!) });
     assert.ok(crop);
     const recorded = await sharp(crop).metadata();
     assert.ok(recorded.width! < 720 && recorded.height! < 480);

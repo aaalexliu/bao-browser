@@ -7,7 +7,7 @@
 
 import { sameTrailPage, type TrailEvent } from "../../v1/interpret";
 import { targetElementId } from "../../../../shared/step-read";
-import { handoffReason, locatorValue, roleLocator, stepCheck, stepSensitive, stepTarget, stepTitle, type WorkflowStep } from "../../v1/schema";
+import { handoffReason, locatorValue, targetName, stepCheck, stepSensitive, stepTarget, stepTitle, type WorkflowStep } from "../../v1/schema";
 
 export interface HumanMark {
   id: string;
@@ -117,7 +117,7 @@ function noEffectStep(step: WorkflowStep): boolean {
 
 function stepText(step: WorkflowStep): string {
   const target = stepTarget(step);
-  return [roleLocator(target)?.name, locatorValue(target, "text"), target?.hint?.label, target?.hint?.nameAttr, targetElementId(target), locatorValue(target, "testid"), stepTitle(step)].filter(Boolean).join(" ");
+  return [targetName(target), locatorValue(target, "text"), target?.hint?.label, target?.hint?.nameAttr, targetElementId(target), locatorValue(target, "testid"), stepTitle(step)].filter(Boolean).join(" ");
 }
 
 interface TypoGroup {

@@ -1,4 +1,4 @@
-import { stepText, targetFor, testWorkflow,  } from "../support/workflow";
+import { targetFor, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../
 import { testChromium } from "../../src/test-browser";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
 import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import { replay, type Driver } from "../../src/v1/replay";
 import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
@@ -38,15 +39,31 @@ async function pagePng(width: number, height: number, veiled = false): Promise<B
   } finally { await browser.close(); }
 }
 
-test("saved generic input tokens stay usable without a migration", () => {
+test("saved generic input tokens stay usable without a migration", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
   try {
-    const workflow = recorded([{ label: "App name" }]);
+    const field: Identity = { surface: "dom", role: "textbox", label: "App name", id: "app-name", path: [] };
+    const workflow = recorded([field]);
     const library = new Library(home);
     library.save(workflow);
     const saved = library.read(workflow.id);
-    assert.equal(saved.inputs[0]?.name, "text");
-    assert.deepEqual(stepText(saved.steps[0]), { input: "text" });
+    const fills: { id?: string; text: string }[] = [];
+    const driver: Driver = {
+      tree: async () => ({ nodes: [field], texts: [], values: [] }),
+      snapshot: async () => ({ dom: {}, ax: [] }),
+      click: async () => {},
+      fill: async (node, text) => { fills.push({ id: node.id, text }); },
+      key: async () => {},
+      upload: async () => {},
+      drop: async () => {},
+      digits: async () => {},
+      check: async () => {},
+      notify: async () => {},
+      sleep: async () => {},
+    };
+    const result = await replay(saved, { text: "existing argument" }, driver);
+    assert.equal(result.status, "passed");
+    assert.deepEqual(fills, [{ id: "app-name", text: "existing argument" }]);
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

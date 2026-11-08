@@ -6,7 +6,7 @@
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
 import { stepEnteredLiteral, targetElementId } from "../../../shared/step-read";
-import { finishInput, locatorValue, looksLikePath, roleLocator, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { finishInput, locatorValue, looksLikePath, targetName, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -726,7 +726,7 @@ function attachedNote(group: readonly TrailEvent[]): string {
   return (note?.afterText || "").replace(/\s+/g, " ").trim();
 }
 
-function targetName(event: TrailEvent | undefined): string {
+function eventTargetName(event: TrailEvent | undefined): string {
   const identity = event?.identity;
   return (identity?.name || identity?.text || identity?.label || identity?.nameAttr || "")
     .replace(/\s+/g, " ")
@@ -746,7 +746,7 @@ function citedSentence(text: string, citation: string | undefined): string {
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
   const spoken = citedSentence(step.caption?.text || "", step.caption?.citation?.text);
-  const target = targetName(event);
+  const target = eventTargetName(event);
   const unnamedClick = step.action === "click" && !step.caption?.citation;
   if (spoken && spoken !== "Click" && spoken !== "Step" && !(unnamedClick && target)) return spoken;
   if (target) return `Click ${target}`;
@@ -772,7 +772,7 @@ function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
   const target = stepTarget(step);
   const names = event?.identity
     ? [event.identity.label, event.identity.name, event.identity.nameAttr, event.identity.id]
-    : [target?.hint?.label, roleLocator(target)?.name, target?.hint?.nameAttr, targetElementId(target)];
+    : [target?.hint?.label, targetName(target), target?.hint?.nameAttr, targetElementId(target)];
   const raw = names.find((bit) => bit && bit.trim()) || "";
   const clean = raw.replace(/\s+/g, " ").trim();
   if (!clean || clean.includes("{{")) return "";
@@ -862,7 +862,7 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
 
 function mergeKey(step: WorkflowStep): string {
   const at = stepTarget(step);
-  const target = locatorValue(at, "testid") || targetElementId(at) || at?.hint?.nameAttr || roleLocator(at)?.name || locatorValue(at, "text") || "";
+  const target = locatorValue(at, "testid") || targetElementId(at) || at?.hint?.nameAttr || targetName(at) || locatorValue(at, "text") || "";
   return `${step.action}|${target}`;
 }
 

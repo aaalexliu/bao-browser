@@ -1,4 +1,4 @@
-import { stepText, targetOf, testWorkflow,  } from "../support/workflow";
+import { stepText, testWorkflow } from "../support/workflow";
 import { targetQuery } from "../../src/v1/identity";
 import { targetElementId } from "../../../shared/step-read";
 // Teach narration, corrections, eval pairs, saved branch compatibility, and merging takes.
@@ -15,7 +15,7 @@ import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { Library } from "../../src/v1/store";
-import { checkMatch, stepInputName, stepCheck, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, checkMatch, stepInputName, stepCheck, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { decide, decisionEvent, intentEvalPair, measureIntentPair, mergeDemonstrations, type MergeShot, narratorFromEnv, projectTeach, teachIntentCase, teachSummary } from "../../src/v1/teach";
 import { rail, runViewer, shellList, teachCard, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
 
@@ -131,7 +131,7 @@ test("three corrections change the workflow and the eval pair measures them", ()
   const blob = JSON.stringify(pair);
   assert.equal(blob.includes(secret), true);
   assert.equal(blob.includes("/tmp/secret-folder"), false);
-  assert.equal(pair.workflow.steps.some((step) => targetElementId(targetOf(step)) === "note-input" && step.action === "click"), false);
+  assert.equal(pair.workflow.steps.some((step) => targetElementId(stepTarget(step)) === "note-input" && step.action === "click"), false);
   const typed = pair.workflow.steps.find((step) => stepInputName(step) === "note");
   assert.equal((typed == null ? undefined : typed.caption.text), "type the note");
   const confirm = pair.workflow.steps.find((step) => step.action === "handoff");
@@ -477,7 +477,7 @@ function guardedDriver(texts: string[], clicks: string[]): Driver {
 
 function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
   const nodes = doc.steps.flatMap((step) => {
-    const target = targetOf(step);
+    const target = stepTarget(step);
     return target ? [targetQuery(target)] : [];
   });
   const values: LiveTree["values"] = [];

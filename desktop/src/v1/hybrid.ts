@@ -2,7 +2,7 @@
 // The model may drop a noise step, write intent text, and flag human steps.
 // It cannot add a step, change an input, or clear a secret or gate tag.
 
-import { handoffReason, locatorValue, roleLocator, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { handoffReason, locatorValue, targetName, stepCheck, stepInputName, stepSensitive, stepTarget, stepTitle, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface HybridHuman {
   id: string;
@@ -114,7 +114,7 @@ export function isNoiseStep(step: WorkflowStep): boolean {
   const effect = stepCheck(step)?.kind;
   if (effect === "text" || effect === "url" || effect === "value") return false;
   const target = stepTarget(step);
-  const name = [roleLocator(target)?.name, locatorValue(target, "text"), target?.hint?.label, stepTitle(step)].filter(Boolean).join(" ");
+  const name = [targetName(target), locatorValue(target, "text"), target?.hint?.label, stepTitle(step)].filter(Boolean).join(" ");
   return /\bhelp\b/i.test(name);
 }
 

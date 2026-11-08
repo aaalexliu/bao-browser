@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";

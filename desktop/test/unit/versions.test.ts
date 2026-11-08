@@ -1,5 +1,5 @@
-import { targetOf, testWorkflow,  } from "../support/workflow";
-import { type Identity, locatorValue, stepTitle, type Target, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, type Identity, locatorValue, stepTitle, type Target, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -89,12 +89,12 @@ test("a heal is a draft, replay stays on the live version until promote, and res
   const draft = draftVersion(library, healed, "heal");
   assert.equal(draft.role, "draft");
   assert.equal(draft.source, "heal");
-  assert.equal(locatorValue(targetOf(library.read("wf-versions").steps[0]), "testid"), "v1");
+  assert.equal(locatorValue(stepTarget(library.read("wf-versions").steps[0]), "testid"), "v1");
 
   const live = library.read("wf-versions");
   const passed = await replay(live, {}, driver([ident({ testId: "v1" })]), { heal: unavailableHeal(), now: () => 1 });
   assert.equal(passed.status, "passed");
-  assert.equal(locatorValue(targetOf(library.read("wf-versions").steps[0]), "testid"), "v1");
+  assert.equal(locatorValue(stepTarget(library.read("wf-versions").steps[0]), "testid"), "v1");
 
   const edited = { ...original, name: "Renamed", updatedAt: 2 };
   const edit = draftVersion(library, edited, "edit");
@@ -102,17 +102,17 @@ test("a heal is a draft, replay stays on the live version until promote, and res
   assert.equal(library.read("wf-versions").name, "Fixture");
 
   promoteVersion(library, "wf-versions", draft.n);
-  assert.equal(locatorValue(targetOf(library.read("wf-versions").steps[0]), "testid"), "healed");
+  assert.equal(locatorValue(stepTarget(library.read("wf-versions").steps[0]), "testid"), "healed");
   const promotedReplay = await replay(library.read("wf-versions"), {}, driver([ident({ testId: "healed" })]), { heal: unavailableHeal(), now: () => 2 });
   assert.equal(promotedReplay.status, "passed");
 
   const restored = restoreVersion(library, "wf-versions", 1);
   assert.equal(restored.role, "draft");
   assert.equal(restored.source, "restore");
-  assert.equal(locatorValue(targetOf(restored.document.steps[0]), "testid"), "v1");
-  assert.equal(locatorValue(targetOf(library.read("wf-versions").steps[0]), "testid"), "healed");
+  assert.equal(locatorValue(stepTarget(restored.document.steps[0]), "testid"), "v1");
+  assert.equal(locatorValue(stepTarget(library.read("wf-versions").steps[0]), "testid"), "healed");
   promoteVersion(library, "wf-versions", restored.n);
-  assert.equal(locatorValue(targetOf(library.read("wf-versions").steps[0]), "testid"), "v1");
+  assert.equal(locatorValue(stepTarget(library.read("wf-versions").steps[0]), "testid"), "v1");
   const listed = listVersions(library, "wf-versions");
   assert.equal(listed.find((row) => row.n === restored.n)?.role, "live");
   assert.equal(listed.find((row) => row.n === 1)?.role, "past");
@@ -139,7 +139,7 @@ test("a version row names the step change and lists before and after", () => {
   assert.match(html, /Before and after/);
   assert.match(html, /testId signed-in/);
   assert.match(html, /role button &quot;Signed in&quot;/);
-  assert.equal(locatorValue(targetOf(library.read("wf-diff").steps[0]), "testid"), "signed-in");
+  assert.equal(locatorValue(stepTarget(library.read("wf-diff").steps[0]), "testid"), "signed-in");
 });
 
 test("a conflict draft names both Macs and leaves the live file alone", () => {

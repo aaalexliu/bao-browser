@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Step text tokens and the run form share one default. A secret stays masked.
 
 import assert from "node:assert/strict";

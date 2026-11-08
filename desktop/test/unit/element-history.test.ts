@@ -1,5 +1,5 @@
-import { targetOf, testWorkflow } from "../support/workflow";
-import { type Identity, locatorValue, stepHistory, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, type Identity, locatorValue, stepHistory, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -108,8 +108,8 @@ test("heal twice, roll back to the recorded version, and replay with no model ca
   assert.deepEqual(stepHistory(rolled)?.[0], snap);
   assert.deepEqual(history[0], snap);
   assert.equal(stepHistory(rolled)?.[3]?.source, "rollback");
-  assert.equal(locatorValue(targetOf(rolled), "text"), "Save");
-  assert.equal(locatorValue(targetOf(rolled), "testid"), "save");
+  assert.equal(locatorValue(stepTarget(rolled), "text"), "Save");
+  assert.equal(locatorValue(stepTarget(rolled), "testid"), "save");
   assert.notEqual(stepHistory(rolled)?.[3]?.id, history[0]?.id);
   workflow = testWorkflow({ ...workflow, steps: [{ ...rolled, index: 0 }] });
   const reverted = revertPatch(workflow, workflow.steps[0]!, { at: recordedAt + 200_000, runId: "run-3" });
@@ -331,12 +331,12 @@ test("the versions panel holds the locator versions and the run viewer keeps the
   const restored = restoreVersion(library, "wf-history", 1);
   assert.deepEqual(versionDocument(library, "wf-history", 1), snap);
   assert.notEqual(restored.n, 1);
-  assert.equal(locatorValue(targetOf(restored.document.steps[0]), "testid"), "apply");
+  assert.equal(locatorValue(stepTarget(restored.document.steps[0]), "testid"), "apply");
   const result = await replay(restored.document, {}, fake([tree([ident({ testId: "apply", text: "Apply" })])]), { heal: throwingHeal });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
   assert.equal(result.heals.length, 0);
-  assert.equal(locatorValue(targetOf(library.read("wf-history").steps[0]), "testid"), "apply");
+  assert.equal(locatorValue(stepTarget(library.read("wf-history").steps[0]), "testid"), "apply");
   const viewer = runViewer({
     id: "run-banner",
     workflowId: "wf-history",

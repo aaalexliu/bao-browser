@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // The page class is decided before a heal. Each class is a fixture, and a
 // wall stops the run with no heal and no model call.
 

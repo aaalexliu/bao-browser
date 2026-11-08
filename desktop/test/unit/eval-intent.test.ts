@@ -1,4 +1,4 @@
-import { stepText,  } from "../support/workflow";
+import { stepText } from "../support/workflow";
 import { targetElementId } from "../../../shared/step-read";
 import assert from "node:assert/strict";
 import test from "node:test";

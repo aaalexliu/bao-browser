@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Live page class. Local fixtures mimic each vendor, a modal the tree does not
 // list, and the Experian session: member 200, graphql 403, then a client
 // navigation to /login/index with no HTTP redirect. Public pages are only

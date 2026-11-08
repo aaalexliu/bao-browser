@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // The test Chromium, synthetic profile only. The cookie values and storage values
 // below are fixtures. Assertions must not include them in failure text.
 

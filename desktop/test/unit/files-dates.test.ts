@@ -1,5 +1,5 @@
 import { targetQuery } from "../../src/v1/identity";
-import { targetOf, testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { targetElementId } from "../../../shared/step-read";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepTitle, stepDate, stepFileFrom, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, stepTitle, stepDate, stepFileFrom, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 const publishedSchema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
@@ -157,8 +157,8 @@ test("a generated download anchor is not the trigger the next run clicks", () =>
   assert.equal(doc.steps.length, 2);
   assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Click \"CSV\"");
   assert.equal(doc.steps[1]?.action, "download");
-  assert.equal(targetOf(doc.steps[1])?.hint?.tag, "button");
-  assert.equal(targetQuery(targetOf(doc.steps[1])!).cssPath, "#download-modal > div > button:nth-of-type(1)");
+  assert.equal(stepTarget(doc.steps[1])?.hint?.tag, "button");
+  assert.equal(targetQuery(stepTarget(doc.steps[1])!).cssPath, "#download-modal > div > button:nth-of-type(1)");
   assert.equal(JSON.stringify(doc).includes("type+1+diabetes"), false);
   assert.equal(JSON.stringify(doc).includes("California"), false);
 });
@@ -179,8 +179,8 @@ test("a download folds the trigger click into a templated step and binds a later
   assert.equal(doc.steps[0]?.action, "download");
   assert.equal(doc.steps[0]?.download?.output, "note");
   assert.equal(doc.steps[0]?.download?.name, "{{run.date}}-{{suggested}}");
-  assert.equal(targetElementId(targetOf(doc.steps[0])), "dl");
-  assert.equal(selectorForIdentity(targetQuery(targetOf(doc.steps[0])!)), "#dl");
+  assert.equal(targetElementId(stepTarget(doc.steps[0])), "dl");
+  assert.equal(selectorForIdentity(targetQuery(stepTarget(doc.steps[0])!)), "#dl");
   const modal = ident({
     role: "button",
     tag: "button",
@@ -345,7 +345,7 @@ test("replay resolves dates at run start and picks those cells, with no model ca
   }), { clock: OCT_22, zone: "UTC", runId: "run-pick", heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
-  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: targetQuery(targetOf(workflow.steps[0])!) }]);
+  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: targetQuery(stepTarget(workflow.steps[0])!) }]);
 });
 
 test("replay saves a templated download and a later upload reads that file", async () => {

@@ -1,5 +1,5 @@
-import { stepText, targetFor, targetOf, testWorkflow } from "../support/workflow";
-import { checkMatch, handoffReason, type Identity, locatorValue, roleLocator, stepCheck, stepInputName, stepKey, stepLocators, stepSensitive, stepTitle, type Target, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepText, targetFor, testWorkflow } from "../support/workflow";
+import { stepTarget, checkMatch, handoffReason, type Identity, locatorValue, targetName, stepCheck, stepInputName, stepKey, stepLocators, stepSensitive, stepTitle, type Target, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -241,7 +241,7 @@ test("calculator clicks become number inputs and the equals check is the express
   assert.deepEqual(doc.inputs.map((item) => item.type), ["number", "number"]);
   assert.equal(doc.inputs[0]?.default, "7");
   assert.equal(doc.inputs[1]?.default, "5");
-  const equals = doc.steps.find((step) => roleLocator(targetOf(step))?.name === "=");
+  const equals = doc.steps.find((step) => targetName(stepTarget(step)) === "=");
   assert.equal(checkMatch(equals == null ? undefined : stepCheck(equals)), "{{a}}+{{b}}");
   assert.equal(expectedText("{{a}}+{{b}}", { a: 1, b: 2 }), "3");
   assert.equal(JSON.stringify(doc).includes("\"7\""), true);
@@ -425,7 +425,7 @@ test("auto heal applies a patch, records the audit, and does not edit the workfl
   assert.equal(result.heals[0]?.postconditionPassed, true);
   assert.equal(result.heals[0]?.model?.name, "test");
   assert.equal(result.heals[0]?.model?.version, "test");
-  assert.equal(result.heals[0]?.executed?.identity?.testId, "real");
+  assert.equal(locatorValue(result.heals[0]?.executed?.target, "testid"), "real");
   assert.deepEqual(result.heals[0]!.snapshot.dom, { value: "SuperSecretPassword!", text: "SuperSecretPassword! visible", label: "Type {{password}}", marker: STRIPPED_SECRET });
   assert.equal(result.heals[0]!.prompt, proposal.prompt);
   assert.equal(result.heals[0]!.rawResponse, proposal.rawResponse);
@@ -469,9 +469,9 @@ test("keep then revert restores the failed step and appends decisions", () => {
   const doc = workflow(byTestId("missing"));
   const patch = { identity: id({ testId: "real" }) };
   const kept = keepPatch(doc, "s0", patch);
-  assert.equal(locatorValue(targetOf(kept.steps[0]), "testid"), "real");
+  assert.equal(locatorValue(stepTarget(kept.steps[0]), "testid"), "real");
   const restored = revertPatch(kept, doc.steps[0]!);
-  assert.equal(locatorValue(targetOf(restored.steps[0]), "testid"), "missing");
+  assert.equal(locatorValue(stepTarget(restored.steps[0]), "testid"), "missing");
   const home = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
   const library = new Library(home);
   const heal = { id: "heal-1", failedStep: doc.steps[0], prompt: "untouched" };
@@ -545,7 +545,7 @@ test("interpret keeps login and confirm as human steps with no coordinates", () 
   assert.equal((doc.steps[0] == null ? undefined : doc.steps[0].caption.targetBox), undefined);
   assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Sign in");
   assert.equal(doc.steps[1]?.action, "click");
-  assert.equal(roleLocator(targetOf(doc.steps[1]))?.name, "Open");
+  assert.equal(targetName(stepTarget(doc.steps[1])), "Open");
   assert.equal(doc.steps[2]?.action, "handoff");
   assert.equal((doc.steps[2] == null ? undefined : (doc.steps[2].action === "handoff")), true);
   assert.equal((doc.steps[2] == null ? undefined : doc.steps[2].caption.targetBox), undefined);

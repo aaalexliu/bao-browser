@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Product pages never show this machine's listen address.
 // Replay still opens the real URL. The capture bar has no Dock icon.
 // The bundled browser is named Bao without re-signing the helper.

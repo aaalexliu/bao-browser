@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isElementCrop } from "./redacted-png";
 import { targetElementId } from "../../../shared/step-read";
-import { locatorValue, roleLocator, stepInputName, stepTarget, stepTitle, targetRole, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { locatorValue, targetName, stepInputName, stepTarget, stepTitle, targetRole, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { guideShotName, shotFile, workflowShotName } from "./shots";
 import { visibleCopy } from "./visible-copy";
 
@@ -178,7 +178,7 @@ function sameControl(click: WorkflowStep, typed: WorkflowStep): boolean {
     if (testId && testId === locatorValue(right, "testid")) return true;
   }
   const phrase = clickPhrase(click).toLowerCase();
-  const names = [stepInputName(typed), targetElementId(right), right?.hint?.nameAttr, roleLocator(right)?.name]
+  const names = [stepInputName(typed), targetElementId(right), right?.hint?.nameAttr, targetName(right)]
     .filter((name): name is string => Boolean(name))
     .map((name) => name.toLowerCase());
   return names.includes(phrase);
@@ -236,7 +236,7 @@ function clickPhrase(step: WorkflowStep): string {
   const plain = label.match(/^Click\s+(.+)$/i);
   if (plain?.[1]) return plain[1];
   const target = stepTarget(step);
-  return locatorValue(target, "text") || roleLocator(target)?.name || target?.hint?.label || "";
+  return locatorValue(target, "text") || targetName(target) || target?.hint?.label || "";
 }
 
 function isFieldTarget(_doc: WorkflowV2, step: WorkflowStep): boolean {
@@ -250,7 +250,7 @@ function isFieldTarget(_doc: WorkflowV2, step: WorkflowStep): boolean {
 
 function fieldLabel(step: WorkflowStep, inputLabel?: string): string {
   const target = stepTarget(step);
-  const candidates = [inputLabel, target?.hint?.label, roleLocator(target)?.name, target?.hint?.nameAttr, stepInputName(step), targetElementId(target)];
+  const candidates = [inputLabel, target?.hint?.label, targetName(target), target?.hint?.nameAttr, stepInputName(step), targetElementId(target)];
   for (const candidate of candidates) {
     const clean = (candidate || "").replace(/\s+/g, " ").trim();
     if (!clean || clean.includes("{{")) continue;

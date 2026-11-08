@@ -39,8 +39,8 @@ export interface HumanAsk {
   runId?: string;
 }
 
-export function confirmButton(step: { label: string; identity?: { name?: string; text?: string } }): string {
-  const named = step.identity?.name || step.identity?.text;
+export function confirmButton(step: { label: string; name?: string; text?: string }): string {
+  const named = step.name || step.text;
   if (named && named.trim()) return named.trim();
   const quoted = step.label.match(/"([^"]+)"/);
   if (quoted?.[1]) return quoted[1];

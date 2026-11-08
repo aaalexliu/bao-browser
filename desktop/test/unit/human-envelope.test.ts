@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // A human step returns an envelope and does not block. Resume continues the same
 // page. Confirm is never pressed by resume. The fixture is 127.0.0.1 only.
 

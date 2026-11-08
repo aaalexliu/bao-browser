@@ -1,8 +1,8 @@
 // Trajectory diff. Replay is compared with the recording, one step at a time:
 // target identity, action, postcondition, and a coarse timing bucket.
 
-import { type Identity, stepCheck, stepTarget, type WorkflowStep, type WorkflowV2 } from "./schema";
-import { targetQuery } from "./identity";
+import { targetElementId } from "../../../shared/step-read";
+import { type Identity, locatorValue, stepCheck, stepTarget, targetName, targetRole, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type TimingBucket = "lt1s" | "lt10s" | "lt60s" | "slower";
 
@@ -37,18 +37,23 @@ export function bucketWords(bucket: TimingBucket): string {
 /** Stable identity for a diff. The id wins, then the test id, then the name. */
 export function targetKey(identity?: Identity): string {
   if (!identity) return "page";
-  const role = identity.role || "unknown";
-  if (identity.id) return `${role}#${identity.id}`;
-  if (identity.testId) return `${role}[testid=${identity.testId}]`;
-  if (identity.nameAttr) return `${role}[name=${identity.nameAttr}]`;
-  const name = identity.name || identity.text || identity.label;
-  if (name) return `${role}:${name}`;
-  return role;
+  return keyOf(identity.role, identity.id, identity.testId, identity.nameAttr, identity.name || identity.text || identity.label);
 }
 
-function stepTargetKey(step: WorkflowStep): string {
+/** The same key, read from the step's stored target. */
+export function stepTargetKey(step: WorkflowStep): string {
   const target = stepTarget(step);
-  return targetKey(target ? targetQuery(target) : undefined);
+  if (!target) return "page";
+  return keyOf(targetRole(target), targetElementId(target), locatorValue(target, "testid"), target.hint?.nameAttr, targetName(target) || locatorValue(target, "text") || target.hint?.label);
+}
+
+function keyOf(role: string | undefined, id?: string, testId?: string, nameAttr?: string, name?: string): string {
+  const shown = role || "unknown";
+  if (id) return `${shown}#${id}`;
+  if (testId) return `${shown}[testid=${testId}]`;
+  if (nameAttr) return `${shown}[name=${nameAttr}]`;
+  if (name) return `${shown}:${name}`;
+  return shown;
 }
 
 export function postKey(step: WorkflowStep): string {

@@ -13,10 +13,10 @@ import {
   stepKey as readKey,
   stepLiteral as readLiteral,
   stepSensitive as readSensitive,
+  targetName,
+  targetRole,
 } from "../../../shared/step-read";
-import { targetQuery } from "./identity";
-
-export { targetRole } from "../../../shared/step-read";
+export { targetName, targetRole } from "../../../shared/step-read";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v4";
 export const RUN_SCHEMA_ID = "bao.run/v4";
@@ -299,7 +299,7 @@ export function looksLikePath(value: string): boolean {
   return value.startsWith("/") || value.startsWith("~/") || /^[A-Za-z]:\\/.test(value);
 }
 
-export function popupDismissName(identity: Identity | undefined): string {
+export function popupDismissName(identity: Pick<Identity, "surface" | "role" | "name" | "text" | "label"> | undefined): string {
   const name = identity?.name ?? identity?.text ?? identity?.label ?? "";
   return identity?.surface === "dom" && identity.role === "button" && /^(?:close|x|no thanks|not now|dismiss)$/i.test(name) ? name : "";
 }
@@ -361,10 +361,6 @@ export function checkMatch(check: Check | undefined): string | undefined {
 
 export function checkState(check: Check | undefined): string | undefined {
   return check && "state" in check ? check.state : undefined;
-}
-
-export function roleLocator(target: Target | undefined): RoleLocator | undefined {
-  return target?.locators.find((locator): locator is RoleLocator => locator.kind === "role");
 }
 
 export function locatorValue(target: Target | undefined, kind: ValueLocator["kind"]): string | undefined {
@@ -640,7 +636,8 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>, input
 }
 
 function dismissName(step: Extract<WorkflowStep, { action: "click" }>): string {
-  return popupDismissName(targetQuery(step.target));
+  const target = step.target;
+  return popupDismissName({ surface: stepSurface(step), role: targetRole(target) ?? "", name: targetName(target), text: locatorValue(target, "text"), label: target.hint?.label });
 }
 
 function textOk(text: TextOf | undefined): boolean {

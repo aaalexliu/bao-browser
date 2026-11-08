@@ -10,8 +10,8 @@ import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
 import { replay, type RunResult } from "../../v1/replay";
 import type { TrajectoryStep } from "../../v1/trajectory";
-import { targetQuery } from "../../v1/identity";
-import { locatorValue, roleLocator, stepTarget, stepTitle, stepInputName, stepKey, stepCheck, handoffReason, validateWorkflow, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
+import { idFromCss, targetElementId } from "../../../../shared/step-read";
+import { locatorValue, targetName, stepTarget, stepTitle, stepInputName, stepKey, stepCheck, handoffReason, validateWorkflow, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";
@@ -86,15 +86,16 @@ function hybridPrompt(workflow: WorkflowV2): string {
 
 function heldSignature(step: WorkflowStep): string {
   const target = stepTarget(step);
-  const id = target ? targetQuery(target) : undefined;
-  const text = (id?.text || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const text = (locatorValue(target, "text") || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const css = target?.locators.flatMap((item) => item.kind === "css" && item.value ? [item.value] : []) ?? [];
+  const idSelector = css.find((value) => idFromCss(value));
   return [
     step.action,
-    id?.id || "",
-    id?.nameAttr || "",
-    id?.name || "",
+    targetElementId(target) || "",
+    target?.hint?.nameAttr || "",
+    targetName(target) || "",
     text,
-    id?.cssPath || "",
+    css.find((value) => value !== idSelector) ?? idSelector ?? "",
     handoffReason(step) || "-",
     stepInputName(step) || "-",
     step.action === "key" ? stepKey(step) || "" : "",
@@ -702,7 +703,7 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
     const input = workflow.inputs.find((item) => item.name === stepInputName(step));
     const target: LintTarget = {
       action: step.action,
-      name: roleLocator(stepTarget(step))?.name || locatorValue(stepTarget(step), "text") || stepTarget(step)?.hint?.label,
+      name: targetName(stepTarget(step)) || locatorValue(stepTarget(step), "text") || stepTarget(step)?.hint?.label,
       label: stepTarget(step)?.hint?.label,
       text: locatorValue(stepTarget(step), "text"),
       input: stepInputName(step),

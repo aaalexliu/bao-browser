@@ -1,4 +1,4 @@
-import { targetOf, testWorkflow } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import { targetElementId } from "../../../shared/step-read";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -10,7 +10,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { isCollapsedBox, matchLocator } from "../../src/v1/locators";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepTitle, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, stepTitle, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { diffTrajectory, type TrajectoryStep } from "../../src/v1/trajectory";
 
 function ident(partial: Partial<Identity>): Identity {
@@ -310,7 +310,7 @@ test("credit freeze read-back is the status text and validates", () => {
   const frozen = freeze.steps.find((item) => stepTitle(item) === "Click Frozen");
   assert.equal(frozen?.readBack?.source, "text");
   assert.equal(frozen?.readBack?.match, "Status: none");
-  assert.equal(freeze.steps.some((item) => item.action === "click" && targetElementId(targetOf(item)) === "apply"), false);
+  assert.equal(freeze.steps.some((item) => item.action === "click" && targetElementId(stepTarget(item)) === "apply"), false);
   assert.equal(freeze.steps.at(-1)?.action, "handoff");
   assert.equal(freeze.precondition?.phase, "auth");
 });

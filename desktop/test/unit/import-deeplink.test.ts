@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Import questions follow author marks. bao:// opens the running app.
 
 import assert from "node:assert/strict";

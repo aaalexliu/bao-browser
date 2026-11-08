@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -59,7 +59,7 @@ test("Runs shows stored step reasons after workflow edits or deletion in both th
 });
 const reviewRuns = [1, 2, 3].map((at) => ({
   id: `review-${at}`, workflowId: "wf", status: "passed", at,
-  heals: [{ id: `heal-${at}`, failedStep: { id: "step", label: "Read account" } }],
+  heals: [{ id: `heal-${at}`, failedStep: { id: "step", action: "click", caption: { text: "Read account" } } }],
   decisions: [{ ts: at, healId: `heal-${at}`, decision: "keep" as const }],
 }));
 

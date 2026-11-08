@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { targetElementId } from "../../../shared/step-read";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeInput, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 import type { ApplyGate as BaseApplyGate, RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
@@ -23,9 +24,9 @@ import { classifyPage, recordingExpectsLogin, type PageClassDecision, type PageC
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
 import { beginFilesRun, downloadFileName, endFilesRun, fileDigest, filesFor, filesRun, openTarget, placeDownload, prepareFilesDatesRun, renderTemplate, templateScope, type FileOutput } from "./files-dates";
-import { stepOptional, stepDownload, stepOpen, popupDismissName, stepCheck, stepDate, stepForEach, stepInputName, stepKey, stepLocators, stepTarget, stepTitle, subst, targetRole, type Check, type FileArg, type Identity, type ReadBack, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepOptional, stepDownload, stepOpen, popupDismissName, stepCheck, stepDate, stepForEach, stepInputName, stepKey, stepLocators, stepTarget, stepTitle, subst, targetName, targetRole, locatorValue, type Check, type FileArg, type Identity, type ReadBack, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, shotFormat } from "./shots";
-import { postKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
+import { postKey, stepTargetKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
 
 export interface LocatorHit {
   stepId: string;
@@ -666,7 +667,7 @@ export async function replay(
     pictured = patched;
     const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
     repairs.push(...retried.repairs);
-    record.executed = { action: patched.action, identity: matchQuery(patched) };
+    record.executed = { action: patched.action, target: stepTarget(patched) };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
@@ -850,7 +851,7 @@ async function runStepAction(
   if (step.action === "digits") {
     const text = "input" in step.text ? String(args[step.text.input] ?? "") : subst(step.text.literal, args);
     try {
-      await driver.digits(matchQuery(step)?.role || "button", text);
+      await driver.digits(targetRole(stepTarget(step)) || "button", text);
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
@@ -858,7 +859,7 @@ async function runStepAction(
     if (!held.ok) {
       return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     }
-    return { ok: true, repairs, acted: matchQuery(step), recovered: held.recovered };
+    return { ok: true, repairs, recovered: held.recovered };
   }
   const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate, recovery);
   if (found.optionalAbsent) return { ok: true, repairs, skipped: true, note: "optional dismiss absent" };
@@ -935,7 +936,7 @@ export function pageShows(tree: LiveTree, present: string, anyCount = false): bo
   return tree.nodes.some((node) => [node.text, node.name, node.label].some(shows));
 }
 
-/** The live-node fields the matcher looks for on this step's target. */
+/** The scorer's query for this step's target. */
 function matchQuery(step: WorkflowStep): Identity | undefined {
   const target = stepTarget(step);
   return target ? targetQuery(target) : undefined;
@@ -1057,27 +1058,28 @@ async function findTarget(
     await captureFindMiss(step, driver, located.nodes, located.hit, located.tried);
     return { ...located, recovered };
   }
-  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden) && testIdAgrees(matchQuery(step)?.testId, tree.nodes[located.hit.index])) {
+  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden) && testIdAgrees(locatorValue(stepTarget(step), "testid"), tree.nodes[located.hit.index])) {
     if (located.via) locatorHits.push(located.via);
     if (located.via?.kind === "anchor") repairs.push({ stepId: step.id, repair: "anchor", detail: located.via.detail });
     return { ...located, recovered };
   }
-  const query = matchQuery(step);
-  const named = query?.name || query?.text || query?.label;
-  const labeled = query?.testId && !named ? undefined : labelCandidate(step, tree.nodes, tree.boxes);
-  const recordedTestIdMissing = !query?.testId || !tree.nodes.some((node) => node.testId === query.testId);
-  if (labeled && (recordedTestIdMissing || testIdAgrees(query?.testId, tree.nodes[labeled.index]))) {
+  const target = stepTarget(step);
+  const testId = locatorValue(target, "testid");
+  const named = targetName(target) || locatorValue(target, "text") || target?.hint?.label;
+  const labeled = testId && !named ? undefined : labelCandidate(step, tree.nodes, tree.boxes);
+  const recordedTestIdMissing = !testId || !tree.nodes.some((node) => node.testId === testId);
+  if (labeled && (recordedTestIdMissing || testIdAgrees(testId, tree.nodes[labeled.index]))) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
-  if (anchored && testIdAgrees(query?.testId, tree.nodes[anchored.index])) {
+  if (anchored && testIdAgrees(testId, tree.nodes[anchored.index])) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
-  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden) && testIdAgrees(matchQuery(step)?.testId, waited.nodes[waited.hit.index])) {
+  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden) && testIdAgrees(testId, waited.nodes[waited.hit.index])) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
     if (waited.via) locatorHits.push(waited.via);
     return { ...waited, recovered };
@@ -1358,7 +1360,7 @@ function personAsk(gate: ApplyGate, step: WorkflowStep, kind: "login" | "confirm
     stepIndex: step.index + 1,
     stepCount: workflow.steps.length,
     label: stepTitle(step),
-    button: kind === "confirm" && !code ? confirmButton({ label: stepTitle(step), identity: matchQuery(step) }) : undefined,
+    button: kind === "confirm" && !code ? confirmButton({ label: stepTitle(step), name: targetName(stepTarget(step)), text: locatorValue(stepTarget(step), "text") }) : undefined,
     site: siteHost(workflow.startUrl),
     timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
     runId: gate.runId,
@@ -1480,8 +1482,8 @@ async function fillSecretLogin(
   tree = await driver.tree();
   const sign = tree.nodes.find((node) => node.id === "signin" || node.testId === "login-submit");
   const recordedStep = recordedSteps(gate.workflow).find((step) => step.id === stepId);
-  const recorded = recordedStep ? matchQuery(recordedStep) : undefined;
-  const button = sign ?? tree.nodes.find((node) => recorded?.id && (node.id === recorded.id || node.testId === recorded.id));
+  const recordedId = recordedStep ? targetElementId(stepTarget(recordedStep)) : undefined;
+  const button = sign ?? tree.nodes.find((node) => recordedId && (node.id === recordedId || node.testId === recordedId));
   if (button && !await recordedClick(driver, gate, stepId, button)) return;
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
@@ -1549,7 +1551,7 @@ function locate(
       const got = node[selection.by];
       return typeof got === "string" && got.replace(/\s+/g, " ").trim() === want;
     });
-    const wantRole = matchQuery(step)?.role;
+    const wantRole = targetRole(stepTarget(step));
     const roleHits = wantRole ? picked.filter((node) => rolesCompatible(wantRole, node.role)) : [];
     // The listbox and the option both show the typed word. The option is the choice.
     const chosen = roleHits.length === 1 ? roleHits[0] : picked.length === 1 ? picked[0] : undefined;
@@ -1566,6 +1568,8 @@ function locate(
     nodes = picked;
   }
   const identity = matchQuery(step);
+  const target = stepTarget(step);
+  const recordedTestId = locatorValue(target, "testid");
   const list = locatorList(step, locatorMode);
   if (list) {
     const tried = list.map((locator) => {
@@ -1578,7 +1582,7 @@ function locate(
     // A glossary button can share the field's visible name and score 100
     // before the id. The recorded id is that field. A durable id that is not
     // on the page yet is a miss, so the run waits instead of typing into the button.
-    const recordedId = identity?.id;
+    const recordedId = targetElementId(target);
     const idAt = recordedId
       ? tried.findIndex((_, index) => list[index]?.kind === "css" && cssNamesId(list[index]?.value || "", recordedId))
       : -1;
@@ -1601,7 +1605,7 @@ function locate(
           tried,
         };
       }
-      const recordedRole = identity?.role || "";
+      const recordedRole = targetRole(target) || "";
       const compatible = perfect.find((row) => {
         const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
         const node = found ? nodes[found.index] : undefined;
@@ -1626,20 +1630,20 @@ function locate(
       return { nodes, hit, tried };
     }
     let winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
-    if (identity?.testId) {
+    if (recordedTestId) {
       const exact = perfect.find((row) => {
         const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
-        return !!found && nodes[found.index]?.testId === identity.testId;
+        return !!found && nodes[found.index]?.testId === recordedTestId;
       });
       if (exact) winner = exact.index;
       else if (winner >= 0) {
         const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
-        if (found && nodes[found.index]?.testId && nodes[found.index]?.testId !== identity.testId) winner = -1;
+        if (found && nodes[found.index]?.testId && nodes[found.index]?.testId !== recordedTestId) winner = -1;
       }
     }
     if (winner >= 0) {
       const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
-      if (found && testIdAgrees(identity?.testId, nodes[found.index])) {
+      if (found && testIdAgrees(recordedTestId, nodes[found.index])) {
         return {
           nodes,
           hit: { ok: true, index: found.index, ranked: [] },
@@ -1662,7 +1666,7 @@ function locate(
     if (identity && locatorMode !== "primary") {
       const hit = lookup(identity, nodes);
       if (hit.reason === "tie") return { nodes, hit, tried };
-      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden) && testIdAgrees(identity.testId, nodes[hit.index])) {
+      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden) && testIdAgrees(recordedTestId, nodes[hit.index])) {
         const node = nodes[hit.index];
         const detail = node?.name || node?.label || node?.text || node?.nameAttr || node?.id || "identity";
         return {
@@ -1897,7 +1901,7 @@ async function runFilesDatesStep(
     await driver.pickDate({ iso: start.iso, endIso: end?.iso, formatted: start.formatted, node: matchQuery(step) });
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
-    return { ok: true, repairs, acted: matchQuery(step) };
+    return { ok: true, repairs };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
@@ -1932,7 +1936,7 @@ function noteTrajectory(
   trajectory.push({
     stepId: step.id,
     action: step.action,
-    target: targetKey(acted || matchQuery(step)),
+    target: acted ? targetKey(acted) : stepTargetKey(step),
     postcondition: ok ? post : `missed ${post}`,
     timing: timingBucket(Math.max(0, elapsedMs)),
   });

@@ -30,7 +30,7 @@ Every step has `id`, `index`, `action`, `caption`, and `timeoutMs`. `caption.tex
 
 `action` is `click`, `type`, `key`, `check`, `select`, `navigate`, `verify`, `handoff`, `upload`, `drop`, `extract`, `for_each`, `note`, `download`, `open`, `digits`, or `pickDate`.
 
-Each action has its own fields. `validateWorkflow` refuses any other key.
+Any step may also carry optional `when`, `heal`, and `readBack`. Each action adds its own fields below. `validateWorkflow` refuses any other key.
 
 | action | fields |
 | --- | --- |

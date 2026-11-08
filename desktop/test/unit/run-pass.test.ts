@@ -1,4 +1,4 @@
-import { testWorkflow,  } from "../support/workflow";
+import { testWorkflow } from "../support/workflow";
 // Re-run from a past run, collapsed idle, and the per-step heal limit.
 
 import assert from "node:assert/strict";
@@ -83,7 +83,7 @@ test("three consecutive heals on one step stop auto-heal and open the act bar", 
   const healed = (at: number) => ({
     at,
     workflowId: "wf",
-    heals: [{ id: `h-${at}`, failedStep: { id: "save", label: "save" } }],
+    heals: [{ id: `h-${at}`, failedStep: { id: "save", action: "click", caption: { text: "Click Save" } } }],
     steps: [{ id: "save", status: "passed" as const }],
   });
   const runs = [healed(1), healed(2), healed(3)];
@@ -101,7 +101,8 @@ test("three consecutive heals on one step stop auto-heal and open the act bar", 
     runs: runs.map((run, index) => ({ ...run, id: `run-${index}`, status: "passed" as const })),
   });
   assert.match(bar, /data-ask="review"/);
-  assert.match(bar, /needs review/);
+  assert.match(bar, /You need to act · upload note · Click Save/);
+  assert.match(bar, /Click Save needs review/);
   assert.match(bar, /3 runs in a row/);
   assert.match(bar, /auto-heal is off/);
   assert.equal(attentionCount({ pendingHeals: 0, reviews: reviewItems(runs.map((run, index) => ({

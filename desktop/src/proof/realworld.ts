@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinTestBrowser } from "../launch";
 import { startApp } from "../app/server";
-import { locatorValue, roleLocator, stepKey, stepTarget, stepTitle, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { locatorValue, targetName, stepKey, stepTarget, stepTitle, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { pauseIsExpected, scoreBotWall, type TaskExpect } from "./task-expect";
 
 process.env.BAO_DRIVE = "1";
@@ -41,7 +41,7 @@ interface HealView {
   id?: string;
   model?: { name?: string; provider?: string };
   postconditionPassed?: boolean;
-  failedStep?: { id?: string; label?: string; action?: string };
+  failedStep?: { id?: string; caption?: { text?: string }; action?: string };
   proposedPatch?: unknown;
 }
 
@@ -1193,7 +1193,7 @@ function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: st
 
 function scoreP14(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = `${input.page.title || ""} ${input.page.text || ""} ${evidence(input)}`;
-  const stepText = input.workflow.steps.map((step) => `${stepTitle(step)} ${locatorValue(stepTarget(step), "text") || ""} ${roleLocator(stepTarget(step))?.name || ""}`).join("\n");
+  const stepText = input.workflow.steps.map((step) => `${stepTitle(step)} ${locatorValue(stepTarget(step), "text") || ""} ${targetName(stepTarget(step)) || ""}`).join("\n");
   return scoreBotWall({ expect: input.expect, replay: input.replay, pageText: text, stepText });
 }
 
@@ -1243,7 +1243,7 @@ function summarizeWorkflow(workflow: WorkflowV2, openUrl: string, recordError: s
 function healWhy(heal: HealView): string {
   const step = heal.failedStep;
   return [
-    step?.label || step?.id || heal.id || "heal",
+    (step?.caption?.text ? stepTitle(step) : step?.id) || heal.id || "heal",
     step?.action,
     heal.model?.name ? `model ${heal.model.name}` : "no model",
     heal.postconditionPassed ? "postcondition passed" : "postcondition did not pass",
@@ -1631,5 +1631,5 @@ if (require.main === module) {
 
 function dayText(step: WorkflowStep): string {
   const target = stepTarget(step);
-  return locatorValue(target, "text") || roleLocator(target)?.name || "";
+  return locatorValue(target, "text") || targetName(target) || "";
 }

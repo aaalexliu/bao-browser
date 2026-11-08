@@ -1,5 +1,4 @@
-import { targetOf } from "../support/workflow";
-import { locatorValue, stepCheck, stepLocators } from "../../src/v1/schema";
+import { stepTarget, locatorValue, stepCheck, stepLocators } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -159,7 +158,7 @@ test("a failed action with only viewport movement stays saveable after retry", {
     assert.match(workflow.finish(), /Saved workflow:/);
     const saved = f.library.list().workflows[0]!;
     assert.deepEqual(saved.steps.map((step) => step.action), ["click"]);
-    assert.equal(locatorValue(targetOf(saved.steps[0]), "testid"), "chosen");
+    assert.equal(locatorValue(stepTarget(saved.steps[0]), "testid"), "chosen");
   } finally {
     await context.close();
     await f.close();
@@ -190,7 +189,7 @@ test("native ref capture saves a discoverable workflow that replays with new inp
     assert.equal(workflow.replayed, false);
     assert.deepEqual(workflow.steps.map((step) => step.action), ["navigate", "type", "key", "click"]);
     const clicked = workflow.steps.at(-1)!;
-    assert.equal(locatorValue(targetOf(clicked), "testid"), "chosen");
+    assert.equal(locatorValue(stepTarget(clicked), "testid"), "chosen");
     assert.ok(stepLocators(clicked)?.some((locator) => locator.kind === "testid" && locator.value === "chosen"));
     assert.doesNotMatch(JSON.stringify(workflow), /@e\d+|data-bao-i|nth-of-type/);
     const input = workflow.inputs[0]!;
@@ -238,7 +237,7 @@ test("native clicks never substitute a structural ancestor for an unaddressable 
     await passed(f, "click", ["#store-b"]);
     assert.match(await passed(f, "close"), /Saved workflow:/);
     const workflow = f.library.list().workflows[0]!;
-    assert.equal(locatorValue(targetOf(workflow.steps[0]), "testid"), "store-button");
+    assert.equal(locatorValue(stepTarget(workflow.steps[0]), "testid"), "store-button");
     const replay = await f.request("tools/call", { name: "run_workflow", arguments: { id: workflow.id } });
     assert.equal((JSON.parse(text(replay)) as { status: string }).status, "ok", text(replay));
   } finally { await f.close(); }
@@ -307,7 +306,7 @@ test("harmless native failures preserve raw failed receipts and save only succes
     assert.match(await passed(f, "close"), /Saved workflow:/);
     const workflow = f.library.list().workflows[0]!;
     assert.deepEqual(workflow.steps.map((step) => step.action), ["click"]);
-    assert.equal(locatorValue(targetOf(workflow.steps[0]), "testid"), "chosen");
+    assert.equal(locatorValue(stepTarget(workflow.steps[0]), "testid"), "chosen");
     const capture = f.library.listRuns()[0]!;
     assert.equal(capture.status, "failed");
     assert.equal((capture.steps as RecordedAgentBrowserCommand[]).filter((step) => step.native.isError).length, 2);
