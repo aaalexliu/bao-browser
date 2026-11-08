@@ -260,15 +260,14 @@ function shellWord(text) {
 
 /**
  * ~/.local/bin/bao -> Bao.app/Contents/MacOS/bao-cli. A file there that is not Bao's link stays.
- * bao is how to run this app from this shell: bao when the link is on PATH, else a full path.
- * addToPath is the line that puts the link on PATH, or "" when it needs none.
+ * bao is the full path that runs this app. offPath is true when the link is made but ~/.local/bin is not on PATH.
  */
 function link(app) {
   const bin = path.join(home(), ".local", "bin");
   const file = path.join(bin, "bao");
   const target = path.join(app, "Contents", "MacOS", "bao-cli");
-  if (!existsSync(target)) return { note: `${target} is missing, so no bao command was linked`, bao: "", addToPath: "" };
-  const unlinked = { bao: shellWord(target), addToPath: "" };
+  if (!existsSync(target)) return { note: `${target} is missing, so no bao command was linked`, bao: "", offPath: false };
+  const unlinked = { bao: shellWord(target), offPath: false };
   mkdirSync(bin, { recursive: true });
   try {
     const stat = lstatSync(file);
@@ -278,9 +277,7 @@ function link(app) {
     if (err.code !== "ENOENT") throw err;
   }
   symlinkSync(target, file);
-  if ((process.env.PATH || "").split(":").includes(bin)) return { note: `linked ${file}`, bao: "bao", addToPath: "" };
-  const rc = path.basename(process.env.SHELL || "") === "bash" ? "~/.bash_profile" : "~/.zshrc";
-  return { note: `linked ${file}`, bao: shellWord(file), addToPath: `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${rc}` };
+  return { note: `linked ${file}`, bao: shellWord(file), offPath: !(process.env.PATH || "").split(":").includes(bin) };
 }
 
 function runApp(app, args) {
@@ -313,7 +310,7 @@ async function install(opts) {
   step(`Took ${((Date.now() - started) / 1000).toFixed(1)} s. Now pick the agents that should use Bao.\n`);
   const status = runApp(app, ["setup", "--app", app, ...opts.setup]);
   if (linked.bao) process.stdout.write(`\n${dim(`Check this install any time: ${linked.bao} doctor   ·   change agents: ${linked.bao} setup`)}\n`);
-  if (linked.addToPath) process.stdout.write(`${dim("To run plain bao, put ~/.local/bin on PATH, then open a new terminal:")}\n  ${linked.addToPath}\n`);
+  if (linked.offPath) process.stdout.write(`${dim("To run plain bao, add ~/.local/bin to your PATH.")}\n`);
   return status;
 }
 

@@ -33,11 +33,7 @@ Run it again to update. A run with the same version reuses the checked download 
 ~/.local/bin/bao doctor   # check the app, its signature, Node, agent configs, and one MCP handshake
 ```
 
-A new Mac does not have `~/.local/bin` on PATH. To run plain `bao setup` and `bao doctor`, add it in zsh, then open a new terminal:
-
-```sh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-```
+A new Mac does not have `~/.local/bin` on PATH. To run plain `bao setup` and `bao doctor`, add `~/.local/bin` to your PATH.
 
 These do the same without the link, for a `Bao.app` in `/Applications` or `~/Applications`:
 

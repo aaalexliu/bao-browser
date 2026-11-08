@@ -73,18 +73,21 @@ function onPath(probe: Probe, name: string): string {
   return "";
 }
 
-/** How to run this app's bao from this shell: bao when it is on PATH, else the full path of the installer's link to this app, else the app's own bao-cli. */
-export function baoCommand(probe: Probe, app: string): string {
-  if (onPath(probe, "bao")) return "bao";
-  const cli = path.join(app, "Contents", "MacOS", "bao-cli");
-  const link = path.join(probe.home, ".local", "bin", "bao");
-  let linked = false;
+function sameFile(a: string, b: string): boolean {
   try {
-    linked = realpathSync(link) === realpathSync(cli);
+    return realpathSync(a) === realpathSync(b);
   } catch {
-    // No link, or no bao-cli in this app.
+    return false;
   }
-  const file = linked ? link : cli;
+}
+
+/** How to run this app's bao from this shell: bao when PATH finds this app's bao-cli, else the full path of the installer's link to this app, else the app's own bao-cli. */
+export function baoCommand(probe: Probe, app: string): string {
+  const cli = path.join(app, "Contents", "MacOS", "bao-cli");
+  const found = onPath(probe, "bao");
+  if (found && sameFile(found, cli)) return "bao";
+  const link = path.join(probe.home, ".local", "bin", "bao");
+  const file = sameFile(link, cli) ? link : cli;
   return /^[\w@%+=:,./-]+$/.test(file) ? file : `'${file.replaceAll("'", `'\\''`)}'`;
 }
 
