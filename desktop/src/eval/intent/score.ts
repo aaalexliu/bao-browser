@@ -102,7 +102,11 @@ export function humanKeys(workflow: WorkflowV2): string[] {
 }
 
 export function expectedHuman(item: IntentCase): string[] {
-  return item.human.map((mark) => `${mark.gate}|${mark.target}`);
+  const stopped = new Set(item.events.filter((event) => event.gate && event.performed === false).map((event) => event.id));
+  return item.human.filter((mark) => stopped.has(mark.id)).map((mark) => {
+    const reason = mark.gate === "login" ? "sign-in" : mark.gate === "confirm" ? "owner-press" : mark.gate;
+    return `${reason}|${mark.target}`;
+  });
 }
 
 const CLICK_TEXT: Record<string, string> = {

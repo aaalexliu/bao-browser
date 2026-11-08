@@ -45,6 +45,7 @@ export interface StepRead {
   sensitive?: boolean;
   key?: string;
   url?: string;
+  input?: string;
   text?: string | { input?: string; literal?: string };
   file?: { input?: string; fromOutput?: string };
   dialog?: { input?: string };
@@ -80,6 +81,9 @@ function inputOn(step: StepRead): string | undefined {
       return step.dialog?.input ?? step.selection?.input;
     case "pickDate":
       return step.date?.input;
+    case "handoff":
+      return step.input;
+    case undefined:
     default:
       return undefined;
   }
@@ -95,6 +99,7 @@ export function stepLiteral(step: StepRead): string | undefined {
       return step.url;
     case "note":
       return typeof step.text === "string" ? step.text : undefined;
+    case undefined:
     default:
       return undefined;
   }

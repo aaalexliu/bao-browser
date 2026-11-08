@@ -9,7 +9,7 @@ import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
-import { finishInput, parseWorkflow, RUN_SCHEMA_ID, toJson, UnsupportedWorkflow, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "./schema";
+import { normalizeWorkflow, parseWorkflow, RUN_SCHEMA_ID, toJson, UnsupportedWorkflow, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "./schema";
 import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead } from "./library-read";
 
 export interface Settings extends HealSettings {
@@ -201,8 +201,7 @@ export class Library {
   }
 
   save(doc: WorkflowV2): void {
-    const saved = structuredClone(doc);
-    saved.inputs = saved.inputs.map((input) => finishInput(input));
+    const saved = normalizeWorkflow(structuredClone(doc));
     if (existsSync(this.file(saved.id)) && this.read(saved.id).driver === "cdp-live") saved.driver = "cdp-live";
     const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));

@@ -58,7 +58,7 @@ test("the selected step and input summary offer tokens with the run form's defau
   assert.match(headline, /token-label">Note/);
   assert.match(headline, /token-meta">text/);
   assert.match(headline, /token-meta">ada/);
-  assert.match(headline, /token-meta">required/);
+  assert.match(headline, /token-meta">optional/);
   assert.match(headline, /<h2>Type Note<\/h2>/);
   const secret = html.slice(html.indexOf('data-step-panel="secret"'));
   assert.match(secret, /class="token secret"/);
@@ -110,14 +110,14 @@ test("editing a token saves ordinary and secret defaults for the run form", () =
   const home = mkdtempSync(path.join(tmpdir(), "bao-token-"));
   const library = new Library(home);
   library.save(doc());
-  const edited = editInput(library.read("wf-note"), { name: "note", label: "Note", type: "text", default: "ada lovelace", required: true });
+  const edited = editInput(library.read("wf-note"), { name: "note", label: "Note", type: "text", default: "ada lovelace" });
   assert.ok(edited.doc);
   const drafted = draftVersion(library, edited.doc!, "edit");
   promoteVersion(library, "wf-note", drafted.n);
   const live = library.read("wf-note");
   assert.equal(live.inputs[0]?.default, "ada lovelace");
   assert.match(runField(live.inputs[0]!), />ada lovelace</);
-  const masked = editInput(live, { name: "password", type: "secret", label: "Password", default: "BaoSecretFixture9kQ7m", required: true });
+  const masked = editInput(live, { name: "password", type: "secret", label: "Password", default: "BaoSecretFixture9kQ7m" });
   assert.ok(masked.doc);
   assert.equal(masked.doc?.inputs.find((input) => input.name === "password")?.default, "BaoSecretFixture9kQ7m");
   assert.equal(JSON.stringify(masked.doc).includes("BaoSecretFixture9kQ7m"), true);

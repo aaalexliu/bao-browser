@@ -87,7 +87,7 @@ test("unnamed targets and file actions keep their standard guide instructions", 
   ];
   const html = guideHtml(doc, new Map());
   const lines = [...html.matchAll(/<li class="step">.*?<p>(.*?)<\/p><\/li>/g)].map((match) => match[1]);
-  assert.deepEqual(lines, ["Click", "Click the field", "Click", "Type {{username}} in Username", "Add a file", "Add a file", "Add {{upload}}", "Add {{upload}}"]);
+  assert.deepEqual(lines, ["Click", "Click the field", "Click Username", "Type {{username}} in Username", "Add a file", "Add a file", "Add {{upload}}", "Add {{upload}}"]);
 });
 
 test("a focus click folds into typing without rewriting typed or password pictures", () => {

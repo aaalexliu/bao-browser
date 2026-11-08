@@ -382,7 +382,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
       assert.equal(updated.inputs.find((input) => input.name === "card")?.default, STRIPPED_SECRET);
       assert.equal((() => { const _step = updated.steps.find((step) => step.id === "literal"); return _step == null ? undefined : stepValueTemplate(_step); })(), STRIPPED_SECRET);
       assert.equal((() => { const _step = updated.steps.find((step) => step.id === "key"); return _step == null ? undefined : stepKey(_step); })(), STRIPPED_SECRET);
-      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "sensitive"); return _step == null ? undefined : stepValueTemplate(_step); })(), undefined);
+      assert.equal((() => { const _step = updated.steps.find((step) => step.id === "sensitive"); return _step == null ? undefined : stepValueTemplate(_step); })(), STRIPPED_SECRET);
       assert.deepEqual(parseTable(updated.inputs.find((input) => input.name === "rows")?.default), [
         { name: "Ada", token: STRIPPED_SECRET },
         { name: "Grace", token: STRIPPED_SECRET },

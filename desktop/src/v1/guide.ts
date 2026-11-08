@@ -205,7 +205,7 @@ function instruction(doc: WorkflowV2, step: WorkflowStep): string {
   const token = name ? `{{${name}}}` : "";
   let text: string;
   if ((step.action === "type" || step.action === "digits") && token) {
-    const where = fieldLabel(step);
+    const where = fieldLabel(step, input?.label);
     text = where ? `Type ${token} in ${where}` : `Type ${token}`;
   } else if (step.action === "handoff" && step.reason === "sign-in") text = "Sign in";
   else if (step.action === "handoff") text = step.caption.text || "You press the button";
@@ -222,6 +222,7 @@ function clickLine(doc: WorkflowV2, step: WorkflowStep): string {
     const label = pretty(phrase.replace(/^the\s+/i, "").replace(/\s+field$/i, ""));
     return label ? `Click the ${label} field` : "Click the field";
   }
+  if (/^click$/i.test(phrase)) return "Click";
   const label = pretty(phrase);
   return label ? `Click ${label}` : "Click";
 }
@@ -235,19 +236,17 @@ function clickPhrase(step: WorkflowStep): string {
   return stepQuery(step)?.text || stepQuery(step)?.name || stepQuery(step)?.label || "";
 }
 
-function isFieldTarget(doc: WorkflowV2, step: WorkflowStep): boolean {
+function isFieldTarget(_doc: WorkflowV2, step: WorkflowStep): boolean {
   const role = (stepQuery(step)?.role || "").toLowerCase();
   const tag = (stepQuery(step)?.tag || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (/password|textbox|searchbox|combobox/.test(role) || role === "input") return true;
-  const phrase = clickPhrase(step).toLowerCase();
-  if (!phrase || phrase.includes(" ")) return false;
-  return doc.inputs.some((input) => input.type !== "choice" && input.name.toLowerCase() === phrase);
+  return false;
 }
 
-function fieldLabel(step: WorkflowStep): string {
+function fieldLabel(step: WorkflowStep, inputLabel?: string): string {
   const identity = stepQuery(step);
-  const candidates = [identity?.label, identity?.name, identity?.nameAttr, stepInputName(step), identity?.id];
+  const candidates = [inputLabel, identity?.label, identity?.name, identity?.nameAttr, stepInputName(step), identity?.id];
   for (const candidate of candidates) {
     const clean = (candidate || "").replace(/\s+/g, " ").trim();
     if (!clean || clean.includes("{{")) continue;

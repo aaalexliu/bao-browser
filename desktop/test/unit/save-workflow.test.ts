@@ -247,7 +247,7 @@ test("the model prompt and saved titles retain captured values", async () => {
   assert.equal(saved.summary, "Uses code 123456");
   assert.equal(saved.intent, "Sign in to the site.");
   const typed = saved.steps.find((step) => step.action === "type")!;
-  assert.equal(stepTitle(typed), `Type ${SECRET}`);
+  assert.equal(stepTitle(typed), `Enter ${SECRET}`);
   assert.equal(stepValueTemplate(typed), "{{password}}");
   assert.equal(saved.inputs.find((input) => input.name === "password")!.default, SECRET);
 });

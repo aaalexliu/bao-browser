@@ -44,7 +44,7 @@ import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromPropos
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
-import { isPageAct, selectCardPoster } from "../v1/poster";
+import { isClearPageShot, isPageAct, selectCardPoster } from "../v1/poster";
 import { applySaveEdits, inferSavedWorkflow, saveCompleter } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
 import { decide, decisionEvent, intentEvalPair, mergeDemonstrations, narratorFromEnv, projectTeach, publicTrail, teachIntentCase, teachSummaryFrom, type Spoken, type TeachCorrection, type TeachDecision } from "../v1/teach";
@@ -3432,8 +3432,17 @@ function croppedPng(file: string): boolean {
 }
 
 function workflowPoster(library: Library, id: string): string | undefined {
-  const poster = path.join(library.root, "shots", "workflows", id, "poster.png");
-  return existsSync(poster) && isFullPageShot(readFileSync(poster)) ? poster : undefined;
+  const dir = path.join(library.root, "shots", "workflows", id);
+  const poster = path.join(dir, "poster.png");
+  if (existsSync(poster) && isClearPageShot(readFileSync(poster))) return poster;
+  let doc: { driver?: string; steps: { id: string }[] };
+  try { doc = library.read(id); } catch { return; }
+  if (doc.driver !== "cdp-live") return;
+  for (const step of doc.steps) {
+    const file = path.join(dir, `${step.id}.png`);
+    if (existsSync(file) && isClearPageShot(readFileSync(file))) return file;
+  }
+  return;
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

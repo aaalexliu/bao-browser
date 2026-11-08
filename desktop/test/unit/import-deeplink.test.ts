@@ -98,7 +98,7 @@ test("secret and file import questions need no answer or example", () => {
   assert.equal(questions.length, 2);
   assert.ok(questions.every((question) => !question.required && question.example === undefined));
   assert.deepEqual(missingAnswers(questions, {}), []);
-  assert.deepEqual(applyImportAnswers(document, {}), { inputs: [document.inputs[0], { name: "upload", type: "file", askOnImport: true, required: true }] });
+  assert.deepEqual(applyImportAnswers(document, {}), { inputs: [document.inputs[0], { name: "upload", type: "file", askOnImport: true, required: true, supply: "must" }] });
   const answered = applyImportAnswers(document, { pin: "  local-pin-value  ", upload: "/Users/grace/import.txt" }) as typeof document;
   assert.equal(answered.inputs[0]!.default, "  local-pin-value  ");
   assert.equal(answered.inputs[1]!.default, undefined);

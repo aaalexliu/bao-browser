@@ -1395,7 +1395,8 @@ export function passGrid(runs: RunSummary[], steps: { id: string; label?: string
       const label = kind === "paused" ? "needs you" : kind === "empty" ? "not run" : kind;
       return `<td title="${esc(`${runTitle(run)} · ${label}`)}"><span class="cell ${kind}"></span></td>`;
     }).join("");
-    return `<tr><th scope="row">${esc(stepTitle(step) || step.label || step.id)}</th>${cells}</tr>`;
+    const title = step.caption?.text ? stepTitle(step) : step.label || stepTitle(step);
+    return `<tr><th scope="row">${esc(title)}</th>${cells}</tr>`;
   }).join("");
   return `<div class="grid-wrap"><h3 class="section">Recent runs</h3>${statusLegend()}<table id="pass-grid" aria-label="Recent runs"><thead><tr><th scope="col"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }

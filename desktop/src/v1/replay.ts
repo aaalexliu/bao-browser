@@ -1466,7 +1466,10 @@ async function fillSecretLogin(
   if (hold > 0) await (driver.sleep ? driver.sleep(hold) : sleep(hold));
   tree = await driver.tree();
   const sign = tree.nodes.find((node) => node.id === "signin" || node.testId === "login-submit");
-  if (sign && !await recordedClick(driver, gate, stepId, sign)) return;
+  const recordedStep = recordedSteps(gate.workflow).find((step) => step.id === stepId);
+  const recorded = recordedStep ? stepQuery(recordedStep) : undefined;
+  const button = sign ?? tree.nodes.find((node) => recorded?.id && (node.id === recorded.id || node.testId === recorded.id));
+  if (button && !await recordedClick(driver, gate, stepId, button)) return;
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
   const code = tree.nodes.find((node) => node.id === "code" || node.testId === "verify-code");

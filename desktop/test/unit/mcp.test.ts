@@ -86,23 +86,25 @@ test("MCP search and describe mark the owner's saved inputs optional", async () 
     const result = await client.call("describe_workflow", { id: saved.id });
     assert.equal(result.isError, false);
     const described = JSON.parse(result.text) as { workflow: WorkflowV2; inputs: { name: string; type: string; label: string; required: boolean; saved?: true }[] };
-    const required = [false, false, false, true, true, true, true, true, false, true, false, false, false, false];
+    const required = [false, false, false, true, true, true, true, true, true, true, false, false, false, false];
     const savedNames = new Set(["credential", "display", "count", "taughtCode", "card", "pin", "password"]);
-    assert.deepEqual(described.inputs, inputs.map((input, index) => ({
+    const stored = library.read(saved.id);
+    assert.deepEqual(described.inputs, stored.inputs.map((input, index) => ({
       name: input.name,
       type: input.type,
       label: input.label || input.name,
+      supply: input.supply,
       required: required[index],
       ...(savedNames.has(input.name) ? {
         saved: true,
         description: input.type === "secret" ? "Bao fills the saved password when omitted." : "Bao fills the saved value when omitted.",
       } : {}),
     })));
-    assert.deepEqual(described.workflow.inputs.map((input) => input.supply === "must"), required);
+    assert.deepEqual(described.workflow.inputs.map((input) => input.supply), stored.inputs.map((input) => input.supply));
     assert.equal(described.workflow.inputs[0]?.default, undefined);
     assert.equal(result.text.includes("fixture-password"), false);
-    assert.equal(library.read(saved.id).inputs[0]?.supply, "must");
-    assert.equal(library.read(saved.id).inputs[0]?.default, "fixture-password");
+    assert.equal(stored.inputs[0]?.supply, "saved");
+    assert.equal(stored.inputs[0]?.default, "fixture-password");
     const search = await client.call("search_workflows", { query: "Saved" });
     assert.equal(search.isError, false);
     const hits = JSON.parse(search.text) as { hits: { inputs: typeof described.inputs }[] };
@@ -115,8 +117,8 @@ test("MCP search and describe mark the owner's saved inputs optional", async () 
     library.save(fixtureDoc({ ...saved, steps: saved.steps.filter((step) => !(step.action === "handoff" && step.reason === "sign-in")).map((step, index) => ({ ...step, index })) }));
     const withoutLogin = await client.call("describe_workflow", { id: saved.id });
     const ordinary = JSON.parse(withoutLogin.text) as typeof described;
-    assert.equal(ordinary.inputs[0]?.required, true);
-    assert.equal(ordinary.workflow.inputs[0]?.supply, "must");
+    assert.equal(ordinary.inputs[0]?.required, false);
+    assert.equal(ordinary.workflow.inputs[0]?.supply, "saved");
   });
 });
 

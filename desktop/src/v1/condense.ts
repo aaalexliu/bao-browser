@@ -191,7 +191,10 @@ function collapseRetries(events: TrailEvent[]): TrailEvent[] {
   const out: TrailEvent[] = [];
   for (const event of events) {
     const prev = out[out.length - 1];
-    if (prev && prev.op === "click" && event.op === "click" && !prev.optional && !event.optional && sameTarget(prev, event)) continue;
+    if (prev && prev.op === "click" && event.op === "click" && !prev.optional && !event.optional && sameTarget(prev, event)) {
+      if (!prev.afterText && event.afterText) prev.afterText = event.afterText;
+      continue;
+    }
     out.push(event);
   }
   return out;
