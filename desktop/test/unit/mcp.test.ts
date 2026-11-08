@@ -309,16 +309,13 @@ test("retired tools fail without contacting an app or starting Chrome", async ()
   });
 });
 
-test("MCP rejects retired workflow replay with a clear reason", async () => {
+test("a cdp-live driver is rejected and is not replayed", async () => {
   await fixture(async (client, library) => {
-    library.save({ ...workflow, driver: "cdp-live" as unknown as WorkflowV2["driver"] });
+    assert.throws(() => library.save({ ...workflow, driver: "cdp-live" as unknown as WorkflowV2["driver"] }), /driver/);
+    assert.equal(library.list().workflows.some((doc) => doc.id === workflow.id), false);
     library.save({ ...workflow, id: "owner", name: "Saved owner workflow" });
     library.save({ ...workflow, id: "fixture", provenance: "fixture" });
     await client.handshake();
-    const result = await client.call("run_workflow", { id: workflow.id });
-    const outcome = JSON.parse(result.text) as { outcome: string; reason: string };
-    assert.equal(outcome.outcome, "failed");
-    assert.equal(outcome.reason, "this workflow used the retired live driver");
     const search = await client.call("search_workflows", { query: "Saved" });
     assert.deepEqual((JSON.parse(search.text) as { hits: { id: string }[] }).hits.map((hit) => hit.id), ["owner"]);
     assert.deepEqual(library.listRuns(), []);
@@ -593,7 +590,7 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       ["{{report.name}}", "ZXQLEFTZXQRIGHT.txt"],
       ["report.csv", "open /Users/owner/private/report.csv"],
     ] as const) {
-      const workflow: WorkflowV2 = fixtureDoc({ ...JSON.parse(shelfWorkflow) as WorkflowV2, version: 3, filesDates: 1, inputs: [fixtureInput({ name: "password", type: "secret" })], steps: [
+      const workflow: WorkflowV2 = fixtureDoc({ ...JSON.parse(shelfWorkflow) as WorkflowV2, version: 3, inputs: [fixtureInput({ name: "password", type: "secret" })], steps: [
         fixtureStep({ id: "source", index: 0, action: "download", label: "Source", surface: "dom", timeoutMs: 1000, download: { output: "report", name: "{{password}}.txt" } }),
         fixtureStep({ id: "preview", index: 1, action: "download", label: "Report", surface: "dom", timeoutMs: 1000, download: { output: "copy", name: template } }),
       ] });
@@ -954,7 +951,6 @@ test("a held replay blocks update stops and supports resume and cancel after rep
 
 const shelfWorkflow = `{
   "schema": "bao.workflow/v4",
-  "version": 2,
   "id": "wf-shelf",
   "name": "Shelf",
   "startUrl": "https://example.test/",

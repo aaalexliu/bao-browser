@@ -161,7 +161,8 @@ test("login and auth recovery hand off stripped credentials without filling or s
       if (source === "password") args.password = STRIPPED_SECRET;
       if (source === "preferred password") {
         workflow.inputs.push(fixtureInput({ name: "alternate", type: "secret" }));
-        writeStep(workflow.steps[0]!, { input: "alternate" });
+        if (recovery) writeStep(workflow.steps[0]!, { input: "alternate" });
+        else args.password = STRIPPED_SECRET;
         args.alternate = STRIPPED_SECRET;
       }
       if (source === "code") args.code = STRIPPED_SECRET;

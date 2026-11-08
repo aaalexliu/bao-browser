@@ -263,7 +263,6 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
   const library = new Library(root);
   library.save(workflow("books"));
   library.save(workflow("ext", "extension"));
-  library.save(workflow("live", "cdp-live" as unknown as WorkflowV2["driver"]));
   library.saveRun({
     id: "run-1",
     workflowId: "books",
@@ -282,10 +281,9 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
     assert.ok(agent);
     saveRelay(root, { server: server.origin, token: paired.token, deviceId: paired.deviceId, tokenId: paired.tokenId });
     writeFileSync(path.join(root, "settings.json"), JSON.stringify({ remoteMcp: true, remotePermission: "deny" }));
-    const calls = { extension: 0, live: 0, playwright: 0 };
+    const calls = { extension: 0, playwright: 0 };
     const runners = {
       extension: async () => { calls.extension += 1; return { outcome: "ok", via: "extension" }; },
-      live: async () => { calls.live += 1; throw new Error("retired live runner called"); },
       playwright: async (_id: string, inputs: Record<string, unknown>) => {
         calls.playwright += 1;
         assert.equal(inputs.routing, "021000021");
@@ -323,12 +321,6 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
       const disconnected = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(disconnected.json.reason, "extension is not connected");
       assert.equal(calls.extension, 2);
-      const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
-      assert.equal(live.json.outcome, "failed", JSON.stringify(live.json));
-      assert.equal(live.json.reason, "this workflow used the retired live driver");
-      assert.equal(live.json.runId, undefined);
-      assert.equal(calls.live, 0);
-      assert.throws(() => library.readRun("run-live"), /run not found/);
       assert.equal(calls.playwright, 1);
     } finally {
       await auto.stop();
@@ -342,12 +334,6 @@ test("requested remote runs start directly and keep the workflow's driver", asyn
       const ext = await tool(server.origin, agent.token, "run_workflow", { id: "ext" });
       assert.equal(ext.json.outcome, "failed");
       assert.match(String(ext.json.reason), /extension is not connected/);
-      const live = await tool(server.origin, agent.token, "run_workflow", { id: "live" });
-      assert.equal(live.json.outcome, "failed");
-      assert.equal(live.json.reason, "this workflow used the retired live driver");
-      assert.equal(live.json.runId, undefined);
-      assert.equal(calls.live, 0);
-      assert.throws(() => library.readRun("run-live"), /run not found/);
       assert.equal(calls.playwright, 1);
     } finally {
       await missing.stop();

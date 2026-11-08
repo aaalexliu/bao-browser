@@ -181,9 +181,9 @@ test("a note replays without touching the page and a check becomes a verify step
   const result = await replay(doc, {}, driver, { heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.steps.every((step) => step.status === "passed"), true);
-  // The classifier reads the tree once. The check reads it for the auth gate and the text.
-  // The run reads it once more to confirm the final check. The note does not.
-  assert.equal(looked, 5);
+  // The check reads the tree for the auth gate and the text. The run reads it once more
+  // to confirm the final check. The note does not.
+  assert.equal(looked, 4);
 });
 
 test("pictures and snapshots retain password controls and native pixels without Bao overlays", async () => {

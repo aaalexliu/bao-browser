@@ -103,7 +103,7 @@ test("workflow pictures skip private steps and retain control crops without mark
   const sent = buildPushBody(
     {
       inputs: [{ name: "password", type: "secret" }],
-      steps: [{ id: "go" }, { id: "pass", sensitive: true }, { id: "api", input: "password" }],
+      steps: [{ id: "go" }, { id: "pass", sensitive: true }, { id: "api", action: "type", text: { input: "password" } }],
     },
     { baseVersion: 1, crops: [{ stepId: "go", png: crop }, { stepId: "pass", png: crop }, { stepId: "api", png: crop }] },
   );

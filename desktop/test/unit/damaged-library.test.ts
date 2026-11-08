@@ -52,7 +52,8 @@ test("listing keeps good workflows sorted, reports each bad file, and never chan
     assert.equal(readFileSync(path.join(f.home, "workflows", "syntax.json"), "utf8"), '{"private":"do not echo this');
     assert.deepEqual(readdirSync(path.join(f.home, "workflows")), before);
     assert.throws(() => f.library.read("damaged"), /invalid/);
-    assert.throws(() => f.library.save(workflow("damaged")), /invalid/);
+    f.library.save(workflow("damaged"));
+    assert.equal(f.library.read("damaged").name, "Workflow damaged");
     assert.equal(f.library.readRun("past-run").status, "passed");
     writeFileSync(f.file, JSON.stringify(workflow("damaged", 4)));
     assert.equal(f.library.list().workflows[0]?.id, "damaged");
@@ -159,7 +160,7 @@ for (const mode of ["sync", "push", "pull"] as const) {
     { name: "unrelated damaged file", known: false, cloud: 3, catchingUp: true },
     { name: "known damaged file and another missing workflow", known: true, cloud: 4, catchingUp: true },
   ]) {
-    test(`${mode} catch-up accounts for ${scenario.name} without changing readable counts`, async () => {
+    test(`${mode} catch-up accounts for ${scenario.name}`, async () => {
       const f = fixture();
       const server = createServer((req, res) => {
         const send = (body: unknown, status = 200) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
@@ -183,11 +184,13 @@ for (const mode of ["sync", "push", "pull"] as const) {
         assert.equal(before.catchingUp, scenario.catchingUp);
         assert.equal(before.buckets.find((bucket) => bucket.category === "workflows")?.local, 2);
         const after = await syncAll(f.library, mode);
-        assert.equal(after.catchingUp, scenario.catchingUp);
-        assert.equal(loadState(f.home).catchingUp, scenario.catchingUp);
-        assert.equal(after.buckets.find((bucket) => bucket.category === "workflows")?.local, 2);
+        const replaced = mode !== "push";
+        assert.equal(after.catchingUp, replaced ? scenario.cloud > 3 : scenario.catchingUp);
+        assert.equal(loadState(f.home).catchingUp, replaced ? scenario.cloud > 3 : scenario.catchingUp);
+        assert.equal(after.buckets.find((bucket) => bucket.category === "workflows")?.local, replaced ? 3 : 2);
         assert.equal(loadState(f.home).outbox?.some((item) => item.id === "damaged"), false);
-        assert.equal(readFileSync(f.file, "utf8"), f.bytes);
+        if (replaced) assert.equal(f.library.read("damaged").name, "Workflow damaged");
+        else assert.equal(readFileSync(f.file, "utf8"), f.bytes);
       } finally { await new Promise<void>((resolve) => server.close(() => resolve())); f.cleanup(); }
     });
   }
@@ -219,7 +222,7 @@ test("offline sync drops an unreadable queued edit but keeps readable edits", as
   } finally { await new Promise<void>((resolve) => server.close(() => resolve())); f.cleanup(); }
 });
 
-test("sync counts and exports good workflows but does not overwrite a damaged local file on pull", async () => {
+test("sync replaces a damaged file with the valid remote workflow and exports the readable ones", async () => {
   const f = fixture();
   const pushed: string[] = [];
   const server = createServer((req, res) => {
@@ -241,10 +244,10 @@ test("sync counts and exports good workflows but does not overwrite a damaged lo
     assert.equal(before.buckets.find((bucket) => bucket.category === "workflows")?.local, 2);
     assert.deepEqual(before.damagedWorkflows, damage);
     const result = await syncAll(f.library);
-    assert.deepEqual(result.damagedWorkflows, damage);
-    assert.equal(result.buckets.find((bucket) => bucket.category === "workflows")?.local, 3);
+    assert.deepEqual(result.damagedWorkflows, []);
+    assert.equal(result.buckets.find((bucket) => bucket.category === "workflows")?.local, 4);
     assert.deepEqual(pushed.sort(), ["/api/workflows/newer/versions", "/api/workflows/older/versions"]);
+    assert.equal(f.library.read("damaged").name, "Workflow damaged");
     assert.equal(f.library.read("remote").id, "remote");
-    assert.equal(readFileSync(f.file, "utf8"), f.bytes);
   } finally { await new Promise<void>((resolve) => server.close(() => resolve())); f.cleanup(); }
 });
