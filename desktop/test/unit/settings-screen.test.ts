@@ -99,7 +99,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
       assert.equal(await page.evaluate(() => document.activeElement?.id), "main");
       assert.equal(await page.locator("#main").evaluate((node) => node.matches(":focus-visible") && getComputedStyle(node).outlineStyle === "solid"), true, `${theme}: keyboard opening keeps a visible focus ring`);
       await page.keyboard.press("Tab");
-      assert.equal(await page.locator("#heal-auto").evaluate((node) => document.activeElement === node && node.matches(":focus-visible")), true);
+      assert.deepEqual(await page.evaluate(() => ({ focused: document.activeElement?.id, ring: document.activeElement?.matches(":focus-visible") })), { focused: "heal-auto", ring: true }, `${theme}: Tab from the pane reaches the first setting with a ring`);
       assert.equal(await page.locator('label[for="heal-auto"]').evaluate((node) => getComputedStyle(node).outlineStyle), "solid");
       await page.keyboard.press("Meta+k");
       await page.locator("#palette-input").fill("Settings");
