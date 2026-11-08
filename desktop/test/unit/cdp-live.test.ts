@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,7 +16,7 @@ import {
   summarizeAx,
   type AxLike,
 } from "../../src/cdp-live/consent";
-import { assertActivePortFile, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
+import { assertActivePortFile, LISTEN_PID_BIN, listenPid, parseDevToolsActivePort, parseListenPid } from "../../src/cdp-live/endpoint";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../../src/cdp-live/launch-guard";
 import { ServerFrameDecoder, handshakeRequest, scrubCdp } from "../../src/cdp-live/socket";
 
@@ -196,6 +197,18 @@ test("the browser lock is exclusive and a stale lock can be taken", async () => 
   now = 1_000 + 20 * 60 * 1000 + 5;
   await acquireCdpLock("agent-b", { file, now: () => now, timeoutMs: 1_000, sleep: async () => undefined });
   releaseCdpLock("agent-b", file);
+});
+
+test("listenPid calls lsof by its absolute macOS path", async (t) => {
+  const calls: string[] = [];
+  t.mock.method(childProcess, "execFile", ((file: string, _args: readonly string[], _opts: unknown, callback: (err: Error | null, stdout: string) => void) => {
+    calls.push(file);
+    callback(null, "Google 7 alexliu 1u IPv4 0x1 0t0 TCP 127.0.0.1:9222 (LISTEN)\n");
+    return {} as childProcess.ChildProcess;
+  }) as typeof childProcess.execFile);
+  assert.equal(await listenPid(9222), 7);
+  assert.deepEqual(calls, ["/usr/sbin/lsof"]);
+  assert.equal(LISTEN_PID_BIN, "/usr/sbin/lsof");
 });
 
 test("DevToolsActivePort is the only file the endpoint reader accepts", () => {

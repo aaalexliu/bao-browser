@@ -13,11 +13,36 @@ import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
-import { MacOsHelper, type AxHit } from "../../src/proxy/os-macos";
+import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { Library } from "../../src/v1/store";
 
 pinTestBrowser();
+
+function axNode(partial: Pick<AxNode, "role"> & Partial<AxNode>): AxNode {
+  return {
+    subrole: "", title: "", description: "", identifier: "", name: "", value: "",
+    actions: [], frame: null, path: [], pid: 7, app: "com.google.Chrome", useful: true,
+    ...partial,
+  };
+}
+
+test("inspect tab close presses that tab's Close button, not the window or another tab", () => {
+  const nodes = [
+    axNode({ role: "AXButton", subrole: "AXCloseButton", path: [{ role: "AXWindow", name: "Inspect with Chrome Developer Tools" }] }),
+    axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Owner tab", title: "Owner tab", description: "Owner tab", value: "true" }),
+    axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Owner tab" }] }),
+    axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools", description: "Inspect with Chrome Developer Tools", value: "false" }),
+    axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Inspect with Chrome Developer Tools" }] }),
+  ];
+  const args = currentChrome.inspectTabCloseArgs(nodes, 7);
+  assert.ok(args);
+  const encoded = args[args.indexOf("--path") + 1] || "";
+  assert.match(encoded, /Inspect with Chrome Developer Tools/);
+  assert.doesNotMatch(encoded, /Owner tab/);
+  assert.equal(args[0], "press");
+  assert.equal(args.includes("close-window"), false);
+});
 
 async function fixture(on = false) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-chrome-"));
@@ -125,6 +150,34 @@ test("current Chrome approves native connection prompts already present when pol
     assert.equal(await chrome.withConsent(async () => "reconnected"), "reconnected");
     assert.equal(f.state.pending, false);
     chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a port wait failure closes the inspect tab Bao opened", async () => {
+  const f = await fixture();
+  f.deps.listener = async () => undefined;
+  const exec = f.deps.helper!.exec;
+  f.deps.helper!.exec = async (args, timeout) => {
+    if (args[0] === "nodes") {
+      return {
+        ok: true,
+        nodes: [
+          axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Owner tab", title: "Owner tab", description: "Owner tab", value: "true" }),
+          axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Owner tab" }] }),
+          axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools", description: "Inspect with Chrome Developer Tools", value: "false" }),
+          axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Inspect with Chrome Developer Tools" }] }),
+        ],
+      };
+    }
+    return exec(args, timeout);
+  };
+  try {
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /Chrome did not open its debugging port/);
+    const presses = f.state.helperCalls.filter((call) => call[0] === "press");
+    assert.equal(presses.length, 1);
+    assert.match(presses[0]!.join(" "), /Inspect with Chrome Developer Tools/);
+    assert.doesNotMatch(presses[0]!.join(" "), /Owner tab/);
+    assert.equal(f.state.helperCalls.some((call) => call[0] === "close-window" || call[0] === "cg-key" || call[0]?.startsWith("ae-")), false);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
