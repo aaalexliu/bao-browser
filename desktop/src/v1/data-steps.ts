@@ -6,7 +6,8 @@
 // Bardeen scraper (click one row, siblings become the list, name or drop columns),
 // Playwright locators (role, text, test id, css, xpath, in that order).
 
-import { stepInputName, stepLiteral, type ReplayArgs, type StepLocator, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import type { ReplayArgs, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { stepInputName, stepLiteral } from "../../../shared/step-read";
 import { ROW_BINDING, ROW_INDEX_BINDING } from "./bindings";
 import { parseTable, sanitizeName, tableToCsv } from "../../../shared/table";
 export { mapCsv, parseCsv, parseTable, sanitizeName, tableToCsv } from "../../../shared/table";

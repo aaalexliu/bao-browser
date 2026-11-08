@@ -1,10 +1,21 @@
 // Workflow contract. Replay reads this document and nothing else.
 // A file with any other schema id is not loaded.
 
+import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { canonical } from "./canonical";
 import { INPUT_BINDING } from "./bindings";
 import { validateDataSteps, type ExtractSpec, type ForEachSpec, type WorkflowOutput } from "./data-steps";
 import { filesDatesErrors } from "./files-dates-check";
+import {
+  queryFromTarget as readQueryFromTarget,
+  stepForEach as readForEach,
+  stepInputName as readInputName,
+  stepKey as readKey,
+  stepLiteral as readLiteral,
+  stepQuery as readQuery,
+  stepSensitive as readSensitive,
+  stepValueTemplate as readValueTemplate,
+} from "../../../shared/step-read";
 
 export const WORKFLOW_SCHEMA_ID = "bao.workflow/v4";
 export const RUN_SCHEMA_ID = "bao.run/v4";
@@ -247,7 +258,8 @@ export interface WorkflowV2 {
   summary?: string;
   intent?: string;
   inference?: WorkflowInference;
-  driver?: "playwright" | "extension";
+  /** cdp-live is a retired driver tag kept so a saved file can be refused. Absent means Playwright. */
+  driver?: "playwright" | "extension" | "cdp-live";
   /** Set when this copy was installed from someone else. Absent means the owner recorded it. */
   imported?: true;
 }
@@ -357,106 +369,30 @@ export function stepCheck(step: WorkflowStep): Check | undefined {
 }
 
 export function stepInputName(step: WorkflowStep): string | undefined {
-  switch (step.action) {
-    case "type":
-    case "select":
-    case "digits":
-      return "input" in step.text ? step.text.input : undefined;
-    case "upload":
-    case "drop":
-      return "input" in step.file ? step.file.input : undefined;
-    case "click":
-      return step.dialog?.input ?? step.selection?.input;
-    case "pickDate":
-      return step.date.input;
-    case "check":
-    case "download":
-    case "extract":
-    case "finish":
-    case "for_each":
-    case "handoff":
-    case "key":
-    case "navigate":
-    case "note":
-    case "open":
-    case "verify":
-    case "wait":
-      return undefined;
-  }
+  return readInputName(step);
 }
 
 export function stepLiteral(step: WorkflowStep): string | undefined {
-  switch (step.action) {
-    case "type":
-    case "select":
-    case "digits":
-      return "literal" in step.text ? step.text.literal : undefined;
-    case "navigate":
-      return step.url;
-    case "note":
-      return step.text;
-    case "check":
-    case "click":
-    case "download":
-    case "drop":
-    case "extract":
-    case "finish":
-    case "for_each":
-    case "handoff":
-    case "key":
-    case "open":
-    case "pickDate":
-    case "upload":
-    case "verify":
-    case "wait":
-      return undefined;
-  }
+  return readLiteral(step);
 }
 
 /** A literal, or a {{input}} template, for readers that substitute at replay. */
 export function stepValueTemplate(step: WorkflowStep): string | undefined {
-  const literal = stepLiteral(step);
-  if (literal !== undefined && step.action !== "navigate" && step.action !== "note") return literal;
-  const input = stepInputName(step);
-  if (input && step.action !== "click") return `{{${input}}}`;
-  if (step.action === "click" && step.dialog) return `{{${step.dialog.input}}}`;
-  if (step.action === "navigate") return step.url;
-  return undefined;
+  return readValueTemplate(step);
 }
 
 export function stepKey(step: WorkflowStep): string | undefined {
-  return step.action === "key" ? step.key : undefined;
+  return readKey(step);
 }
 
 export function queryFromTarget(target: Target | undefined): Identity | undefined {
-  if (!target) return undefined;
-  const role = target.locators.find((item) => item.kind === "role");
-  const text = target.locators.find((item) => item.kind === "text");
-  const testid = target.locators.find((item) => item.kind === "testid");
-  const css = target.locators.find((item) => item.kind === "css");
-  const xpath = target.locators.find((item) => item.kind === "xpath");
-  const id = css?.kind === "css" && css.value.startsWith("#") ? css.value.slice(1).replace(/\\(.)/g, "$1") : undefined;
-  return {
-    surface: target.hint?.surface ?? "dom",
-    role: (role?.kind === "role" ? role.role : target.hint?.role) || "unknown",
-    name: role?.kind === "role" ? role.name : undefined,
-    text: text?.kind === "text" ? text.value : undefined,
-    testId: testid?.kind === "testid" ? testid.value : undefined,
-    cssPath: css?.kind === "css" ? css.value : undefined,
-    xpath: xpath?.kind === "xpath" ? xpath.value : undefined,
-    label: target.hint?.label,
-    nameAttr: target.hint?.nameAttr,
-    tag: target.hint?.tag,
-    inputType: target.hint?.inputType,
-    autocomplete: target.hint?.autocomplete,
-    placeholder: target.hint?.placeholder,
-    id,
-    path: target.hint?.path ?? [],
-  };
+  const read = readQueryFromTarget(target);
+  if (!read) return undefined;
+  return { ...read, surface: read.surface as Surface, path: read.path };
 }
 
 export function stepSensitive(step: WorkflowStep): boolean {
-  return step.action === "type" && step.sensitive === true;
+  return readSensitive(step);
 }
 
 export function stepSurface(step: WorkflowStep): Surface {
@@ -464,7 +400,7 @@ export function stepSurface(step: WorkflowStep): Surface {
 }
 
 export function stepForEach(step: WorkflowStep): ForEachSpec | undefined {
-  return step.action === "for_each" ? step.forEach : undefined;
+  return readForEach(step) as ForEachSpec | undefined;
 }
 
 export function stepOptional(step: WorkflowStep): "dismiss" | undefined {
@@ -501,7 +437,7 @@ export function handoffReason(step: WorkflowStep): HandoffReason | undefined {
 }
 
 export function stepQuery(step: WorkflowStep): Identity | undefined {
-  return queryFromTarget(stepTarget(step));
+  return readQuery(step) as Identity | undefined;
 }
 
 export function hintFromIdentity(node: Identity | undefined): TargetHint | undefined {
@@ -551,7 +487,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   if (!doc.name) errors.push("name");
   if (doc.provenance !== undefined && doc.provenance !== "fixture") errors.push("provenance");
   if (doc.imported !== undefined && doc.imported !== true) errors.push("imported");
-  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension") errors.push("driver");
+  if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension" && doc.driver !== "cdp-live") errors.push("driver");
   if (!Array.isArray(doc.inputs) || !Array.isArray(doc.steps)) {
     errors.push("steps");
     return errors;
@@ -565,7 +501,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (input.supply === "saved") {
       if (input.type === "file" || !input.default) errors.push(`supply ${input.name}`);
     }
-    if (input.supply === "must" && input.default) errors.push(`supply ${input.name}`);
+    if (input.supply === "must" && input.default && input.default !== STRIPPED_SECRET) errors.push(`supply ${input.name}`);
     if (input.ownerSaved !== undefined && input.ownerSaved !== true) errors.push(`ownerSaved ${input.name}`);
     if (input.type === "file" && input.default && looksLikePath(input.default)) errors.push(`file path default ${input.name}`);
     if (input.type === "choice" && (!input.choices || input.choices.length === 0)) errors.push(`choice ${input.name}`);
@@ -702,6 +638,8 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>, input
   if (step.when) errors.push(...whenErrors(step, names, inputs));
   if (step.readBack) errors.push(...readBackErrors(step.readBack, step.id, names));
   for (const locator of stepTarget(step)?.locators ?? []) errors.push(...locatorErrors(locator, step.id));
+  const reveal = stepTarget(step)?.reveal;
+  if (reveal) errors.push(...locatorErrors(reveal, step.id));
   return errors;
 }
 
@@ -741,7 +679,9 @@ function locatorErrors(locator: StepLocator, id: string): string[] {
       if (!locator.value) return [`locator value ${id}`];
       return [];
     default:
-      return [`locator value ${id}`];
+      return typeof (locator as { value?: unknown }).value === "string" && (locator as { value?: string }).value
+        ? []
+        : [`locator value ${id}`];
   }
 }
 

@@ -455,5 +455,7 @@ export function clearConflict(library: Library, id: string): void {
 /** A past or live version becomes a new draft. The live file stays. */
 export function restoreVersion(library: Library, id: string, n: number): WorkflowVersion {
   const source = versionDocument(library, id, n);
-  return draftVersion(library, { ...source, id, updatedAt: Date.now() }, "restore");
+  const document = { ...source, id, updatedAt: Date.now() };
+  if (library.read(id).driver === "cdp-live") document.driver = "cdp-live";
+  return draftVersion(library, document, "restore");
 }

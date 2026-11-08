@@ -701,7 +701,8 @@ export async function replay(
   const lastId = ran[ran.length - 1]?.id;
   const last = workflow.steps.find((step) => step.id === lastId && step.action !== "note");
   let finalCheckFailed = false;
-  if (last && stepCheck(last)) {
+  const healed = heals.some((item) => item.failedStep.id === last?.id && item.postconditionPassed);
+  if (last && stepCheck(last) && !healed) {
     finalCheckFailed = !(await expectationsHold(last, await driver.tree(), args));
   }
   if (!runPassed(steps, finalCheckFailed)) {
@@ -801,6 +802,8 @@ async function runStep(
   }
   const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery);
   if (!outcome.ok || outcome.skipped) return outcome;
+  const waited = await looseGate(step, args, driver, secrets);
+  if (waited) return { ok: false, repairs: outcome.repairs, acted: outcome.acted, failure: waited };
   for (const read of [step.readBack, extra]) {
     if (!read) continue;
     const failure = await takeReadBack(workflow, step, read, args, driver, secrets, receiptLog, runId);
@@ -833,8 +836,10 @@ async function runStepAction(
     return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.action === "key" && !stepQuery(step)) {
+    const key = stepKey(step);
+    if (!key) return { ok: false, repairs, failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
     try {
-      await driver.key(stepKey(step) || "Enter");
+      await driver.key(key);
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
@@ -1221,11 +1226,21 @@ async function runHandoff(
   beginHandoff(driver, gate, step.id);
   gate.onPause?.(ask);
   await showOwnerAsk(driver, step, ask);
+  if (step.timeoutMs === 0) {
+    if (await ownerDone(step, args, driver)) return finishHandoff(driver, gate, step.id);
+    return { ok: false, paused: "confirm", repairs: [], ask };
+  }
   const ok = await waitForOwner(step, args, driver, gate);
   if (ok) return finishHandoff(driver, gate, step.id);
   endHandoff(driver, gate, step.id);
   await driver.clearConfirm?.(gate.runId || "");
-  return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "waiting for you", undefined, secrets) };
+  return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "nothing applied", undefined, secrets) };
+}
+
+async function ownerDone(step: WorkflowStep, args: ReplayArgs, driver: Driver): Promise<boolean> {
+  if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
+  const tree = await driver.tree().catch(() => undefined);
+  return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
 }
 
 async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<boolean> {
@@ -1234,13 +1249,13 @@ async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver
   while (Date.now() - start < timeout) {
     if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
     if (driver.shouldStop?.()) return false;
-    const tree = await driver.tree().catch(() => undefined);
-    if (tree && step.action === "handoff" && step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args)) return true;
+    const tree = await driver.tree();
+    if (step.action === "handoff" && step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args)) return true;
     await (driver.sleep ? driver.sleep(100) : sleep(100));
   }
   if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
-  const tree = await driver.tree().catch(() => undefined);
-  return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
+  const tree = await driver.tree();
+  return step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
 }
 
 async function runLogin(
@@ -1253,8 +1268,9 @@ async function runLogin(
 ): Promise<StepOutcome> {
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
-  const human = !secretArg(workflow, args, stepInputName(step))
-    || Object.values(loginValues(workflow, args, stepInputName(step))).some(hasStrippedSecret);
+  const values = loginValues(workflow, args, stepInputName(step));
+  const stripped = Object.values(values).some(hasStrippedSecret);
+  const human = !values.password || stripped;
   if (loginSatisfied(workflow, step, seen, args) && !miss) {
     if (gate.humanReady) endHandoff(driver, gate, step.id);
     return { ok: true, repairs: [] };
@@ -1697,8 +1713,10 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     return;
   }
   if (step.action === "key") {
+    const key = stepKey(step);
+    if (!key) throw new Error(NEEDS_SECRET_VALUE);
     await driver.focus?.(node);
-    await driver.key(stepKey(step) || "Enter");
+    await driver.key(key);
     return;
   }
   if (input && driver.answerDialog) {
@@ -1973,6 +1991,22 @@ function clipRead(value: string): string {
 
 function phaseReason(failure: StepFailure): string {
   return `${failure.phase}: ${failure.reason}`;
+}
+
+function checkMatch(check: Check): string {
+  return "match" in check && check.match ? check.match : check.kind;
+}
+
+async function looseGate(step: WorkflowStep, args: ReplayArgs, driver: Driver, secrets: string[]): Promise<StepFailure | undefined> {
+  const extra = step as WorkflowStep & { waitFor?: Check; gone?: Check };
+  const tree = await driver.tree();
+  if (extra.waitFor && !checkHolds(extra.waitFor, tree, args)) {
+    return fail(driver, step, "wait_for", checkMatch(extra.waitFor), undefined, secrets);
+  }
+  if (extra.gone && checkHolds(extra.gone, tree, args)) {
+    return fail(driver, step, "expect", `gone: ${checkMatch(extra.gone)}`, undefined, secrets);
+  }
+  return undefined;
 }
 
 function expectReason(step: WorkflowStep): string {

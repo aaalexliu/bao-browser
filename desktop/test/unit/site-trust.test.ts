@@ -62,7 +62,7 @@ for (const locatorOnly of [false, true]) {
     const workflow = JSON.parse(readFileSync(path.resolve("examples/workflows/credit-freeze.json"), "utf8")) as WorkflowV2;
     workflow.steps = workflow.steps.map((step) => ({ ...step, timeoutMs: 0 }));
     if (locatorOnly) {
-      const confirm = workflow.steps.find((step) => (step.action as string) === "confirm")!;
+      const confirm = workflow.steps.find((step) => step.action === "handoff" && step.reason === "owner-press")!;
       writeStep(confirm, { locators: [{ kind: "role", role: "button", name: "Apply" }] });
     }
     const driver = counting();
