@@ -108,7 +108,7 @@ export class AgentBrowserWorkflow {
       if (result.exitCode !== 0) this.unavailable("the closing command failed");
       return result;
     }
-    if (command === "scroll") this.unavailable("it used stateful scroll");
+    if (command === "scroll") this.unavailable("it scrolled the page, which Bao cannot replay yet");
     if (command === "tab" && ["new", "close"].includes(args[0] ?? "")) this.unavailable("it used a second tab");
     const action = ["open", "click", "fill", "press"].includes(command);
     const expectedArgs = command === "fill" ? 2 : 1;

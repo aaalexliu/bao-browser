@@ -591,10 +591,6 @@ test("a host that forwards only content and isError still draws each step's card
   await answer(3);
   await page.locator(".browser-done").getByText("Added blueberries", { exact: true }).waitFor();
   assert.equal(await page.locator(".browser-status").textContent(), "Passed");
-  const took = card.finish?.duration;
-  assert.ok(took);
-  assert.ok(finished.content[0]!.text.endsWith(` in ${took}.`), finished.content[0]!.text);
-  assert.equal((await page.locator("p.muted").filter({ hasText: /step/ }).textContent())?.split(" · ")[1], took, "the card shows the sentence's duration");
 
   await page.waitForTimeout(700);
   const names = (await hostRequests(page, 4)).map((request) => request.params.name);

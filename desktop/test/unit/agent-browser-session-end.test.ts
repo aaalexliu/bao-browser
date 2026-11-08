@@ -340,7 +340,8 @@ for (const keepOpen of [false, true]) {
     assert.match(result.content![0]!.text, /^Passed: Verified the task result\. \d+ steps? in \d+ s\.$/);
     const receipt = result.structuredContent as { summary: string; workflow: string; run_id: string; status: string };
     assert.match(receipt.workflow, /^Not saved as a workflow: /);
-    assert.deepEqual(result.content!.map((block) => block.text), [receipt.summary, receipt.workflow], "text clients get words only");
+    assert.deepEqual(result.content!.map((block) => block.text), [receipt.summary, `Run ${runId} · passed · bao://receipt/${runId}`, receipt.workflow],
+      "text clients get words only, with the run id to continue");
     assert.equal(receipt.run_id, runId);
     assert.equal(receipt.status, "passed");
     assert.equal(f.library.readRun(runId).status, "passed");
@@ -397,7 +398,8 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
       assert.equal(waiting.isError, false);
       const reply = waiting.structuredContent as { summary: string; outcome: string; instruction: string };
       assert.equal(reply.outcome, "waiting");
-      assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, reply.instruction], "text clients get words, not the reply's JSON");
+      assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, `Run ${f.library.listRuns()[0]!.id} · waiting`, reply.instruction],
+        "text clients get words and the run id, not the reply's JSON");
       assert.equal(f.library.listRuns()[0]!.status, "needs_human", "waiting does not complete a task");
     }
     const copy = await f.copy();

@@ -127,6 +127,8 @@ test("a page change that lands after a click's check is not credited to the next
 test("each command gets a plain sentence, and failures keep the native error", () => {
   const text = (command: string, args: string[], stdout = "✓ Done\n") => describeStep({ command, args, results: ok(stdout), snapshot: list, page }).text;
   assert.equal(text("open", ["https://shop.example/subscriptions"], "✓ Manage Your Deliveries\n  https://shop.example/subscriptions\n"), 'Went to https://shop.example/subscriptions ("Manage Your Deliveries").');
+  assert.equal(text("open", ["https://shop.example/subscriptions"], "✓ Amazon Sign-In\n  https://shop.example/ap/signin\n"), 'Went to https://shop.example/subscriptions ("Manage Your Deliveries").',
+    "after Bao's login-import retry the sentence names the page Chrome is on, not the first open's sign-in page");
   assert.equal(text("fill", ["@e2", "coix seed"]), 'Typed "coix seed" into "Search subscriptions" (search box).');
   assert.equal(text("press", ["Escape"]), "Pressed Escape.");
   assert.equal(text("scroll", ["down", "700"]), 'Scrolled down 700 px on "Manage Your Deliveries".');

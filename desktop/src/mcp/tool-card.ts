@@ -177,20 +177,24 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
  * The result for a client without MCP Apps: words only. An owner wait gives its outcome and instruction as structuredContent,
  * which Codex and Claude Code hand the model in place of the text blocks, and its instruction in words for clients that read text.
  */
-export function textToolResult(results: readonly AgentBrowserCommandResult[], sentence: string, notices: readonly string[]) {
+export function textToolResult(results: readonly AgentBrowserCommandResult[], sentence: string, notices: readonly string[], runId?: string) {
   const reply = ownerReply(results);
   return {
-    content: [textBlock(sentence), ...(reply ? [textBlock(reply.instruction)] : nativeBlocks(results)), ...notices.map(textBlock)],
+    content: [textBlock(sentence),
+      ...(reply ? [...(runId ? [textBlock(`Run ${runId} · ${reply.outcome}`)] : []), textBlock(reply.instruction)] : nativeBlocks(results)),
+      ...notices.map(textBlock)],
     ...(reply ? { structuredContent: { summary: sentence, ...reply } } : {}),
     isError: results.some((result) => result.exitCode !== 0),
   };
 }
 
-/** finish_task: the sentence and the workflow outcome in words; the full receipt as structuredContent. */
+/** finish_task: the sentence, the run line, and the workflow outcome in words; the full receipt as structuredContent. */
 export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean) {
   const sentence = card?.caption ?? "No browser task was open.";
+  const run = typeof receipt.run_id === "string"
+    ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {
-    content: [textBlock(sentence), ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...(ui && card ? [cardKey(card)] : [])],
+    content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...(ui && card ? [cardKey(card)] : [])],
     structuredContent: { summary: sentence, ...receipt },
     isError: false,
   };

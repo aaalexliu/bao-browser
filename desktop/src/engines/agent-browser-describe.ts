@@ -191,7 +191,7 @@ export function clock(ms: number): string {
 
 function openedPage(results: readonly AgentBrowserCommandResult[], page: OwnerPage | undefined, arg: string | undefined): OwnerPage | undefined {
   const match = /^✓ (.*)\n\s+(\S+)/.exec(results[0]?.stdout ?? "");
-  if (match) return { title: match[1]!.trim(), url: match[2]! };
+  if (match && (!page || page.url === match[2])) return { title: match[1]!.trim(), url: match[2]! };
   if (page) return page;
   return arg ? { title: "", url: arg } : undefined;
 }
