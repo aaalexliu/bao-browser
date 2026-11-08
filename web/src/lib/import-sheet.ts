@@ -22,6 +22,7 @@ interface InputRow {
   choices?: string[];
   askOnImport?: boolean;
   example?: string;
+  ownerSaved?: true;
 }
 
 export function importQuestions(document: unknown): ImportQuestion[] {
@@ -99,6 +100,17 @@ export function applyRegistryImportAnswers(document: unknown, answers: Record<st
   const doc = applyImportAnswers(document, answers) as { inputs?: InputRow[] };
   for (const input of doc.inputs ?? []) {
     if (input.type === "secret" || input.type === "file") delete input.default;
+  }
+  return doc;
+}
+
+/** Mark a saved copy as someone else's, and mark answers the owner typed as his. */
+export function markImported(document: unknown, answers: Record<string, unknown> = {}): unknown {
+  const doc = structuredClone(document) as { imported?: true; inputs?: InputRow[] };
+  doc.imported = true;
+  for (const input of doc.inputs ?? []) {
+    const answer = answers[input.name];
+    if (typeof answer === "string" && answer.trim() && input.default && input.type !== "file") input.ownerSaved = true;
   }
   return doc;
 }

@@ -1501,7 +1501,7 @@ async function loadRun(id: string, request: number): Promise<void> {
   const inputs = host.querySelector("[data-run-tab=inputs]");
   if (inputs) (inputs as HTMLButtonElement).onclick = () => {
     const extra = document.getElementById("run-extra");
-    if (extra) extra.innerHTML = inputsPane(run.inputs);
+    if (extra) extra.innerHTML = inputsPane(run.inputs, run.savedValues);
   };
   const consoleTab = host.querySelector("[data-run-tab=console]");
   if (consoleTab) (consoleTab as HTMLButtonElement).onclick = () => {

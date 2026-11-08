@@ -20,7 +20,6 @@ import { llmHealFromEnv, scriptedHeal, type HealProvider } from "../v1/heal";
 import { healFromSource } from "../v1/heal-source";
 import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
-import { secretInputName } from "../v1/auth";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
 import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
@@ -28,7 +27,8 @@ import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
-import { prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { markImported, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
+import { savedValueLine } from "../v1/saved-inputs";
 import { fitPictureBody } from "../v1/sync-pictures";
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "../../../web/src/lib/publish";
 import { rankHits, SEARCH_LIMIT } from "../../../web/src/lib/rank";
@@ -40,6 +40,10 @@ export interface InputField {
   type: string;
   label: string;
   required: boolean;
+  /** Present when Bao fills the owner's saved value if the agent omits this input. */
+  saved?: true;
+  /** Why the agent can omit this input. The saved text is not included. */
+  description?: string;
   choices?: string[];
 }
 
@@ -79,6 +83,8 @@ export interface WorkflowOutcome {
   resume_token?: string;
   /** Declared workflow outputs filled by this run. */
   outputs?: import("../v1/data-steps").OutputValue[];
+  /** Saved values this run used. A secret is "saved password", never the value. */
+  savedValues?: string;
   pageLeftOpen?: boolean;
   /** The page class that stopped this run, with the evidence that named it. */
   pageClass?: {
@@ -451,6 +457,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
     stops: outcome !== "ok" && outcome !== "recording" && step ? [{ stepId: step, outcome, reason: reason || "" }] : [],
     link: stored.kind === "capture" ? receiptLink(stored.id) : linkFor(stored.workflowId),
     outputs: stored.outputs,
+    ...(stored.savedValues ? { savedValues: stored.savedValues } : {}),
     pageLeftOpen: stored.pageLeftOpen,
     status,
     ...(stored.kind === "capture" ? { nativeOutputNote: `For full native output, open ${receiptLink(stored.id)}.` } : {}),
@@ -781,6 +788,8 @@ function rememberRun(
     }, resumeToken);
     result.resume_token = result.resume;
   }
+  const savedValues = savedValueLine(workflow, inputs);
+  if (savedValues) result.savedValues = savedValues;
   return storeOutcome(library, result, workflow, inputs, secrets);
 }
 
@@ -810,6 +819,7 @@ function saveWorkflowRun(
     trail: run.trail,
     inputs: Object.fromEntries(Object.entries(publicInputs(workflow, inputs)).map(([key, value]) => [key, String(value)])),
     secretInputNames: secretInputNames(workflow),
+    ...(outcome.savedValues ? { savedValues: outcome.savedValues } : {}),
     ...(run.outputs ? { outputs: run.outputs } : {}),
     ...(run.pageLeftOpen ? { pageLeftOpen: true } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {
@@ -893,8 +903,14 @@ function missingHuman(workflow: WorkflowV2, inputs: ReplayArgs): { stepId: strin
     if (!empty) continue;
     if (input.type === "secret") return { stepId: input.name, reason: `Enter ${input.label || input.name} on this device` };
     if (input.type === "file") return { stepId: input.name, reason: `Choose ${input.label || input.name} on this device` };
+    if (workflow.imported) return { stepId: input.name, reason: `Enter ${input.label || input.name}` };
   }
   return null;
+}
+
+function usableSaved(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  return typeof value === "string" && value !== "" && !hasStrippedSecret(value);
 }
 
 function signInStep(step: WorkflowStep | undefined): boolean {
@@ -903,25 +919,20 @@ function signInStep(step: WorkflowStep | undefined): boolean {
 }
 
 function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
-  const passwords = new Set<string>();
-  const collect = (steps: WorkflowStep[]): void => {
-    for (const step of steps) {
-      if (step.action === "login") {
-        const name = secretInputName(doc, step.input);
-        if (name) passwords.add(name);
-      }
-      if (step.forEach) collect(step.forEach.steps);
-    }
-  };
-  collect(doc.steps);
   return doc.inputs.map((input) => {
     const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
-    const saved = passwords.has(input.name) && value !== undefined && value !== "" && !hasStrippedSecret(value);
+    const saved = usableSaved(value);
     return {
       name: input.name,
       type: input.type,
       label: input.label || input.name,
       required: input.required !== false && !saved,
+      ...(saved ? {
+        saved: true as const,
+        description: input.type === "secret"
+          ? "Bao fills the saved password when omitted."
+          : "Bao fills the saved value when omitted.",
+      } : {}),
       choices: input.choices,
     };
   });
@@ -1172,7 +1183,8 @@ async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): 
 }
 
 function materializeWorkflow(library: Library, found: Located): void {
-  const doc = migrate(found.document);
+  const migrated = migrate(found.document);
+  const doc = originLabel(found) === "marketplace" ? markImported(migrated) as WorkflowV2 : migrated;
   library.save(doc);
   if (!found.version) return;
   const state = loadState(library.root);

@@ -104,6 +104,8 @@ export interface RunSummary {
   decisions?: { ts: number; healId: string; decision: "keep" | "revert" }[];
   failure?: FailureView;
   inputs?: Record<string, string>;
+  /** Saved values this run used. Secrets are listed as "saved password". */
+  savedValues?: string;
   video?: string;
   videoStartedAt?: number;
   videoTruncated?: boolean;
@@ -703,6 +705,7 @@ export function runViewer(
       <button id="debug-step" type="button" data-step="${esc(selected?.id || "")}">Debug from this step</button>
     </div>`}
     ${storedInputsLine(run.inputs)}
+    ${savedValuesLine(run.savedValues)}
     <div class="why" id="why-stopped"><p>${safeHeadline}</p>${words ? `<p id="plain-failure">${esc(words)}</p>` : ""}${triageNote}${failed && !workflow.recordedOnly ? `<p class="quiet">${stopped <= 1 ? "No steps ran." : `Nothing after step ${stopped - 1} ran.`}</p>` : ""}${failed ? `<button type="button" class="link" id="open-failed-step" data-select-step="${esc(failed.id)}">Open this step</button>` : ""}</div>
     <div class="bar" id="step-bar" data-steps="${steps.length}" aria-label="${passed}/${steps.length}">${segs}<span class="bar-count">${passed}/${steps.length}</span></div>
     ${idleNote}
@@ -1004,6 +1007,11 @@ function storedInputsLine(inputs: Record<string, string> | undefined): string {
   return `<p class="quiet" id="stored-inputs">${bits.join(" · ")}.</p>`;
 }
 
+function savedValuesLine(line: string | undefined): string {
+  if (!line) return "";
+  return `<p class="quiet" id="saved-values">${esc(line)}</p>`;
+}
+
 export function reviewItems(runs: RunSummary[] | undefined): StepReview[] {
   return stepsNeedingReview(runs || []);
 }
@@ -1053,10 +1061,11 @@ export function networkPane(lines: NetworkLine[] | undefined, stepId?: string): 
   return `${note}<ol id="network-log">${rows}</ol>`;
 }
 
-export function inputsPane(inputs: Record<string, string> | undefined): string {
+export function inputsPane(inputs: Record<string, string> | undefined, savedValues?: string): string {
   const rows = Object.entries(inputs || {});
-  if (rows.length === 0) return `<p class="quiet">This run stored no inputs.</p>`;
-  return `<table class="identity">${rows.map(([key, value]) => `<tr><th>${esc(key)}</th><td>${esc(value)}</td></tr>`).join("")}</table>`;
+  const line = savedValuesLine(savedValues);
+  if (rows.length === 0) return `${line}<p class="quiet">This run stored no inputs.</p>`;
+  return `${line}<table class="identity">${rows.map(([key, value]) => `<tr><th>${esc(key)}</th><td>${esc(value)}</td></tr>`).join("")}</table>`;
 }
 
 export function trailPane(events: { id?: string; ts?: number; op?: string; kind?: string; text?: string; reason?: string }[]): string {

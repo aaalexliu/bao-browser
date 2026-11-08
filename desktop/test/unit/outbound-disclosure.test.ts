@@ -98,12 +98,13 @@ test("MCP describe scrubs outbound text defaults and entry values without changi
   assert.deepEqual(described.workflow.steps.slice(1).map((step) => step.value), [stripped, stripped, stripped]);
   assert.equal(described.workflow.steps[0]?.value, "{{password}}");
   assert.deepEqual(described.inputs.map(({ name, type, required }) => ({ name, type, required })), [
-    { name: "password", type: "secret", required: true },
-    { name: "token", type: "text", required: true },
+    { name: "password", type: "secret", required: false },
+    { name: "token", type: "text", required: false },
     { name: "card", type: "text", required: false },
-    { name: "note", type: "text", required: true },
+    { name: "note", type: "text", required: false },
   ]);
-  assert.deepEqual(described.workflow.inputs.map((input) => input.required), original.inputs.map((input) => input.required));
+  assert.equal(described.inputs.find((input) => input.name === "password")?.saved, true);
+  assert.equal(JSON.stringify(described.inputs).includes(secret), false);
   assert.deepEqual(library.read(doc.id), original);
 });
 

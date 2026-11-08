@@ -283,8 +283,12 @@ type ApplyGate = BaseApplyGate & { onPause?: (ask: HumanAsk) => void };
 let seq = 0;
 
 export function withInputDefaults(workflow: WorkflowV2, args: ReplayArgs): ReplayArgs {
-  const defaults = Object.fromEntries(workflow.inputs.flatMap((input) => input.type !== "file" && !oneTimeCodeInput(workflow, input.name) && input.default !== undefined
-    ? [[input.name, input.type === "number" && !hasStrippedSecret(input.default) ? Number(input.default) : input.default]] : []));
+  const defaults = Object.fromEntries(workflow.inputs.flatMap((input) => {
+    if (input.type === "file" || oneTimeCodeInput(workflow, input.name) || input.default === undefined) return [];
+    if (workflow.imported === true && input.ownerSaved !== true) return [];
+    const value = input.type === "number" && !hasStrippedSecret(input.default) ? Number(input.default) : input.default;
+    return [[input.name, value]];
+  }));
   return { ...defaults, ...args };
 }
 

@@ -60,8 +60,13 @@ export function editInput(
   else if (edit.required === false) delete nextInput.required;
   if (typeof edit.default === "string") {
     const value = nextInput.type === "secret" ? edit.default : edit.default.trim();
-    if (value) nextInput.default = value;
-    else delete nextInput.default;
+    if (value) {
+      nextInput.default = value;
+      if (doc.imported) nextInput.ownerSaved = true;
+    } else {
+      delete nextInput.default;
+      delete nextInput.ownerSaved;
+    }
   }
   if (oneTimeCodeInput(doc, nextInput.name)) delete nextInput.default;
   const next: WorkflowV2 = {

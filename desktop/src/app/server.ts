@@ -125,7 +125,8 @@ import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link"
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
-import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
+import { applyImportAnswers, importQuestions, markImported } from "../../../web/src/lib/import-sheet";
+import { adoptOwnerValues, savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -576,7 +577,7 @@ export async function startApp(opts: {
         if (!pendingDoc) return json(res, { ok: false, error: "nothing to import" }, 400);
         const body = await readBody(req) as { answers?: Record<string, unknown> };
         try {
-          const installed = migrate(applyImportAnswers(pendingDoc, body.answers || {}));
+          const installed = markImported(migrate(applyImportAnswers(pendingDoc, body.answers || {})), body.answers || {}) as WorkflowV2;
           library.save(installed);
           pendingDoc = null;
           opened = {
@@ -960,7 +961,9 @@ export async function startApp(opts: {
         return opened ? json(res, { ok: true }) : json(res, { error: "Could not open the workflow folder. Open File details and recovery to find its path." }, 500);
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
-        return json(res, library.importJson(String(await readBody(req, true))));
+        const imported = markImported(migrate(JSON.parse(String(await readBody(req, true))))) as WorkflowV2;
+        library.save(imported);
+        return json(res, library.read(imported.id));
       }
       if (req.method === "POST" && url.pathname === "/api/sessions") {
         const body = await readBody(req) as { url?: string; teach?: boolean; fix?: unknown };
@@ -1203,13 +1206,17 @@ export async function startApp(opts: {
         const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean; leaveOpen?: boolean; browser?: unknown };
         const browser: RunBrowser | undefined = body.browser === undefined ? undefined : { choice: browserChoice(body.browser), sourceRoot: profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT };
         const saved = library.read(body.id);
-        const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
+        const given = body.args || {};
+        const adopted = adoptOwnerValues(saved, given);
+        if (adopted) library.save(adopted);
+        const base = adopted ?? saved;
+        const workflow: WorkflowV2 = body.heal ? { ...base, heal: body.heal } : base;
         if (refusesOwnedBrowser(workflow.driver)) {
           return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
-        const args = await materializeFiles(withInputDefaults(workflow, body.args || {}));
+        const args = await materializeFiles(withInputDefaults(workflow, given));
         if (!body.guide && activeRun?.phase === "waiting" && activeRun.id === ownedRunId) {
           return json(res, { error: "Another run is waiting for you. Finish or stop it first." }, 409);
         }
@@ -2650,6 +2657,7 @@ function persistedRun(
   },
 ): Parameters<Library["saveRun"]>[0] {
   const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm";
+  const savedValues = savedValueLine(workflow, args);
   const stored: Parameters<Library["saveRun"]>[0] & { console: unknown; network: unknown } = {
     id: result.runId,
     pageEngine: result.pageEngine,
@@ -2674,6 +2682,7 @@ function persistedRun(
     pageClasses: result.pageClasses,
     inputs: maskedInputs(workflow, args),
     secretInputNames: secretInputNames(workflow),
+    ...(savedValues ? { savedValues } : {}),
     ...(result.outputs ? { outputs: result.outputs } : {}),
     ...(result.pageLeftOpen ? { pageLeftOpen: true } : {}),
     ...(needsHuman ? {

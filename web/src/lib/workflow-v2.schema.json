@@ -14,6 +14,10 @@
     "createdAt": { "type": "number" },
     "updatedAt": { "type": "number" },
     "heal": { "enum": ["auto", "approve"] },
+    "imported": {
+      "const": true,
+      "description": "This copy was installed from someone else. Absent means the owner recorded it."
+    },
     "inputs": {
       "type": "array",
       "items": { "$ref": "#/$defs/input" }
@@ -34,6 +38,10 @@
         "label": { "type": "string" },
         "required": { "type": "boolean" },
         "default": { "type": "string" },
+        "ownerSaved": {
+          "const": true,
+          "description": "The owner saved this value after import. Author defaults omit it."
+        },
         "askOnImport": { "type": "boolean" },
         "cleared": { "enum": ["email", "name", "path", "phone", "ssn"] },
         "example": { "type": "string" },

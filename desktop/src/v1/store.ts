@@ -67,6 +67,8 @@ export interface StoredRun {
   modelCalls?: number;
   /** File values are names, not paths. */
   inputs?: Record<string, string>;
+  /** Saved values this run used. Secrets are listed as "saved password". */
+  savedValues?: string;
   /** Secret inputs at execution. Empty is authoritative; absent is legacy. */
   secretInputNames?: string[];
   video?: string;

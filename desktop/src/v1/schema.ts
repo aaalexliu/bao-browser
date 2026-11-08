@@ -28,6 +28,8 @@ export interface WorkflowInput {
   required?: boolean;
   /** Saved value used when the run supplies no override. */
   default?: string;
+  /** The owner saved this value after import. Author defaults omit it. */
+  ownerSaved?: true;
   /** Asked again on import; see docs/bao.md for local and registry answer retention. */
   askOnImport?: boolean;
   /** Why a default was removed. The value itself is not stored. */
@@ -303,6 +305,8 @@ export interface WorkflowV2 {
    * Absent means Playwright, so older workflows stay on the driver they were recorded with.
    */
   driver?: "playwright" | "extension" | "cdp-live";
+  /** Set when this copy was installed from someone else. Absent means the owner recorded it. */
+  imported?: true;
   /** Set when the document uses files or dates. Absent on a data-steps-only version 3. */
   filesDates?: 1;
 }
@@ -344,6 +348,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
   if (doc.provenance !== undefined && doc.provenance !== "fixture") errors.push("provenance");
+  if (doc.imported !== undefined && doc.imported !== true) errors.push("imported");
   if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension" && doc.driver !== "cdp-live") errors.push("driver");
   const names = new Set<string>();
   for (const input of doc.inputs) {
@@ -353,6 +358,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (input.type === "file" && input.default && looksLikePath(input.default)) {
       errors.push(`file path default ${input.name}`);
     }
+    if (input.ownerSaved !== undefined && input.ownerSaved !== true) errors.push(`ownerSaved ${input.name}`);
     if (input.type === "choice" && (!input.choices || input.choices.length === 0)) {
       errors.push(`choice ${input.name}`);
     }

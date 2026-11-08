@@ -67,6 +67,16 @@ test("a stored input is name, colon, value", () => {
   }, { name: "upload note", steps: [{ id: "type", label: "type the note" }] });
   assert.match(html, /id="stored-inputs"[^>]*>note: ada · password: ••••\./);
   assert.equal(html.includes("note ada"), false);
+  const listed = runViewer({
+    id: "run-saved",
+    workflowId: "wf",
+    status: "passed",
+    inputs: { name: "Ada", email: "ada@example.com" },
+    savedValues: "Saved values used: name: Ada · email: ada@example.com · password: saved password",
+    steps: [{ id: "type", status: "passed", label: "type the note" }],
+  }, { name: "Fill the form", steps: [{ id: "type", label: "type the note" }] });
+  assert.match(listed, /id="saved-values"[^>]*>Saved values used: name: Ada · email: ada@example.com · password: saved password</);
+  assert.equal(listed.includes("secret-value"), false);
 });
 
 test("a filmstrip frame uses the cropped shot and an icon when the step has none", () => {

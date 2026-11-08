@@ -20,7 +20,7 @@ interface Rpc {
 const CATALOG_TOOLS = [
   {
     name: "search_workflows",
-    description: "Find workflows through Bao, not by browsing folders. Search the active Library on this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time. A marketplace time this Mac has not replayed is labeled publisher green. Equal relevance ranks this Mac, then another device, then marketplace.",
+    description: "Find workflows through Bao, not by browsing folders. Search the active Library on this Mac, workflows synced from your other devices, and installed marketplace listings. At most 5 hits. Each hit includes its input schema, a source (this Mac, the device name, or marketplace), and the last green time. A marketplace time this Mac has not replayed is labeled publisher green. Equal relevance ranks this Mac, then another device, then marketplace. An input with saved true is optional: omit it and Bao fills the owner's saved value. The saved text is not in the schema. An imported workflow keeps the author's values required until the owner saves his own.",
     inputSchema: {
       type: "object",
       properties: {
@@ -34,17 +34,17 @@ const CATALOG_TOOLS = [
   },
   {
     name: "describe_workflow",
-    description: "Steps, input schema, declared outputs, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. Source is this Mac, the device name, or marketplace.",
+    description: "Steps, input schema, declared outputs, bao:// link, source, and last green time for one workflow. Secret defaults are omitted. An input with saved true is optional: omit it and Bao fills the owner's saved value. The saved text is not in the schema. An imported workflow keeps the author's values required until the owner saves his own. Source is this Mac, the device name, or marketplace.",
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
   },
   {
     name: "run_workflow",
-    description: BROWSER_CHOICE_DESCRIPTION + " Replay a saved workflow on this device in the selected browser. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
+    description: BROWSER_CHOICE_DESCRIPTION + " Replay a saved workflow on this device in the selected browser. Omit inputs marked saved. Bao fills those saved values and names them in savedValues. A saved password is listed as saved password, never the value. Author values on an imported workflow stay required until the owner saves his own. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string" },
-        inputs: { type: "object" },
+        inputs: { type: "object", description: "Omit an owner-saved input. Bao fills it. Author values on an imported workflow are required until the owner saves his own." },
         resume: { type: "string" },
         rerun: { type: "boolean" },
         cancel: { type: "boolean" },

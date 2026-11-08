@@ -169,6 +169,9 @@ test("bao open round trip", { timeout: 30_000 }, async () => {
     });
     assert.equal(saved.status, 200, await saved.text());
     const stored = new Library(home).read("import-me");
+    assert.equal(stored.imported, true);
+    assert.equal(stored.inputs.find((input) => input.name === "email")?.ownerSaved, true);
+    assert.equal(stored.inputs.find((input) => input.name === "password")?.ownerSaved, undefined);
     assert.equal(JSON.stringify(stored).includes("ada@other.com"), true);
     assert.equal(stored.inputs.find((input) => input.name === "who")?.default, "front desk");
     assert.equal(stored.inputs.find((input) => input.name === "desk")?.default, "west");

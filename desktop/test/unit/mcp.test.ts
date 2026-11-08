@@ -49,7 +49,7 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
   });
 });
 
-test("MCP search and describe relax only saved login passwords", async () => {
+test("MCP search and describe mark the owner's saved inputs optional", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [
       { name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" },
@@ -84,11 +84,21 @@ test("MCP search and describe relax only saved login passwords", async () => {
     await client.handshake();
     const result = await client.call("describe_workflow", { id: saved.id });
     assert.equal(result.isError, false);
-    const described = JSON.parse(result.text) as { workflow: WorkflowV2; inputs: { name: string; type: string; label: string; required: boolean }[] };
-    const required = [false, true, true, true, true, true, true, true, false, true, true, true, true, true];
+    const described = JSON.parse(result.text) as { workflow: WorkflowV2; inputs: { name: string; type: string; label: string; required: boolean; saved?: true }[] };
+    const required = [false, false, false, true, true, true, true, true, false, true, false, false, false, false];
+    const savedNames = new Set(["credential", "display", "count", "taughtCode", "card", "pin", "password"]);
     assert.deepEqual(described.inputs, inputs.map((input, index) => ({
-      name: input.name, type: input.type, label: input.label || input.name, required: required[index],
+      name: input.name,
+      type: input.type,
+      label: input.label || input.name,
+      required: required[index],
+      ...(savedNames.has(input.name) ? {
+        saved: true,
+        description: input.type === "secret" ? "Bao fills the saved password when omitted." : "Bao fills the saved value when omitted.",
+      } : {}),
     })));
+    assert.equal(JSON.stringify(described.inputs).includes("fixture-password"), false);
+    assert.equal(JSON.stringify(described.inputs).includes("Ada"), false);
     assert.deepEqual(described.workflow.inputs.map((input) => input.required !== false), required);
     assert.equal(described.workflow.inputs[0]?.default, undefined);
     assert.equal(result.text.includes("fixture-password"), false);
@@ -101,13 +111,14 @@ test("MCP search and describe relax only saved login passwords", async () => {
     library.save({ ...saved, steps: [{ ...saved.steps[0]!, input: undefined }] });
     const fallback = await client.call("describe_workflow", { id: saved.id });
     const selected = JSON.parse(fallback.text) as typeof described;
-    assert.equal(selected.inputs[0]?.required, true);
+    assert.equal(selected.inputs[0]?.required, false);
     assert.equal(selected.inputs.at(-1)?.required, false);
     library.save({ ...saved, steps: saved.steps.filter((step) => step.action !== "login").map((step, index) => ({ ...step, index })) });
     const withoutLogin = await client.call("describe_workflow", { id: saved.id });
     const ordinary = JSON.parse(withoutLogin.text) as typeof described;
-    assert.equal(ordinary.inputs[0]?.required, true);
-    assert.equal(ordinary.workflow.inputs[0]?.required, true);
+    assert.equal(ordinary.inputs[0]?.required, false);
+    assert.equal(ordinary.inputs[0]?.saved, true);
+    assert.equal(ordinary.workflow.inputs[0]?.required, false);
   });
 });
 
@@ -169,13 +180,121 @@ test("MCP run omits a saved login password but still requires a fresh OTP", { ti
       ]);
       const result = await client.call("run_workflow", { id: saved.id, inputs: { code: "654321" } });
       assert.equal(result.isError, false);
-      const outcome = JSON.parse(result.text) as { outcome: string; reason?: string; runId: string };
+      const outcome = JSON.parse(result.text) as { outcome: string; reason?: string; runId: string; savedValues?: string };
       assert.equal(outcome.outcome, "ok", outcome.reason);
       assert.deepEqual(passwords, ["fixture-password"]);
       assert.deepEqual(submissions, [{ password: "fixture-password", code: "654321" }]);
+      assert.match(outcome.savedValues || "", /credential: saved password/);
+      assert.equal((outcome.savedValues || "").includes("fixture-password"), false);
+      assert.equal(library.readRun(outcome.runId).savedValues, outcome.savedValues);
       assert.equal(library.readRun(outcome.runId).modelCalls, 0);
     });
   } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
+test("MCP run fills an owner's saved name, email, and password and lists them", { timeout: 60_000 }, async () => {
+  const seen: Record<string, string>[] = [];
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || "/", "http://127.0.0.1");
+    res.setHeader("content-type", "text/html");
+    if (url.pathname === "/submit") {
+      seen.push(Object.fromEntries(url.searchParams));
+      res.end("<!doctype html><p id=\"done\">Saved</p>");
+      return;
+    }
+    res.end(`<!doctype html><form action="/submit">
+      <label>Name <input id="name" name="name"></label>
+      <label>Email <input id="email" name="email"></label>
+      <label>Password <input id="password" name="password" type="password"></label>
+      <button id="save" type="submit">Save</button></form>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    await fixture(async (client, library) => {
+      const saved: WorkflowV2 = {
+        ...workflow,
+        id: "form",
+        name: "Fill the form",
+        startUrl: `http://127.0.0.1:${address.port}/`,
+        inputs: [
+          { name: "name", type: "text", label: "Name", required: true, default: "Ada" },
+          { name: "email", type: "text", label: "Email", required: true, default: "ada@example.com" },
+          { name: "password", type: "secret", label: "Password", required: true, default: "fixture-password" },
+        ],
+        steps: [
+          { id: "name", index: 0, action: "type", label: "Name", surface: "dom", timeoutMs: 5000, heal: "never",
+            input: "name", value: "{{name}}", identity: { surface: "dom", role: "textbox", id: "name", path: [] },
+            locators: [{ kind: "css", value: "#name" }] },
+          { id: "email", index: 1, action: "type", label: "Email", surface: "dom", timeoutMs: 5000, heal: "never",
+            input: "email", value: "{{email}}", identity: { surface: "dom", role: "textbox", id: "email", path: [] },
+            locators: [{ kind: "css", value: "#email" }] },
+          { id: "password", index: 2, action: "type", label: "Password", surface: "dom", timeoutMs: 5000, heal: "never",
+            input: "password", value: "{{password}}", sensitive: true, identity: { surface: "dom", role: "textbox", id: "password", path: [] },
+            locators: [{ kind: "css", value: "#password" }] },
+          { id: "save", index: 3, action: "click", label: "Save", surface: "dom", timeoutMs: 5000, heal: "never",
+            identity: { surface: "dom", role: "button", id: "save", path: [] },
+            locators: [{ kind: "css", value: "#save" }],
+            postcondition: { kind: "text", match: "Saved", timeoutMs: 5000 } },
+        ],
+      };
+      library.save(saved);
+      await client.handshake();
+      const described = JSON.parse((await client.call("describe_workflow", { id: saved.id })).text) as {
+        inputs: { name: string; required: boolean; saved?: boolean; description?: string }[];
+      };
+      assert.deepEqual(described.inputs.map((input) => ({ name: input.name, required: input.required, saved: input.saved })), [
+        { name: "name", required: false, saved: true },
+        { name: "email", required: false, saved: true },
+        { name: "password", required: false, saved: true },
+      ]);
+      assert.equal(JSON.stringify(described.inputs).includes("fixture-password"), false);
+      assert.equal(JSON.stringify(described.inputs).includes("ada@example.com"), false);
+      const result = await client.call("run_workflow", { id: saved.id });
+      const outcome = JSON.parse(result.text) as { outcome: string; reason?: string; savedValues?: string; runId: string };
+      assert.equal(outcome.outcome, "ok", outcome.reason);
+      assert.equal(outcome.savedValues, "Saved values used: name: Ada · email: ada@example.com · password: saved password");
+      assert.equal((outcome.savedValues || "").includes("fixture-password"), false);
+      assert.deepEqual(seen, [{ name: "Ada", email: "ada@example.com", password: "fixture-password" }]);
+      assert.equal(library.readRun(outcome.runId).savedValues, outcome.savedValues);
+    });
+  } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
+test("MCP keeps an imported workflow's author values required", async () => {
+  await fixture(async (client, library) => {
+    const saved: WorkflowV2 = {
+      ...workflow,
+      id: "imported-form",
+      name: "Imported form",
+      imported: true,
+      inputs: [
+        { name: "name", type: "text", label: "Name", required: true, default: "Author" },
+        { name: "email", type: "text", label: "Email", required: true, default: "author@example.com" },
+        { name: "password", type: "secret", label: "Password", required: true, default: "author-password" },
+        { name: "note", type: "text", label: "Note", required: true, default: "mine", ownerSaved: true },
+      ],
+      steps: [],
+    };
+    library.save(saved);
+    await client.handshake();
+    const described = JSON.parse((await client.call("describe_workflow", { id: saved.id })).text) as {
+      inputs: { name: string; required: boolean; saved?: boolean }[];
+    };
+    assert.deepEqual(described.inputs.map((input) => ({ name: input.name, required: input.required, saved: input.saved })), [
+      { name: "name", required: true, saved: undefined },
+      { name: "email", required: true, saved: undefined },
+      { name: "password", required: true, saved: undefined },
+      { name: "note", required: false, saved: true },
+    ]);
+    assert.equal(JSON.stringify(described).includes("author-password"), false);
+    const missing = JSON.parse((await client.call("run_workflow", { id: saved.id })).text) as { outcome: string; reason?: string; savedValues?: string };
+    assert.equal(missing.outcome, "needs_human");
+    assert.match(missing.reason || "", /Name/);
+    assert.equal(missing.savedValues, undefined);
+    assert.equal(library.listRuns().length, 0);
+  });
 });
 
 test("retired tools fail without contacting an app or starting Chrome", async () => {
