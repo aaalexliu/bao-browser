@@ -7,7 +7,7 @@ import { interpret } from "../../src/v1/interpret";
 import { validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "../../src/v1/schema";
 import { workflowJsonSchema } from "../../src/v1/workflow-json-schema";
 
-const published = JSON.parse(readFileSync("schema/workflow.schema.json", "utf8"));
+const published: unknown = JSON.parse(readFileSync("schema/workflow.schema.json", "utf8"));
 
 test("the published schema is the desktop contract and accepts a saved click", () => {
   assert.deepEqual(published, workflowJsonSchema());

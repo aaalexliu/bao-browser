@@ -37,13 +37,13 @@ These belong to the Bao extension in Chrome, not to the remote-debugging connect
 
 ## Agent Chrome control
 
-The [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) uses a marked profile copy by default. Selecting `browser: "current"` on the first `open` attaches to the owner's running Chrome and starts navigation in a new tab. Ending that session disconnects without quitting Chrome or closing its tabs. Neither route uses a host allowlist. Bao does not block final clicks. The older live driver and its policy modes are retired. Saved workflows with `driver: "cdp-live"` fail before opening Chrome, with `this workflow used the retired live driver`.
+The [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) uses a marked profile copy by default. Selecting `browser: "current"` on the first `open` attaches to the owner's running Chrome and starts navigation in a new tab. Ending that session disconnects without quitting Chrome or closing its tabs. Neither route uses a host allowlist. Bao does not block final clicks. The older live driver and its policy modes are retired. A saved file that is not [schema v4](workflow-schema.md) is not loaded.
 
 ## What stays on this Mac
 
 Pass-through runs save raw command arguments, native stdout/stderr, and readable page screenshots in Bao's local Library. They do not redact credentials or other private page content. Do not use this route for data you do not want saved locally. Page screenshots use CDP, not macOS Screen Recording. The app serves local run evidence on `127.0.0.1`, with caching off.
 
-Historical live-driver session files, workflows, pictures, and video remain readable. Retirement does not rewrite or upload them. Their old redaction rules do not apply to current pass-through records. [Run evidence](agent-browser-engine.md#evidence) describes the current paths and failure behavior.
+Historical live-driver session files, pictures, and video stay on disk. Retirement does not rewrite or upload them. Their old redaction rules do not apply to current pass-through records. A workflow file that is not [schema v4](workflow-schema.md) is not loaded. [Run evidence](agent-browser-engine.md#evidence) describes the current paths and failure behavior.
 
 ### Secret text in saved files
 

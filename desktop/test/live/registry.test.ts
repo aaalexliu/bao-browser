@@ -1,4 +1,3 @@
-import { fixtureInput } from "../support/fixture-step";
 // Two Macs, a replay, the review gate, and a scripted agent.
 // Run after `tsc -p tsconfig.desktop.json`. Chrome needs BAO_CHROME_NO_SANDBOX=1.
 
@@ -16,7 +15,7 @@ import { pinTestBrowser } from "../../src/launch";
 import { reviewWorkflow, runWorkflow } from "../../src/mcp/catalog";
 import { frameRpc, takeRpcChunk } from "../../src/mcp/frame";
 import { startApp } from "../../src/app/server";
-import { fixtureDoc } from "../support/fixture-step";
+import { fixtureDoc, fixtureInput } from "../support/fixture-step";
 import { type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { pairDevice, syncAll } from "../../src/v1/sync";

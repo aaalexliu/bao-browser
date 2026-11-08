@@ -871,7 +871,11 @@ function setCheck(step: WorkflowStep, check: Check | undefined): void {
     case "pickDate":
       step.check = check;
       return;
-    default:
+    case "extract":
+    case "finish":
+    case "for_each":
+    case "note":
+    case "wait":
       return;
   }
 }
