@@ -280,7 +280,8 @@ test("step facts reflect replay checks, destinations, and action-specific input 
       assert.equal(await page.locator(".wf-picture").getAttribute("data-shot-alt"), "Saved page for step 1: Use Report file");
     }
     for (const [action, verb] of Object.entries({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens", click: "Uses" })) {
-      await page.setContent(workflowDetail({ id: "verbs", name: "Verbs", inputs, startUrl: "https://example.test/start", steps: [{ id: "one", action, input: "file", value: "https://example.test/next" }] }));
+      const usesFile = action === "upload" || action === "drop" ? { file: { input: "file" } } : { text: { input: "file" } };
+      await page.setContent(workflowDetail({ id: "verbs", name: "Verbs", inputs, startUrl: "https://example.test/start", steps: [{ id: "one", action, ...usesFile, value: "https://example.test/next" }] }));
       assert.ok((await page.locator(".wf-facts dt").allTextContents()).includes(verb));
       if (action === "navigate") assert.equal(await page.locator(".wf-facts dd").first().innerText(), "https://example.test/next");
     }
