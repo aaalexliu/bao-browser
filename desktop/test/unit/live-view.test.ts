@@ -534,6 +534,63 @@ test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60
   }
 });
 
+test("a refused Guide me shows the still-going sentence on screen", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gstl");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let releaseRun!: () => void;
+  const held = new Promise<void>((resolve) => { releaseRun = resolve; });
+  let replay: ReturnType<typeof post> | undefined;
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => {
+      await held;
+      return { nodes: [], texts: [], url: "https://example.test/" };
+    };
+    const wf = workflow(`${base}/fixture`);
+    wf.driver = "extension";
+    wf.steps = [{ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 60000 }];
+    app.library.save(wf);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let owned = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "running" && state.replaying && state.runExecuting && state.activeRun.id) {
+        owned = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(owned);
+    await page.goto(base);
+    await page.getByRole("button", { name: "Workflows", exact: true }).click();
+    await page.getByRole("button", { name: "Book a class", exact: true }).click();
+    await page.getByRole("button", { name: "Guide me", exact: true }).click();
+    await page.waitForFunction(() => document.getElementById("live")?.textContent === "Another run is still going. Finish or stop it first.");
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, owned);
+    assert.equal(after.activeRun?.phase, "running");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+  } finally {
+    releaseRun();
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await browser.close();
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("a closed guide window does not open the Run form", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("gcls");
   const app = await startApp({ home: dirs.home, port: 0 });
