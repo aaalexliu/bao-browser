@@ -5,8 +5,8 @@
 import type { SavedContext } from "../../../shared/outbound-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
-import { withHealVersion, withRevertVersion } from "./element-history";
-import type { HealMode, Identity, WorkflowStep, WorkflowV2 } from "./schema";
+import { changedAttrs, withHealVersion, withRevertVersion } from "./element-history";
+import { hintFromIdentity, stepCheck, stepTarget, type Check, type HealMode, type Identity, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
   /** PNG bytes, base64. This is the image that was captured for the heal. */
@@ -44,7 +44,7 @@ export interface TriedLocator {
 }
 
 export interface HealProposal {
-  patch: Partial<Pick<WorkflowStep, "identity" | "label" | "selection" | "timeoutMs" | "postcondition">>;
+  patch: { identity?: Identity };
   model: { provider: string; name: string; version?: string };
   prompt: string;
   rawResponse: string;
@@ -303,13 +303,45 @@ export function patchFromText(raw: string): HealProposal["patch"] {
   }
 }
 
+function retargetCheck(step: WorkflowStep, current: Target | undefined, target: Target): Check | undefined {
+  const check = stepCheck(step);
+  if (!check || !("locators" in check) || !current?.locators) return undefined;
+  if (JSON.stringify(check.locators) !== JSON.stringify(current.locators)) return undefined;
+  return { ...check, locators: target.locators };
+}
+
 export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): WorkflowStep {
-  const identity = patch.identity
-    ? { ...patch.identity, path: patch.identity.path || [] }
-    : step.identity;
-  const next: WorkflowStep = { ...step, ...patch, identity };
-  if (patch.identity) next.locators = locatorsFromIdentity(identity);
-  return next;
+  if (!patch.identity) return step;
+  const identity: Identity = { ...patch.identity, path: patch.identity.path ?? [] };
+  const current = stepTarget(step);
+  const target: Target = {
+    locators: locatorsFromIdentity(identity) ?? [],
+    hint: hintFromIdentity(identity),
+    reveal: current?.reveal,
+    history: current?.history,
+  };
+  const check = retargetCheck(step, current, target);
+  switch (step.action) {
+    case "click":
+    case "type":
+    case "check":
+    case "select":
+    case "upload":
+    case "drop":
+    case "key":
+    case "digits":
+    case "pickDate":
+    case "download":
+    case "handoff":
+      return { ...step, target, ...(check ? { check } : {}) };
+    case "extract":
+    case "for_each":
+    case "navigate":
+    case "note":
+    case "open":
+    case "verify":
+      return step;
+  }
 }
 
 export function keepPatch(
@@ -325,6 +357,7 @@ export function keepPatch(
     steps: workflow.steps.map((step) => {
       if (step.id !== stepId) return step;
       const patched = applyPatch(step, patch);
+      if (changedAttrs(step, patched).length === 0) return step;
       return withHealVersion(step, patched, { at, recordedAt: workflow.createdAt, runId: meta.runId, score: meta.score });
     }),
   };

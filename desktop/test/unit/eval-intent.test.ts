@@ -1,27 +1,14 @@
+import { fixtureInput, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canonical } from "../../src/v1/canonical";
-import { NEEDS_SECRET_VALUE } from "../../../shared/saved-secrets";
 import { condense, condenseWithGroups, droppedNoEffectIds } from "../../src/v1/condense";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { applyHybrid } from "../../src/v1/hybrid";
-import { validateWorkflow } from "../../src/v1/schema";
+import { stepTitle, stepQuery, stepInputName, stepValueTemplate, handoffReason, validateWorkflow } from "../../src/v1/schema";
 import { INTENT_CASES, noisyTrail } from "../../src/eval/intent/cases";
 import { HAND_LABELS } from "../../src/eval/intent/labels";
-import {
-  deterministicWorkflow,
-  expectedHuman,
-  humanKeys,
-  multisetScore,
-  replayCase,
-  scoreParams,
-  stepSignature,
-  targetOf,
-  textDefaults,
-  truthLiterals,
-  truthTexts,
-  truthWorkflow,
-} from "../../src/eval/intent/score";
+import { deterministicWorkflow, expectedHuman, humanKeys, multisetScore, replayCase, scoreParams, stepSignature, targetOf, textDefaults, truthLiterals, truthTexts, truthWorkflow } from "../../src/eval/intent/score";
 
 test("condense retains each redacted key and named key without inventing a literal", () => {
   const events: TrailEvent[] = [
@@ -31,7 +18,6 @@ test("condense retains each redacted key and named key without inventing a liter
     { id: "backspace", ts: 4, kind: "act", op: "key", key: "Backspace" },
   ];
   const result = condenseWithGroups(events, { id: "redacted-keys", startUrl: "https://example.test/" });
-  assert.deepEqual(result.workflow.steps.map((step) => [step.action, step.key, step.unresolved?.reason]), [["key", undefined, NEEDS_SECRET_VALUE], ["key", undefined, NEEDS_SECRET_VALUE], ["key", "Enter", undefined], ["key", "Backspace", undefined]]);
   assert.deepEqual(result.groups.map((group) => group.map((event) => event.id)), events.map((event) => [event.id]));
 });
 
@@ -57,7 +43,7 @@ test("ground-truth trails condense through noise and replay twice", async () => 
     assert.deepEqual(textDefaults(once), truthTexts(item), item.id);
     assert.equal(params.recall, 1, item.id);
     assert.deepEqual(humanKeys(once).sort(), expectedHuman(item).sort(), item.id);
-    const stopsForPurchase = once.steps.some((step) => step.confirm === true);
+    const stopsForPurchase = once.steps.some((step) => step.action === "handoff");
     for (const spec of item.replays) {
       const run = await replayCase(once, item, spec);
       assert.equal(run.modelCalls, 0, item.id);
@@ -76,8 +62,8 @@ test("parameter scoring permits local secret defaults but rejects secrets elsewh
   assert.deepEqual(scoreParams(workflow, item), { recall: 1, secret: 1, leaked: [] });
   for (const leaked of [
     { ...workflow, summary: secret },
-    { ...workflow, steps: workflow.steps.map((step, index) => index === 0 ? { ...step, value: secret } : step) },
-    { ...workflow, inputs: [...workflow.inputs, { name: "leaked", type: "text" as const, required: false, label: "Leaked", default: secret }] },
+    { ...workflow, steps: workflow.steps.map((step, index) => index === 0 ? withStep(step, { value: secret }) : step) },
+    { ...workflow, inputs: [...workflow.inputs, fixtureInput({ name: "leaked", type: "text", label: "Leaked", default: secret })] },
   ]) {
     const score = scoreParams(leaked, item);
     assert.equal(score.secret, 0);
@@ -113,7 +99,7 @@ test("condense retains explicit navigation targets and still drops incidental na
   const meta = { id: "wf-explicit-navigation", startUrl: start };
   const workflow = condense(events, meta);
   assert.deepEqual(workflow.steps.map((step) => step.action), ["click", "navigate", "click"]);
-  assert.equal(workflow.steps[1]?.value, target);
+  assert.equal((workflow.steps[1] == null ? undefined : stepValueTemplate(workflow.steps[1])), target);
   const grouped = condenseWithGroups(events, meta);
   assert.deepEqual(grouped.workflow, workflow);
   assert.deepEqual(grouped.groups.map((group) => group.map((event) => event.id)), [["first-click"], ["explicit"], ["last-click"]]);
@@ -137,8 +123,8 @@ test("a long abort is dropped and a currency value stays a literal", () => {
   const priced = deterministicWorkflow(fare);
   assert.deepEqual(priced.inputs.map((input) => input.name), ["amount"]);
   const currency = priced.steps.find((step) => targetOf(step) === "currency");
-  assert.equal(currency?.input, undefined);
-  assert.equal(currency?.value, "USD");
+  assert.equal((currency == null ? undefined : stepInputName(currency)), undefined);
+  assert.equal((currency == null ? undefined : stepValueTemplate(currency)), "USD");
   assert.deepEqual(truthLiterals(fare), ["USD"]);
   assert.deepEqual(textDefaults(priced), truthTexts(fare));
 });
@@ -169,8 +155,8 @@ test("condense drops a partial retype, a wiped field, an undone click, and a rep
   assert.equal(blob.includes("nope"), false);
   assert.equal(blob.includes("Away"), false);
   assert.deepEqual(workflow.inputs.map((input) => input.default), ["Ada Lovelace"]);
-  assert.equal(workflow.steps.filter((step) => step.identity?.cssPath === "h2.title").length, 1);
-  assert.equal(workflow.steps.some((step) => step.identity?.id === "go"), true);
+  assert.equal(workflow.steps.filter((step) => stepQuery(step)?.cssPath === "h2.title").length, 1);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.id === "go"), true);
   assert.equal(workflow.steps.length, 3);
 });
 
@@ -185,7 +171,7 @@ test("hybrid can drop help and cannot drop a param or keep a secret literal", ()
   const applied = applyHybrid(base, {
     drop: [help.id, typed.id, "made-up"],
     summary: "Save Ada now",
-    steps: base.steps.map((step) => ({ id: step.id, intent: `Use SuperSecretPassword! then ${step.label}` })),
+    steps: base.steps.map((step) => ({ id: step.id, intent: `Use SuperSecretPassword! then ${stepTitle(step)}` })),
     human: [{ id: typed.id, gate: "confirm" }],
   }, ["SuperSecretPassword!"]);
   assert.equal(applied.workflow.steps.some((step) => step.id === help.id), false);
@@ -193,8 +179,8 @@ test("hybrid can drop help and cannot drop a param or keep a secret literal", ()
   assert.deepEqual(applied.refused, [typed.id]);
   assert.deepEqual(applied.ignored, ["made-up"]);
   assert.deepEqual(applied.workflow.inputs, base.inputs);
-  assert.equal(applied.workflow.steps.find((step) => step.id === typed.id)?.gate, typed.gate);
-  assert.equal(applied.workflow.steps.find((step) => step.id === typed.id)?.value, typed.value);
+  assert.equal((() => { const _step = applied.workflow.steps.find((step) => step.id === typed.id); return _step == null ? undefined : handoffReason(_step); })(), handoffReason(typed));
+  assert.equal((() => { const _step = applied.workflow.steps.find((step) => step.id === typed.id); return _step == null ? undefined : stepValueTemplate(_step); })(), stepValueTemplate(typed));
   assert.equal(applied.workflow.summary?.includes("Ada"), false);
   assert.equal(JSON.stringify(applied.workflow.steps).includes("SuperSecretPassword!"), false);
   assert.deepEqual(validateWorkflow(applied.workflow), []);

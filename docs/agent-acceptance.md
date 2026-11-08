@@ -75,7 +75,7 @@ Against a local fixture and synthetic source profile, call `agent_browser` with 
 
 Bao returns native output for ordinary commands and owner-wait status for handoffs. It records ordinary commands and page screenshots in Runs, but reads only URL/title and omits page pictures during owner waits. Successful single-document tasks save a replayable workflow at session end; unsupported tasks report why they remain capture-only. It does not block final clicks. Raw evidence can contain credentials. Do not claim saved-workflow redaction protects pass-through evidence. [Pass-through behavior](agent-browser-engine.md) owns the command, copy, recording, and cleanup contract.
 
-Saved workflows whose driver is `cdp-live` must remain readable. Their Workflows row and Replay form must say the workflow used the retired live driver. Replay and MCP must refuse before opening a browser with `this workflow used the retired live driver`. Workflows saved from pass-through tasks use the current replay engine, not native pass-through replay.
+A saved file that is not [schema v4](workflow-schema.md) is not loaded. Do not expect a retired-driver row. Workflows saved from pass-through tasks use the current replay engine, not native pass-through replay.
 
 ## Inspect evidence and cleanup
 

@@ -3,7 +3,7 @@
 // bao://run/<id>?inputs=<json> opens the run form with supplied inputs.
 // bao://receipt/<runId> opens a saved run's receipt in Runs.
 
-import { migrate, type WorkflowV2 } from "../v1/schema";
+import { parseWorkflow, type WorkflowV2 } from "../v1/schema";
 import { importQuestions, type ImportQuestion } from "../../../web/src/lib/import-sheet";
 
 export interface BaoLink {
@@ -99,7 +99,7 @@ export function decideOpen(
 
 function safeDoc(raw: unknown): WorkflowV2 | null {
   try {
-    const doc = migrate(raw);
+    const doc = parseWorkflow(raw);
     return doc.id ? doc : null;
   } catch {
     return null;

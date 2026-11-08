@@ -1,13 +1,14 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { replay, type Driver } from "../../src/v1/replay";
-import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import type { Check, Identity, WorkflowV2 } from "../../src/v1/schema";
 
 function dismiss(patch: Partial<Identity> = {}): Identity {
   return { surface: "dom", role: "button", name: "Close", path: [{ role: "dialog", name: "Welcome" }], ...patch };
 }
 
-async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => Identity[], expect?: WorkflowStep["expect"], finalOptional = false) {
+async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => Identity[], expect?: Check, finalOptional = false) {
   t.mock.timers.enable({ apis: ["Date"], now: 0 });
   let elapsed = 0;
   const clicked: Identity[] = [];
@@ -24,18 +25,18 @@ async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => I
     async notify() {},
     async sleep(ms) { elapsed += ms; t.mock.timers.tick(ms); },
   };
-  const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0, driver: "cdp-live", inputs: [],
+  const workflow: WorkflowV2 = fixtureDoc({
+    schema: "bao.workflow/v4", version: 2, id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0, inputs: [],
     steps: [
-      { id: "dismiss", index: 0, surface: "dom", action: "click", label: "Close", optional: "dismiss", identity: want, timeoutMs: 2000, expect },
+      fixtureStep({ id: "dismiss", index: 0, surface: "dom", action: "click", label: "Close", optional: "dismiss", identity: want, timeoutMs: 2000, expect }),
       ...(finalOptional ? [] : [{ id: "resume", index: 1, surface: "dom" as const, action: "key" as const, label: "Resume", key: "Tab", timeoutMs: 2000 }]),
     ],
-  };
+  });
   const result = await replay(workflow, {}, driver);
   return { result, clicked, elapsed };
 }
 
-for (const field of ["testId", "id", "nameAttr", "cssPath", "path"] as const) {
+for (const field of ["testId", "id", "nameAttr", "path"] as const) {
   test(`optional dismiss matches its recorded ${field}, not another Close`, async (t) => {
     const want = dismiss(field === "path" ? {} : { path: [], [field]: "welcome-close" });
     const target = { ...want };
@@ -56,6 +57,23 @@ for (const field of ["testId", "id", "nameAttr", "cssPath", "path"] as const) {
     assert.equal(elapsed, 2000);
   });
 }
+
+test("optional dismiss does not treat a css path as the recorded control", async (t) => {
+  const want = dismiss({ path: [], cssPath: "welcome-close" });
+  const target = { ...want };
+  const other = dismiss({ path: [], cssPath: "cart-close" });
+  const present = await run(t, want, () => [other, target]);
+  assert.equal(present.result.steps[0]?.status, "skipped");
+  assert.deepEqual(present.clicked, []);
+});
+
+test("optional dismiss skips an absent recorded css path despite another Close", async (t) => {
+  const want = dismiss({ path: [], cssPath: "welcome-close" });
+  const other = dismiss({ path: [], cssPath: "cart-close" });
+  const absent = await run(t, want, () => [other]);
+  assert.equal(absent.result.steps[0]?.status, "skipped");
+  assert.deepEqual(absent.clicked, []);
+});
 
 for (const field of ["id", "nameAttr"] as const) {
   for (const moved of [false, true]) {

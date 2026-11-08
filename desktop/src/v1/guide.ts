@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isElementCrop } from "./redacted-png";
+import { stepTitle, stepInputName, stepQuery } from "./schema";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 import { guideShotName, shotFile, workflowShotName } from "./shots";
 import { visibleCopy } from "./visible-copy";
@@ -167,15 +168,15 @@ function focusInto(doc: WorkflowV2, click: WorkflowStep, typed: WorkflowStep): b
 }
 
 function sameControl(click: WorkflowStep, typed: WorkflowStep): boolean {
-  const left = click.identity;
-  const right = typed.identity;
+  const left = stepQuery(click);
+  const right = stepQuery(typed);
   if (left && right) {
     if (left.id && left.id === right.id) return true;
     if (left.nameAttr && left.nameAttr === right.nameAttr) return true;
     if (left.testId && left.testId === right.testId) return true;
   }
   const phrase = clickPhrase(click).toLowerCase();
-  const names = [typed.input, typed.identity?.id, typed.identity?.nameAttr, typed.identity?.name]
+  const names = [stepInputName(typed), right?.id, right?.nameAttr, right?.name]
     .filter((name): name is string => Boolean(name))
     .map((name) => name.toLowerCase());
   return names.includes(phrase);
@@ -199,17 +200,18 @@ function inputList(doc: WorkflowV2): string {
 }
 
 function instruction(doc: WorkflowV2, step: WorkflowStep): string {
-  const input = doc.inputs.find((item) => item.name === step.input);
+  const input = doc.inputs.find((item) => item.name === stepInputName(step));
   const name = input && /^[A-Za-z][A-Za-z0-9_]*$/.test(input.name) ? input.name : "";
   const token = name ? `{{${name}}}` : "";
   let text: string;
   if ((step.action === "type" || step.action === "digits") && token) {
-    const where = fieldLabel(step);
+    const where = fieldLabel(step, input?.label);
     text = where ? `Type ${token} in ${where}` : `Type ${token}`;
-  } else if (step.action === "login") text = "Sign in";
+  } else if (step.action === "handoff" && step.reason === "sign-in") text = "Sign in";
+  else if (step.action === "handoff") text = step.caption.text || "You press the button";
   else if (step.action === "upload" || step.action === "drop") text = token ? `Add ${token}` : "Add a file";
   else if (step.action === "click") text = clickLine(doc, step);
-  else text = step.label || step.action;
+  else text = stepTitle(step) || step.action;
   const cleaned = tidy(text);
   return cleaned || (token ? `Type ${token}` : "Step");
 }
@@ -220,32 +222,31 @@ function clickLine(doc: WorkflowV2, step: WorkflowStep): string {
     const label = pretty(phrase.replace(/^the\s+/i, "").replace(/\s+field$/i, ""));
     return label ? `Click the ${label} field` : "Click the field";
   }
+  if (/^click$/i.test(phrase)) return "Click";
   const label = pretty(phrase);
   return label ? `Click ${label}` : "Click";
 }
 
 function clickPhrase(step: WorkflowStep): string {
-  const label = (step.label || "").trim();
+  const label = (stepTitle(step) || "").trim();
   const quoted = label.match(/^Click\s+"(.+)"$/i);
   if (quoted?.[1]) return quoted[1];
   const plain = label.match(/^Click\s+(.+)$/i);
   if (plain?.[1]) return plain[1];
-  return step.identity?.text || step.identity?.name || step.identity?.label || "";
+  return stepQuery(step)?.text || stepQuery(step)?.name || stepQuery(step)?.label || "";
 }
 
-function isFieldTarget(doc: WorkflowV2, step: WorkflowStep): boolean {
-  const role = (step.identity?.role || "").toLowerCase();
-  const tag = (step.identity?.tag || "").toLowerCase();
+function isFieldTarget(_doc: WorkflowV2, step: WorkflowStep): boolean {
+  const role = (stepQuery(step)?.role || "").toLowerCase();
+  const tag = (stepQuery(step)?.tag || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (/password|textbox|searchbox|combobox/.test(role) || role === "input") return true;
-  const phrase = clickPhrase(step).toLowerCase();
-  if (!phrase || phrase.includes(" ")) return false;
-  return doc.inputs.some((input) => input.type !== "choice" && input.name.toLowerCase() === phrase);
+  return false;
 }
 
-function fieldLabel(step: WorkflowStep): string {
-  const identity = step.identity;
-  const candidates = [identity?.label, identity?.name, identity?.nameAttr, step.input, identity?.id];
+function fieldLabel(step: WorkflowStep, inputLabel?: string): string {
+  const identity = stepQuery(step);
+  const candidates = [inputLabel, identity?.label, identity?.name, identity?.nameAttr, stepInputName(step), identity?.id];
   for (const candidate of candidates) {
     const clean = (candidate || "").replace(/\s+/g, " ").trim();
     if (!clean || clean.includes("{{")) continue;

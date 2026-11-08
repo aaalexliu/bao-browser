@@ -175,7 +175,7 @@ test("import sheet and a blocked publish", { timeout: 300_000 }, async () => {
 
 function sheetWorkflow(startUrl: string) {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "import-mail",
     name: "Mail the desk",
@@ -193,7 +193,7 @@ function sheetWorkflow(startUrl: string) {
 
 function blockedWorkflow(startUrl: string) {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "bao-missing",
     name: "Missing control",
@@ -206,7 +206,7 @@ function blockedWorkflow(startUrl: string) {
 
 function passingWorkflow(startUrl: string) {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "bao-fixture-ok",
     name: "Read the fixture",

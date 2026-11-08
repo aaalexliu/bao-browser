@@ -1,3 +1,5 @@
+import { fixtureDoc, fixtureStep, fixtureInput } from "../support/fixture-step";
+import { stepQuery, stepLocators } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
@@ -6,7 +8,7 @@ import { GOOD_INTENTS } from "../../src/eval/intent/good-intents";
 import { BAD_INTENT_TEXTS } from "../../src/eval/heldout/bad-judge";
 import { buildLocators, matchLabeledControl } from "../../src/v1/locators";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, StepLocator, WorkflowV2 } from "../../src/v1/schema";
 import type { TrailEvent } from "../../src/v1/interpret";
 
 const url = "https://example.test/page";
@@ -55,11 +57,11 @@ test("effect filter drops a still click and keeps one that changed state", () =>
   const dropped = droppedNoEffectIds(events);
   assert.deepEqual(dropped, ["head"]);
   const workflow = condense(events, { id: "fx", name: "fx", startUrl: url });
-  assert.equal(workflow.steps.some((step) => step.identity?.text === "Title"), false);
-  assert.equal(workflow.steps.some((step) => step.identity?.nameAttr === "size"), true);
-  assert.equal(workflow.steps.some((step) => step.identity?.id === "go"), true);
-  assert.equal(workflow.steps.some((step) => step.identity?.name === "Help"), true);
-  assert.equal(workflow.steps.some((step) => step.identity?.cssPath === "details"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.text === "Title"), false);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.nameAttr === "size"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.id === "go"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.name === "Help"), true);
+  assert.equal(workflow.steps.some((step) => stepQuery(step)?.cssPath === "details"), true);
 });
 
 test("a shared radio name resolves to the input inside the recorded label", async () => {
@@ -90,10 +92,10 @@ test("a shared radio name resolves to the input inside the recorded label", asyn
   ], { id: "order", name: "order", startUrl: url });
   const step = workflow.steps[0];
   assert.equal(step?.action, "check");
-  assert.equal(step?.locators?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
+  assert.equal((step ? stepLocators(step) : undefined)?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
   const nodes = [label, small, medium, large];
   const ambiguous = matchLabeledControl(
-    step?.locators || [],
+    (step ? stepLocators(step) : undefined) || [],
     { ...recorded, label: "Small" },
     [small, { ...small, cssPath: "form label.other input" }, medium],
   );
@@ -255,16 +257,16 @@ test("stored locators find an id-less control by css and reveal a collapsed sear
   assert.equal(result.status, "passed");
 });
 
-function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]["locators"]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+function clickWorkflow(identity: Identity, locators?: StepLocator[]): WorkflowV2 {
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "wf",
     startUrl: url,
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -273,20 +275,20 @@ function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number
       identity,
       locators,
       timeoutMs: 0,
-    }],
-  };
+    })],
+  });
 }
 
-function typeWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]["locators"]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+function typeWorkflow(identity: Identity, locators?: StepLocator[]): WorkflowV2 {
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "wf",
     startUrl: url,
     createdAt: 1,
-    inputs: [{ name: "text", type: "text", required: true }],
-    steps: [{
+    inputs: [fixtureInput({ name: "text", type: "text", required: true })],
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "type",
@@ -296,8 +298,8 @@ function typeWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]
       locators,
       input: "text",
       timeoutMs: 0,
-    }],
-  };
+    })],
+  });
 }
 
 function memory(

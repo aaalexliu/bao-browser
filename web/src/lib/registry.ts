@@ -9,7 +9,7 @@ import { applyRegistryImportAnswers, importQuestions, markImported, prepareImpor
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
 import { runPublishGate } from "./review-gate";
 import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
-import schema from "./workflow-v2.schema.json";
+import schema from "../../../schema/workflow.schema.json";
 import { assertInviteSecret, assertOwnerEmail, assertOwnerSignIn, assertProductionAuth, magicLinkVisible } from "./owner";
 import { SEED_WORKFLOWS } from "./seeds";
 import { workflowSearchEligible, type WorkflowSearchContext } from "./catalog-eligibility";
@@ -1048,8 +1048,8 @@ async function toHit(row: WorkflowRow, source: RankInput["source"]): Promise<Ran
     [row.id, ver],
   );
   const parsed = json(versions[0]?.document);
-  const document = parsed && typeof parsed === "object" ? parsed as { driver?: string | null; provenance?: string; inputs?: unknown; steps?: { label?: string }[] } : { steps: [] };
-  const steps = (document.steps ?? []).map((step) => step.label || "");
+  const document = parsed && typeof parsed === "object" ? parsed as { driver?: string | null; provenance?: string; inputs?: unknown; steps?: { caption?: { text?: string } }[] } : { steps: [] };
+  const steps = (document.steps ?? []).map((step) => step.caption?.text || "");
   return {
     id: row.id,
     driver: document.driver,

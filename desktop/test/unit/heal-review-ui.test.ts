@@ -1,3 +1,5 @@
+import { stepQuery } from "../../src/v1/schema";
+import { fixtureDoc, fixtureStep, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,10 +9,10 @@ import { startApp } from "../../src/app/server";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const workflow: WorkflowV2 = {
-  schema: "bao.workflow/v2", version: 2, id: "statements", name: "Download statement", createdAt: 1,
-  startUrl: "/fixture", inputs: [], steps: [{ id: "statements", index: 0, action: "click", label: "Open statements", surface: "dom", identity: { surface: "dom", role: "link", name: "Statements", path: [{ role: "navigation", name: "Main menu" }] }, timeoutMs: 1000 }],
-};
+const workflow: WorkflowV2 = fixtureDoc({
+  schema: "bao.workflow/v4", version: 2, id: "statements", name: "Download statement", createdAt: 1,
+  startUrl: "/fixture", inputs: [], steps: [fixtureStep({ id: "statements", index: 0, action: "click", label: "Open statements", surface: "dom", identity: { surface: "dom", role: "link", name: "Statements", path: [{ role: "navigation", name: "Main menu" }] }, timeoutMs: 1000 })],
+});
 
 test("target review matches the paired layout and keeps decisions on the exact existing record", { timeout: 60_000 }, async () => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-heal-review-ui-"));
@@ -22,7 +24,7 @@ test("target review matches the paired layout and keeps decisions on the exact e
     app.library.save(workflow);
     const heal = {
       id: "target", ts: 1, intent: "Open statements", failedStep: workflow.steps[0]!,
-      proposedPatch: { identity: { ...workflow.steps[0]!.identity!, role: "menuitem", path: [{ role: "menu", name: "Accounts" }] } },
+      proposedPatch: { identity: { ...stepQuery(workflow.steps[0]!)!, role: "menuitem", path: [{ role: "menu", name: "Accounts" }] } },
       beforeShot: "missing-before.png", snapshot: { screenshotRef: "missing-now.png" }, postconditionPassed: true,
     };
     app.library.saveRun({ id: "review-run", workflowId: workflow.id, status: "passed", at: 2, steps: [], heals: [heal] });
@@ -98,7 +100,7 @@ test("target review matches the paired layout and keeps decisions on the exact e
     await page.locator('#promotion[data-status="promoted"]').waitFor();
     assert.equal(app.library.readRun("review-run").decisions?.at(-1)?.decision, "keep");
     assert.equal(app.library.readRun("other-run").decisions?.length || 0, 0);
-    assert.equal(app.library.read(workflow.id).steps[0]!.identity!.role, "link");
+    assert.equal(stepQuery(app.library.read(workflow.id).steps[0]!)!.role, "link");
     await page.locator("[data-revert]").click();
     await page.getByRole("dialog", { name: "Revert step 1?" }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Cancel", exact: true }).evaluate((element) => element === document.activeElement), true);
@@ -129,7 +131,7 @@ test("a patchless heal keeps Revert available and describes AX targets by name, 
   try {
     app.library.save(workflow);
     const identity = { surface: "ax" as const, name: "Save", role: "button", description: "Saves the document", path: [{ role: "dialog", name: "Export" }] };
-    const heal = { id: "no-proposal", ts: 1, failedStep: { ...workflow.steps[0]!, surface: "os" as const, identity }, beforeShot: "before.png" };
+    const heal = { id: "no-proposal", ts: 1, failedStep: withStep(workflow.steps[0]!, { identity, surface: "os" as const }), beforeShot: "before.png" };
     app.library.saveRun({ id: "patchless-run", workflowId: workflow.id, status: "failed", at: 3, steps: [], heals: [heal] });
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${app.port}`);

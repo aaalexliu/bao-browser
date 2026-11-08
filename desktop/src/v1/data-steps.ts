@@ -1,6 +1,4 @@
 // Extract, for-each, and workflow outputs.
-// Version 3 is this module's document version. Version 2 workflows load
-// unchanged. A document gains version 3 only when it uses these steps.
 //
 // Benchmarks this shape is held to:
 // Browserflow scrape (element or list, Next until gone),
@@ -9,11 +7,10 @@
 // Playwright locators (role, text, test id, css, xpath, in that order).
 
 import type { ReplayArgs, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { stepInputName, stepLiteral } from "../../../shared/step-read";
 import { ROW_BINDING, ROW_INDEX_BINDING } from "./bindings";
 import { parseTable, sanitizeName, tableToCsv } from "../../../shared/table";
 export { mapCsv, parseCsv, parseTable, sanitizeName, tableToCsv } from "../../../shared/table";
-
-export const DATA_STEPS_VERSION = 3;
 
 export type ColumnType = "text" | "number" | "url";
 export type ColumnRead = "text" | "href" | "src" | "value" | "title" | "rating";
@@ -117,26 +114,6 @@ const NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const READS = new Set(["text", "href", "src", "value", "title", "rating"]);
 const COL_TYPES = new Set(["text", "number", "url"]);
 
-export function workflowVersionError(version: number): string | undefined {
-  if (version !== 2 && version !== DATA_STEPS_VERSION) return "version";
-  return undefined;
-}
-
-export function documentUsesDataSteps(doc: {
-  outputs?: unknown;
-  steps?: { action?: string; extract?: unknown; forEach?: unknown }[];
-}): boolean {
-  if (Array.isArray(doc.outputs) && doc.outputs.length > 0) return true;
-  return (doc.steps ?? []).some((step) => step.action === "extract" || step.action === "for_each" || step.extract || step.forEach);
-}
-
-/** Version 2 documents stay version 2. Data steps stamp version 3. */
-export function migrateDataSteps(doc: WorkflowV2): WorkflowV2 {
-  if (!documentUsesDataSteps(doc)) return doc;
-  if (doc.version === DATA_STEPS_VERSION) return doc;
-  return { ...doc, version: DATA_STEPS_VERSION };
-}
-
 export function validateDataSteps(doc: WorkflowV2): string[] {
   const errors: string[] = [];
   const names = new Set(doc.inputs.map((input) => input.name));
@@ -148,18 +125,10 @@ export function validateDataSteps(doc: WorkflowV2): string[] {
   const extracted = new Set<string>();
   doc.steps.forEach((step) => {
     if (step.action === "extract") {
-      if (!step.extract) errors.push(`extract ${step.id}`);
-      else errors.push(...extractErrors(step.extract, step.id));
-      if (step.extract?.as) extracted.add(step.extract.as);
-    } else if (step.extract) {
-      errors.push(`extract field ${step.id}`);
+      errors.push(...extractErrors(step.extract, step.id));
+      if (step.extract.as) extracted.add(step.extract.as);
     }
-    if (step.action === "for_each") {
-      if (!step.forEach) errors.push(`for_each ${step.id}`);
-      else errors.push(...forEachErrors(step.forEach, step.id, names, extracted));
-    } else if (step.forEach) {
-      errors.push(`for_each field ${step.id}`);
-    }
+    if (step.action === "for_each") errors.push(...forEachErrors(step.forEach, step.id, names, extracted));
   });
   const outputNames = new Set<string>();
   for (const output of doc.outputs ?? []) {
@@ -174,7 +143,6 @@ export function validateDataSteps(doc: WorkflowV2): string[] {
       if (!COL_TYPES.has(column.type)) errors.push(`output column type ${output.name}.${column.name}`);
     }
   }
-  if (documentUsesDataSteps(doc) && doc.version !== DATA_STEPS_VERSION) errors.push("version");
   return errors;
 }
 
@@ -216,7 +184,8 @@ function forEachErrors(spec: ForEachSpec, id: string, inputs: Set<string>, extra
   spec.steps?.forEach((step, index) => {
     if (step.index !== index) errors.push(`for_each index ${id}.${step.id}`);
     if (step.action === "for_each" || step.action === "extract") errors.push(`nested ${step.action} ${id}`);
-    if (step.value && step.value.startsWith("/") && !step.value.includes("{{")) errors.push(`path baked into ${step.id}`);
+    const literal = stepLiteral(step);
+    if (literal && literal.startsWith("/") && !literal.includes("{{")) errors.push(`path baked into ${step.id}`);
   });
   return errors;
 }
@@ -295,10 +264,10 @@ export interface CapturedPiece<E, S> {
 export function applyCapturedData<E extends DataEvent>(
   pieces: CapturedPiece<E, WorkflowStep>[],
   inputs: WorkflowInput[],
-): { pieces: CapturedPiece<E, WorkflowStep>[]; outputs?: WorkflowOutput[]; version: 2 | 3 } {
+): { pieces: CapturedPiece<E, WorkflowStep>[]; outputs?: WorkflowOutput[] } {
   const touched = pieces.some((piece) => piece.events.some((event) =>
     event.parameter || event.list || event.extract || event.op === "extract" || event.op === "copy" || event.op === "select"));
-  if (!touched) return { pieces, version: 2 };
+  if (!touched) return { pieces };
   const next = pieces.map((piece) => ({ events: piece.events, step: { ...piece.step } }));
   parameterize(next, inputs);
   const folded = foldCopiedRows(next, inputs);
@@ -308,7 +277,6 @@ export function applyCapturedData<E extends DataEvent>(
   return {
     pieces: folded,
     outputs: outputs.length ? outputs : undefined,
-    version: data ? DATA_STEPS_VERSION : 2,
   };
 }
 
@@ -319,13 +287,14 @@ function parameterize<E extends DataEvent>(pieces: CapturedPiece<E, WorkflowStep
     if (piece.step.action !== "click") continue;
     const input = addInput(inputs, "text", event.parameter);
     const sample = event.identity?.text || event.identity?.name || "";
-    if (sample && !sample.startsWith("/") && !sample.startsWith("~/")) input.default = sample;
+    if (sample && !sample.startsWith("/") && !sample.startsWith("~/")) {
+      input.supply = "saved";
+      input.default = sample;
+    }
     piece.step.selection = { by: "text", input: input.name };
-    piece.step.label = `Click {{${input.name}}}`;
+    piece.step.caption = { ...piece.step.caption, text: `Click {{${input.name}}}` };
     piece.step.heal = "never";
-    // The recorded page's URL and heading belong to the sample value.
-    delete piece.step.postcondition;
-    delete piece.step.expect;
+    piece.step.check = undefined;
   }
 }
 
@@ -338,7 +307,7 @@ function foldCopiedRows<E extends DataEvent>(
     const piece = pieces[i]!;
     const list = piece.events.map((event) => event.list).find((item) => item && item.rows.length >= 2);
     if (!list) {
-      if (piece.step.action === "extract" && piece.step.extract && !piece.step.extract.locators.length) continue;
+      if (piece.step.action === "extract" && !piece.step.extract.locators.length) continue;
       out.push(piece);
       continue;
     }
@@ -356,10 +325,9 @@ function foldCopiedRows<E extends DataEvent>(
           step: {
             id: piece.step.id,
             index: 0,
-            action: "for_each",
-            label: `For each ${input.name}`,
-            surface: "dom",
+            caption: { text: `For each ${input.name}` },
             timeoutMs: 8000,
+            action: "for_each",
             heal: "never",
             forEach: { over: { kind: "input", name: input.name }, steps: body },
           },
@@ -368,7 +336,7 @@ function foldCopiedRows<E extends DataEvent>(
         continue;
       }
     }
-    if (piece.step.action === "extract" && piece.step.extract?.locators.length) {
+    if (piece.step.action === "extract" && piece.step.extract.locators.length) {
       out.push(piece);
       continue;
     }
@@ -415,11 +383,10 @@ function bindBody(pieces: CapturedPiece<DataEvent, WorkflowStep>[], row: Record<
       : undefined;
     if (column && step.action === "type") {
       used.add(column);
-      const previous = step.input;
-      delete step.input;
-      step.value = `{{row.${column}}}`;
-      step.label = `Type {{row.${column}}}`;
-      step.sensitive = piece.events.some((event) => event.sensitive) || undefined;
+      const previous = "input" in step.text ? step.text.input : undefined;
+      step.text = { literal: `{{row.${column}}}` };
+      step.caption = { ...step.caption, text: `Type {{row.${column}}}` };
+      if (piece.events.some((event) => event.sensitive)) step.sensitive = true;
       rewriteTemplates(step, row);
       if (previous) retargetInput(step, previous, column);
     } else {
@@ -433,18 +400,19 @@ function bindBody(pieces: CapturedPiece<DataEvent, WorkflowStep>[], row: Record<
 function retargetInput(step: WorkflowStep, input: string, column: string): void {
   const from = `{{${input}}}`;
   const to = `{{row.${column}}}`;
-  const swap = (text: string | undefined): string | undefined => text?.split(from).join(to);
-  if (step.postcondition?.match) step.postcondition = { ...step.postcondition, match: swap(step.postcondition.match) || "" };
-  if (step.expect?.match) step.expect = { ...step.expect, match: swap(step.expect.match) };
+  rewriteMatch(step, (text) => text.split(from).join(to));
 }
 
 function rewriteTemplates(step: WorkflowStep, row: Record<string, string>): void {
-  const apply = (text: string | undefined): string | undefined => {
-    if (!text) return text;
-    return templatize(text, row);
-  };
-  if (step.postcondition?.match) step.postcondition = { ...step.postcondition, match: apply(step.postcondition.match) || "" };
-  if (step.expect?.match) step.expect = { ...step.expect, match: apply(step.expect.match) };
+  const apply = (text: string): string => templatize(text, row);
+  rewriteMatch(step, apply);
+  if (step.caption?.text) step.caption = { ...step.caption, text: apply(step.caption.text) };
+}
+
+function rewriteMatch(step: WorkflowStep, apply: (match: string) => string): void {
+  if (step.action === "extract" || step.action === "for_each" || step.action === "note") return;
+  if (!step.check || !("match" in step.check) || !step.check.match) return;
+  step.check = { ...step.check, match: apply(step.check.match) };
 }
 
 function templatize(text: string, row: Record<string, string>): string {
@@ -462,23 +430,22 @@ function firstCell(row: Record<string, string>): string {
 
 function extractStep(base: WorkflowStep, spec: ExtractSpec): WorkflowStep {
   return {
-    ...base,
+    id: base.id,
+    index: base.index,
     action: "extract",
-    label: `Extract ${spec.as}`,
+    caption: { text: `Read ${spec.as}` },
+    timeoutMs: base.timeoutMs,
+    when: base.when,
     extract: spec,
-    locators: spec.locators,
     heal: "never",
-    identity: undefined,
-    value: undefined,
-    input: undefined,
   };
 }
 
 function outputsFor(pieces: CapturedPiece<DataEvent, WorkflowStep>[]): WorkflowOutput[] {
   const outputs: WorkflowOutput[] = [];
   for (const piece of pieces) {
+    if (piece.step.action !== "extract") continue;
     const spec = piece.step.extract;
-    if (piece.step.action !== "extract" || !spec) continue;
     outputs.push({
       name: spec.as,
       type: "table",
@@ -494,7 +461,7 @@ function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: st
   let n = 2;
   const stem = name;
   while (inputs.some((item) => item.name === name)) name = `${stem}_${n++}`;
-  const input: WorkflowInput = { name, type, required: true, label: hint || name };
+  const input: WorkflowInput = { name, type, label: hint || name, supply: "must" };
   inputs.push(input);
   return input;
 }
@@ -509,12 +476,15 @@ function pruneInputs(inputs: WorkflowInput[], steps: WorkflowStep[]): void {
 function referencedNames(steps: WorkflowStep[]): Set<string> {
   const names = new Set<string>();
   const walk = (step: WorkflowStep) => {
-    if (step.input) names.add(step.input);
-    if (step.selection?.input) names.add(step.selection.input);
+    const named = stepInputName(step);
+    if (named) names.add(named);
+    if (step.action === "click" && step.selection?.input) names.add(step.selection.input);
     if (step.when?.input) names.add(step.when.input);
     if (step.readBack?.fileInput) names.add(step.readBack.fileInput);
-    if (step.forEach?.over.kind === "input") names.add(step.forEach.over.name);
-    for (const nested of step.forEach?.steps ?? []) walk(nested);
+    if (step.action === "for_each") {
+      if (step.forEach.over.kind === "input") names.add(step.forEach.over.name);
+      for (const nested of step.forEach.steps) walk(nested);
+    }
   };
   for (const step of steps) walk(step);
   return names;
@@ -539,8 +509,8 @@ export async function performDataStep(
   appending: boolean,
   runNested: (step: WorkflowStep, args: ReplayArgs) => Promise<{ ok: boolean; reason?: string }>,
 ): Promise<{ ok: true; detail?: string } | { ok: false; reason: string }> {
-  if (step.action === "extract" && step.extract) return performExtract(step.extract, tables, driver, appending);
-  if (step.action === "for_each" && step.forEach) {
+  if (step.action === "extract") return performExtract(step.extract, tables, driver, appending);
+  if (step.action === "for_each") {
     if (appending) return { ok: false, reason: "nested for_each" };
     return performForEach(step.forEach, args, tables, runNested);
   }
@@ -603,9 +573,11 @@ export function bindStep(step: WorkflowStep, row: Record<string, string>, index:
   const replace = (text: string): string => text
     .replace(ROW_BINDING, (_all, name: string) => row[name] ?? "")
     .replace(ROW_INDEX_BINDING, String(index + 1));
-  if (copy.value) copy.value = replace(copy.value);
-  if (copy.postcondition?.match) copy.postcondition = { ...copy.postcondition, match: replace(copy.postcondition.match) };
-  if (copy.expect?.match) copy.expect = { ...copy.expect, match: replace(copy.expect.match) };
+  if ((copy.action === "type" || copy.action === "select" || copy.action === "digits") && "literal" in copy.text) {
+    copy.text = { literal: replace(copy.text.literal) };
+  }
+  if (copy.caption?.text) copy.caption = { ...copy.caption, text: replace(copy.caption.text) };
+  rewriteMatch(copy, replace);
   return copy;
 }
 

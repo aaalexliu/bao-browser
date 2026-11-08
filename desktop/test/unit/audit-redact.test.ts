@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 // Audit redaction. No database.
 
 import assert from "node:assert/strict";
@@ -14,7 +15,7 @@ test("relay routing numbers reach replay inputs and results unchanged", () => {
   assert.ok("args" in job);
   const inputs = job.args.inputs as ReplayArgs;
   assert.deepEqual(inputs, { routing: "021000021", zip: "941031234", order: "123456789" });
-  const workflow = { inputs: [{ name: "routing", type: "text" }], steps: [{ id: "route", action: "type", input: "routing", value: "{{routing}}" }] } as WorkflowV2;
+  const workflow = fixtureDoc({ inputs: [fixtureInput({ name: "routing", type: "text" })], steps: [fixtureStep({ id: "route", action: "type", input: "routing", value: "{{routing}}" })] }) as WorkflowV2;
   assert.equal(stepNeedsSecretValue(workflow.steps[0]!, workflow, inputs), false);
   const result = splitResult({ outcome: "ok", outputs: inputs, readBack: "021000021" });
   assert.deepEqual(result.stored.outputs, inputs);

@@ -1,6 +1,6 @@
 // The library is files under one directory. Sync state lives beside it, not in here.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact } from "../../../shared/saved-secrets";
@@ -9,7 +9,7 @@ import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
-import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
+import { normalizeWorkflow, parseWorkflow, RUN_SCHEMA_ID, toJson, UnsupportedWorkflow, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "./schema";
 import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead } from "./library-read";
 
 export interface Settings extends HealSettings {
@@ -46,6 +46,7 @@ export interface Settings extends HealSettings {
 }
 
 export interface StoredRun {
+  schema: string;
   id: string;
   kind?: "replay" | "capture";
   toolTimings?: import("../cdp-live/live-record").LiveToolTiming[];
@@ -152,6 +153,7 @@ export class Library {
       try {
         workflows.push(this.read(file.replace(/\.json$/, "")));
       } catch (error) {
+        if (error instanceof UnsupportedWorkflow) continue;
         damagedWorkflows.push({
           file,
           reason: error instanceof WorkflowFileError ? error.reason : "The file could not be read. Check its name and permissions.",
@@ -164,41 +166,44 @@ export class Library {
 
   read(id: string, bounded?: BoundedRead): WorkflowV2 {
     if (bounded) return this.readWorkflowSnapshot(id, bounded).workflow;
-    return this.parseWorkflow(readFileSync(this.file(id), "utf8"), id);
+    return this.loadWorkflow(readFileSync(this.file(id), "utf8"), id);
   }
 
   readWorkflowSnapshot(id: string, bounded: BoundedRead): { workflow: WorkflowV2; modifiedAtMs: number } {
     const snapshot = readLibrarySnapshot(this.root, ["workflows", `${id}.json`], bounded.maxBytes);
-    return { workflow: this.parseWorkflow(snapshot.bytes.toString("utf8"), id), modifiedAtMs: snapshot.modifiedAtMs };
+    return { workflow: this.loadWorkflow(snapshot.bytes.toString("utf8"), id), modifiedAtMs: snapshot.modifiedAtMs };
   }
 
-  private parseWorkflow(json: string, id: string): WorkflowV2 {
+  private loadWorkflow(json: string, id: string): WorkflowV2 {
     let raw: unknown;
     try { raw = JSON.parse(json) as unknown; }
     catch { throw new WorkflowFileError(id, "The file is not valid JSON."); }
-    let doc: WorkflowV2;
-    let errors: string[];
     try {
-      doc = migrate(raw);
-      errors = validateWorkflow(doc);
-    } catch {
+      return parseWorkflow(raw);
+    } catch (error) {
+      if (error instanceof UnsupportedWorkflow) throw error;
+      if (raw && typeof raw === "object" && !Array.isArray(raw) && (raw as { schema?: unknown }).schema === WORKFLOW_SCHEMA_ID) {
+        const body = raw as { inputs?: unknown; steps?: unknown };
+        if (!Array.isArray(body.inputs) || !Array.isArray(body.steps)) {
+          throw new WorkflowFileError(id, "The workflow has an invalid structure.");
+        }
+        const errors = validateWorkflow(raw as WorkflowV2);
+        if (errors.length) {
+          const reasons = errors.map((item) => {
+            if (item === "name") return "The workflow name is missing.";
+            if (item === "id") return "The workflow ID is missing.";
+            if (item === "driver") return "The workflow driver is not supported.";
+            return `Workflow check failed: ${item}.`;
+          });
+          throw new WorkflowFileError(id, reasons.join(" "));
+        }
+      }
       throw new WorkflowFileError(id, "The workflow has an invalid structure.");
     }
-    if (errors.length) {
-      const reasons = errors.map((error) => {
-        if (error === "name") return "The workflow name is missing.";
-        if (error === "id") return "The workflow ID is missing.";
-        if (error === "driver") return "The workflow driver is not supported.";
-        return `Workflow check failed: ${error}.`;
-      });
-      throw new WorkflowFileError(id, reasons.join(" "));
-    }
-    return doc;
   }
 
   save(doc: WorkflowV2): void {
-    const saved = structuredClone(doc);
-    if (existsSync(this.file(saved.id)) && this.read(saved.id).driver === "cdp-live") saved.driver = "cdp-live";
+    const saved = normalizeWorkflow(structuredClone(doc));
     const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));
     writeFileSync(this.file(saved.id), toJson(saved));
@@ -215,7 +220,7 @@ export class Library {
   }
 
   importJson(raw: string): WorkflowV2 {
-    const doc = migrate(JSON.parse(raw) as unknown);
+    const doc = parseWorkflow(JSON.parse(raw) as unknown);
     this.save(doc);
     return this.read(doc.id);
   }
@@ -289,11 +294,12 @@ export class Library {
     }
   }
 
-  saveRun(run: StoredRun): void {
-    const file = path.join(this.root, "runs", `${run.id}.json`);
+  saveRun(run: Omit<StoredRun, "schema"> & { schema?: string }): void {
+    const stored: StoredRun = { ...run, schema: RUN_SCHEMA_ID };
+    const file = path.join(this.root, "runs", `${stored.id}.json`);
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporary, JSON.stringify(run, null, 2));
+      writeFileSync(temporary, JSON.stringify(stored, null, 2));
       renameSync(temporary, file);
     } finally {
       rmSync(temporary, { force: true });
@@ -312,7 +318,8 @@ export class Library {
       throw error;
     }
     const run = JSON.parse(raw) as StoredRun;
-    if (!run || run.id !== id || typeof run.workflowId !== "string" || typeof run.status !== "string"
+    if (!run || (run as { schema?: string }).schema !== RUN_SCHEMA_ID) throw new UnsupportedWorkflow(typeof (run as { schema?: unknown })?.schema === "string" ? (run as { schema: string }).schema : "missing");
+    if (run.id !== id || typeof run.workflowId !== "string" || typeof run.status !== "string"
       || typeof run.at !== "number" || !Array.isArray(run.steps) || !Array.isArray(run.heals)) {
       throw new Error("invalid run");
     }
@@ -336,7 +343,8 @@ export class Library {
       .flatMap((name) => {
         try {
           return [this.readRun(name.replace(/\.json$/, ""))];
-        } catch {
+        } catch (error) {
+          if (error instanceof UnsupportedWorkflow) return [];
           return [];
         }
       });

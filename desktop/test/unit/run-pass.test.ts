@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
 // Re-run from a past run, collapsed idle, and the per-step heal limit.
 
 import assert from "node:assert/strict";
@@ -13,13 +14,13 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return { index: 0, label: partial.label || partial.action, surface: "dom", timeoutMs: 0, ...partial };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: 0, ...partial });
 }
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "upload note",
@@ -27,7 +28,7 @@ function doc(steps: WorkflowStep[]): WorkflowV2 {
     createdAt: 1,
     inputs: [],
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[]): LiveTree {

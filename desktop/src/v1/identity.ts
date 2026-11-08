@@ -134,6 +134,10 @@ export function scoreIdentity(query: Identity, candidate: Identity): Omit<Score,
   };
 
   if (query.surface === "dom") {
+    // A different test id is a different control, even when the visible name matches.
+    if (query.testId && candidate.testId && !eq(query.testId, candidate.testId)) {
+      return { score: 0, parts: [{ attr: "testId", points: 0, matched: false }] };
+    }
     if (query.testId) add("testId", 100, eq(query.testId, candidate.testId));
     if (query.id) add("id", unstableId(query.id) ? 15 : 80, eq(query.id, candidate.id));
     if (query.role && query.role !== "unknown" && (query.name || query.text)) {

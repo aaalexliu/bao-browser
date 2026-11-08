@@ -19,6 +19,7 @@ import { explain, type TrailEvent } from "../v1/interpret";
 import { keepSessionCookies, launchOwnedChrome, pinTestBrowser, testLaneKeychainArgs } from "../launch";
 import { classifyPage } from "../v1/page-class";
 import { replay, type RunResult } from "../v1/replay";
+import { stepTitle } from "../v1/schema";
 import type { ReplayArgs, WorkflowV2 } from "../v1/schema";
 import { argsFor, scoreP1, scoreP5, scoreP9, type PageView, type RunView } from "./realworld";
 import { ExtensionDriver } from "../extension/driver";
@@ -1472,7 +1473,7 @@ async function scoreTask(
   };
   log(`${id} playwright ${pwScore.pass ? "pass" : pwScore.detail}`);
   const passed = runs.filter((item) => item.pass).length;
-  return { pass: `${passed}/2`, modelCalls: runs.map((item) => item.modelCalls).join(", "), runs, playwright, steps: workflow.steps.map((step) => `${step.action} ${step.label}`) };
+  return { pass: `${passed}/2`, modelCalls: runs.map((item) => item.modelCalls).join(", "), runs, playwright, steps: workflow.steps.map((step) => `${step.action} ${stepTitle(step)}`) };
 }
 
 async function runWorker(link: ExtensionLink, chrome: ChromeRun, port: number): Promise<void> {

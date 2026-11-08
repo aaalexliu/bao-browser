@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // The test Chromium, synthetic profile only. The cookie values and storage values
 // below are fixtures. Assertions must not include them in failure text.
 
@@ -274,14 +275,14 @@ test("import a public demo login, then block the run after the cookie is cleared
     await ui.screenshot({ path: path.join(ARTIFACTS, "login-signed-in-light.png"), fullPage: true });
 
     await clearBaoCookies(baoProfile);
-    const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2",
+    const workflow: WorkflowV2 = fixtureDoc({
+      schema: "bao.workflow/v4",
       version: 2,
       id: "wf-public",
       name: "Public gate",
       startUrl: probe,
       inputs: [],
-      steps: [{
+      steps: [fixtureStep({
         id: "s1",
         index: 0,
         action: "click",
@@ -289,9 +290,9 @@ test("import a public demo login, then block the run after the cookie is cleared
         surface: "dom",
         timeoutMs: 1000,
         identity: { surface: "dom", role: "button", testId: "missing", path: [] },
-      }],
+      })],
       createdAt: 1,
-    };
+    });
     app.library.save(workflow);
     await ui.click("#rail button[data-place=workflows]");
     await ui.getByRole("button", { name: "Record", exact: true }).click();
@@ -643,14 +644,14 @@ async function assertNeedsSignIn(port: number, library: { save(doc: WorkflowV2):
     }),
   });
   if (!saved.ok) throw new Error("could not save the site probe");
-  const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+  const workflow: WorkflowV2 = fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-gate",
     name: "Gated",
     startUrl: `${origin}/home`,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s1",
       index: 0,
       action: "click",
@@ -658,9 +659,9 @@ async function assertNeedsSignIn(port: number, library: { save(doc: WorkflowV2):
       surface: "dom",
       timeoutMs: 1000,
       identity: { surface: "dom", role: "button", testId: "missing", path: [] },
-    }],
+    })],
     createdAt: 1,
-  };
+  });
   library.save(workflow);
   const res = await fetch(`http://127.0.0.1:${port}/api/replay`, {
     method: "POST",

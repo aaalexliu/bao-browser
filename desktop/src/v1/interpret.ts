@@ -2,13 +2,13 @@
 // Secrets become inputs. File paths are dropped. No model is required.
 
 import { applyCapturedData, type ExtractSpec, type ListCapture } from "./data-steps";
-import { applyExpect, type KnownTyped } from "./expect";
+import { inferExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
+import { caption, citeIdentity, clickSentence, openSentence, targetBox, typeSentence } from "./caption";
 import { locatorsFromIdentity } from "./locators";
-import type { Identity, StepLocator, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepSensitive, stepSurface, stepForEach, finishInput, hintFromIdentity, WORKFLOW_SCHEMA_ID, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
-import { WORKFLOW_SCHEMA_ID } from "./schema";
-import { fixedSavedChoice, hasStrippedSecret, NEEDS_SECRET_VALUE, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
+import { fixedSavedChoice, hasStrippedSecret, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 
 export interface TrailEvent {
   id: string;
@@ -32,7 +32,7 @@ export interface TrailEvent {
   key?: string;
   pageLevel?: boolean;
   checked?: boolean;
-  provenance?: WorkflowStep["provenance"];
+  provenance?: { x: number; y: number; space?: string };
   identity?: Identity;
   locators?: StepLocator[];
   beforeUrl?: string;
@@ -59,6 +59,8 @@ export interface TrailEvent {
   format?: string;
   /** Suggested filename from Browser.downloadWillBegin. Basename only. */
   suggestedFilename?: string;
+  box?: { x: number; y: number; width?: number; height?: number; w?: number; h?: number };
+  viewport?: { width: number; height: number };
   /** Bind an upload to a previous download output. */
   fileFrom?: string;
   /** Set when capture refused the action and a person has to do it. */
@@ -142,21 +144,20 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
-    if ([event.value, event.key].some(hasStrippedSecret) || step.action === "key" && event.sensitive && !step.key) step.unresolved = { reason: NEEDS_SECRET_VALUE };
-    const skip = step.sensitive ? undefined : event.skipWhen?.trim();
+    const skip = stepSensitive(step) ? undefined : event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
-    if (step.action === "type" && (step.input || event.literal) && event.value && !step.sensitive && !secrets.includes(event.value)) {
-      known.push({ name: step.input, value: event.value });
+    const named = stepInputName(step);
+    if (step.action === "type" && named && event.value && !stepSensitive(step) && !secrets.includes(event.value)) {
+      known.push({ name: named, value: event.value });
     }
     return { events: [event], step };
   });
   if (!seen.preserveActions) bindTypedOptions(mapped);
-  const pieces = seen.preserveActions ? mapped : foldNotes(collapseDigits(mapped, inputs));
+  const pieces = seen.preserveActions ? mapped : foldLogins(foldNotes(collapseDigits(mapped, inputs)));
   if (!seen.preserveActions) attachExpr(pieces.map((piece) => piece.step));
   const captured = applyCapturedData(pieces, inputs);
   const drafted: WorkflowV2 = {
     schema: WORKFLOW_SCHEMA_ID,
-    version: captured.version,
     id: meta.id,
     name: meta.name || "Untitled workflow",
     startUrl: meta.startUrl,
@@ -249,6 +250,22 @@ function withoutChooserClicks(events: TrailEvent[]): TrailEvent[] {
  * A trailing note with nothing after it stays a note so the text is kept.
  * Handoff lines stay note steps; they are the pause record, not an intent.
  */
+function foldLogins(pieces: InterpretPiece[]): InterpretPiece[] {
+  const out: InterpretPiece[] = [];
+  for (const piece of pieces) {
+    const step = piece.step;
+    const prev = out.at(-1);
+    if (prev && step.action === "handoff" && step.reason === "sign-in" && prev.step.action === "handoff" && prev.step.reason === "sign-in") {
+      prev.events.push(...piece.events);
+      if (step.target) prev.step.target = step.target;
+      if (step.check) prev.step.check = step.check;
+      continue;
+    }
+    out.push(piece);
+  }
+  return out;
+}
+
 function foldNotes(pieces: InterpretPiece[]): InterpretPiece[] {
   const out: InterpretPiece[] = [];
   let pending: InterpretPiece | undefined;
@@ -275,7 +292,7 @@ function foldNotes(pieces: InterpretPiece[]): InterpretPiece[] {
   }
   if (pending) {
     const text = noteText(pending);
-    if (text) pending.step.intent = text;
+    if (text) pending.step.caption = { ...pending.step.caption, text };
     out.push(pending);
   }
   return out;
@@ -283,7 +300,7 @@ function foldNotes(pieces: InterpretPiece[]): InterpretPiece[] {
 
 function isIntentNote(piece: InterpretPiece): boolean {
   if (piece.step.action !== "note") return false;
-  const text = piece.events[0]?.afterText || piece.step.label || "";
+  const text = piece.events[0]?.afterText || stepTitle(piece.step) || "";
   return !/^Handoff (started|ended)\b/.test(text);
 }
 
@@ -291,12 +308,12 @@ function noteText(piece: InterpretPiece): string {
   const raw = piece.events.map((event) => event.afterText || "").find(Boolean) || "";
   const cleaned = raw.replace(/\s+/g, " ").trim();
   if (cleaned) return cleaned;
-  return piece.step.label.replace(/^Note:\s*/, "").trim();
+  return stepTitle(piece.step).replace(/^Note:\s*/, "").trim();
 }
 
 function applyNote(target: InterpretPiece, note: InterpretPiece): void {
   const text = noteText(note);
-  if (text) target.step.intent = text;
+  if (text) target.step.caption = { ...target.step.caption, text };
   target.events.push(...note.events);
 }
 
@@ -339,14 +356,15 @@ function bindTypedOptions(pieces: InterpretPiece[]): void {
   for (let i = 1; i < pieces.length; i++) {
     const piece = pieces[i]!;
     const prev = pieces[i - 1]!;
-    if (piece.step.action !== "click" || prev.step.action !== "type" || !prev.step.input) continue;
+    const typed = stepInputName(prev.step);
+    if (piece.step.action !== "click" || prev.step.action !== "type" || !typed) continue;
     const identity = piece.events[0]?.identity;
     if (identity?.role !== "option") continue;
     const sample = (identity.text || identity.name || "").replace(/\s+/g, " ").trim();
-    const typed = (prev.events[0]?.value || "").replace(/\s+/g, " ").trim();
-    if (!sample || sample !== typed) continue;
-    piece.step.selection = { by: "text", input: prev.step.input };
-    piece.step.label = `Click {{${prev.step.input}}}`;
+    const typedText = (prev.events[0]?.value || "").replace(/\s+/g, " ").trim();
+    if (!sample || sample !== typedText) continue;
+    piece.step.selection = { by: "text", input: typed };
+    piece.step.caption = { ...piece.step.caption, text: `Click {{${typed}}}` };
   }
 }
 
@@ -379,210 +397,165 @@ function sameTarget(a: TrailEvent, b: TrailEvent): boolean {
 
 function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: WorkflowInput[], known: KnownTyped[]): WorkflowStep {
   event = normalizeFile(event);
-  const surface = event.identity?.surface === "dom" || !event.identity ? "dom" : "os";
   const secretEntry = isType(event) && isSecret(event, meta.secrets ?? []);
   const identity = secretEntry ? secretEntryIdentity(event.identity) : structuredClone(event.identity);
   const captured = (value: string | undefined) => value !== undefined && [event.value, event.identity?.text, event.identity?.value].includes(value);
   const locators = secretEntry ? event.locators?.filter((locator) =>
     !(locator.kind === "text" && captured(locator.value) || locator.kind === "role" && captured(locator.name)),
   ) : event.locators;
-  const step: WorkflowStep = {
-    id: `${meta.id}-${index}`,
-    index,
-    action: "click",
-    ...(event.optional ? { optional: event.optional } : {}),
-    label: event.op,
-    surface,
-    identity,
-    locators: locators?.length ? locators : locatorsFromIdentity(identity),
-    timeoutMs: 8000,
-    provenance: event.provenance,
-  };
+  const target = targetFor(identity, locators);
+  const id = `${meta.id}-${index}`;
+  const box = targetBox(event.box, event.viewport);
+  const cite = citeIdentity(identity);
   if (event.op === "navigate") {
-    const url = event.value || event.afterUrl || event.beforeUrl || meta.startUrl;
+    const url = event.value || event.afterUrl || event.beforeUrl || meta.startUrl || "";
     const match = openMatch(event.afterUrl || url);
     return {
-      id: `${meta.id}-${index}`,
-      index,
-      action: "navigate",
-      label: url ? `Open ${url}` : "Open",
-      surface: "dom",
-      value: url || undefined,
-      timeoutMs: 8000,
-      ...(match ? { expect: { kind: "url" as const, match, timeoutMs: 8000 } } : {}),
+      id, index, action: "navigate", url, timeoutMs: 8000,
+      caption: caption(openSentence(url)),
+      ...(match ? { check: { kind: "url" as const, match, timeoutMs: 8000 } } : {}),
     };
   }
   if (event.op === "select") {
     const input = addInput(inputs, "text", nameHint(event, false));
-    if (event.value) input.default = event.value;
+    if (event.value) { input.supply = "saved"; input.default = event.value; }
     return {
-      ...step,
-      action: "select",
-      input: input.name,
-      value: `{{${input.name}}}`,
-      label: `Select {{${input.name}}}`,
+      id, index, action: "select", timeoutMs: 8000, target,
+      caption: caption(`Select {{${input.name}}}`, cite, box),
+      text: { input: input.name },
       ...observed(event, input.name, false, known, meta.secrets ?? []),
     };
   }
   if (event.op === "login" || event.op === "confirm") {
+    const owner = event.op === "confirm";
+    const named = identity?.name || identity?.text || identity?.label;
     return {
-      id: `${meta.id}-${index}`,
-      index,
-      action: event.op,
-      label: event.op === "login"
-        ? "ensure logged in (import from chrome, else wait for user)"
-        : "confirm before applying",
-      surface: "dom",
-      human: true,
-      timeoutMs: 8000,
-      ...observed(event, undefined, false, known, meta.secrets ?? []),
+      id, index, action: "handoff", reason: owner ? "owner-press" : "sign-in", timeoutMs: 8000,
+      ...(owner && target.locators.length ? { target } : {}),
+      caption: caption(owner ? (named ? `You press ${named}` : "You press the button") : "Sign in", owner ? cite : undefined, owner ? box : undefined),
+      ...handoffCheck(observed(event, undefined, false, known, meta.secrets ?? [])),
     };
   }
   if (event.op === "extract" && event.extract) {
     const spec = event.extract;
     return {
-      id: `${meta.id}-${index}`,
-      index,
-      action: "extract",
-      label: `Extract ${spec.as}`,
-      surface: "dom",
-      timeoutMs: 8000,
-      heal: "never",
-      locators: spec.locators,
+      id, index, action: "extract", timeoutMs: 8000, heal: "never",
+      caption: caption(`Read ${spec.as}`),
       extract: spec,
     };
   }
   if (event.op === "note") {
-    const text = savedText(event.afterText);
-    return {
-      id: `${meta.id}-${index}`,
-      index,
-      action: "note",
-      label: text ? `Note: ${text}` : "Note",
-      surface: "dom",
-      timeoutMs: 8000,
-    };
+    const text = savedText(event.afterText) || "Note";
+    return { id, index, action: "note", timeoutMs: 8000, text, caption: caption(text) };
   }
-  if (event.op === "expect") {
+  if (event.op === "expect" || event.op === "verify") {
     const match = savedText(event.afterText);
-    return {
-      id: `${meta.id}-${index}`,
-      index,
-      action: "verify",
-      label: match ? `Check: ${match}` : "Check",
-      surface: "dom",
-      timeoutMs: 8000,
-      expect: { kind: "text", match: match || "", timeoutMs: 8000 },
-    };
+    const check = observed(event, undefined, false, known, meta.secrets ?? []).check
+      ?? (match ? { kind: "text" as const, match, timeoutMs: 8000 } : { kind: "settled" as const, timeoutMs: 8000 });
+    return { id, index, action: "verify", timeoutMs: 8000, caption: caption(match ? `Check ${match}` : "Check the page"), check };
   }
-  if (event.op === "verify") {
-    const match = savedText(event.afterText);
-    const check = observed(event, undefined, false, known, meta.secrets ?? []);
-    return {
-      id: `${meta.id}-${index}`,
-      index,
-      action: "verify",
-      label: "re-read the status",
-      surface: "dom",
-      timeoutMs: 8000,
-      expect: match ? { kind: "text", match, timeoutMs: 8000 } : check.expect,
-      postcondition: check.postcondition,
-    };
-  }
-  const gate = inferGate(event, meta.secrets ?? []);
-  if (gate) step.gate = gate;
   if (event.op === "keypress" || event.op === "key") {
+    const key = event.key || event.value || (event.sensitive ? "" : "Enter");
     return {
-      ...step,
-      action: "key",
-      key: event.key || event.value,
-      label: `Press ${event.key || event.value || "key"}`,
+      id, index, action: "key", key, timeoutMs: 8000,
+      ...(identity ? { target } : {}),
+      caption: caption(`Press ${key}`, identity ? cite : undefined, box),
       ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
   if (event.op === "upload" || event.op === "drop") {
     const input = addInput(inputs, "file", "file");
+    const action = event.op === "drop" ? "drop" as const : "upload" as const;
     return {
-      ...step,
-      action: event.op === "drop" ? "drop" : "upload",
-      input: input.name,
-      value: `{{${input.name}}}`,
-      label: event.op === "drop" ? "Drop file" : "Upload file",
-      postcondition: {
-        kind: "text",
-        match: event.op === "drop" ? `Dropped file: {{${input.name}}}` : `{{${input.name}}}`,
-        timeoutMs: 4000,
-      },
+      id, index, action, timeoutMs: 8000, target,
+      caption: caption(action === "drop" ? "Drop the file" : "Upload the file", cite, box),
+      file: { input: input.name },
+      check: { kind: "text", match: action === "drop" ? `Dropped file: {{${input.name}}}` : `{{${input.name}}}`, timeoutMs: 4000 },
+    };
+  }
+  if (event.gate === "login" && event.performed === false) {
+    if (event.sensitive || event.identity?.inputType === "password" || event.identity?.id === "password") {
+      addInput(inputs, "secret", nameHint(event, true));
+    }
+    const seen = event.afterText ? { ...event, performed: true } : event;
+    return {
+      id, index, action: "handoff", reason: "sign-in", timeoutMs: 8000,
+      ...(target.locators.length ? { target } : {}),
+      caption: caption("Sign in"),
+      ...handoffCheck(observed(seen, undefined, false, known, meta.secrets ?? [])),
     };
   }
   if (isType(event)) {
     const secret = secretEntry;
+    const field = cite?.text;
     if (!secret && isConstantType(event)) {
-      const field = event.identity?.name || event.identity?.label;
       return {
-        ...step,
-        action: "type",
-        value: event.value,
-        label: event.literal ? (field ? `Type into "${field}"` : "Type") : `Type ${event.value}`,
+        id, index, action: "type", timeoutMs: 8000, target,
+        caption: caption(typeSentence(field), cite, box),
+        text: { literal: event.value || "" },
         ...observed(event, undefined, false, known, meta.secrets ?? []),
       };
     }
-    const kind = secret ? "secret" : numberLike(event.value) && surface === "os" ? "number" : "text";
+    const kind = secret ? "secret" : numberLike(event.value) && identity?.surface === "ax" ? "number" : "text";
     const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(secret ? { ...event, identity } : event, secret);
     const input = addInput(inputs, kind, named);
-    if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity)) input.default = event.value;
+    if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity)) {
+      input.default = event.value;
+    }
+    const finished = finishInput(input);
+    const at = inputs.indexOf(input);
+    if (at >= 0) inputs[at] = finished;
     return {
-      ...step,
-      action: "type",
-      input: input.name,
-      value: `{{${input.name}}}`,
-      sensitive: secret || undefined,
-      label: secret ? "Type secret" : `Type {{${input.name}}}`,
-      ...(secret ? {} : observed(event, input.name, false, known, meta.secrets ?? [])),
+      id, index, action: "type", timeoutMs: 8000, target,
+      caption: caption(typeSentence(field || `{{${input.name}}}`, secret), secret ? undefined : cite, box),
+      text: { input: input.name },
+      ...(secret ? { sensitive: true } : observed(event, input.name, false, known, meta.secrets ?? [])),
     };
   }
   if (typeof event.checked === "boolean" || event.op === "check") {
     const checked = event.checked !== false;
     const name = event.identity?.name || event.identity?.label || event.identity?.text;
     return {
-      ...step,
-      action: "check",
-      checked,
-      label: `${checked ? "Check" : "Uncheck"}${name ? ` "${name}"` : ""}`,
+      id, index, action: "check", timeoutMs: 8000, target, checked,
+      caption: caption(`${checked ? "Check" : "Uncheck"}${name ? ` ${name}` : ""}`, cite, box),
       ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
-  if (event.gate === "login" && event.performed === false) {
-    const named = inputs.find((item) => item.type === "text" && /user|email|login/i.test(item.name))
-      || inputs.find((item) => item.type === "text");
+  const name = event.identity?.name || event.identity?.text || event.identity?.label;
+  if (event.gate === "confirm" && event.performed === false) {
     return {
-      ...step,
-      action: "click",
-      gate: "login",
-      label: "Sign in",
-      postcondition: {
-        kind: "text",
-        match: named ? `Welcome {{${named.name}}}` : "Welcome",
-        timeoutMs: 4000,
-      },
+      id, index, action: "handoff", reason: "owner-press", timeoutMs: 8000,
+      ...(target.locators.length ? { target } : {}),
+      caption: caption(name ? `You press ${name}` : "You press the button"),
     };
   }
-  const name = event.identity?.name || event.identity?.text || event.identity?.label;
-  let promptInput: string | undefined;
+  let dialog: { input: string } | undefined;
   if (event.dialogType === "prompt" && event.dialogValue) {
     const input = addInput(inputs, "text", "prompt");
     const typed = savedText(event.dialogValue) || event.dialogValue;
+    input.supply = "saved";
     input.default = typed;
-    promptInput = input.name;
+    dialog = { input: input.name };
     if (typed && !meta.secrets?.includes(typed)) known.push({ name: input.name, value: typed });
   }
   return {
-    ...step,
-    action: "click",
-    label: name ? `Click "${name}"` : "Click",
-    ...(promptInput ? { input: promptInput, value: `{{${promptInput}}}` } : {}),
+    id, index, action: "click", timeoutMs: 8000, target,
+    caption: caption(clickSentence(name), cite, box),
+    ...(event.optional ? { optional: event.optional } : {}),
+    ...(dialog ? { dialog } : {}),
     ...observed(event, undefined, false, known, meta.secrets ?? []),
   };
+}
+
+function targetFor(identity: Identity | undefined, locators: StepLocator[] | undefined): Target {
+  const list = locators?.length ? locators : (locatorsFromIdentity(identity) ?? []);
+  const hint = hintFromIdentity(identity);
+  return { locators: list, ...(hint ? { hint } : {}) };
+}
+
+function handoffCheck(result: { check?: Check }): { check?: Check } {
+  if (!result.check || result.check.kind === "settled") return {};
+  return result;
 }
 
 function observed(
@@ -591,19 +564,24 @@ function observed(
   secret: boolean,
   known: readonly KnownTyped[],
   secrets: string[],
-): Pick<WorkflowStep, "postcondition" | "expect" | "confidence"> {
-  const identity = structuredClone(event.identity);
-  const step = applyExpect(
-    { id: "x", index: 0, action: "click", label: "x", surface: "dom", timeoutMs: 8000, identity },
-    { ...event, identity },
-    { input, secret, known, secrets },
-  );
-  return {
-    ...(step.postcondition ? { postcondition: step.postcondition } : {}),
-    ...(step.expect ? { expect: step.expect } : {}),
-    ...(step.confidence ? { confidence: step.confidence } : {}),
-  };
+): { check?: Check } {
+  const result = inferExpect(event, { input, secret, known, secrets });
+  const raw = result.expect ?? result.postcondition;
+  if (!raw) return {};
+  const timeoutMs = raw.timeoutMs ?? 4000;
+  if (raw.kind === "settled") return { check: { kind: "settled", timeoutMs } };
+  if (raw.kind === "state" && raw.state) {
+    return { check: { kind: "state", state: raw.state, locators: locatorsFromIdentity(raw.identity) ?? [], timeoutMs } };
+  }
+  if ((raw.kind === "element" || raw.kind === "absent") && raw.identity) {
+    return { check: { kind: raw.kind, locators: locatorsFromIdentity(raw.identity) ?? [], timeoutMs } };
+  }
+  if (raw.match && (raw.kind === "text" || raw.kind === "url" || raw.kind === "value")) {
+    return { check: { kind: raw.kind, match: raw.match, timeoutMs } };
+  }
+  return {};
 }
+
 
 /** Upload, drop, and a typed path become a file slot. The path itself is not a step value. */
 function normalizeFile(event: TrailEvent): TrailEvent {
@@ -620,16 +598,6 @@ function normalizeFile(event: TrailEvent): TrailEvent {
 
 function savedText(value: string | undefined): string | undefined {
   return hasStrippedSecret(value) ? undefined : value;
-}
-
-function inferGate(event: TrailEvent, secrets: string[]): "login" | "confirm" | undefined {
-  if (event.gate === "login" || event.gate === "confirm") return event.gate;
-  if (isSecret(event, secrets)) return "login";
-  const name = [event.identity?.name, event.identity?.text, event.identity?.label, event.identity?.nameAttr]
-    .filter(Boolean)
-    .join(" ");
-  if (/\b(log in|sign in)\b/i.test(name)) return "login";
-  return undefined;
 }
 
 function isSecret(event: TrailEvent, secrets: string[]): boolean {
@@ -675,7 +643,7 @@ function addInput(inputs: WorkflowInput[], type: WorkflowInput["type"], hint: st
   let name = base;
   let n = 2;
   while (inputs.some((item) => item.name === name)) name = `${suffix}${n++}`;
-  const input: WorkflowInput = { name, type, required: true, label: name };
+  const input: WorkflowInput = { name, type, label: name, supply: "must" };
   inputs.push(input);
   return input;
 }
@@ -704,19 +672,18 @@ function collapseDigits(
     }
     const sample = pieces[i]!.step;
     const input = addInput(inputs, "number", inputs.some((item) => item.name === "a") ? "b" : "a");
-    input.default = run.map((step) => step.identity?.name).join("");
+    input.supply = "saved";
+    input.default = run.map((step) => stepQuery(step)?.name).join("");
     input.label = input.name;
     out.push({
       events: pieces.slice(i, i + run.length).flatMap((piece) => piece.events),
       step: {
-        ...sample,
+        id: sample.id,
+        index: sample.index,
         action: "digits",
-        input: input.name,
-        value: `{{${input.name}}}`,
-        label: `Enter {{${input.name}}}`,
-        identity: sample.identity ? { ...sample.identity, name: undefined, text: undefined, title: undefined } : undefined,
-        locators: undefined,
-        postcondition: { kind: "element", timeoutMs: 4000 },
+        timeoutMs: sample.timeoutMs,
+        caption: caption(`Enter {{${input.name}}}`),
+        text: { input: input.name },
       },
     });
     i += run.length;
@@ -728,8 +695,9 @@ function digitRun(steps: WorkflowStep[], start: number): WorkflowStep[] {
   const run: WorkflowStep[] = [];
   for (let i = start; i < steps.length; i++) {
     const step = steps[i]!;
-    if (step.action !== "click" || step.surface !== "os") break;
-    if (!step.identity?.name || !DIGIT.test(step.identity.name)) break;
+    if (step.action !== "click" || stepSurface(step) === "dom") break;
+    const digit = stepQuery(step)?.name;
+    if (!digit || !DIGIT.test(digit)) break;
     run.push(step);
   }
   return run;
@@ -742,20 +710,24 @@ function attachExpr(steps: WorkflowStep[]): WorkflowStep[] {
   const right = nums[1]!;
   const leftAt = steps.indexOf(left);
   const rightAt = steps.indexOf(right);
-  const op = steps.slice(leftAt + 1, rightAt).find((step) => step.action === "click" && OP.has(step.identity?.name || ""));
-  const equals = steps.slice(rightAt + 1).find((step) => step.identity?.name === "=");
-  if (!op || !equals || !left.input || !right.input) return steps;
-  const symbol = op.identity?.name === "×" ? "*" : op.identity?.name === "÷" ? "/" : op.identity?.name;
-  equals.postcondition = { kind: "value", match: `{{${left.input}}}${symbol}{{${right.input}}}`, timeoutMs: 4000 };
+  const op = steps.slice(leftAt + 1, rightAt).find((step) => step.action === "click" && OP.has(stepQuery(step)?.name || ""));
+  const equals = steps.slice(rightAt + 1).find((step) => stepQuery(step)?.name === "=");
+  const leftName = left.action === "digits" && "input" in left.text ? left.text.input : undefined;
+  const rightName = right.action === "digits" && "input" in right.text ? right.text.input : undefined;
+  if (!op || !equals || !leftName || !rightName || equals.action !== "click") return steps;
+  const opName = stepQuery(op)?.name;
+  const symbol = opName === "×" ? "*" : opName === "÷" ? "/" : opName;
+  equals.check = { kind: "value", match: `{{${leftName}}}${symbol}{{${rightName}}}`, timeoutMs: 4000 };
   return steps;
 }
 
 function assertFileSlots(doc: WorkflowV2): void {
   const walk = (step: WorkflowStep): void => {
-    if (step.value && step.value.startsWith("/") && !step.value.includes("{{")) {
+    const value = stepValueTemplate(step);
+    if (value && value.startsWith("/") && !value.includes("{{")) {
       throw new Error("interpret kept a file path");
     }
-    for (const nested of step.forEach?.steps ?? []) walk(nested);
+    for (const nested of stepForEach(step)?.steps ?? []) walk(nested);
   };
   for (const step of doc.steps) walk(step);
 }

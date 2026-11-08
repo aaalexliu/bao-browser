@@ -5,6 +5,7 @@
 
 import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
+import { stepTitle, stepQuery } from "./schema";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
 
@@ -154,7 +155,7 @@ export async function inferSavedWorkflow(
     name: parsed.title || floor,
     steps: base.steps.map((step) => {
       const intent = parsed.steps.get(step.id);
-      return intent ? { ...step, intent } : step;
+      return intent ? { ...step, caption: { ...step.caption, text: intent } } : step;
     }),
     inference: { at: now, provider: completer.provider, model: completer.model, status: "ok" },
   };
@@ -172,7 +173,7 @@ function promptSteps(
   return workflow.steps.map((step, index) => {
     const group = groups?.[index] || [];
     const event = [...group].reverse().find((item) => item.afterUrl || item.beforeUrl);
-    const visible = [step.identity?.name, step.identity?.text, step.identity?.label, step.label]
+    const visible = [stepQuery(step)?.name, stepQuery(step)?.text, stepQuery(step)?.label, stepTitle(step)]
       .filter((item): item is string => typeof item === "string" && !!item.trim())
       .join(" · ");
     return {

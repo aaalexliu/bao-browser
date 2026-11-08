@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import fc from "fast-check";
@@ -10,7 +11,7 @@ import { textScore } from "../../src/v1/repair";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
-const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
+const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validate = ajv.compile(schema);
 
@@ -18,19 +19,13 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return {
-    index: 0,
-    label: partial.label || partial.action,
-    surface: "dom",
-    timeoutMs: 0,
-    ...partial,
-  };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: 0, index: 0, ...partial, label: partial.label || partial.action });
 }
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Freeze",
@@ -38,7 +33,7 @@ function doc(steps: WorkflowStep[]): WorkflowV2 {
     createdAt: 1,
     inputs: [],
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
@@ -75,7 +70,7 @@ test("credit freeze example validates and names the expect phase", () => {
   assert.deepEqual(validateWorkflow(freeze), []);
   assert.equal(validate(freeze), true);
   assert.equal(validate(form), true);
-  assert.equal(freeze.steps.at(-1)?.action, "confirm");
+  assert.equal(freeze.steps.at(-1)?.action, "handoff");
   assert.equal(form.steps.at(-1)?.action, "verify");
 });
 
@@ -160,7 +155,7 @@ test("an id locator wins over a glossary button that shares the field name", asy
       ],
     }),
   ]);
-  workflow.inputs = [{ name: "advcond", type: "text", default: "type 1 diabetes" }];
+  workflow.inputs = [fixtureInput({ name: "advcond", type: "text", default: "type 1 diabetes" })];
   const page = tree([glossary, field], {
     boxes: [
       { x: 40, y: 40, w: 180, h: 24 },
@@ -262,7 +257,7 @@ test("a suggestion click prefers the option when the listbox shows the same text
       ],
     }),
   ]);
-  workflow.inputs = [{ name: "subjectsInput", type: "text", default: "Maths" }];
+  workflow.inputs = [fixtureInput({ name: "subjectsInput", type: "text", default: "Maths" })];
   const driver = fake([tree([listbox, option], {
     boxes: [
       { x: 40, y: 80, w: 240, h: 40 },

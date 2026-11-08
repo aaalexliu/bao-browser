@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,20 +9,20 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { isCollapsedBox, matchLocator } from "../../src/v1/locators";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTitle, stepQuery, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { diffTrajectory, type TrajectoryStep } from "../../src/v1/trajectory";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return { index: 0, label: partial.label || partial.action, surface: "dom", timeoutMs: 0, ...partial };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: 0, ...partial });
 }
 
 function doc(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Checks",
@@ -29,7 +30,7 @@ function doc(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): Workflow
     createdAt: 1,
     inputs,
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
@@ -76,7 +77,7 @@ function searchWorkflow(reveal: boolean): WorkflowV2 {
       { kind: "css", value: "#searchInput" },
     ],
     reveal: reveal ? { kind: "role", role: "link", name: "Search" } : undefined,
-  })], [{ name: "searchInput", type: "text", default: "Ada Lovelace" }]);
+  })], [fixtureInput({ name: "searchInput", type: "text", default: "Ada Lovelace" })]);
 }
 
 test("a hidden box is not a locator hit", () => {
@@ -130,7 +131,7 @@ test("a visible target does not click the search toggle", async () => {
   assert.equal(result.repairs.some((item) => item.repair === "reveal"), false);
 });
 
-test("wait_for fails in that phase and gone fails in expect", async () => {
+test("a text check and an absent check fail in expect", async () => {
   const waiting = doc([step({
     id: "w",
     action: "click",
@@ -139,22 +140,23 @@ test("wait_for fails in that phase and gone fails in expect", async () => {
   })]);
   const missed = await replay(waiting, {}, fake([tree([ident({ testId: "go", text: "Go" })], { texts: [] })]), { heal: unavailableHeal() });
   assert.equal(missed.status, "failed");
-  assert.equal(missed.failure?.phase, "wait_for");
-  assert.equal(missed.steps[0]?.phase, "wait_for");
-  assert.match(missed.steps[0]?.reason || "", /^wait_for:/);
+  assert.equal(missed.failure?.phase, "expect");
+  assert.equal(missed.failure?.reason, "Ready");
+  assert.equal(missed.steps[0]?.phase, "expect");
+  assert.match(missed.steps[0]?.reason || "", /^expect:/);
 
   const covering = doc([step({
     id: "g",
     action: "click",
     identity: ident({ testId: "go", text: "Go" }),
-    gone: { kind: "text", match: "Loading", timeoutMs: 0 },
+    check: { kind: "absent", locators: [{ kind: "testid", value: "go" }], timeoutMs: 0 },
   })]);
   const stuck = await replay(covering, {}, fake([
-    tree([ident({ testId: "go", text: "Go" })], { texts: ["Loading"] }),
-    tree([ident({ testId: "go", text: "Go" })], { texts: ["Loading"] }),
+    tree([ident({ testId: "go", text: "Go" })]),
+    tree([ident({ testId: "go", text: "Go" })]),
   ]), { heal: unavailableHeal() });
   assert.equal(stuck.failure?.phase, "expect");
-  assert.match(stuck.failure?.reason || "", /^gone:/);
+  assert.equal(stuck.failure?.reason, "postcondition");
   assert.equal(stuck.steps[0]?.phase, "expect");
 });
 
@@ -170,8 +172,8 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
     label: "Save",
     readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
   })], [
-    { name: "text", type: "text", default: "bao drift" },
-    { name: "note", type: "text" },
+    fixtureInput({ name: "text", type: "text", default: "bao drift" }),
+    fixtureInput({ name: "note", type: "text" }),
   ]);
   assert.deepEqual(validateWorkflow(workflow), []);
   const passed = await replay(workflow, { text: "bao drift", note }, fake([tree([])]), {
@@ -196,8 +198,8 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
     key: "ctrl+s",
     readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
   })], [
-    { name: "text", type: "text" },
-    { name: "note", type: "text" },
+    fixtureInput({ name: "text", type: "text" }),
+    fixtureInput({ name: "note", type: "text" }),
   ]);
   const refused = await replay(outside, { text: "bao drift", note: "/etc/hostname" }, fake([tree([])]), { heal: unavailableHeal() });
   assert.equal(refused.status, "failed");
@@ -214,7 +216,7 @@ test("a form read-back re-reads the saved text", async () => {
     action: "click",
     identity: save,
     readBack: { source: "text", match: "{{note}}", timeoutMs: 0 },
-  })], [{ name: "note", type: "text", default: "hello" }]);
+  })], [fixtureInput({ name: "note", type: "text", default: "hello" })]);
   const driver = fake([
     tree([save], { texts: [] }),
     tree([save], { texts: ["hello"] }),
@@ -271,10 +273,10 @@ test("the drift report shows the failure phase", () => {
 test("credit freeze read-back is the status text and validates", () => {
   const freeze = JSON.parse(readFileSync("examples/workflows/credit-freeze.json", "utf8")) as WorkflowV2;
   assert.deepEqual(validateWorkflow(freeze), []);
-  const frozen = freeze.steps.find((item) => item.label === "Click Frozen");
+  const frozen = freeze.steps.find((item) => stepTitle(item) === "Click Frozen");
   assert.equal(frozen?.readBack?.source, "text");
   assert.equal(frozen?.readBack?.match, "Status: none");
-  assert.equal(freeze.steps.some((item) => item.action === "click" && item.identity?.id === "apply"), false);
-  assert.equal(freeze.steps.at(-1)?.action, "confirm");
+  assert.equal(freeze.steps.some((item) => item.action === "click" && stepQuery(item)?.id === "apply"), false);
+  assert.equal(freeze.steps.at(-1)?.action, "handoff");
   assert.equal(freeze.precondition?.phase, "auth");
 });

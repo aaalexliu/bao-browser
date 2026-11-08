@@ -8,24 +8,12 @@ import path from "node:path";
 import { applyHybrid, isNoiseStep, parseHybrid } from "../../v1/hybrid";
 import { interpret } from "../../v1/interpret";
 import type { TrailEvent } from "../../v1/interpret";
-import type { WorkflowV2 } from "../../v1/schema";
-import { validateWorkflow } from "../../v1/schema";
+import { stepTitle, stepInputName, handoffReason, validateWorkflow, type WorkflowV2 } from "../../v1/schema";
 import { INTENT_CASES, noisyTrail, type IntentCase } from "./cases";
 import { caseJudgePrompt, calibrationPrompt, HAND_LABELS } from "./labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "./model";
 import { HYBRID_GATE_RULE, modelCondensePrompt, reviseDecision, reviseStepGates } from "./revise";
-import {
-  deterministicWorkflow,
-  expectedHuman,
-  humanKeys,
-  keepEvents,
-  multisetScore,
-  replayCase,
-  scoreParams,
-  stepSignature,
-  targetOf,
-  truthWorkflow,
-} from "./score";
+import { deterministicWorkflow, expectedHuman, humanKeys, keepEvents, multisetScore, replayCase, scoreParams, stepSignature, targetOf, truthWorkflow } from "./score";
 
 export interface IntentRow {
   caseId: string;
@@ -66,9 +54,9 @@ function hybridPrompt(workflow: WorkflowV2): string {
     step.id,
     step.action,
     targetOf(step) || "-",
-    step.input || "-",
-    step.gate || "-",
-    step.label,
+    stepInputName(step) || "-",
+    handoffReason(step) || "-",
+    stepTitle(step),
   ].join(" "));
   return [
     "This workflow was condensed deterministically. Step identity, inputs, and secret tags are fixed.",
@@ -283,7 +271,7 @@ async function hybridRow(item: IntentCase, info: { provider: string; model: stri
     try {
       const reply = await complete(caseJudgePrompt(
         applied.workflow.summary || "",
-        applied.workflow.steps.map((step) => ({ id: step.id, intent: step.intent || "" })),
+        applied.workflow.steps.map((step) => ({ id: step.id, intent: step.caption.text || "" })),
       ));
       tokens += reply.tokens || 0;
       const parsed = parseCaseJudge(reply.text);

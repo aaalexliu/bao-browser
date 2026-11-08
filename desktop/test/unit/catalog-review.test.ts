@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -41,16 +42,16 @@ test("marketplace review keeps all pictures local for private-input workflows an
   try {
     const file = path.join(root, "sample.txt");
     await writeFile(file, "Synthetic attachment");
-    const document: WorkflowV2 = {
-      schema: "bao.workflow/v2",
+    const document: WorkflowV2 = fixtureDoc({
+      schema: "bao.workflow/v4",
       version: 2,
       id: "review-shot-scope",
       name: "Review synthetic samples",
       startUrl: `${origin}/fixture`,
       createdAt: 1,
       inputs: [
-        { name: "password", type: "secret", label: "Synthetic password" },
-        { name: "attachment", type: "file", label: "Synthetic attachment" },
+        fixtureInput({ name: "password", type: "secret", label: "Synthetic password" }),
+        fixtureInput({ name: "attachment", type: "file", label: "Synthetic attachment" }),
       ],
       steps: [
         { id: "ordinary", label: "Review ordinary sample" },
@@ -67,7 +68,7 @@ test("marketplace review keeps all pictures local for private-input workflows an
         postcondition: { kind: "text", match: "Reviewed", timeoutMs: 5000 },
         timeoutMs: 5000,
       })),
-    };
+    });
     library.save(document);
     library.updateSettings({ pageEngine: "old" });
     const outcome = await reviewWorkflow(library, document.id, {
@@ -90,7 +91,7 @@ test("marketplace review keeps all pictures local for private-input workflows an
     }
     assert.deepEqual(pidsForDataDir(path.join(root, "chrome-profile")), []);
     assert.equal(review.shots.length, 0);
-    library.save({ ...document, inputs: [], steps: [document.steps[0]!] });
+    library.save(fixtureDoc({ ...document, inputs: [], steps: [document.steps[0]!] }));
     const ordinary = await reviewWorkflow(library, document.id, {}, { server: origin });
     resume = ordinary.resume;
     assert.equal(ordinary.outcome, "ok", ordinary.reason);

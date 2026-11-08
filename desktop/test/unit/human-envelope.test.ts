@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // A human step returns an envelope and does not block. Resume continues the same
 // page. Confirm is never pressed by resume. The fixture is 127.0.0.1 only.
 
@@ -54,7 +55,7 @@ test("a yielded confirm does not shoot or press, and resume applies nothing", as
 
 test("explicit resume completes a recorded confirm without a postcondition", async () => {
   const workflow = confirmWorkflow("http://127.0.0.1/fixture");
-  delete workflow.steps[0]!.postcondition;
+  if ("check" in workflow.steps[0]!) delete workflow.steps[0]!.check;
   const clicks: string[] = [];
   const driver = fakeDriver(clicks, [], () => {}, new Capture());
   const first = await replay(workflow, {}, driver, { yieldHuman: true });
@@ -256,7 +257,7 @@ test("clearing a wall at a recorded confirm asks for the confirm instead of comp
     const address = fixture.address();
     assert.ok(address && typeof address === "object");
     const workflow = confirmWorkflow(`http://127.0.0.1:${address.port}/`, "wall-confirm");
-    delete workflow.steps[0]!.postcondition;
+    if ("check" in workflow.steps[0]!) delete workflow.steps[0]!.check;
     app.library.save(workflow);
     const first = await runWorkflow(app.library, { id: workflow.id }, undefined, {
       prompts: {
@@ -329,8 +330,8 @@ for (const ending of ["complete", "cancel", "timeout"] as const) {
 }
 
 function signInWorkflow(base: string): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "fixture-signin",
     name: "Fixture sign-in",
@@ -339,7 +340,7 @@ function signInWorkflow(base: string): WorkflowV2 {
     precondition: { kind: "url", match: "/freeze", phase: "auth" },
     inputs: [],
     steps: [
-      {
+      fixtureStep({
         id: "signin",
         index: 0,
         action: "login",
@@ -347,8 +348,8 @@ function signInWorkflow(base: string): WorkflowV2 {
         surface: "dom",
         timeoutMs: 5000,
         postcondition: { kind: "url", match: "/freeze", timeoutMs: 5000 },
-      },
-      {
+      }),
+      fixtureStep({
         id: "status",
         index: 1,
         action: "verify",
@@ -356,21 +357,21 @@ function signInWorkflow(base: string): WorkflowV2 {
         surface: "dom",
         timeoutMs: 2000,
         expect: { kind: "text", match: "Status: none", timeoutMs: 2000 },
-      },
+      }),
     ],
-  };
+  });
 }
 
 function confirmWorkflow(startUrl: string, id = "confirm-apply"): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: "Confirm apply",
     startUrl,
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "apply",
       index: 0,
       action: "confirm",
@@ -380,8 +381,8 @@ function confirmWorkflow(startUrl: string, id = "confirm-apply"): WorkflowV2 {
       timeoutMs: 1000,
       identity: { surface: "dom", role: "button", testId: "apply", text: "Apply", path: [] },
       postcondition: { kind: "text", match: "Applied", timeoutMs: 1000 },
-    }],
-  };
+    })],
+  });
 }
 
 function fakeDriver(clicks: string[], texts: string[], shot: () => void, capture: Capture): Driver {

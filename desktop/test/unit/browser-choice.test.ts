@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep, writeStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
@@ -17,9 +18,9 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const workflow = (startUrl: string, id = "choice"): WorkflowV2 => ({ schema: "bao.workflow/v2", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
-  steps: [{ id: "account", index: 0, action: "verify", label: "Check the signed-in account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in as fixture", timeoutMs: 1000 } }],
-});
+const workflow = (startUrl: string, id = "choice"): WorkflowV2 => (fixtureDoc({ schema: "bao.workflow/v4", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
+  steps: [fixtureStep({ id: "account", index: 0, action: "verify", label: "Check the signed-in account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in as fixture", timeoutMs: 1000 } })],
+}));
 
 test("agent and workflow tools offer the same named browser choices and Bao default", () => {
   assert.equal(browserChoice(undefined), "bao");
@@ -161,7 +162,7 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   }
   for (let run = 0; run < 2; run++) {
     const fresh = workflow(`${site}fresh`, `fresh-copy-${run}`);
-    fresh.steps[0]!.postcondition = { kind: "text", match: "Visit 1", timeoutMs: 1000 };
+    writeStep(fresh.steps[0]!, { postcondition: { kind: "text", match: "Visit 1", timeoutMs: 1000 } });
     app.library.save(fresh);
     const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: fresh.id, browser: "copy", args: {} }), signal: AbortSignal.timeout(20_000) });
     const result = await response.json() as { status: string };
@@ -283,7 +284,7 @@ test("copy and current runs leave the app Sign in window open", { timeout: 60_00
     detach: () => {}, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
   }));
   const doc = workflow(site, "signin-independent");
-  doc.steps[0]!.postcondition = { kind: "text", match: "Ready", timeoutMs: 1000 };
+  writeStep(doc.steps[0]!, { postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } });
   app.library.save(doc);
   for (const browser of ["copy", "current"]) {
     assert.equal((await post("/api/replay", { id: doc.id, browser, args: {} })).status, "passed");

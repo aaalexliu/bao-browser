@@ -31,11 +31,14 @@ export function domainsOf(document: unknown): string[] {
       /* not a url */
     }
   };
-  const doc = document as { startUrl?: string; steps?: { value?: string; postcondition?: { match?: string } }[] };
+  const doc = document as { startUrl?: string; steps?: { url?: string; text?: { literal?: string }; check?: { match?: string }; open?: { url?: string }; download?: { url?: string } }[] };
   add(doc?.startUrl);
   for (const step of doc?.steps ?? []) {
-    add(step.value);
-    add(step.postcondition?.match);
+    add(step.url);
+    add(step.open?.url);
+    add(step.download?.url);
+    add(step.text?.literal);
+    add(step.check?.match);
   }
   return [...hosts];
 }
@@ -55,8 +58,8 @@ export function releaseHash(document: unknown): string {
 }
 
 export function summaryOf(document: unknown): string {
-  const steps = (document as { steps?: { label?: string }[] }).steps ?? [];
-  const labels = steps.map((step) => step.label).filter((label): label is string => !!label);
+  const steps = (document as { steps?: { caption?: { text?: string } }[] }).steps ?? [];
+  const labels = steps.map((step) => step.caption?.text).filter((label): label is string => !!label);
   return labels.slice(0, 8).join(", ");
 }
 

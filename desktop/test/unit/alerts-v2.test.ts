@@ -1,3 +1,4 @@
+import { checkMatch, stepCheck } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -29,5 +30,5 @@ test("alerts v1 stays in history and v2 keeps the dialog click", () => {
   assert.equal(dropped.steps.length, 0);
   const kept = condense(v2, { id: "alerts", name: truth.name, startUrl: truth.startUrl, secrets: [] });
   assert.ok(kept.steps.length >= 1);
-  assert.match(kept.steps.map((step) => step.expect?.match || "").join(" "), /successfully clicked an alert/);
+  assert.match(kept.steps.map((step) => checkMatch(stepCheck(step)) || "").join(" "), /successfully clicked an alert/);
 });

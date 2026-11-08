@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Live page class. Local fixtures mimic each vendor, a modal the tree does not
 // list, and the Experian session: member 200, graphql 403, then a client
 // navigation to /login/index with no HTTP redirect. Public pages are only
@@ -87,15 +88,15 @@ function serve(reqPath: string, res: ServerResponse): void {
 }
 
 function workflow(startUrl: string, id = "wf"): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: "Fixture",
     startUrl,
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "apply",
       index: 0,
       action: "click",
@@ -103,8 +104,8 @@ function workflow(startUrl: string, id = "wf"): WorkflowV2 {
       surface: "dom",
       timeoutMs: 2000,
       identity: { surface: "dom", role: "button", text: "Apply", testId: "apply", path: [] },
-    }],
-  };
+    })],
+  });
 }
 
 async function play(page: Page, startUrl: string): Promise<{ result: RunResult; proposed: number }> {
@@ -257,16 +258,16 @@ test("the-internet modals classify as clutter and a public challenge is reported
 test("the needs_human run page and act prompt render in light and dark", { timeout: 90_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-shot-"));
   const library = new Library(home);
-  library.save({
-    schema: "bao.workflow/v2",
+  library.save(fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: "experian",
     name: "Experian",
     startUrl: "https://usa.experian.com/member",
     createdAt: 1,
     inputs: [],
-    steps: [{ id: "open", index: 0, action: "click", label: "Open account", surface: "dom", timeoutMs: 2000 }],
-  });
+    steps: [fixtureStep({ id: "open", index: 0, action: "click", label: "Open account", surface: "dom", timeoutMs: 2000 })],
+  }));
   const ask = makeAsk({
     kind: "wall",
     wall: "bot",

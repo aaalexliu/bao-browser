@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 // Marketplace details and direct execution of an owner-requested workflow.
 // Local `vercel dev` only. Nothing is deployed.
 // Run after `tsc -p tsconfig.desktop.json`. Chrome needs BAO_CHROME_NO_SANDBOX=1.
@@ -192,15 +193,15 @@ test("a marketplace listing installs and runs without a Bao approval", { timeout
 });
 
 function workflow(startUrl: string): WorkflowV2 {
-  return {
-    schema: "bao.workflow/v2",
+  return fixtureDoc({
+    schema: "bao.workflow/v4",
     version: 2,
     id: LISTING_ID,
     name: "Submit a payment",
     startUrl,
     createdAt: 1,
-    inputs: [{ name: "password", type: "secret", label: "Password", required: false }],
-    steps: [{
+    inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", required: false })],
+    steps: [fixtureStep({
       id: "send",
       index: 0,
       action: "click",
@@ -209,8 +210,8 @@ function workflow(startUrl: string): WorkflowV2 {
       timeoutMs: 8000,
       identity: { surface: "dom", role: "button", path: [], testId: "send", text: "Submit" },
       postcondition: { kind: "text", match: "Sent", timeoutMs: 8000 },
-    }],
-  };
+    })],
+  });
 }
 
 async function publish(origin: string, cookie: string, doc: WorkflowV2, png: Buffer): Promise<void> {

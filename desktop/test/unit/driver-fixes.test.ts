@@ -1,3 +1,4 @@
+import { checkMatch, stepTitle, stepCheck, handoffReason } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -108,15 +109,14 @@ test("a login stop becomes a sign-in step whose postcondition is Welcome", async
     },
     {
       id: "e5", ts: 5, kind: "act", op: "click", gate: "login", performed: false, identity: button,
-      beforeUrl: "http://127.0.0.1/t/login", afterUrl: "http://127.0.0.1/t/login",
+      beforeUrl: "http://127.0.0.1/t/login", afterUrl: "http://127.0.0.1/t/login", afterText: "Welcome ada",
     },
   ];
   const doc = condense(events, { id: "login", name: "Login", startUrl: "http://127.0.0.1/t/login", secrets: [CAPTURE_SECRET] });
-  const sign = doc.steps.filter((step) => step.action === "click" && step.identity?.id === "login-btn");
+  const sign = doc.steps.filter((step) => step.action === "handoff" && handoffReason(step) === "sign-in");
   assert.equal(sign.length, 1);
-  assert.equal(sign[0]?.gate, "login");
-  assert.equal(sign[0]?.label, "Sign in");
-  assert.equal(sign[0]?.postcondition?.match, "Welcome {{username}}");
+  assert.equal((sign[0] == null ? undefined : stepTitle(sign[0])), "Sign in");
+  assert.equal(checkMatch(sign[0] == null ? undefined : stepCheck(sign[0])), "Welcome {{username}}");
   assert.equal(JSON.stringify(doc).includes(CAPTURE_SECRET), false);
   const driver = memoryDriver([user, password, button]);
   const secret = doc.inputs.find((item) => item.type === "secret");
@@ -272,9 +272,9 @@ test("fixture trails: a typed path never lands in the trail, and a login stop re
       startUrl: `http://127.0.0.1:${server.port}/t/login`,
       secrets: [CAPTURE_SECRET],
     });
-    const sign = loginDoc.steps.find((step) => step.action === "click" && step.gate === "login");
+    const sign = loginDoc.steps.find((step) => step.action === "handoff" && step.reason === "sign-in");
     assert.ok(sign);
-    assert.equal(sign?.postcondition?.match, "Welcome {{username}}");
+    assert.equal(checkMatch(sign == null ? undefined : stepCheck(sign)), "Welcome {{username}}");
     const loginRun = await replayTask(loginDoc, login, server.port, {
       texts: ["grace"],
       secret: "ReplaySecretOne!",

@@ -1,7 +1,6 @@
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { dumpPage, type DomDump, type PageDump } from "../v1/dom-page";
 import { interpret, type TrailEvent } from "../v1/interpret";
-import { unstableId } from "../v1/identity";
 import { buildLocators, matchLocator } from "../v1/locators";
 import { leafTexts, smallestChange } from "../v1/recorder";
 import type { Identity, StepLocator } from "../v1/schema";
@@ -85,15 +84,6 @@ function durableTarget(node: DomDump, page: PageDump): AgentBrowserReplayTarget 
   const priority = ["testid", "css", "xpath", "role", "text", "anchor"];
   locators.sort((left, right) => priority.indexOf(left.kind) - priority.indexOf(right.kind));
   return locators.length ? { url: page.url, identity, locators } : undefined;
-}
-
-function requiredIdentity(identity: Identity | undefined, locators: StepLocator[] | undefined): Identity | undefined {
-  if (!identity) return undefined;
-  const base = { surface: identity.surface, role: identity.role, path: [] };
-  if (identity.testId && locators?.some((locator) => locator.kind === "testid" && locator.value === identity.testId)) return { ...base, testId: identity.testId };
-  if (identity.id && !unstableId(identity.id) && locators?.some((locator) => locator.kind === "css" && locator.value?.startsWith("#"))) return { ...base, id: identity.id };
-  if (identity.nameAttr && !unstableId(identity.nameAttr) && locators?.some((locator) => locator.kind === "css" && locator.value?.includes("[name="))) return { ...base, nameAttr: identity.nameAttr };
-  return undefined;
 }
 
 export class AgentBrowserWorkflow {
@@ -193,9 +183,15 @@ export class AgentBrowserWorkflow {
           if (!target && command !== "press") this.unavailable("an action had no durable target");
           else if (command === "press" && !target && !before.pageLevel) this.unavailable("a key action had no durable target");
           else {
+            const box = captured?.bbox;
+            const viewport = before.before.page.viewport;
+            const seen = box && viewport && box.w > 0 && box.h > 0
+              && box.x < viewport.width && box.y < viewport.height && box.x + box.w > 0 && box.y + box.h > 0
+              ? { box: { x: box.x, y: box.y, width: box.w, height: box.h }, viewport } : {};
             const event: TrailEvent = {
               id, toolCallId: id, ts: Date.now(), kind: "act", op: command === "fill" ? "type" : command === "press" ? "key" : "click",
               ...(target ? { identity: target.identity, locators: target.locators } : {}),
+              ...seen,
               ...(command === "fill" ? { value: args[1], valueMode: "full" } : {}),
               ...(command === "press" ? { key: args[0] } : {}),
               beforeUrl: target?.url ?? before.before.page.url,
@@ -227,10 +223,6 @@ export class AgentBrowserWorkflow {
       try {
         const workflow = interpret(this.events, { id: this.workflowId, name: `Browser task on ${new URL(this.startUrl!).hostname}`, startUrl: this.startUrl!, preserveActions: true });
         if (workflow.steps.length !== this.events.length) throw new Error("an action could not be converted");
-        for (const step of workflow.steps) {
-          const identity = requiredIdentity(step.identity, step.locators);
-          if (identity) step.waitFor = { kind: "element", identity, timeoutMs: step.timeoutMs };
-        }
         workflow.driver = "playwright";
         workflow.replayed = false;
         this.persist();

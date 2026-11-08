@@ -1,7 +1,7 @@
 import { FILE_BINDING } from "../../../shared/bindings";
 import { redactSavedValue } from "../../../shared/outbound-secrets";
 import { secretSavedField, STRIPPED_SECRET } from "../../../shared/saved-secrets";
-import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
+import { stepValueTemplate, stepForEach, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import type { StoredRun } from "../v1/store";
 
 function* fields(value: unknown, excluded?: unknown): Generator<unknown> {
@@ -23,8 +23,9 @@ export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run:
   const scopes: { step: WorkflowStep; nodes: unknown[] }[] = [];
   const walk = (steps: WorkflowStep[]): void => {
     for (const item of steps) {
-      scopes.push({ step: item, nodes: [...fields(item, item.forEach?.steps)] });
-      if (item.forEach) walk(item.forEach.steps);
+      const loop = stepForEach(item);
+      scopes.push({ step: item, nodes: [...fields(item, loop?.steps)] });
+      if (loop) walk(loop.steps);
     }
   };
   walk(workflow.steps);
@@ -44,7 +45,7 @@ export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run:
   const hidden = (item: WorkflowStep): boolean => {
     const scope = scopes.find((candidate) => candidate.step === item);
     return !scope || structural(scope.nodes) || bound(scope.nodes)
-      || redactSavedValue(item.value ?? "") === STRIPPED_SECRET || Boolean(item.forEach?.steps.some(hidden));
+      || redactSavedValue(stepValueTemplate(item) ?? "") === STRIPPED_SECRET || Boolean(stepForEach(item)?.steps.some(hidden));
   };
   const recorded = [...(run.receipts || []), run.failure].some((item) =>
     item !== null && typeof item === "object" && "stepId" in item && item.stepId === step.id)

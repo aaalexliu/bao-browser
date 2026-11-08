@@ -1,3 +1,4 @@
+import { checkMatch, stepCheck } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BrowserDriver } from "../../src/v1/browser-driver";
@@ -81,8 +82,8 @@ test("the recorder stores the dialog and the text that appears after it closes",
     assert.match(click.subtreeAfter || "", /successfully clicked an alert/);
     const doc = condense([stamp(click)], { id: "wf", name: "Alert", startUrl: "https://fixture.test/alerts" });
     assert.equal(doc.steps.length, 1);
-    assert.equal(doc.steps[0]?.expect?.kind, "text");
-    assert.match(doc.steps[0]?.expect?.match || "", /successfully clicked an alert/);
+    assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "text");
+    assert.match(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])) || "", /successfully clicked an alert/);
 
     events.length = 0;
     page.removeAllListeners("dialog");

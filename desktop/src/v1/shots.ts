@@ -22,6 +22,10 @@ export function workflowShotName(stepId: string): string {
   return shotFile(stepId, "after").replace(/-after\.png$/, ".png");
 }
 
+export function viewportShotName(stepId: string): string {
+  return workflowShotName(stepId).replace(/\.png$/, ".viewport.png");
+}
+
 /** Legacy guide crop filename. New guides use the original workflow picture. */
 export function guideShotName(stepId: string): string {
   return workflowShotName(stepId).replace(/\.png$/, ".guide.png");

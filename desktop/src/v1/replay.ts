@@ -15,56 +15,15 @@ import { lookup, normRole, pathEq, sameRecordedControl, unstableId } from "./ide
 import { actWaitMs, confirmButton, makeAsk, siteHost, wallInstruction, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
 import { identityView } from "./run-trace";
-import {
-  applyPatch,
-  stepPolicy,
-  type FailureSnapshot,
-  type HealProposal,
-  type HealProvider,
-  type HealRecord,
-  type HealSettings,
-  type ReplayPhase,
-  type StepFailure,
-  type TriedLocator,
-} from "./heal";
+import { applyPatch, stepPolicy, type FailureSnapshot, type HealProposal, type HealProvider, type HealRecord, type HealSettings, type ReplayPhase, type StepFailure, type TriedLocator } from "./heal";
 import { isCollapsedBox, locatorIndexes, matchLabeledControl, matchLocator, scoreLocator } from "./locators";
 import { classifyFailure } from "./triage";
 import { findRecovery, hardFailure, hasCaptcha, RECOVERY_LIMIT } from "./recover";
-import {
-  classifyPage,
-  recordingExpectsLogin,
-  type PageClassDecision,
-  type PageClassRecord,
-  type PageSignals,
-} from "./page-class";
+import { classifyPage, recordingExpectsLogin, type PageClassDecision, type PageClassRecord, type PageSignals } from "./page-class";
 import { ReceiptLog, readThrowaway, type Receipt } from "./receipt";
 import { collapsedTarget, discoverReveal, labelCandidate, recordedReveal, anchorCandidate, type RepairLog } from "./repair";
-import {
-  beginFilesRun,
-  downloadFileName,
-  endFilesRun,
-  fileDigest,
-  filesFor,
-  filesRun,
-  openTarget,
-  placeDownload,
-  prepareFilesDatesRun,
-  renderTemplate,
-  templateScope,
-  type FileOutput,
-} from "./files-dates";
-import {
-  popupDismissName,
-  subst,
-  type FileArg,
-  type Identity,
-  type ReadBack,
-  type ReplayArgs,
-  type StepCheck,
-  type StepLocator,
-  type WorkflowStep,
-  type WorkflowV2,
-} from "./schema";
+import { beginFilesRun, downloadFileName, endFilesRun, fileDigest, filesFor, filesRun, openTarget, placeDownload, prepareFilesDatesRun, renderTemplate, templateScope, type FileOutput } from "./files-dates";
+import { stepOptional, stepDownload, stepOpen, popupDismissName, stepCheck, stepDate, stepForEach, stepInputName, stepKey, stepLocators, stepQuery, stepTitle, stepValueTemplate, subst, type Check, type FileArg, type Identity, type ReadBack, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shotFile, shotFormat } from "./shots";
 import { postKey, targetKey, timingBucket, type TrajectoryStep } from "./trajectory";
 
@@ -145,6 +104,7 @@ export interface Driver {
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
+  ownerContinued?(): boolean;
   /** Page PNG or JPEG of the target. Unit-test drivers omit this. */
   shot?(target?: ShotTarget): Promise<Buffer | undefined>;
   /** Full viewport. Unit-test drivers omit this. */
@@ -204,6 +164,7 @@ export interface RunResult {
     endedAt?: number;
     beforeShot?: string;
     afterShot?: string;
+    target?: { rect: { x: number; y: number; width: number; height: number }; viewport: { width: number; height: number } };
     beforeShotError?: string;
     afterShotError?: string;
     triage?: string;
@@ -370,7 +331,7 @@ export async function replay(
         failure: {
           stepId: step.id,
           index: step.index,
-          intent: step.intent || step.label,
+          intent: step.caption.text || stepTitle(step),
           phase: "action",
           reason: "cancelled",
           snapshot: {},
@@ -396,11 +357,12 @@ export async function replay(
     driver.markStep?.(step.id);
     let pictured = step;
     const started = clock();
-    const yieldShot = opts.yieldHuman && !skipReason && (step.action === "login" || step.action === "confirm");
+    const yieldShot = opts.yieldHuman && !skipReason && step.action === "handoff";
     const before = yieldShot ? { error: "Pictures stay off while you have the page." } : await writeStepShot(driver, opts.shotDir, step, "before");
     const beforeShot = before.ref;
+    const marked = "viewport" in before && before.viewport ? storedShotTarget(step) : undefined;
     const stamp = (patch: RunResult["steps"][number]) => {
-      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error };
+      steps[i] = { ...patch, startedAt: started, endedAt: clock(), beforeShot, beforeShotError: before.error, ...(marked ? { target: marked } : {}) };
     };
     gate.onPause = (ask) => {
       stamp({ id: step.id, status: "paused", reason: ask.kind === "login" ? "sign in" : "confirm" });
@@ -413,15 +375,9 @@ export async function replay(
       continue;
     }
     const extra = i === workflow.steps.length - 1 ? workflow.readBack : undefined;
-    if (step.action !== "login" && step.action !== "confirm" && stepNeedsSecretValue(step, workflow, args)) {
+    if (!(step.action === "handoff" && step.reason === "sign-in") && stepNeedsSecretValue(step, workflow, args)) {
       const failure = await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets);
       stamp({ id: step.id, status: "failed", reason: NEEDS_SECRET_VALUE, phase: failure.phase });
-      return finish({ runId, status: "failed", steps, failure });
-    }
-    if (step.unresolved && step.unresolved.reason !== NEEDS_SECRET_VALUE) {
-      const failure = await fail(driver, step, "find", "unresolved step", undefined, secrets);
-      stamp({ id: step.id, status: "failed", reason: phaseReason(failure), phase: failure.phase });
-      noteTrajectory(trajectory, step, undefined, false, clock() - started);
       return finish({ runId, status: "failed", steps, failure });
     }
     const noteClass = (decision: PageClassDecision, keepChanged = false) => {
@@ -452,7 +408,7 @@ export async function replay(
         stepId: step.id,
         stepIndex: step.index + 1,
         stepCount: workflow.steps.length,
-        label: step.label,
+        label: stepTitle(step),
         site: siteHost(workflow.startUrl),
         timeoutMs: actWaitMs(undefined, settings.actTimeoutMs),
         runId,
@@ -508,7 +464,7 @@ export async function replay(
       outcome = held.outcome;
     }
     let clutterPrimed = false;
-    if (!step.optional && !outcome && before && before.class === "clutter") {
+    if (!stepOptional(step) && !outcome && before && before.class === "clutter") {
       noteClass(before);
       const nodes = (await driver.tree().catch(() => undefined))?.nodes || [];
       if (!findRecovery(nodes) && recovery.used < RECOVERY_LIMIT) {
@@ -527,7 +483,7 @@ export async function replay(
       return finish({ runId, status: "failed", steps, failure });
     }
     repairs.push(...outcome.repairs);
-    if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && step.action !== "login") {
+    if (!outcome.ok && "failure" in outcome && outcome.failure.phase === "auth" && !(step.action === "handoff" && step.reason === "sign-in")) {
       const recovered = await recoverAuth(workflow, step, args, driver, secrets, gate);
       if (recovered) {
         noteAuth(trail, step.id, true);
@@ -572,7 +528,7 @@ export async function replay(
         outcome = held.outcome;
         failure = held.outcome.failure;
       }
-    } else if (!step.optional && missed.class === "clutter") {
+    } else if (!stepOptional(step) && missed.class === "clutter") {
       const nodesNow = (await driver.tree().catch(() => undefined))?.nodes || [];
       const coveredNow = findRecovery(nodesNow);
       const budgetLeft = recovery.used < RECOVERY_LIMIT;
@@ -695,7 +651,7 @@ export async function replay(
     }
     await driver.notify({
       title: mode === "auto" ? "Bao healed a step" : "Bao needs approval",
-      body: `${workflow.name}: ${step.label}`,
+      body: `${workflow.name}: ${stepTitle(step)}`,
       workflowId: workflow.id,
       runId,
       stepId: step.id,
@@ -710,7 +666,7 @@ export async function replay(
     pictured = patched;
     const retried = await runStep(workflow, patched, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
     repairs.push(...retried.repairs);
-    record.executed = { action: patched.action, identity: patched.identity };
+    record.executed = { action: patched.action, identity: stepQuery(patched) };
     record.postconditionPassed = retried.ok;
     heals.push(record);
     if (!retried.ok && "paused" in retried) {
@@ -745,7 +701,8 @@ export async function replay(
   const lastId = ran[ran.length - 1]?.id;
   const last = workflow.steps.find((step) => step.id === lastId && step.action !== "note");
   let finalCheckFailed = false;
-  if (last && (last.expect || last.postcondition)) {
+  const healed = heals.some((item) => item.failedStep.id === last?.id && item.postconditionPassed);
+  if (last && stepCheck(last) && !healed) {
     finalCheckFailed = !(await expectationsHold(last, await driver.tree(), args));
   }
   if (!runPassed(steps, finalCheckFailed)) {
@@ -758,7 +715,7 @@ export async function replay(
       failure: {
         stepId: last?.id || workflow.id,
         index: last?.index ?? 0,
-        intent: last?.intent || last?.label || workflow.name,
+        intent: last ? stepTitle(last) : workflow.name,
         phase: "expect",
         reason,
         snapshot,
@@ -810,7 +767,7 @@ async function runStep(
   appending = false,
 ): Promise<StepOutcome> {
   const repairs: RepairLog[] = [];
-  if (step.action !== "login" && step.action !== "confirm" && stepNeedsSecretValue(step, workflow, args)) {
+  if (!(step.action === "handoff" && step.reason === "sign-in") && stepNeedsSecretValue(step, workflow, args)) {
     return { ok: false, repairs, failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
   }
   if (step.action === "note") return { ok: true, repairs };
@@ -830,7 +787,7 @@ async function runStep(
     return { ok: true, repairs, detail: data.detail };
   }
   if (step.action === "navigate") {
-    const url = step.value || workflow.startUrl;
+    const url = (step.action === "navigate" ? step.url : undefined) || workflow.startUrl;
     try {
       if (url && driver.goto) await driver.goto(url);
     } catch (err) {
@@ -843,25 +800,8 @@ async function runStep(
     }
     return { ok: true, repairs, recovered: held.recovered };
   }
-  if (step.waitFor) {
-    const ready = await holdCheck(step.waitFor, args, driver, true);
-    if (!ready) {
-      return { ok: false, repairs, failure: await fail(driver, step, "wait_for", checkReason(step.waitFor), undefined, secrets) };
-    }
-  }
   const outcome = await runStepAction(step, args, driver, secrets, repairs, locatorHits, locatorMode, gate, recovery);
   if (!outcome.ok || outcome.skipped) return outcome;
-  if (step.gone) {
-    const left = await holdCheck(step.gone, args, driver, false);
-    if (!left) {
-      return {
-        ok: false,
-        repairs: outcome.repairs,
-        acted: outcome.acted,
-        failure: await fail(driver, step, "expect", `gone: ${step.gone.match || step.gone.kind}`, undefined, secrets),
-      };
-    }
-  }
   for (const read of [step.readBack, extra]) {
     if (!read) continue;
     const failure = await takeReadBack(workflow, step, read, args, driver, secrets, receiptLog, runId);
@@ -881,12 +821,11 @@ async function runStepAction(
   gate: ApplyGate,
   recovery: RecoveryBudget,
 ): Promise<StepOutcome> {
-  if (step.action === "login") return runLogin(gate.workflow, step, args, driver, secrets, gate);
+  if (step.action === "handoff") return runHandoff(gate.workflow, step, args, driver, secrets, gate);
   const seen = await driver.tree();
   const miss = authPreconditionMiss(gate.workflow.precondition, seen.url);
   if (miss) return { ok: false, repairs, failure: await fail(driver, step, "auth", miss, undefined, secrets) };
-  if (step.action === "confirm") return runConfirm(step, args, driver, secrets, gate);
-  if (step.action === "download" || step.action === "open" || step.datePicker) {
+  if (step.action === "download" || step.action === "open" || stepDate(step)) {
     return runFilesDatesStep(step, args, driver, secrets, repairs, gate, recovery);
   }
   if (step.action === "verify") {
@@ -894,9 +833,11 @@ async function runStepAction(
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     return { ok: true, repairs, recovered: held.recovered };
   }
-  if (step.action === "key" && !step.identity) {
+  if (step.action === "key" && !stepQuery(step)) {
+    const key = stepKey(step);
+    if (!key) return { ok: false, repairs, failure: await fail(driver, step, "action", NEEDS_SECRET_VALUE, undefined, secrets) };
     try {
-      await driver.key(step.key || "Enter");
+      await driver.key(key);
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
@@ -907,9 +848,9 @@ async function runStepAction(
     return { ok: true, repairs, recovered: held.recovered };
   }
   if (step.action === "digits") {
-    const text = String(args[step.input || ""] ?? subst(step.value || "", args));
+    const text = String(args[stepInputName(step) || ""] ?? subst(stepValueTemplate(step) || "", args));
     try {
-      await driver.digits(step.identity?.app, step.identity?.role || "button", text);
+      await driver.digits(stepQuery(step)?.app, stepQuery(step)?.role || "button", text);
     } catch (err) {
       return { ok: false, repairs, failure: await fail(driver, step, "action", err instanceof Error ? err.message : String(err), undefined, secrets) };
     }
@@ -917,13 +858,14 @@ async function runStepAction(
     if (!held.ok) {
       return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
     }
-    return { ok: true, repairs, acted: step.identity, recovered: held.recovered };
+    return { ok: true, repairs, acted: stepQuery(step), recovered: held.recovered };
   }
   const found = await findTarget(step, args, driver, repairs, locatorHits, locatorMode, gate, recovery);
   if (found.optionalAbsent) return { ok: true, repairs, skipped: true, note: "optional dismiss absent" };
   if (!found.hit.ok || found.hit.index == null) {
     const failure = await fail(driver, step, "find", found.hit.reason || "lookup miss", found.hit.brokenAttr, secrets);
-    if (step.identity) failure.identity = identityView(step.identity, found.nodes, found.hit);
+    const missed = stepQuery(step);
+    if (missed) failure.identity = identityView(missed, found.nodes, found.hit);
     return { ok: false, repairs, failure: withLocators(failure, found.tried) };
   }
   const node = found.nodes[found.hit.index];
@@ -948,7 +890,7 @@ async function runStepAction(
         failure: {
           stepId: step.id,
           index: step.index,
-          intent: step.intent || step.label,
+          intent: step.caption.text || stepTitle(step),
           phase: "action",
           reason: "cancelled",
           snapshot: {},
@@ -1004,7 +946,7 @@ async function dismissCover(
   repairs: RepairLog[],
   budget: RecoveryBudget,
 ): Promise<string | undefined> {
-  if (step.optional || budget.used >= RECOVERY_LIMIT) return undefined;
+  if (stepOptional(step) || budget.used >= RECOVERY_LIMIT) return undefined;
   const tree = await driver.tree();
   const stop = hardFailure({ nodes: tree.nodes, network: driver.trace?.().network });
   if (stop || hasCaptcha(tree.nodes)) return undefined;
@@ -1035,7 +977,7 @@ function canClick(index: number, boxes?: LiveTree["boxes"], hidden?: boolean[]):
 /** The step's control is visible inside the dialog, so the dialog is the form. */
 function targetInsideDialog(step: WorkflowStep, tree: LiveTree): boolean {
   const flags = tree.inDialog;
-  const want = step.identity;
+  const want = stepQuery(step);
   if (!flags || !want) return false;
   const index = tree.nodes.findIndex((node) => sameDialogControl(want, node));
   if (index < 0 || !flags[index]) return false;
@@ -1075,9 +1017,9 @@ async function findTarget(
   gate: ApplyGate,
   recovery: RecoveryBudget,
 ): Promise<{ nodes: Identity[]; hit: ReturnType<typeof lookup>; tried: TriedLocator[]; recovered?: string; optionalAbsent?: true }> {
-  if (step.optional === "dismiss") {
+  if (step.action === "click" && step.optional === "dismiss") {
     const deadline = Date.now() + 2000;
-    const want = step.identity;
+    const want = stepQuery(step);
     const scoped = want?.path.some((seg) => seg.name || ["dialog", "alertdialog"].includes(normRole(seg.role)));
     while (true) {
       const tree = await driver.tree();
@@ -1105,23 +1047,31 @@ async function findTarget(
       located = locate(step, tree, args, "all");
     }
   }
-  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden)) {
-    if (located.via) locatorHits.push(located.via);
+  if (!located.hit.ok && located.hit.reason === "tie") {
+    await captureFindMiss(step, driver, located.nodes, located.hit, located.tried);
     return { ...located, recovered };
   }
-  const labeled = labelCandidate(step, tree.nodes, tree.boxes);
-  if (labeled) {
+  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden) && testIdAgrees(stepQuery(step)?.testId, tree.nodes[located.hit.index])) {
+    if (located.via) locatorHits.push(located.via);
+    if (located.via?.kind === "anchor") repairs.push({ stepId: step.id, repair: "anchor", detail: located.via.detail });
+    return { ...located, recovered };
+  }
+  const query = stepQuery(step);
+  const named = query?.name || query?.text || query?.label;
+  const labeled = query?.testId && !named ? undefined : labelCandidate(step, tree.nodes, tree.boxes);
+  const recordedTestIdMissing = !query?.testId || !tree.nodes.some((node) => node.testId === query.testId);
+  if (labeled && (recordedTestIdMissing || testIdAgrees(query?.testId, tree.nodes[labeled.index]))) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
-  if (anchored) {
+  if (anchored && testIdAgrees(query?.testId, tree.nodes[anchored.index])) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   if (driver.waitIdle) await driver.waitIdle(Math.min(step.timeoutMs || 1000, 2000));
   const waited = await poll(step, args, driver, locatorMode);
-  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden)) {
+  if (waited.hit.ok && waited.hit.index != null && canClick(waited.hit.index, waited.boxes, waited.hidden) && testIdAgrees(stepQuery(step)?.testId, waited.nodes[waited.hit.index])) {
     repairs.push({ stepId: step.id, repair: "wait", detail: `waited for ${step.timeoutMs}ms` });
     if (waited.via) locatorHits.push(waited.via);
     return { ...waited, recovered };
@@ -1144,7 +1094,8 @@ async function captureFindMiss(
 ): Promise<void> {
   const dir = findDebugDir();
   if (!dir || hit.ok) return;
-  const ranked = step.identity ? lookup(step.identity, nodes).ranked.slice(0, 5) : [];
+  const missed = stepQuery(step);
+  const ranked = missed ? lookup(missed, nodes).ranked.slice(0, 5) : [];
   const candidates = ranked.map((score) => {
     const node = nodes[score.index];
     return {
@@ -1160,21 +1111,21 @@ async function captureFindMiss(
       parts: score.parts,
     };
   });
-  const probed = driver.probe ? await driver.probe(queriesForLocators(step.locators)).catch(() => undefined) : undefined;
+  const probed = driver.probe ? await driver.probe(queriesForLocators(stepLocators(step))).catch(() => undefined) : undefined;
   const snap = await driver.snapshot().catch(() => undefined);
   const png = snap?.screenshot ? Buffer.from(snap.screenshot, "base64") : undefined;
   writeFindDebug(dir, step.id, {
     stepId: step.id,
     action: step.action,
-    label: step.label,
+    label: stepTitle(step),
     url: probed?.url,
     reason: hit.reason,
     brokenAttr: hit.brokenAttr,
     locators: tried,
     direct: probed?.hits || [],
     candidates,
-    identity: step.identity,
-    recordedLocators: step.locators,
+    identity: stepQuery(step),
+    recordedLocators: stepLocators(step),
   }, png);
 }
 
@@ -1228,9 +1179,10 @@ async function readExpect(
   gate: ApplyGate,
   recovery: RecoveryBudget,
 ): Promise<{ ok: boolean; recovered?: string; cancelled?: boolean }> {
-  if (!step.expect && !step.postcondition) return { ok: true };
+  const check = stepCheck(step);
+  if (!check) return { ok: true };
   if (await expectationsHold(step, await driver.tree(), args)) return { ok: true };
-  const timeout = step.expect?.timeoutMs || step.postcondition?.timeoutMs || 0;
+  const timeout = check.timeoutMs || 0;
   const start = Date.now();
   if (driver.waitIdle) await driver.waitIdle(Math.min(timeout || step.timeoutMs || 1000, 2000));
   while (Date.now() - start < timeout) {
@@ -1249,63 +1201,68 @@ async function readExpect(
 }
 
 async function expectationsHold(step: WorkflowStep, tree: LiveTree, args: ReplayArgs): Promise<boolean> {
-  if (step.optional === "dismiss" && step.expect?.kind === "settled" && !step.postcondition) return true;
-  if (step.expect && !holdsExpect(step.expect, tree, args)) return false;
-  if (step.postcondition && !holds(step.postcondition, tree, args)) return false;
-  return true;
+  if (step.action === "click" && step.optional === "dismiss" && stepCheck(step)?.kind === "settled") return true;
+  const check = stepCheck(step);
+  if (!check) return true;
+  return checkHolds(check, tree, args);
 }
 
-async function runConfirm(
+async function runHandoff(
+  workflow: WorkflowV2,
   step: WorkflowStep,
   args: ReplayArgs,
   driver: Driver,
   secrets: string[],
   gate: ApplyGate,
 ): Promise<StepOutcome> {
-  if (gate.humanReady) {
-    if (gate.humanReady === "confirmed" || !step.postcondition || holds(step.postcondition, await driver.tree(), args)) {
-      gate.trail.push({ kind: "human-confirm", stepId: step.id });
-      endHandoff(driver, gate, step.id);
-      await driver.clearConfirm?.(gate.runId || "");
-      return { ok: true, repairs: [] };
-    }
-    return { ok: false, paused: "confirm", repairs: [], ask: personAsk(gate, step, "confirm") };
-  }
+  if (step.action !== "handoff") return { ok: true, repairs: [] };
+  if (step.reason === "sign-in") return runLogin(workflow, step, args, driver, secrets, gate);
+  const check = step.check;
+  const real = !!check && check.kind !== "settled";
+  const seen = await driver.tree().catch(() => undefined);
+  if (step.reason === "code" && real && seen && checkHolds(check, seen, args)) return finishHandoff(driver, gate, step.id);
+  if (gate.humanReady === "confirmed" || (gate.humanReady === true && !real)) return finishHandoff(driver, gate, step.id);
+  if (gate.humanReady && real && seen && checkHolds(check, seen, args)) return finishHandoff(driver, gate, step.id);
   const ask = personAsk(gate, step, "confirm");
-  beginHandoff(driver, gate, step.id);
-  gate.onPause?.(ask);
-  await driver.showAsk?.(ask);
-  await driver.showConfirm?.(step.label);
-  if (gate.yieldHuman || !step.postcondition) {
+  if (gate.humanReady || gate.yieldHuman) {
+    if (!gate.humanReady) await showOwnerAsk(driver, step, ask);
+    beginHandoff(driver, gate, step.id);
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
-  let finished = false;
-  try {
-    const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
-    const start = Date.now();
-    let seen = await driver.tree();
-    while (!holds(step.postcondition, seen, args) && Date.now() - start < timeout) {
-      if (driver.shouldStop?.()) {
-        finished = true;
-        endHandoff(driver, gate, step.id);
-        return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "cancelled", undefined, secrets) };
-      }
-      await (driver.sleep ? driver.sleep(200) : sleep(200));
-      seen = await driver.tree();
-    }
-    if (!holds(step.postcondition, seen, args)) {
-      finished = true;
-      endHandoff(driver, gate, step.id);
-      const reason = driver.shouldStop?.() ? "cancelled" : "nothing applied";
-      return { ok: false, repairs: [], failure: await fail(driver, step, "expect", reason, undefined, secrets) };
-    }
-    gate.trail.push({ kind: "human-confirm", stepId: step.id });
-    endHandoff(driver, gate, step.id);
-    finished = true;
-    return { ok: true, repairs: [] };
-  } finally {
-    if (finished) await driver.clearConfirm?.(gate.runId || "");
+  beginHandoff(driver, gate, step.id);
+  gate.onPause?.(ask);
+  await showOwnerAsk(driver, step, ask);
+  if (!real || step.timeoutMs === 0) {
+    if (await ownerDone(step, args, driver)) return finishHandoff(driver, gate, step.id);
+    return { ok: false, paused: "confirm", repairs: [], ask };
   }
+  const ok = await waitForOwner(step, args, driver, gate);
+  if (ok) return finishHandoff(driver, gate, step.id);
+  endHandoff(driver, gate, step.id);
+  await driver.clearConfirm?.(gate.runId || "");
+  return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "nothing applied", undefined, secrets) };
+}
+
+async function ownerDone(step: WorkflowStep, args: ReplayArgs, driver: Driver): Promise<boolean> {
+  if (driver.loginContinued?.() || driver.ownerContinued?.()) return true;
+  const tree = await driver.tree().catch(() => undefined);
+  return !!tree && step.action === "handoff" && !!step.check && step.check.kind !== "settled" && checkHolds(step.check, tree, args);
+}
+
+async function waitForOwner(step: WorkflowStep, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<boolean> {
+  const timeout = actWaitMs(step.timeoutMs, gate.actTimeoutMs);
+  const start = Date.now();
+  const check = step.action === "handoff" && step.check && step.check.kind !== "settled" ? step.check : undefined;
+  while (Date.now() - start < timeout) {
+    if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
+    if (driver.shouldStop?.()) return false;
+    const tree = await driver.tree();
+    if (check && checkHolds(check, tree, args)) return true;
+    await (driver.sleep ? driver.sleep(100) : sleep(100));
+  }
+  if (!check && (driver.loginContinued?.() || driver.ownerContinued?.())) return true;
+  const tree = await driver.tree();
+  return !!check && checkHolds(check, tree, args);
 }
 
 async function runLogin(
@@ -1318,8 +1275,9 @@ async function runLogin(
 ): Promise<StepOutcome> {
   const seen = await driver.tree();
   const miss = authPreconditionMiss(workflow.precondition, seen.url);
-  const human = !secretArg(workflow, args, step.input)
-    || Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
+  const values = loginValues(workflow, args, stepInputName(step));
+  const stripped = Object.values(values).some(hasStrippedSecret);
+  const human = !values.password || stripped;
   if (loginSatisfied(workflow, step, seen, args) && !miss) {
     if (gate.humanReady) endHandoff(driver, gate, step.id);
     return { ok: true, repairs: [] };
@@ -1328,7 +1286,7 @@ async function runLogin(
     const ask = personAsk(gate, step, "login");
     if (!gate.humanReady) {
       await driver.showAsk?.(ask);
-      await driver.showLoginWait?.(step.label || "Sign in on the site window");
+      await driver.showLoginWait?.(stepTitle(step) || "Sign in on the site window");
     }
     beginHandoff(driver, gate, step.id);
     return { ok: false, paused: "signin", repairs: [], ask };
@@ -1343,8 +1301,8 @@ async function runLogin(
 
 function loginSatisfied(workflow: WorkflowV2, step: WorkflowStep, tree: LiveTree, args: ReplayArgs): boolean {
   if (workflow.precondition?.phase === "auth") return pathMatches(tree.url, workflow.precondition.match);
-  if (!step.postcondition) return false;
-  return holds(step.postcondition, tree, args);
+  if (step.action !== "handoff" || step.reason !== "sign-in" || !step.check || step.check.kind === "settled") return false;
+  return checkHolds(step.check, tree, args);
 }
 
 /** Fill a supplied secret, or wait while the person signs in. Returns when the page is past login. */
@@ -1356,7 +1314,7 @@ async function settleLogin(
   gate: ApplyGate,
   human: boolean,
 ): Promise<boolean> {
-  const values = loginValues(workflow, args, step.input);
+  const values = loginValues(workflow, args, stepInputName(step));
   if (!human && values.password) {
     try {
       await fillSecretLogin(values, driver, gate, step.id);
@@ -1370,7 +1328,7 @@ async function settleLogin(
     beginHandoff(driver, gate, step.id);
     gate.onPause?.(ask);
     await driver.showAsk?.(ask);
-    await driver.showLoginWait?.(step.label || "Sign in on the site window");
+    await driver.showLoginWait?.(stepTitle(step) || "Sign in on the site window");
   }
   let finished = false;
   try {
@@ -1385,19 +1343,39 @@ async function settleLogin(
 
 function personAsk(gate: ApplyGate, step: WorkflowStep, kind: "login" | "confirm"): HumanAsk {
   const workflow = gate.workflow;
-  return makeAsk({
+  const code = step.action === "handoff" && step.reason === "code";
+  const ask = makeAsk({
     kind,
     workflowId: workflow.id,
     workflowName: workflow.name,
     stepId: step.id,
     stepIndex: step.index + 1,
     stepCount: workflow.steps.length,
-    label: step.label,
-    button: kind === "confirm" ? confirmButton(step) : undefined,
+    label: stepTitle(step),
+    button: kind === "confirm" && !code ? confirmButton({ label: stepTitle(step), identity: stepQuery(step) }) : undefined,
     site: siteHost(workflow.startUrl),
     timeoutMs: actWaitMs(step.timeoutMs, gate.actTimeoutMs),
     runId: gate.runId,
   });
+  if (code) {
+    ask.instruction = `Enter the code on ${ask.site} in the Bao window`;
+    ask.button = undefined;
+  }
+  return ask;
+}
+
+async function showOwnerAsk(driver: Driver, step: WorkflowStep, ask: HumanAsk): Promise<void> {
+  await driver.showAsk?.(ask);
+  if (step.action === "handoff" && step.reason === "owner-press") await driver.showConfirm?.(stepTitle(step));
+}
+
+function finishHandoff(driver: Driver, gate: ApplyGate, stepId: string): StepOutcome {
+  endHandoff(driver, gate, stepId);
+  if (!gate.trail.some((event) => event.kind === "human-confirm" && event.stepId === stepId)) {
+    gate.trail.push({ kind: "human-confirm", stepId, ts: Date.now(), text: "Owner confirmed" });
+  }
+  void driver.clearConfirm?.(gate.runId || "");
+  return { ok: true, repairs: [] };
 }
 
 function beginHandoff(driver: Driver, gate: ApplyGate, stepId: string): void {
@@ -1440,8 +1418,8 @@ async function recoverAuth(
   _secrets: string[],
   gate: ApplyGate,
 ): Promise<boolean> {
-  const human = !secretArg(workflow, args, step.input)
-    || Object.values(loginValues(workflow, args, step.input)).some(hasStrippedSecret);
+  const human = !secretArg(workflow, args, stepInputName(step))
+    || Object.values(loginValues(workflow, args, stepInputName(step))).some(hasStrippedSecret);
   return settleLogin(workflow, step, args, driver, gate, human);
 }
 
@@ -1495,7 +1473,10 @@ async function fillSecretLogin(
   if (hold > 0) await (driver.sleep ? driver.sleep(hold) : sleep(hold));
   tree = await driver.tree();
   const sign = tree.nodes.find((node) => node.id === "signin" || node.testId === "login-submit");
-  if (sign && !await recordedClick(driver, gate, stepId, sign)) return;
+  const recordedStep = recordedSteps(gate.workflow).find((step) => step.id === stepId);
+  const recorded = recordedStep ? stepQuery(recordedStep) : undefined;
+  const button = sign ?? tree.nodes.find((node) => recorded?.id && (node.id === recorded.id || node.testId === recorded.id));
+  if (button && !await recordedClick(driver, gate, stepId, button)) return;
   await (driver.sleep ? driver.sleep(50) : sleep(50));
   tree = await driver.tree();
   const code = tree.nodes.find((node) => node.id === "code" || node.testId === "verify-code");
@@ -1507,16 +1488,19 @@ async function fillSecretLogin(
 }
 
 function recordedSteps(workflow: WorkflowV2): WorkflowStep[] {
-  return workflow.steps.flatMap((step) => [step, ...(step.forEach?.steps || [])]);
+  return workflow.steps.flatMap((step) => [step, ...(stepForEach(step)?.steps || [])]);
 }
 
 async function recordedClick(driver: Driver, gate: ApplyGate, stepId: string, node: Identity, requested = false): Promise<boolean> {
   const steps = recordedSteps(gate.workflow);
   const index = steps.findIndex((step) => step.id === stepId);
-  const reserved = steps.slice(index + 1).some((step) => step.action === "confirm" && (
-    (step.identity && (sameRecordedControl(step.identity, node) || lookup(step.identity, [node]).ok))
-    || step.locators?.some((locator) => matchLocator(locator, [node]))
-  ));
+  const reserved = steps.slice(index + 1).some((step) => {
+    if (step.action !== "handoff" || step.reason !== "owner-press") return false;
+    const identity = stepQuery(step);
+    const locators = stepLocators(step);
+    return (identity && (sameRecordedControl(identity, node) || lookup(identity, [node]).ok))
+      || !!locators?.some((locator) => matchLocator(locator, [node]));
+  });
   if (!requested && reserved) return false;
   await driver.click(node);
   gate.trail.push({
@@ -1551,14 +1535,15 @@ function locate(
   args: ReplayArgs,
   locatorMode: LocatorMode,
 ): { nodes: Identity[]; hit: ReturnType<typeof lookup>; via?: LocatorHit; tried: TriedLocator[] } {
+  const selection = step.action === "click" ? step.selection : undefined;
   let nodes = tree.nodes;
-  if (step.selection) {
-    const want = String(args[step.selection.input] ?? "");
+  if (selection) {
+    const want = String(args[selection.input] ?? "");
     const picked = nodes.filter((node) => {
-      const got = node[step.selection!.by];
+      const got = node[selection.by];
       return typeof got === "string" && got.replace(/\s+/g, " ").trim() === want;
     });
-    const wantRole = step.identity?.role;
+    const wantRole = stepQuery(step)?.role;
     const roleHits = wantRole ? picked.filter((node) => rolesCompatible(wantRole, node.role)) : [];
     // The listbox and the option both show the typed word. The option is the choice.
     const chosen = roleHits.length === 1 ? roleHits[0] : picked.length === 1 ? picked[0] : undefined;
@@ -1568,12 +1553,13 @@ function locate(
       return {
         nodes,
         hit: { ok: true, index, ranked: [] },
-        via: { stepId: step.id, kind: "role", detail: `selection ${step.selection.input}` },
+        via: { stepId: step.id, kind: "role", detail: `selection ${selection.input}` },
         tried: [{ kind: "role", label, score: 100 }],
       };
     }
     nodes = picked;
   }
+  const identity = stepQuery(step);
   const list = locatorList(step, locatorMode);
   if (list) {
     const tried = list.map((locator) => {
@@ -1586,11 +1572,12 @@ function locate(
     // A glossary button can share the field's visible name and score 100
     // before the id. The recorded id is that field. A durable id that is not
     // on the page yet is a miss, so the run waits instead of typing into the button.
-    const idAt = step.identity?.id
-      ? tried.findIndex((_, index) => list[index]?.kind === "css" && cssNamesId(list[index]?.value || "", step.identity?.id || ""))
+    const recordedId = identity?.id;
+    const idAt = recordedId
+      ? tried.findIndex((_, index) => list[index]?.kind === "css" && cssNamesId(list[index]?.value || "", recordedId))
       : -1;
     let preferred = -1;
-    if (idAt >= 0 && step.identity?.id && durableId(step.identity.id) && tried[idAt]!.score < 100) {
+    if (idAt >= 0 && recordedId && durableId(recordedId) && tried[idAt]!.score < 100) {
       // Present id with a real box: the control can be aria-hidden and still be the target.
       // Absent id: wait, instead of using a glossary button with the same words.
       // A revealed field drops the id and keeps the role, so that hit is still the control.
@@ -1604,11 +1591,11 @@ function locate(
         return {
           nodes,
           hit: { ok: true, index: sized, ranked: [] },
-          via: { stepId: step.id, kind: "css", detail: `css ${step.identity.id}` },
+          via: { stepId: step.id, kind: "css", detail: `css ${recordedId}` },
           tried,
         };
       }
-      const recordedRole = step.identity.role;
+      const recordedRole = identity?.role || "";
       const compatible = perfect.find((row) => {
         const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
         const node = found ? nodes[found.index] : undefined;
@@ -1624,10 +1611,29 @@ function locate(
       if (compatible) preferred = compatible.index;
     }
     const idWinner = idAt >= 0 && tried[idAt]!.score === 100 ? idAt : -1;
-    const winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
+    const perfectNodes = new Set(perfect.flatMap((row) => {
+      const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
+      return found ? [found.index] : [];
+    }));
+    if (perfectNodes.size > 1 && identity && locatorMode !== "primary") {
+      const hit = lookup(identity, nodes);
+      return { nodes, hit, tried };
+    }
+    let winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
+    if (identity?.testId) {
+      const exact = perfect.find((row) => {
+        const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
+        return !!found && nodes[found.index]?.testId === identity.testId;
+      });
+      if (exact) winner = exact.index;
+      else if (winner >= 0) {
+        const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
+        if (found && nodes[found.index]?.testId && nodes[found.index]?.testId !== identity.testId) winner = -1;
+      }
+    }
     if (winner >= 0) {
       const found = matchLocator(list[winner]!, nodes, tree.boxes, tree.hidden);
-      if (found) {
+      if (found && testIdAgrees(identity?.testId, nodes[found.index])) {
         return {
           nodes,
           hit: { ok: true, index: found.index, ranked: [] },
@@ -1636,7 +1642,7 @@ function locate(
         };
       }
     }
-    const labeled = matchLabeledControl(list, step.identity, nodes, tree.boxes, tree.hidden);
+    const labeled = matchLabeledControl(list, identity, nodes, tree.boxes, tree.hidden);
     if (labeled) {
       return {
         nodes,
@@ -1645,9 +1651,12 @@ function locate(
         tried,
       };
     }
-    if (step.identity) {
-      const hit = lookup(step.identity, nodes);
-      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden)) {
+    // Primary mode tries only the first locator. A later locator must not
+    // become an identity hit, or the label repair never runs.
+    if (identity && locatorMode !== "primary") {
+      const hit = lookup(identity, nodes);
+      if (hit.reason === "tie") return { nodes, hit, tried };
+      if (hit.ok && hit.index != null && !isCollapsedBox(hit.index, tree.boxes, tree.hidden) && testIdAgrees(identity.testId, nodes[hit.index])) {
         const node = nodes[hit.index];
         const detail = node?.name || node?.label || node?.text || node?.nameAttr || node?.id || "identity";
         return {
@@ -1658,16 +1667,27 @@ function locate(
         };
       }
     }
+    const unique = list.some((item) => item.kind === "testid" || item.kind === "css" || item.kind === "xpath");
+    if (!unique && identity && locatorMode !== "primary") {
+      const missed = lookup(identity, nodes);
+      const ranked = missed.ranked.slice(0, 5).map((score, index) => {
+        const node = nodes[score.index];
+        const name = node?.name || node?.text || node?.label || node?.testId || node?.id || `candidate ${index + 1}`;
+        const label = node?.role && name ? `${node.role} ${name}` : name;
+        return { kind: "identity" as const, label, score: score.score };
+      });
+      if (ranked.length) return { nodes, hit: missed, tried: ranked };
+    }
     return {
       nodes,
       hit: { ok: false, reason: "below-threshold", brokenAttr: list[0]?.kind || "locator", ranked: [] },
       tried,
     };
   }
-  if (!step.identity) {
+  if (!identity) {
     return { nodes: [], hit: { ok: false, reason: "no-candidates", brokenAttr: "identity", ranked: [] }, tried: [] };
   }
-  const hit = lookup(step.identity, nodes);
+  const hit = lookup(identity, nodes);
   const tried = hit.ranked.slice(0, 5).map((score, index) => {
     const node = nodes[score.index];
     const name = node?.name || node?.text || node?.label || node?.testId || node?.id || `candidate ${index + 1}`;
@@ -1698,16 +1718,23 @@ function rolesCompatible(recorded: string, live: string): boolean {
   return fields.has(left) && fields.has(right);
 }
 
+/** A live node with a different test id is not the saved target. A node that has none can still match. */
+function testIdAgrees(want: string | undefined, node: Identity | undefined): boolean {
+  if (!want || !node?.testId) return true;
+  return node.testId === want;
+}
+
 function locatorList(step: WorkflowStep, mode: LocatorMode): StepLocator[] | undefined {
-  const list = step.locators;
+  const list = stepLocators(step);
   if (!list || list.length === 0) return undefined;
   return mode === "primary" ? list.slice(0, 1) : list;
 }
 
 async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver: Driver, gate: ApplyGate): Promise<void> {
+  const input = stepInputName(step);
   if (step.action === "type") {
-    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
-    await driver.fill(node, text, !!step.sensitive || step.identity?.role === "password");
+    const text = input ? String(args[input] ?? "") : String(stepValueTemplate(step) ?? "");
+    await driver.fill(node, text, step.sensitive === true || stepQuery(step)?.role === "password");
     return;
   }
   if (step.action === "upload") {
@@ -1719,77 +1746,82 @@ async function act(step: WorkflowStep, node: Identity, args: ReplayArgs, driver:
     return;
   }
   if (step.action === "check") {
-    await driver.check(node, !!step.checked);
+    await driver.check(node, !!(step.action === "check" ? step.checked : undefined));
     return;
   }
   if (step.action === "select") {
-    const text = step.input ? String(args[step.input] ?? "") : String(step.value ?? "");
+    const text = input ? String(args[input] ?? "") : String(stepValueTemplate(step) ?? "");
     if (!driver.select) throw new Error("select is not supported");
     await driver.select(node, text);
     return;
   }
   if (step.action === "navigate") {
-    const url = step.value || "";
+    const url = stepValueTemplate(step) || "";
     if (!url || !driver.goto) return;
     await driver.goto(url);
     return;
   }
   if (step.action === "key") {
+    const key = stepKey(step);
+    if (!key) throw new Error(NEEDS_SECRET_VALUE);
     await driver.focus?.(node);
-    await driver.key(step.key || "Enter");
+    await driver.key(key);
     return;
   }
-  if (step.input && driver.answerDialog) {
-    const answer = String(args[step.input] ?? "");
+  if (input && driver.answerDialog) {
+    const answer = String(args[input] ?? "");
     if (answer) driver.answerDialog(answer);
   }
   const original = recordedSteps(gate.workflow).find((recorded) => recorded.id === step.id);
-  const requested = original?.identity
-    ? sameRecordedControl({ ...original.identity, cssPath: undefined }, node) || lookup(original.identity, [node]).ok
-    : !!original?.locators?.some((locator) => locator.kind !== "anchor"
+  const recorded = original ? stepQuery(original) : undefined;
+  const recordedLocators = original ? stepLocators(original) : undefined;
+  const requested = recorded
+    ? sameRecordedControl({ ...recorded, cssPath: undefined }, node) || lookup(recorded, [node]).ok
+    : !!recordedLocators?.some((locator) => locator.kind !== "anchor"
       && matchLocator(locator, [{ ...node, cssPath: undefined, xpath: undefined }]));
   if (!await recordedClick(driver, gate, step.id, node, requested)) {
     throw new Error("Target belongs to a recorded human confirm step");
   }
 }
 
-export function holdsExpect(expect: NonNullable<WorkflowStep["expect"]>, tree: LiveTree, args: ReplayArgs): boolean {
-  if (expect.kind === "settled") return pageSettled(tree);
-  if (expect.kind === "url") return urlIncludes(tree.url || "", expectedText(expect.match || "", args));
-  if (expect.kind === "text") {
-    const want = expectedText(expect.match || "", args);
-    return tree.texts.some((text) => text.includes(want));
-  }
-  const identity = expect.identity || undefined;
-  if (!identity) return false;
-  const hit = lookup(identity, tree.nodes);
-  if (!hit.ok || hit.index == null) return false;
-  const flag = tree.flags?.[hit.index];
-  if (expect.state === "checked") return !!flag?.checked;
-  if (expect.state === "unchecked") return !flag?.checked;
-  if (expect.state === "disabled") return flag?.enabled === false;
-  if (expect.state === "enabled") return flag?.enabled !== false;
-  return true;
-}
+type CheckView = Check & { identity?: Identity };
 
-export function holds(post: NonNullable<WorkflowStep["postcondition"]>, tree: LiveTree, args: ReplayArgs): boolean {
-  if (post.kind === "element") {
-    const identity = post.identity;
-    if (!identity) return true;
-    return lookup(identity, tree.nodes).ok;
+export function checkHolds(check: CheckView, tree: LiveTree, args: ReplayArgs): boolean {
+  if (check.kind === "settled") return pageSettled(tree);
+  if (check.kind === "url") return urlIncludes(tree.url || "", expectedText(check.match || "", args));
+  if (check.kind === "text") return tree.texts.some((text) => text.includes(expectedText(check.match || "", args)));
+  if (check.kind === "value") {
+    const expected = expectedText(check.match || "", args);
+    return tree.values.some((item) => item.value === expected || item.value.includes(expected))
+      || tree.texts.some((text) => text === expected || text.includes(expected));
   }
-  if (post.kind === "absent") {
-    if (!post.identity) return true;
-    return !lookup(post.identity, tree.nodes).ok;
-  }
-  const expected = expectedText(post.match || "", args);
-  if (post.kind === "url") return urlIncludes(tree.url || "", expected);
-  if (post.kind === "text") return tree.texts.some((text) => text.includes(expected));
-  if (post.kind === "value") {
-    if (tree.values.some((item) => item.value === expected || item.value.includes(expected))) return true;
-    return tree.texts.some((text) => text === expected || text.includes(expected));
+  const identity = check.identity;
+  const locators = "locators" in check ? check.locators : undefined;
+  const indexes = identity && lookup(identity, tree.nodes).ok
+    ? [lookup(identity, tree.nodes).index].filter((index): index is number => index != null)
+    : locators?.flatMap((locator) => locatorIndexes(locator, tree.nodes)) ?? [];
+  const present = indexes.length > 0;
+  if (check.kind === "absent") return !present;
+  if (check.kind === "element" || check.kind === "state") {
+    if (!identity && !locators?.length) return check.kind === "element";
+    if (!present) return false;
+    if (check.kind !== "state") return true;
+    const flag = tree.flags?.[indexes[0]!];
+    if (check.state === "checked") return !!flag?.checked;
+    if (check.state === "unchecked") return !flag?.checked;
+    if (check.state === "disabled") return flag?.enabled === false;
+    if (check.state === "enabled") return flag?.enabled !== false;
+    return true;
   }
   return false;
+}
+
+export function holdsExpect(expect: CheckView, tree: LiveTree, args: ReplayArgs): boolean {
+  return checkHolds(expect, tree, args);
+}
+
+export function holds(post: CheckView, tree: LiveTree, args: ReplayArgs): boolean {
+  return checkHolds(post, tree, args);
 }
 
 export function expectedText(match: string, args: ReplayArgs): string {
@@ -1807,7 +1839,7 @@ export function expectedText(match: string, args: ReplayArgs): string {
 function boundFiles(step: WorkflowStep, args: ReplayArgs, gate: ApplyGate): FileArg[] {
   const bound = filesFor(gate.runId || "", step, gate.workflow);
   if (bound) return bound;
-  return files(args, step.input);
+  return files(args, stepInputName(step));
 }
 
 async function runFilesDatesStep(
@@ -1825,7 +1857,7 @@ async function runFilesDatesStep(
   }
   try {
     if (step.action === "download") {
-      const spec = step.download;
+      const spec = stepDownload(step);
       if (!spec) throw new Error("download");
       if (!driver.download) throw new Error("download needs a browser");
       mkdirSync(run.downloadDir, { recursive: true });
@@ -1836,7 +1868,7 @@ async function runFilesDatesStep(
         filename: "pending",
         timeoutMs: step.timeoutMs || 30_000,
         url: spec.url ? renderTemplate(spec.url, templateScope(run)) : undefined,
-        node: spec.url ? undefined : step.identity,
+        node: spec.url ? undefined : stepQuery(step),
       });
       const filename = downloadFileName(spec.name, templateScope(run, saved.suggestedFilename));
       const dest = placeDownload(saved.path, run.downloadDir, filename);
@@ -1847,7 +1879,7 @@ async function runFilesDatesStep(
       return { ok: true, repairs, note: `${output.name} ${output.sha256}` };
     }
     if (step.action === "open") {
-      const spec = step.open;
+      const spec = stepOpen(step);
       if (!spec) throw new Error("open");
       if (spec.target === "url") {
         const url = renderTemplate(spec.url || "", templateScope(run));
@@ -1861,17 +1893,17 @@ async function runFilesDatesStep(
       const plan = await openTarget({ target: "file", path: file, app: spec.app }, { exec: run.openExec });
       return { ok: true, repairs, note: plan.needsMacTest };
     }
-    const picker = step.datePicker;
+    const picker = stepDate(step);
     if (!picker) throw new Error("date picker");
     const start = run.dates.get(picker.input);
     if (!start) throw new Error(`date ${picker.input}`);
     const end = picker.endInput ? run.dates.get(picker.endInput) : undefined;
     if (picker.endInput && !end) throw new Error(`date ${picker.endInput}`);
     if (!driver.pickDate) throw new Error("date picker needs a browser");
-    await driver.pickDate({ iso: start.iso, endIso: end?.iso, formatted: start.formatted, node: step.identity });
+    await driver.pickDate({ iso: start.iso, endIso: end?.iso, formatted: start.formatted, node: stepQuery(step) });
     const held = await readExpect(step, args, driver, repairs, gate, recovery);
     if (!held.ok) return { ok: false, repairs, failure: await fail(driver, step, "expect", expectReason(step), undefined, secrets) };
-    return { ok: true, repairs, acted: step.identity };
+    return { ok: true, repairs, acted: stepQuery(step) };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     return { ok: false, repairs, failure: await fail(driver, step, "action", reason, undefined, secrets) };
@@ -1906,38 +1938,10 @@ function noteTrajectory(
   trajectory.push({
     stepId: step.id,
     action: step.action,
-    target: targetKey(acted || step.identity),
+    target: targetKey(acted || stepQuery(step)),
     postcondition: ok ? post : `missed ${post}`,
     timing: timingBucket(Math.max(0, elapsedMs)),
   });
-}
-
-async function holdCheck(check: StepCheck, args: ReplayArgs, driver: Driver, present: boolean): Promise<boolean> {
-  const ready = async () => {
-    const tree = await driver.tree();
-    const holds = checkHolds(check, tree, args);
-    return present ? holds : !holds;
-  };
-  if (await ready()) return true;
-  const timeout = check.timeoutMs || 0;
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    await (driver.sleep ? driver.sleep(50) : sleep(50));
-    if (await ready()) return true;
-  }
-  return false;
-}
-
-function checkHolds(check: StepCheck, tree: LiveTree, args: ReplayArgs): boolean {
-  const want = expectedText(check.match || "", args);
-  if (check.kind === "url") return urlIncludes(tree.url || "", want);
-  if (check.kind === "text") return !!want && tree.texts.some((text) => text.includes(want));
-  if (check.kind === "value") {
-    if (tree.values.some((item) => item.value === want || item.value.includes(want))) return true;
-    return tree.texts.some((text) => text === want || text.includes(want));
-  }
-  if (!check.identity) return false;
-  return lookup(check.identity, tree.nodes).ok;
 }
 
 function pageSettled(tree: LiveTree): boolean {
@@ -1956,10 +1960,6 @@ function urlIncludes(url: string, expected: string): boolean {
   const parts = expected.split(/\s+/).filter(Boolean).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!parts.length) return false;
   return new RegExp(parts.join("(?:\\s|\\+|_|%20)"), "i").test(decoded);
-}
-
-function checkReason(check: StepCheck): string {
-  return check.match || check.identity?.name || check.identity?.id || check.kind;
 }
 
 async function takeReadBack(
@@ -2016,10 +2016,10 @@ async function readActual(read: ReadBack, args: ReplayArgs, driver: Driver): Pro
     const want = expectedText(read.match, args);
     return tree.texts.find((text) => text.includes(want)) || tree.texts.join(" ").slice(0, 500);
   }
-  if (read.identity) {
-    const hit = lookup(read.identity, tree.nodes);
-    if (hit.ok && hit.index != null) {
-      const value = tree.values.find((item) => item.identity === tree.nodes[hit.index!]);
+  if (read.locators?.length) {
+    const hit = matchLocator(read.locators[0]!, tree.nodes);
+    if (hit) {
+      const value = tree.values.find((item) => item.identity === tree.nodes[hit.index]);
       if (value) return value.value;
     }
   }
@@ -2043,11 +2043,11 @@ function phaseReason(failure: StepFailure): string {
 }
 
 function expectReason(step: WorkflowStep): string {
-  if (step.expect?.kind === "text" || step.expect?.kind === "url" || step.expect?.kind === "settled") {
-    return step.expect.match || step.expect.kind;
-  }
-  if (step.expect?.state) return step.expect.state;
-  if (step.postcondition) return "postcondition";
+  const expect = stepCheck(step);
+  if (expect && (expect.kind === "text" || expect.kind === "url")) return expect.match || expect.kind;
+  if (expect?.kind === "settled") return expect.kind;
+  if (expect?.kind === "state") return expect.state;
+  if (stepCheck(step)) return "postcondition";
   return "expect";
 }
 
@@ -2063,7 +2063,7 @@ async function fail(
   return {
     stepId: step.id,
     index: step.index,
-    intent: step.intent || step.label,
+    intent: step.caption.text || stepTitle(step),
     phase,
     reason,
     brokenAttr,
@@ -2117,18 +2117,21 @@ async function classifyLive(driver: Driver, workflow: WorkflowV2, step?: Workflo
 
 /** True when the recorded control is on the page, including an ambiguous match. */
 async function targetHere(driver: Driver, step?: WorkflowStep): Promise<boolean | undefined> {
-  if (!step || step.action === "note" || step.action === "navigate" || step.action === "verify" || step.action === "login" || step.action === "confirm") {
+  if (!step || step.action === "note" || step.action === "navigate" || step.action === "verify") {
     return undefined;
   }
-  if (step.locators?.length && driver.probe) {
-    const probed = await driver.probe(queriesForLocators(step.locators)).catch(() => undefined);
+  if (step.action === "handoff" && !step.target) return undefined;
+  const locators = stepLocators(step);
+  const identity = stepQuery(step);
+  if (locators?.length && driver.probe) {
+    const probed = await driver.probe(queriesForLocators(locators)).catch(() => undefined);
     if (probed) return probed.hits.some((hit) => hit.count > 0);
   }
   const tree = await driver.tree().catch(() => undefined);
   if (!tree) return undefined;
-  if (step.locators?.length) return step.locators.some((locator) => locatorIndexes(locator, tree.nodes).length > 0);
-  if (!step.identity) return undefined;
-  const hit = lookup(step.identity, tree.nodes);
+  if (locators?.length) return locators.some((locator) => locatorIndexes(locator, tree.nodes).length > 0);
+  if (!identity) return undefined;
+  const hit = lookup(identity, tree.nodes);
   return hit.ok || hit.reason === "tie";
 }
 
@@ -2154,24 +2157,40 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<{ ref?: string; error?: string }> {
+function storedShotTarget(step: WorkflowStep): NonNullable<RunResult["steps"][number]["target"]> | undefined {
+  const box = step.caption?.targetBox;
+  if (!box || box.viewport.width <= 0 || box.viewport.height <= 0) return undefined;
+  return { rect: { x: box.x, y: box.y, width: box.width, height: box.height }, viewport: box.viewport };
+}
+
+async function writeStepShot(driver: Driver, dir: string | undefined, step: WorkflowStep, which: "before" | "after"): Promise<{ ref?: string; error?: string; viewport?: boolean }> {
   if (!dir) return {};
   if (!driver.shot && !driver.pageShot) return { error: "This driver cannot take page pictures." };
   let bytes: Buffer | undefined;
+  let viewport = false;
   try {
-    if (process.env.BAO_PROOF_PAGE === "1" && which === "before" && /delete account/i.test(step.label || "")) {
+    if (process.env.BAO_PROOF_PAGE === "1" && which === "before" && /delete account/i.test(stepTitle(step) || "")) {
       const full = await driver.pageShot?.();
       if (full && full.length > 24 && full[0] === 0x89) {
         mkdirSync(dir, { recursive: true });
         writeFileSync(path.join(dir, "identity.png"), full);
       }
     }
-    bytes = await driver.shot?.({
-      identity: step.identity,
-      action: step.action,
-      label: step.label,
-    });
-    if (!bytes?.length && driver.pageShot) bytes = await driver.pageShot();
+    if (which === "before" && step.caption?.targetBox && driver.pageShot) {
+      bytes = await driver.pageShot().catch(() => undefined);
+      viewport = !!bytes?.length;
+    }
+    if (!bytes?.length) {
+      bytes = await driver.shot?.({
+        identity: stepQuery(step),
+        action: step.action,
+        label: stepTitle(step),
+      });
+    }
+    if (!bytes?.length && driver.pageShot) {
+      bytes = await driver.pageShot();
+      viewport = !!bytes?.length;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     const reason = /rate.?limit|MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND/i.test(message) ? "Chrome's picture rate limit was reached."
@@ -2188,7 +2207,7 @@ async function writeStepShot(driver: Driver, dir: string | undefined, step: Work
     mkdirSync(dir, { recursive: true });
     const name = shotFile(step.id, which, format);
     writeFileSync(path.join(dir, name), bytes);
-    return { ref: name };
+    return { ref: name, viewport };
   } catch {
     return { error: "The picture could not be saved." };
   }

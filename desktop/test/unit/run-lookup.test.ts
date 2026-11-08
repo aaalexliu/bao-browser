@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -19,11 +20,12 @@ import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 const outputs = [{ name: "result", type: "table" as const, columns: [{ name: "value", type: "text" as const }], rows: [{ value: "Imported cloud run" }] }];
-const workflow: WorkflowV2 = {
-  schema: "bao.workflow/v2", version: 2, id: "cloud", name: "Cloud", startUrl: "https://example.test/", createdAt: 1, inputs: [],
-  steps: [{ id: "note", index: 0, action: "note", label: "Read cloud", surface: "dom", timeoutMs: 0 }],
-};
+const workflow: WorkflowV2 = fixtureDoc({
+  schema: "bao.workflow/v4", version: 2, id: "cloud", name: "Cloud", startUrl: "https://example.test/", createdAt: 1, inputs: [],
+  steps: [fixtureStep({ id: "note", index: 0, action: "note", label: "Read cloud", surface: "dom", timeoutMs: 0 })],
+});
 const stored: StoredRun = {
+  schema: "bao.run/v4",
   id: "run-imported", kind: "capture", workflowId: "cloud", status: "passed", at: 1234,
   heals: [], steps: [{ id: "note", status: "passed" }], outputs, video: "run-imported.webm",
 };

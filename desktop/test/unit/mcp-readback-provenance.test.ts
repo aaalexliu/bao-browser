@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
@@ -142,15 +143,15 @@ async function fixture(t: test.TestContext) {
   return {
     app: running, rpc, typed,
     async run(id: string, secret: boolean, value: string, readSource: "text" | "value" = "text") {
-      const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id, name: "Read-back provenance", createdAt: 1, driver: "playwright", startUrl: `http://127.0.0.1:${address.port}/${secret && readSource === "text" ? "secret" : "ordinary"}`,
-        inputs: [{ name: "entry", type: secret ? "secret" : "text" }, { name: "note", type: "text" }],
+      const workflow: WorkflowV2 = fixtureDoc({
+        schema: "bao.workflow/v4", version: 2, id, name: "Read-back provenance", createdAt: 1, driver: "playwright", startUrl: `http://127.0.0.1:${address.port}/${secret && readSource === "text" ? "secret" : "ordinary"}`,
+        inputs: [fixtureInput({ name: "entry", type: secret ? "secret" : "text" }), fixtureInput({ name: "note", type: "text" })],
         steps: ["entry", "note"].map((name, index) => ({
           id: name, index, action: "type", label: `Fill ${name}`, surface: "dom", timeoutMs: 2000, heal: "never", input: name, value: `{{${name}}}`,
           identity: { surface: "dom", role: "textbox", id: name, inputType: name === "entry" && secret && readSource === "text" ? "password" : "text", path: [] }, locators: [{ kind: "css", value: `#${name}` }],
           postcondition: { kind: "text", match: "Ready", timeoutMs: 2000 }, readBack: { source: name === "entry" ? readSource : "text", match: `{{${name}}}`, timeoutMs: 2000 },
         })),
-      };
+      });
       running.library.save(workflow);
       const response = await fetch(`http://127.0.0.1:${running.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, args: { entry: value, note: "Safe ordinary note" } }) });
       const raw: unknown = await response.json();
