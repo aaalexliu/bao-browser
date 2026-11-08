@@ -8,7 +8,7 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
-import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -554,7 +554,7 @@ async function replayInBrowser(
       await navigateWorkflowBrowser(browser, workflow.startUrl);
     }
     const trail: RunTrailEvent[] = [];
-    const driver = new BrowserDriver(page, undefined, control?.prompts);
+    const driver = new BrowserDriver(page, undefined, ownerPrompts(browser, control?.prompts));
     const run = await replay(workflow, args, driver, {
       runId,
       shotDir,
@@ -587,8 +587,6 @@ async function replayInBrowser(
       };
       await observeConfirm(live);
       liveRuns.set(outcome.resume, live);
-      // The owner acts in the held tab, so the owner's own Chrome shows the background replay tab now.
-      if (browser.kind === "current") await page.bringToFront().catch(() => undefined);
       await finishVideo();
       saveWorkflowRun(library, workflow, run, args, outcome, clip);
       return { run, outcome, held: true, clip };
@@ -605,7 +603,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   const browser = live.browser.choice === "owned" ? undefined : live.browser.choice;
   live.inputs = { ...live.inputs, ...extra };
   live.prompts = control?.prompts ?? live.prompts;
-  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page, undefined, live.prompts), {
+  const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page, undefined, ownerPrompts(live.browser, live.prompts)), {
     runId: live.runId,
     shotDir: live.shotDir,
     settings: library.settings(),
@@ -625,7 +623,8 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     live.trail = run.trail;
     live.steps = run.steps;
     await observeConfirm(live);
-    if (live.browser.kind === "current") await live.page.bringToFront().catch(() => undefined);
+    // A resumed run that holds again asks nothing new, so open Bao's group on the held tab again.
+    if (live.browser.kind === "current") await live.browser.show().catch(() => undefined);
     const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
     return outcome;

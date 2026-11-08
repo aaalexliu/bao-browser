@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl0H8UK1nHYkBdWXEzlOf9IAhS1zt8utMOJEwW5rgD1HLVLR80LBc1lnx31Tpp8m4wGiCoFCFLO+xZtr7C+IdugLaeHQysvxhwgbYFynFZmESI09enBW3oULHQZzQJYCPahZTCx3vwTPbOe6tZT7O0t232BrZnc/FavjODlNvehrE6GNk2oAEbylRHZXyVxCTA6NuOJ6L6Z1C4P0ZIQlrF9rUxqOYYS8igdxmIHsTb0P2NkrDcr5ZYkr353SRfQqfPqd4o8E9OD2eyMTbGIstmF5FH9oKLvv15uxXsACVVsyrL+yGA7XtDv+HkcCG0sp8cmWGlJoq3vBh8GsHZaoFHwIDAQAB",
   "description": "Records and replays in this Chrome profile. Talks only to the Bao app on this machine.",
-  "minimum_chrome_version": "120",
+  "minimum_chrome_version": "125",
   "permissions": [
     "nativeMessaging",
     "tabs",
@@ -14,7 +14,8 @@
     "webNavigation",
     "webRequest",
     "cookies",
-    "debugger"
+    "debugger",
+    "tabGroups"
   ],
   "optional_host_permissions": [
     "http://*/*",

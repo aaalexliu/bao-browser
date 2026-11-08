@@ -13,7 +13,7 @@ export const BROWSER_OPTIONS = {
   },
   current: {
     label: "Running Chrome",
-    description: "Uses your open Google Chrome and its current sign-ins in a new task tab. Pick this to use your live Chrome session. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording. Bao leaves Chrome open.",
+    description: "Uses your open Google Chrome and its current sign-ins. Bao's tabs open in the background in a folded Bao tab group and close when the run ends. Needs the Bao Chrome extension and the Bao app, and no Mac permissions. While Bao works, Chrome says Bao is debugging it.",
   },
 } as const satisfies Record<BrowserChoice, { label: string; description: string }>;
 

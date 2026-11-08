@@ -30,6 +30,8 @@ export interface HelloMessage {
   extensionId: string;
   version: string;
   resumed?: boolean;
+  /** The extension can open and drive Bao's grouped tabs in the owner's Chrome. */
+  agentTabs?: boolean;
 }
 
 export function extensionOrigin(id = EXTENSION_ID): string {

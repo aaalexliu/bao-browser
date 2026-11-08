@@ -10,9 +10,8 @@ import { BROWSER_CHOICES, BROWSER_OPTIONS, DEFAULT_BROWSER, browserChoice } from
 import { startApp } from "../../src/app/server";
 import { TOOLS } from "../../src/mcp/server";
 import { openWorkflowBrowser, navigateWorkflowBrowser } from "../../src/engines/workflow-browser";
-import * as currentChrome from "../../src/cdp-live/current-chrome";
 import * as profiles from "../../src/engines/chrome-profile-copy";
-import { launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../../src/launch";
+import { launchOwnedChrome, pidsForDataDir } from "../../src/launch";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
@@ -142,9 +141,7 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   await page.locator('#rail [data-place="settings"]').click();
   const mac = page.locator("#set-perm + .settings-group");
   if (process.platform === "darwin") {
-    assert.match(await mac.innerText(), /Running Chrome.*Accessibility/);
-    assert.match(await mac.innerText(), /Bao profiles and Chrome copies do not need it/);
-    assert.match(await mac.innerText(), /No Chrome option needs Automation or Screen Recording/);
+    assert.match(await mac.innerText(), /Chrome needs no Mac permission, not even for Running Chrome/);
   }
   const agent = await openWorkflowBrowser({ browser: "bao", home, site, sourceRoot });
   t.after(() => agent.close());
@@ -234,7 +231,7 @@ test("a retained Bao session closes gracefully before reopening its saved sign-i
   }
 });
 
-test("copy and current runs leave the app Sign in window open", { timeout: 60_000 }, async (t) => {
+test("a copy run leaves the app Sign in window open", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-signin-"));
   const home = path.join(root, "bao");
   const sourceRoot = path.join(root, "source");
@@ -249,15 +246,11 @@ test("copy and current runs leave the app Sign in window open", { timeout: 60_00
     res.end("<title>Sign in fixture</title><h1>Ready</h1>");
   });
   let app: Awaited<ReturnType<typeof startApp>> | undefined;
-  let owner: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let signIn: Awaited<ReturnType<typeof connectCdp>> | undefined;
-  let current: Awaited<ReturnType<typeof connectCdp>> | undefined;
   t.after(async () => {
     try {
       await app?.close();
       signIn?.close();
-      current?.close();
-      await owner?.close();
       await new Promise<void>((resolve) => fixture.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
     } finally {
@@ -281,46 +274,13 @@ test("copy and current runs leave the app Sign in window open", { timeout: 60_00
   const before = await signIn.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
   const target = before.targetInfos.find((target) => target.url === site);
   assert.ok(target, "the app's Sign in window is open before either run");
-  owner = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "current"), headless: true });
-  const endpoint = await readDevToolsActivePort(owner.portFile);
-  current = await connectCdp(endpoint.port, endpoint.browserPath);
-  const connection = current;
   t.mock.method(profiles, "chromeProfilesRoot", () => sourceRoot);
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 1, endpoint, cdp: connection,
-    closed: connection.disconnected, isClosed: () => !connection.isOpen,
-    detach: () => {}, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
-  }));
   const doc = workflow(site, "signin-independent");
   doc.steps[0] = { ...doc.steps[0]!, action: "verify", check: { kind: "text", match: "Ready", timeoutMs: 1000 } };
   app.library.save(doc);
-  for (const browser of ["copy", "current"]) {
-    assert.equal((await post("/api/replay", { id: doc.id, browser, args: {} })).status, "passed");
-    assert.equal(signIn.isOpen, true, `${browser} must not close the independent Sign in browser`);
-    const after = await signIn.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
-    assert.ok(after.targetInfos.some((entry) => entry.targetId === target.targetId && entry.url === site), `${browser} leaves the original Sign in page in place`);
-  }
+  assert.equal((await post("/api/replay", { id: doc.id, browser: "copy", args: {} })).status, "passed");
+  assert.equal(signIn.isOpen, true, "copy must not close the independent Sign in browser");
+  const after = await signIn.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
+  assert.ok(after.targetInfos.some((entry) => entry.targetId === target.targetId && entry.url === site), "copy leaves the original Sign in page in place");
 });
 
-test("current workflow replay disconnects without closing the attached Chrome or its tabs", { timeout: 30_000 }, async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "bao-choice-current-"));
-  const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true, args: ["--no-startup-window"] });
-  t.after(async () => { await owner.close(); await rm(root, { recursive: true, force: true }); });
-  const endpoint = await readDevToolsActivePort(owner.portFile);
-  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-  t.after(() => cdp.close());
-  const original = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
-  let detached = 0;
-  t.mock.method(profiles, "chromeProfilesRoot", () => root);
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 1, endpoint, cdp,
-    closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
-    detach: () => { detached++; }, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
-  }));
-  const session = await openWorkflowBrowser({ browser: "current", home: root, site: "about:blank", sourceRoot: root });
-  assert.equal(session.kind, "current");
-  assert.equal("profile" in session, false, "attached sessions never expose an owned profile to cleanup");
-  await session.close();
-  const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets");
-  assert.ok(targetInfos.some((target) => target.targetId === original.targetId), "the pre-existing tab stays open");
-  assert.ok(targetInfos.length >= 2, "the task tab also stays open");
-  assert.equal(detached, 1);
-});

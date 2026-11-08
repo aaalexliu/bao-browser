@@ -571,7 +571,7 @@ function settings(): string {
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles and Chrome copies need no Accessibility, Automation, or Screen Recording permission. Running Chrome needs the helper's Accessibility permission, not Automation or Screen Recording.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
+    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles, Chrome copies, and Running Chrome need no Accessibility, Automation, or Screen Recording permission.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
 }
 
 function importSheet(): string {
