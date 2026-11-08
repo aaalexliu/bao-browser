@@ -19,6 +19,7 @@ export interface StepTargetRead {
     inputType?: string;
     autocomplete?: string;
     placeholder?: string;
+    id?: string;
   };
 }
 
@@ -127,21 +128,30 @@ export function stepForEach(step: StepRead): StepRead["forEach"] {
   return step.action === "for_each" ? step.forEach : undefined;
 }
 
+/** A css locator is an element id only when it is a single id selector, not a path that starts with #. */
+function idFromCss(value: string | undefined): string | undefined {
+  if (!value?.startsWith("#")) return undefined;
+  const body = value.slice(1).replace(/\\(.)/g, "$1");
+  if (!body || /[\s>+~.\[:]/.test(body)) return undefined;
+  return body;
+}
+
 export function queryFromTarget(target: StepTargetRead | undefined): StepIdentityRead | undefined {
   if (!target) return undefined;
   const role = target.locators?.find((item) => item.kind === "role");
   const text = target.locators?.find((item) => item.kind === "text");
   const testid = target.locators?.find((item) => item.kind === "testid");
-  const css = target.locators?.find((item) => item.kind === "css");
+  const cssList = target.locators?.filter((item) => item.kind === "css" && item.value) ?? [];
+  const idSelector = cssList.find((item) => idFromCss(item.value));
+  const pathSelector = cssList.find((item) => item !== idSelector) ?? (idSelector ? undefined : cssList[0]);
   const xpath = target.locators?.find((item) => item.kind === "xpath");
-  const id = css?.kind === "css" && css.value?.startsWith("#") ? css.value.slice(1).replace(/\\(.)/g, "$1") : undefined;
   return {
     surface: target.hint?.surface ?? "dom",
     role: (role?.kind === "role" ? role.role : target.hint?.role) || "unknown",
     name: role?.kind === "role" ? role.name : undefined,
     text: text?.kind === "text" ? text.value : undefined,
     testId: testid?.kind === "testid" ? testid.value : undefined,
-    cssPath: css?.kind === "css" ? css.value : undefined,
+    cssPath: pathSelector?.value ?? idSelector?.value,
     xpath: xpath?.kind === "xpath" ? xpath.value : undefined,
     label: target.hint?.label,
     nameAttr: target.hint?.nameAttr,
@@ -149,7 +159,7 @@ export function queryFromTarget(target: StepTargetRead | undefined): StepIdentit
     inputType: target.hint?.inputType,
     autocomplete: target.hint?.autocomplete,
     placeholder: target.hint?.placeholder,
-    id,
+    id: target.hint?.id || (target.hint?.nameAttr ? undefined : idFromCss(idSelector?.value)),
     path: target.hint?.path ?? [],
   };
 }

@@ -11,7 +11,7 @@ import type { ApplyGate as BaseApplyGate, RunTrailEvent } from "./apply-guard";
 import { authPreconditionMiss, pathMatches, secretArg, textArg } from "./auth";
 import { materializeOutputs, performDataStep, type ExtractSpec, type OutputValue } from "./data-steps";
 import { findDebugDir, queriesForLocators, writeFindDebug } from "./find-debug";
-import { lookup, normRole, pathEq, sameRecordedControl, unstableId } from "./identity";
+import { lookup, normRole, normText, pathEq, sameRecordedControl, unstableId } from "./identity";
 import { actWaitMs, confirmButton, makeAsk, siteHost, wallInstruction, type HumanAsk } from "./human-ask";
 import { formatClock } from "./time";
 import { identityView } from "./run-trace";
@@ -1049,17 +1049,25 @@ async function findTarget(
       located = locate(step, tree, args, "all");
     }
   }
-  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden) && testIdAgrees(stepQuery(step)?.testId, tree.nodes[located.hit.index])) {
-    if (located.via) locatorHits.push(located.via);
+  if (!located.hit.ok && located.hit.reason === "tie") {
+    await captureFindMiss(step, driver, located.nodes, located.hit, located.tried);
     return { ...located, recovered };
   }
-  const labeled = labelCandidate(step, tree.nodes, tree.boxes);
-  if (labeled && testIdAgrees(stepQuery(step)?.testId, tree.nodes[labeled.index])) {
+  if (located.hit.ok && located.hit.index != null && canClick(located.hit.index, tree.boxes, tree.hidden) && testIdAgrees(stepQuery(step)?.testId, tree.nodes[located.hit.index])) {
+    if (located.via) locatorHits.push(located.via);
+    if (located.via?.kind === "anchor") repairs.push({ stepId: step.id, repair: "anchor", detail: located.via.detail });
+    return { ...located, recovered };
+  }
+  const query = stepQuery(step);
+  const named = query?.name || query?.text || query?.label;
+  const labeled = query?.testId && !named ? undefined : labelCandidate(step, tree.nodes, tree.boxes);
+  const recordedTestIdMissing = !query?.testId || !tree.nodes.some((node) => node.testId === query.testId);
+  if (labeled && (recordedTestIdMissing || testIdAgrees(query?.testId, tree.nodes[labeled.index]))) {
     repairs.push({ stepId: step.id, repair: "label", detail: labeled.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: labeled.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
   const anchored = anchorCandidate(step, tree.nodes, tree.boxes);
-  if (anchored && testIdAgrees(stepQuery(step)?.testId, tree.nodes[anchored.index])) {
+  if (anchored && testIdAgrees(query?.testId, tree.nodes[anchored.index])) {
     repairs.push({ stepId: step.id, repair: "anchor", detail: anchored.detail });
     return { nodes: tree.nodes, hit: { ok: true, index: anchored.index, score: 0, margin: 0, ranked: [] }, tried: located.tried, recovered };
   }
@@ -1226,7 +1234,7 @@ async function runHandoff(
   beginHandoff(driver, gate, step.id);
   gate.onPause?.(ask);
   await showOwnerAsk(driver, step, ask);
-  if (step.timeoutMs === 0) {
+  if (!real || step.timeoutMs === 0) {
     if (await ownerDone(step, args, driver)) return finishHandoff(driver, gate, step.id);
     return { ok: false, paused: "confirm", repairs: [], ask };
   }
@@ -1604,6 +1612,25 @@ function locate(
       if (compatible) preferred = compatible.index;
     }
     const idWinner = idAt >= 0 && tried[idAt]!.score === 100 ? idAt : -1;
+    if (idWinner >= 0 && identity && locatorMode !== "primary") {
+      const found = matchLocator(list[idWinner]!, nodes, tree.boxes, tree.hidden);
+      const recordedName = identity.name || identity.text || identity.label || "";
+      const got = found ? nodes[found.index]?.name || nodes[found.index]?.text || nodes[found.index]?.label || "" : "";
+      if (recordedName && got && normText(recordedName) !== normText(got)) {
+        const hit = lookup(identity, nodes);
+        const idIndex = nodes.findIndex((node) => node.id === identity.id);
+        const ranked = idIndex >= 0 ? [...hit.ranked.filter((row) => row.index === idIndex), ...hit.ranked.filter((row) => row.index !== idIndex)] : hit.ranked;
+        return { nodes, hit: { ...hit, ok: false, reason: "tie", brokenAttr: "text", ranked }, tried };
+      }
+    }
+    const perfectNodes = new Set(perfect.flatMap((row) => {
+      const found = matchLocator(list[row.index]!, nodes, tree.boxes, tree.hidden);
+      return found ? [found.index] : [];
+    }));
+    if (perfectNodes.size > 1 && identity && locatorMode !== "primary") {
+      const hit = lookup(identity, nodes);
+      return { nodes, hit, tried };
+    }
     let winner = idWinner >= 0 ? idWinner : (preferred >= 0 ? preferred : (perfect[0]?.index ?? -1));
     if (identity?.testId) {
       const exact = perfect.find((row) => {
@@ -1651,6 +1678,17 @@ function locate(
           tried,
         };
       }
+    }
+    const unique = list.some((item) => item.kind === "testid" || item.kind === "css" || item.kind === "xpath");
+    if (!unique && identity && locatorMode !== "primary") {
+      const missed = lookup(identity, nodes);
+      const ranked = missed.ranked.slice(0, 5).map((score, index) => {
+        const node = nodes[score.index];
+        const name = node?.name || node?.text || node?.label || node?.testId || node?.id || `candidate ${index + 1}`;
+        const label = node?.role && name ? `${node.role} ${name}` : name;
+        return { kind: "identity" as const, label, score: score.score };
+      });
+      if (ranked.length) return { nodes, hit: missed, tried: ranked };
     }
     return {
       nodes,

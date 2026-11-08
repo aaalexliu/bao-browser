@@ -127,6 +127,8 @@ export interface TargetHint {
   inputType?: string;
   autocomplete?: string;
   placeholder?: string;
+  /** The recorded element id, including a generated id a locator does not keep. */
+  id?: string;
 }
 
 export interface AnchorRef {
@@ -321,16 +323,18 @@ function atWord(text: string, start: number, end: number): boolean {
   return edge(before) && edge(after);
 }
 
+const ACTION_SENTENCE = /^(?:click|type|press|open|check|uncheck|wait|read|enter|select|upload|drop|finish|sign in|you press)\b/i;
+
 export function stepTitle(step: { caption?: { text?: string; citation?: { text?: string } }; action?: string; id?: string }): string {
   const text = step.caption?.text?.trim();
   const cite = step.caption?.citation?.text?.trim();
   if (!text) return step.action || step.id || "Step";
-  if (!cite) return text;
+  if (!cite || !ACTION_SENTENCE.test(text)) return text;
   const quoted = `"${cite}"`;
   if (text.includes(quoted)) return text;
   const at = text.indexOf(cite);
   if (at >= 0 && atWord(text, at, at + cite.length)) return `${text.slice(0, at)}${quoted}${text.slice(at + cite.length)}`;
-  return text.includes(cite) ? text : `${text} (${quoted})`;
+  return text;
 }
 
 export function stepTarget(step: WorkflowStep): Target | undefined {
@@ -365,6 +369,7 @@ export function stepLocators(step: WorkflowStep): StepLocator[] | undefined {
 }
 
 export function checkMatch(check: Check | undefined): string | undefined {
+  if (check?.kind === "settled") return "no error and the page settled";
   return check && "match" in check ? check.match : undefined;
 }
 
@@ -459,6 +464,7 @@ export function hintFromIdentity(node: Identity | undefined): TargetHint | undef
   if (node.inputType) hint.inputType = node.inputType;
   if (node.autocomplete) hint.autocomplete = node.autocomplete;
   if (node.placeholder) hint.placeholder = node.placeholder;
+  if (node.id) hint.id = node.id;
   if (node.path?.length) hint.path = node.path.map((seg) => ({ role: seg.role, name: seg.name }));
   return Object.keys(hint).length ? hint : undefined;
 }
@@ -517,7 +523,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     names.add(input.name);
     if (input.supply !== "saved" && input.supply !== "must") errors.push(`supply ${input.name}`);
     if (input.supply === "saved") {
-      if (input.type === "file" || !input.default) errors.push(`supply ${input.name}`);
+      if (input.type === "file" || input.default == null) errors.push(`supply ${input.name}`);
     }
     if (input.supply === "must" && input.default && input.default !== STRIPPED_SECRET) errors.push(`supply ${input.name}`);
     if (input.ownerSaved !== undefined && input.ownerSaved !== true) errors.push(`ownerSaved ${input.name}`);
@@ -750,7 +756,7 @@ export function finishInput<T extends { type: InputType; supply: "saved" | "must
     next.supply = "must";
     return next;
   }
-  if (!next.default) {
+  if (next.default == null) {
     delete next.default;
     next.supply = "must";
     return next;

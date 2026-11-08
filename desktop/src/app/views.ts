@@ -8,7 +8,7 @@ import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatTime, formatWhen } from "../v1/time";
-import { stepTitle } from "../v1/schema";
+import { stepQuery, stepTitle, type Target, type WorkflowStep } from "../v1/schema";
 import { shotFile, viewportShotName, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -164,7 +164,7 @@ export interface HealView {
   rawResponse?: string;
   model?: { name?: string; version?: string; provider?: string };
   proposedPatch?: { identity?: HealTarget; label?: string };
-  failedStep?: { id?: string; index?: number; label?: string; action?: string; identity?: HealTarget };
+  failedStep?: { id?: string; index?: number; label?: string; action?: string; identity?: HealTarget; caption?: { text?: string; citation?: { text?: string } }; target?: Target };
   postconditionPassed?: boolean;
   snapshot?: { screenshot?: string; screenshotRef?: string };
   beforeShot?: string;
@@ -1142,7 +1142,7 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
         run,
         bucket,
         workflow: healWorkflowName(heal, run, names),
-        step: heal.failedStep?.label || heal.intent || heal.failedStep?.id || "step",
+        step: healStepLabel(heal.failedStep) || heal.intent || heal.failedStep?.id || "step",
         when: typeof heal.ts === "number" ? formatWhen(heal.ts) : "",
       });
     }
@@ -1151,17 +1151,17 @@ function healRows(runs: RunSummary[], workflows: WorkflowSummary[]) {
 }
 
 export function healDetail(run: RunSummary, heal: HealView, extra: { promotion?: PromotionView; workflowName?: string } = {}): string {
-  const recorded = heal.failedStep?.identity;
+  const recorded = healRecorded(heal.failedStep);
   const hasProposal = !!heal.proposedPatch;
-  const proposed = heal.proposedPatch?.identity;
+  const proposed = healRecorded(heal.proposedPatch);
   const before = imageRef(run.id, heal.beforeShot);
   const after = imageRef(run.id, heal.snapshot?.screenshot) || imageRef(run.id, heal.snapshot?.screenshotRef);
   const picture = (src: string, label: string) => `<div class="heal-shot">${src
     ? `<img src="${esc(src)}" alt="${esc(label)}" data-heal-shot><span class="heal-missing" hidden>Picture unavailable</span>`
     : `<span class="heal-missing">No picture stored</span>`}</div>`;
   const step = heal.failedStep?.index === undefined ? "Target" : `Step ${heal.failedStep.index + 1}`;
-  const oldTarget = healTargetDescription(recorded, heal.failedStep?.label);
-  const newTarget = healTargetDescription(proposed, heal.proposedPatch?.label);
+  const oldTarget = healTargetDescription(recorded, healStepLabel(heal.failedStep));
+  const newTarget = healTargetDescription(proposed, healStepLabel(heal.proposedPatch));
   const promotion = extra.promotion || (run.promotion?.healId === heal.id ? run.promotion : undefined);
   const need = promotion?.need && promotion.need > 0 ? promotion.need : DEFAULT_PROMOTE_AFTER;
   const clean = promotion?.replays ?? 0;
@@ -1209,7 +1209,7 @@ export function healDetail(run: RunSummary, heal: HealView, extra: { promotion?:
     </div>
     <p id="heal-decision-status" role="status"></p>
     <details class="heal-technical"><summary><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Technical details</summary>
-      <div class="heal-code"><p>Recorded: ${targetLines(recorded, heal.failedStep?.label)}</p><p>Proposed: ${targetLines(proposed, heal.proposedPatch?.label)}</p>
+      <div class="heal-code"><p>Recorded: ${targetLines(recorded, healStepLabel(heal.failedStep))}</p><p>Proposed: ${targetLines(proposed, healStepLabel(heal.proposedPatch))}</p>
         <p>${esc(heal.mode || "")} · ${esc(model)}</p><p id="heal-candidates">Candidates ${candidates}</p><p>Postcondition after patch: ${esc(post)}</p>
         <details id="heal-prompt"><summary>Prompt</summary><pre>${esc(prompt)}</pre></details>
         <details id="heal-response"><summary>Raw response</summary><pre>${esc(raw)}</pre></details>
@@ -1223,6 +1223,20 @@ export function healDetail(run: RunSummary, heal: HealView, extra: { promotion?:
       </form>
     </dialog>
   </article>`;
+}
+
+function healRecorded(step: HealView["failedStep"] | HealView["proposedPatch"]): HealTarget | undefined {
+  if (!step) return undefined;
+  if ("identity" in step && step.identity) return step.identity;
+  if ("action" in step && step.action && "target" in step && step.target) return stepQuery(step as WorkflowStep);
+  return undefined;
+}
+
+function healStepLabel(step: HealView["failedStep"] | HealView["proposedPatch"]): string | undefined {
+  if (!step) return undefined;
+  if ("label" in step && step.label) return step.label;
+  if ("caption" in step && step.caption?.text) return stepTitle(step);
+  return undefined;
 }
 
 function healTargetDescription(identity: HealTarget | undefined, label?: string): string {
@@ -1540,11 +1554,26 @@ function cardTargetKind(step: StepCard): string {
 }
 
 function cardUrl(step: StepCard): string {
-  return step.url || step.open?.url || step.download?.url || "";
+  return step.url || step.open?.url || step.download?.url || (step.action === "navigate" ? step.value || "" : "");
 }
 
 function cardCheck(step: StepCard): StepCard["check"] {
   return step.check || step.expect || step.postcondition;
+}
+
+function describeCheck(saved: NonNullable<StepCard["check"]> | NonNullable<StepCard["expect"]> | NonNullable<StepCard["postcondition"]>, inputs: TokenInput[]): string {
+  if (saved.kind === "settled") return "The page finishes loading";
+  if (saved.kind === "element" || saved.kind === "absent") {
+    const named = "identity" in saved ? saved.identity : undefined;
+    const target = named?.name || named?.text || named?.role || "saved control";
+    return `The ${mustacheName(target) ? "control matching " : ""}${workflowCheckText(target, inputs)} ${saved.kind === "absent" ? "is gone" : "is on the page"}`;
+  }
+  if ("match" in saved && saved.match) {
+    const kind = saved.kind === "url" ? "address" : saved.kind === "value" ? "value" : "page";
+    return `The ${kind} ${mustacheName(saved.match) ? "matches" : "shows"} ${workflowCheckText(saved.match, inputs)}`;
+  }
+  if ("state" in saved && saved.state) return `The control is ${saved.state}`;
+  return "The saved check";
 }
 
 function workflowCheckText(text: string, inputs: TokenInput[]): string {
@@ -1607,11 +1636,9 @@ export function workflowDetail(
     const pageUrl = cardUrl(step);
     const branch = step.when?.present ? `Only when “${step.when.present}” is on the page.` : step.when?.value ? `Only for “${step.when.value}”.` : "";
     const checks: string[] = [];
-    const saved = cardCheck(step);
-    if (saved) checks.push(saved.kind === "settled" ? "The page finishes loading"
-      : saved.kind === "element" || saved.kind === "absent" ? `The saved control ${saved.kind === "absent" ? "is gone" : "is on the page"}`
-      : saved.match ? `The ${saved.kind === "url" ? "address" : saved.kind === "value" ? "value" : "page"} ${mustacheName(saved.match) ? "matches" : "shows"} ${workflowCheckText(saved.match, inputs)}`
-      : saved.state ? `The control is ${saved.state}` : "The saved check");
+    for (const saved of [step.check, step.expect, step.postcondition]) {
+      if (saved) checks.push(describeCheck(saved, inputs));
+    }
     if (step.readBack) checks.push(`Reads ${step.readBack.source || "the value"}${step.readBack.match ? ` matching ${workflowCheckText(step.readBack.match, inputs)}` : ""}`);
     const check = [...new Set(checks)].join(". ") || (step.action === "verify" ? "The saved check" : "Nothing extra");
     const inputVerb = ({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens" } as Record<string, string>)[step.action || ""] || "Uses";

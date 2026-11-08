@@ -48,18 +48,18 @@ const owner = { userId: "owner" };
 const reader = { userId: "reader" };
 const credentials = ["fixture-password-99", "sk-fixtureApiToken", "4111111111111111"];
 const source = {
-  schema: "bao.workflow/v4", version: 2, id: "owner-sync", name: "Owner sync", createdAt: 1,
+  schema: "bao.workflow/v4", id: "owner-sync", name: "Owner sync", createdAt: 1,
   startUrl: "https://example.test/",
   inputs: [
-    { name: "email", type: "text", default: "ada@fixture.test" },
-    { name: "file", type: "file", default: "/Users/ada/note.txt" },
-    { name: "password", type: "secret", default: credentials[0] },
-    { name: "token", type: "text", default: credentials[1] },
-    { name: "card", type: "text", default: credentials[2] },
+    { name: "email", type: "text", label: "Email", supply: "saved", default: "ada@fixture.test" },
+    { name: "file", type: "file", label: "File", supply: "saved", default: "/Users/ada/note.txt" },
+    { name: "password", type: "secret", label: "Password", supply: "saved", default: credentials[0] },
+    { name: "token", type: "text", label: "Token", supply: "saved", default: credentials[1] },
+    { name: "card", type: "text", label: "Card", supply: "saved", default: credentials[2] },
   ],
   steps: [
-    { id: "pass", index: 0, action: "type", label: "Enter password", surface: "dom", timeoutMs: 1000, sensitive: true, input: "password", value: "{{password}}" },
-    { id: "go", index: 1, action: "key", key: "Enter", label: "Continue", surface: "dom", timeoutMs: 1000 },
+    { id: "pass", index: 0, action: "type", caption: { text: "Enter password" }, timeoutMs: 1000, sensitive: true, target: { locators: [{ kind: "role", role: "textbox", name: "Password" }] }, text: { input: "password" } },
+    { id: "go", index: 1, action: "key", caption: { text: "Continue" }, timeoutMs: 1000, key: "Enter" },
   ],
 };
 
@@ -92,9 +92,9 @@ test("required registry share answers survive install and pull except secret and
   const document = {
     ...source, id: "required-share-answers",
     inputs: [
-      ...Object.keys(ordinary).map((name) => ({ name, type: "text", label: name, askOnImport: true, required: true })),
-      { name: "password", type: "secret", label: "Password", askOnImport: true },
-      { name: "file", type: "file", label: "File", askOnImport: true },
+      ...Object.keys(ordinary).map((name) => ({ name, type: "text", label: name, supply: "must" as const, askOnImport: true })),
+      { name: "password", type: "secret", label: "Password", supply: "must" as const, askOnImport: true },
+      { name: "file", type: "file", label: "File", supply: "must" as const, askOnImport: true },
     ],
   };
   await pushVersion(author, document.id, buildPushBody(document, { baseVersion: 0 }));

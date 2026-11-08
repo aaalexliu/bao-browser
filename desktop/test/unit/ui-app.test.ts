@@ -175,22 +175,22 @@ test("act bar, run viewer, and heal review in the window", { timeout: 180000 }, 
     };
     assert.equal(failed.status, "failed", JSON.stringify(failed.failure));
     assert.equal(failed.failure?.reason, "tie");
-    assert.equal(failed.failure?.identity?.candidates?.[0]?.score, 80);
-    assert.equal(failed.failure?.identity?.candidates?.[1]?.score, 70);
+    assert.equal(failed.failure?.identity?.candidates?.[0]?.score, 92);
+    assert.equal(failed.failure?.identity?.candidates?.[1]?.score, 110);
     assert.match(failed.failure?.identity?.changed || "", /Upload file/);
     await page.click("#rail button[data-place=runs]");
     await page.click(`[data-open-run="${failed.runId}"]`);
     await page.getByText("Detailed evidence", { exact: true }).click();
     await page.waitForSelector("#why-stopped");
     const why = await page.locator("#why-stopped").innerText();
-    assert.match(why, /Step 1 "click Upload"/);
-    assert.match(why, /scored 80 and 70/);
-    assert.match(why, /lead 10 < 25/);
+    assert.match(why, /Step 1 "click "Upload""/);
+    assert.match(why, /scored 92 and 110/);
+    assert.match(why, /lead 0 < 25/);
     assert.match(why, /name "Upload" → "Upload file"/);
     assert.equal(await page.locator("#step-bar .seg").count(), 1);
     const table = await page.locator("#identity-table").innerText();
-    assert.match(table, /80/);
-    assert.match(table, /70/);
+    assert.match(table, /92/);
+    assert.match(table, /110/);
 
     process.env.BAO_HEAL_FIXTURE = "1";
     app.library.save(workflow(app.port, "wf-text", "textedit write", "/fixture", [

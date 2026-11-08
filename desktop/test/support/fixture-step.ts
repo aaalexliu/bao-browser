@@ -4,6 +4,7 @@ import { redactSavedValue } from "../../../shared/outbound-secrets";
 import { citeIdentity, caption, clickSentence, openSentence, typeSentence } from "../../src/v1/caption";
 import { locatorsFromIdentity } from "../../src/v1/locators";
 import {
+  anchorRef,
   hintFromIdentity,
   stepCheck,
   stepInputName,
@@ -140,7 +141,7 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
 
 function builtFixtureStep(draft: object, index = (draft as LooseStep).index ?? 0): WorkflowStep {
   const raw = draft as LooseStep;
-  const action = mapAction(raw.action);
+  const action = raw.date || raw.datePicker ? "pickDate" : mapAction(raw.action);
   const timeoutMs = typeof raw.timeoutMs === "number" ? raw.timeoutMs : 8000;
   const target = targetOf(raw);
   const check = checkOf(raw);
@@ -313,6 +314,7 @@ export function withStep(step: WorkflowStep, patch: object): WorkflowStep {
   const extra = patch as LooseStep;
   const merged: LooseStep = { ...draft, ...extra, id: extra.id || step.id, index: extra.index ?? step.index };
   if (extra.identity || extra.locators || extra.history) delete merged.target;
+  if (extra.identity && !extra.locators) delete merged.locators;
   if ("postcondition" in extra || "expect" in extra) delete merged.check;
   if (extra.label || extra.caption) delete merged.caption;
   if ("value" in extra) delete merged.text;
@@ -392,11 +394,14 @@ function asIdentity(node: Partial<Identity> | undefined): Identity | undefined {
   return { surface: node.surface ?? "dom", role: node.role ?? "unknown", path: node.path ?? [], ...node };
 }
 
-/** A css path on the identity is a weak score. It is not a stored unique selector unless the draft stored locators. */
-function withoutRecordedPath(list: StepLocator[] | undefined, identity: Identity | undefined): StepLocator[] | undefined {
-  if (!list || !identity?.cssPath || identity.cssPath.startsWith("#")) return list;
-  const filtered = list.filter((locator) => !(locator.kind === "css" && locator.value === identity.cssPath));
-  return filtered.length ? filtered : undefined;
+function withDraftAnchor(list: StepLocator[] | undefined, draft: LooseStep): StepLocator[] | undefined {
+  const raw = draft.anchor as { relation?: string; identity?: Partial<Identity> } | undefined;
+  const relation = raw?.relation;
+  if (relation !== "below" && relation !== "above" && relation !== "right" && relation !== "left") return list;
+  const node = asIdentity(raw?.identity);
+  if (!node) return list;
+  const anchor: StepLocator = { kind: "anchor", relation, anchor: anchorRef(node) };
+  return [...(list ?? []), anchor];
 }
 
 function targetOf(draft: LooseStep): Target | undefined {
@@ -408,7 +413,7 @@ function targetOf(draft: LooseStep): Target | undefined {
     };
   }
   const identity = asIdentity(draft.identity);
-  const locators = draft.locators ?? withoutRecordedPath(locatorsFromIdentity(identity), identity);
+  const locators = withDraftAnchor(draft.locators ?? locatorsFromIdentity(identity), draft);
   if (!locators?.length && !identity) return draft.history ? { locators: [{ kind: "role", role: "button", name: draft.label || "Click" }], history: draft.history } : undefined;
   const hint = hintFromIdentity(identity);
   return {
