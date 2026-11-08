@@ -66,8 +66,12 @@ function lab(t: TestContext, version = "9.9.1"): Lab {
 }
 
 function install(lab: Lab, ...args: string[]) {
+  return installWith(lab, {}, ...args);
+}
+
+function installWith(lab: Lab, env: NodeJS.ProcessEnv, ...args: string[]) {
   return spawnSync(process.execPath, [INSTALLER, "--dir", lab.apps, "--release", lab.release, ...args], {
-    env: { HOME: lab.home, PATH: "/usr/bin:/bin" },
+    env: { HOME: lab.home, PATH: "/usr/bin:/bin", ...env },
     encoding: "utf8",
     timeout: 60_000,
   });
@@ -88,6 +92,7 @@ test("the installer places the pinned app, links bao, and hands the picker flags
   assert.equal(readFileSync(path.join(box.home, "bao-cli.log"), "utf8"), `setup --app ${app} --agents codex\n`);
   assert.ok(existsSync(path.join(box.home, "Library", "Caches", "bao", "downloads", "Bao-9.9.1-darwin-arm64.zip")));
   assert.match(run.stdout, /Checked size and SHA-256/);
+  assert.match(run.stdout, /npx bao-browser doctor .* npx bao-browser setup/);
 });
 
 test("a download that does not match release.json installs nothing", { skip }, (t) => {
@@ -123,4 +128,37 @@ test("a missing release.json stops before any download", { skip }, (t) => {
   assert.equal(run.status, 1);
   assert.match(run.stderr, /release\.json is missing/);
   assert.equal(existsSync(box.apps), false);
+});
+
+/** A codesign that reports a certificate for the app at $SIGNED_APP and passes every other call to /usr/bin/codesign. */
+function certificateCodesign(lab: Lab): string {
+  const file = path.join(lab.root, "codesign");
+  writeFileSync(file, `#!/bin/sh
+if [ "$1" = "-dvv" ] && [ "$2" = "$SIGNED_APP" ]; then
+  echo "Authority=bao dev signing" >&2
+  exit 0
+fi
+exec /usr/bin/codesign "$@"
+`);
+  chmodSync(file, 0o755);
+  return file;
+}
+
+test("with --yes or no terminal, an ad-hoc release keeps a certificate-signed Bao.app and says how to replace it", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  rmSync(path.join(box.home, "bao-cli.log"));
+  publish(box, "9.9.2");
+  const app = path.join(box.apps, "Bao.app");
+  const env = { BAO_INSTALLER_CODESIGN: certificateCodesign(box), SIGNED_APP: app };
+  for (const flag of ["--yes", "--none"]) {
+    const run = installWith(box, env, flag);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /signed by bao dev signing/);
+    assert.match(run.stdout, /Kept .*Bao\.app\. Nothing was installed\. To replace it: quit Bao, remove /);
+    assert.equal(version(app), "9.9.1");
+    assert.equal(existsSync(path.join(box.home, "bao-cli.log")), false);
+  }
+  assert.equal(install(box, "--none").status, 0);
+  assert.equal(version(app), "9.9.2");
 });

@@ -2,28 +2,23 @@
 // start Bao, and write each pick through the writers `bao agent config` and Settings already use.
 // The one-command installer runs it through Contents/MacOS/bao-cli right after it places Bao.app.
 
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { emitKeypressEvents } from "node:readline";
 import { getStaticTOMLValue, parseTOML } from "toml-eslint-parser";
 import { baoUserHome } from "../home";
-import { agentMain, codexConfigFile, type AgentIo } from "./agent-config";
+import { agentMain, codexConfigFile, writeConfig, type AgentIo } from "./agent-config";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { DesktopMcpInstaller, desktopMcpFile, editClaude } from "./desktop-mcp-config";
 
-export const SETUP_USAGE = "usage: bao setup [--app /Applications/Bao.app] [--agents claude-code,codex,claude-desktop,cursor | --yes | --none] [--list]";
+export const SETUP_USAGE = "usage: bao setup [--app /Applications/Bao.app] [--agents claude-code,codex,claude-desktop,cursor | --yes | --none]";
 
 export const TARGET_IDS = ["claude-code", "codex", "claude-desktop", "cursor"] as const;
 export type TargetId = (typeof TARGET_IDS)[number];
 
-const ALIASES: Record<string, TargetId> = {
-  claude: "claude-code",
-  "claude-code": "claude-code",
-  codex: "codex",
-  chatgpt: "codex",
-  "claude-desktop": "claude-desktop",
-  cursor: "cursor",
-};
+function isTargetId(name: string): name is TargetId {
+  return (TARGET_IDS as readonly string[]).includes(name);
+}
 
 export interface Target {
   id: TargetId;
@@ -76,6 +71,11 @@ function onPath(probe: Probe, name: string): string {
     }
   }
   return "";
+}
+
+/** How to run bao from this shell: the linked command when it is on PATH, else through npx. */
+export function baoCommand(probe: Probe): string {
+  return onPath(probe, "bao") ? "bao" : "npx bao-browser";
 }
 
 function appBundle(probe: Probe, name: string): string {
@@ -194,7 +194,6 @@ export interface SetupOptions {
   agents?: string[];
   yes: boolean;
   none: boolean;
-  list: boolean;
 }
 
 export function parseSetup(argv: readonly string[], selfFile: string = __filename): SetupOptions {
@@ -202,12 +201,10 @@ export function parseSetup(argv: readonly string[], selfFile: string = __filenam
   let agents: string[] | undefined;
   let yes = false;
   let none = false;
-  let list = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--yes" || arg === "-y") yes = true;
     else if (arg === "--none") none = true;
-    else if (arg === "--list") list = true;
     else if (arg === "--app" || arg === "--agents" || arg === "-a") {
       const value = argv[i + 1];
       if (!value || value.startsWith("-")) throw new Error(`${arg} needs a value`);
@@ -218,7 +215,7 @@ export function parseSetup(argv: readonly string[], selfFile: string = __filenam
     } else throw new Error(`unknown argument: ${arg}`);
   }
   if ([yes, none, agents !== undefined].filter(Boolean).length > 1) throw new Error("use only one of --agents, --yes, and --none");
-  return { app: app || appBundleOf(selfFile) || DEFAULT_APP, agents, yes, none, list };
+  return { app: app || appBundleOf(selfFile) || DEFAULT_APP, agents, yes, none };
 }
 
 /** The targets the flags pick, or undefined when the owner should pick in the terminal. */
@@ -226,12 +223,10 @@ export function chosenByFlags(targets: readonly Target[], options: SetupOptions)
   if (options.none) return [];
   if (options.yes) return targets.filter((target) => target.found && !target.blocked);
   if (!options.agents) return undefined;
-  if (options.agents.includes("*") || options.agents.includes("all")) return targets.filter((target) => !target.blocked);
   const ids = new Set<TargetId>();
   for (const name of options.agents) {
-    const id = ALIASES[name];
-    if (!id) throw new Error(`unknown agent: ${name}. Use ${Object.keys(ALIASES).join(", ")}, or *`);
-    ids.add(id);
+    if (!isTargetId(name)) throw new Error(`unknown agent: ${name}. Use ${TARGET_IDS.join(", ")}`);
+    ids.add(name);
   }
   const picked = targets.filter((target) => ids.has(target.id));
   const blocked = picked.find((target) => target.blocked);
@@ -244,11 +239,23 @@ export interface SetupIo extends AgentIo {
   stdout: NodeJS.WriteStream;
 }
 
-function row(target: Target, checked: boolean, here: boolean, launcher: string): string {
+/** Text cut to fit room columns, so no drawn line wraps. */
+function clip(text: string, room: number): string {
+  if (text.length <= room) return text;
+  return room > 0 ? `${text.slice(0, room - 1)}…` : "";
+}
+
+/** One line in at most width columns: plain then dim, clipped as one. */
+function line(plain: string, dim: string, width: number): string {
+  const text = clip(plain + dim, width);
+  return `${text.slice(0, plain.length)}\u001b[2m${text.slice(plain.length)}\u001b[0m`;
+}
+
+function row(target: Target, checked: boolean, here: boolean, launcher: string, width: number): string {
   const box = target.blocked ? "[-]" : checked ? "[x]" : "[ ]";
   const state = target.command ? target.command === launcher ? "set up" : "set up for another Bao" : target.found ? `found: ${target.found}` : "not found on this Mac";
   const note = target.blocked ? ` (${target.blocked})` : "";
-  return `${here ? "\u001b[36m›\u001b[0m" : " "} ${box} ${target.label.padEnd(30)} \u001b[2m${state}${note}\u001b[0m`;
+  return `${here ? "\u001b[36m›\u001b[0m" : " "} ${line(`${box} ${target.label.padEnd(30)} `, `${state}${note}`, width - 2)}`;
 }
 
 /** A keyboard multi-select in the terminal. Resolves null when the owner cancels. */
@@ -257,9 +264,10 @@ export function pickInTerminal(targets: readonly Target[], launcher: string, io:
   let at = 0;
   const lines = targets.length + 2;
   const draw = (first: boolean): void => {
+    const width = (io.stdout.columns || 80) - 1;
     if (!first) io.stdout.write(`\u001b[${lines}A`);
-    io.stdout.write("\u001b[2KWhich apps should start Bao? \u001b[2m↑/↓ move · space toggle · a all · enter confirm · esc skip\u001b[0m\n");
-    targets.forEach((target, i) => io.stdout.write(`\u001b[2K${row(target, checked[i]!, i === at, launcher)}\n`));
+    io.stdout.write(`\u001b[2K${line("Which apps should start Bao? ", "↑↓ space enter esc", width)}\n`);
+    targets.forEach((target, i) => io.stdout.write(`\u001b[2K${row(target, checked[i]!, i === at, launcher, width)}\n`));
     io.stdout.write("\u001b[2K\n");
   };
   return new Promise((resolve) => {
@@ -319,22 +327,18 @@ function writeCursor(file: string, launcher: string, io: AgentIo): boolean {
     io.out(`${file} already starts this Bao. Nothing changed.\n`);
     return true;
   }
-  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const mode = before ? statSync(file).mode & 0o777 : 0o600;
-  if (before) {
-    const backup = `${file}.bao-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    writeFileSync(backup, before, { mode });
-    io.out(`Saved the old file as ${backup}.\n`);
-  }
-  const tmp = `${file}.bao-${process.pid}.tmp`;
+  let backup = "";
   try {
-    writeFileSync(tmp, after, { mode });
-    renameSync(tmp, file);
+    if (before) {
+      backup = `${file}.bao-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      writeFileSync(backup, before, { mode: statSync(file).mode & 0o777 });
+    }
+    writeConfig(file, after);
   } catch (err) {
-    rmSync(tmp, { force: true });
     io.err(`${file}: ${(err as Error).message}. Nothing was written.\n`);
     return false;
   }
+  if (backup) io.out(`Saved the old file as ${backup}.\n`);
   io.out(`Added bao to ${file}.\n`);
   return true;
 }
@@ -394,10 +398,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   }
   const targets = detectTargets(probe);
   const others = detectOthers(probe);
-  if (options.list) {
-    io.out(`${JSON.stringify({ app: options.app, launcher, targets, others }, null, 2)}\n`);
-    return 0;
-  }
+  const bao = baoCommand(probe);
   let chosen: Target[] | null | undefined;
   try {
     chosen = chosenByFlags(targets, options);
@@ -407,7 +408,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   }
   if (chosen === undefined) {
     if (!io.stdin.isTTY || !io.stdout.isTTY) {
-      io.out(`No terminal to ask in, so Bao changed no agent config. Run one of these:\n${targets.map((target) => `  bao setup --agents ${target.id}`).join("\n")}\n`);
+      io.out(`No terminal to ask in, so Bao changed no agent config. Run one of these:\n${targets.map((target) => `  ${bao} setup --agents ${target.id}`).join("\n")}\n`);
       return 0;
     }
     chosen = await pickInTerminal(targets, launcher, io);
@@ -416,7 +417,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
     for (const target of targets.filter((item) => item.found && item.blocked)) io.out(`Skipped ${target.label}: it ${target.blocked}.\n`);
   }
   if (!chosen || chosen.length === 0) {
-    io.out("No app was changed. Run `bao setup` any time to add Bao to an agent.\n");
+    io.out("No app was changed. Run `${bao} setup` any time to add Bao to an agent.\n");
     return 0;
   }
   let failed = 0;

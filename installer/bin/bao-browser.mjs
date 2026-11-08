@@ -9,6 +9,7 @@ import { accessSync, constants, createReadStream, createWriteStream, existsSync,
 import { homedir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { createInterface } from "node:readline/promises";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -36,7 +37,7 @@ function home() {
 }
 
 function parse(argv) {
-  const out = { command: "install", dir: "", setup: [], link: true, release: process.env.BAO_RELEASE || "", rest: [] };
+  const out = { command: "install", dir: "", setup: [], yes: false, link: true, release: "", rest: [] };
   let i = 0;
   if (argv[0] && !argv[0].startsWith("-")) {
     out.command = argv[0];
@@ -58,7 +59,10 @@ function parse(argv) {
     if (arg === "--dir") out.dir = path.resolve(value());
     else if (arg === "--release") out.release = value();
     else if (arg === "--no-link") out.link = false;
-    else if (arg === "--yes" || arg === "-y" || arg === "--none") out.setup.push(arg);
+    else if (arg === "--yes" || arg === "-y" || arg === "--none") {
+      out.setup.push(arg);
+      if (arg !== "--none") out.yes = true;
+    }
     else if (arg === "--agents" || arg === "-a") out.setup.push("--agents", value());
     else if (arg === "--help" || arg === "-h") out.command = "help";
     else throw new InstallError(`unknown argument: ${arg}`);
@@ -169,23 +173,48 @@ function applicationsDir(chosen) {
   }
 }
 
-function signerOf(app) {
-  const verify = spawnSync("/usr/bin/codesign", ["--verify", "--strict", app], { encoding: "utf8" });
-  if (verify.status !== 0) throw new InstallError(`Bao.app failed codesign --verify: ${verify.stderr.trim()}. Nothing was installed.`);
-  const details = spawnSync("/usr/bin/codesign", ["-dvv", app], { encoding: "utf8" }).stderr;
+/** The codesign that reads signatures. Tests point BAO_INSTALLER_CODESIGN at a stand-in to play a certificate-signed app. */
+const CODESIGN = process.env.BAO_INSTALLER_CODESIGN || "/usr/bin/codesign";
+
+function signature(app) {
+  const details = spawnSync(CODESIGN, ["-dvv", app], { encoding: "utf8" }).stderr || "";
   if (/Signature=adhoc/.test(details)) return "ad-hoc";
   return /^Authority=(.+)$/m.exec(details)?.[1] || "unsigned";
 }
 
-/** True while a Bao from this path is running. Replacing it then would pull files from under it. */
-function running(app) {
-  const result = spawnSync("/usr/bin/pgrep", ["-f", `${app}/Contents/`], { encoding: "utf8" });
-  return result.status === 0 && result.stdout.trim() !== "";
+function signerOf(app) {
+  const verify = spawnSync(CODESIGN, ["--verify", "--strict", app], { encoding: "utf8" });
+  if (verify.status !== 0) throw new InstallError(`Bao.app failed codesign --verify: ${verify.stderr.trim()}. Nothing was installed.`);
+  return signature(app);
 }
 
-function place(zip, dir) {
+/** The processes that run from this app, Bao and the bao-mcp servers agents start. Replacing it then would pull files from under them. */
+function running(app) {
+  const result = spawnSync("/usr/bin/pgrep", ["-lf", `${app}/Contents/`], { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+/** True when the owner says to replace a certificate-signed app with an ad-hoc one. Keep is the default. */
+async function replaceSigned(target, old, yes) {
+  const loss = `${target} is signed by ${old}. This release is signed ad-hoc, so replacing it drops the Accessibility grant that running-Chrome mode uses.`;
+  if (!yes && process.stdin.isTTY && process.stdout.isTTY) {
+    const ask = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      if (/^y(es)?$/i.test((await ask.question(`${loss} Replace it? [y/N] `)).trim())) return true;
+    } finally {
+      ask.close();
+    }
+  } else process.stdout.write(`${loss}\n`);
+  process.stdout.write(`Kept ${target}. Nothing was installed. To replace it: quit Bao, remove ${target}, then run npx bao-browser again.\n`);
+  return false;
+}
+
+async function place(zip, dir, yes) {
   const target = path.join(dir, "Bao.app");
-  if (existsSync(target) && running(target)) throw new InstallError(`Bao is running from ${target}. Quit Bao from the Dock, then run this again.`);
+  const busy = existsSync(target) ? running(target) : "";
+  if (busy) {
+    throw new InstallError(`These processes run from ${target}:\n${busy.replace(/^/gm, "  ")}\nQuit Bao and every agent app or session that uses it (Claude Desktop, Cursor, Claude Code, Codex), then run this again.`);
+  }
   const stage = mkdtempSync(path.join(dir, ".bao-install-"));
   try {
     const unzip = spawnSync("/usr/bin/ditto", ["-x", "-k", zip, stage], { encoding: "utf8" });
@@ -193,7 +222,11 @@ function place(zip, dir) {
     const staged = path.join(stage, "Bao.app");
     if (!existsSync(staged)) throw new InstallError(`${zip} has no Bao.app`);
     const signer = signerOf(staged);
-    if (existsSync(target)) renameSync(target, path.join(stage, "previous-Bao.app"));
+    if (existsSync(target)) {
+      const old = signature(target);
+      if (signer === "ad-hoc" && old !== "ad-hoc" && old !== "unsigned" && !(await replaceSigned(target, old, yes))) return null;
+      renameSync(target, path.join(stage, "previous-Bao.app"));
+    }
     renameSync(staged, target);
     return { app: target, signer };
   } finally {
@@ -206,18 +239,18 @@ function link(app) {
   const bin = path.join(home(), ".local", "bin");
   const file = path.join(bin, "bao");
   const target = path.join(app, "Contents", "MacOS", "bao-cli");
-  if (!existsSync(target)) return `${target} is missing, so no bao command was linked`;
+  if (!existsSync(target)) return { note: `${target} is missing, so no bao command was linked`, onPath: false };
   mkdirSync(bin, { recursive: true });
   try {
     const stat = lstatSync(file);
-    if (!stat.isSymbolicLink() || !/Bao\.app\/Contents\/MacOS\/bao-cli$/.test(readlinkSync(file))) return `${file} exists and is not Bao's, so it was left alone`;
+    if (!stat.isSymbolicLink() || !/Bao\.app\/Contents\/MacOS\/bao-cli$/.test(readlinkSync(file))) return { note: `${file} exists and is not Bao's, so it was left alone`, onPath: false };
     unlinkSync(file);
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
   }
   symlinkSync(target, file);
   const onPath = (process.env.PATH || "").split(":").includes(bin);
-  return `linked ${file}${onPath ? "" : dim(` (add ${bin} to PATH to run bao)`)}`;
+  return { note: `linked ${file}${onPath ? "" : dim(` (add ${bin} to PATH to run bao)`)}`, onPath };
 }
 
 function runApp(app, args) {
@@ -241,12 +274,16 @@ async function install(opts) {
   const zip = await download(asset, release.version, key, base);
   step(`Checked size and SHA-256 ${dim(asset.sha256.slice(0, 16))}`);
   const dir = applicationsDir(opts.dir);
-  const { app, signer } = place(zip, dir);
+  const placed = await place(zip, dir, opts.yes);
+  if (!placed) return 0;
+  const { app, signer } = placed;
   step(`Installed ${app} ${dim(`(signed: ${signer})`)}`);
-  if (opts.link) step(link(app));
+  const linked = opts.link ? link(app) : { note: "", onPath: false };
+  if (linked.note) step(linked.note);
   step(`Took ${((Date.now() - started) / 1000).toFixed(1)} s. Now pick the agents that should use Bao.\n`);
   const status = runApp(app, ["setup", "--app", app, ...opts.setup]);
-  process.stdout.write(`\n${dim(`Check this install any time: bao doctor   ·   change agents: bao setup`)}\n`);
+  const bao = linked.onPath ? "bao" : "npx bao-browser";
+  process.stdout.write(`\n${dim(`Check this install any time: ${bao} doctor   ·   change agents: ${bao} setup`)}\n`);
   return status;
 }
 

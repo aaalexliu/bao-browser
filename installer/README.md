@@ -17,13 +17,13 @@ You need no Xcode, Rust, Node 24, or signing certificate. `Bao.app` carries its 
 | Flag | What it does |
 | --- | --- |
 | `--yes` | Set up every agent found on this Mac without asking. |
-| `--agents a,b` | Set up these: `claude-code`, `codex`, `claude-desktop`, `cursor`. `*` means all. |
+| `--agents a,b` | Set up these: `claude-code`, `codex`, `claude-desktop`, `cursor`. |
 | `--none` | Install the app and set up no agent. |
 | `--dir DIR` | Use this Applications folder. |
 | `--no-link` | Do not link `~/.local/bin/bao`. |
 | `--release FILE_OR_URL` | Use another `release.json`. |
 
-Run it again to update. A run with the same version reuses the checked download in `~/Library/Caches/bao/downloads`. Quit Bao first; the installer will not replace a running copy.
+Run it again to update. A run with the same version reuses the checked download in `~/Library/Caches/bao/downloads`. Quit Bao and every agent app or session that uses it (Claude Desktop, Cursor, Claude Code, Codex) first; the installer will not replace a copy that is running and lists the processes that still use it. When the installed `Bao.app` is signed by a certificate and the release is signed ad-hoc, the installer asks before it replaces the app, because the swap drops the Accessibility grant running-Chrome mode uses. It keeps the old app by default, and always keeps it with `--yes` or with no terminal to ask in.
 
 [Release Bao](https://github.com/aaalexliu/bao-browser/blob/main/docs/release.md) covers how the app is built and signed.
 
