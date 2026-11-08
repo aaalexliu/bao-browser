@@ -55,7 +55,8 @@
     "driver": {
       "enum": [
         "playwright",
-        "extension"
+        "extension",
+        "cdp-live"
       ]
     },
     "imported": {

@@ -67,6 +67,6 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 
 ## Select the driver
 
-`driver` on a workflow is `playwright` or `extension`. Any other string fails validation in `validateWorkflow` (`desktop/src/v1/schema.ts`). See [Workflow schema](workflow-schema.md). With the current engine selected, omitting `driver` uses Playwright. The [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile) has separate workflow limits; it is a Settings choice, not a workflow `driver` value.
+`driver` on a workflow is `playwright` or `extension`. `cdp-live` remains readable so a saved file from the retired driver can be refused. Any other string fails validation in `validateWorkflow` (`desktop/src/v1/schema.ts`). See [Workflow schema](workflow-schema.md). With the current engine selected, omitting `driver` uses Playwright. The [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile) has separate workflow limits; it is a Settings choice, not a workflow `driver` value.
 
 For owned capture and replay without a browser choice, `playwright` launches installed Google Chrome when that binary is present, then `BAO_BROWSER`, then Playwright's Chromium. That order is `resolveNormalChrome` in `desktop/src/launch.ts`. Workflow replay also supports the [browser choices](agent-browser-engine.md#workflow-reuse), including attaching to running Chrome instead of launching a browser. `extension` uses this native-messaging extension. See [cdp-live.md](cdp-live.md) for the supported pass-through and historical records.

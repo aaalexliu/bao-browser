@@ -59,7 +59,6 @@ function runStatus(args: string[], env: NodeJS.ProcessEnv, cwd: string, forceDar
 function workflowJson(id: string): string {
   return `${JSON.stringify({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name: id,
     startUrl: "https://example.com/",

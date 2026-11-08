@@ -1,6 +1,6 @@
 // The library is files under one directory. Sync state lives beside it, not in here.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { isSealedArtifact } from "../../../shared/saved-secrets";
@@ -9,7 +9,7 @@ import { DEFAULT_ACT_TIMEOUT_MS } from "./human-ask";
 import { DEFAULT_PROMOTE_AFTER } from "./promote";
 import { DEFAULT_CIRCUIT_LIMIT, DEFAULT_CIRCUIT_WINDOW_MS } from "./triage";
 import type { OutputValue } from "./data-steps";
-import { parseWorkflow, RUN_SCHEMA_ID, toJson, UnsupportedWorkflow, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "./schema";
+import { finishInput, parseWorkflow, RUN_SCHEMA_ID, toJson, UnsupportedWorkflow, validateWorkflow, WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "./schema";
 import { libraryRunFiles, readLibraryFile, readLibrarySnapshot, type BoundedRead } from "./library-read";
 
 export interface Settings extends HealSettings {
@@ -181,6 +181,10 @@ export class Library {
     } catch (error) {
       if (error instanceof UnsupportedWorkflow) throw error;
       if (raw && typeof raw === "object" && !Array.isArray(raw) && (raw as { schema?: unknown }).schema === WORKFLOW_SCHEMA_ID) {
+        const body = raw as { inputs?: unknown; steps?: unknown };
+        if (!Array.isArray(body.inputs) || !Array.isArray(body.steps)) {
+          throw new WorkflowFileError(id, "The workflow has an invalid structure.");
+        }
         const errors = validateWorkflow(raw as WorkflowV2);
         if (errors.length) {
           const reasons = errors.map((item) => {
@@ -197,9 +201,12 @@ export class Library {
   }
 
   save(doc: WorkflowV2): void {
-    const errors = validateWorkflow(doc);
+    const saved = structuredClone(doc);
+    saved.inputs = saved.inputs.map((input) => finishInput(input));
+    if (existsSync(this.file(saved.id)) && this.read(saved.id).driver === "cdp-live") saved.driver = "cdp-live";
+    const errors = validateWorkflow(saved);
     if (errors.length) throw new Error(errors.join(", "));
-    writeFileSync(this.file(doc.id), toJson(doc));
+    writeFileSync(this.file(saved.id), toJson(saved));
   }
 
   rename(id: string, name: string): WorkflowV2 {

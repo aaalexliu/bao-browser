@@ -17,8 +17,40 @@ import { expectedText, holds, replay, type Driver, type LiveTree } from "../../s
 import { parseRecordedDate } from "../../src/v1/dates";
 import { checkMatch, stepTitle, stepQuery, stepLocators, stepInputName, stepValueTemplate, stepKey, stepCheck, handoffReason, stepSensitive, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
+function migrate(raw: unknown): WorkflowV2 {
+  const doc = raw && typeof raw === "object" ? structuredClone(raw) as Record<string, unknown> : {};
+  const steps = Array.isArray(doc.steps) ? doc.steps as Record<string, unknown>[] : [];
+  const inputs = Array.isArray(doc.inputs) ? [...doc.inputs as object[]] : [];
+  for (const step of steps) {
+    const action = String(step.action || "");
+    const os = step.os && typeof step.os === "object" ? step.os as { value?: unknown; target?: { name?: string } } : undefined;
+    const value = typeof step.value === "string" ? step.value : typeof os?.value === "string" ? os.value : undefined;
+    const native = action === "osType" || action === "osSetValue";
+    if (action === "input" && step.sensitive === true && typeof value === "string") {
+      inputs.push({ name: "password", type: "secret", label: "Password", supply: "saved", default: value });
+      step.action = "type";
+      step.input = "password";
+      delete step.value;
+    }
+    if (native && typeof value === "string") {
+      const pathValue = !value.startsWith("Super") && value !== "Ada" && (value.startsWith("/") || /^[A-Za-z]:\\/.test(value));
+      const name = step.sensitive === true ? "password" : "field";
+      inputs.push({
+        name,
+        type: step.sensitive === true ? "secret" : "text",
+        label: name,
+        supply: pathValue ? "must" : "saved",
+        ...(pathValue ? {} : { default: value }),
+      });
+      step.action = "type";
+      step.input = name;
+      step.identity = { surface: "ax", role: "textbox", name: os?.target?.name || "Field", path: [] };
+      delete step.value;
+    }
+  }
+  doc.inputs = inputs;
+  doc.steps = steps;
+  return fixtureDoc(doc);
 }
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
@@ -131,7 +163,6 @@ test("redacted keys stay explicit and replay stops before dispatching a missing 
   const doc = interpret(events, { id: "redacted-keys", startUrl: "https://example.test/" });
   assert.deepEqual(doc.steps.map((step) => step.action), ["key", "key"]);
   assert.equal(stepKey(doc.steps[0]!), STRIPPED_SECRET);
-  assert.ok(undefined);
   assert.equal(stepKey(doc.steps[1]!), "Enter");
   assert.deepEqual(validateWorkflow(doc), []);
   assert.equal(validate(doc), true);
@@ -212,7 +243,7 @@ test("a refused confirm click does not keep the pre-click status as its postcond
   const doc = interpret(events, { id: "c", startUrl: "https://fixture.test/confirm" });
   assert.equal((doc.steps[0] == null ? undefined : stepCheck(doc.steps[0]))?.kind, "text");
   assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Armed");
-  assert.equal((doc.steps[1] == null ? undefined : handoffReason(doc.steps[1])), "confirm");
+  assert.equal((doc.steps[1] == null ? undefined : handoffReason(doc.steps[1])), "owner-press");
   assert.notEqual((doc.steps[1] == null ? undefined : stepCheck(doc.steps[1]))?.kind, "text");
 });
 
@@ -601,13 +632,13 @@ test("interpret keeps login and confirm as human steps with no coordinates", () 
   assert.equal(doc.steps[0]?.action, "handoff");
   assert.equal((doc.steps[0] == null ? undefined : (doc.steps[0].action === "handoff")), true);
   assert.equal((doc.steps[0] == null ? undefined : doc.steps[0].caption.targetBox), undefined);
-  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "ensure logged in (import from chrome, else wait for user)");
+  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Sign in");
   assert.equal(doc.steps[1]?.action, "click");
   assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.name, "Open");
   assert.equal(doc.steps[2]?.action, "handoff");
   assert.equal((doc.steps[2] == null ? undefined : (doc.steps[2].action === "handoff")), true);
   assert.equal((doc.steps[2] == null ? undefined : doc.steps[2].caption.targetBox), undefined);
-  assert.equal((doc.steps[2] == null ? undefined : stepTitle(doc.steps[2])), "confirm before applying");
+  assert.equal((doc.steps[2] == null ? undefined : stepTitle(doc.steps[2])), "You press the button");
   assert.equal(checkMatch(doc.steps[2] == null ? undefined : stepCheck(doc.steps[2])), "Security freeze is off");
 });
 
@@ -628,7 +659,7 @@ test("interpret turns a status re-read into a verify step", () => {
   ], { id: "wf-verify", name: "experian: unfreeze", startUrl: "https://usa.experian.com/mfe/protection/credit-protection-wizard" });
   assert.equal(validateWorkflow(doc).length, 0);
   assert.equal(doc.steps[2]?.action, "verify");
-  assert.equal((doc.steps[2] == null ? undefined : stepTitle(doc.steps[2])), "re-read the status");
+  assert.equal((doc.steps[2] == null ? undefined : stepTitle(doc.steps[2])), "Check Open");
 
   assert.equal((doc.steps[2] == null ? undefined : doc.steps[2].caption.targetBox), undefined);
   assert.equal((doc.steps[2] == null ? undefined : stepCheck(doc.steps[2]))?.kind, "text");

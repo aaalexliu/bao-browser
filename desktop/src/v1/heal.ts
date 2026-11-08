@@ -6,7 +6,7 @@ import type { SavedContext } from "../../../shared/outbound-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
 import { changedAttrs, withHealVersion, withRevertVersion } from "./element-history";
-import { hintFromIdentity, stepTarget, type HealMode, type Identity, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { hintFromIdentity, stepCheck, stepTarget, type Check, type HealMode, type Identity, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
   /** PNG bytes, base64. This is the image that was captured for the heal. */
@@ -303,6 +303,13 @@ export function patchFromText(raw: string): HealProposal["patch"] {
   }
 }
 
+function retargetCheck(step: WorkflowStep, current: Target | undefined, target: Target): Check | undefined {
+  const check = stepCheck(step);
+  if (!check || !("locators" in check) || !current?.locators) return undefined;
+  if (JSON.stringify(check.locators) !== JSON.stringify(current.locators)) return undefined;
+  return { ...check, locators: target.locators };
+}
+
 export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): WorkflowStep {
   if (!patch.identity) return step;
   const identity: Identity = { ...patch.identity, path: patch.identity.path ?? [] };
@@ -313,6 +320,7 @@ export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): Wo
     reveal: current?.reveal,
     history: current?.history,
   };
+  const check = retargetCheck(step, current, target);
   switch (step.action) {
     case "click":
     case "type":
@@ -325,7 +333,7 @@ export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): Wo
     case "pickDate":
     case "download":
     case "handoff":
-      return { ...step, target };
+      return { ...step, target, ...(check ? { check } : {}) };
     case "extract":
     case "finish":
     case "for_each":
