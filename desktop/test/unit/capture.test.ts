@@ -160,7 +160,7 @@ test("a note replays without touching the page and a check becomes a verify step
   assert.equal(doc.steps.length, 1);
   assert.equal(doc.steps[0]?.action, "verify");
   assert.equal((doc.steps[0] == null ? undefined : doc.steps[0].caption.text), "wait for the banner");
-  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Check: Welcome");
+  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "wait for the banner");
   assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Welcome");
   let looked = 0;
   const driver: Driver = {
@@ -183,7 +183,7 @@ test("a note replays without touching the page and a check becomes a verify step
   assert.equal(result.steps.every((step) => step.status === "passed"), true);
   // The classifier reads the tree once. The check reads it for the auth gate and the text.
   // The run reads it once more to confirm the final check. The note does not.
-  assert.equal(looked, 4);
+  assert.equal(looked, 5);
 });
 
 test("pictures and snapshots retain password controls and native pixels without Bao overlays", async () => {

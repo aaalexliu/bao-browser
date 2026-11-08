@@ -11,20 +11,16 @@ import { bindStep, materializeOutputs, outputCsv, outputsHtml, parseCsv, perform
 import { interpret } from "../../src/v1/interpret";
 import { checkMatch, stepValueTemplate, stepCheck, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
 function migrateDataSteps(_raw: unknown): WorkflowV2 {
   return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
 }
 
-test("a version 2 workflow is unchanged by the data migration", () => {
+test("a saved workflow is schema v4 and validates", () => {
   const raw = JSON.parse(readFileSync("examples/workflows/browser-form.json", "utf8")) as WorkflowV2;
-  const migrated = migrate(raw);
-  assert.equal(migrated, raw);
-  assert.equal((migrated as { version?: number }).version, 2);
-  assert.equal(validateWorkflow(migrated).length, 0);
-  assert.deepEqual(validateDataSteps(migrated), []);
+  assert.equal(raw.schema, "bao.workflow/v4");
+  assert.equal((raw as { version?: number }).version, undefined);
+  assert.equal(validateWorkflow(raw).length, 0);
+  assert.deepEqual(validateDataSteps(raw), []);
 });
 
 test("extract on a version 2 document migrates to version 3", () => {
@@ -33,7 +29,8 @@ test("extract on a version 2 document migrates to version 3", () => {
   doc.steps = [extractStep()];
   doc.outputs = [{ name: "books", type: "table", from: "books", columns: [{ name: "title", type: "text" }] }];
   const migrated = migrateDataSteps(doc);
-  assert.equal((migrated as { version?: number }).version, 3);
+  assert.equal(migrated.schema, "bao.workflow/v4");
+  assert.equal((migrated as { version?: number }).version, undefined);
   assert.notEqual(migrated, doc);
   assert.deepEqual(validateWorkflow(migrated), []);
 });
@@ -75,14 +72,20 @@ test("csv, column choices, and the run table", () => {
 
 test("the published schema accepts data steps", () => {
   const published = JSON.parse(readFileSync("schema/workflow.schema.json", "utf8")) as {
-    properties: { outputs: unknown; version?: unknown };
-    $defs: { input: { properties: { type: { enum: string[] } } }; step: { properties: { action: { enum: string[] } } }; extractSpec: { required: string[] } };
+    properties: {
+      outputs: unknown;
+      version?: unknown;
+      inputs: { items: { properties: { type: { enum: string[] } } } };
+      steps: { items: { oneOf: { properties: { action: { const: string } }; required?: string[] }[] } };
+    };
   };
   assert.equal(published.properties.version, undefined);
-  assert.ok(published.$defs.input.properties.type.enum.includes("table"));
-  for (const action of ["extract", "for_each"]) assert.ok(published.$defs.step.properties.action.enum.includes(action));
+  assert.ok(published.properties.inputs.items.properties.type.enum.includes("table"));
+  const actions = published.properties.steps.items.oneOf.map((step) => step.properties.action.const);
+  for (const action of ["extract", "for_each"]) assert.ok(actions.includes(action));
   assert.ok(published.properties.outputs);
-  assert.ok(published.$defs.extractSpec.required.includes("output"));
+  const extract = published.properties.steps.items.oneOf.find((step) => step.properties.action.const === "extract");
+  assert.ok(extract?.required?.includes("extract"));
 });
 
 test("interpret proposes extract and for_each, and leaves an ordinary trail on version 2", () => {
@@ -90,12 +93,14 @@ test("interpret proposes extract and for_each, and leaves an ordinary trail on v
     const doc = interpret(item.events, { id: item.id, name: item.name, startUrl: "https://books.toscrape.com/" });
     const blob = JSON.stringify(doc);
     if (item.expect === "plain") {
-      assert.equal((doc as { version?: number }).version, 2, item.id);
+      assert.equal(doc.schema, "bao.workflow/v4", item.id);
+      assert.equal((doc as { version?: number }).version, undefined, item.id);
       assert.equal(doc.outputs, undefined);
       assert.equal(doc.steps.some((step) => step.action === "extract" || step.action === "for_each"), false);
       continue;
     }
-    assert.equal((doc as { version?: number }).version, 3, item.id);
+    assert.equal(doc.schema, "bao.workflow/v4", item.id);
+    assert.equal((doc as { version?: number }).version, undefined, item.id);
     assert.equal(validateWorkflow(doc).join(", "), "", item.id);
     if (item.expect === "extract") {
       assert.equal(doc.steps[0]?.action, "extract");

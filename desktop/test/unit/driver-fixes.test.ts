@@ -1,4 +1,4 @@
-import { checkMatch, stepTitle, stepQuery, stepCheck, handoffReason } from "../../src/v1/schema";
+import { checkMatch, stepTitle, stepCheck, handoffReason } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -109,13 +109,12 @@ test("a login stop becomes a sign-in step whose postcondition is Welcome", async
     },
     {
       id: "e5", ts: 5, kind: "act", op: "click", gate: "login", performed: false, identity: button,
-      beforeUrl: "http://127.0.0.1/t/login", afterUrl: "http://127.0.0.1/t/login",
+      beforeUrl: "http://127.0.0.1/t/login", afterUrl: "http://127.0.0.1/t/login", afterText: "Welcome ada",
     },
   ];
   const doc = condense(events, { id: "login", name: "Login", startUrl: "http://127.0.0.1/t/login", secrets: [CAPTURE_SECRET] });
-  const sign = doc.steps.filter((step) => step.action === "click" && stepQuery(step)?.id === "login-btn");
+  const sign = doc.steps.filter((step) => step.action === "handoff" && handoffReason(step) === "sign-in");
   assert.equal(sign.length, 1);
-  assert.equal((sign[0] == null ? undefined : handoffReason(sign[0])), "login");
   assert.equal((sign[0] == null ? undefined : stepTitle(sign[0])), "Sign in");
   assert.equal(checkMatch(sign[0] == null ? undefined : stepCheck(sign[0])), "Welcome {{username}}");
   assert.equal(JSON.stringify(doc).includes(CAPTURE_SECRET), false);

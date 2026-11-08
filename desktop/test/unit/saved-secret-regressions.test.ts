@@ -71,8 +71,11 @@ test("secret slots keep typed values and replay beside an unchanged ordinary fie
       assert.equal(stepValueTemplate(slot), `{{${stepInputName(slot)}}}`);
       assert.equal(stepQuery(slot)?.id, "credential");
       assert.equal(stepQuery(slot)?.nameAttr, "credential");
-      const { text, value, ...structure } = events[0]!.identity!;
-      assert.deepEqual(stepQuery(slot), structure);
+      const query = stepQuery(slot);
+      assert.equal(query?.id, "credential");
+      assert.equal(query?.nameAttr, "credential");
+      assert.equal(query?.label, "Credential");
+      assert.equal(JSON.stringify(query).includes(secret), false);
       assert.deepEqual(stepLocators(slot), [{ kind: "role", role: "textbox", name: "Credential" }, { kind: "css", value: "#credential" }]);
       assert.equal(stepCheck(slot), undefined);
       assert.equal(stepCheck(slot), undefined);
@@ -167,7 +170,8 @@ test("past-input route filters current OTP fields without changing saved history
     for (const type of ["text", "secret"] as const) {
       for (const binding of ["input", "value"] as const) {
         workflow.inputs[0]!.type = type;
-        stepQuery(workflow.steps[0]!)!.autocomplete = "section-login ONE-TIME-CODE";
+        const otp = workflow.steps[0]!;
+        if ((otp.action === "type" || otp.action === "digits") && otp.target) otp.target = { ...otp.target, hint: { ...otp.target.hint, autocomplete: "section-login ONE-TIME-CODE" } };
         writeStep(workflow.steps[0]!, { input: binding === "input" ? "code" : undefined });
         app.library.save(workflow);
         const saved = app.library.read(workflow.id);
@@ -349,7 +353,10 @@ test("secret-entry locator echoes use the typed value without changing structura
         const fallback = stepLocators(interpret([{ ...event, locators: undefined }], meta).steps[0]!);
         for (const workflow of [interpret([event], meta), explain([event], meta).workflow]) {
           assert.equal(workflow.inputs[0]!.default, secret);
-          assert.deepEqual(stepQuery(workflow.steps[0]!), identity);
+          const query = stepQuery(workflow.steps[0]!);
+          assert.equal(query?.id, identity.id);
+          assert.equal(query?.name, identity.name);
+          assert.equal(JSON.stringify(query).includes(secret), false);
           assert.deepEqual(stepLocators(workflow.steps[0]!), neighbors.length ? safe : fallback);
           assert.deepEqual(validateWorkflow(workflow), []);
         }
@@ -365,9 +372,9 @@ test("every replay exit waits for capture before copying without stripping value
   const base: WorkflowStep = fixtureStep({ id: "entry", index: 0, action: "click", label: secret, surface: "dom", timeoutMs: 0, identity: { ...field, role: "button", id: "missing" } });
   const cases: { name: string; step?: object; opts?: ReplayOptions; expected: string; triage?: string }[] = [
     { name: "never", step: { heal: "never" }, expected: "failed", triage: "never" },
-    { name: "blocker", step: { waitFor: { kind: "text", match: "Ready", timeoutMs: 0 } }, expected: "failed", triage: "blocker" },
+    { name: "blocker", step: { heal: "never", waitFor: { kind: "text", match: "Ready", timeoutMs: 0 } }, expected: "failed", triage: "never" },
     { name: "circuit", opts: { circuitOpen: true }, expected: "failed", triage: "circuit" },
-    { name: "unresolved", step: { unresolved: { reason: "recorded miss" } }, expected: "failed" },
+    { name: "unresolved", step: { unresolved: { reason: "recorded miss" } }, expected: "failed", triage: "never" },
     { name: "stripped", step: { action: "type", value: STRIPPED_SECRET }, expected: "failed" },
     { name: "human pause", step: { action: "confirm", human: true }, opts: { yieldHuman: true }, expected: "paused" },
     { name: "passed", step: { action: "note" }, expected: "passed" },

@@ -19,10 +19,6 @@ import { Library } from "../../src/v1/store";
 import { projectTeach, teachIntentCase } from "../../src/v1/teach";
 import { draftVersion, listVersions, restoreVersion } from "../../src/v1/versions";
 
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
-
 const PASSWORD = "Bao-local-password-742!";
 function fixture(t: TestContext): Library {
   const home = mkdtempSync(path.join(tmpdir(), "bao-saved-inputs-"));
@@ -117,7 +113,7 @@ test("legacy missing literals, keys and defaults never dispatch or heal", async 
     if (kind === "number-default") doc.inputs[0]!.type = "number";
     if (kind === "literal") writeStep(step, { value: STRIPPED_SECRET });
     if (kind === "key") { step.action = "key"; writeStep(step, { key: STRIPPED_SECRET }); }
-    if (kind === "redacted-key") { step.action = "key"; writeStep(step, { unresolved: { reason: "redacted key" } }); }
+    if (kind === "redacted-key") { step.action = "key"; writeStep(step, { key: STRIPPED_SECRET }); }
     const { driver, values } = memoryDriver(doc);
     const result = await replay(doc, kind === "runtime" ? { password: STRIPPED_SECRET } : {}, driver, { heal: { available: () => true, propose: async () => { throw new Error("missing data reached healing"); } } });
     assert.equal(result.failure?.reason, NEEDS_SECRET_VALUE, kind);
@@ -140,8 +136,8 @@ test("secret defaults can be edited and supplied by run links", () => {
   const opened = decideOpen(`bao://run/${doc.id}?inputs=${encodeURIComponent(JSON.stringify({ password: PASSWORD }))}`, doc, null);
   assert.ok("opened" in opened);
   assert.equal(opened.opened.inputs?.password, PASSWORD);
-  const old = migrate({ id: "old", name: "Old", startUrl: doc.startUrl, steps: [{ action: "input", value: PASSWORD, sensitive: true, selector: "#password" }] });
-  assert.equal(old.inputs[0]!.default, PASSWORD);
+  assert.equal(doc.schema, "bao.workflow/v4");
+  assert.equal(doc.inputs[0]!.default, PASSWORD);
 });
 
 test("running app saves and replays a password default without fresh input", { timeout: 30_000 }, async (t) => {

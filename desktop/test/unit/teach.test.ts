@@ -56,7 +56,7 @@ test("a capture note becomes the current or next step's intent", () => {
   const typed = { id: "note-now", ts: 2, kind: "act" as const, op: "note", afterText: "wait for the banner" };
   const current = projectTeach([click, typed], [], meta);
   assert.equal(current.cards.length, 1);
-  assert.equal(current.cards[0]?.intent, "Click Open");
+  assert.equal(current.cards[0]?.intent, "wait for the banner (\"Open\")");
   assert.equal(current.cards[0]?.note, "wait for the banner");
   assert.equal(current.cards[0]?.noteAsIntent, true);
   assert.equal((current.workflow.steps[0] == null ? undefined : current.workflow.steps[0].caption.text), "wait for the banner");
@@ -76,14 +76,14 @@ test("a capture note becomes the current or next step's intent", () => {
     values: [],
   }, { edit: true });
   assert.match(html, /note used as intent/);
-  assert.match(html, /data-intent value="Click Open"/);
+  assert.match(html, /data-intent value="wait for the banner \(&quot;Open&quot;\)"/);
   assert.match(html, /data-note value="wait for the banner"/);
   assert.equal(html.includes('data-intent value="wait for the banner"'), false);
   const early = { id: "note-next", ts: 1, kind: "act" as const, op: "note", afterText: "sign in as the demo user" };
   const next = projectTeach([early, click], [], meta);
   assert.equal(next.cards.length, 1);
   assert.equal(next.cards[0]?.id, "click-open");
-  assert.equal(next.cards[0]?.intent, "Click Open");
+  assert.equal(next.cards[0]?.intent, "sign in as the demo user (\"Open\")");
   assert.equal(next.cards[0]?.note, "sign in as the demo user");
   assert.equal(next.cards[0]?.noteAsIntent, true);
   assert.equal(next.workflow.steps[0]?.action, "click");
@@ -108,7 +108,7 @@ test("the heuristic narrates the fixture and a note becomes the intent", () => {
   assert.equal(note?.values[0]?.label, "{{note}}");
   assert.equal(hidden?.intent, "Type secret into Password");
   assert.equal(hidden?.values[0]?.role, "secret");
-  assert.equal(drop?.intent, "Drop file");
+  assert.equal(drop?.intent, "Drop the file (\"Drop a file here\")");
   assert.equal(apply?.intent, "Click Apply");
   assert.equal(apply?.outcome, "Applied");
   const named = projected.cards.find((card) => card.id === "click-note");
@@ -132,8 +132,8 @@ test("three corrections change the workflow and the eval pair measures them", ()
   assert.equal(pair.workflow.steps.some((step) => stepQuery(step)?.id === "note-input" && step.action === "click"), false);
   const typed = pair.workflow.steps.find((step) => stepInputName(step) === "note");
   assert.equal((typed == null ? undefined : typed.caption.text), "type the note");
-  const confirm = pair.workflow.steps.find((step) => (step.action as string) === "confirm");
-  assert.equal((confirm == null ? undefined : (confirm.action === "handoff")), true);
+  const confirm = pair.workflow.steps.find((step) => step.action === "handoff");
+  assert.equal(confirm != null, true);
   assert.equal(checkMatch(confirm == null ? undefined : stepCheck(confirm)), "Applied");
   assert.equal((confirm == null ? undefined : confirm.caption.targetBox), undefined);
   const secretInput = pair.workflow.inputs.find((input) => input.type === "secret");

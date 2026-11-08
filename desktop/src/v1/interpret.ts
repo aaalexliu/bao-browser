@@ -153,7 +153,7 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
     return { events: [event], step };
   });
   if (!seen.preserveActions) bindTypedOptions(mapped);
-  const pieces = seen.preserveActions ? mapped : foldNotes(collapseDigits(mapped, inputs));
+  const pieces = seen.preserveActions ? mapped : foldLogins(foldNotes(collapseDigits(mapped, inputs)));
   if (!seen.preserveActions) attachExpr(pieces.map((piece) => piece.step));
   const captured = applyCapturedData(pieces, inputs);
   const drafted: WorkflowV2 = {
@@ -250,6 +250,22 @@ function withoutChooserClicks(events: TrailEvent[]): TrailEvent[] {
  * A trailing note with nothing after it stays a note so the text is kept.
  * Handoff lines stay note steps; they are the pause record, not an intent.
  */
+function foldLogins(pieces: InterpretPiece[]): InterpretPiece[] {
+  const out: InterpretPiece[] = [];
+  for (const piece of pieces) {
+    const step = piece.step;
+    const prev = out.at(-1);
+    if (prev && step.action === "handoff" && step.reason === "sign-in" && prev.step.action === "handoff" && prev.step.reason === "sign-in") {
+      prev.events.push(...piece.events);
+      if (step.target) prev.step.target = step.target;
+      if (step.check) prev.step.check = step.check;
+      continue;
+    }
+    out.push(piece);
+  }
+  return out;
+}
+
 function foldNotes(pieces: InterpretPiece[]): InterpretPiece[] {
   const out: InterpretPiece[] = [];
   let pending: InterpretPiece | undefined;
@@ -455,6 +471,18 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
       caption: caption(action === "drop" ? "Drop the file" : "Upload the file", cite, box),
       file: { input: input.name },
       check: { kind: "text", match: action === "drop" ? `Dropped file: {{${input.name}}}` : `{{${input.name}}}`, timeoutMs: 4000 },
+    };
+  }
+  if (event.gate === "login" && event.performed === false) {
+    if (event.sensitive || event.identity?.inputType === "password" || event.identity?.id === "password") {
+      addInput(inputs, "secret", nameHint(event, true));
+    }
+    const seen = event.afterText ? { ...event, performed: true } : event;
+    return {
+      id, index, action: "handoff", reason: "sign-in", timeoutMs: 8000,
+      ...(target.locators.length ? { target } : {}),
+      caption: caption("Sign in"),
+      ...handoffCheck(observed(seen, undefined, false, known, meta.secrets ?? [])),
     };
   }
   if (isType(event)) {

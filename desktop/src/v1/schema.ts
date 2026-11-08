@@ -1,6 +1,7 @@
 // Workflow contract. Replay reads this document and nothing else.
 // A file with any other schema id is not loaded.
 
+import { redactSavedValue } from "../../../shared/outbound-secrets";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { canonical } from "./canonical";
 import { INPUT_BINDING } from "./bindings";
@@ -226,7 +227,7 @@ export type WorkflowStep =
   | StepBase & { action: "select"; target: Target; text: TextOf; check?: Check }
   | StepBase & { action: "navigate"; url: string; check?: Check }
   | StepBase & { action: "verify"; check: Check }
-  | StepBase & { action: "handoff"; reason: HandoffReason; target?: Target; check?: Check }
+  | StepBase & { action: "handoff"; reason: HandoffReason; input?: string; target?: Target; check?: Check }
   | StepBase & { action: "upload" | "drop"; target: Target; file: FileOf; check?: Check }
   | StepBase & { action: "extract"; extract: ExtractSpec; heal?: "never" }
   | StepBase & { action: "for_each"; forEach: ForEachSpec }
@@ -313,6 +314,13 @@ export function popupDismissName(identity: Identity | undefined): string {
   return identity?.surface === "dom" && identity.role === "button" && /^(?:close|x|no thanks|not now|dismiss)$/i.test(name) ? name : "";
 }
 
+function atWord(text: string, start: number, end: number): boolean {
+  const before = start <= 0 ? "" : text[start - 1] ?? "";
+  const after = end >= text.length ? "" : text[end] ?? "";
+  const edge = (ch: string) => ch === "" || /[\s"']/.test(ch);
+  return edge(before) && edge(after);
+}
+
 export function stepTitle(step: { caption?: { text?: string; citation?: { text?: string } }; action?: string; id?: string }): string {
   const text = step.caption?.text?.trim();
   const cite = step.caption?.citation?.text?.trim();
@@ -321,8 +329,8 @@ export function stepTitle(step: { caption?: { text?: string; citation?: { text?:
   const quoted = `"${cite}"`;
   if (text.includes(quoted)) return text;
   const at = text.indexOf(cite);
-  if (at >= 0) return `${text.slice(0, at)}${quoted}${text.slice(at + cite.length)}`;
-  return `${text} (${quoted})`;
+  if (at >= 0 && atWord(text, at, at + cite.length)) return `${text.slice(0, at)}${quoted}${text.slice(at + cite.length)}`;
+  return text.includes(cite) ? text : `${text} (${quoted})`;
 }
 
 export function stepTarget(step: WorkflowStep): Target | undefined {
@@ -473,9 +481,19 @@ export function parseWorkflow(raw: unknown): WorkflowV2 {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new UnsupportedWorkflow("missing");
   const schemaId = (raw as { schema?: unknown }).schema;
   if (schemaId !== WORKFLOW_SCHEMA_ID) throw new UnsupportedWorkflow(typeof schemaId === "string" ? schemaId : "missing");
-  const errors = validateWorkflow(raw as WorkflowV2);
+  const doc = normalizeWorkflow(raw as WorkflowV2);
+  const errors = validateWorkflow(doc);
   if (errors.length) throw new Error(errors.join(", "));
-  return raw as WorkflowV2;
+  return doc;
+}
+
+/** Drop retired document keys and give a default the supply it needs. */
+export function normalizeWorkflow(doc: WorkflowV2): WorkflowV2 {
+  const next = { ...doc } as WorkflowV2 & { version?: unknown; filesDates?: unknown };
+  delete next.version;
+  delete next.filesDates;
+  if (Array.isArray(next.inputs)) next.inputs = next.inputs.map((input) => finishInput(input));
+  return next;
 }
 
 export function validateWorkflow(doc: WorkflowV2): string[] {
@@ -527,7 +545,7 @@ const STEP_KEYS: Record<string, string[]> = {
   select: ["target", "text", "check"],
   navigate: ["url", "check"],
   verify: ["check"],
-  handoff: ["reason", "target", "check"],
+  handoff: ["reason", "input", "target", "check"],
   upload: ["target", "file", "check"],
   drop: ["target", "file", "check"],
   extract: ["extract"],
@@ -540,7 +558,7 @@ const STEP_KEYS: Record<string, string[]> = {
   wait: ["reason", "ms"],
   finish: ["reason"],
 };
-const STEP_BASE = ["id", "index", "action", "caption", "timeoutMs", "when", "heal", "readBack"];
+const STEP_BASE = ["id", "index", "action", "caption", "timeoutMs", "when", "heal", "readBack", "input"];
 
 function unknownKeys(value: object, allowed: Set<string>): string[] {
   return Object.keys(value).filter((key) => !allowed.has(key));
@@ -724,7 +742,15 @@ function whenErrors(step: WorkflowStep, names: Set<string>, inputs: WorkflowInpu
 /** saved needs a default. must has none. A secret may keep a saved default. A file may not. */
 export function finishInput<T extends { type: InputType; supply: "saved" | "must"; default?: string }>(input: T): T {
   const next = { ...input };
-  if (next.type === "file" || !next.default) {
+  if (next.type === "file") {
+    if (next.default && next.default !== STRIPPED_SECRET) {
+      next.default = redactSavedValue(next.default) === STRIPPED_SECRET ? STRIPPED_SECRET : undefined;
+    }
+    if (!next.default) delete next.default;
+    next.supply = "must";
+    return next;
+  }
+  if (!next.default) {
     delete next.default;
     next.supply = "must";
     return next;

@@ -90,12 +90,13 @@ test("slash dates follow the field, and an ambiguous pair stays day/month", () =
       identity: ident({ role: "textbox", tag: "input", id: "checkin", nameAttr: "checkin" }),
     }),
   ], { id: "wf-slash", startUrl: "https://fixture.test/", zone: ZONE });
-  assert.equal((doc as { version?: number }).version, 3);
+  assert.equal(doc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((doc as { version?: number }).version, undefined);
   assert.equal(doc.inputs[0]?.type, "date");
   assert.equal(doc.inputs[0]?.relative, "+14d");
   assert.equal(doc.inputs[0]?.format, "DD/MM/YYYY");
   assert.equal(doc.inputs[0]?.zone, "UTC");
-  assert.equal(doc.steps[0]?.action, "click");
+  assert.equal(doc.steps[0]?.action, "pickDate");
   assert.equal((doc.steps[0] == null ? undefined : stepDate(doc.steps[0]))?.input, doc.inputs[0]?.name);
   assert.equal(JSON.stringify(doc).includes("05/11/2026"), false);
 });
@@ -207,7 +208,8 @@ test("an ordinary trail stays version 2 and byte-identical", () => {
   const events = [event({ id: "c", op: "click", identity: ident({ id: "go", testId: "go", text: "Go" }) })];
   const meta = { id: "wf-plain", startUrl: "https://fixture.test/" };
   const doc = interpret(events, meta);
-  assert.equal((doc as { version?: number }).version, 2);
+  assert.equal(doc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((doc as { version?: number }).version, undefined);
   assert.equal((doc as { filesDates?: number }).filesDates, undefined);
   assert.equal(canonical(doc), canonical(interpret(events, meta)));
   assert.equal(validateV2(doc), true, JSON.stringify(validateV2.errors));
@@ -232,21 +234,24 @@ test("a plain version 2 document stays version 2 in memory and on disk", () => {
     ],
   };
   const v2 = migrate(raw);
-  assert.equal((v2 as { version?: number }).version, 2);
+  assert.equal(v2.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((v2 as { version?: number }).version, undefined);
   assert.equal((v2 as { filesDates?: number }).filesDates, undefined);
   assert.equal(validateV2(v2), true, JSON.stringify(validateV2.errors));
-  assert.equal((migrateFilesDates(raw) as { version?: number }).version, 2);
-  assert.equal(migrate(v2), v2);
+  assert.equal(migrateFilesDates(raw).schema, WORKFLOW_SCHEMA_ID);
+  assert.equal(migrate(v2).schema, v2.schema);
 
   const root = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
   const library = new Library(root);
   library.save(v2);
   const file = path.join(root, "workflows", "wf-old.json");
   const before = readFileSync(file, "utf8");
-  assert.equal((JSON.parse(before) as { version?: number }).version, 2);
+  assert.equal((JSON.parse(before) as { schema?: string }).schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((JSON.parse(before) as { version?: number }).version, undefined);
   assert.equal((JSON.parse(before) as { filesDates?: number }).filesDates, undefined);
   const loaded = library.read("wf-old");
-  assert.equal((loaded as { version?: number }).version, 2);
+  assert.equal(loaded.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((loaded as { version?: number }).version, undefined);
   assert.equal((loaded as { filesDates?: number }).filesDates, undefined);
   assert.equal((loaded.steps[0] == null ? undefined : stepTitle(loaded.steps[0])), v2.steps[0] ? stepTitle(v2.steps[0]) : undefined);
   assert.equal(readFileSync(file, "utf8"), before);
@@ -316,17 +321,18 @@ test("version 3 is data steps, files and dates, or both", () => {
     ],
   };
 
-  assert.equal(migrate(plain), plain);
-  assert.equal((plain as { version?: number }).version, 2);
+  assert.equal(plain.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((plain as { version?: number }).version, undefined);
   const dataDoc = migrate(data);
-  assert.equal((dataDoc as { version?: number }).version, 3);
+  assert.equal(dataDoc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((dataDoc as { version?: number }).version, undefined);
   assert.equal((dataDoc as { filesDates?: number }).filesDates, undefined);
   const filesDoc = migrate(files);
-  assert.equal((filesDoc as { version?: number }).version, 3);
-  assert.equal((filesDoc as { filesDates?: number }).filesDates, 1);
+  assert.equal(filesDoc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((filesDoc as { version?: number }).version, undefined);
   const bothDoc = migrate(both);
-  assert.equal((bothDoc as { version?: number }).version, 3);
-  assert.equal((bothDoc as { filesDates?: number }).filesDates, 1);
+  assert.equal(bothDoc.schema, WORKFLOW_SCHEMA_ID);
+  assert.equal((bothDoc as { version?: number }).version, undefined);
   assert.equal(bothDoc.outputs?.[0]?.name, "books");
   assert.equal(bothDoc.steps.some((step) => step.action === "download"), true);
   for (const doc of [plain, dataDoc, filesDoc, bothDoc]) {
@@ -406,7 +412,7 @@ test("replay resolves dates at run start and picks those cells, with no model ca
     steps: [fixtureStep({
       id: "stay",
       index: 0,
-      action: "click",
+      action: "pickDate",
       label: "Pick dates",
       surface: "dom",
       timeoutMs: 1000,
