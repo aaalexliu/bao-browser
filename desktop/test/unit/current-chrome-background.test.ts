@@ -12,16 +12,25 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 import { runWorkflow } from "../../src/mcp/catalog";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
+import { fixtureDoc } from "../support/fixture-step";
 
 pinTestBrowser();
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
+// Replay takes page pictures, and Linux Chromium never answers Page.captureScreenshot for a background tab. The current route is Mac-only.
+const replaySkip = process.platform !== "darwin" && "replay pictures of a background tab hang on Linux Chromium";
 
 const TASK = `<!doctype html><title>Task</title><input id=q aria-label=Name><button id=b>Save</button><p id=out>not clicked</p>
 <script>let frames=0;(function f(){frames++;requestAnimationFrame(f)})();b.onclick=()=>{out.textContent='clicked, typed: '+q.value};</script>`;
+
+const identity = (id: string, role: string) => ({ surface: "dom", role, id, path: [] });
+const FILL = { id: "fill", action: "type", label: "Fill name", heal: "never", surface: "dom", value: "Ada", identity: identity("q", "textbox"), timeoutMs: 5000 };
+const SAVE = { id: "save", action: "click", label: "Save", heal: "never", surface: "dom", identity: identity("b", "button"),
+  postcondition: { kind: "text", match: "clicked, typed: Ada", timeoutMs: 5000 }, timeoutMs: 5000 };
+const HOLD = { id: "apply", action: "confirm", human: true, label: "Confirm before Save", surface: "dom", identity: identity("b", "button"),
+  postcondition: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
 
 async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string): Promise<T> {
   const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
@@ -97,7 +106,7 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
   }
 });
 
-test("replaying a workflow on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { timeout: 60_000 }, async (t) => {
+test("replaying a workflow on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-replay-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
@@ -117,23 +126,16 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
   const priorSource = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = path.join(root, "chrome");
   const library = new Library(path.join(root, "home"));
-  const identity = (testId: string, role: string) => ({ surface: "dom" as const, role, testId, path: [] });
-  const workflow = (steps: WorkflowV2["steps"]): string => {
+  const workflow = (steps: object[]): string => {
     const id = `replay-${steps.length}`;
-    library.save({ schema: "bao.workflow/v2", version: 2, id, name: "Background replay", startUrl: `${base}/task`, createdAt: 1, inputs: [], steps });
+    library.save(fixtureDoc({ id, name: "Background replay", startUrl: `${base}/task`, steps }));
     return id;
   };
-  const fill: WorkflowV2["steps"][number] = { id: "fill", index: 0, action: "type", label: "Fill name", heal: "never", surface: "dom", value: "Ada",
-    identity: identity("q", "textbox"), timeoutMs: 5000 };
-  const save: WorkflowV2["steps"][number] = { id: "save", index: 1, action: "click", label: "Save", heal: "never", surface: "dom", identity: identity("b", "button"),
-    postcondition: { kind: "text", match: "clicked, typed: Ada", timeoutMs: 5000 }, timeoutMs: 5000 };
-  const hold: WorkflowV2["steps"][number] = { id: "apply", index: 2, action: "confirm", human: true, label: "Confirm before Save", surface: "dom",
-    identity: identity("b", "button"), postcondition: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
   let resume: string | undefined;
   try {
     const { ownerState } = await openOwnerTab(probe, `${base}/owner`);
 
-    const done = await runWorkflow(library, { id: workflow([fill, save]), browser: "current" });
+    const done = await runWorkflow(library, { id: workflow([FILL, SAVE]), browser: "current" });
     assert.equal(done.outcome, "ok", done.reason);
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
     const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
@@ -141,7 +143,7 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
     assert.ok(task, "the replay drove a tab of its own, which stays open after replay");
     assert.equal(await evaluate(probe, task, "out.textContent"), "clicked, typed: Ada");
 
-    const held = await runWorkflow(library, { id: workflow([fill, save, hold]), browser: "current" });
+    const held = await runWorkflow(library, { id: workflow([FILL, SAVE, HOLD]), browser: "current" });
     resume = held.resume;
     assert.equal(held.outcome, "needs_human", held.reason);
     assert.equal((await ownerState()).visibility, "hidden", "a held replay brings its tab to the front for the owner");
@@ -155,7 +157,7 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
   }
 });
 
-test("app Replay on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { timeout: 60_000 }, async (t) => {
+test("app Replay on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-app-replay-"));
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
@@ -176,26 +178,19 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
   const url = (route: string) => `http://127.0.0.1:${app.port}${route}`;
   const replay = (id: string) => fetch(url("/api/replay"), { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(30_000) }).then(response => response.json() as Promise<{ status: string }>);
-  const identity = (testId: string, role: string) => ({ surface: "dom" as const, role, testId, path: [] });
-  const workflow = (steps: WorkflowV2["steps"]): string => {
+  const workflow = (steps: object[]): string => {
     const id = `app-replay-${steps.length}`;
-    app.library.save({ schema: "bao.workflow/v2", version: 2, id, name: "Background app replay", startUrl: `${base}/task`, createdAt: 1, inputs: [], steps });
+    app.library.save(fixtureDoc({ id, name: "Background app replay", startUrl: `${base}/task`, steps }));
     return id;
   };
-  const fill: WorkflowV2["steps"][number] = { id: "fill", index: 0, action: "type", label: "Fill name", heal: "never", surface: "dom", value: "Ada",
-    identity: identity("q", "textbox"), timeoutMs: 5000 };
-  const save: WorkflowV2["steps"][number] = { id: "save", index: 1, action: "click", label: "Save", heal: "never", surface: "dom", identity: identity("b", "button"),
-    postcondition: { kind: "text", match: "clicked, typed: Ada", timeoutMs: 5000 }, timeoutMs: 5000 };
-  const hold: WorkflowV2["steps"][number] = { id: "apply", index: 2, action: "confirm", human: true, label: "Confirm before Save", surface: "dom",
-    identity: identity("b", "button"), postcondition: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
   let held: Promise<{ status: string }> | undefined;
   try {
     const { ownerState } = await openOwnerTab(probe, `${base}/owner`);
 
-    assert.equal((await replay(workflow([fill, save]))).status, "passed");
+    assert.equal((await replay(workflow([FILL, SAVE]))).status, "passed");
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
 
-    held = replay(workflow([fill, save, hold]));
+    held = replay(workflow([FILL, SAVE, HOLD]));
     const deadline = Date.now() + 20_000;
     while ((await ownerState()).visibility !== "hidden" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal((await ownerState()).visibility, "hidden", "a held app Replay brings its tab to the front for the owner");
