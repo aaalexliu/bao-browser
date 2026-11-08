@@ -42,6 +42,8 @@ export interface StepFacts {
   page?: OwnerPage;
   previousPage?: OwnerPage;
   owner?: OwnerWaitPage;
+  /** The session drives the owner's own running Chrome, not a Bao window. */
+  current?: boolean;
   /** When the step ended. Defaults to now. */
   at?: number;
 }
@@ -158,11 +160,21 @@ export function failureText(results: readonly AgentBrowserCommandResult[], error
   return firstLine(failed?.stderr) || firstLine(failed?.stdout) || firstLine(error) || "The command failed.";
 }
 
-export function ownerOutcome(results: readonly AgentBrowserCommandResult[]): string | undefined {
+export const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
+
+export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed"; instruction: string }
+
+/** Bao's own reply while the owner has a turn, which stands in for native output. */
+export function ownerReply(results: readonly AgentBrowserCommandResult[]): OwnerReply | undefined {
   try {
-    const value = JSON.parse(results[0]?.stdout || "") as { outcome?: unknown };
-    return typeof value.outcome === "string" && ["halted", "waiting", "ready", "closed"].includes(value.outcome) ? value.outcome : undefined;
+    const value = JSON.parse(results[0]?.stdout || "") as { outcome?: unknown; instruction?: unknown };
+    return typeof value.outcome === "string" && ["halted", "waiting", "ready", "closed"].includes(value.outcome) && typeof value.instruction === "string"
+      ? { outcome: value.outcome as OwnerReply["outcome"], instruction: value.instruction } : undefined;
   } catch { return undefined; }
+}
+
+export function ownerOutcome(results: readonly AgentBrowserCommandResult[]): OwnerReply["outcome"] | undefined {
+  return ownerReply(results)?.outcome;
 }
 
 export function ownerHandoff(page: OwnerWaitPage | undefined, at = Date.now()): OwnerHandoff | undefined {
@@ -181,7 +193,7 @@ export function clock(ms: number): string {
 
 function openedPage(results: readonly AgentBrowserCommandResult[], page: OwnerPage | undefined, arg: string | undefined): OwnerPage | undefined {
   const match = /^✓ (.*)\n\s+(\S+)/.exec(results[0]?.stdout ?? "");
-  if (match) return { title: match[1]!.trim(), url: match[2]! };
+  if (match && (!page || page.url === match[2])) return { title: match[1]!.trim(), url: match[2]! };
   if (page) return page;
   return arg ? { title: "", url: arg } : undefined;
 }
@@ -196,7 +208,7 @@ function cardParts(parts: readonly SummaryPart[]): SummaryPart[] {
 }
 
 function elementParts(element: Element | undefined, arg: string | undefined): SummaryPart[] {
-  if (!element) return [arg && !/^@?e\d+$/.test(arg.trim()) ? { cite: arg } : "the element"];
+  if (!element) return [arg && !/^@?e\d+$/.test(arg.trim()) ? { value: arg } : "the element"];
   const head: SummaryPart[] = element.name ? [{ cite: shortName(element.name) }, ` (${roleWord(element.role)})`] : [`the ${roleWord(element.role)}`];
   return element.context ? [...head, " for ", { cite: shortName(element.context) }] : head;
 }
@@ -210,30 +222,36 @@ function moved(facts: StepFacts): string {
 /** Describe a finished pass-through step. Facts come from native output and Chrome's own page metadata. */
 export function describeStep(facts: StepFacts): StepSummary {
   const { command, args, results } = facts;
-  const outcome = ownerOutcome(results);
+  const reply = ownerReply(results);
+  const outcome = reply?.outcome;
   const failed = facts.error !== undefined || results.some((result) => result.exitCode !== 0);
   const page = facts.page;
+  const browser = facts.current ? "your Chrome" : "Bao's Chrome window";
   const done = (parts: SummaryPart[], extra = ".", more: Partial<StepSummary> = {}): StepSummary =>
     ({ parts: cardParts(parts), text: summaryText(parts) + extra, ...(page ? { page } : {}), ...more });
 
   if (outcome === "halted" || outcome === "waiting") {
     const owner = ownerHandoff(facts.owner, facts.at);
-    if (!owner) return done(["Your turn: finish the sign-in or check in Bao's Chrome window"]);
-    const ask = owner.kind === "sign-in" ? `Your turn: sign in to ${owner.site} in Bao's Chrome window` : `Your turn: clear the check on ${owner.site} in Bao's Chrome window`;
+    if (!owner) return done([`Your turn: finish the sign-in or check in ${browser}`]);
+    const ask = owner.kind === "sign-in" ? `Your turn: sign in to ${owner.site} in ${browser}` : `Your turn: clear the check on ${owner.site} in ${browser}`;
     const waiting = owner.waitedMs !== undefined ? `, waiting ${clock(owner.waitedMs)}` : "";
     const where = owner.title ? ` The page is "${owner.title}" (${owner.url})${waiting}.` : ` The page is ${owner.url}${waiting}.`;
     return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address until the page changes.`, owner };
   }
   if (outcome === "ready") {
-    return page?.title ? done(["Back from sign-in: now on ", { cite: page.title }], page.url ? ` (${page.url}).` : ".")
-      : done(["Back from sign-in"]);
+    const back = ownerHandoff(facts.owner)?.kind === "check" ? "Back from the check" : "Back from sign-in";
+    return page?.title ? done([`${back}: now on `, { cite: page.title }], page.url ? ` (${page.url}).` : ".")
+      : done([back]);
   }
-  if (outcome === "closed") return { parts: ["The Bao window closed. This session cannot continue"], text: "The Bao window closed. This session cannot continue." };
+  if (outcome === "closed") {
+    const ended = reply?.instruction === CURRENT_CHROME_ENDED ? "Your Chrome session ended" : "The Bao window closed";
+    return { parts: [`${ended}. This session cannot continue`], text: `${ended}. This session cannot continue.` };
+  }
 
   const error = failed ? failureText(results, facts.error) : undefined;
   const element = command === "click" || command === "fill" ? elementFor(args[0], facts.snapshot) : undefined;
   if (failed) {
-    const verb: Record<string, string> = { open: "open", snapshot: "read the page", click: "click", fill: "type into", press: "press", scroll: "scroll", tab: "change tabs", screenshot: "take a screenshot", close: "close the window", wait_for_owner: "wait for you" };
+    const verb: Record<string, string> = { open: "open", snapshot: "read the page", click: "click", fill: "type into", press: "press", scroll: "scroll", tab: "change tabs", screenshot: "take a screenshot", close: facts.current ? "close Bao's task tab" : "close the window", wait_for_owner: "wait for you" };
     const target: SummaryPart[] = command === "open" && args[0] ? [" ", { value: args[0] }]
       : command === "click" || command === "fill" ? [" ", ...elementParts(element, args[0])]
         : command === "press" && args[0] ? [` ${args[0]}`] : [];
@@ -274,7 +292,10 @@ export function describeStep(facts: StepFacts): StepSummary {
       return done(page?.title ? ["Switched to the tab ", { cite: page.title }] : ["Switched tabs"]);
     }
     case "screenshot": return done(page?.title ? ["Took a screenshot of ", { cite: page.title }] : ["Took a screenshot of the page"]);
-    case "close": return { parts: ["Closed the Bao browser window"], text: "Closed the Bao browser window." };
+    case "close": {
+      const closed = facts.current ? "Closed Bao's task tab in your Chrome" : "Closed the Bao browser window";
+      return { parts: [closed], text: `${closed}.` };
+    }
     default: return done([`Ran ${command}`]);
   }
 }

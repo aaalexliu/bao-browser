@@ -12,6 +12,7 @@ interface Pending {
 export interface McpResult {
   text: string;
   isError: boolean;
+  structuredContent?: Record<string, unknown>;
   tools?: { name: string }[];
 }
 
@@ -106,7 +107,7 @@ export class McpClient {
   private onMessage(body: string): void {
     const msg = JSON.parse(body) as {
       id?: number;
-      result?: { content?: { type?: string; text?: string }[]; isError?: boolean; tools?: { name: string }[] };
+      result?: { content?: { type?: string; text?: string }[]; isError?: boolean; structuredContent?: Record<string, unknown>; tools?: { name: string }[] };
       error?: { message?: string };
     };
     if (msg.id == null) return;
@@ -122,6 +123,7 @@ export class McpClient {
     pending.resolve({
       text,
       isError: !!msg.result?.isError,
+      ...(msg.result?.structuredContent ? { structuredContent: msg.result.structuredContent } : {}),
       tools: msg.result?.tools,
     });
   }

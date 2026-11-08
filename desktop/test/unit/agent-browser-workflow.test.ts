@@ -341,7 +341,7 @@ test("finished native captures explain why unsupported actions cannot become wor
   try {
     const seen = new Set<string>();
     for (const [command, args, reason] of [
-      ["scroll", ["down", "100"], /stateful scroll/],
+      ["scroll", ["down", "100"], /: it scrolled the page, which Bao cannot replay yet\./],
       ["tab", ["new", f.url], /second tab/],
       ["click", ["#plain"], /no durable target/],
       ["click", ["#popup"], /second tab or popup/],

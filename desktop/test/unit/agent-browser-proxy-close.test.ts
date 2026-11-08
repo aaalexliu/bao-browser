@@ -108,6 +108,36 @@ for (const { mode, force, deny } of [
   assert.equal(detached, true);
 });
 
+test("a close after the owner's Chrome ended still names the owner's Chrome", { timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-current-ended-"));
+  let detached = false;
+  let resolveClosed!: () => void;
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, endpoint: { port: 9222, browserPath: "/fixture" },
+    cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
+      method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
+    closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
+    isClosed: () => detached,
+    detach: () => { detached = true; resolveClosed(); },
+    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
+  } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}\nprocess.exitCode = 1;\n`, { mode: 0o700 });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "source"), executable });
+  t.after(async () => { await proxy.end().catch(() => undefined); await rm(root, { recursive: true, force: true }); });
+  await proxy.execute("open", [], "current");
+  assert.equal(proxy.currentChrome, true);
+  resolveClosed();
+  detached = true;
+  while (proxy.activeRunId) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(proxy.currentChrome, false, "no session and no close yet");
+  assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
+  assert.equal(proxy.currentChrome, true, "the close after the owner's Chrome ended belongs to that route");
+  await proxy.execute("close");
+  assert.equal(proxy.currentChrome, false, "a later close has no ended route left");
+});
+
 test("window close awaits owned cleanup before browser choice and reopening", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-close-"));
   const sourceRoot = path.join(root, "source");

@@ -318,9 +318,7 @@ function viewerMain(): void {
       root.append(list);
     }
     const count = (n: number, one: string, many: string) => n ? `${n} ${n === 1 ? one : many}` : "";
-    const seconds = finish.durationMs === null ? undefined : Math.round(finish.durationMs / 1000);
-    const took = seconds === undefined ? "" : seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`;
-    root.append(el("p", [count(finish.steps, "step", "steps") || "No steps", took, count(finish.pageLoads, "page load", "page loads"), count(finish.reads, "read", "reads"),
+    root.append(el("p", [count(finish.steps, "step", "steps") || "No steps", finish.duration, count(finish.pageLoads, "page load", "page loads"), count(finish.reads, "read", "reads"),
       count(finish.clicks, "click", "clicks"), count(finish.typed, "field typed", "fields typed"), count(finish.failedSteps, "failed step", "failed steps")].filter(Boolean).join(" · "), "muted"));
   }
   function stepLabel(card: BrowserToolCard): string {
@@ -346,7 +344,6 @@ function viewerMain(): void {
       const runId = card.runId;
       root.append(button("View run", async () => { expanded = false; await inspect(runId); }, "primary"));
     }
-    root.append(el("footer", "Recorded browser session · View only. Supported single-page tasks save a workflow when the session ends."));
     document.title = `${stepLabel(card)} · Bao`;
   }
   function render(): void {

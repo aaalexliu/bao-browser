@@ -28,8 +28,7 @@ test("Experian-shaped pass-through hands sign-in and bot walls to the owner and 
   const command = (name: string, args: string[] = []) => client.call("agent_browser", { command: name, args, ...(name === "open" ? { browser: "copy" } : {}) });
   const outcome = (result: McpResult) => {
     assert.equal(result.isError, false, result.text);
-    const [, native = ""] = result.text.split(/\n(.*)/s);
-    return (JSON.parse(native) as { outcome: string }).outcome;
+    return result.structuredContent?.outcome;
   };
   try {
     await client.handshake();
