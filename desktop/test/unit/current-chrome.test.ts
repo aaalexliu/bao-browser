@@ -602,6 +602,12 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     ]);
     for (const step of steps.slice(0, 2)) {
       assert.equal(step.status, "passed");
+      // The current route runs only on a Mac, where Chrome captures a background tab. Linux Chromium often
+      // never answers Page.captureScreenshot for a hidden tab, so there the step must record the missing picture.
+      if (process.platform !== "darwin" && !step.afterShot) {
+        assert.equal(step.afterShotError, "Page screenshot unavailable.");
+        continue;
+      }
       assert.ok(step.afterShot);
       await access(path.join(home, "shots", "runs", runs[0]!.id, step.afterShot));
     }
