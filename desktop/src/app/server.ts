@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
+import { occupy, snapshot, type RunSeat, type SeatEvent } from "./run-seat";
 import { resolveCaptureUrl } from "./capture-url";
 import { visibleCopy } from "../v1/visible-copy";
 import { CaptureBar, findCaptureBar, type BarEvent } from "./capture-bar";
@@ -252,24 +253,19 @@ export async function startApp(opts: {
   let importing = false;
   let loginWait: { message: string; detail?: string } | null = null;
   let humanConfirm: { message: string; detail?: string } | null = null;
-  let activeRun: import("./views").ActiveRun | null = null;
-  const currentAsk = () => activeRun?.phase === "waiting" ? activeRun.ask : null;
-  let ownedRunId: string | null = null;
-  function beginRun(workflowId: string, id: string): void {
-    ownedRunId = id;
-    activeRun = { id, workflowId, startedAt: Date.now(), phase: "running", ask: null };
-    stopRun = false;
-    loginContinued = false;
-    replaying = true;
+  let seat: RunSeat = { phase: "idle", stop: false, continued: false };
+  function apply(event: SeatEvent): ReturnType<typeof occupy> {
+    const result = occupy(seat, event);
+    seat = result.seat;
+    return result;
   }
-  function finishRun(id: string): void {
-    replaying = false;
-    if (activeRun?.phase === "running" && activeRun.id === id) activeRun = null;
-    if (ownedRunId === id) ownedRunId = null;
+  function view() {
+    return snapshot(seat);
   }
-  let stopRun = false;
-  let loginContinued = false;
-  let replaying = false;
+  const currentAsk = () => {
+    const run = view().activeRun;
+    return run?.phase === "waiting" ? run.ask : null;
+  };
   let recordingSince = 0;
   /** URL passed to beginSession. page.url() at stop is a later navigation. */
   let captureOpenUrl = "";
@@ -334,8 +330,8 @@ export async function startApp(opts: {
     },
     clearConfirm() {
       humanConfirm = null;
-      if (activeRun?.phase === "waiting" && activeRun.ask.kind === "confirm") {
-        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
+      if (currentAsk()?.kind === "confirm") {
+        apply({ type: "clear-ask", kind: "confirm" });
         clearPendingPrompt(library.root);
       }
       clearAct();
@@ -346,21 +342,22 @@ export async function startApp(opts: {
     },
     clearLoginWait() {
       loginWait = null;
-      loginContinued = false;
-      if (activeRun?.phase === "waiting" && (activeRun.ask.kind === "login" || activeRun.ask.kind === "wall")) {
-        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
+      apply({ type: "clear-continued" });
+      const ask = currentAsk();
+      if (ask && (ask.kind === "login" || ask.kind === "wall")) {
+        apply({ type: "clear-ask", kind: ask.kind });
         clearPendingPrompt(library.root);
       }
       clearAct();
     },
     showAsk(ask) {
       if (!ask.runId) return;
-      activeRun = { id: ask.runId, workflowId: ask.workflowId, startedAt: activeRun?.id === ask.runId ? activeRun.startedAt : ask.startedAt, phase: "waiting", ask };
+      if (!apply({ type: "show-ask", ask }).ok) return;
       rememberPending(ask);
       raiseAct(ask);
     },
-    shouldStop: () => stopRun,
-    loginContinued: () => loginContinued,
+    shouldStop: () => view().stop,
+    loginContinued: () => view().continued,
     pauseCapture() {
       capture.pause();
       capture.handoff(`Handoff started ${formatClock(Date.now())}`);
@@ -374,8 +371,8 @@ export async function startApp(opts: {
     library,
     extensionLinked: () => Boolean(extensionLink?.connected()),
     prompts,
-    stop: () => { stopRun = true; },
-    clearStop: () => { stopRun = false; },
+    stop: () => { apply({ type: "stop" }); },
+    clearStop: () => { apply({ type: "clear-stop" }); },
     runners: {
       extension: async (id, inputs) => {
         if (!extensionLink?.connected()) return { outcome: "failed", workflowId: id, reason: EXTENSION_NOT_CONNECTED };
@@ -502,11 +499,12 @@ export async function startApp(opts: {
       if (req.method === "GET" && url.pathname === "/api/state") {
         runScheduledBackup(library);
         syncPending();
+        const seatView = view();
         const listing = library.list();
         const capturedEvents = new Map(capture.events.map((event) => [event.id, event]));
         return json(res, {
           recording: capture.recording,
-          replaying,
+          replaying: seatView.replaying,
           capture: {
             recording: capture.recording,
             paused: capture.paused,
@@ -538,8 +536,8 @@ export async function startApp(opts: {
           pendingImport: pending ? publicPending(pending) : null,
           loginWait,
           humanConfirm,
-          activeRun,
-          runExecuting: Boolean(activeRun && activeRun.id === ownedRunId),
+          activeRun: seatView.activeRun,
+          runExecuting: seatView.runExecuting,
           activeAsk: currentAsk(),
           capturePaused: capture.paused,
           recordingSince: capture.recording ? recordingSince : 0,
@@ -1217,15 +1215,19 @@ export async function startApp(opts: {
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
-        if (!body.guide && activeRun?.phase === "waiting" && activeRun.id === ownedRunId) {
-          return json(res, { error: "Another run is waiting for you. Finish or stop it first." }, 409);
-        }
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-        if (body.guide) {
-          stopRun = false;
-          loginContinued = false;
-          replaying = true;
-        } else beginRun(workflow.id, runId);
+        const started = body.guide
+          ? apply({ type: "start-guide" })
+          : apply({ type: "start-run", id: runId, workflowId: workflow.id, startedAt: Date.now() });
+        if (!started.ok) {
+          const running = view();
+          const ownedWait = running.activeRun?.phase === "waiting" && running.ownedRunId === running.activeRun.id;
+          return json(res, {
+            error: !body.guide && ownedWait
+              ? "Another run is waiting for you. Finish or stop it first."
+              : "Another run is still going. Finish or stop it first.",
+          }, 409);
+        }
         try {
           if (body.fresh) {
             const existing = replays.get(saved.id);
@@ -1257,8 +1259,7 @@ export async function startApp(opts: {
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
         } finally {
-          if (body.guide) replaying = false;
-          else finishRun(runId);
+          apply(body.guide ? { type: "end-guide" } : { type: "end-run", id: runId });
         }
       }
       if (process.env.BAO_DRIVE === "1" && req.method === "GET" && url.pathname === "/api/replay/page") {
@@ -1284,10 +1285,11 @@ export async function startApp(opts: {
         const body = await readBody(req) as { runId?: string; stepId?: string; startedAt?: number };
         syncPending();
         const ask = currentAsk();
+        const activeRun = view().activeRun;
         if (!activeRun || body.runId !== activeRun.id || !ask || body.stepId !== ask.stepId || body.startedAt !== ask.startedAt) {
           return json(res, { error: "This run is no longer waiting for that action." }, 409);
         }
-        if (ask.kind !== "confirm") loginContinued = true;
+        if (ask.kind !== "confirm") apply({ type: "continue" });
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/pair") {
@@ -1342,14 +1344,15 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/replay/cancel") {
         const body = await readBody(req) as { runId?: string };
         syncPending();
+        const activeRun = view().activeRun;
         if (!activeRun || body.runId !== activeRun.id) return json(res, { error: "This run is no longer active." }, 409);
-        stopRun = true;
-        if (!replaying) {
+        apply({ type: "stop" });
+        if (!view().replaying) {
           clearPendingPrompt(library.root);
-          activeRun = null;
+          apply({ type: "drop-returned" });
+          apply({ type: "clear-continued" });
           loginWait = null;
           humanConfirm = null;
-          loginContinued = false;
           clearAct();
         }
         return json(res, { ok: true });
@@ -1727,20 +1730,30 @@ export async function startApp(opts: {
     const prompt = readPendingPrompt(library.root);
     if (!prompt) return;
     if (promptDue(prompt, now)) {
-      if (replaying) return;
+      if (view().replaying) return;
       markPromptTimedOut(library, prompt, now);
       clearPendingPrompt(library.root);
-      activeRun = null;
+      apply({ type: "drop-returned" });
       if (prompt.ask.kind === "login") {
         loginWait = null;
-        loginContinued = false;
+        apply({ type: "clear-continued" });
       } else {
         humanConfirm = null;
       }
       clearAct();
       return;
     }
-    if (!activeRun) activeRun = { id: prompt.runId, workflowId: prompt.ask.workflowId, startedAt: prompt.ask.startedAt, phase: "waiting", ask: prompt.ask };
+    if (!view().activeRun) {
+      apply({
+        type: "restore",
+        hold: {
+          id: prompt.runId,
+          workflowId: prompt.ask.workflowId,
+          startedAt: prompt.ask.startedAt,
+          ask: prompt.ask,
+        },
+      });
+    }
   }
 
   syncPending();
