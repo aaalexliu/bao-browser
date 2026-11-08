@@ -9,6 +9,7 @@ import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./vi
 import { finishCardFor, inspectMcpRunView, listRunViews } from "./run-view";
 import { BROWSER_RESULT_SCHEMA, browserToolResult, finishToolContent, stepSentence } from "./tool-card";
 import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
+import { baoVersion } from "../app/bundle";
 
 interface Rpc {
   jsonrpc: "2.0";
@@ -203,7 +204,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
       result: {
         protocolVersion: "2024-11-05",
         capabilities: ctx.ui ? { tools: {}, resources: {}, extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } : { tools: {} },
-        serverInfo: { name: "bao", version: "0.2.0" },
+        serverInfo: { name: "bao", version: baoVersion(__filename) },
         instructions: INSTRUCTIONS,
       },
     });
