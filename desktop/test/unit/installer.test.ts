@@ -114,11 +114,15 @@ test("a rerun reuses the checked download, and a new release replaces the app in
   const again = install(box, "--none");
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /Using the copy downloaded earlier/);
+  const cache = path.join(box.home, "Library", "Caches", "bao", "downloads");
+  writeFileSync(path.join(cache, "Bao-9.9.0-darwin-arm64.zip.part"), "cut short");
+  writeFileSync(path.join(cache, "notes.txt"), "not Bao's");
   publish(box, "9.9.2");
   const update = install(box, "--none");
   assert.equal(update.status, 0, update.stderr);
   assert.equal(version(path.join(box.apps, "Bao.app")), "9.9.2");
   assert.deepEqual(readdirSync(box.apps), ["Bao.app"]);
+  assert.deepEqual(readdirSync(cache).sort(), ["Bao-9.9.2-darwin-arm64.zip", "notes.txt"]);
 });
 
 test("a missing release.json stops before any download", { skip }, (t) => {

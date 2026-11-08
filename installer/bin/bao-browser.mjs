@@ -5,7 +5,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, constants, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync } from "node:fs";
+import { accessSync, constants, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -128,7 +128,7 @@ async function download(asset, version, key, base) {
   const file = path.join(cache, `Bao-${version}-${key}.zip`);
   if (existsSync(file) && statSync(file).size === asset.size && (await sha256(file)) === asset.sha256) {
     step(`Using the copy downloaded earlier ${dim(file)}`);
-    return file;
+    return keepOnly(file);
   }
   const part = `${file}.part`;
   const tick = progress("Bao.app", asset.size);
@@ -153,6 +153,15 @@ async function download(asset, version, key, base) {
     throw new InstallError(`The download does not match this release (size ${size}, sha256 ${digest}). Nothing was installed.`);
   }
   renameSync(part, file);
+  return keepOnly(file);
+}
+
+/** Removes every other Bao download, and any partial one, from the cache folder, so it holds one release. */
+function keepOnly(file) {
+  const dir = path.dirname(file);
+  for (const name of readdirSync(dir)) {
+    if (name !== path.basename(file) && /^Bao-.+\.zip(\.part)?$/.test(name)) rmSync(path.join(dir, name), { force: true });
+  }
   return file;
 }
 
