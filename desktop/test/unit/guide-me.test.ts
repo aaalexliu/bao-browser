@@ -18,7 +18,7 @@ test("guide me advances when the person acts and the action counter stays 0", as
   const user = ident({ id: "username", nameAttr: "username", role: "textbox" });
   const login = ident({ id: "login-btn", role: "button", name: "Log in", testId: "login" });
   const doc: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-guide",
     name: "Guide the fixture",
@@ -80,7 +80,7 @@ test("guide me advances when the person acts and the action counter stays 0", as
 test("guide me rings the control itself when the driver can", async () => {
   const user = ident({ id: "username", role: "textbox" });
   const doc: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-ring",
     name: "Ring",

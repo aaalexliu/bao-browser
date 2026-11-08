@@ -1833,7 +1833,7 @@ async function fillArgs(id: string): Promise<void> {
   form.innerHTML = doc.inputs.map((input) => {
     const fresh = oneTimeCodeInput(doc, input.name);
     const previous = input.type === "secret" ? deeplinkInputs[input.name] ?? pinnedArgs?.[input.name] : prev[input.name];
-    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, previous, doc.steps || []);
+    return field({ ...input, default: fresh ? undefined : input.default, fresh: fresh && deeplinkInputs[input.name] === undefined }, previous, (doc.steps || []).map((step) => ({ label: step.action === "download" ? step.caption.text : step.caption?.text, download: step.action === "download" ? step.download : undefined })));
   }).join("") || "<p>This workflow has no inputs.</p>";
   argsWorkflow = id;
   deeplinkPending = false;
@@ -2761,6 +2761,24 @@ function mountStage(stage: HTMLElement): void {
   };
   stage.prepend(img);
   img.src = url;
+  stage.querySelectorAll(".browser-mark").forEach((mark) => mark.remove());
+  if (which === "before" && stage.dataset.box) {
+    const [x, y, width, height, viewW, viewH] = stage.dataset.box.split(",").map(Number);
+    if ([x, y, width, height, viewW, viewH].every((n) => Number.isFinite(n)) && viewW > 0 && viewH > 0 && width > 0 && height > 0) {
+      const mark = document.createElement("div");
+      mark.className = "browser-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.style.left = `${x / viewW * 100}%`;
+      mark.style.top = `${y / viewH * 100}%`;
+      mark.style.width = `${width / viewW * 100}%`;
+      mark.style.height = `${height / viewH * 100}%`;
+      const name = stage.querySelector(".ph-label")?.textContent || "";
+      const span = document.createElement("span");
+      span.textContent = name;
+      mark.append(span);
+      stage.append(mark);
+    }
+  }
 }
 
 document.addEventListener("keydown", (event) => {

@@ -143,7 +143,7 @@ async function fixture(t: test.TestContext) {
     app: running, rpc, typed,
     async run(id: string, secret: boolean, value: string, readSource: "text" | "value" = "text") {
       const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id, name: "Read-back provenance", createdAt: 1, driver: "playwright", startUrl: `http://127.0.0.1:${address.port}/${secret && readSource === "text" ? "secret" : "ordinary"}`,
+        schema: "bao.workflow/v4", version: 2, id, name: "Read-back provenance", createdAt: 1, driver: "playwright", startUrl: `http://127.0.0.1:${address.port}/${secret && readSource === "text" ? "secret" : "ordinary"}`,
         inputs: [{ name: "entry", type: secret ? "secret" : "text" }, { name: "note", type: "text" }],
         steps: ["entry", "note"].map((name, index) => ({
           id: name, index, action: "type", label: `Fill ${name}`, surface: "dom", timeoutMs: 2000, heal: "never", input: name, value: `{{${name}}}`,

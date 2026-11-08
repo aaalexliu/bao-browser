@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -336,7 +337,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
     );
     local.steps.forEach((step, index) => {
       step.index = index;
-      step.forEach?.steps.forEach((child, childIndex) => { child.index = childIndex; });
+      projectStep(step).forEach?.steps.forEach((child, childIndex) => { child.index = childIndex; });
     });
     library.save(local);
     let remote: WorkflowV2;
@@ -495,7 +496,7 @@ for (const mode of ["pull", "keep-theirs", "keep-both"] as const) {
 
 function secretWorkflow(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "secret-push",
     name: "Secret push",

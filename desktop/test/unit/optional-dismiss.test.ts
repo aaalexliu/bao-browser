@@ -25,7 +25,7 @@ async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => I
     async sleep(ms) { elapsed += ms; t.mock.timers.tick(ms); },
   };
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0, driver: "cdp-live", inputs: [],
+    schema: "bao.workflow/v4", version: 2, id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0, driver: "cdp-live", inputs: [],
     steps: [
       { id: "dismiss", index: 0, surface: "dom", action: "click", label: "Close", optional: "dismiss", identity: want, timeoutMs: 2000, expect },
       ...(finalOptional ? [] : [{ id: "resume", index: 1, surface: "dom" as const, action: "key" as const, label: "Resume", key: "Tab", timeoutMs: 2000 }]),

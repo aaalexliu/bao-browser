@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -112,7 +113,7 @@ test("a login stop becomes a sign-in step whose postcondition is Welcome", async
     },
   ];
   const doc = condense(events, { id: "login", name: "Login", startUrl: "http://127.0.0.1/t/login", secrets: [CAPTURE_SECRET] });
-  const sign = doc.steps.filter((step) => step.action === "click" && step.identity?.id === "login-btn");
+  const sign = doc.steps.filter((step) => step.action === "click" && projectStep(step).identity?.id === "login-btn");
   assert.equal(sign.length, 1);
   assert.equal(sign[0]?.gate, "login");
   assert.equal(sign[0]?.label, "Sign in");

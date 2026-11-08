@@ -5,6 +5,7 @@ import { lookup } from "./identity";
 import type { Driver } from "./replay";
 import { identityView } from "./run-trace";
 import type { IdentityView } from "../app/view-types";
+import { projectStep } from "./schema";
 import type { WorkflowStep } from "./schema";
 
 export interface TryOutcome {
@@ -18,12 +19,13 @@ export interface TryOutcome {
 
 export async function tryStep(step: WorkflowStep, driver: Driver, heal?: HealProvider): Promise<TryOutcome> {
   void heal;
-  if (!step.identity) {
+  const recorded = projectStep(step).identity;
+  if (!recorded) {
     return { matched: false, actions: 0, modelCalls: 0, reason: "no identity" };
   }
   const tree = await driver.tree();
-  const hit = lookup(step.identity, tree.nodes);
-  const identity = identityView(step.identity, tree.nodes, hit);
+  const hit = lookup(recorded, tree.nodes);
+  const identity = identityView(recorded, tree.nodes, hit);
   const node = hit.ok && hit.index != null ? tree.nodes[hit.index] : undefined;
   if (node) {
     try {

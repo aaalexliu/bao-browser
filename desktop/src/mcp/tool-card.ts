@@ -1,5 +1,6 @@
 import type { AgentBrowserCommandResult, AgentBrowserProxy } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import { stepTitle } from "../v1/schema";
 
 export interface BrowserToolCard {
   command: string;
@@ -26,7 +27,7 @@ function ownerOutcome(results: AgentBrowserCommandResult[]): string | undefined 
   } catch { return undefined; }
 }
 
-function caption(command: string, failed: boolean, outcome?: string): string {
+function fallbackCaption(command: string, failed: boolean, outcome?: string): string {
   if (outcome === "halted" || outcome === "waiting") return "Bao is waiting for you in its Chrome window. Complete the sign-in or check there.";
   if (outcome === "ready") return "The page is ready to inspect. Read it again before continuing.";
   if (outcome === "closed") return "The Bao browser window closed. This session cannot continue.";
@@ -61,7 +62,8 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
   } else if (!outcome && command === "close" && evidence?.lastPicture) {
     picture = { kind: "captured", ...evidence.lastPicture };
   }
-  const card: BrowserToolCard = { command, status, caption: caption(command, failed, outcome), runId, stepId: step?.id ?? null, picture };
+  const spoken = step?.caption ? stepTitle(step) : fallbackCaption(command, failed, outcome);
+  const card: BrowserToolCard = { command, status, caption: spoken, runId, stepId: step?.id ?? null, picture };
   return {
     content: [
       { type: "text", text: card.caption },

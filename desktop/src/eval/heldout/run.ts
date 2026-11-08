@@ -11,7 +11,7 @@ import { launchOwnedChrome } from "../../launch";
 import { replay, type RunResult } from "../../v1/replay";
 import type { TrajectoryStep } from "../../v1/trajectory";
 import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
-import { validateWorkflow } from "../../v1/schema";
+import { projectStep, validateWorkflow } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";
@@ -75,9 +75,9 @@ function hybridPrompt(workflow: WorkflowV2): string {
     step.id,
     step.action,
     targetOf(step) || "-",
-    step.input || "-",
-    step.gate || "-",
-    step.label,
+    projectStep(step).input || "-",
+    projectStep(step).gate || "-",
+    projectStep(step).label,
   ].join(" "));
   return [
     "This workflow was condensed deterministically. Step identity, inputs, and secret tags are fixed.",
@@ -94,7 +94,7 @@ function hybridPrompt(workflow: WorkflowV2): string {
 }
 
 function heldSignature(step: WorkflowStep): string {
-  const id = step.identity;
+  const id = projectStep(step).identity;
   const text = (id?.text || "").replace(/\s+/g, " ").trim().slice(0, 60);
   return [
     step.action,
@@ -103,9 +103,9 @@ function heldSignature(step: WorkflowStep): string {
     id?.name || "",
     text,
     id?.cssPath || "",
-    step.gate || "-",
-    step.input || "-",
-    step.action === "key" ? step.key || "" : "",
+    projectStep(step).gate || "-",
+    projectStep(step).input || "-",
+    step.action === "key" ? projectStep(step).key || "" : "",
   ].join("|");
 }
 
@@ -707,23 +707,23 @@ async function judgeHybrid(workflow: WorkflowV2, secrets: string[]): Promise<{ s
   const failed = new Set<string>();
   const passing: { id: string; intent: string }[] = [];
   for (const step of workflow.steps) {
-    const input = workflow.inputs.find((item) => item.name === step.input);
+    const input = workflow.inputs.find((item) => item.name === projectStep(step).input);
     const target: LintTarget = {
       action: step.action,
-      name: step.identity?.name || step.identity?.text || step.identity?.label,
-      label: step.identity?.label,
-      text: step.identity?.text,
-      input: step.input,
+      name: projectStep(step).identity?.name || projectStep(step).identity?.text || projectStep(step).identity?.label,
+      label: projectStep(step).identity?.label,
+      text: projectStep(step).identity?.text,
+      input: projectStep(step).input,
       literal: input?.default,
     };
     const reason = prejudgeLint({
-      text: step.intent || "",
+      text: projectStep(step).label,
       target,
       secrets,
-      effect: step.confidence === "low" ? false : undefined,
-    }) || lintIntent(step.intent || "", target, secrets);
+      effect: projectStep(step).expect?.kind === "settled" ? false : undefined,
+    }) || lintIntent(projectStep(step).label, target, secrets);
     if (reason) failed.add(step.id);
-    else passing.push({ id: step.id, intent: step.intent || "" });
+    else passing.push({ id: step.id, intent: projectStep(step).label });
   }
   const summary = workflow.summary || "";
   const summaryFail = prejudgeLint({ text: summary, secrets })

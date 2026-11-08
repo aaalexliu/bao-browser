@@ -13,7 +13,7 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver } from "../../src/v1/replay";
 import { inferSavedWorkflow } from "../../src/v1/save-intent";
-import { migrate, validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, migrate, validateWorkflow, type ReplayArgs, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { projectTeach, teachIntentCase } from "../../src/v1/teach";
 import { draftVersion, listVersions, restoreVersion } from "../../src/v1/versions";
@@ -26,7 +26,7 @@ function fixture(t: TestContext): Library {
 }
 function workflow(startUrl = "https://fixture.test/"): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id: "saved-inputs", name: "Saved inputs", createdAt: 1, startUrl,
+    schema: "bao.workflow/v4", version: 2, id: "saved-inputs", name: "Saved inputs", createdAt: 1, startUrl,
     inputs: [{ name: "password", type: "secret", default: PASSWORD }],
     steps: [{ id: "entry", index: 0, action: "type", label: "Fill password", surface: "dom", timeoutMs: 0, input: "password", value: "{{password}}", sensitive: true, heal: "never", identity: { surface: "dom", role: "password", id: "password", inputType: "password", path: [] }, locators: [{ kind: "css", value: "#password" }] }],
   };
@@ -110,7 +110,7 @@ test("legacy missing literals, keys and defaults never dispatch or heal", async 
     const step = doc.steps[0]!;
     if (kind === "default" || kind === "number-default") doc.inputs[0]!.default = STRIPPED_SECRET;
     if (kind === "number-default") doc.inputs[0]!.type = "number";
-    if (kind === "literal") { delete step.input; step.value = STRIPPED_SECRET; }
+    if (kind === "literal") { delete projectStep(step).input; step.value = STRIPPED_SECRET; }
     if (kind === "key") { step.action = "key"; step.key = STRIPPED_SECRET; }
     if (kind === "redacted-key") { step.action = "key"; step.unresolved = { reason: "redacted key" }; }
     const { driver, values } = memoryDriver(doc);

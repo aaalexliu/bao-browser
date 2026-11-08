@@ -275,7 +275,7 @@ test("import a public demo login, then block the run after the cookie is cleared
 
     await clearBaoCookies(baoProfile);
     const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2",
+      schema: "bao.workflow/v4",
       version: 2,
       id: "wf-public",
       name: "Public gate",
@@ -644,7 +644,7 @@ async function assertNeedsSignIn(port: number, library: { save(doc: WorkflowV2):
   });
   if (!saved.ok) throw new Error("could not save the site probe");
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-gate",
     name: "Gated",

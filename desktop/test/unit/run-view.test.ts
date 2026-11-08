@@ -15,7 +15,7 @@ function fixture(t: test.TestContext) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const library = new Library(path.join(root, "library"));
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "fixture", name: "Preview report", startUrl: "https://example.test/", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "fixture", name: "Preview report", startUrl: "https://example.test/", createdAt: 1,
     inputs: [{ name: "password", type: "secret" }, { name: "attachment", type: "file" }],
     steps: [{ id: "preview", index: 0, action: "click", label: "Preview report", surface: "dom", identity: { surface: "dom", role: "button", name: "Preview", path: [] }, timeoutMs: 1000 }],
   };

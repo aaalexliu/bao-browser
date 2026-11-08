@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 // The test Chromium, local fixture page, no model, no vendor network.
 // Capture through the recorder, then replay twice with different inputs.
 
@@ -99,7 +100,7 @@ test("capture login, upload, and drop, then replay with two input sets", async (
       writeExample("examples/workflows/browser-form.json", JSON.stringify(app.library.read(workflow.id), null, 2));
     }
     const saved = app.library.read(workflow.id);
-    const login = saved.steps.find((step) => step.identity?.testId === "login" || step.identity?.id === "login-btn");
+    const login = saved.steps.find((step) => projectStep(step).identity?.testId === "login" || projectStep(step).identity?.id === "login-btn");
     assert.ok(login);
     login.label = "Click missing control";
     login.intent = "missing control";

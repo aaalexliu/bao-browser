@@ -190,7 +190,7 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
 
 function workflow(origin: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "listing-crop",
     name: "Read the fixture",

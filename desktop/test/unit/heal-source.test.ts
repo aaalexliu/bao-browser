@@ -36,7 +36,7 @@ test("unusable vendor replies retain failed heal evidence", { timeout: 60_000 },
       app.library.updateSettings({ healSource: { kind: "api-key", provider, key: "fixture-key" } });
       for (const heal of ["auto", "approve"] as const) {
         const workflow: WorkflowV2 = {
-          schema: "bao.workflow/v2", version: 2, createdAt: 1, id: `wf-evidence-${provider}-${heal}`, name: "Failed heal evidence", heal,
+          schema: "bao.workflow/v4", version: 2, createdAt: 1, id: `wf-evidence-${provider}-${heal}`, name: "Failed heal evidence", heal,
           startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [],
           steps: [{ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 }],
         };
@@ -152,7 +152,7 @@ if (process.argv[2] === 'status') {
       const state = await (await realFetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { settings: { healSource: HealSource } };
       assert.deepEqual(state.settings.healSource, choice);
       const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, createdAt: 1, id: `wf-source-${index}`, name: "Fixture heal source", heal: failure ? "approve" : "auto", startUrl: `http://127.0.0.1:${app.port}/fixture`,
+        schema: "bao.workflow/v4", version: 2, createdAt: 1, id: `wf-source-${index}`, name: "Fixture heal source", heal: failure ? "approve" : "auto", startUrl: `http://127.0.0.1:${app.port}/fixture`,
         inputs: [], steps: [{ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 }],
       };
       app.library.save(workflow);

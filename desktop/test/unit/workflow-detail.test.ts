@@ -13,7 +13,7 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   const name = `Set up the sign-in screen for 五秒 ${"A long workflow title ".repeat(12)}`;
   app.library.save({
-    schema: "bao.workflow/v2", version: 2, id: "detail", name, createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "detail", name, createdAt: 1,
     startUrl: "https://example.test/", summary: "Sets up the sign-in screen.",
     inputs: [{ name: "appName", label: "App name", type: "text", default: "五秒", required: true }],
     steps: [
@@ -21,7 +21,7 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
       { id: "name", index: 1, action: "type", surface: "dom", timeoutMs: 100, label: "Type the app name", input: "appName", identity: { surface: "dom", path: [], role: "textbox", name: "App name" }, expect: { kind: "text", match: "Saved", timeoutMs: 100 } },
     ],
   });
-  app.library.save({ schema: "bao.workflow/v2", version: 2, id: "empty-detail", name: "Empty workflow", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] });
+  app.library.save({ schema: "bao.workflow/v4", version: 2, id: "empty-detail", name: "Empty workflow", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] });
   app.library.saveRun({ id: "detail-run", workflowId: "detail", status: "passed", at: Date.now(), steps: [{ id: "open", status: "passed" }], heals: [] });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
@@ -181,7 +181,7 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
 test("workflow loading and retry stay in the current visit across state polls", { timeout: 30_000 }, async () => {
   const dirs = applyHermeticApp("workflow-detail-polls");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
-  app.library.save({ schema: "bao.workflow/v2", version: 2, id: "poll-detail", name: "Poll detail", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] });
+  app.library.save({ schema: "bao.workflow/v4", version: 2, id: "poll-detail", name: "Poll detail", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   let release!: () => void;
   const pending = new Promise<void>((resolve) => { release = resolve; });

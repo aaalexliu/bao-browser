@@ -1,6 +1,7 @@
 import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
+import { projectStep, stepTitle } from "../v1/schema";
 import type { WorkflowV2 } from "../v1/schema";
 import { shotFile, shotFormat } from "../v1/shots";
 import { Library, secretInputNames, type StoredRun } from "../v1/store";
@@ -103,7 +104,7 @@ function runView(
       `Read back ${text(receipt.source, 60) || "value"}: expected ${readBackText(receipt.expected) || ""}, saw ${readBackText(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
     return {
       id: text(step.id, 128), index: stepOffset + index + 1,
-      label: text(definition?.label, 160) || (run.kind === "capture" ? text(native.command, 40) || "Captured command" : text(step.id, 128)),
+      label: text(definition ? stepTitle(definition) : undefined, 160) || (run.kind === "capture" ? text(native.command, 40) || "Captured command" : text(step.id, 128)),
       action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
       reason: text(step.reason),
       result: readBacks.length ? readBacks.join("\n") : readBackText(step.readBack),
@@ -120,7 +121,7 @@ function runView(
       id: viewerId(workflow.id), name: text(workflow.name, 120), stepCount: workflow.steps.length,
       steps: workflow.steps.slice(workflowOffset, workflowOffset + STEP_PAGE_SIZE).map((step, index) => ({
         index: workflowOffset + index + 1, action: text(step.action, 40),
-        label: text(step.label, 160),
+        label: text(projectStep(step).label, 160),
       })),
       offset: workflowOffset, nextOffset: workflowOffset + STEP_PAGE_SIZE < workflow.steps.length ? workflowOffset + STEP_PAGE_SIZE : null,
     } : null,

@@ -177,7 +177,7 @@ test("Runs names agent sessions, shows the failure reason, and leaves ended sess
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   page.setDefaultTimeout(8_000);
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "bill", createdAt: 1, name: "Download the bill", startUrl: "/fixture", inputs: [],
+    schema: "bao.workflow/v4", version: 2, id: "bill", createdAt: 1, name: "Download the bill", startUrl: "/fixture", inputs: [],
     steps: [{ id: "open", index: 0, action: "click", label: "Open account", surface: "dom", timeoutMs: 1000 }],
   };
   const now = Date.now();

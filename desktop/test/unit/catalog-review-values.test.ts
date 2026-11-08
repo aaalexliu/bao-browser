@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -25,7 +26,7 @@ test("review samples preserve ordinary choice and fixed values", () => {
 
 function workflow(origin: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id: "review-text-values", name: "Review text values",
+    schema: "bao.workflow/v4", version: 2, id: "review-text-values", name: "Review text values",
     startUrl: `${origin}/fixture`, createdAt: 1,
     inputs: values.map((value, index) => ({ name: `sample${index}`, type: "text", default: value })),
     steps: values.map((value, index) => ({
@@ -45,7 +46,7 @@ test("review crop eligibility covers literal, default and actual run text values
       const step = document.steps[index]!;
       if (source !== "default") delete document.inputs[index]!.default;
       if (source === "literal") {
-        delete step.input;
+        delete projectStep(step).input;
         step.value = value;
       } else if (source === "run") run.inputs[`sample${index}`] = value;
       assert.equal(privateReviewStep(document, step, run), index < 3, `${source}: ${index}`);

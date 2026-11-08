@@ -24,7 +24,7 @@ function ident(partial: Partial<Identity>): Identity {
 
 function workflow(id: string, testId: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: "Fixture",

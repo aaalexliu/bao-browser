@@ -20,7 +20,8 @@ import { AtspiDriver } from "./os-driver";
 import { osNodes, osPress, type OsNode } from "../proxy/os";
 import { DEFAULT_PROMOTE_AFTER, noteDrift, noteReplay, openProvisional, promotionEvent } from "./promote";
 import { replay, type LocatorMode } from "./replay";
-import type { WorkflowV2 } from "./schema";
+import { projectStep, WORKFLOW_SCHEMA_ID } from "./schema";
+import type { Check, StepLocator, WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface CapturedWeb {
   id: string;
@@ -197,13 +198,13 @@ async function runWorkflow(
   });
   onTrajectory?.(result.trajectory);
   const first: Record<string, string | undefined> = {};
-  for (const step of workflow.steps) first[step.id] = step.locators?.[0]?.kind;
+  for (const step of workflow.steps) first[step.id] = projectStep(step).locators?.[0]?.kind;
   const rows = recoveryRows({
     workflow: name,
     change,
     steps: result.steps.map((step) => ({
       id: step.id,
-      label: workflow.steps.find((item) => item.id === step.id)?.label,
+      label: labelOf(workflow.steps.find((item) => item.id === step.id)),
       passed: step.status === "passed",
       reason: clip(step.reason),
       phase: step.phase,
@@ -246,19 +247,19 @@ async function recordWikipedia(page: Page): Promise<{ workflow: WorkflowV2; traj
     click: false,
   });
   const typed = workflow.steps.find((step) => step.action === "type");
-  if (typed && reveal) typed.reveal = reveal;
+  if (typed && reveal) typed.target.reveal = reveal;
   return { workflow, trajectory: trajectoryFromWorkflow(workflow, [fillMs, keyMs]) };
 }
 
 /** The search toggle Vector shows when #searchInput is a 0×0 box. */
-async function captureSearchReveal(page: Page): Promise<WorkflowV2["steps"][number]["reveal"]> {
+async function captureSearchReveal(page: Page): Promise<StepLocator | undefined> {
   const size = page.viewportSize() || { width: 1280, height: 720 };
   await page.setViewportSize({ width: 880, height: 560 });
   await page.waitForTimeout(400);
   const driver = new BrowserDriver(page);
   const tree = await driver.tree();
   const index = tree.nodes.findIndex((node) => node.id === "searchInput");
-  let reveal: WorkflowV2["steps"][number]["reveal"];
+  let reveal: StepLocator | undefined;
   if (index >= 0) {
     const found = discoverReveal(tree.nodes, tree.boxes, index, tree.hidden);
     const node = found ? tree.nodes[found.index] : undefined;
@@ -317,7 +318,7 @@ async function recordDynamic(page: Page): Promise<{ workflow: WorkflowV2; trajec
   const doc = interpret([event], { id: "wf-dynamic", name: "Dynamic loading", startUrl: DYNAMIC });
   const step = doc.steps[0];
   if (step) {
-    step.expect = { kind: "text", match: "Hello World!", timeoutMs: 15000 };
+    setCheck(step, { kind: "text", match: "Hello World!", timeoutMs: 15000 });
     step.timeoutMs = 15000;
   }
   return { workflow: doc, trajectory: trajectoryFromWorkflow(doc, [elapsed]) };
@@ -334,17 +335,16 @@ async function recordStaleAdd(page: Page): Promise<WorkflowV2> {
     locators: buildLocators(button, tree.nodes, tree.boxes, tree.nodes.indexOf(button)),
   }], { id: "wf-add", name: "Add element", startUrl: ADD });
   const step = doc.steps[0];
-  if (!step) throw new Error("no add step");
-  step.intent = button.text || button.name || "Add Element";
-  step.locators = [{ kind: "role", role: "button", name: "Add Element now" }];
-  step.identity = {
-    surface: "dom",
-    role: "button",
-    name: "Add Element now",
-    text: "Add Element now",
-    path: [],
+  if (!step || step.action !== "click") throw new Error("no add step");
+  step.caption = { ...step.caption, text: button.text || button.name || "Add Element" };
+  step.target = {
+    locators: [
+      { kind: "role", role: "button", name: "Add Element now" },
+      { kind: "text", value: "Add Element now" },
+    ],
+    hint: { surface: "dom", role: "button" },
   };
-  step.expect = { kind: "text", match: "Delete", timeoutMs: 8000 };
+  step.check = { kind: "text", match: "Delete", timeoutMs: 8000 };
   return doc;
 }
 
@@ -364,15 +364,11 @@ function finishType(
   );
   const doc = interpret(events, { id: meta.id, name: meta.name, startUrl: meta.startUrl });
   for (const step of doc.steps) {
-    if (step.action !== "key") {
-      step.expect = undefined;
-      step.postcondition = undefined;
-    }
+    if (step.action !== "key") setCheck(step, undefined);
   }
   const last = doc.steps[doc.steps.length - 1];
   if (last) {
-    last.postcondition = undefined;
-    last.expect = { kind: meta.expectKind, match: meta.expect, timeoutMs: 15000 };
+    setCheck(last, { kind: meta.expectKind, match: meta.expect, timeoutMs: 15000 });
     last.timeoutMs = 15000;
   }
   return doc;
@@ -681,10 +677,10 @@ async function recordCalculator(bin: string, screen: string, nodes: OsNode[]): P
   }
   const doc = interpret(events, { id: "wf-gnome-calculator", name: "GNOME Calculator", startUrl: "desktop://gnome-calculator" });
   for (const step of doc.steps) {
-    if (step.postcondition?.kind === "value") step.postcondition = undefined;
+    if (projectStep(step).postcondition?.kind === "value") setCheck(step, undefined);
   }
   const last = doc.steps[doc.steps.length - 1];
-  if (last) last.expect = { kind: "text", match: "12", timeoutMs: 6000 };
+  if (last) setCheck(last, { kind: "text", match: "12", timeoutMs: 6000 });
   return { workflow: doc, trajectory: trajectoryFromWorkflow(doc, timings) };
 }
 
@@ -713,11 +709,8 @@ async function recordGedit(_bin: string, _screen: string, nodes: OsNode[]): Prom
   }], { id: "wf-gedit", name: "gedit", startUrl: "desktop://gedit" });
   const step = doc.steps[0];
   if (step) {
-    // interpret's value postcondition reads driver values. The AT-SPI driver
-    // does not surface the buffer there. The dirty tab label is the check.
-    step.postcondition = undefined;
-    step.expect = { kind: "text", match: "*note.txt", timeoutMs: 8000 };
-    if (step.identity) step.identity.path = step.identity.path.filter((seg) => !seg.name?.includes("/"));
+    // The AT-SPI driver does not surface the buffer. The dirty tab label is the check.
+    setCheck(step, { kind: "text", match: "*note.txt", timeoutMs: 8000 });
   }
   return { workflow: doc, trajectory: trajectoryFromWorkflow(doc, [400]) };
 }
@@ -854,10 +847,38 @@ export async function runHeal(dir: string, trailPath: string, headed: boolean): 
   }
 }
 
+function labelOf(step: WorkflowStep | undefined): string | undefined {
+  return step ? projectStep(step).label : undefined;
+}
+
+function setCheck(step: WorkflowStep, check: Check | undefined): void {
+  switch (step.action) {
+    case "verify":
+      if (check) step.check = check;
+      return;
+    case "click":
+    case "type":
+    case "key":
+    case "check":
+    case "select":
+    case "navigate":
+    case "login":
+    case "upload":
+    case "drop":
+    case "download":
+    case "open":
+    case "digits":
+    case "pickDate":
+      step.check = check;
+      return;
+    default:
+      return;
+  }
+}
+
 function healWorkflow(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
-    version: 2,
+    schema: WORKFLOW_SCHEMA_ID,
     id: "wf-heal-add",
     name: "Add element heal",
     startUrl: ADD,
@@ -867,18 +888,18 @@ function healWorkflow(): WorkflowV2 {
       id: "add",
       index: 0,
       action: "click",
-      label: "Submit freeze",
-      intent: "Submit freeze",
-      surface: "dom",
+      caption: { text: "Submit freeze" },
       timeoutMs: 1000,
-      identity: { surface: "dom", role: "button", text: "Submit freeze", testId: "missing-add", path: [] },
-      locators: [
-        { kind: "role", role: "button", name: "Submit freeze" },
-        { kind: "text", value: "Submit freeze" },
-        { kind: "testid", value: "missing-add" },
-        { kind: "css", value: "#missing-add" },
-      ],
-      expect: { kind: "text", match: "Delete", timeoutMs: 8000 },
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Submit freeze" },
+          { kind: "text", value: "Submit freeze" },
+          { kind: "testid", value: "missing-add" },
+          { kind: "css", value: "#missing-add" },
+        ],
+        hint: { surface: "dom", role: "button", label: "Submit freeze" },
+      },
+      check: { kind: "text", match: "Delete", timeoutMs: 8000 },
     }],
   };
 }

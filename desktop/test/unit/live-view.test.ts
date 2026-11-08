@@ -18,7 +18,7 @@ import { applyHermeticApp } from "../runtime";
 
 function workflow(startUrl: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id: "wf-live-detail", name: "Book a class",
+    schema: "bao.workflow/v4", version: 2, id: "wf-live-detail", name: "Book a class",
     startUrl, createdAt: 1, inputs: [],
     steps: [
       { id: "open", index: 0, label: "Open the schedule", action: "click", surface: "dom", identity: { surface: "dom", role: "button", name: "Apply", path: [] }, timeoutMs: 1000 },

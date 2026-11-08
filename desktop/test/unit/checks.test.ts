@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -15,13 +16,13 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return { index: 0, label: partial.label || partial.action, surface: "dom", timeoutMs: 0, ...partial };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: 0, ...partial });
 }
 
 function doc(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Checks",

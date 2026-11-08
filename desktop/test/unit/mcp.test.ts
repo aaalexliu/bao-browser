@@ -26,7 +26,7 @@ interface HistoryPayload {
 
 const names = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser", "finish_task"];
 const retired = ["live_session_start", "live_snapshot", "live_click", "live_type", "live_key", "live_select", "live_scroll", "live_navigate", "live_read", "live_screenshot", "live_tabs", "live_switch_tab", "live_stop"];
-const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "saved", name: "Saved workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] };
+const workflow: WorkflowV2 = { schema: "bao.workflow/v4", version: 2, id: "saved", name: "Saved workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] };
 
 async function fixture(run: (client: McpClient, library: Library) => Promise<void>): Promise<void> {
   const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-test-"));
@@ -951,7 +951,7 @@ test("a held replay blocks update stops and supports resume and cancel after rep
 });
 
 const shelfWorkflow = `{
-  "schema": "bao.workflow/v2",
+  "schema": "bao.workflow/v4",
   "version": 2,
   "id": "wf-shelf",
   "name": "Shelf",

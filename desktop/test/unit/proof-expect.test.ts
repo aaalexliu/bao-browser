@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -26,7 +27,7 @@ function load<T = SavedRun>(name: string): T {
 }
 
 function stepText(workflow: SavedWorkflow): string {
-  return workflow.steps.map((step) => `${step.label || ""} ${step.identity?.text || ""} ${step.identity?.name || ""}`).join("\n");
+  return workflow.steps.map((step) => `${projectStep(step).label || ""} ${projectStep(step).identity?.text || ""} ${projectStep(step).identity?.name || ""}`).join("\n");
 }
 
 test("every proof task declares completed or needs_human", () => {
@@ -140,8 +141,8 @@ test("p3 and p9 score completed preparation, not final clicks or pauses", () => 
 test("historical p9 saved workflows retain their confirm pause", () => {
   const workflow = load<SavedWorkflow>("workflows/p9.json");
   const confirm = workflow.steps.some((step) =>
-    step.action === "confirm" && step.confirm === true && /place order/i.test(`${step.label || ""} ${step.identity?.name || ""} ${step.identity?.text || ""}`));
-  const pressed = workflow.steps.some((step) => step.action === "click" && /place order/i.test(step.label || ""));
+    step.action === "confirm" && step.confirm === true && /place order/i.test(`${projectStep(step).label || ""} ${projectStep(step).identity?.name || ""} ${projectStep(step).identity?.text || ""}`));
+  const pressed = workflow.steps.some((step) => step.action === "click" && /place order/i.test(projectStep(step).label || ""));
   assert.equal(confirm, true);
   assert.equal(pressed, false);
   const runs = [["runs/p9-r1.json", "2 Market"], ["runs/p9-r2.json", "3 Market"]] as const;

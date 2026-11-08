@@ -32,7 +32,7 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
     writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: "live", intent: "Read member report", status: "passed", host: "", updatedAt: 1, steps: liveSteps, audit, note: "" }));
     const label = 'Click "View full credit report"';
     const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "wf-ui-polish", name: "Read member report", createdAt: 1,
+      schema: "bao.workflow/v4", version: 2, id: "wf-ui-polish", name: "Read member report", createdAt: 1,
       startUrl: `${base}/fixture`, inputs: [],
       steps: [{ id: "s1", index: 0, action: "click", label, surface: "dom", timeoutMs: 1000, identity: { surface: "dom", role: "link", name: "View full credit report", path: [] } }],
     };

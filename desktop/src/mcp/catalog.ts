@@ -22,9 +22,10 @@ import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
-import { migrate, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { projectStep, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
+import { runRecordStatus } from "../v1/run-status";
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { markImported, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
@@ -39,6 +40,7 @@ export interface InputField {
   name: string;
   type: string;
   label: string;
+  supply: "saved" | "must";
   required: boolean;
   /** Present when Bao fills the owner's saved value if the agent omits this input. */
   saved?: true;
@@ -164,7 +166,7 @@ export async function searchWorkflows(
     summary: summaryOf(doc),
     site: domainsOf(doc)[0] || "",
     category: categoryFor(doc),
-    steps: doc.steps.map((step) => step.label),
+    steps: doc.steps.map((step) => projectStep(step).label),
     source: "mine" as const,
     inputs: inputSchema(doc, agentSavedDefaults(doc)),
     link: linkFor(doc.id),
@@ -194,30 +196,26 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
 }> {
   const found = await locateWorkflow(library, id, auth);
   const workflow = scrubSaved(found.document);
-  const checks: { step: WorkflowStep; field: "postcondition" | "expect"; value: string }[] = [];
+  const checks: { step: WorkflowStep; value: string }[] = [];
   const collect = (steps: WorkflowStep[]): void => {
     for (const step of steps) {
-      if (step.action !== "note" && step.action !== "verify") {
-        for (const field of ["postcondition", "expect"] as const) {
-          const check = step[field];
-          if (check && (check.kind === "text" || check.kind === "value") && check.match) {
-            checks.push({ step, field, value: check.match });
-          }
-        }
+      const view = projectStep(step);
+      const check = view.check;
+      if (step.action !== "note" && step.action !== "verify" && check && (check.kind === "text" || check.kind === "value") && check.match) {
+        checks.push({ step, value: check.match });
       }
-      if (step.forEach) collect(step.forEach.steps);
+      if (view.forEach) collect(view.forEach.steps);
     }
   };
   collect(workflow.steps);
   const projected = scrubSaved(checks.map(({ value }) => ({ op: "type", value })), { workflow: found.document });
-  checks.forEach(({ step, field, value }, index) => {
-    if (projected[index]?.value === STRIPPED_SECRET && value !== STRIPPED_SECRET) delete step[field];
+  checks.forEach(({ step, value }, index) => {
+    if (projected[index]?.value === STRIPPED_SECRET && value !== STRIPPED_SECRET) clearStepCheck(step);
   });
-  const inputs = inputSchema(workflow, found.local ? agentSavedDefaults(found.document) : {});
-  workflow.inputs.forEach((input, index) => {
-    if (!inputs[index]!.required) input.required = false;
+  const inputs = inputSchema(workflow, found.local ? withInputDefaults(found.document, {}) : {});
+  for (const input of workflow.inputs) {
     if (input.type === "secret") delete input.default;
-  });
+  }
   return {
     workflow,
     inputs,
@@ -268,8 +266,8 @@ export async function runWorkflow(
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
   const refusal = workflowReplayRefusal(library, request.document ?? placed!.document);
   if (refusal) return emptyOutcome(id, "failed", refusal);
-  const savedCopy = placed && !placed.local ? materializeWorkflow(library, placed) : undefined;
-  const loaded = request.document ? migrate(request.document) : (savedCopy ?? placed!.document);
+  if (placed && !placed.local) materializeWorkflow(library, placed);
+  const loaded = request.document ? parseWorkflow(request.document) : placed!.document;
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
@@ -313,7 +311,7 @@ export function heldConfirmStep(token: string): { stepId: string; stepLabel: str
   const index = live.workflow.steps.findIndex((step) => step.id === live.stepId);
   return {
     stepId: live.stepId,
-    stepLabel: live.workflow.steps[index]?.label || "the site interaction",
+    stepLabel: (index >= 0 ? projectStep(live.workflow.steps[index]!).label : undefined) || "the site interaction",
     stepNumber: index + 1,
     stepCount: live.workflow.steps.length,
     canDetectCompletion: live.confirmPending === true,
@@ -325,7 +323,8 @@ export async function heldConfirmReady(token: string): Promise<boolean> {
   if (!live || live.kind !== "confirm" || live.continuing || !live.confirmPending) return false;
   if (live.observing) return live.observing;
   const stepId = live.stepId;
-  const post = live.workflow.steps.find((step) => step.id === stepId)?.postcondition;
+  const matched = live.workflow.steps.find((step) => step.id === stepId);
+  const post = matched ? projectStep(matched).postcondition : undefined;
   if (!post) return false;
   live.observing = (async () => {
     const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
@@ -343,7 +342,7 @@ export async function reviewWorkflow(
   const found = await locateWorkflow(library, id, opts);
   const released = prepareImport(found.document);
   const documentHash = releaseHash(released.document);
-  const replayDoc = migrate(released.document);
+  const replayDoc = parseWorkflow(released.document);
   const outcome = await runWorkflow(library, { id, inputs, startUrl: opts.startUrl, document: replayDoc }, opts);
   if (outcome.outcome !== "ok") return { ...outcome, reviewed: false, documentHash };
   const state = loadState(library.root);
@@ -642,7 +641,8 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
 async function observeConfirm(live: LiveRun): Promise<void> {
   live.confirmPending = false;
   if (live.kind !== "confirm") return;
-  const post = live.workflow.steps.find((step) => step.id === live.stepId)?.postcondition;
+  const matched = live.workflow.steps.find((step) => step.id === live.stepId);
+  const post = matched ? projectStep(matched).postcondition : undefined;
   if (!post || ((post.kind === "element" || post.kind === "absent") ? !post.identity : !post.match?.trim())) return;
   try {
     live.confirmPending = !holds(post, await (live.observer ??= new BrowserDriver(live.page)).tree(), live.inputs);
@@ -807,12 +807,13 @@ function saveWorkflowRun(
   const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
   const needsHuman = run.pausedKind === "wall" || run.pausedKind === "confirm";
   library.saveRun({
+    schema: "bao.run/v4",
     id: run.runId,
     pageEngine: run.pageEngine,
     traceUnavailable: run.traceUnavailable,
     videoTruncated: run.videoTruncated,
     workflowId: workflow.id,
-    status: needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
+    status: run.pausedKind === "signin" || outcome.status === "needs_signin" ? runRecordStatus({ outcome: "paused", pausedKind: "signin" }) : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status === "failed" ? runRecordStatus({ outcome: "failed" }) : run.status,
     at: Date.now(),
     heals: run.heals,
     failure: run.failure,
@@ -893,15 +894,16 @@ function baseOutcome(
 
 function readBack(step: WorkflowStep, status: string, inputs: ReplayArgs): string {
   if (status === "pending") return "";
-  if (step.postcondition?.match) return expectedText(step.postcondition.match, inputs);
-  if (step.value?.includes("{{")) return expectedText(step.value, inputs);
-  return step.label;
+  const view = projectStep(step);
+  if (view.postcondition?.match) return expectedText(view.postcondition.match, inputs);
+  if (view.value?.includes("{{")) return expectedText(view.value, inputs);
+  return view.label;
 }
 
 function missingHuman(workflow: WorkflowV2, filled: ReplayArgs, given: ReplayArgs): { stepId: string; reason: string } | null {
   for (const input of workflow.inputs) {
-    if (input.required === false) continue;
-    const value = filled[input.name];
+    if (input.supply === "saved") continue;
+    const value = inputs[input.name];
     const empty = value === undefined || value === "";
     const authorOmitted = workflow.imported === true && input.ownerSaved !== true && omitted(given, input.name);
     if (!empty && !authorOmitted) continue;
@@ -934,10 +936,23 @@ function usableSaved(value: unknown): boolean {
 
 function signInStep(step: WorkflowStep | undefined): boolean {
   if (!step) return false;
-  return SIGN_IN.test(`${step.id} ${step.label} ${step.input || ""}`) || step.sensitive === true;
+  const view = projectStep(step);
+  return SIGN_IN.test(`${step.id} ${view.label} ${view.input || ""}`) || view.sensitive === true;
 }
 
 function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
+  const passwords = new Set<string>();
+  const collect = (steps: WorkflowStep[]): void => {
+    for (const step of steps) {
+      const view = projectStep(step);
+      if (step.action === "login") {
+        const name = secretInputName(doc, view.input);
+        if (name) passwords.add(name);
+      }
+      if (view.forEach) collect(view.forEach.steps);
+    }
+  };
+  collect(doc.steps);
   return doc.inputs.map((input) => {
     const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
     const saved = usableSaved(value);
@@ -945,16 +960,16 @@ function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
       name: input.name,
       type: input.type,
       label: input.label || input.name,
-      required: input.required !== false && !saved,
-      ...(saved ? {
-        saved: true as const,
-        description: input.type === "secret"
-          ? "Bao fills the saved password when omitted."
-          : "Bao fills the saved value when omitted.",
-      } : {}),
+      supply: input.supply,
+      required: input.supply !== "saved" && !saved,
       choices: input.choices,
     };
   });
+}
+
+function clearStepCheck(step: WorkflowStep): void {
+  if (step.action === "verify" || !("check" in step)) return;
+  delete step.check;
 }
 
 function publicInputs(workflow: WorkflowV2, inputs: ReplayArgs): Record<string, string | number> {
@@ -1188,7 +1203,7 @@ async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): 
   }
   if (remote?.document) {
     return {
-      document: migrate(remote.document),
+      document: parseWorkflow(remote.document),
       local: false,
       bucket: remote.bucket,
       deviceName: remote.deviceName,
@@ -1201,10 +1216,8 @@ async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): 
   throw new Error("workflow not found");
 }
 
-function materializeWorkflow(library: Library, found: Located): WorkflowV2 {
-  const migrated = migrate(found.document);
-  const legacyFork = Boolean(found.forkedFrom) && migrated.imported !== true;
-  const doc = found.bucket === "public" || legacyFork ? markImported(migrated) as WorkflowV2 : migrated;
+function materializeWorkflow(library: Library, found: Located): void {
+  const doc = parseWorkflow(found.document);
   library.save(doc);
   const saved = library.read(doc.id);
   if (!found.version) return saved;

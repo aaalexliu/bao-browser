@@ -9,7 +9,7 @@ import { applyRegistryImportAnswers, importQuestions, markImported, prepareImpor
 import { categoryFor, domainsOf, releaseHash, summaryOf } from "./publish";
 import { runPublishGate } from "./review-gate";
 import { rankHits, SEARCH_LIMIT, type RankInput } from "./rank";
-import schema from "./workflow-v2.schema.json";
+import schema from "../../../schema/workflow.schema.json";
 import { assertInviteSecret, assertOwnerEmail, assertOwnerSignIn, assertProductionAuth, magicLinkVisible } from "./owner";
 import { SEED_WORKFLOWS } from "./seeds";
 import { workflowSearchEligible, type WorkflowSearchContext } from "./catalog-eligibility";

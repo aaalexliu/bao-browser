@@ -266,7 +266,7 @@ async function mcpSession(env: NodeJS.ProcessEnv, home: string): Promise<{ child
 
 function workflow(startUrl: string, id = WORKFLOW_ID, name = "Span from Mac A"): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,

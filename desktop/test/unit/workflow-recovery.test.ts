@@ -11,7 +11,7 @@ test("workflow recovery keeps user choices, results and focus across state polls
   const app = await startApp({ home: dirs.home, port: 0, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
-    app.library.save({ schema: "bao.workflow/v2", version: 2, id: "good", name: "Good workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] });
+    app.library.save({ schema: "bao.workflow/v4", version: 2, id: "good", name: "Good workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] });
     mkdirSync(path.join(dirs.home, "workflows"), { recursive: true });
     writeFileSync(path.join(dirs.home, "workflows", "damaged.json"), "{");
     browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });

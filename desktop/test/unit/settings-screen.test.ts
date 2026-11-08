@@ -32,7 +32,7 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
     const page = await browser.newPage();
     const url = `http://127.0.0.1:${app.port}`;
     const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "focus-fixture", name: "Focus fixture", createdAt: 1,
+      schema: "bao.workflow/v4", version: 2, id: "focus-fixture", name: "Focus fixture", createdAt: 1,
       startUrl: "/fixture", inputs: [], steps: [],
     };
     app.library.save(workflow);
@@ -732,7 +732,7 @@ test("Settings Stop survives restart and stops a changed fixture step without a 
     await page.locator('#rail [data-place="settings"]').click();
     assert.equal(await page.getByRole("radio", { name: "Stop", exact: true }).isChecked(), true);
     const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "global-never", name: "Changed button Stop",
+      schema: "bao.workflow/v4", version: 2, id: "global-never", name: "Changed button Stop",
       startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
       steps: [
         { id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 },
@@ -800,7 +800,7 @@ for (const { mode, label, status, modelCalls, heals, laterStep } of [
         await eventually(() => app.library.settings().heal === mode);
       }
       const workflow: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id: `global-${mode}`, name: `Changed button ${mode}`,
+        schema: "bao.workflow/v4", version: 2, id: `global-${mode}`, name: `Changed button ${mode}`,
         startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
         steps: [
           { id: "changed", index: 0, action: "click", label: "Click the missing login button", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 100 },

@@ -20,7 +20,7 @@ import {
   type PageProposal,
 } from "../../src/v1/data-steps";
 import { interpret } from "../../src/v1/interpret";
-import { migrate, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, migrate, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 test("a version 2 workflow is unchanged by the data migration", () => {
   const raw = JSON.parse(readFileSync("examples/workflows/browser-form.json", "utf8")) as WorkflowV2;
@@ -126,7 +126,7 @@ test("interpret proposes extract and for_each, and leaves an ordinary trail on v
       assert.ok(loop?.forEach);
       assert.equal(loop?.forEach?.over.kind, "input");
       assert.ok(doc.inputs.some((input) => input.type === "table"));
-      const values = (loop?.forEach?.steps ?? []).map((step) => step.value);
+      const values = (loop?.forEach?.steps ?? []).map((step) => projectStep(step).value);
       assert.ok(values.includes("{{row.name}}"), values.join(" "));
       assert.ok(values.includes("{{row.email}}"), values.join(" "));
       assert.equal(blob.includes("ada@example.com"), false);
@@ -209,7 +209,7 @@ test("picking one card proposes the list and reads every row", async () => {
 
 function workflow(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-data",
     name: "Data",

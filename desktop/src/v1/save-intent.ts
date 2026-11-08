@@ -5,6 +5,7 @@
 
 import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
+import { projectStep } from "./schema";
 import type { WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
 
@@ -172,7 +173,7 @@ function promptSteps(
   return workflow.steps.map((step, index) => {
     const group = groups?.[index] || [];
     const event = [...group].reverse().find((item) => item.afterUrl || item.beforeUrl);
-    const visible = [step.identity?.name, step.identity?.text, step.identity?.label, step.label]
+    const visible = [projectStep(step).identity?.name, projectStep(step).identity?.text, projectStep(step).identity?.label, projectStep(step).label]
       .filter((item): item is string => typeof item === "string" && !!item.trim())
       .join(" · ");
     return {

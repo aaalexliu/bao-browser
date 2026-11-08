@@ -166,7 +166,7 @@ function viewerMain(): void {
         const mark = el("div", undefined, `browser-mark${rect.y / viewport.height < .15 ? " below" : ""}${rect.x / viewport.width > .7 ? " trailing" : ""}`);
         mark.setAttribute("aria-hidden", "true");
         Object.assign(mark.style, { left: `${rect.x / viewport.width * 100}%`, top: `${rect.y / viewport.height * 100}%`, width: `${rect.width / viewport.width * 100}%`, height: `${rect.height / viewport.height * 100}%` });
-        mark.append(el("span", card.command === "fill" ? "Typed here" : "Clicked here")); frame.append(mark);
+        mark.append(el("span", card.caption || (card.command === "fill" ? "Typed here" : "Clicked here"))); frame.append(mark);
       } else {
         const label = card.status === "failed" ? "Command failed" : card.command === "snapshot" ? "Read this page" : card.command === "open" ? "Opened page" : card.command === "tab" ? "Browser tab" : "Page captured";
         frame.append(el("span", label, "browser-page-label"));

@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,8 +15,8 @@ const secret = "SuperSecretPassword!";
 const file = "/Users/alex/notes.txt";
 const home = "/home/alex/drop.txt";
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action" | "label">, index: number): WorkflowStep {
-  return { surface: "dom", timeoutMs: 8000, index, ...partial };
+function step(partial: FixtureDraft, index: number): WorkflowStep {
+  return fixtureStep({ timeoutMs: 8000, index, ...partial });
 }
 
 function field(name: string): WorkflowStep["identity"] {
@@ -24,7 +25,7 @@ function field(name: string): WorkflowStep["identity"] {
 
 function document(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id: "guide-wf", name: "Sign in and apply", startUrl: "http://127.0.0.1:9/fixture", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "guide-wf", name: "Sign in and apply", startUrl: "http://127.0.0.1:9/fixture", createdAt: 1,
     inputs: [
       { name: "username", type: "text", default: "demo" },
       { name: "password", type: "secret", default: secret },

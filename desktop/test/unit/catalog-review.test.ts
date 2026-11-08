@@ -42,7 +42,7 @@ test("marketplace review keeps all pictures local for private-input workflows an
     const file = path.join(root, "sample.txt");
     await writeFile(file, "Synthetic attachment");
     const document: WorkflowV2 = {
-      schema: "bao.workflow/v2",
+      schema: "bao.workflow/v4",
       version: 2,
       id: "review-shot-scope",
       name: "Review synthetic samples",

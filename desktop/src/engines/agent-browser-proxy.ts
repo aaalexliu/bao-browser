@@ -440,11 +440,10 @@ export class AgentBrowserProxy {
       const { x, y, width, height } = data;
       if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
           || ![x, y, width, height].every(Number.isFinite)) return;
-      const rect = { x, y, width, height };
+      if (width <= 0 || height <= 0) return;
       const frame = await this.screenshot(session, step.native.command, true);
-      if (!frame.viewport || rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0
-          || rect.x + rect.width > frame.viewport.width || rect.y + rect.height > frame.viewport.height) return;
-      await session.recording.actionPicture(step, frame.bytes, { rect, viewport: frame.viewport });
+      if (!frame.viewport) return;
+      await session.recording.actionPicture(step, frame.bytes, { rect: { x, y, width, height }, viewport: frame.viewport });
     } catch {
       // Missing action evidence must not change the native command.
     }
