@@ -534,6 +534,51 @@ test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60
   }
 });
 
+test("a closed guide window does not open the Run form", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("gcls");
+  const app = await startApp({ home: dirs.home, port: 0 });
+  const browser = await testChromium.launch();
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${app.port}`;
+  let releaseGuide!: () => void;
+  const held = new Promise<void>((resolve) => { releaseGuide = resolve; });
+  let guided = false;
+  try {
+    app.library.save(workflow(`${base}/fixture`));
+    await page.route("**/api/replay", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      const body = route.request().postDataJSON() as { guide?: boolean };
+      if (!body?.guide) return route.continue();
+      guided = true;
+      await held;
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Target page, context or browser has been closed" }),
+      });
+    });
+    await page.goto(base);
+    await page.getByRole("button", { name: "Workflows", exact: true }).click();
+    await page.getByRole("button", { name: "Book a class", exact: true }).click();
+    await page.getByRole("button", { name: "Guide me", exact: true }).click();
+    for (let attempt = 0; attempt < 50 && !guided; attempt++) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(guided, true);
+    await page.locator('#rail button[data-place="runs"]').click();
+    const closed = page.waitForResponse((response) => response.url().includes("/api/replay") && response.status() === 500);
+    releaseGuide();
+    await closed;
+    await page.waitForResponse((response) => response.url().includes("/api/state") && response.request().method() === "GET");
+    assert.equal(await page.locator("#run").count(), 0);
+    assert.equal(await page.locator("#main").innerText().then((text) => text.includes("Target page, context or browser has been closed")), false);
+    assert.equal(await page.locator("#rail button[data-place=\"runs\"]").getAttribute("aria-current"), "page");
+  } finally {
+    releaseGuide();
+    await browser.close();
+    await app.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-run-identity");
   process.env.BAO_DRIVE = "1";

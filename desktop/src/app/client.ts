@@ -1935,8 +1935,8 @@ async function startGuide(id: string): Promise<void> {
     body: JSON.stringify({ id, args: {}, guide: true }),
   }));
   const run = await res.json() as { status?: string; actions?: number; error?: string };
-  if (!res.ok) {
-    replayError = run.error || "The run did not start.";
+  if (res.status === 409 && run.error === "Another run is waiting for you. Finish or stop it first.") {
+    replayError = run.error;
     navigate("replay");
     return;
   }
