@@ -82,7 +82,8 @@ import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolve
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { stepTitle, stepInputName, stepValueTemplate, stepCheck, stepSensitive, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 
-import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
+import { applyImportAnswers, importQuestions, markImported } from "../../../web/src/lib/import-sheet";
+import { savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -211,24 +212,19 @@ export async function startApp(opts: {
   let importing = false;
   let loginWait: { message: string; detail?: string } | null = null;
   let humanConfirm: { message: string; detail?: string } | null = null;
-  let activeRun: import("./views").ActiveRun | null = null;
-  const currentAsk = () => activeRun?.phase === "waiting" ? activeRun.ask : null;
-  let ownedRunId: string | null = null;
-  function beginRun(workflowId: string, id: string): void {
-    ownedRunId = id;
-    activeRun = { id, workflowId, startedAt: Date.now(), phase: "running", ask: null };
-    stopRun = false;
-    loginContinued = false;
-    ownerContinued = false;
-    replaying = true;
+  let seat: RunSeat = { phase: "idle", stop: false, continued: false };
+  function apply(event: SeatEvent): ReturnType<typeof occupy> {
+    const result = occupy(seat, event);
+    seat = result.seat;
+    return result;
   }
   function view() {
     return snapshot(seat);
   }
-  let stopRun = false;
-  let loginContinued = false;
-  let ownerContinued = false;
-  let replaying = false;
+  const currentAsk = () => {
+    const run = view().activeRun;
+    return run?.phase === "waiting" ? run.ask : null;
+  };
   let recordingSince = 0;
   /** URL passed to beginSession. page.url() at stop is a later navigation. */
   let captureOpenUrl = "";
@@ -293,10 +289,10 @@ export async function startApp(opts: {
     },
     clearConfirm(runId: string) {
       humanConfirm = null;
-      ownerContinued = false;
-      if (activeRun?.phase === "waiting" && activeRun.ask.kind === "confirm") {
-        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
-        clearPendingPrompt(library.root);
+      const ask = currentAsk();
+      if (ask?.kind === "confirm" && ask.runId === runId) {
+        apply({ type: "clear-ask", kind: "confirm", runId });
+        clearPromptFor(library.root, runId);
       }
       clearAct();
     },
@@ -306,11 +302,11 @@ export async function startApp(opts: {
     },
     clearLoginWait(runId: string) {
       loginWait = null;
-      loginContinued = false;
-      ownerContinued = false;
-      if (activeRun?.phase === "waiting" && (activeRun.ask.kind === "login" || activeRun.ask.kind === "wall")) {
-        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
-        clearPendingPrompt(library.root);
+      apply({ type: "clear-continued" });
+      const ask = currentAsk();
+      if (ask && (ask.kind === "login" || ask.kind === "wall") && ask.runId === runId) {
+        apply({ type: "clear-ask", kind: ask.kind, runId });
+        clearPromptFor(library.root, runId);
       }
       clearAct();
     },
@@ -320,9 +316,9 @@ export async function startApp(opts: {
       rememberPending(ask);
       raiseAct(ask);
     },
-    shouldStop: () => stopRun,
-    loginContinued: () => loginContinued,
-    ownerContinued: () => ownerContinued,
+    shouldStop: () => view().stop,
+    loginContinued: () => view().continued,
+    ownerContinued: () => view().continued,
     pauseCapture() {
       capture.pause();
       capture.handoff(`Handoff started ${formatClock(Date.now())}`);
@@ -541,7 +537,7 @@ export async function startApp(opts: {
         if (!pendingDoc) return json(res, { ok: false, error: "nothing to import" }, 400);
         const body = await readBody(req) as { answers?: Record<string, unknown> };
         try {
-          const installed = parseWorkflow(applyImportAnswers(pendingDoc, body.answers || {}));
+          const installed = markImported(parseWorkflow(applyImportAnswers(pendingDoc, body.answers || {})), body.answers || {}) as WorkflowV2;
           library.save(installed);
           pendingDoc = null;
           opened = {
@@ -925,7 +921,7 @@ export async function startApp(opts: {
         return opened ? json(res, { ok: true }) : json(res, { error: "Could not open the workflow folder. Open File details and recovery to find its path." }, 500);
       }
       if (req.method === "POST" && url.pathname === "/api/workflows/import") {
-        const parsed = migrate(JSON.parse(String(await readBody(req, true))));
+        const parsed = parseWorkflow(JSON.parse(String(await readBody(req, true))));
         let existing: WorkflowV2 | undefined;
         try { existing = library.read(parsed.id); } catch { existing = undefined; }
         const imported = existing && existing.imported !== true ? keepOwnerImport(parsed) : markImported(parsed) as WorkflowV2;
@@ -1182,12 +1178,18 @@ export async function startApp(opts: {
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-        if (body.guide) {
-          stopRun = false;
-          loginContinued = false;
-          ownerContinued = false;
-          replaying = true;
-        } else beginRun(workflow.id, runId);
+        const started = body.guide
+          ? apply({ type: "start-guide" })
+          : apply({ type: "start-run", id: runId, workflowId: workflow.id, startedAt: Date.now() });
+        if (!started.ok) {
+          const running = view();
+          const ownedWait = running.activeRun?.phase === "waiting" && running.ownedRunId === running.activeRun.id;
+          return json(res, {
+            error: ownedWait
+              ? "Another run is waiting for you. Finish or stop it first."
+              : "Another run is still going. Finish or stop it first.",
+          }, 409);
+        }
         try {
           if (body.fresh) {
             const existing = replays.get(saved.id);
@@ -1249,8 +1251,7 @@ export async function startApp(opts: {
         if (!activeRun || body.runId !== activeRun.id || !ask || body.stepId !== ask.stepId || body.startedAt !== ask.startedAt) {
           return json(res, { error: "This run is no longer waiting for that action." }, 409);
         }
-        if (ask.kind !== "confirm") loginContinued = true;
-        else ownerContinued = true;
+        apply({ type: "continue" });
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/remote/pair") {
@@ -1314,8 +1315,6 @@ export async function startApp(opts: {
           apply({ type: "clear-continued" });
           loginWait = null;
           humanConfirm = null;
-          loginContinued = false;
-          ownerContinued = false;
           clearAct();
         }
         return json(res, { ok: true });
@@ -1694,11 +1693,9 @@ export async function startApp(opts: {
       apply({ type: "drop-returned" });
       if (prompt.ask.kind === "login") {
         loginWait = null;
-        loginContinued = false;
-        ownerContinued = false;
+        apply({ type: "clear-continued" });
       } else {
         humanConfirm = null;
-        ownerContinued = false;
       }
       clearAct();
       return;
