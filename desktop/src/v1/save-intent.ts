@@ -155,7 +155,7 @@ export async function inferSavedWorkflow(
     name: parsed.title || floor,
     steps: base.steps.map((step) => {
       const intent = parsed.steps.get(step.id);
-      return intent ? { ...step, intent } : step;
+      return intent ? { ...step, caption: { ...step.caption, text: intent } } : step;
     }),
     inference: { at: now, provider: completer.provider, model: completer.model, status: "ok" },
   };

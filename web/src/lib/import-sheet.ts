@@ -19,6 +19,7 @@ interface InputRow {
   label?: string;
   required?: boolean;
   default?: string;
+  supply?: "saved" | "must";
   choices?: string[];
   askOnImport?: boolean;
   example?: string;
@@ -88,10 +89,14 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
   for (const input of doc.inputs ?? []) {
     if (input.type === "file") {
       delete input.default;
+      input.supply = "must";
       continue;
     }
     const answer = answers[input.name];
-    if (typeof answer === "string" && answer.trim()) input.default = input.type === "secret" ? answer : answer.trim();
+    if (typeof answer === "string" && answer.trim()) {
+      input.default = input.type === "secret" ? answer : answer.trim();
+      input.supply = "saved";
+    }
   }
   return doc;
 }
@@ -99,7 +104,10 @@ export function applyImportAnswers(document: unknown, answers: Record<string, un
 export function applyRegistryImportAnswers(document: unknown, answers: Record<string, unknown>): unknown {
   const doc = applyImportAnswers(document, answers) as { inputs?: InputRow[] };
   for (const input of doc.inputs ?? []) {
-    if (input.type === "secret" || input.type === "file") delete input.default;
+    if (input.type === "secret" || input.type === "file") {
+      delete input.default;
+      input.supply = "must";
+    }
   }
   return doc;
 }

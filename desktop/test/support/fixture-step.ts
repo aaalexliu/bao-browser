@@ -194,7 +194,7 @@ export function fixtureStep(draft: object, index = (draft as LooseStep).index ??
         action: "handoff",
         reason,
         ...(reason === "owner-press" && target ? { target } : {}),
-        caption: caption(raw.label || (reason === "sign-in" ? "Sign in" : "You press the button")),
+        caption: caption(raw.label || raw.caption?.text || (reason === "sign-in" ? "Sign in" : reason === "code" ? "Enter the code" : "You press the button")),
         ...withCheck,
       };
     }

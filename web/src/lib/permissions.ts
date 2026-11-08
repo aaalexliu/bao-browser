@@ -21,6 +21,9 @@ interface StepLike {
   caption?: { text?: string };
   surface?: string;
   text?: { literal?: string; input?: string };
+  url?: string;
+  open?: { url?: string };
+  download?: { url?: string };
   target?: { hint?: { name?: string; surface?: string }; locators?: { name?: string; value?: string }[] };
 }
 
@@ -100,6 +103,11 @@ function visitOrigins(doc: DocLike): string[] {
     }
   };
   add(doc.startUrl);
-  for (const step of doc.steps ?? []) add(step.text?.literal);
+  for (const step of doc.steps ?? []) {
+    add(step.url);
+    add(step.open?.url);
+    add(step.download?.url);
+    add(step.text?.literal);
+  }
   return [...origins].sort();
 }

@@ -374,16 +374,20 @@ function isGeneratedDownloadLink(identity: Identity | undefined): boolean {
 
 function takeDownloadTrigger(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): Target | undefined {
   const generated = outSteps[outSteps.length - 1];
+  let linkTarget: Target | undefined;
   if (generated?.action === "click" && isGeneratedDownloadLink(stepQuery(generated))) {
+    linkTarget = stepTarget(generated);
     outSteps.pop();
     outGroups.pop();
   }
   const prev = outSteps[outSteps.length - 1];
-  if (!prev || prev.action !== "click") return undefined;
-  const target = stepTarget(prev);
-  outSteps.pop();
-  outGroups.pop();
-  return target;
+  if (prev?.action === "click") {
+    const target = stepTarget(prev);
+    outSteps.pop();
+    outGroups.pop();
+    if (target) return target;
+  }
+  return linkTarget;
 }
 
 function carried(step: WorkflowStep, text: string, timeoutMs: number): Pick<WorkflowStep, "id" | "index" | "caption" | "timeoutMs" | "when" | "heal" | "readBack"> {
@@ -530,7 +534,7 @@ export function shapeFilesDates(
       const suggested = event.suggestedFilename || event.fileName || "download";
       const output = outputName(suggested, usedOutputs);
       const step = steps[i]!;
-      const target = takeDownloadTrigger(outSteps, outGroups);
+      const target = takeDownloadTrigger(outSteps, outGroups) ?? stepTarget(step);
       outSteps.push({
         ...carried(step, "Download", 30_000),
         action: "download",

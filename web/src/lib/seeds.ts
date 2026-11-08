@@ -21,7 +21,16 @@ export const SEED_WORKFLOWS: Seed[] = [
   seed("fixture-row", "Pick a row on the Bao fixture", "Fixture", FIXTURE, [
     input("row", "choice", "Row", ["Ada", "Grace"]),
   ], [
-    clickStep("row", 0, "Click the row named {{row}}", role("li", "{{row}}"), { kind: "text", match: "Picked {{row}}" }),
+    {
+      id: "row",
+      index: 0,
+      action: "click",
+      caption: cap("Click the row named {{row}}"),
+      timeoutMs: 8000,
+      target: { locators: [css("[data-testid=row]")] },
+      selection: { by: "text", input: "row" },
+      check: { kind: "text", match: "Picked {{row}}", timeoutMs: 4000 },
+    },
   ]),
   seed("fixture-username", "Fill the fixture username", "Fixture", FIXTURE, [
     input("username", "text", "Username"),
@@ -72,7 +81,6 @@ function seed(id: string, name: string, category: string, startUrl: string, inpu
     category,
     document: {
       schema: "bao.workflow/v4",
-      version: 2,
       id,
       name,
       startUrl,

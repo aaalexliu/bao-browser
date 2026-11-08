@@ -95,6 +95,7 @@ export function stripUnsafe(value: unknown, secrets: string[] = [], context?: Sa
     if (next.type === "secret") {
       delete next.default;
       delete next.value;
+      if ("supply" in next) next.supply = "must";
     }
     if (next.sensitive === true && typeof next.value === "string" && !next.value.includes("{{")) delete next.value;
     return next;

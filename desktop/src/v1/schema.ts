@@ -507,6 +507,7 @@ export function parseWorkflow(raw: unknown): WorkflowV2 {
 export function validateWorkflow(doc: WorkflowV2): string[] {
   const errors: string[] = [];
   if (!doc || typeof doc !== "object") return ["schema"];
+  if (unknownKeys(doc, DOC_KEYS).length) errors.push("unknown");
   if (doc.schema !== WORKFLOW_SCHEMA_ID) errors.push("schema");
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
@@ -541,9 +542,39 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   return errors;
 }
 
+const DOC_KEYS = new Set(["schema", "id", "name", "startUrl", "inputs", "steps", "createdAt", "updatedAt", "provenance", "outputs", "heal", "replayed", "readBack", "precondition", "summary", "intent", "inference", "driver"]);
+const STEP_KEYS: Record<string, string[]> = {
+  click: ["target", "check", "optional", "selection", "dialog"],
+  type: ["target", "text", "sensitive", "check"],
+  key: ["key", "target", "check"],
+  check: ["target", "checked", "check"],
+  select: ["target", "text", "check"],
+  navigate: ["url", "check"],
+  verify: ["check"],
+  handoff: ["reason", "target", "check"],
+  upload: ["target", "file", "check"],
+  drop: ["target", "file", "check"],
+  extract: ["extract"],
+  for_each: ["forEach"],
+  note: ["text"],
+  download: ["target", "download", "check"],
+  open: ["open", "check"],
+  digits: ["text", "target", "check"],
+  pickDate: ["date", "target", "check"],
+  wait: ["reason", "ms"],
+  finish: ["reason"],
+};
+const STEP_BASE = ["id", "index", "action", "caption", "timeoutMs", "when", "heal", "readBack"];
+
+function unknownKeys(value: object, allowed: Set<string>): string[] {
+  return Object.keys(value).filter((key) => !allowed.has(key));
+}
+
 function stepErrors(step: WorkflowStep, index: number, names: Set<string>, inputs: WorkflowInput[]): string[] {
   const errors: string[] = [];
   if (!step) return ["index"];
+  const allowed = new Set([...STEP_BASE, ...(STEP_KEYS[step.action] || [])]);
+  if (unknownKeys(step, allowed).length) errors.push(`unknown ${step.id}`);
   if (step.index !== index) errors.push(`index ${step.id}`);
   if (!step.caption?.text?.trim()) errors.push(`caption ${step.id}`);
   if (step.caption?.citation && (!step.caption.citation.text || !CITATION_SOURCES.has(step.caption.citation.source))) {
