@@ -666,8 +666,8 @@ async function cancelWorkflow(library: Library, token: string, control?: RunCont
 }
 
 function clearLivePrompt(live: LiveRun): void {
-  if (live.kind === "confirm") live.prompts?.clearConfirm?.();
-  else live.prompts?.clearLoginWait?.();
+  if (live.kind === "confirm") live.prompts?.clearConfirm?.(live.runId);
+  else live.prompts?.clearLoginWait?.(live.runId);
 }
 
 async function stopLive(library: Library, live: LiveRun, status: "timed-out" | "stopped", reason: string, control?: RunControl): Promise<WorkflowOutcome> {

@@ -328,11 +328,12 @@ export async function startApp(opts: {
     showConfirm(_label) {
       humanConfirm = { message: "confirm before applying", detail: "Press Apply on the site window." };
     },
-    clearConfirm() {
+    clearConfirm(runId: string) {
       humanConfirm = null;
-      if (currentAsk()?.kind === "confirm") {
-        apply({ type: "clear-ask", kind: "confirm" });
-        clearPendingPrompt(library.root);
+      const ask = currentAsk();
+      if (ask?.kind === "confirm" && ask.runId === runId) {
+        apply({ type: "clear-ask", kind: "confirm", runId });
+        clearPromptFor(library.root, runId);
       }
       clearAct();
     },
@@ -340,13 +341,13 @@ export async function startApp(opts: {
       const detail = label && label.length <= 120 ? label : "Sign in on the site window";
       loginWait = { message: "waiting for you to log in", detail };
     },
-    clearLoginWait() {
+    clearLoginWait(runId: string) {
       loginWait = null;
       apply({ type: "clear-continued" });
       const ask = currentAsk();
-      if (ask && (ask.kind === "login" || ask.kind === "wall")) {
-        apply({ type: "clear-ask", kind: ask.kind });
-        clearPendingPrompt(library.root);
+      if (ask && (ask.kind === "login" || ask.kind === "wall") && ask.runId === runId) {
+        apply({ type: "clear-ask", kind: ask.kind, runId });
+        clearPromptFor(library.root, runId);
       }
       clearAct();
     },
@@ -2571,6 +2572,11 @@ async function keepReplayClip(root: string, profile: string): Promise<void> {
   copyFileSync(src, dest);
 }
 
+function clearPromptFor(home: string, runId: string): void {
+  if (!runId) return;
+  if (readPendingPrompt(home)?.runId === runId) clearPendingPrompt(home);
+}
+
 function captureStepLabel(step: { label: string; note?: string }): string {
   const text = step.note ? `${step.label} — ${step.note}` : step.label;
   return visibleCopy(text);
@@ -2859,7 +2865,7 @@ async function runExtension(
     secretList,
   });
   library.saveRun(saved);
-  if (result.status !== "paused") clearPendingPrompt(library.root);
+  if (result.status !== "paused") clearPromptFor(library.root, result.runId || runId);
   return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs };
 }
 

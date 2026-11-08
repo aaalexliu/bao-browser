@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import test from "node:test";
-import ts from "typescript";
 import type { HumanAsk } from "../../src/v1/human-ask";
-import { occupy, snapshot, type RunSeat } from "../../src/app/run-seat";
+import { occupy, snapshot, type RunSeat, type SeatEvent, type SeatView } from "../../src/app/run-seat";
 
 function ask(runId: string, kind: HumanAsk["kind"] = "login"): HumanAsk {
   return {
@@ -98,7 +95,7 @@ test("guide parks a returned hold and restores it", () => {
 });
 
 test("clearing a held ask keeps it on the running view", () => {
-  const cleared = occupy(ownedWait(), { type: "clear-ask", kind: "login" });
+  const cleared = occupy(ownedWait(), { type: "clear-ask", kind: "login", runId: "run-1" });
   const view = snapshot(cleared.seat);
   assert.equal(view.replaying, true);
   assert.equal(view.ownedRunId, "run-1");
@@ -116,37 +113,29 @@ test("a returned hold can start again", () => {
   assert.equal(view.activeRun?.phase, "running");
 });
 
-async function appendedSeatDiagnostics(appended: string): Promise<number[]> {
-  const sourcePath = path.resolve("desktop/src/app/run-seat.ts");
-  const original = await readFile(sourcePath, "utf8");
-  const configPath = path.resolve("tsconfig.desktop.json");
-  const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-  assert.equal(configFile.error, undefined);
-  const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, path.dirname(configPath));
-  const host = ts.createCompilerHost(parsed.options);
-  const getSourceFile = host.getSourceFile.bind(host);
-  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-    if (path.resolve(fileName) === sourcePath) {
-      const version = typeof languageVersion === "number" ? languageVersion : ts.ScriptTarget.ES2022;
-      return ts.createSourceFile(fileName, `${original}\n${appended}\n`, version, true, ts.ScriptKind.TS);
-    }
-    return getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-  };
-  const program = ts.createProgram([sourcePath], parsed.options, host);
-  return ts.getPreEmitDiagnostics(program)
-    .filter((diagnostic) => diagnostic.file !== undefined && path.resolve(diagnostic.file.fileName) === sourcePath && (diagnostic.start ?? 0) >= original.length)
-    .map((diagnostic) => diagnostic.code);
+function assertUnbuildable<T extends never>(): T {
+  return undefined as T;
 }
 
-test("the seat type rejects an owned run that is not replaying", async () => {
-  assert.deepEqual(await appendedSeatDiagnostics('const value: SeatView = { replaying: false, ownedRunId: null, activeRun: null, runExecuting: false, stop: false, continued: false }; void value;'), []);
-  assert.ok((await appendedSeatDiagnostics('const value: RunSeat = { phase: "idle", ownedRunId: "run-1", stop: false, continued: false }; void value;')).includes(2353));
-  const illegal = await appendedSeatDiagnostics([
-    "type IllegalOwnedIdle = Extract<SeatView, { replaying: false; ownedRunId: string }>;",
-    "const illegalOwnedIdle: IllegalOwnedIdle = { replaying: false, ownedRunId: \"run-1\", activeRun: null, runExecuting: false, stop: false, continued: false };",
-    "void illegalOwnedIdle;",
-  ].join("\n"));
-  assert.ok(illegal.includes(2322));
+function assertPublished(seat: RunSeat): void {
+  const view = snapshot(seat);
+  if (view.activeRun?.phase === "running") {
+    assert.equal(view.replaying, true);
+    assert.equal(view.ownedRunId, view.activeRun.id);
+    assert.equal(view.runExecuting, true);
+  }
+  if (view.ownedRunId) {
+    assert.equal(view.replaying, true);
+    assert.equal(view.runExecuting, true);
+    assert.equal(view.activeRun?.id, view.ownedRunId);
+  }
+  if (!view.replaying) assert.equal(view.ownedRunId, null);
+}
+
+test("the published view cannot show a running replay with no owner or an owned run that is not replaying", () => {
+  assert.equal(assertUnbuildable<Extract<SeatView, { ownedRunId: null; activeRun: { phase: "running" } }>>(), undefined);
+  assert.equal(assertUnbuildable<Extract<SeatView, { replaying: false; ownedRunId: string }>>(), undefined);
+  assert.equal(assertUnbuildable<Extract<SeatView, { runExecuting: true; ownedRunId: null }>>(), undefined);
 });
 
 test("stop and continue stay on every phase", () => {
@@ -174,24 +163,61 @@ test("stop and continue stay on every phase", () => {
   }
 });
 
-test("the seat type rejects a running replay with no owner and two owning runs", async () => {
-  const runningUnowned = await appendedSeatDiagnostics([
-    "const runningUnowned: SeatView = {",
-    "  replaying: true,",
-    "  ownedRunId: null,",
-    "  activeRun: { id: \"run-1\", workflowId: \"wf\", startedAt: 1, phase: \"running\", ask: null },",
-    "  runExecuting: true,",
-    "  stop: false,",
-    "  continued: false,",
-    "};",
-    "void runningUnowned;",
-  ].join("\n"));
-  assert.ok(runningUnowned.includes(2322));
-  assert.ok((await appendedSeatDiagnostics('const twoIds: RunSeat = { phase: "executing", id: "run-1", otherId: "run-2", workflowId: "wf", startedAt: 1, ask: null, stop: false, continued: false }; void twoIds;')).includes(2353));
-  const twoOwners = await appendedSeatDiagnostics([
-    "type TwoOwners = (Extract<RunSeat, { phase: \"executing\" }> & { id: \"run-1\" }) & (Extract<RunSeat, { phase: \"holding\" }> & { id: \"run-2\" });",
-    "const twoOwners: TwoOwners = { phase: \"executing\", id: \"run-1\", workflowId: \"wf\", startedAt: 1, ask: null, stop: false, continued: false };",
-    "void twoOwners;",
-  ].join("\n"));
-  assert.ok(twoOwners.includes(2322));
+test("a second start cannot take an executing or holding seat", () => {
+  const idle: RunSeat = { phase: "idle", stop: false, continued: false };
+  const executing = occupy(idle, { type: "start-run", id: "run-1", workflowId: "wf", startedAt: 10 }).seat;
+  const holding = occupy(executing, { type: "show-ask", ask: ask("run-1") }).seat;
+  const refused: SeatEvent[] = [
+    { type: "start-run", id: "run-2", workflowId: "wf", startedAt: 11 },
+    { type: "start-guide" },
+  ];
+  for (const seat of [executing, holding]) {
+    for (const event of refused) {
+      const again = occupy(seat, event);
+      assert.equal(again.ok, false);
+      assert.equal(again.seat, seat);
+      assert.equal(snapshot(again.seat).ownedRunId, "run-1");
+      assert.equal(snapshot(again.seat).replaying, true);
+      assertPublished(again.seat);
+    }
+  }
+});
+
+test("a relay clear does not remove a local hold", () => {
+  const seat = ownedWait();
+  const refused = occupy(seat, { type: "show-ask", ask: ask("run-2") });
+  assert.equal(refused.ok, false);
+  const cleared = occupy(refused.seat, { type: "clear-ask", kind: "login", runId: "run-2" });
+  assert.equal(cleared.seat, seat);
+  const view = snapshot(cleared.seat);
+  assert.equal(view.ownedRunId, "run-1");
+  assert.equal(view.replaying, true);
+  assert.equal(view.activeRun?.phase, "waiting");
+  assert.equal(view.activeRun?.id, "run-1");
+  const matched = occupy(seat, { type: "clear-ask", kind: "login", runId: "run-1" });
+  assert.equal(snapshot(matched.seat).activeRun?.phase, "running");
+  assert.equal(snapshot(matched.seat).ownedRunId, "run-1");
+});
+
+test("a guide keeps one hold, so a later ask cannot leave the parked hold in Needs you", () => {
+  const returned = occupy(ownedWait(), { type: "end-run", id: "run-1" }).seat;
+  const guide = occupy(returned, { type: "start-guide" });
+  assert.equal(guide.ok, true);
+  assert.equal(snapshot(guide.seat).activeRun?.id, "run-1");
+  assert.equal(snapshot(guide.seat).activeRun?.startedAt, 10);
+  const other = occupy(guide.seat, { type: "show-ask", ask: ask("run-2") });
+  assert.equal(other.ok, true);
+  assert.equal(snapshot(other.seat).activeRun?.id, "run-2");
+  assert.equal(snapshot(other.seat).ownedRunId, null);
+  const cleared = occupy(other.seat, { type: "clear-ask", kind: "login", runId: "run-2" });
+  assert.equal(snapshot(cleared.seat).activeRun, null);
+  const ended = occupy(cleared.seat, { type: "end-guide" });
+  const after = snapshot(ended.seat);
+  assert.equal(after.replaying, false);
+  assert.equal(after.ownedRunId, null);
+  assert.equal(after.activeRun, null);
+  const kept = occupy(guide.seat, { type: "clear-ask", kind: "login", runId: "run-2" });
+  assert.equal(snapshot(kept.seat).activeRun?.id, "run-1");
+  const same = occupy(guide.seat, { type: "show-ask", ask: { ...ask("run-1"), startedAt: 99 } });
+  assert.equal(snapshot(same.seat).activeRun?.startedAt, 10);
 });

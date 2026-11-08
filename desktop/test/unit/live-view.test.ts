@@ -290,6 +290,98 @@ test("a relay extension run leaves a waiting local run controllable", { timeout:
   }
 });
 
+test("a relay clear does not remove a local hold or its pending prompt", { timeout: 60000 }, async () => {
+  const dirs = applyHermeticApp("rclr");
+  const directory = new MemoryDirectory();
+  directory.addDevice("clear-hold-device", "clear-hold-user");
+  const app = await startApp({
+    home: dirs.home,
+    port: 0,
+    extensionHost: true,
+    extensionConfigHome: path.join(dirs.home, "host-config"),
+    chromeProfilesRoot: path.join(dirs.home, "profiles"),
+  });
+  const relay = await listenRelay(createRelay({ store: new MemoryJobStore(), directory, enabled: () => true }), { principal: () => ({ userId: "clear-hold-user" }) });
+  const base = `http://127.0.0.1:${app.port}`;
+  let replay: ReturnType<typeof post> | undefined;
+  let relayRun: Promise<Record<string, unknown>> | undefined;
+  async function relayPost(route: string, body: unknown, token?: string): Promise<Record<string, unknown>> {
+    const response = await fetch(`${relay.origin}${route}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 200, JSON.stringify(result));
+    return result;
+  }
+  try {
+    assert.ok(app.extensionLink);
+    app.extensionLink.connected = () => true;
+    app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
+    const wf = workflow(`${base}/fixture`);
+    wf.steps = [
+      { id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 },
+    ];
+    app.library.save(wf);
+    app.library.save({
+      ...wf,
+      id: "relay-login",
+      name: "Relay login",
+      driver: "extension",
+      steps: [{ id: "login", index: 0, action: "login", human: true, label: "Relay sign in", surface: "dom", timeoutMs: 1000 }],
+    });
+    const issued = await relayPost("/api/agent/pair", {});
+    const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Clear-hold Mac", deviceId: "clear-hold-device" });
+    const agent = await directory.mintAgent("clear-hold-user", "clear-hold-device");
+    assert.ok(agent);
+    saveRelay(dirs.home, { server: relay.origin, token: String(paired.token), tokenId: String(paired.tokenId), deviceId: String(paired.deviceId) });
+    app.library.updateSettings({ remoteMcp: true });
+    async function tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const body = await relayPost("/mcp", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, agent!.token);
+      const result = body.result as { content?: { type: string; text?: string }[] };
+      const text = result.content?.find((item) => item.type === "text")?.text;
+      assert.ok(text, JSON.stringify(body));
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    let online = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      if ((await tool("search_workflows", { query: "Relay login" })).outcome === "ok") { online = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(online);
+    replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
+    let localId = "";
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await (await fetch(`${base}/api/state`)).json() as ShellState;
+      if (state.activeRun?.phase === "waiting" && state.activeRun.id && readPendingPrompt(dirs.home)?.runId === state.activeRun.id) {
+        localId = state.activeRun.id;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(localId);
+    app.library.updateSettings({ actTimeoutMs: 400 });
+    relayRun = tool("run_workflow", { id: "relay-login" });
+    const relayResult = await relayRun;
+    assert.notEqual(relayResult.outcome, "ok", JSON.stringify(relayResult));
+    const after = await (await fetch(`${base}/api/state`)).json() as ShellState;
+    assert.equal(after.activeRun?.id, localId);
+    assert.equal(after.activeRun?.phase, "waiting");
+    assert.equal(after.replaying, true);
+    assert.equal(after.runExecuting, true);
+    assert.equal(after.activeAsk?.runId, localId);
+    assert.equal(readPendingPrompt(dirs.home)?.runId, localId);
+  } finally {
+    await relayRun?.catch(() => undefined);
+    await stop(base).catch(() => undefined);
+    await replay?.catch(() => undefined);
+    await app.close();
+    await relay.close();
+    rmSync(dirs.home, { recursive: true, force: true });
+  }
+});
+
 test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { timeout: 60000 }, async () => {
   const dirs = applyHermeticApp("live-run-identity");
   process.env.BAO_DRIVE = "1";

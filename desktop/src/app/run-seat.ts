@@ -1,4 +1,4 @@
-// One local run seat. Guide may park a returned hold. It cannot clear an owned run.
+// One local run seat. A guide keeps one hold. It cannot clear an owned run.
 import type { ActiveRun } from "./views";
 import type { AskKind, HumanAsk } from "../v1/human-ask";
 
@@ -16,7 +16,7 @@ export type RunSeat =
   | ({ phase: "executing"; id: string; workflowId: string; startedAt: number; ask: HumanAsk | null } & Flags)
   | ({ phase: "holding"; id: string; workflowId: string; startedAt: number; ask: HumanAsk } & Flags)
   | ({ phase: "returned"; hold: ReturnedHold } & Flags)
-  | ({ phase: "guiding"; parked: ReturnedHold | null; shown: ReturnedHold | null } & Flags);
+  | ({ phase: "guiding"; hold: ReturnedHold | null } & Flags);
 
 export type SeatView =
   | { replaying: false; ownedRunId: null; activeRun: null; runExecuting: false; stop: boolean; continued: boolean }
@@ -31,7 +31,7 @@ export type SeatEvent =
   | { type: "start-guide" }
   | { type: "end-guide" }
   | { type: "show-ask"; ask: HumanAsk }
-  | { type: "clear-ask"; kind: AskKind }
+  | { type: "clear-ask"; kind: AskKind; runId: string }
   | { type: "continue" }
   | { type: "clear-continued" }
   | { type: "stop" }
@@ -83,7 +83,7 @@ export function snapshot(seat: RunSeat): SeatView {
       return {
         replaying: true,
         ownedRunId: null,
-        activeRun: seat.shown ? waiting(seat.shown) : seat.parked ? waiting(seat.parked) : null,
+        activeRun: seat.hold ? waiting(seat.hold) : null,
         runExecuting: false,
         ...flagsOf(seat),
       };
@@ -98,10 +98,10 @@ function setFlags(seat: RunSeat, flags: Flags): RunSeat {
   return { ...seat, ...flags };
 }
 
-function clearAsk(seat: RunSeat, kind: AskKind): RunSeat {
+function clearAsk(seat: RunSeat, kind: AskKind, runId: string): RunSeat {
   switch (seat.phase) {
     case "holding":
-      if (seat.ask.kind !== kind) return seat;
+      if (seat.id !== runId || seat.ask.kind !== kind) return seat;
       return {
         phase: "executing",
         id: seat.id,
@@ -111,13 +111,11 @@ function clearAsk(seat: RunSeat, kind: AskKind): RunSeat {
         ...flagsOf(seat),
       };
     case "returned":
-      if (seat.hold.ask.kind !== kind) return seat;
+      if (seat.hold.id !== runId || seat.hold.ask.kind !== kind) return seat;
       return { phase: "idle", ...flagsOf(seat) };
-    case "guiding": {
-      const visible = seat.shown ?? seat.parked;
-      if (!visible || visible.ask.kind !== kind) return seat;
-      return { ...seat, shown: null, parked: seat.shown ? seat.parked : null };
-    }
+    case "guiding":
+      if (!seat.hold || seat.hold.id !== runId || seat.hold.ask.kind !== kind) return seat;
+      return { ...seat, hold: null };
     case "idle":
     case "executing":
       return seat;
@@ -170,10 +168,10 @@ function showAsk(seat: RunSeat, ask: HumanAsk): OccupyResult {
         ok: true,
         seat: {
           ...seat,
-          shown: {
+          hold: {
             id: ask.runId,
             workflowId: ask.workflowId,
-            startedAt: seat.shown?.id === ask.runId ? seat.shown.startedAt : ask.startedAt,
+            startedAt: seat.hold?.id === ask.runId ? seat.hold.startedAt : ask.startedAt,
             ask,
           },
         },
@@ -215,18 +213,17 @@ export function occupy(seat: RunSeat, event: SeatEvent): OccupyResult {
       }
       return { ok: true, seat };
     case "start-guide":
-      if (seat.phase === "idle") return { ok: true, seat: { phase: "guiding", parked: null, shown: null, ...cleared } };
-      if (seat.phase === "returned") return { ok: true, seat: { phase: "guiding", parked: seat.hold, shown: null, ...cleared } };
+      if (seat.phase === "idle") return { ok: true, seat: { phase: "guiding", hold: null, ...cleared } };
+      if (seat.phase === "returned") return { ok: true, seat: { phase: "guiding", hold: seat.hold, ...cleared } };
       return { ok: false, reason: "busy", seat };
     case "end-guide":
       if (seat.phase !== "guiding") return { ok: true, seat };
-      if (seat.shown) return { ok: true, seat: returned(seat.shown, flagsOf(seat)) };
-      if (seat.parked) return { ok: true, seat: returned(seat.parked, flagsOf(seat)) };
+      if (seat.hold) return { ok: true, seat: returned(seat.hold, flagsOf(seat)) };
       return { ok: true, seat: { phase: "idle", ...flagsOf(seat) } };
     case "show-ask":
       return showAsk(seat, event.ask);
     case "clear-ask":
-      return { ok: true, seat: clearAsk(seat, event.kind) };
+      return { ok: true, seat: clearAsk(seat, event.kind, event.runId) };
     case "continue":
       return { ok: true, seat: setFlags(seat, { stop: seat.stop, continued: true }) };
     case "clear-continued":
@@ -237,7 +234,7 @@ export function occupy(seat: RunSeat, event: SeatEvent): OccupyResult {
       return { ok: true, seat: setFlags(seat, { stop: false, continued: seat.continued }) };
     case "restore":
       if (seat.phase === "idle") return { ok: true, seat: returned(event.hold, flagsOf(seat)) };
-      if (seat.phase === "guiding" && !seat.parked && !seat.shown) return { ok: true, seat: { ...seat, parked: event.hold } };
+      if (seat.phase === "guiding" && !seat.hold) return { ok: true, seat: { ...seat, hold: event.hold } };
       return { ok: true, seat };
     case "drop-returned":
       if (seat.phase === "returned") return { ok: true, seat: { phase: "idle", ...flagsOf(seat) } };

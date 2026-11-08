@@ -138,9 +138,9 @@ export interface Driver {
   activate?(locators: StepLocator[]): Promise<boolean>;
   /** Shown in the Bao window. Replay does not click Apply. */
   showConfirm?(label: string): void | Promise<void>;
-  clearConfirm?(): void | Promise<void>;
+  clearConfirm?(runId: string): void | Promise<void>;
   showLoginWait?(label: string): void | Promise<void>;
-  clearLoginWait?(): void | Promise<void>;
+  clearLoginWait?(runId: string): void | Promise<void>;
   /** The product window's handoff prompt. Replay still does not press the site button. */
   showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
@@ -468,12 +468,12 @@ export async function replay(
       while (Date.now() - start < timeout) {
         if (driver.shouldStop?.()) {
           endHandoff(driver, gate, step.id);
-          await driver.clearLoginWait?.();
+          await driver.clearLoginWait?.(runId);
           stamp({ id: step.id, status: "failed", reason: "cancelled" });
           return { result: finish({ runId, status: "failed", steps, failure: await fail(driver, step, "find", "cancelled", undefined, secrets) }) };
         }
         if (driver.loginContinued?.()) {
-          await driver.clearLoginWait?.();
+          await driver.clearLoginWait?.(runId);
           endHandoff(driver, gate, step.id);
           const retried = await runStep(workflow, step, args, driver, secrets, locatorHits, locatorMode, receiptLog, runId, gate, recovery, extra, tables);
           repairs.push(...retried.repairs);
@@ -495,7 +495,7 @@ export async function replay(
         await (driver.sleep ? driver.sleep(200) : sleep(200));
       }
       endHandoff(driver, gate, step.id);
-      await driver.clearLoginWait?.();
+      await driver.clearLoginWait?.(runId);
       stamp({ id: step.id, status: "failed", reason: "stopped, timed out" });
       return { result: finish({ runId, status: "failed", steps, failure: await fail(driver, step, "find", "stopped, timed out", undefined, secrets) }) };
     };
@@ -1266,7 +1266,7 @@ async function runConfirm(
     if (gate.humanReady === "confirmed" || !step.postcondition || holds(step.postcondition, await driver.tree(), args)) {
       gate.trail.push({ kind: "human-confirm", stepId: step.id });
       endHandoff(driver, gate, step.id);
-      await driver.clearConfirm?.();
+      await driver.clearConfirm?.(gate.runId || "");
       return { ok: true, repairs: [] };
     }
     return { ok: false, paused: "confirm", repairs: [], ask: personAsk(gate, step, "confirm") };
@@ -1304,7 +1304,7 @@ async function runConfirm(
     finished = true;
     return { ok: true, repairs: [] };
   } finally {
-    if (finished) await driver.clearConfirm?.();
+    if (finished) await driver.clearConfirm?.(gate.runId || "");
   }
 }
 
@@ -1379,7 +1379,7 @@ async function settleLogin(
     finished = true;
     return ok;
   } finally {
-    if (finished) await driver.clearLoginWait?.();
+    if (finished) await driver.clearLoginWait?.(gate.runId || "");
   }
 }
 

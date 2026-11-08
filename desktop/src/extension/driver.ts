@@ -234,8 +234,8 @@ export class ExtensionDriver implements Driver {
     this.prompts?.showConfirm?.(label);
   }
 
-  async clearConfirm(): Promise<void> {
-    this.prompts?.clearConfirm?.();
+  async clearConfirm(runId: string): Promise<void> {
+    this.prompts?.clearConfirm?.(runId);
     await this.cmd("clearAsk", {}).catch(() => undefined);
   }
 
@@ -243,8 +243,8 @@ export class ExtensionDriver implements Driver {
     this.prompts?.showLoginWait?.(label);
   }
 
-  async clearLoginWait(): Promise<void> {
-    this.prompts?.clearLoginWait?.();
+  async clearLoginWait(runId: string): Promise<void> {
+    this.prompts?.clearLoginWait?.(runId);
     await this.cmd("clearAsk", {}).catch(() => undefined);
   }
 
