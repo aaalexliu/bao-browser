@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 // Marketplace listing and Devices against a local `vercel dev`. No deploy.
 // Run: node --test desktop/test/live/listing-devices.test.ts
 
@@ -189,15 +190,15 @@ test("listing page and devices against local vercel dev", { timeout: 600_000 }, 
 });
 
 function workflow(origin: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "listing-crop",
     name: "Read the fixture",
     startUrl: `${origin}/fixture.html`,
     createdAt: 1,
-    inputs: [{ name: "note", type: "text", label: "Note", required: false, askOnImport: true }],
-    steps: [{
+    inputs: [fixtureInput({ name: "note", type: "text", label: "Note", required: false, askOnImport: true })],
+    steps: [fixtureStep({
       id: "see",
       index: 0,
       action: "click",
@@ -206,8 +207,8 @@ function workflow(origin: string): WorkflowV2 {
       timeoutMs: 8000,
       identity: { surface: "dom", path: [], id: "login-btn", testId: "login", role: "button", text: "Log in", tag: "button" },
       postcondition: { kind: "text", match: "Missing credentials", timeoutMs: 8000 },
-    }],
-  };
+    })],
+  });
 }
 
 async function shoot(page: Page, file: string): Promise<void> {

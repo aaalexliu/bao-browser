@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep, fixtureInput, withStep, writeStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -12,16 +13,16 @@ import { editInput } from "../../src/v1/input-token";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { explain, interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, withInputDefaults, type Driver, type ReplayOptions } from "../../src/v1/replay";
-import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { testChromium } from "../../src/test-browser";
 import { applyHermeticApp } from "../runtime";
 
 const secret = "BaoSecretFixture9kQ7m";
 const field: Identity = { surface: "dom", role: "textbox", id: "credential", nameAttr: "credential", path: [] };
-const doc = (step: WorkflowStep): WorkflowV2 => ({
+const doc = (step: object): WorkflowV2 => (fixtureDoc({
   schema: "bao.workflow/v4", version: 2, id: "secret-regression", name: "Secret regression", createdAt: 1,
-  startUrl: "http://127.0.0.1/", inputs: [], steps: [step],
-});
+  startUrl: "http://127.0.0.1/", inputs: [], steps: [fixtureStep(step)],
+}));
 
 // Each entry reaches interpretation, ordinary-neighbor inference, and real browser replay.
 const entries: { name: string; identity?: Partial<Identity>; event?: Partial<TrailEvent> }[] = [
@@ -66,26 +67,26 @@ test("secret slots keep typed values and replay beside an unchanged ordinary fie
       assert.deepEqual(events, original, entry.name);
       assert.deepEqual(validateWorkflow(workflow), [], entry.name);
       const slot = workflow.steps[0]!;
-      assert.equal(workflow.inputs.find((input) => input.name === slot.input)?.type, "secret", entry.name);
-      assert.equal(slot.value, `{{${slot.input}}}`);
-      assert.equal(slot.identity?.id, "credential");
-      assert.equal(slot.identity?.nameAttr, "credential");
+      assert.equal(workflow.inputs.find((input) => input.name === projectStep(slot).input)?.type, "secret", entry.name);
+      assert.equal(projectStep(slot).value, `{{${projectStep(slot).input}}}`);
+      assert.equal(projectStep(slot).identity?.id, "credential");
+      assert.equal(projectStep(slot).identity?.nameAttr, "credential");
       const { text, value, ...structure } = events[0]!.identity!;
-      assert.deepEqual(slot.identity, structure);
-      assert.deepEqual(slot.locators, [{ kind: "role", role: "textbox", name: "Credential" }, { kind: "css", value: "#credential" }]);
-      assert.equal(slot.expect, undefined);
-      assert.equal(slot.postcondition, undefined);
+      assert.deepEqual(projectStep(slot).identity, structure);
+      assert.deepEqual(projectStep(slot).locators, [{ kind: "role", role: "textbox", name: "Credential" }, { kind: "css", value: "#credential" }]);
+      assert.equal(projectStep(slot).expect, undefined);
+      assert.equal(projectStep(slot).postcondition, undefined);
       assert.equal(slot.when, undefined);
       const ordinary = interpret([events[1]!], { id: "ordinary", startUrl: url }).steps[0]!;
       assert.deepEqual(workflow.steps[1], { ...ordinary, id: "slots-1", index: 1 }, entry.name);
-      assert.ok(ordinary.locators?.some((locator) => locator.name === "Display name"));
-      assert.equal(ordinary.expect?.match, "Saved display name");
+      assert.ok(projectStep(ordinary).locators?.some((locator) => locator.kind === "role" && locator.name === "Display name"));
+      assert.equal(projectStep(ordinary).expect?.match, "Saved display name");
 
       const page = await browser.newPage();
       try {
         await page.goto(url);
         const args = Object.fromEntries(workflow.inputs.map((input) => [input.name, input.default ?? ""]));
-        args[slot.input!] = secret;
+        args[projectStep(slot).input!] = secret;
         const result = await replay(workflow, args, new BrowserDriver(page));
         assert.equal(result.status, "passed", `${entry.name}: ${result.failure?.phase}: ${result.failure?.reason}`);
         assert.equal(result.modelCalls, 0);
@@ -120,7 +121,7 @@ test("OTP history never supplies defaults or past-run inputs, while fresh input 
     assert.equal(edited.doc.inputs[0]!.default, undefined);
     const fills: string[] = [];
     const driver: Driver = {
-      tree: async () => ({ nodes: [workflow.steps[0]!.identity!], texts: [], values: [] }),
+      tree: async () => ({ nodes: [projectStep(workflow.steps[0]!).identity!], texts: [], values: [] }),
       snapshot: async () => ({}),
       click: async () => {}, fill: async (_node, value) => { fills.push(value); }, key: async () => {},
       upload: async () => {}, drop: async () => {}, digits: async () => {}, check: async () => {},
@@ -133,7 +134,7 @@ test("OTP history never supplies defaults or past-run inputs, while fresh input 
     assert.equal(fresh.status, "passed", fresh.failure?.reason);
     assert.deepEqual(fills, ["654321"]);
     assert.equal(input.default, "123456");
-    const bound = { ...workflow, steps: [{ ...workflow.steps[0]!, input: undefined }] };
+    const bound = { ...workflow, steps: [withStep(workflow.steps[0]!, { input: undefined })] };
     assert.deepEqual(withInputDefaults(bound, {}), {});
   }
 });
@@ -142,15 +143,15 @@ test("past-input route filters current OTP fields without changing saved history
   const home = mkdtempSync(path.join(tmpdir(), "bao-otp-inputs-"));
   const app = await startApp({ home, port: 0 });
   try {
-    const workflow = doc({
+    const workflow = doc(fixtureStep({
       id: "otp", index: 0, action: "type", label: "Code", surface: "dom", timeoutMs: 1000,
       input: "code", value: "{{code}}", identity: { ...field },
-    });
+    }));
     workflow.inputs = [
-      { name: "code", type: "text", label: "Code", default: "123456" },
-      { name: "ordinary", type: "text", label: "Display name" },
-      { name: "password", type: "secret", label: "Password" },
-      { name: "count", type: "number", label: "Count" },
+      fixtureInput({ name: "code", type: "text", label: "Code", default: "123456" }),
+      fixtureInput({ name: "ordinary", type: "text", label: "Display name" }),
+      fixtureInput({ name: "password", type: "secret", label: "Password" }),
+      fixtureInput({ name: "count", type: "number", label: "Count" }),
     ];
     app.library.save(workflow);
     const history = { code: "123456", ordinary: "Ada", password: secret, count: 2 };
@@ -166,8 +167,8 @@ test("past-input route filters current OTP fields without changing saved history
     for (const type of ["text", "secret"] as const) {
       for (const binding of ["input", "value"] as const) {
         workflow.inputs[0]!.type = type;
-        workflow.steps[0]!.identity!.autocomplete = "section-login ONE-TIME-CODE";
-        workflow.steps[0]!.input = binding === "input" ? "code" : undefined;
+        projectStep(workflow.steps[0]!).identity!.autocomplete = "section-login ONE-TIME-CODE";
+        writeStep(workflow.steps[0]!, { input: binding === "input" ? "code" : undefined });
         app.library.save(workflow);
         const saved = app.library.read(workflow.id);
         const past = await fetch(endpoint);
@@ -220,27 +221,27 @@ test("plain Replay uses the current saved secret while pinned and run-link input
   try {
     const address = fixture.address();
     assert.ok(address && typeof address !== "string");
-    const workflow: WorkflowV2 = {
+    const workflow: WorkflowV2 = fixtureDoc({
       schema: "bao.workflow/v4", version: 2, id: "replay-secret-default", name: "Replay secret default", createdAt: 1,
       startUrl: `http://127.0.0.1:${address.port}/`,
       inputs: [
-        { name: "password", type: "secret", label: "Password", default: "old-password" },
-        { name: "display", type: "text", label: "Display name", default: "Saved display" },
-        { name: "code", type: "text", label: "Code", default: "111111" },
+        fixtureInput({ name: "password", type: "secret", label: "Password", default: "old-password" }),
+        fixtureInput({ name: "display", type: "text", label: "Display name", default: "Saved display" }),
+        fixtureInput({ name: "code", type: "text", label: "Code", default: "111111" }),
       ],
       steps: [
-        ...["password", "display", "code"].map((name, index): WorkflowStep => ({
+        ...["password", "display", "code"].map((name, index): WorkflowStep => (fixtureStep({
           id: name, index, action: "type", label: name, surface: "dom", timeoutMs: 5000, heal: "never",
           input: name, value: `{{${name}}}`,
           identity: { surface: "dom", role: "textbox", id: name, path: [], ...(name === "code" ? { autocomplete: "one-time-code" } : {}) },
-        })),
-        {
+        }))),
+        fixtureStep({
           id: "submit", index: 3, action: "click", label: "Submit", surface: "dom", timeoutMs: 5000, heal: "never",
           identity: { surface: "dom", role: "button", name: "Submit", path: [] },
           postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 },
-        },
+        }),
       ],
-    };
+    });
     app.library.save(workflow);
     const base = `http://127.0.0.1:${app.port}`;
     const password = page.locator('#args [name="password"]');
@@ -345,15 +346,15 @@ test("secret-entry locator echoes use the typed value without changing structura
         };
         const original = structuredClone(event);
         const meta = { id: "locator-echo", startUrl: "http://127.0.0.1/", preserveActions };
-        const fallback = interpret([{ ...event, locators: undefined }], meta).steps[0]!.locators;
+        const fallback = projectStep(interpret([{ ...event, locators: undefined }], meta).steps[0]!).locators;
         for (const workflow of [interpret([event], meta), explain([event], meta).workflow]) {
           assert.equal(workflow.inputs[0]!.default, secret);
-          assert.deepEqual(workflow.steps[0]!.identity, identity);
-          assert.deepEqual(workflow.steps[0]!.locators, neighbors.length ? safe : fallback);
+          assert.deepEqual(projectStep(workflow.steps[0]!).identity, identity);
+          assert.deepEqual(projectStep(workflow.steps[0]!).locators, neighbors.length ? safe : fallback);
           assert.deepEqual(validateWorkflow(workflow), []);
         }
         const ordinary = interpret([{ ...event, sensitive: false }], meta);
-        assert.deepEqual(ordinary.steps[0]!.locators, event.locators);
+        assert.deepEqual(projectStep(ordinary.steps[0]!).locators, event.locators);
         assert.deepEqual(event, original);
       }
     }
@@ -361,8 +362,8 @@ test("secret-entry locator echoes use the typed value without changing structura
 });
 
 test("every replay exit waits for capture before copying without stripping values", async () => {
-  const base: WorkflowStep = { id: "entry", index: 0, action: "click", label: secret, surface: "dom", timeoutMs: 0, identity: { ...field, role: "button", id: "missing" } };
-  const cases: { name: string; step?: Partial<WorkflowStep>; opts?: ReplayOptions; expected: string; triage?: string }[] = [
+  const base: WorkflowStep = fixtureStep({ id: "entry", index: 0, action: "click", label: secret, surface: "dom", timeoutMs: 0, identity: { ...field, role: "button", id: "missing" } });
+  const cases: { name: string; step?: object; opts?: ReplayOptions; expected: string; triage?: string }[] = [
     { name: "never", step: { heal: "never" }, expected: "failed", triage: "never" },
     { name: "blocker", step: { waitFor: { kind: "text", match: "Ready", timeoutMs: 0 } }, expected: "failed", triage: "blocker" },
     { name: "circuit", opts: { circuitOpen: true }, expected: "failed", triage: "circuit" },

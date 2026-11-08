@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
 // Step text tokens and the run form share one default. A secret stays masked.
 
 import assert from "node:assert/strict";
@@ -12,7 +13,7 @@ import { Library } from "../../src/v1/store";
 import { draftVersion, promoteVersion } from "../../src/v1/versions";
 
 function doc(): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf-note",
@@ -20,11 +21,11 @@ function doc(): WorkflowV2 {
     startUrl: "http://127.0.0.1/fixture",
     createdAt: 1,
     inputs: [
-      { name: "note", type: "text", label: "Note", default: "ada", required: true },
-      { name: "password", type: "secret", label: "Password", required: true },
+      fixtureInput({ name: "note", type: "text", label: "Note", default: "ada", required: true }),
+      fixtureInput({ name: "password", type: "secret", label: "Password", required: true }),
     ],
     steps: [
-      {
+      fixtureStep({
         id: "type",
         index: 0,
         action: "type",
@@ -33,8 +34,8 @@ function doc(): WorkflowV2 {
         input: "note",
         surface: "dom",
         timeoutMs: 0,
-      },
-      {
+      }),
+      fixtureStep({
         id: "secret",
         index: 1,
         action: "type",
@@ -43,9 +44,9 @@ function doc(): WorkflowV2 {
         sensitive: true,
         surface: "dom",
         timeoutMs: 0,
-      },
+      }),
     ],
-  };
+  });
 }
 
 test("the selected step and input summary offer tokens with the run form's default", () => {

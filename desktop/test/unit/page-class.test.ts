@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
 // The page class is decided before a heal. Each class is a fixture, and a
 // wall stops the run with no heal and no model call.
 
@@ -20,7 +20,7 @@ function step(partial: FixtureDraft): WorkflowStep {
 }
 
 function doc(startUrl: string, steps: WorkflowStep[]): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
@@ -29,7 +29,7 @@ function doc(startUrl: string, steps: WorkflowStep[]): WorkflowV2 {
     createdAt: 1,
     inputs: [],
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[]): LiveTree {

@@ -1,3 +1,5 @@
+import { projectStep } from "../../src/v1/schema";
+import { fixtureDoc, fixtureStep, fixtureInput, writeStep, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -23,7 +25,7 @@ function ident(partial: Partial<Identity>): Identity {
 }
 
 function workflow(id: string, testId: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id,
@@ -31,7 +33,7 @@ function workflow(id: string, testId: string): WorkflowV2 {
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -40,8 +42,8 @@ function workflow(id: string, testId: string): WorkflowV2 {
       identity: ident({ testId }),
       timeoutMs: 0,
       postcondition: { kind: "element", timeoutMs: 0 },
-    }],
-  };
+    })],
+  });
 }
 
 function driver(nodes: Identity[]): Driver & { clicks: number } {
@@ -72,12 +74,12 @@ test("a heal is a draft, replay stays on the live version until promote, and res
   const draft = draftVersion(library, healed, "heal");
   assert.equal(draft.role, "draft");
   assert.equal(draft.source, "heal");
-  assert.equal(library.read("wf-versions").steps[0]?.identity?.testId, "v1");
+  assert.equal((() => { const _step = library.read("wf-versions").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "v1");
 
   const live = library.read("wf-versions");
   const passed = await replay(live, {}, driver([ident({ testId: "v1" })]), { heal: unavailableHeal(), now: () => 1 });
   assert.equal(passed.status, "passed");
-  assert.equal(library.read("wf-versions").steps[0]?.identity?.testId, "v1");
+  assert.equal((() => { const _step = library.read("wf-versions").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "v1");
 
   const edited = { ...original, name: "Renamed", updatedAt: 2 };
   const edit = draftVersion(library, edited, "edit");
@@ -85,17 +87,17 @@ test("a heal is a draft, replay stays on the live version until promote, and res
   assert.equal(library.read("wf-versions").name, "Fixture");
 
   promoteVersion(library, "wf-versions", draft.n);
-  assert.equal(library.read("wf-versions").steps[0]?.identity?.testId, "healed");
+  assert.equal((() => { const _step = library.read("wf-versions").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "healed");
   const promotedReplay = await replay(library.read("wf-versions"), {}, driver([ident({ testId: "healed" })]), { heal: unavailableHeal(), now: () => 2 });
   assert.equal(promotedReplay.status, "passed");
 
   const restored = restoreVersion(library, "wf-versions", 1);
   assert.equal(restored.role, "draft");
   assert.equal(restored.source, "restore");
-  assert.equal(restored.document.steps[0]?.identity?.testId, "v1");
-  assert.equal(library.read("wf-versions").steps[0]?.identity?.testId, "healed");
+  assert.equal((restored.document.steps[0] == null ? undefined : projectStep(restored.document.steps[0]).identity)?.testId, "v1");
+  assert.equal((() => { const _step = library.read("wf-versions").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "healed");
   promoteVersion(library, "wf-versions", restored.n);
-  assert.equal(library.read("wf-versions").steps[0]?.identity?.testId, "v1");
+  assert.equal((() => { const _step = library.read("wf-versions").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "v1");
   const listed = listVersions(library, "wf-versions");
   assert.equal(listed.find((row) => row.n === restored.n)?.role, "live");
   assert.equal(listed.find((row) => row.n === 1)?.role, "past");
@@ -105,7 +107,7 @@ test("a version row names the step change and lists before and after", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-version-diff-"));
   const library = new Library(home);
   const original = workflow("wf-diff", "signed-in");
-  original.steps[0]!.label = "Click signed in";
+  writeStep(original.steps[0]!, { label: "Click signed in" });
   library.save(original);
   const healed = keepPatch(original, "s0", { identity: ident({ role: "button", name: "Signed in" }) });
   draftVersion(library, healed, "heal");
@@ -122,17 +124,17 @@ test("a version row names the step change and lists before and after", () => {
   assert.match(html, /Before and after/);
   assert.match(html, /testId signed-in/);
   assert.match(html, /role button &quot;Signed in&quot;/);
-  assert.equal(library.read("wf-diff").steps[0]?.identity?.testId, "signed-in");
+  assert.equal((() => { const _step = library.read("wf-diff").steps[0]; return _step == null ? undefined : projectStep(_step).identity; })()?.testId, "signed-in");
 });
 
 test("a conflict draft names both Macs and leaves the live file alone", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-"));
   const library = new Library(home);
   const mine = workflow("wf-conflict", "mine");
-  mine.steps[0]!.label = "Click mine";
+  writeStep(mine.steps[0]!, { label: "Click mine" });
   library.save(mine);
   const theirs = workflow("wf-conflict", "theirs");
-  theirs.steps[0]!.label = "Click theirs";
+  writeStep(theirs.steps[0]!, { label: "Click theirs" });
   noteConflict(library, {
     mine,
     theirs,
@@ -140,7 +142,7 @@ test("a conflict draft names both Macs and leaves the live file alone", () => {
     theirsDevice: "Ada's Mac",
     remoteVersion: 2,
   });
-  assert.equal(library.read("wf-conflict").steps[0]?.label, "Click mine");
+  assert.equal((() => { const _step = library.read("wf-conflict").steps[0]; return _step == null ? undefined : projectStep(_step).label; })(), "Click mine");
   const listed = listVersions(library, "wf-conflict");
   const html = workflowConflicts(listed) + versionsPanel(listed);
   assert.match(html, /Changed on Ada&#39;s Mac and Home Mac/);
@@ -160,14 +162,14 @@ test("a conflict draft counts only the steps that differ and leaves a matching s
   const library = new Library(home);
   const mine = workflow("wf-conflict-count", "open");
   mine.steps = [
-    { ...mine.steps[0]!, id: "one", label: "Open" },
-    { ...mine.steps[0]!, id: "two", index: 1, label: "Save", identity: ident({ testId: "save" }) },
+    withStep(mine.steps[0]!, { id: "one", label: "Open" }),
+    withStep(mine.steps[0]!, { id: "two", index: 1, label: "Save", identity: ident({ testId: "save" }) }),
   ];
   library.save(mine);
   const theirs = workflow("wf-conflict-count", "open");
   theirs.steps = [
-    { ...theirs.steps[0]!, id: "one", label: "Open Ada" },
-    { ...theirs.steps[0]!, id: "two", index: 1, label: "Save", identity: ident({ testId: "save" }) },
+    withStep(theirs.steps[0]!, { id: "one", label: "Open Ada" }),
+    withStep(theirs.steps[0]!, { id: "two", index: 1, label: "Save", identity: ident({ testId: "save" }) }),
   ];
   noteConflict(library, {
     mine,
@@ -190,12 +192,12 @@ test("a conflict draft uses the cloud version numbers and device names", () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-conflict-cloud-"));
   const library = new Library(home);
   const mine = workflow("wf-cloud", "open");
-  mine.steps[0]!.label = "Open";
+  writeStep(mine.steps[0]!, { label: "Open" });
   library.save(mine);
   const first = workflow("wf-cloud", "open");
-  first.steps[0]!.label = "Open";
+  writeStep(first.steps[0]!, { label: "Open" });
   const second = workflow("wf-cloud", "open");
-  second.steps[0]!.label = "Open Ada";
+  writeStep(second.steps[0]!, { label: "Open Ada" });
   noteConflict(library, {
     mine,
     theirs: second,
@@ -228,8 +230,8 @@ test("a 409 history replacement retains each version's own local defaults for re
   const library = new Library(home);
   const first = workflow("wf-history-defaults", "open");
   first.inputs = [
-    { name: "token", type: "text", default: "sk-AdaFixture111" },
-    { name: "rows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" },
+    fixtureInput({ name: "token", type: "text", default: "sk-AdaFixture111" }),
+    fixtureInput({ name: "rows", type: "table", default: "name,token\r\nAda,[secret stripped]\r\nGrace,sk-GraceFixture222\r\n" }),
   ];
   library.save(first);
   listVersions(library, first.id);
@@ -328,19 +330,15 @@ test("conflict history restores cloud v2 from promoted local n3, not unpromoted 
     assert.ok(address && typeof address === "object");
     const first = workflow("wf-misaligned", "save");
     first.startUrl = `http://127.0.0.1:${address.port}/`;
-    first.inputs = [{ name: "password", type: "secret", default: "Old-password-v1!" }];
+    first.inputs = [fixtureInput({ name: "password", type: "secret", default: "Old-password-v1!" })];
     first.steps = [
-      {
+      fixtureStep({
         id: "password", index: 0, action: "type", label: "Fill password", surface: "dom",
         identity: ident({ role: "textbox", id: "password", testId: "password" }),
         input: "password", sensitive: true, timeoutMs: 5000,
         postcondition: { kind: "element", timeoutMs: 5000 },
-      },
-      {
-        ...first.steps[0]!, id: "save", index: 1, label: "Save fixture",
-        identity: ident({ testId: "save", name: "Save fixture" }), timeoutMs: 5000,
-        postcondition: { kind: "text", match: "Saved fixture", timeoutMs: 5000 },
-      },
+      }),
+      withStep(first.steps[0]!, { id: "save", index: 1, timeoutMs: 5000, label: "Save fixture", identity: ident({ testId: "save", name: "Save fixture" }), postcondition: { kind: "text", match: "Saved fixture", timeoutMs: 5000 } }),
     ];
     library.save(first);
     listVersions(library, first.id);
@@ -400,7 +398,7 @@ test("conflict history leaves cloud defaults unchanged without a complete promot
     const library = new Library(home);
     const first = workflow("wf-no-match", "open");
     first.updatedAt = AT;
-    first.inputs = [{ name: "password", type: "secret", default: "Local-password!" }];
+    first.inputs = [fixtureInput({ name: "password", type: "secret", default: "Local-password!" })];
     library.save(first);
     listVersions(library, first.id);
     const snapshot = library.read(first.id);
@@ -415,8 +413,8 @@ test("conflict history leaves cloud defaults unchanged without a complete promot
     } else if (difference === "name") cloud.name = "Remote rename";
     else if (difference === "updatedAt") cloud.updatedAt = AT + 1;
     else if (difference === "startUrl") cloud.startUrl = "https://example.com/other";
-    else if (difference === "step") cloud.steps[0]!.label = "Remote step";
-    else cloud.inputs.push({ name: "extra", type: "text", default: "remote" });
+    else if (difference === "step") writeStep(cloud.steps[0]!, { label: "Remote step" });
+    else cloud.inputs.push(fixtureInput({ name: "extra", type: "text", default: "remote" }));
     const expected = structuredClone(cloud);
     noteConflict(library, {
       mine: snapshot, theirs: cloud, mineDevice: "Home Mac", theirsDevice: "Other Mac",
@@ -437,7 +435,7 @@ test("conflict history leaves cloud defaults unchanged when two promoted project
   const library = new Library(home);
   const first = workflow("wf-ambiguous", "open");
   first.updatedAt = AT;
-  first.inputs = [{ name: "password", type: "secret", default: "First-password!" }];
+  first.inputs = [fixtureInput({ name: "password", type: "secret", default: "First-password!" })];
   library.save(first);
   listVersions(library, first.id);
   const second = library.read(first.id);

@@ -1,3 +1,4 @@
+import { fixtureInput, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canonical } from "../../src/v1/canonical";
@@ -57,7 +58,7 @@ test("ground-truth trails condense through noise and replay twice", async () => 
     assert.deepEqual(textDefaults(once), truthTexts(item), item.id);
     assert.equal(params.recall, 1, item.id);
     assert.deepEqual(humanKeys(once).sort(), expectedHuman(item).sort(), item.id);
-    const stopsForPurchase = once.steps.some((step) => step.confirm === true);
+    const stopsForPurchase = once.steps.some((step) => projectStep(step).confirm === true);
     for (const spec of item.replays) {
       const run = await replayCase(once, item, spec);
       assert.equal(run.modelCalls, 0, item.id);
@@ -76,8 +77,8 @@ test("parameter scoring permits local secret defaults but rejects secrets elsewh
   assert.deepEqual(scoreParams(workflow, item), { recall: 1, secret: 1, leaked: [] });
   for (const leaked of [
     { ...workflow, summary: secret },
-    { ...workflow, steps: workflow.steps.map((step, index) => index === 0 ? { ...step, value: secret } : step) },
-    { ...workflow, inputs: [...workflow.inputs, { name: "leaked", type: "text" as const, required: false, label: "Leaked", default: secret }] },
+    { ...workflow, steps: workflow.steps.map((step, index) => index === 0 ? withStep(step, { value: secret }) : step) },
+    { ...workflow, inputs: [...workflow.inputs, fixtureInput({ name: "leaked", type: "text", label: "Leaked", default: secret })] },
   ]) {
     const score = scoreParams(leaked, item);
     assert.equal(score.secret, 0);
@@ -113,7 +114,7 @@ test("condense retains explicit navigation targets and still drops incidental na
   const meta = { id: "wf-explicit-navigation", startUrl: start };
   const workflow = condense(events, meta);
   assert.deepEqual(workflow.steps.map((step) => step.action), ["click", "navigate", "click"]);
-  assert.equal(workflow.steps[1]?.value, target);
+  assert.equal((workflow.steps[1] == null ? undefined : projectStep(workflow.steps[1]).value), target);
   const grouped = condenseWithGroups(events, meta);
   assert.deepEqual(grouped.workflow, workflow);
   assert.deepEqual(grouped.groups.map((group) => group.map((event) => event.id)), [["first-click"], ["explicit"], ["last-click"]]);
@@ -137,8 +138,8 @@ test("a long abort is dropped and a currency value stays a literal", () => {
   const priced = deterministicWorkflow(fare);
   assert.deepEqual(priced.inputs.map((input) => input.name), ["amount"]);
   const currency = priced.steps.find((step) => targetOf(step) === "currency");
-  assert.equal(currency?.input, undefined);
-  assert.equal(currency?.value, "USD");
+  assert.equal((currency == null ? undefined : projectStep(currency).input), undefined);
+  assert.equal((currency == null ? undefined : projectStep(currency).value), "USD");
   assert.deepEqual(truthLiterals(fare), ["USD"]);
   assert.deepEqual(textDefaults(priced), truthTexts(fare));
 });
@@ -193,8 +194,8 @@ test("hybrid can drop help and cannot drop a param or keep a secret literal", ()
   assert.deepEqual(applied.refused, [typed.id]);
   assert.deepEqual(applied.ignored, ["made-up"]);
   assert.deepEqual(applied.workflow.inputs, base.inputs);
-  assert.equal(applied.workflow.steps.find((step) => step.id === typed.id)?.gate, typed.gate);
-  assert.equal(applied.workflow.steps.find((step) => step.id === typed.id)?.value, typed.value);
+  assert.equal((() => { const _step = applied.workflow.steps.find((step) => step.id === typed.id); return _step == null ? undefined : projectStep(_step).gate; })(), projectStep(typed).gate);
+  assert.equal((() => { const _step = applied.workflow.steps.find((step) => step.id === typed.id); return _step == null ? undefined : projectStep(_step).value; })(), projectStep(typed).value);
   assert.equal(applied.workflow.summary?.includes("Ada"), false);
   assert.equal(JSON.stringify(applied.workflow.steps).includes("SuperSecretPassword!"), false);
   assert.deepEqual(validateWorkflow(applied.workflow), []);

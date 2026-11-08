@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { isCollapsedBox, matchLocator } from "../../src/v1/locators";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { diffTrajectory, type TrajectoryStep } from "../../src/v1/trajectory";
 
 function ident(partial: Partial<Identity>): Identity {
@@ -21,7 +21,7 @@ function step(partial: FixtureDraft): WorkflowStep {
 }
 
 function doc(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
@@ -30,7 +30,7 @@ function doc(steps: WorkflowStep[], inputs: WorkflowV2["inputs"] = []): Workflow
     createdAt: 1,
     inputs,
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
@@ -77,7 +77,7 @@ function searchWorkflow(reveal: boolean): WorkflowV2 {
       { kind: "css", value: "#searchInput" },
     ],
     reveal: reveal ? { kind: "role", role: "link", name: "Search" } : undefined,
-  })], [{ name: "searchInput", type: "text", default: "Ada Lovelace" }]);
+  })], [fixtureInput({ name: "searchInput", type: "text", default: "Ada Lovelace" })]);
 }
 
 test("a hidden box is not a locator hit", () => {
@@ -171,8 +171,8 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
     label: "Save",
     readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
   })], [
-    { name: "text", type: "text", default: "bao drift" },
-    { name: "note", type: "text" },
+    fixtureInput({ name: "text", type: "text", default: "bao drift" }),
+    fixtureInput({ name: "note", type: "text" }),
   ]);
   assert.deepEqual(validateWorkflow(workflow), []);
   const passed = await replay(workflow, { text: "bao drift", note }, fake([tree([])]), {
@@ -197,8 +197,8 @@ test("a read-back writes a hashed receipt and a file outside temp fails closed",
     key: "ctrl+s",
     readBack: { source: "file", fileInput: "note", match: "{{text}}", timeoutMs: 0 },
   })], [
-    { name: "text", type: "text" },
-    { name: "note", type: "text" },
+    fixtureInput({ name: "text", type: "text" }),
+    fixtureInput({ name: "note", type: "text" }),
   ]);
   const refused = await replay(outside, { text: "bao drift", note: "/etc/hostname" }, fake([tree([])]), { heal: unavailableHeal() });
   assert.equal(refused.status, "failed");
@@ -215,7 +215,7 @@ test("a form read-back re-reads the saved text", async () => {
     action: "click",
     identity: save,
     readBack: { source: "text", match: "{{note}}", timeoutMs: 0 },
-  })], [{ name: "note", type: "text", default: "hello" }]);
+  })], [fixtureInput({ name: "note", type: "text", default: "hello" })]);
   const driver = fake([
     tree([save], { texts: [] }),
     tree([save], { texts: ["hello"] }),
@@ -272,10 +272,10 @@ test("the drift report shows the failure phase", () => {
 test("credit freeze read-back is the status text and validates", () => {
   const freeze = JSON.parse(readFileSync("examples/workflows/credit-freeze.json", "utf8")) as WorkflowV2;
   assert.deepEqual(validateWorkflow(freeze), []);
-  const frozen = freeze.steps.find((item) => item.label === "Click Frozen");
+  const frozen = freeze.steps.find((item) => projectStep(item).label === "Click Frozen");
   assert.equal(frozen?.readBack?.source, "text");
   assert.equal(frozen?.readBack?.match, "Status: none");
-  assert.equal(freeze.steps.some((item) => item.action === "click" && item.identity?.id === "apply"), false);
+  assert.equal(freeze.steps.some((item) => item.action === "click" && projectStep(item).identity?.id === "apply"), false);
   assert.equal(freeze.steps.at(-1)?.action, "confirm");
   assert.equal(freeze.precondition?.phase, "auth");
 });

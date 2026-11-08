@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -35,11 +36,11 @@ test("unusable vendor replies retain failed heal evidence", { timeout: 60_000 },
         : { content: [{ type: "text", text: "I cannot find it" }] });
       app.library.updateSettings({ healSource: { kind: "api-key", provider, key: "fixture-key" } });
       for (const heal of ["auto", "approve"] as const) {
-        const workflow: WorkflowV2 = {
+        const workflow: WorkflowV2 = fixtureDoc({
           schema: "bao.workflow/v4", version: 2, createdAt: 1, id: `wf-evidence-${provider}-${heal}`, name: "Failed heal evidence", heal,
           startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [],
-          steps: [{ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 }],
-        };
+          steps: [fixtureStep({ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 })],
+        });
         app.library.save(workflow);
         const response = await realFetch(`http://127.0.0.1:${app.port}/api/replay`, {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: workflow.id, args: {} }),
@@ -151,10 +152,10 @@ if (process.argv[2] === 'status') {
       app = await startApp(options);
       const state = await (await realFetch(`http://127.0.0.1:${app.port}/api/state`)).json() as { settings: { healSource: HealSource } };
       assert.deepEqual(state.settings.healSource, choice);
-      const workflow: WorkflowV2 = {
+      const workflow: WorkflowV2 = fixtureDoc({
         schema: "bao.workflow/v4", version: 2, createdAt: 1, id: `wf-source-${index}`, name: "Fixture heal source", heal: failure ? "approve" : "auto", startUrl: `http://127.0.0.1:${app.port}/fixture`,
-        inputs: [], steps: [{ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 }],
-      };
+        inputs: [], steps: [fixtureStep({ id: "control", index: 0, action: "click", label: "Click control", intent: "the missing control", surface: "dom", identity: { surface: "dom", role: "button", testId: "missing-login", path: [] }, timeoutMs: 500 })],
+      });
       app.library.save(workflow);
       for (const route of ["catalog", "app"] as const) {
         const beforeCursor = (await cursorCalls()).length;

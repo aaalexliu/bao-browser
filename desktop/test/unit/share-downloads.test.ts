@@ -1,3 +1,5 @@
+import { projectStep } from "../../src/v1/schema";
+import { fixtureInput, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,16 +36,16 @@ test("Share, guide, editor export, and import preserve saved evidence", { timeou
     const doc = JSON.parse(fileBytes) as WorkflowV2;
     const password = "share-export-password-fixture";
     doc.inputs = [
-      { name: "password", type: "secret", label: "Password", required: true, default: password },
-      { name: "email", type: "text", label: "Email", default: "ada@example.test" },
-      { name: "name", type: "text", label: "Name", default: "Ada Lovelace" },
-      { name: "path", type: "text", label: "Path", default: "/Users/fixture/report.txt" },
-      { name: "phone", type: "text", label: "Phone", default: "415-555-0123" },
-      { name: "query", type: "text", label: "Query", default: "café notes" },
+      fixtureInput({ name: "password", type: "secret", label: "Password", required: true, default: password }),
+      fixtureInput({ name: "email", type: "text", label: "Email", default: "ada@example.test" }),
+      fixtureInput({ name: "name", type: "text", label: "Name", default: "Ada Lovelace" }),
+      fixtureInput({ name: "path", type: "text", label: "Path", default: "/Users/fixture/report.txt" }),
+      fixtureInput({ name: "phone", type: "text", label: "Phone", default: "415-555-0123" }),
+      fixtureInput({ name: "query", type: "text", label: "Query", default: "café notes" }),
     ];
     doc.steps.push(
-      { id: "password", index: 1, action: "type", label: "Password", surface: "dom", timeoutMs: 1000, input: "password", value: "{{password}}" },
-      { id: "copy", index: 2, action: "type", label: "Copy", surface: "dom", timeoutMs: 1000, value: password },
+      fixtureStep({ id: "password", index: 1, action: "type", label: "Password", surface: "dom", timeoutMs: 1000, input: "password", value: "{{password}}" }),
+      fixtureStep({ id: "copy", index: 2, action: "type", label: "Copy", surface: "dom", timeoutMs: 1000, value: password }),
     );
     app.library.save(doc);
     const base = `http://127.0.0.1:${app.port}`;
@@ -59,8 +61,8 @@ test("Share, guide, editor export, and import preserve saved evidence", { timeou
     assert.equal(releasedBytes.includes(password), true);
     assert.deepEqual(releasedDoc, doc);
     assert.equal(releasedDoc.inputs.some((input) => input.askOnImport), false);
-    assert.equal(releasedDoc.steps[1]?.value, "{{password}}");
-    assert.equal(releasedDoc.steps[2]?.value, password);
+    assert.equal((releasedDoc.steps[1] == null ? undefined : projectStep(releasedDoc.steps[1]).value), "{{password}}");
+    assert.equal((releasedDoc.steps[2] == null ? undefined : projectStep(releasedDoc.steps[2]).value), password);
     const guide = await fetch(base + endpoint + "/guide");
     assert.equal(guide.status, 200);
     const guideBytes = Buffer.from(await guide.arrayBuffer());

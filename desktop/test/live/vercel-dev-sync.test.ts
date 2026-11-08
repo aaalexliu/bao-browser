@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import { projectStep } from "../../src/v1/schema";
 // Pair, push, and pull against a local `vercel dev` (no deploy, no linked project).
 // Not part of test:v1. Run: node --test desktop/test/live/vercel-dev-sync.test.ts
@@ -67,14 +68,14 @@ test("pair, push, and pull against local vercel dev", { timeout: 600_000 }, asyn
     assert.equal(pulledDoc.name, "From the first Mac");
     const step = pulledDoc.steps[0];
     assert.ok((step ? projectStep(step).identity : undefined));
-    assert.equal(projectStep(step).identity.testId, "go");
+    assert.equal(step ? projectStep(step).identity?.testId : undefined, "go");
   } finally {
     await stop(web);
   }
 });
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id,
@@ -82,7 +83,7 @@ function workflow(id: string, name: string): WorkflowV2 {
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -90,8 +91,8 @@ function workflow(id: string, name: string): WorkflowV2 {
       surface: "dom",
       identity: { surface: "dom", role: "button", path: [], testId: "go" },
       timeoutMs: 1000,
-    }],
-  };
+    })],
+  });
 }
 
 async function signIn(origin: string, email: string): Promise<string> {

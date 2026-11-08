@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
@@ -26,7 +27,7 @@ interface HistoryPayload {
 
 const names = ["search_workflows", "describe_workflow", "run_workflow", "get_run", "list_runs", "agent_browser", "finish_task"];
 const retired = ["live_session_start", "live_snapshot", "live_click", "live_type", "live_key", "live_select", "live_scroll", "live_navigate", "live_read", "live_screenshot", "live_tabs", "live_switch_tab", "live_stop"];
-const workflow: WorkflowV2 = { schema: "bao.workflow/v4", version: 2, id: "saved", name: "Saved workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] };
+const workflow: WorkflowV2 = fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: "saved", name: "Saved workflow", createdAt: 1, startUrl: "https://example.test/", inputs: [], steps: [] });
 
 async function fixture(run: (client: McpClient, library: Library) => Promise<void>): Promise<void> {
   const home = mkdtempSync(path.join(tmpdir(), "bao-mcp-test-"));
@@ -52,34 +53,34 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
 test("MCP search and describe mark the owner's saved inputs optional", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [
-      { name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" },
-      { name: "display", type: "text", default: "Ada" },
-      { name: "count", type: "number", default: "0" },
-      { name: "missing", type: "secret" },
-      { name: "empty", type: "secret", default: "" },
-      { name: "stripped", type: "secret", default: "[secret stripped]" },
-      { name: "invalid", type: "number", default: "not a number" },
-      { name: "attachment", type: "file" },
-      { name: "optional", type: "text", required: false },
-      { name: "code", type: "secret", label: "Verification code", required: true, default: "123456" },
-      { name: "taughtCode", type: "secret", default: "482913" },
-      { name: "card", type: "secret", default: "4111111111111111" },
-      { name: "pin", type: "secret", default: "1234" },
-      { name: "password", type: "secret", default: "not-the-login-password" },
+      fixtureInput({ name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" }),
+      fixtureInput({ name: "display", type: "text", default: "Ada" }),
+      fixtureInput({ name: "count", type: "number", default: "0" }),
+      fixtureInput({ name: "missing", type: "secret" }),
+      fixtureInput({ name: "empty", type: "secret", default: "" }),
+      fixtureInput({ name: "stripped", type: "secret", default: "[secret stripped]" }),
+      fixtureInput({ name: "invalid", type: "number", default: "not a number" }),
+      fixtureInput({ name: "attachment", type: "file" }),
+      fixtureInput({ name: "optional", type: "text", required: false }),
+      fixtureInput({ name: "code", type: "secret", label: "Verification code", required: true, default: "123456" }),
+      fixtureInput({ name: "taughtCode", type: "secret", default: "482913" }),
+      fixtureInput({ name: "card", type: "secret", default: "4111111111111111" }),
+      fixtureInput({ name: "pin", type: "secret", default: "1234" }),
+      fixtureInput({ name: "password", type: "secret", default: "not-the-login-password" }),
     ];
-    const saved: WorkflowV2 = { ...workflow, inputs, steps: [
-      { id: "signin", index: 0, action: "login", label: "Sign in", input: "credential", surface: "dom", timeoutMs: 1000 },
-      ...["missing", "empty", "stripped"].map((name, index): WorkflowV2["steps"][number] => ({
+    const saved: WorkflowV2 = fixtureDoc({ ...workflow, inputs, steps: [
+      fixtureStep({ id: "signin", index: 0, action: "login", label: "Sign in", input: "credential", surface: "dom", timeoutMs: 1000 }),
+      ...["missing", "empty", "stripped"].map((name, index): WorkflowV2["steps"][number] => (fixtureStep({
         id: name, index: index + 1, action: "login", label: name, input: name, surface: "dom", timeoutMs: 1000,
-      })),
-      { id: "code", index: 4, action: "type", label: "Code", input: "code", value: "{{code}}", surface: "dom", timeoutMs: 1000,
-        identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login ONE-TIME-CODE", path: [] } },
-      { id: "taughtCode", index: 5, action: "type", label: "Code", input: "taughtCode", value: "{{taughtCode}}", sensitive: true, surface: "dom", timeoutMs: 1000 },
-      { id: "card", index: 6, action: "type", label: "Card", input: "card", value: "{{card}}", surface: "dom", timeoutMs: 1000,
-        identity: { surface: "dom", role: "textbox", autocomplete: "cc-number", path: [] } },
-      { id: "pin", index: 7, action: "type", label: "PIN", input: "pin", value: "{{pin}}", surface: "dom", timeoutMs: 1000,
-        identity: { surface: "dom", role: "password", id: "pin", path: [] } },
-    ] };
+      }))),
+      fixtureStep({ id: "code", index: 4, action: "type", label: "Code", input: "code", value: "{{code}}", surface: "dom", timeoutMs: 1000,
+        identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login ONE-TIME-CODE", path: [] } }),
+      fixtureStep({ id: "taughtCode", index: 5, action: "type", label: "Code", input: "taughtCode", value: "{{taughtCode}}", sensitive: true, surface: "dom", timeoutMs: 1000 }),
+      fixtureStep({ id: "card", index: 6, action: "type", label: "Card", input: "card", value: "{{card}}", surface: "dom", timeoutMs: 1000,
+        identity: { surface: "dom", role: "textbox", autocomplete: "cc-number", path: [] } }),
+      fixtureStep({ id: "pin", index: 7, action: "type", label: "PIN", input: "pin", value: "{{pin}}", surface: "dom", timeoutMs: 1000,
+        identity: { surface: "dom", role: "password", id: "pin", path: [] } }),
+    ] });
     library.save(saved);
     await client.handshake();
     const result = await client.call("describe_workflow", { id: saved.id });
@@ -97,28 +98,25 @@ test("MCP search and describe mark the owner's saved inputs optional", async () 
         description: input.type === "secret" ? "Bao fills the saved password when omitted." : "Bao fills the saved value when omitted.",
       } : {}),
     })));
-    assert.equal(JSON.stringify(described.inputs).includes("fixture-password"), false);
-    assert.equal(JSON.stringify(described.inputs).includes("Ada"), false);
-    assert.deepEqual(described.workflow.inputs.map((input) => input.required !== false), required);
+    assert.deepEqual(described.workflow.inputs.map((input) => input.supply === "must"), required);
     assert.equal(described.workflow.inputs[0]?.default, undefined);
     assert.equal(result.text.includes("fixture-password"), false);
-    assert.equal(library.read(saved.id).inputs[0]?.required, true);
+    assert.equal(library.read(saved.id).inputs[0]?.supply, "must");
     assert.equal(library.read(saved.id).inputs[0]?.default, "fixture-password");
     const search = await client.call("search_workflows", { query: "Saved" });
     assert.equal(search.isError, false);
     const hits = JSON.parse(search.text) as { hits: { inputs: typeof described.inputs }[] };
     assert.deepEqual(hits.hits[0]?.inputs, described.inputs);
-    library.save({ ...saved, steps: [{ ...saved.steps[0]!, input: undefined }] });
+    library.save(fixtureDoc({ ...saved, steps: [withStep(saved.steps[0]!, { input: undefined })] }));
     const fallback = await client.call("describe_workflow", { id: saved.id });
     const selected = JSON.parse(fallback.text) as typeof described;
     assert.equal(selected.inputs[0]?.required, false);
     assert.equal(selected.inputs.at(-1)?.required, false);
-    library.save({ ...saved, steps: saved.steps.filter((step) => step.action !== "login").map((step, index) => ({ ...step, index })) });
+    library.save(fixtureDoc({ ...saved, steps: saved.steps.filter((step) => step.action !== "login").map((step, index) => ({ ...step, index })) }));
     const withoutLogin = await client.call("describe_workflow", { id: saved.id });
     const ordinary = JSON.parse(withoutLogin.text) as typeof described;
-    assert.equal(ordinary.inputs[0]?.required, false);
-    assert.equal(ordinary.inputs[0]?.saved, true);
-    assert.equal(ordinary.workflow.inputs[0]?.required, false);
+    assert.equal(ordinary.inputs[0]?.required, true);
+    assert.equal(ordinary.workflow.inputs[0]?.supply, "must");
   });
 });
 
@@ -149,20 +147,20 @@ test("MCP run omits a saved login password but still requires a fresh OTP", { ti
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     await fixture(async (client, library) => {
-      const saved: WorkflowV2 = {
+      const saved: WorkflowV2 = fixtureDoc({
         ...workflow, startUrl: `http://127.0.0.1:${address.port}/`,
         inputs: [
-          { name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" },
-          { name: "code", type: "secret", label: "Verification code", required: true, default: "123456" },
+          fixtureInput({ name: "credential", type: "secret", label: "Password", required: true, default: "fixture-password" }),
+          fixtureInput({ name: "code", type: "secret", label: "Verification code", required: true, default: "123456" }),
         ],
         steps: [
-          { id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000, heal: "never",
-            input: "credential", postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 } },
-          { id: "code", index: 1, action: "type", label: "Code", surface: "dom", timeoutMs: 5000, heal: "never",
+          fixtureStep({ id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000, heal: "never",
+            input: "credential", postcondition: { kind: "text", match: "Submitted", timeoutMs: 5000 } }),
+          fixtureStep({ id: "code", index: 1, action: "type", label: "Code", surface: "dom", timeoutMs: 5000, heal: "never",
             input: "code", value: "{{code}}", when: { absent: "Submitted" },
-            identity: { surface: "dom", role: "textbox", id: "code", path: [], autocomplete: "one-time-code" } },
+            identity: { surface: "dom", role: "textbox", id: "code", path: [], autocomplete: "one-time-code" } }),
         ],
-      };
+      });
       library.save(saved);
       await client.handshake();
       const missing = await client.call("run_workflow", { id: saved.id });
@@ -311,7 +309,7 @@ test("retired tools fail without contacting an app or starting Chrome", async ()
 
 test("MCP rejects retired workflow replay with a clear reason", async () => {
   await fixture(async (client, library) => {
-    library.save({ ...workflow, driver: "cdp-live" });
+    library.save({ ...workflow, driver: "cdp-live" as unknown as WorkflowV2["driver"] });
     library.save({ ...workflow, id: "owner", name: "Saved owner workflow" });
     library.save({ ...workflow, id: "fixture", provenance: "fixture" });
     await client.handshake();
@@ -591,10 +589,10 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
       ["{{report.name}}", "ZXQLEFTZXQRIGHT.txt"],
       ["report.csv", "open /Users/owner/private/report.csv"],
     ] as const) {
-      const workflow: WorkflowV2 = { ...JSON.parse(shelfWorkflow) as WorkflowV2, version: 3, filesDates: 1, inputs: [{ name: "password", type: "secret" }], steps: [
-        { id: "source", index: 0, action: "download", label: "Source", surface: "dom", timeoutMs: 1000, download: { output: "report", name: "{{password}}.txt" } },
-        { id: "preview", index: 1, action: "download", label: "Report", surface: "dom", timeoutMs: 1000, download: { output: "copy", name: template } },
-      ] };
+      const workflow: WorkflowV2 = fixtureDoc({ ...JSON.parse(shelfWorkflow) as WorkflowV2, version: 3, filesDates: 1, inputs: [fixtureInput({ name: "password", type: "secret" })], steps: [
+        fixtureStep({ id: "source", index: 0, action: "download", label: "Source", surface: "dom", timeoutMs: 1000, download: { output: "report", name: "{{password}}.txt" } }),
+        fixtureStep({ id: "preview", index: 1, action: "download", label: "Report", surface: "dom", timeoutMs: 1000, download: { output: "copy", name: template } }),
+      ] });
       for (const home of [mcp.home, legacy.home]) {
         const library = new Library(home);
         library.save(workflow);
@@ -762,11 +760,11 @@ test("input resumes preserve the browser choice and allow explicit overrides", {
       await seed.addCookies([{ name: "route", value: "bao", url: site, expires: Date.now() / 1000 + 3600 }]);
     } finally { await seed.close(); }
     const library = new Library(mcp.home);
-    library.save({
+    library.save(fixtureDoc({
       ...workflow, id: "input-browser", startUrl: site,
-      inputs: [{ name: "password", type: "secret", label: "Password", required: true }],
-      steps: [{ id: "account", index: 0, action: "verify", label: "Read account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Account fixture", timeoutMs: 1000 } }],
-    });
+      inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", required: true })],
+      steps: [fixtureStep({ id: "account", index: 0, action: "verify", label: "Read account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Account fixture", timeoutMs: 1000 } })],
+    }));
     await initialize(mcp);
     for (const scenario of [
       { initial: "copy", override: undefined, older: false, expected: "copy" },
@@ -840,12 +838,12 @@ test("replay failure and continued held-run tokens preserve a named browser", { 
     finally { await seed.close(); }
   }
   const check = { id: "check", index: 0, action: "verify" as const, label: "Check account", surface: "dom" as const, timeoutMs: 100, postcondition: { kind: "text" as const, match: "Not ready", timeoutMs: 100 } };
-  const doc: WorkflowV2 = { ...workflow, id: "resume-writers", startUrl: site, steps: [check] };
+  const doc: WorkflowV2 = fixtureDoc({ ...workflow, id: "resume-writers", startUrl: site, steps: [check] });
   for (const held of [false, true]) {
-    library.save({ ...doc, steps: held ? [
-      { id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in", timeoutMs: 1000 } },
+    library.save(fixtureDoc({ ...doc, steps: held ? [
+      fixtureStep({ id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in", timeoutMs: 1000 } }),
       { ...check, index: 1 },
-    ] : [check] });
+    ] : [check] }));
     let outcome = await runWorkflow(library, { id: doc.id, browser: "copy" });
     token = outcome.resume_token || "";
     assert.ok(token);
@@ -863,7 +861,7 @@ test("replay failure and continued held-run tokens preserve a named browser", { 
     } else {
       assert.equal(outcome.outcome, "failed");
     }
-    library.save({ ...doc, steps: [{ ...check, postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } }] });
+    library.save(fixtureDoc({ ...doc, steps: [{ ...check, postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } }] }));
     seen.length = 0;
     const resumed = await runWorkflow(library, { resume: token });
     assert.equal(resumed.outcome, "ok", resumed.reason);
@@ -895,14 +893,14 @@ test("a held replay blocks update stops and supports resume and cancel after rep
   try {
     const library = new Library(mcp.home);
     library.updateSettings({ pageEngine: "old" });
-    library.save({
+    library.save(fixtureDoc({
       ...workflow,
       id: "held-signin",
       startUrl: `http://127.0.0.1:${address.port}/`,
-      steps: [{
+      steps: [fixtureStep({
         id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 1000,
-      }],
-    });
+      })],
+    }));
     await initialize(mcp);
     const first = await mcp.request("tools/call", { name: "run_workflow", arguments: { id: "held-signin" } }, 20_000);
     assert.equal(first.error, undefined);

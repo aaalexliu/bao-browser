@@ -50,7 +50,7 @@ test("paused capture keeps handoffs, notes and checks while dropping UI events",
   assert.equal(capture.recording, true);
   assert.equal(capture.paused, false);
   assert.equal(capture.push({ kind: "act", op: "click" }), true);
-  assert.deepEqual(capture.steps.map((step) => projectStep(step).label), ["Check: Welcome", "Click"]);
+  assert.deepEqual(capture.steps.map((step) => step.label), ["Check: Welcome", "Click"]);
 });
 
 for (const paused of [false, true]) {
@@ -130,7 +130,7 @@ test("pause drops UI events while notes retain typed values", () => {
   assert.equal(check.label, "Check: Welcome");
   assert.equal(capture.note("123-45-6789").note, "123-45-6789");
   assert.equal(capture.events.some((event) => event.op === "note" && event.afterText === "123-45-6789"), true);
-  assert.equal(capture.steps.map((step) => projectStep(step).label).join("|"), "Click Open|Check: Welcome");
+  assert.equal(capture.steps.map((step) => step.label).join("|"), "Click Open|Check: Welcome");
   assert.equal(capture.steps[0]?.note, "wait for the banner");
   assert.equal(capture.steps[1]?.note, "123-45-6789");
   const kept = capture.stop();
@@ -139,7 +139,7 @@ test("pause drops UI events while notes retain typed values", () => {
   const doc = interpret(kept, { id: "wf-cap-note", name: "Fixture capture", startUrl: "http://127.0.0.1/fixture" });
   assert.equal(doc.steps.length, 2);
   assert.equal(doc.steps[0]?.action, "click");
-  assert.equal(doc.steps[0]?.intent, "wait for the banner");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).intent), "wait for the banner");
   assert.equal(doc.steps[1]?.action, "verify");
   capture.discard();
   assert.equal(capture.events.length, 0);
@@ -159,9 +159,9 @@ test("a note replays without touching the page and a check becomes a verify step
   assert.equal(validateWorkflow(doc).length, 0);
   assert.equal(doc.steps.length, 1);
   assert.equal(doc.steps[0]?.action, "verify");
-  assert.equal(doc.steps[0]?.intent, "wait for the banner");
-  assert.equal(doc.steps[0]?.label, "Check: Welcome");
-  assert.equal(doc.steps[0]?.expect?.match, "Welcome");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).intent), "wait for the banner");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).label), "Check: Welcome");
+  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).expect)?.match, "Welcome");
   let looked = 0;
   const driver: Driver = {
     tree: async () => {

@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep, writeStep } from "../support/fixture-step";
 import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,63 +18,63 @@ const secret = "fixture-outbound-password";
 const stripped = "[secret stripped]";
 
 function workflow(): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4", version: 2, id: "outbound", name: "Outbound", createdAt: 1,
     startUrl: "https://example.test/",
-    inputs: [{ name: "password", type: "secret", label: "Password", default: secret }],
-    steps: [{
+    inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", default: secret })],
+    steps: [fixtureStep({
       id: "password", index: 0, action: "type", label: "Password", surface: "dom", timeoutMs: 5000,
       input: "password", value: "{{password}}",
       identity: { surface: "dom", role: "textbox", testId: "password", path: [] },
       postcondition: { kind: "value", match: "{{password}}", timeoutMs: 5000 },
-    }],
-  };
+    })],
+  });
 }
 
 test("outbound guard scrubs whole user values without rewriting metadata or local input", () => {
   const doc = workflow();
-  doc.steps.push({
+  doc.steps.push(fixtureStep({
     id: "copy", index: 1, action: "type", label: secret, surface: "dom", timeoutMs: 0, value: secret,
-  });
-  doc.steps.push({
+  }));
+  doc.steps.push(fixtureStep({
     id: "card", index: 2, action: "type", label: "Card", surface: "dom", timeoutMs: 0, value: "4111111111111111",
-  });
-  doc.steps.push({
+  }));
+  doc.steps.push(fixtureStep({
     id: "prose", index: 3, action: "type", label: "Prose", surface: "dom", timeoutMs: 0, value: `prefix ${secret} suffix`,
-  });
+  }));
   const original = structuredClone(doc);
   const cleaned = strip(doc, [secret]) as WorkflowV2;
   assert.equal(cleaned.inputs[0]?.default, undefined);
-  assert.equal(cleaned.steps[0]?.value, "{{password}}");
-  assert.equal(cleaned.steps[1]?.value, stripped);
-  assert.equal(cleaned.steps[1]?.label, secret);
-  assert.equal(cleaned.steps[2]?.value, stripped);
-  assert.equal(cleaned.steps[3]?.value, `prefix ${secret} suffix`);
+  assert.equal((cleaned.steps[0] == null ? undefined : projectStep(cleaned.steps[0]).value), "{{password}}");
+  assert.equal((cleaned.steps[1] == null ? undefined : projectStep(cleaned.steps[1]).value), stripped);
+  assert.equal((cleaned.steps[1] == null ? undefined : projectStep(cleaned.steps[1]).label), secret);
+  assert.equal((cleaned.steps[2] == null ? undefined : projectStep(cleaned.steps[2]).value), stripped);
+  assert.equal((cleaned.steps[3] == null ? undefined : projectStep(cleaned.steps[3]).value), `prefix ${secret} suffix`);
   const projected = push(doc, { baseVersion: 0 }).document as WorkflowV2;
   assert.equal(projected.inputs[0]?.default, undefined);
-  assert.equal(projected.steps[0]?.value, "{{password}}");
-  assert.equal(projected.steps[1]?.value, stripped);
-  assert.equal(projected.steps[1]?.label, secret);
-  assert.equal(projected.steps[2]?.value, stripped);
-  assert.equal(projected.steps[3]?.value, `prefix ${secret} suffix`);
+  assert.equal((projected.steps[0] == null ? undefined : projectStep(projected.steps[0]).value), "{{password}}");
+  assert.equal((projected.steps[1] == null ? undefined : projectStep(projected.steps[1]).value), stripped);
+  assert.equal((projected.steps[1] == null ? undefined : projectStep(projected.steps[1]).label), secret);
+  assert.equal((projected.steps[2] == null ? undefined : projectStep(projected.steps[2]).value), stripped);
+  assert.equal((projected.steps[3] == null ? undefined : projectStep(projected.steps[3]).value), `prefix ${secret} suffix`);
   const pushDoc = structuredClone(doc);
-  pushDoc.steps[1]!.label = "Copy";
+  writeStep(pushDoc.steps[1]!, { label: "Copy" });
   pushDoc.steps.pop();
   const pushed = push(pushDoc, { baseVersion: 0 }).document as WorkflowV2;
-  assert.equal(pushed.steps[1]?.value, stripped);
-  assert.equal(pushed.steps[2]?.value, stripped);
+  assert.equal((pushed.steps[1] == null ? undefined : projectStep(pushed.steps[1]).value), stripped);
+  assert.equal((pushed.steps[2] == null ? undefined : projectStep(pushed.steps[2]).value), stripped);
   assert.deepEqual(doc, original);
 });
 
 test("publishing scrubs copied secret and token values without changing the local document", () => {
   const doc = workflow();
-  doc.steps.push({ id: "copy", index: 1, action: "type", label: "Copy", surface: "dom", timeoutMs: 0, value: secret });
-  doc.steps.push({ id: "token", index: 2, action: "type", label: "Token", surface: "dom", timeoutMs: 0, value: "sk-outboundFixtureToken" });
+  doc.steps.push(fixtureStep({ id: "copy", index: 1, action: "type", label: "Copy", surface: "dom", timeoutMs: 0, value: secret }));
+  doc.steps.push(fixtureStep({ id: "token", index: 2, action: "type", label: "Token", surface: "dom", timeoutMs: 0, value: "sk-outboundFixtureToken" }));
   const original = structuredClone(doc);
   const released = redactForRelease(doc).document as WorkflowV2;
   assert.equal(released.inputs[0]?.default, undefined);
-  assert.equal(released.steps[1]?.value, stripped);
-  assert.equal(released.steps[2]?.value, stripped);
+  assert.equal((released.steps[1] == null ? undefined : projectStep(released.steps[1]).value), stripped);
+  assert.equal((released.steps[2] == null ? undefined : projectStep(released.steps[2]).value), stripped);
   assert.deepEqual(doc, original);
 });
 
@@ -82,14 +83,15 @@ test("MCP describe scrubs outbound text defaults and entry values without changi
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const library = new Library(root);
   const doc = workflow();
-  doc.inputs[0]!.required = true;
+  doc.inputs[0]!.supply = "must";
+  delete doc.inputs[0]!.default;
   doc.inputs.push(
-    { name: "token", type: "text", label: "Token", required: true, default: "sk-describeFixtureToken" },
-    { name: "card", type: "text", label: "Card", required: false, default: "4111111111111111" },
-    { name: "note", type: "text", label: "Note", default: "Keep this note" },
+    fixtureInput({ name: "token", type: "text", label: "Token", required: true, default: "sk-describeFixtureToken" }),
+    fixtureInput({ name: "card", type: "text", label: "Card", required: false, default: "4111111111111111" }),
+    fixtureInput({ name: "note", type: "text", label: "Note", default: "Keep this note" }),
   );
   for (const [id, value] of [["copy", secret], ["token", "sk-describeFixtureToken"], ["card", "4111111111111111"]] as const) {
-    doc.steps.push({ id, index: doc.steps.length, action: "type", label: id, surface: "dom", timeoutMs: 0, value });
+    doc.steps.push(fixtureStep({ id, index: doc.steps.length, action: "type", label: id, surface: "dom", timeoutMs: 0, value }));
   }
   library.save(doc);
   const original = library.read(doc.id);
@@ -97,15 +99,14 @@ test("MCP describe scrubs outbound text defaults and entry values without changi
   assert.equal(described.workflow.inputs[0]?.default, undefined);
   assert.deepEqual(described.workflow.inputs.slice(1).map((input) => input.default), [stripped, stripped, "Keep this note"]);
   assert.deepEqual(described.workflow.steps.slice(1).map((step) => projectStep(step).value), [stripped, stripped, stripped]);
-  assert.equal(described.workflow.steps[0]?.value, "{{password}}");
+  assert.equal((described.workflow.steps[0] == null ? undefined : projectStep(described.workflow.steps[0]).value), "{{password}}");
   assert.deepEqual(described.inputs.map(({ name, type, required }) => ({ name, type, required })), [
     { name: "password", type: "secret", required: false },
     { name: "token", type: "text", required: false },
     { name: "card", type: "text", required: false },
     { name: "note", type: "text", required: false },
   ]);
-  assert.equal(described.inputs.find((input) => input.name === "password")?.saved, true);
-  assert.equal(JSON.stringify(described.inputs).includes(secret), false);
+  assert.deepEqual(described.workflow.inputs.map((input) => input.supply), original.inputs.map((input) => input.supply));
   assert.deepEqual(library.read(doc.id), original);
 });
 

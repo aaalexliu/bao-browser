@@ -115,9 +115,9 @@ test("a login stop becomes a sign-in step whose postcondition is Welcome", async
   const doc = condense(events, { id: "login", name: "Login", startUrl: "http://127.0.0.1/t/login", secrets: [CAPTURE_SECRET] });
   const sign = doc.steps.filter((step) => step.action === "click" && projectStep(step).identity?.id === "login-btn");
   assert.equal(sign.length, 1);
-  assert.equal(sign[0]?.gate, "login");
-  assert.equal(sign[0]?.label, "Sign in");
-  assert.equal(sign[0]?.postcondition?.match, "Welcome {{username}}");
+  assert.equal((sign[0] == null ? undefined : projectStep(sign[0]).gate), "login");
+  assert.equal((sign[0] == null ? undefined : projectStep(sign[0]).label), "Sign in");
+  assert.equal((sign[0] == null ? undefined : projectStep(sign[0]).postcondition)?.match, "Welcome {{username}}");
   assert.equal(JSON.stringify(doc).includes(CAPTURE_SECRET), false);
   const driver = memoryDriver([user, password, button]);
   const secret = doc.inputs.find((item) => item.type === "secret");
@@ -273,9 +273,9 @@ test("fixture trails: a typed path never lands in the trail, and a login stop re
       startUrl: `http://127.0.0.1:${server.port}/t/login`,
       secrets: [CAPTURE_SECRET],
     });
-    const sign = loginDoc.steps.find((step) => step.action === "click" && step.gate === "login");
+    const sign = loginDoc.steps.find((step) => step.action === "click" && projectStep(step).gate === "login");
     assert.ok(sign);
-    assert.equal(sign?.postcondition?.match, "Welcome {{username}}");
+    assert.equal((sign == null ? undefined : projectStep(sign).postcondition)?.match, "Welcome {{username}}");
     const loginRun = await replayTask(loginDoc, login, server.port, {
       texts: ["grace"],
       secret: "ReplaySecretOne!",

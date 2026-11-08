@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -12,9 +12,9 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildLocators, matchLabeledControl, matchLocator } from "../../src/v1/locators";
 import { uniqueNamedRole } from "../../src/v1/os-driver";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
-const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
+const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validate = ajv.compile(schema);
 
@@ -27,16 +27,16 @@ function step(partial: FixtureDraft): WorkflowStep {
 }
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Locators",
     startUrl: "https://example.test/",
     createdAt: 1,
-    inputs: [{ name: "query", type: "text", default: "ada" }],
+    inputs: [fixtureInput({ name: "query", type: "text", default: "ada" })],
     steps: steps.map((item, index) => ({ ...item, index })),
-  };
+  });
 }
 
 function tree(nodes: Identity[], extra: Partial<LiveTree> = {}): LiveTree {
@@ -81,14 +81,15 @@ test("locators are stored in role, text, test id, css, xpath order and validate"
     { x: 10, y: 80, w: 200, h: 32 },
   ], 1);
   assert.deepEqual(locs.map((item) => item.kind), ["role", "text", "css", "xpath", "anchor"]);
-  assert.equal(locs.at(-1)?.relation, "below");
+  const anchor = locs.at(-1);
+  assert.equal(anchor?.kind === "anchor" ? anchor.relation : undefined, "below");
   const events: TrailEvent[] = [{
     id: "e", ts: 1, kind: "act", op: "click", identity: target, locators: locs,
   }];
   const workflow = interpret(events, { id: "wf-search", name: "Search", startUrl: "https://en.wikipedia.org/" });
   assert.deepEqual(validateWorkflow(workflow), []);
   assert.equal(validate(workflow), true, JSON.stringify(validate.errors));
-  assert.equal(workflow.steps[0]?.locators?.[0]?.kind, "role");
+  assert.equal((workflow.steps[0] == null ? undefined : projectStep(workflow.steps[0]).locators)?.[0]?.kind, "role");
   const exported = toPuppeteerReplay(workflow, {});
   const click = exported.steps.find((item) => item.type === "click");
   const selectors = click?.selectors as string[][];
@@ -295,9 +296,10 @@ test("a healed identity replaces the locators instead of keeping the miss", () =
   const patched = applyPatch(before, {
     identity: ident({ role: "button", text: "Add Element" }),
   });
-  assert.equal(patched.identity?.testId, undefined);
-  assert.equal(patched.locators?.[0]?.kind, "role");
-  assert.equal(patched.locators?.[0]?.name, "Add Element");
+  assert.equal(projectStep(patched).identity?.testId, undefined);
+  const first = projectStep(patched).locators?.[0];
+  assert.equal(first?.kind, "role");
+  assert.equal(first?.kind === "role" ? first.name : undefined, "Add Element");
   assert.equal(JSON.stringify(patched).includes("missing"), false);
 });
 
@@ -320,7 +322,7 @@ test("puppeteer export inlines the query and does not keep a secret", () => {
       locators: [{ kind: "css", value: "#password" }],
     }),
   ]);
-  workflow.inputs.push({ name: "password", type: "secret" });
+  workflow.inputs.push(fixtureInput({ name: "password", type: "secret" }));
   const exported = toPuppeteerReplay(workflow, { query: "json" });
   const blob = JSON.stringify(exported);
   assert.match(blob, /json/);

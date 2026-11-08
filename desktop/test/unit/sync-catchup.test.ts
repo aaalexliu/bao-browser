@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
@@ -13,7 +14,7 @@ import { loadState, saveState, syncAll, syncStatus } from "../../src/v1/sync";
 const AT = "2026-10-22T04:50:16.442Z";
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: "bao.workflow/v4",
     version: 2,
     id,
@@ -21,7 +22,7 @@ function workflow(id: string, name: string): WorkflowV2 {
     startUrl: "https://example.com/fixture",
     createdAt: 1,
     inputs: [],
-    steps: [{
+    steps: [fixtureStep({
       id: "s0",
       index: 0,
       action: "click",
@@ -29,8 +30,8 @@ function workflow(id: string, name: string): WorkflowV2 {
       surface: "dom",
       identity: { surface: "dom", role: "button", path: [], testId: "go" },
       timeoutMs: 1000,
-    }],
-  };
+    })],
+  });
 }
 
 function listen(handler: (req: { method?: string; url?: string }, res: { writeHead: (code: number, headers: Record<string, string>) => void; end: (body?: string) => void }) => void): Promise<{ server: Server; port: number }> {

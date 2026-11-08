@@ -1,13 +1,14 @@
+import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { replay, type Driver } from "../../src/v1/replay";
-import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import type { Check, Identity, WorkflowV2 } from "../../src/v1/schema";
 
 function dismiss(patch: Partial<Identity> = {}): Identity {
   return { surface: "dom", role: "button", name: "Close", path: [{ role: "dialog", name: "Welcome" }], ...patch };
 }
 
-async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => Identity[], expect?: WorkflowStep["expect"], finalOptional = false) {
+async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => Identity[], expect?: Check, finalOptional = false) {
   t.mock.timers.enable({ apis: ["Date"], now: 0 });
   let elapsed = 0;
   const clicked: Identity[] = [];
@@ -24,13 +25,13 @@ async function run(t: TestContext, want: Identity, nodes: (elapsed: number) => I
     async notify() {},
     async sleep(ms) { elapsed += ms; t.mock.timers.tick(ms); },
   };
-  const workflow: WorkflowV2 = {
+  const workflow: WorkflowV2 = fixtureDoc({
     schema: "bao.workflow/v4", version: 2, id: "welcome", name: "Dismiss welcome", startUrl: "https://www.instacart.com/store/costco/storefront", createdAt: 0, driver: "cdp-live", inputs: [],
     steps: [
-      { id: "dismiss", index: 0, surface: "dom", action: "click", label: "Close", optional: "dismiss", identity: want, timeoutMs: 2000, expect },
+      fixtureStep({ id: "dismiss", index: 0, surface: "dom", action: "click", label: "Close", optional: "dismiss", identity: want, timeoutMs: 2000, expect }),
       ...(finalOptional ? [] : [{ id: "resume", index: 1, surface: "dom" as const, action: "key" as const, label: "Resume", key: "Tab", timeoutMs: 2000 }]),
     ],
-  };
+  });
   const result = await replay(workflow, {}, driver);
   return { result, clicked, elapsed };
 }

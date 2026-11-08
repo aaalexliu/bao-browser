@@ -1,3 +1,4 @@
+import { fixtureDoc, fixtureInput, fixtureStep, type FixtureDraft } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -17,22 +18,17 @@ import { testArtifacts } from "../artifacts";
 const CLOCK = new Date("2026-10-22T15:00:00Z");
 
 function workflow(partial: Pick<WorkflowV2, "id" | "name" | "startUrl" | "inputs" | "steps">): WorkflowV2 {
-  return {
+  return fixtureDoc({
     schema: WORKFLOW_SCHEMA_ID,
     version: 3,
     filesDates: 1,
     createdAt: CLOCK.getTime(),
     ...partial,
-  };
+  });
 }
 
-function step(partial: Omit<WorkflowStep, "index" | "timeoutMs" | "surface"> & { index?: number; timeoutMs?: number; surface?: WorkflowStep["surface"] }): WorkflowStep {
-  return {
-    index: partial.index ?? 0,
-    timeoutMs: partial.timeoutMs ?? 20000,
-    surface: partial.surface ?? "dom",
-    ...partial,
-  };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: partial.timeoutMs ?? 20000, index: partial.index ?? 0, ...partial });
 }
 
 function listen(handler: (req: IncomingMessage, res: ServerResponse) => void): Promise<{ url: string; close: () => Promise<void> }> {
@@ -135,8 +131,8 @@ describe("files and dates demos", { concurrency: 1 }, () => {
           name: "Fixture dates",
           startUrl: site.url,
           inputs: [
-            { name: "checkIn", type: "date", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true },
-            { name: "checkOut", type: "date", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true },
+            fixtureInput({ name: "checkIn", type: "date", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
+            fixtureInput({ name: "checkOut", type: "date", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
           ],
           steps: [step({
             id: "stay",
@@ -191,8 +187,8 @@ describe("files and dates demos", { concurrency: 1 }, () => {
           name: "Fixture chain",
           startUrl: site.url,
           inputs: [
-            { name: "company", type: "text", default: "acme" },
-            { name: "upload", type: "file", fromOutput: "note", required: false },
+            fixtureInput({ name: "company", type: "text", default: "acme" }),
+            fixtureInput({ name: "upload", type: "file", fromOutput: "note", required: false }),
           ],
           steps: [
             step({

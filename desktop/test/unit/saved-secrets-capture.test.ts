@@ -119,12 +119,12 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
     for (const workflow of [saved, taught, interpret(events, { ...meta, preserveActions: true })]) {
       const guests = workflow.steps.find((step) => projectStep(step).identity?.id === "guests")!;
       assert.ok(guests);
-      const input = workflow.inputs.find((input) => input.name === guests.input)!;
+      const input = workflow.inputs.find((input) => input.name === projectStep(guests).input)!;
       assert.equal(input.type, "text");
       assert.equal(input.default, "1");
-      assert.notEqual(guests.sensitive, true);
-      assert.equal(guests.gate, undefined);
-      assert.ok(guests.postcondition);
+      assert.notEqual(projectStep(guests).sensitive, true);
+      assert.equal(projectStep(guests).gate, undefined);
+      assert.ok(projectStep(guests).postcondition);
     }
     for (const [id, value] of [["password", "1qaz2wsx"], ["next-password", "Book!password"]] as const) {
       const step = saved.steps.find((step) => projectStep(step).identity?.id === id)!;
@@ -133,7 +133,7 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
       assert.equal(input.default, value);
     }
     const otp = saved.steps.find((step) => projectStep(step).identity?.id === "otp")!;
-    assert.equal(saved.inputs.find((input) => input.name === otp.input)!.default, undefined);
+    assert.equal(saved.inputs.find((input) => input.name === projectStep(otp).input)!.default, undefined);
     assert.equal(cleanSaveField("Book a table", 80), "Book a table");
     const prompt = saveIntentPrompt({ floorTitle: "Book a table", steps: [{ id: "guests", action: "type", label: "Book a table" }] });
     assert.ok(prompt.includes("guests | type | - | Book a table"));
