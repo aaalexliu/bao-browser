@@ -157,6 +157,82 @@ test("a collapsed box is not a locator hit", () => {
   assert.equal(matchLocator({ kind: "css", value: "#searchInput" }, [hidden])?.index, 0);
 });
 
+test("an empty role name matches one unnamed control", () => {
+  const unnamed = ident({ role: "button", name: "", text: "", label: "" });
+  const named = ident({ role: "button", name: "Save", text: "Save" });
+  const blank = ident({ role: "button" });
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "" }, [unnamed])?.index, 0);
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "" }, [named]), undefined);
+  assert.equal(matchLocator({ kind: "role", role: "button", name: "" }, [unnamed, blank]), undefined);
+});
+
+test("text, test id, css, and xpath locators each hit their node", () => {
+  const node = ident({
+    role: "link",
+    text: "Travel",
+    testId: "travel",
+    id: "travel-link",
+    cssPath: "#travel-link",
+    xpath: '//*[@id="travel-link"]',
+  });
+  assert.equal(matchLocator({ kind: "text", value: "Travel" }, [node])?.index, 0);
+  assert.equal(matchLocator({ kind: "testid", value: "travel" }, [node])?.index, 0);
+  assert.equal(matchLocator({ kind: "css", value: "#travel-link" }, [node])?.index, 0);
+  assert.equal(matchLocator({ kind: "xpath", value: '//*[@id="travel-link"]' }, [node])?.index, 0);
+});
+
+test("an anchor locator hits one node on that side and misses an ambiguous or missing target", () => {
+  const heading = ident({ role: "heading", text: "Details", testId: "details" });
+  const apply = ident({ role: "button", text: "Apply", testId: "apply" });
+  const cancel = ident({ role: "button", text: "Cancel", testId: "cancel" });
+  const locator = {
+    kind: "anchor" as const,
+    role: "button",
+    relation: "below" as const,
+    anchor: ident({ role: "heading", text: "Details", testId: "details" }),
+  };
+  const one = [
+    { x: 10, y: 10, w: 80, h: 20 },
+    { x: 10, y: 80, w: 40, h: 20 },
+  ];
+  assert.equal(matchLocator(locator, [heading, apply], one)?.index, 1);
+  assert.equal(matchLocator(locator, [heading, apply, cancel], [
+    ...one,
+    { x: 20, y: 120, w: 40, h: 20 },
+  ]), undefined);
+  assert.equal(matchLocator(locator, [heading, apply]), undefined);
+  assert.equal(matchLocator(locator, [apply], one), undefined);
+});
+
+test("export keeps the four value locators and drops an anchor", () => {
+  const exported = toPuppeteerReplay(doc([step({
+    id: "go",
+    action: "click",
+    locators: [
+      { kind: "role", role: "link", name: "Travel" },
+      { kind: "text", value: "Travel" },
+      { kind: "testid", value: "travel" },
+      { kind: "css", value: "#travel" },
+      { kind: "xpath", value: '//*[@id="travel"]' },
+      {
+        kind: "anchor",
+        relation: "below",
+        role: "link",
+        anchor: ident({ role: "heading", text: "Trips" }),
+      },
+    ],
+  })]), {});
+  const click = exported.steps.find((item) => item.type === "click");
+  const selectors = click?.selectors as string[][];
+  assert.deepEqual(selectors.map((chain) => chain[0]), [
+    "aria/Travel",
+    "text/Travel",
+    '[data-testid="travel"]',
+    "#travel",
+    "xpath///*[@id=\"travel\"]",
+  ]);
+});
+
 test("a duplicated text locator is refused and a unique test id hits", () => {
   const nodes = [
     ident({ role: "button", text: "Search", testId: "a" }),

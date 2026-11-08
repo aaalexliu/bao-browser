@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { parseRecordedDate } from "../../src/v1/dates";
-import { migrate, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -23,6 +23,64 @@ const validate = ajv.compile(schema);
 function id(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
+
+test("missing locator payloads are rejected at the document boundary", () => {
+  const step = (id: string, index: number, locators?: unknown[], reveal?: unknown) => ({
+    id,
+    index,
+    action: "click",
+    label: id,
+    surface: "dom",
+    timeoutMs: 0,
+    ...(locators ? { locators } : {}),
+    ...(reveal ? { reveal } : {}),
+  });
+  const raw = {
+    schema: WORKFLOW_SCHEMA_ID,
+    version: 2,
+    id: "wf-locator-payloads",
+    name: "Locator payloads",
+    startUrl: "https://example.test/",
+    createdAt: 1,
+    inputs: [],
+    steps: [
+      step("missing-role", 0, [{ kind: "role", name: "Open" }]),
+      step("empty-role", 1, [{ kind: "role", role: "", name: "Open" }]),
+      step("null-name", 2, [{ kind: "role", role: "button", name: null }]),
+      step("unnamed", 3, [{ kind: "role", role: "button", name: "" }]),
+      step("text", 4, [{ kind: "text" }]),
+      step("testid", 5, [{ kind: "testid", value: "" }]),
+      step("css", 6, [{ kind: "css" }]),
+      step("xpath", 7, [{ kind: "xpath", value: "" }]),
+      step("anchor", 8, [{ kind: "anchor", role: "button" }]),
+      step("reveal", 9, undefined, { kind: "role", name: "Open" }),
+      step("legacy", 10, [{ kind: "css", value: "#ok", role: "button", name: "Ok", label: "css #ok" }]),
+      step("unknown-kept", 11, [{ kind: "legacy", value: "#kept" }]),
+      step("unknown-missing", 12, [{ kind: "legacy" }]),
+    ],
+  };
+  const doc = migrate(raw);
+  assert.deepEqual(validateWorkflow(doc), [
+    "role locator missing-role",
+    "role locator empty-role",
+    "role locator null-name",
+    "locator value text",
+    "locator value testid",
+    "locator value css",
+    "locator value xpath",
+    "anchor locator anchor",
+    "role locator reveal",
+    "locator value unknown-missing",
+  ]);
+  const legacy = doc.steps.find((item) => item.id === "legacy")?.locators?.[0];
+  assert.deepEqual(JSON.parse(canonical(legacy)), {
+    kind: "css",
+    label: "css #ok",
+    name: "Ok",
+    role: "button",
+    value: "#ok",
+  });
+});
 
 test("migrate retains a password default and validates against the json schema", () => {
   const doc = migrate({

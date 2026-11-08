@@ -76,15 +76,24 @@ function selectorChains(locators: StepLocator[] | undefined): string[][] {
 }
 
 function toSelector(locator: StepLocator): string | undefined {
-  if (locator.kind === "role" && locator.name) {
-    // Chrome DevTools Recorder stores the accessible name after aria/.
-    return `aria/${locator.name.replace(/[\n\r]/g, " ")}`;
+  switch (locator.kind) {
+    case "role":
+      // Chrome DevTools Recorder stores the accessible name after aria/.
+      if (!locator.name) return undefined;
+      return `aria/${locator.name.replace(/[\n\r]/g, " ")}`;
+    case "text":
+      if (!locator.value) return undefined;
+      return `text/${locator.value}`;
+    case "testid":
+      if (!locator.value) return undefined;
+      return `[data-testid="${locator.value.replace(/"/g, '\\"')}"]`;
+    case "css":
+      if (!locator.value) return undefined;
+      return locator.value;
+    case "xpath":
+      if (!locator.value) return undefined;
+      return locator.value.startsWith("xpath/") ? locator.value : `xpath/${locator.value}`;
+    case "anchor":
+      return undefined;
   }
-  if (locator.kind === "text" && locator.value) return `text/${locator.value}`;
-  if (locator.kind === "testid" && locator.value) return `[data-testid="${locator.value.replace(/"/g, '\\"')}"]`;
-  if (locator.kind === "css" && locator.value) return locator.value;
-  if (locator.kind === "xpath" && locator.value) {
-    return locator.value.startsWith("xpath/") ? locator.value : `xpath/${locator.value}`;
-  }
-  return undefined;
 }
