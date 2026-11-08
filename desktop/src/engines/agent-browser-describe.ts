@@ -90,7 +90,7 @@ export function roleWord(role: string): string {
 
 interface Element { role: string; name?: string; context?: string }
 
-/** The named element for a ref, plus a neighbor's name when the page repeats the element's name. */
+/** The named element for a ref, plus the item that holds it when the page repeats the element's name. */
 export function elementFor(ref: string | undefined, snapshot: string | undefined): Element | undefined {
   const id = ref?.trim().replace(/^@/, "");
   if (!id || !/^e\d+$/.test(id)) return undefined;
@@ -100,55 +100,28 @@ export function elementFor(ref: string | undefined, snapshot: string | undefined
   const line = lines[at]!;
   if (!line.name) return { role: line.role };
   const repeated = lines.filter((other) => other.name === line.name && other.role === line.role).length > 1;
-  const context = repeated ? neighbor(lines, at) : undefined;
+  const context = repeated ? itemName(lines, at) : undefined;
   return { role: line.role, name: line.name, ...(context ? { context } : {}) };
 }
 
-/** The longest-named sibling between this element and the previous one with the same name, such as a product title before its "Edit" button. The first copy takes the position the next copy picks. */
-function neighbor(lines: SnapshotLine[], at: number): string | undefined {
+const ITEM_ROLES = new Set(["listitem", "row", "article"]);
+const LABELLED_ROLES = new Set(["group", "region"]);
+
+/** The name of the list item, row, article, or labelled group that holds this element in the snapshot tree. A flat read has no such item. */
+function itemName(lines: SnapshotLine[], at: number): string | undefined {
   const line = lines[at]!;
-  const own = walk(lines, at);
-  const next = own.bounded ? undefined : nextCopy(lines, at);
-  const offset = next === undefined ? undefined : longest(walk(lines, next).named)?.seen;
-  const best = next === undefined ? longest(own.named) : own.named.find((item) => item.seen === offset);
-  if (best) return best.line.name;
-  for (let i = at - 1; i >= 0; i--) {
-    const other = lines[i]!;
-    if (other.role === "heading" && other.name && other.name !== line.name) return other.name;
-  }
-  return undefined;
-}
-
-type Named = { line: SnapshotLine; seen: number };
-
-/** Named siblings before this element, nearest first, stopping at an earlier copy of it. */
-function walk(lines: SnapshotLine[], at: number): { named: Named[]; bounded: boolean } {
-  const line = lines[at]!;
-  const named: Named[] = [];
-  for (let i = at - 1, seen = 0; i >= 0 && seen < 30; i--) {
-    const other = lines[i]!;
-    if (other.indent < line.indent) break;
-    if (other.indent !== line.indent) continue;
-    seen++;
-    if (other.role === line.role && other.name === line.name) return { named, bounded: true };
-    if (other.name) named.push({ line: other, seen });
-  }
-  return { named, bounded: false };
-}
-
-function longest(named: Named[]): Named | undefined {
-  return named.reduce<Named | undefined>((top, item) => !top || item.line.name!.length > top.line.name!.length ? item : top, undefined);
-}
-
-/** The next sibling with the same role and name, within 30 siblings. */
-function nextCopy(lines: SnapshotLine[], at: number): number | undefined {
-  const line = lines[at]!;
-  for (let i = at + 1, seen = 0; i < lines.length && seen < 30; i++) {
-    const other = lines[i]!;
-    if (other.indent < line.indent) break;
-    if (other.indent !== line.indent) continue;
-    seen++;
-    if (other.role === line.role && other.name === line.name) return i;
+  let indent = line.indent;
+  for (let i = at - 1; i >= 0 && indent > 0; i--) {
+    const parent = lines[i]!;
+    if (parent.indent >= indent) continue;
+    indent = parent.indent;
+    if (!ITEM_ROLES.has(parent.role) && !(LABELLED_ROLES.has(parent.role) && parent.name)) continue;
+    if (parent.name) return parent.name;
+    for (let j = i + 1; j < lines.length && lines[j]!.indent > parent.indent; j++) {
+      const name = lines[j]!.name;
+      if (name && name !== line.name) return name;
+    }
+    return undefined;
   }
   return undefined;
 }
