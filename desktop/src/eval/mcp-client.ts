@@ -123,7 +123,7 @@ export class McpClient {
     pending.resolve({
       text,
       isError: !!msg.result?.isError,
-      structuredContent: msg.result?.structuredContent,
+      ...(msg.result?.structuredContent ? { structuredContent: msg.result.structuredContent } : {}),
       tools: msg.result?.tools,
     });
   }
