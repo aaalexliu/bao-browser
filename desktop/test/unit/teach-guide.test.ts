@@ -145,7 +145,7 @@ test(`old-engine guide me highlights the ${driver} fixture without an extension 
     const user: Identity = { surface: "dom", role: "textbox", path: [], id: "username", nameAttr: "username" };
     const login: Identity = { surface: "dom", role: "button", path: [], id: "login-btn", name: "Log in", text: "Log in", testId: "login" };
     const doc: WorkflowV2 = {
-      schema: "bao.workflow/v2",
+      schema: "bao.workflow/v4",
       version: 2,
       id: "wf-guide-me",
       driver,

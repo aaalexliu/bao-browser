@@ -5,7 +5,7 @@
 
 import { oneTimeCodeField } from "../../../shared/saved-secrets";
 import { explain, interpret, trailDrops, type InterpretMeta, type TrailEvent } from "./interpret";
-import { looksLikePath, validateWorkflow, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { projectStep, looksLikePath, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export type NarratorKind = "heuristic" | "model";
 
@@ -148,7 +148,7 @@ export function projectTeach(
       modelName: voice?.modelName,
       intent: guess,
       outcome: fileText(voice?.outcome || outcome, events),
-      human: step.human === true || step.action === "login" || step.action === "confirm",
+      human: step.action === "login",
       verify: step.action === "verify",
       dropped: false,
       merged: false,
@@ -173,7 +173,7 @@ export function projectTeach(
     ...draft.step,
     index,
     id: `${meta.id}-${index}`,
-    intent: draft.card.noteAsIntent ? (draft.card.note || draft.step.intent) : (draft.card.intent || draft.step.intent),
+    intent: draft.card.noteAsIntent ? (draft.card.note || projectStep(draft.step).intent) : (draft.card.intent || projectStep(draft.step).intent),
   }));
   const inputs = inputsFor(steps, baseline.inputs, overrides);
   const workflow: WorkflowV2 = {
@@ -259,15 +259,16 @@ export function measureIntentPair(pair: IntentEvalPair): {
     const match = pair.workflow.steps.findIndex((item, index) => !used.has(index) && sameTarget(step, item));
     if (match < 0) continue;
     used.add(match);
-    const from = step.intent || step.label;
-    const to = pair.workflow.steps[match]?.intent || pair.workflow.steps[match]?.label || "";
+    const from = projectStep(step).label;
+    const matched = pair.workflow.steps[match];
+    const to = matched ? projectStep(matched).label : "";
     if (from !== to) intentChanges.push({ from, to });
   }
   return {
     corrections: pair.decisions.length,
     intentChanges,
     droppedSteps: Math.max(0, pair.baseline.steps.length - pair.workflow.steps.length),
-    humanSteps: pair.workflow.steps.filter((step) => step.human || step.action === "confirm" || step.action === "login").length,
+    humanSteps: pair.workflow.steps.filter((step) => step.action === "login").length,
     checks: pair.workflow.steps.filter((step) => step.action === "verify").length,
     branches: pair.workflow.steps.filter((step) => step.when).length,
   };
@@ -300,7 +301,7 @@ export function mergeDemonstrations(
   const branched = rows.some((row) => row.takes.length !== takes.length);
   const inputs = docs.reduce<WorkflowInput[]>((all, doc) => unionInputs(all, doc.inputs), []);
   if (branched) {
-    inputs.push({ name: route, type: "choice", label: "Which way", required: true, choices: [...takes] });
+    inputs.push({ name: route, type: "choice", label: "Which way", supply: "must", choices: [...takes] });
   }
   const steps: WorkflowStep[] = [];
   for (const row of rows) {
@@ -318,8 +319,7 @@ export function mergeDemonstrations(
     for (const take of row.takes) emit({ ...clone(row.step), when: { input: route, value: take } });
   }
   const doc: WorkflowV2 = {
-    schema: "bao.workflow/v2",
-    version: 2,
+    schema: WORKFLOW_SCHEMA_ID,
     id: meta.id,
     name: meta.name,
     startUrl: docs[0]!.startUrl,
@@ -489,15 +489,14 @@ function applyDecision(
     const intent = fileText(decision.intent, events);
     draft.card.intent = intent;
     draft.card.noteAsIntent = false;
-    draft.step.intent = intent;
-    draft.step.label = intent;
+    draft.step.caption = { ...draft.step.caption, text: intent };
     return;
   }
   if (decision.kind === "note" && decision.note) {
     const intent = fileText(decision.note, events);
     draft.card.note = intent;
     draft.card.noteAsIntent = true;
-    draft.step.intent = intent;
+    draft.step.caption = { ...draft.step.caption, text: intent };
     return;
   }
   if (decision.kind === "drop") {
@@ -515,35 +514,25 @@ function applyDecision(
   }
   if (decision.kind === "human") {
     const login = draft.step.action === "login"
-      || draft.step.identity?.role === "password"
-      || /login/i.test(draft.step.identity?.testId || "")
-      || /login/i.test(draft.step.identity?.id || "");
-    draft.step.action = login ? "login" : "confirm";
-    draft.step.human = true;
-    delete draft.step.provenance;
-    draft.step.timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
-    const intent = draft.card.intent || (login ? "Sign in" : "You confirm");
-    draft.step.intent = intent;
-    draft.step.label = intent;
-    if (draft.card.outcome) {
-      draft.step.postcondition = { kind: "text", match: draft.card.outcome, timeoutMs: draft.step.timeoutMs };
-    }
+      || projectStep(draft.step).identity?.role === "password"
+      || /login/i.test(projectStep(draft.step).identity?.testId || "")
+      || /login/i.test(projectStep(draft.step).identity?.id || "");
+    if (!login) return;
+    draft.step = { id: draft.step.id, index: draft.step.index, action: "login", timeoutMs: Math.max(draft.step.timeoutMs || 0, 15000), caption: { text: draft.card.intent || "Sign in" }, ...(draft.card.outcome ? { check: { kind: "text" as const, match: draft.card.outcome, timeoutMs: Math.max(draft.step.timeoutMs || 0, 15000) } } : {}) };
     draft.card.human = true;
     draft.card.action = draft.step.action;
     return;
   }
   if (decision.kind === "verify" || decision.kind === "check") {
     const match = fileText(decision.outcome || draft.card.outcome || "the check holds", events);
-    draft.step.action = "verify";
-    draft.step.human = undefined;
-    delete draft.step.provenance;
-    delete draft.step.input;
-    delete draft.step.value;
-    delete draft.step.sensitive;
-    draft.step.expect = { kind: "text", match, timeoutMs: 8000 };
-    draft.step.postcondition = { kind: "text", match, timeoutMs: 8000 };
-    draft.step.intent = draft.card.intent || "Check";
-    draft.step.label = draft.step.intent;
+    draft.step = {
+      id: draft.step.id,
+      index: draft.step.index,
+      action: "verify",
+      timeoutMs: 8000,
+      caption: { text: draft.card.intent || "Check" },
+      check: { kind: "text", match, timeoutMs: 8000 },
+    };
     draft.card.verify = true;
     draft.card.human = false;
     draft.card.action = "verify";
@@ -554,28 +543,30 @@ function applyDecision(
   if (decision.kind === "constant") {
     const literal = draft.events.map((event) => event.value).filter(Boolean).pop();
     if (!literal || looksLikePath(literal)) return;
-    delete draft.step.input;
-    delete draft.step.sensitive;
-    draft.step.value = literal;
+    if (draft.step.action === "type" || draft.step.action === "select" || draft.step.action === "digits") {
+      draft.step.text = { literal };
+      if (draft.step.action === "type") delete draft.step.sensitive;
+    }
     draft.card.values = [{ role: "constant", name: "", label: literal.slice(0, 48) }];
     return;
   }
   if (decision.kind === "input" || decision.kind === "secret") {
     const secret = decision.kind === "secret" || draft.card.values.some((value) => value.role === "secret");
-    const current = draft.step.input || draft.card.values.find((value) => value.name)?.name || (secret ? "secret" : "text");
+    const current = projectStep(draft.step).input || draft.card.values.find((value) => value.name)?.name || (secret ? "secret" : "text");
     const name = decision.name && NAME_RE.test(decision.name) ? decision.name : current;
-    retarget(draft.step, draft.step.input, name);
-    draft.step.input = name;
-    draft.step.value = `{{${name}}}`;
-    draft.step.sensitive = secret || undefined;
+    retarget(draft.step, projectStep(draft.step).input, name);
+    if (draft.step.action === "type" || draft.step.action === "select" || draft.step.action === "digits") {
+      draft.step.text = { input: name };
+      if (draft.step.action === "type" && secret) draft.step.sensitive = true;
+    }
     const literal = draft.events.map((event) => event.value).filter((value) => value && !looksLikePath(value)).pop();
     const prior = overrides.get(current) || inputs.find((input) => input.name === current);
     overrides.set(name, {
       name,
       type: secret ? "secret" : prior?.type === "file" ? "file" : prior?.type === "number" ? "number" : "text",
-      required: true,
+      supply: secret || !literal ? "must" : "saved",
       label: name,
-      default: oneTimeCodeField(draft.step.identity) ? undefined : literal ?? prior?.default,
+      default: oneTimeCodeField(projectStep(draft.step).identity) ? undefined : literal ?? prior?.default,
     });
     draft.card.values = [{
       role: secret ? "secret" : "input",
@@ -597,21 +588,46 @@ function absorb(previous: Draft, current: Draft): void {
     previous.card.verify = current.card.verify;
     if (!previous.card.outcome) previous.card.outcome = current.card.outcome;
     previous.card.intent = intent || current.card.intent;
-    previous.step.intent = previous.card.intent;
-  } else if (current.card.outcome && (!previous.step.postcondition || previous.step.postcondition.kind === "element")) {
-    previous.step.postcondition = { kind: "text", match: current.card.outcome, timeoutMs: 4000 };
+    previous.step.caption = { ...previous.step.caption, text: previous.card.intent };
+  } else if (current.card.outcome) {
+    setTextCheck(previous.step, current.card.outcome);
     previous.card.outcome = current.card.outcome;
   }
   previous.events = [...previous.events, ...current.events];
   previous.card.eventIds = previous.events.map((event) => event.id);
 }
 
+function setTextCheck(step: WorkflowStep, match: string): void {
+  switch (step.action) {
+    case "click":
+    case "type":
+    case "key":
+    case "check":
+    case "select":
+    case "login":
+    case "upload":
+    case "drop":
+    case "download":
+    case "open":
+    case "digits":
+    case "pickDate":
+    case "verify":
+      step.check = { kind: "text", match, timeoutMs: 4000 };
+      return;
+    default:
+      return;
+  }
+}
+
 function retarget(step: WorkflowStep, from: string | undefined, to: string): void {
   if (!from || from === to) return;
-  const swap = (value?: string) => value?.split(`{{${from}}}`).join(`{{${to}}}`);
-  step.value = swap(step.value);
-  if (step.postcondition?.match) step.postcondition = { ...step.postcondition, match: swap(step.postcondition.match) };
-  if (step.expect?.match) step.expect = { ...step.expect, match: swap(step.expect.match) };
+  const swap = (value: string) => value.split(`{{${from}}}`).join(`{{${to}}}`);
+  if (step.caption?.text) step.caption = { ...step.caption, text: swap(step.caption.text) };
+  const match = projectStep(step).expect?.match;
+  if (match) setTextCheck(step, swap(match));
+  if ((step.action === "type" || step.action === "select" || step.action === "digits") && "literal" in step.text) {
+    step.text = { literal: swap(step.text.literal) };
+  }
 }
 
 function inputsFor(steps: WorkflowStep[], existing: WorkflowInput[], overrides: Map<string, WorkflowInput>): WorkflowInput[] {
@@ -620,14 +636,14 @@ function inputsFor(steps: WorkflowStep[], existing: WorkflowInput[], overrides: 
     if (name && NAME_RE.test(name) && !names.includes(name)) names.push(name);
   };
   for (const step of steps) {
-    push(step.input);
+    push(projectStep(step).input);
     push(step.when?.input);
-    for (const token of tokens(step.value, step.postcondition?.match, step.expect?.match, step.readBack?.match)) push(token);
+    for (const token of tokens(projectStep(step).value, projectStep(step).postcondition?.match, projectStep(step).expect?.match, step.readBack?.match)) push(token);
   }
   return names.map((name) => {
     const override = overrides.get(name);
     const found = existing.find((input) => input.name === name);
-    const input = override || found || { name, type: "text" as const, required: true, label: name };
+    const input = override || found || { name, type: "text" as const, supply: "must" as const, label: name };
     return { ...input };
   });
 }
@@ -643,14 +659,16 @@ function tokens(...values: (string | undefined)[]): string[] {
 
 function valuesOf(step: WorkflowStep, event: TrailEvent | undefined): TeachValue[] {
   if (step.action === "drop" || step.action === "upload") {
-    return [{ role: "input", name: step.input || "file", label: `{{${step.input || "file"}}}` }];
+    return [{ role: "input", name: projectStep(step).input || "file", label: `{{${projectStep(step).input || "file"}}}` }];
   }
-  if (step.sensitive || event?.sensitive || step.action === "type" && /pass|secret/i.test(step.input || "")) {
-    return [{ role: "secret", name: step.input || "secret", label: "secret" }];
+  const input = projectStep(step).input;
+  const value = projectStep(step).value;
+  if (projectStep(step).sensitive || event?.sensitive || step.action === "type" && /pass|secret/i.test(input || "")) {
+    return [{ role: "secret", name: input || "secret", label: "secret" }];
   }
-  if (step.input) return [{ role: "input", name: step.input, label: `{{${step.input}}}` }];
-  if (step.value && !step.value.includes("{{") && !looksLikePath(step.value)) {
-    return [{ role: "constant", name: "", label: step.value.slice(0, 48) }];
+  if (input) return [{ role: "input", name: input, label: `{{${input}}}` }];
+  if (value && !value.includes("{{") && !looksLikePath(value)) {
+    return [{ role: "constant", name: "", label: value.slice(0, 48) }];
   }
   return [];
 }
@@ -671,13 +689,12 @@ function targetName(event: TrailEvent | undefined): string {
 /** The interpret label, with a named target when that label is only "Click". */
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
-  const fromLabel = (step.label || "").trim().replace(/^Click "(.+)"$/, "Click $1");
+  const fromLabel = (projectStep(step).label || "").trim().replace(/^Click "(.+)"$/, "Click $1");
   if (fromLabel && fromLabel !== "Click") return fromLabel;
   const target = targetName(event);
   if (target) return `Click ${target}`;
   if (fromLabel) return fromLabel;
   if (step.action === "verify") return "Check";
-  if (step.action === "confirm") return "You confirm";
   if (step.action === "login") return "Sign in";
   if (step.action === "drop") return "Drop file";
   if (step.action === "upload") return "Upload file";
@@ -686,16 +703,16 @@ function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): str
 
 function typeIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   const where = fieldName(step, event);
-  const secret = step.sensitive || event?.sensitive || /pass|secret/i.test(step.input || "");
+  const secret = projectStep(step).sensitive || event?.sensitive || /pass|secret/i.test(projectStep(step).input || "");
   if (secret) return where ? `Type secret into ${where}` : "Type secret";
-  const token = step.input ? `{{${step.input}}}` : (step.value || "").trim();
+  const token = projectStep(step).input ? `{{${projectStep(step).input}}}` : (projectStep(step).value || "").trim();
   if (token && where) return `Type ${token} into ${where}`;
   if (token) return token.startsWith("Type ") ? token : `Type ${token}`;
   return where ? `Type into ${where}` : "Type";
 }
 
 function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
-  const identity = event?.identity || step.identity;
+  const identity = event?.identity || projectStep(step).identity;
   const raw = [identity?.label, identity?.name, identity?.nameAttr, identity?.id].find((bit) => bit && bit.trim()) || "";
   const clean = raw.replace(/\s+/g, " ").trim();
   if (!clean || clean.includes("{{")) return "";
@@ -704,12 +721,13 @@ function fieldName(step: WorkflowStep, event: TrailEvent | undefined): string {
 }
 
 function heuristicOutcome(step: WorkflowStep, event: TrailEvent | undefined): string {
-  if (step.action === "verify") return step.expect?.match || event?.afterText || "the check holds";
-  if (step.action === "drop" || step.action === "upload") return step.postcondition?.match || "the file lands";
-  if (step.action === "type" && (step.sensitive || event?.sensitive)) return "the secret is filled";
-  if (step.action === "type" && step.input) return `the field shows {{${step.input}}}`;
+  const view = projectStep(step);
+  if (step.action === "verify") return view.expect?.match || event?.afterText || "the check holds";
+  if (step.action === "drop" || step.action === "upload") return view.postcondition?.match || "the file lands";
+  if (step.action === "type" && (view.sensitive || event?.sensitive)) return "the secret is filled";
+  if (step.action === "type" && view.input) return `the field shows {{${view.input}}}`;
   if (event?.afterText) return event.afterText;
-  if (step.postcondition?.kind === "text" && step.postcondition.match) return step.postcondition.match;
+  if (view.postcondition?.kind === "text" && view.postcondition.match) return view.postcondition.match;
   return "";
 }
 
@@ -736,8 +754,8 @@ function fileText(value: string, events: readonly TrailEvent[]): string {
 
 function sameTarget(a: WorkflowStep, b: WorkflowStep): boolean {
   if (a.action !== b.action) return false;
-  const left = a.identity;
-  const right = b.identity;
+  const left = projectStep(a).identity;
+  const right = projectStep(b).identity;
   if (!left || !right) return a.action === b.action && !left && !right;
   return (left.id != null && left.id === right.id)
     || (left.testId != null && left.testId === right.testId)
@@ -783,7 +801,7 @@ function foldRows(rows: Row[], doc: WorkflowV2, take: string): Row[] {
 }
 
 function stepKey(step: WorkflowStep): string {
-  const identity = step.identity;
+  const identity = projectStep(step).identity;
   const target = identity?.testId || identity?.id || identity?.nameAttr || identity?.name || identity?.text || "";
   return `${step.action}|${target}`;
 }

@@ -1,7 +1,7 @@
 import { AUDIT_PAGE_SIZE, auditPage, liveShotUrl, type LiveSessionRecord } from "../cdp-live/live-record";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import { formatTime } from "../v1/time";
-import type { WorkflowV2 } from "../v1/schema";
+import { stepInputName, stepTitle, type WorkflowV2 } from "../v1/schema";
 import { imageRef, runStatusGlyph, runWaitLeft, type ActiveRun, type RunSummary } from "./views";
 
 function esc(value: unknown): string {
@@ -52,8 +52,9 @@ export function liveRunView(active: ActiveRun, run?: RunSummary | null, workflow
     const current = !continuing && step.id === ask?.stepId;
     const status = stepStatus(step.id);
     const word = status === "passed" ? "Done" : current ? "Needs you" : status === "pending" ? "Not yet" : status === "continuing" ? "Handoff ended" : status;
-    const label = current && ask?.kind === "confirm" ? `Wait for you: press ${ask.button || "the button"}` : step.label;
-    const input = step.input ? run?.inputs?.[step.input] : undefined;
+    const label = current && ask?.kind === "confirm" ? `Wait for you: press ${ask.button || "the button"}` : stepTitle(step);
+    const named = stepInputName(step);
+    const input = named ? run?.inputs?.[named] : undefined;
     const ms = result?.startedAt != null && result.endedAt != null ? result.endedAt - result.startedAt : undefined;
     const meta = current ? "" : input || (ms != null ? `${Number((ms / 1000).toFixed(1))} s` : "");
     const glyph = status === "pending" || status === "skipped" ? `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".55"/></svg>` : runStatusGlyph(status);
@@ -62,7 +63,7 @@ export function liveRunView(active: ActiveRun, run?: RunSummary | null, workflow
   const shots = steps.flatMap((step, index) => {
     const result = results.get(step.id);
     const src = imageRef(run?.id || "", result?.afterShot || result?.beforeShot);
-    return src ? [{ src, index, label: step.label, status: stepStatus(step.id) }] : [];
+    return src ? [{ src, index, label: stepTitle(step), status: stepStatus(step.id) }] : [];
   });
   const latest = shots.at(-1);
   const startedAt = run?.steps?.find((step) => step.startedAt != null)?.startedAt ?? run?.at ?? active.startedAt;

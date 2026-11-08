@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
 // The page class is decided before a heal. Each class is a fixture, and a
 // wall stops the run with no heal and no model call.
 
@@ -14,13 +15,13 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action">): WorkflowStep {
-  return { index: 0, label: partial.label || partial.action, surface: "dom", timeoutMs: 0, ...partial };
+function step(partial: FixtureDraft): WorkflowStep {
+  return fixtureStep({ timeoutMs: 0, ...partial });
 }
 
 function doc(startUrl: string, steps: WorkflowStep[]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Fixture",

@@ -54,10 +54,9 @@ export function editInput(
   if (typeof edit.label === "string") {
     const label = edit.label.trim();
     if (label) nextInput.label = label;
-    else delete nextInput.label;
   }
-  if (edit.required === true) nextInput.required = true;
-  else if (edit.required === false) delete nextInput.required;
+  if (edit.required === true) nextInput.supply = "must";
+  else if (edit.required === false && nextInput.type !== "secret" && nextInput.type !== "file" && nextInput.default) nextInput.supply = "saved";
   if (typeof edit.default === "string") {
     const value = nextInput.type === "secret" ? edit.default : edit.default.trim();
     if (value) {

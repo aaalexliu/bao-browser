@@ -22,7 +22,7 @@ test("the runs list opens failed receipts while an active login owns its live de
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
     const doc: WorkflowV2 = {
-      schema: "bao.workflow/v2",
+      schema: "bao.workflow/v4",
       version: 2,
       id: "wf-note",
       name: "upload note",

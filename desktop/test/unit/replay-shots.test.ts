@@ -16,7 +16,7 @@ import { syncAll } from "../../src/v1/sync";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const workflow: WorkflowV2 = {
-  schema: "bao.workflow/v2", version: 2, id: "wf-shots", name: "Run pictures",
+  schema: "bao.workflow/v4", version: 2, id: "wf-shots", name: "Run pictures",
   startUrl: "http://127.0.0.1/fixture", createdAt: 1, inputs: [], driver: "extension",
   steps: [{ id: "step", index: 0, action: "note", label: "Fixture", surface: "dom", timeoutMs: 1000 }],
 };

@@ -12,7 +12,7 @@ import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { Library } from "../../src/v1/store";
-import { validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import {
   decide,
   decisionEvent,
@@ -139,7 +139,7 @@ test("three corrections change the workflow and the eval pair measures them", ()
   const blob = JSON.stringify(pair);
   assert.equal(blob.includes(secret), true);
   assert.equal(blob.includes("/tmp/secret-folder"), false);
-  assert.equal(pair.workflow.steps.some((step) => step.identity?.id === "note-input" && step.action === "click"), false);
+  assert.equal(pair.workflow.steps.some((step) => projectStep(step).identity?.id === "note-input" && step.action === "click"), false);
   const typed = pair.workflow.steps.find((step) => step.input === "note");
   assert.equal(typed?.intent, "type the note");
   const confirm = pair.workflow.steps.find((step) => step.action === "confirm");
@@ -239,8 +239,8 @@ test("marking a secret constant keeps its value, and a check is a verify step", 
     meta,
   );
   const step = checked.workflow.steps.find((item) => item.action === "verify");
-  assert.equal(step?.expect?.match, "Applied");
-  assert.equal(step?.human, undefined);
+  assert.equal((step ? projectStep(step).expect : undefined)?.match, "Applied");
+  assert.equal((step ? projectStep(step).human : undefined), undefined);
 });
 
 test("merge keeps the shared step and branches where the takes differ", async () => {
@@ -292,7 +292,7 @@ test("previously saved taught branches still load and replay with or without the
   const home = mkdtempSync(path.join(tmpdir(), "bao-taught-compat-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const saved: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-broken",
     name: "Broken",
@@ -435,7 +435,7 @@ function guardedDriver(texts: string[], clicks: string[]): Driver {
 }
 
 function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
-  const nodes = doc.steps.flatMap((step) => step.identity ? [step.identity] : []);
+  const nodes = doc.steps.flatMap((step) => projectStep(step).identity ? [projectStep(step).identity] : []);
   const values: LiveTree["values"] = [];
   return {
     tree: async () => ({ nodes, texts: ["Applied"], values, url: doc.startUrl }),

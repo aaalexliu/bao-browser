@@ -5,7 +5,7 @@ import { NEEDS_SECRET_VALUE } from "../../../shared/saved-secrets";
 import { condense, condenseWithGroups, droppedNoEffectIds } from "../../src/v1/condense";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { applyHybrid } from "../../src/v1/hybrid";
-import { validateWorkflow } from "../../src/v1/schema";
+import { projectStep, validateWorkflow } from "../../src/v1/schema";
 import { INTENT_CASES, noisyTrail } from "../../src/eval/intent/cases";
 import { HAND_LABELS } from "../../src/eval/intent/labels";
 import {
@@ -31,7 +31,7 @@ test("condense retains each redacted key and named key without inventing a liter
     { id: "backspace", ts: 4, kind: "act", op: "key", key: "Backspace" },
   ];
   const result = condenseWithGroups(events, { id: "redacted-keys", startUrl: "https://example.test/" });
-  assert.deepEqual(result.workflow.steps.map((step) => [step.action, step.key, step.unresolved?.reason]), [["key", undefined, NEEDS_SECRET_VALUE], ["key", undefined, NEEDS_SECRET_VALUE], ["key", "Enter", undefined], ["key", "Backspace", undefined]]);
+  assert.deepEqual(result.workflow.steps.map((step) => [step.action, projectStep(step).key, projectStep(step).unresolved?.reason]), [["key", undefined, NEEDS_SECRET_VALUE], ["key", undefined, NEEDS_SECRET_VALUE], ["key", "Enter", undefined], ["key", "Backspace", undefined]]);
   assert.deepEqual(result.groups.map((group) => group.map((event) => event.id)), events.map((event) => [event.id]));
 });
 
@@ -169,8 +169,8 @@ test("condense drops a partial retype, a wiped field, an undone click, and a rep
   assert.equal(blob.includes("nope"), false);
   assert.equal(blob.includes("Away"), false);
   assert.deepEqual(workflow.inputs.map((input) => input.default), ["Ada Lovelace"]);
-  assert.equal(workflow.steps.filter((step) => step.identity?.cssPath === "h2.title").length, 1);
-  assert.equal(workflow.steps.some((step) => step.identity?.id === "go"), true);
+  assert.equal(workflow.steps.filter((step) => projectStep(step).identity?.cssPath === "h2.title").length, 1);
+  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.id === "go"), true);
   assert.equal(workflow.steps.length, 3);
 });
 
@@ -185,7 +185,7 @@ test("hybrid can drop help and cannot drop a param or keep a secret literal", ()
   const applied = applyHybrid(base, {
     drop: [help.id, typed.id, "made-up"],
     summary: "Save Ada now",
-    steps: base.steps.map((step) => ({ id: step.id, intent: `Use SuperSecretPassword! then ${step.label}` })),
+    steps: base.steps.map((step) => ({ id: step.id, intent: `Use SuperSecretPassword! then ${projectStep(step).label}` })),
     human: [{ id: typed.id, gate: "confirm" }],
   }, ["SuperSecretPassword!"]);
   assert.equal(applied.workflow.steps.some((step) => step.id === help.id), false);

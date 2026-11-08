@@ -9,7 +9,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { formatClock } from "../../src/v1/time";
 
 const workflow: WorkflowV2 = {
-  schema: "bao.workflow/v2", version: 2, id: "statements", name: "Download statement", createdAt: 1,
+  schema: "bao.workflow/v4", version: 2, id: "statements", name: "Download statement", createdAt: 1,
   startUrl: "/fixture", inputs: [], steps: [{ id: "open", index: 0, action: "click", label: "Open statements", surface: "dom", identity: { surface: "dom", role: "button", name: "Statements", path: [] }, timeoutMs: 1000 }],
 };
 

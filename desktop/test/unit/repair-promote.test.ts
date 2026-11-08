@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import test from "node:test";
 import fc from "fast-check";
@@ -30,7 +31,7 @@ function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Freeze",

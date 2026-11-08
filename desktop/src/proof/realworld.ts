@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pinTestBrowser } from "../launch";
 import { startApp } from "../app/server";
+import { projectStep, stepQuery, stepTitle } from "../v1/schema";
 import type { WorkflowStep, WorkflowV2 } from "../v1/schema";
 import { pauseIsExpected, scoreBotWall, type TaskExpect } from "./task-expect";
 
@@ -828,7 +829,7 @@ async function runTask(port: number, home: string, task: Task): Promise<TaskResu
           if (index === 0 && step.action === "navigate") return { ...step, value: next };
           // Legacy Vector's Enter submits fulltext. The same key on the current skin opens the article.
           // Go is the control that still opens it.
-          if (task.id === "p7" && step.action === "key" && /^enter$/i.test(step.key || "")) return vectorGo(step);
+          if (task.id === "p7" && step.action === "key" && /^enter$/i.test(projectStep(step).key || "")) return vectorGo(step);
           return step;
         });
         const updated: WorkflowV2 = { ...current, startUrl: next, steps };
@@ -971,7 +972,7 @@ function judge(task: Task, input: ScoreInput, started: number): ReplayScore {
     heals,
     cause,
     detail,
-    failedStep: wf ? `${wf.id} ${wf.action} ${wf.label}` : failed?.id || "",
+    failedStep: wf ? `${wf.id} ${wf.action} ${stepTitle(wf)}` : failed?.id || "",
   };
 }
 
@@ -982,7 +983,7 @@ function replayStopped(run: RunView, workflow: WorkflowV2, openUrl: string, page
   const wf = workflow.steps.find((item) => item.id === step?.id);
   const reason = run.failure?.reason || step?.reason || run.status || "stopped";
   const phase = run.failure?.phase || step?.phase || "";
-  const label = wf ? `${wf.action} "${wf.label}"` : step?.id || "run";
+  const label = wf ? `${wf.action} "${stepTitle(wf)}"` : step?.id || "run";
   const detail = `${label}: ${phase} ${reason}`.replace(/\s+/g, " ").trim();
   const hay = `${reason} ${label} ${page.title || ""} ${(page.text || "").slice(0, 400)}`;
   if (/captcha|turnstile|cloudflare|not a bot|verify you are human|security verification/i.test(hay)) {
@@ -1038,7 +1039,7 @@ export function scoreP3(input: ScoreInput): { pass: boolean; cause: string; deta
   const nights = input.run === 1 ? 2 : 3;
   const text = evidence(input);
   const summary = text.match(/[£$](\d+)\s*x\s*(\d+)\s*nights?\s*[£$](\d+)([\s\S]*?)\bTotal\s*[£$](\d+)/i);
-  const pressed = input.workflow.steps.some((step) => step.action === "click" && /reserve now/i.test(step.label));
+  const pressed = input.workflow.steps.some((step) => step.action === "click" && /reserve now/i.test(projectStep(step).label));
   if (!summary) return { pass: false, cause: "date picker", detail: `summary did not show ${nights} nights` };
   const rate = Number(summary[1]);
   const gotNights = Number(summary[2]);
@@ -1127,7 +1128,7 @@ function scoreP6(input: ScoreInput): { pass: boolean; cause: string; detail: str
   const text = input.page.text || "";
   const missing = wanted.filter((name) => !text.includes(name));
   const dupes = wanted.filter((name) => occurrences(text, name) > 1);
-  if (input.run === 2 && input.workflow.steps.filter((step) => /add/i.test(step.label)).length < 5 && missing.length) {
+  if (input.run === 2 && input.workflow.steps.filter((step) => /add/i.test(projectStep(step).label)).length < 5 && missing.length) {
     return { pass: false, cause: "missing step type", detail: `no for-each; table missed ${missing.join(", ")}` };
   }
   if (missing.length || dupes.length) return { pass: false, cause: "pass check", detail: `missing ${missing.join(", ") || "none"}; duplicates ${dupes.join(", ") || "none"}` };
@@ -1156,7 +1157,7 @@ function scoreP7(input: ScoreInput): { pass: boolean; cause: string; detail: str
 function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = evidence(input);
   const prompt = input.run === 1 ? "alpha-prompt" : "beta-prompt";
-  const dialog = input.workflow.steps.some((step) => /dialog|alert|prompt|confirm/i.test(`${step.label} ${JSON.stringify(step).slice(0, 200)}`));
+  const dialog = input.workflow.steps.some((step) => /dialog|alert|prompt|confirm/i.test(`${projectStep(step).label} ${JSON.stringify(step).slice(0, 200)}`));
   const entered = text.includes(`You entered: ${prompt}`) || text.includes(prompt);
   const heading = /New Window/i.test(text);
   if (!entered || !heading) {
@@ -1168,7 +1169,7 @@ function scoreP8(input: ScoreInput): { pass: boolean; cause: string; detail: str
 
 export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = evidence(input);
-  const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(step.label));
+  const pressed = input.workflow.steps.some((step) => step.action === "click" && /place order/i.test(projectStep(step).label));
   if (pressed) return { pass: false, cause: "missing step type", detail: "Place Order was clicked" };
   if (!/YouTube Organic Cotton/i.test(text) || !/\$29\.50/.test(text)) {
     return { pass: false, cause: "shadow DOM", detail: "the cart did not show the YouTube shirt at $29.50" };
@@ -1184,7 +1185,7 @@ export function scoreP9(input: ScoreInput): { pass: boolean; cause: string; deta
 function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const labels = input.run === 1 ? ["Alpha", "Beta"] : ["Gamma", "Delta"];
   const text = evidence(input);
-  const canvasClicks = input.workflow.steps.filter((step) => /canvas/i.test(JSON.stringify(step.identity || {}))).length;
+  const canvasClicks = input.workflow.steps.filter((step) => /canvas/i.test(JSON.stringify(projectStep(step).identity || {}))).length;
   if (!/excalidraw/i.test(text) && canvasClicks === 0) {
     return { pass: false, cause: "missing step type", detail: "canvas clicks were not recorded as steps" };
   }
@@ -1193,7 +1194,7 @@ function scoreP13(input: ScoreInput): { pass: boolean; cause: string; detail: st
 
 function scoreP14(input: ScoreInput): { pass: boolean; cause: string; detail: string } {
   const text = `${input.page.title || ""} ${input.page.text || ""} ${evidence(input)}`;
-  const stepText = input.workflow.steps.map((step) => `${step.label} ${step.identity?.text || ""} ${step.identity?.name || ""}`).join("\n");
+  const stepText = input.workflow.steps.map((step) => `${projectStep(step).label} ${projectStep(step).identity?.text || ""} ${projectStep(step).identity?.name || ""}`).join("\n");
   return scoreBotWall({ expect: input.expect, replay: input.replay, pageText: text, stepText });
 }
 
@@ -1235,7 +1236,7 @@ function summarizeWorkflow(workflow: WorkflowV2, openUrl: string, recordError: s
     steps: workflow.steps.length,
     actions,
     inputs: workflow.inputs.map((input) => `${input.name}:${input.type}${input.default ? `=${input.default}` : ""}`),
-    labels: workflow.steps.map((step) => `${step.action} ${step.label}`).slice(0, 40),
+    labels: workflow.steps.map((step) => `${step.action} ${projectStep(step).label}`).slice(0, 40),
     recordError: recordError || undefined,
   };
 }
@@ -1396,10 +1397,9 @@ function dropVolatileExpects(workflow: WorkflowV2): WorkflowV2 {
   return {
     ...workflow,
     steps: workflow.steps.map((step) => {
-      const next = { ...step };
-      if (next.expect?.match && volatile.test(next.expect.match)) delete next.expect;
-      if (next.postcondition?.match && volatile.test(next.postcondition.match)) delete next.postcondition;
-      return next;
+      if (step.action === "verify" || !("check" in step) || !step.check || !("match" in step.check) || !step.check.match || !volatile.test(step.check.match)) return step;
+      const { check: _drop, ...rest } = step;
+      return rest;
     }),
   };
 }
@@ -1460,7 +1460,7 @@ function hostPath(value: string): string {
 
 /** Run 2 books one more night than the recording. A range is one date step; older runs stored the days as clicks. */
 function shiftBookingNights(workflow: WorkflowV2): WorkflowV2 | undefined {
-  const endName = workflow.steps.find((step) => step.datePicker?.endInput)?.datePicker?.endInput;
+  const endName = workflow.steps.find((step) => step.action === "pickDate")?.date.endInput;
   if (endName) {
     let bumped = false;
     const inputs = workflow.inputs.map((input) => {
@@ -1473,10 +1473,10 @@ function shiftBookingNights(workflow: WorkflowV2): WorkflowV2 | undefined {
     });
     if (bumped) return { ...workflow, inputs };
   }
-  const days = workflow.steps.filter((step) => step.action === "click" && /^\d{2}$/.test(step.identity?.text || step.identity?.name || ""));
+  const days = workflow.steps.filter((step) => step.action === "click" && /^\d{2}$/.test(stepQuery(step)?.text || stepQuery(step)?.name || ""));
   if (days.length < 2) return undefined;
-  const start = Number(days[0]?.identity?.text || days[0]?.identity?.name);
-  const end = Number(days[days.length - 1]?.identity?.text || days[days.length - 1]?.identity?.name);
+  const start = Number(stepQuery(days[0])?.text || stepQuery(days[0])?.name);
+  const end = Number(stepQuery(days[days.length - 1])?.text || stepQuery(days[days.length - 1])?.name);
   if (!start || !end || end <= start) return undefined;
   const from = String(end).padStart(2, "0");
   const to = String(start + 3).padStart(2, "0");
@@ -1497,24 +1497,19 @@ function bumpDay(value: string | undefined): string | undefined {
 
 function vectorGo(step: WorkflowStep): WorkflowStep {
   return {
-    ...step,
+    id: step.id,
+    index: step.index,
     action: "click",
-    key: undefined,
-    label: "Click \"Go\"",
-    identity: {
-      surface: "dom",
-      role: "button",
-      id: "searchButton",
-      tag: "input",
-      nameAttr: "go",
-      cssPath: "#searchButton",
-      text: "Go",
-      path: [],
+    timeoutMs: step.timeoutMs,
+    caption: { text: "Click Go", citation: { text: "Go", source: "text" } },
+    target: {
+      locators: [
+        { kind: "css", value: "#searchButton" },
+        { kind: "xpath", value: "//*[@id=\"searchButton\"]" },
+        { kind: "role", role: "button", name: "Go" },
+      ],
+      hint: { role: "button", nameAttr: "go", surface: "dom" },
     },
-    locators: [
-      { kind: "css", value: "#searchButton" },
-      { kind: "xpath", value: "//*[@id=\"searchButton\"]" },
-    ],
   };
 }
 

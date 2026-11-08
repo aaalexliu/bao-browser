@@ -18,7 +18,7 @@ import { saveState, syncAll } from "../../src/v1/sync";
 
 function workflow(id: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id, name: "Synthetic picture upload", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id, name: "Synthetic picture upload", createdAt: 1,
     startUrl: "http://127.0.0.1:9/fixture", inputs: [],
     steps: [{ id: "go", index: 0, action: "click", label: "Click Pay", surface: "dom", timeoutMs: 1000 }],
   };

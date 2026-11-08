@@ -12,7 +12,7 @@ test("Workflows reserves native titlebar space and keeps narrow navigation above
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
     for (let index = 0; index < 60; index++) app.library.save({
-      schema: "bao.workflow/v2", version: 2, id: `wf-${index}`, name: `Read statement ${index}`,
+      schema: "bao.workflow/v4", version: 2, id: `wf-${index}`, name: `Read statement ${index}`,
       createdAt: index, startUrl: "https://example.test/", inputs: [], steps: [],
     });
     browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });

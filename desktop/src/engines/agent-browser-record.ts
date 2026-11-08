@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
+import { commandSentence } from "../v1/caption";
+import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
 import { describeStep, landmarkKeys, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
@@ -21,6 +23,7 @@ export interface StepContext {
 export interface RecordedAgentBrowserCommand {
   id: string;
   label: string;
+  caption: StepCaption;
   status: "pending" | "passed" | "failed";
   startedAt: number;
   endedAt?: number;
@@ -55,7 +58,7 @@ export class AgentBrowserRun {
   private readonly run: Omit<StoredRun, "steps"> & {
     steps: RecordedAgentBrowserCommand[];
   } = {
-    id: `run-${randomUUID()}`, kind: "capture", pageEngine: "agent-browser", workflowId: "agent-browser",
+    id: `run-${randomUUID()}`, schema: RUN_SCHEMA_ID, kind: "capture", pageEngine: "agent-browser", workflowId: "agent-browser",
     status: "recording", at: Date.now(), steps: [], heals: [],
   };
   private readonly shots: string;
@@ -88,12 +91,20 @@ export class AgentBrowserRun {
   async actionPicture(step: RecordedAgentBrowserCommand, bytes: Buffer, target: NonNullable<RecordedAgentBrowserCommand["target"]>): Promise<void> {
     step.beforeShot = await this.picture(step, bytes, "before");
     step.target = target;
+    step.caption = {
+      ...step.caption,
+      targetBox: { x: target.rect.x, y: target.rect.y, width: target.rect.width, height: target.rect.height, viewport: target.viewport },
+    };
     this.persist();
   }
 
   begin(command: string, args: string[]): RecordedAgentBrowserCommand {
+    const spoken = commandSentence(command, args[0], latestSnapshot(this.run.steps));
+    const caption: StepCaption = { text: spoken.text, ...(spoken.citation ? { citation: spoken.citation } : {}) };
     const step: RecordedAgentBrowserCommand = {
-      id: `command-${this.run.steps.length + 1}`, label: [command, ...args.map((arg) => JSON.stringify(arg))].join(" "),
+      id: `command-${this.run.steps.length + 1}`,
+      label: stepTitle({ caption }),
+      caption,
       status: "pending", startedAt: Date.now(), native: { command, args: [...args], results: [], isError: false, screenshots: [] },
     };
     this.run.steps.push(step);
@@ -196,7 +207,15 @@ export class AgentBrowserRun {
   }
 
   private persist(): void {
-    try { new Library(this.home).saveRun(this.run); }
+    try {
+      new Library(this.home).saveRun({
+        ...this.run,
+        steps: this.run.steps.map((step) => ({
+          ...step,
+          native: { ...step.native, results: [] },
+        })),
+      });
+    }
     catch { this.warn("run write"); }
   }
 
@@ -207,6 +226,16 @@ export class AgentBrowserRun {
 
 function pageKey(url: string): string {
   return url.replace(/#.*$/, "");
+}
+
+function latestSnapshot(steps: RecordedAgentBrowserCommand[]): string | undefined {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]!;
+    if (step.native.command !== "snapshot") continue;
+    const text = step.native.results.find((result) => result.exitCode === 0 && result.stdout.includes("[ref="))?.stdout;
+    if (text) return text;
+  }
+  return undefined;
 }
 
 function screenshotPath(stdout: string): string | undefined {

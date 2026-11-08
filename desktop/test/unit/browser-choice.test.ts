@@ -17,7 +17,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
-const workflow = (startUrl: string, id = "choice"): WorkflowV2 => ({ schema: "bao.workflow/v2", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
+const workflow = (startUrl: string, id = "choice"): WorkflowV2 => ({ schema: "bao.workflow/v4", version: 2, id, name: "Read account", startUrl, inputs: [], createdAt: 1,
   steps: [{ id: "account", index: 0, action: "verify", label: "Check the signed-in account", surface: "dom", timeoutMs: 1000, postcondition: { kind: "text", match: "Signed in as fixture", timeoutMs: 1000 } }],
 });
 

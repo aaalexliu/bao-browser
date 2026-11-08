@@ -744,7 +744,7 @@ test("a longer upgrade path is not swallowed by the relay hook", async () => {
 
 function workflow(id: string, driver?: WorkflowV2["driver"]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: id,

@@ -70,7 +70,7 @@ import { captureStartUrl, extractPickerHtml, outputCsv, parseCsv, specFromPropos
 import { installDataPage } from "../v1/data-page";
 import { explain, type TrailEvent } from "../v1/interpret";
 import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
-import { isClearPageShot, isPageAct, selectCardPoster } from "../v1/poster";
+import { isPageAct, selectCardPoster } from "../v1/poster";
 import { applySaveEdits, inferSavedWorkflow, saveCompleter } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
 import {
@@ -125,9 +125,9 @@ import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
-import { migrate, type HealMode, type ReplayArgs, type WorkflowV2 } from "../v1/schema";
-import { applyImportAnswers, importQuestions, markImported } from "../../../web/src/lib/import-sheet";
-import { savedValueLine } from "../v1/saved-inputs";
+import { projectStep, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { runRecordStatus } from "../v1/run-status";
+import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 import type { Settings } from "../v1/store";
@@ -577,7 +577,7 @@ export async function startApp(opts: {
         if (!pendingDoc) return json(res, { ok: false, error: "nothing to import" }, 400);
         const body = await readBody(req) as { answers?: Record<string, unknown> };
         try {
-          const installed = markImported(migrate(applyImportAnswers(pendingDoc, body.answers || {})), body.answers || {}) as WorkflowV2;
+          const installed = parseWorkflow(applyImportAnswers(pendingDoc, body.answers || {}));
           library.save(installed);
           pendingDoc = null;
           opened = {
@@ -1577,12 +1577,7 @@ export async function startApp(opts: {
         if (body.stepHeal?.stepId) {
           const doc = library.read(id);
           const policy = stepHealChoice(body.stepHeal.heal);
-          const steps = doc.steps.map((step) => {
-            if (step.id !== body.stepHeal?.stepId) return step;
-            if (policy) return { ...step, heal: policy };
-            const { heal: _drop, ...rest } = step;
-            return rest;
-          });
+          const steps = doc.steps.map((step) => step.id === body.stepHeal?.stepId ? applyStepHeal(step, policy) : step);
           const next = { ...doc, steps, updatedAt: Date.now() };
           draftVersion(library, next, "edit");
           return json(res, next);
@@ -2220,13 +2215,13 @@ export async function startApp(opts: {
           inputs: projected.workflow.inputs.map((input) => ({ name: input.name, type: input.type })),
           steps: projected.workflow.steps.map((step) => ({
             id: step.id,
-            label: step.label,
-            intent: step.intent,
+            label: projectStep(step).label,
+            intent: projectStep(step).intent,
             action: step.action,
-            human: step.human,
-            value: step.value,
-            input: step.input,
-            sensitive: step.sensitive,
+            human: projectStep(step).human,
+            value: projectStep(step).value,
+            input: projectStep(step).input,
+            sensitive: projectStep(step).sensitive,
           })),
         },
       } : undefined,
@@ -2326,13 +2321,14 @@ export async function startApp(opts: {
     await driver.watchGuide();
     const runId = `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const first = workflow.steps[0];
+    const firstView = first ? projectStep(first) : undefined;
     guideLive = {
       workflowId: workflow.id,
       runId,
       index: 0,
       total: workflow.steps.length,
       stepId: first?.id || "",
-      intent: first?.intent || first?.label || "",
+      intent: firstView?.intent || firstView?.label || "",
       status: "highlight",
       actions: 0,
     };
@@ -2348,10 +2344,7 @@ export async function startApp(opts: {
       index: Math.max(0, workflow.steps.length - 1),
       total: workflow.steps.length,
       stepId: result.steps[result.steps.length - 1]?.id || first?.id || "",
-      intent: first ? (workflow.steps.find((step) => step.id === (result.steps[result.steps.length - 1]?.id || ""))?.intent
-        || workflow.steps.find((step) => step.id === (result.steps[result.steps.length - 1]?.id || ""))?.label
-        || guideLive?.intent
-        || "") : "",
+      intent: guideIntent(workflow, result.steps[result.steps.length - 1]?.id || "", guideLive?.intent || ""),
       status: result.status,
       actions: result.actions,
     };
@@ -2588,6 +2581,26 @@ function stepHealChoice(value: string | null | undefined): "auto" | "ask" | "nev
   return undefined;
 }
 
+function applyStepHeal(step: WorkflowStep, policy: "auto" | "ask" | "never" | undefined): WorkflowStep {
+  if (step.action === "extract") {
+    if (policy === "never") return { ...step, heal: "never" };
+    if (policy) return step;
+    const cleared = { ...step };
+    delete cleared.heal;
+    return cleared;
+  }
+  if (policy) return { ...step, heal: policy };
+  const cleared = { ...step };
+  delete cleared.heal;
+  return cleared;
+}
+
+function guideIntent(workflow: WorkflowV2, stepId: string, fallback: string): string {
+  const step = workflow.steps.find((item) => item.id === stepId);
+  const view = step ? projectStep(step) : undefined;
+  return view?.intent || view?.label || fallback;
+}
+
 interface LoginGate {
   baoProfile: string;
   sites: SiteStore;
@@ -2679,12 +2692,13 @@ function persistedRun(
   const needsHuman = result.pausedKind === "wall" || result.pausedKind === "confirm";
   const savedValues = savedValueLine(workflow, args);
   const stored: Parameters<Library["saveRun"]>[0] & { console: unknown; network: unknown } = {
+    schema: "bao.run/v4",
     id: result.runId,
     pageEngine: result.pageEngine,
     traceUnavailable: result.traceUnavailable,
     videoTruncated: result.videoTruncated,
     workflowId: workflow.id,
-    status: needsHuman ? "needs_human" : result.status,
+    status: result.pausedKind === "signin" ? runRecordStatus({ outcome: "paused", pausedKind: "signin" }) : needsHuman ? "needs_human" : result.status === "failed" ? runRecordStatus({ outcome: "failed" }) : result.status,
     at: Date.now(),
     heals: result.heals,
     failure: result.failure,
@@ -2739,7 +2753,7 @@ function rememberHostGrant(
 ) {
   const step = workflow.steps[0];
   const stepId = step?.id || "open";
-  const label = step?.label || "Open the site";
+  const label = (step ? projectStep(step).label : undefined) || "Open the site";
   const ask: HumanAsk = {
     kind: "wall",
     workflowId: workflow.id,
@@ -2767,7 +2781,7 @@ function rememberHostGrant(
     failure: {
       stepId,
       index: step?.index ?? 0,
-      intent: step?.intent || label,
+      intent: (step ? projectStep(step).intent : undefined) || label,
       phase: "find",
       reason: message,
       snapshot: {},
@@ -3334,11 +3348,11 @@ function summary(doc: WorkflowV2) {
     steps: doc.steps.length,
     inputs: doc.inputs,
     heal: doc.heal,
-    heals: doc.steps.filter((step) => step.label.startsWith("healed")).length,
+    heals: doc.steps.filter((step) => projectStep(step).label.startsWith("healed")).length,
     replayed: doc.replayed,
-    waits: doc.steps.filter((step) => step.action === "login" || step.action === "confirm").length,
-    expects: doc.steps.filter((step) => step.action === "verify" || step.expect || step.readBack).length,
-    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: doc.steps[0].label } : undefined,
+    waits: doc.steps.filter((step) => step.action === "login").length,
+    expects: doc.steps.filter((step) => step.action === "verify" || projectStep(step).expect || step.readBack).length,
+    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: projectStep(doc.steps[0]).label } : undefined,
     startUrl: doc.startUrl,
     driver: refusesOwnedBrowser(doc.driver) ? doc.driver : workflowDriver(doc),
   };
@@ -3442,13 +3456,8 @@ function croppedPng(file: string): boolean {
 }
 
 function workflowPoster(library: Library, id: string): string | undefined {
-  const workflow = library.read(id);
-  const dir = path.join(library.root, "shots", "workflows", id);
-  const poster = path.join(dir, "poster.png");
-  const live = workflow.driver === "cdp-live";
-  const candidates = live ? [poster, ...workflow.steps.map((step) => path.join(dir, workflowShotName(step.id)))] : [poster];
-  const usable = live ? isClearPageShot : isFullPageShot;
-  return candidates.find((file) => existsSync(file) && usable(readFileSync(file)));
+  const poster = path.join(library.root, "shots", "workflows", id, "poster.png");
+  return existsSync(poster) && isFullPageShot(readFileSync(poster)) ? poster : undefined;
 }
 
 function spillBinaryShots(result: { heals: HealRecord[]; failure?: { snapshot?: { screenshot?: string; screenshotRef?: string } } }, dir: string): void {

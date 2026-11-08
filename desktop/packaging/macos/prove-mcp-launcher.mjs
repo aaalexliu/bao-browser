@@ -15,7 +15,7 @@ const agentDir = path.join(scratch, "agent");
 
 function plant(dir, id) {
   mkdirSync(path.join(dir, "workflows"), { recursive: true });
-  const workflow = { schema: "bao.workflow/v2", version: 2, id, name: id, startUrl: "https://example.com/", inputs: [], steps: [], createdAt: 1 };
+  const workflow = { schema: "bao.workflow/v4", version: 2, id, name: id, startUrl: "https://example.com/", inputs: [], steps: [], createdAt: 1 };
   writeFileSync(path.join(dir, "workflows", `${id}.json`), `${JSON.stringify(workflow)}\n`);
 }
 

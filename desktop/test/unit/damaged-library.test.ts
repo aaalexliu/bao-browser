@@ -14,7 +14,7 @@ import { Library } from "../../src/v1/store";
 import { loadState, saveState, syncAll, syncStatus } from "../../src/v1/sync";
 
 function workflow(id: string, createdAt = 1): WorkflowV2 {
-  return { schema: "bao.workflow/v2", version: 2, id, name: `Workflow ${id}`, createdAt, startUrl: "https://example.test/", inputs: [], steps: [] };
+  return { schema: "bao.workflow/v4", version: 2, id, name: `Workflow ${id}`, createdAt, startUrl: "https://example.test/", inputs: [], steps: [] };
 }
 
 function fixture() {

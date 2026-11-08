@@ -62,7 +62,7 @@ test("run_workflow installs and runs a marketplace listing without an allow reco
   let submits = 0;
   let approvalRequests = 0;
   const document = {
-    schema: "bao.workflow/v2", version: 2, id: "trust-1", name: "Place Order", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "trust-1", name: "Place Order", createdAt: 1,
     get startUrl() { return `${origin}/fixture`; },
     inputs: [],
     steps: [{ id: "send", index: 0, action: "click", label: "Submit the order", surface: "dom", timeoutMs: 1000,

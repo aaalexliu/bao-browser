@@ -20,6 +20,7 @@ import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
+import { runStatusWord } from "../v1/run-status";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 import type { Identity } from "../v1/schema";
 
@@ -537,9 +538,21 @@ function ownerCheckLimit(step: StepView | undefined): string | undefined {
   return `${ms / 1000} s`;
 }
 
-function stepLabel(step: StepView, workflowSteps: { id: string; label?: string; action?: string }[]): string {
+function stepLabel(step: StepView, workflowSteps: { id: string; caption?: { text: string; citation?: { text: string } }; label?: string; action?: string }[]): string {
+  if (step.caption?.text) return quotedCaption(step.caption);
   const match = workflowSteps.find((item) => item.id === step.id);
+  if (match?.caption?.text) return quotedCaption(match.caption);
   return step.label || match?.label || match?.action || step.id;
+}
+
+function quotedCaption(caption: { text: string; citation?: { text: string } }): string {
+  const cite = caption.citation?.text?.trim();
+  if (!cite) return caption.text;
+  const quoted = `"${cite}"`;
+  if (caption.text.includes(quoted)) return caption.text;
+  const at = caption.text.indexOf(cite);
+  if (at >= 0) return `${caption.text.slice(0, at)}${quoted}${caption.text.slice(at + cite.length)}`;
+  return `${caption.text} (${quoted})`;
 }
 
 export interface ViewerContext {
@@ -625,7 +638,7 @@ export function runViewer(
         brokenAttr: failure?.brokenAttr,
       })
       : `${esc(workflow.name)} ${run.kind === "capture" ? "recorded" : "passed"}`;
-  const statusWord = run.kind === "capture" ? statusLabel(runKind(run)) : run.status === "needs_human" ? "needs you" : run.status === "passed" ? "passed" : run.status === "paused" ? "paused" : run.status === "timed-out" ? "stopped, timed out" : "refused";
+  const statusWord = run.kind === "capture" ? statusLabel(runKind(run)) : runStatusWord(run.status);
   const badge = modelCalls === undefined ? "" : modelCalls === 0
     ? `<span class="badge quiet-badge" id="model-calls">0 model calls</span>`
     : `<span class="badge" id="model-calls">${modelCalls} model call${modelCalls === 1 ? "" : "s"}</span>`;
@@ -649,7 +662,7 @@ export function runViewer(
   const routeLine = ran ? `<p id="route-ran" data-route="${esc(ran)}">Route: ${esc(ran)}</p>` : "";
   const before = selected ? frameUrl(run.id, selected, failure, "before") : "";
   const after = selected ? frameUrl(run.id, selected, failure, "after") : "";
-  const shot = shotPane(before, after, selected?.action, selected?.label || "", selected?.beforeShotError, selected?.afterShotError);
+  const shot = shotPane(before, after, selected?.action, stepLabel(selected || { id: "" }, workflow.steps), selected?.beforeShotError, selected?.afterShotError, selected?.target);
   const table = identityTable(identity);
   const panel = failurePanel(selected, failure, identity);
   const video = videoBar(run, steps);
@@ -877,15 +890,16 @@ function frameUrl(runId: string, step: StepView, failure: FailureView | undefine
     || imageRef(runId, failure.beforeShot);
 }
 
-function shotPane(before: string, after: string, action?: string, label?: string, beforeError?: string, afterError?: string): string {
-  const which = after || afterError ? "after" : "before";
+function shotPane(before: string, after: string, action?: string, label?: string, beforeError?: string, afterError?: string, target?: StepView["target"]): string {
+  const which = target && before ? "before" : after || afterError ? "after" : "before";
   const missing = "No picture was saved for this step.";
+  const box = target ? `${target.rect.x},${target.rect.y},${target.rect.width},${target.rect.height},${target.viewport.width},${target.viewport.height}` : "";
   return `<div class="shots" id="shots">
     <div class="row">
       <button type="button" class="toggle ${which === "before" ? "on" : ""}" data-frame="before">Before</button>
       <button type="button" class="toggle ${which === "after" ? "on" : ""}" data-frame="after">After</button>
     </div>
-    <div class="shot-stage" id="shot-stage" data-before="${esc(before)}" data-after="${esc(after)}" data-before-error="${esc(beforeError || missing)}" data-after-error="${esc(afterError || missing)}" data-which="${which}">${placeholder(action, label || "This step")}<p class="quiet" data-shot-error hidden></p></div>
+    <div class="shot-stage" id="shot-stage" data-before="${esc(before)}" data-after="${esc(after)}" data-before-error="${esc(beforeError || missing)}" data-after-error="${esc(afterError || missing)}" data-which="${which}" data-box="${esc(box)}">${placeholder(action, label || "This step")}<p class="quiet" data-shot-error hidden></p></div>
   </div>`;
 }
 
@@ -1420,6 +1434,7 @@ export interface StepCard {
   index?: number;
   action?: string;
   label?: string;
+  caption?: { text: string; citation?: { text: string } };
   intent?: string;
   human?: boolean;
   sensitive?: boolean;
@@ -1497,7 +1512,8 @@ function workflowStepKind(step: StepCard): { label: string; glyph: string } {
 }
 
 function workflowStepTitle(step: StepCard, inputs: TokenInput[]): string {
-  return workflowInputLabels(step.label || step.action || step.id, inputs);
+  const text = step.caption?.text ? quotedCaption(step.caption) : step.label || step.action || step.id;
+  return workflowInputLabels(text, inputs);
 }
 
 function workflowInputLabels(text: string, inputs: TokenInput[]): string {

@@ -63,7 +63,7 @@ test("production remote confirms continue locally once and reject non-held order
       postcondition: { kind: "text", match: "Placed", timeoutMs: 3000 },
     };
     const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "failed-order", name: "Synthetic order", createdAt: 1,
+      schema: "bao.workflow/v4", version: 2, id: "failed-order", name: "Synthetic order", createdAt: 1,
       startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [placed, {
         id: "missing", index: 1, action: "click", label: "Missing follow-up", surface: "dom", timeoutMs: 0, heal: "never",
         identity: { surface: "dom", role: "button", id: "missing", name: "Missing follow-up", path: [] },
@@ -284,7 +284,7 @@ for (const observationFailure of ["navigation", "unreadable"] as const) {
       const address = site.address();
       assert.ok(address && typeof address === "object");
       library.save({
-        schema: "bao.workflow/v2", version: 2, id: "observer-order", name: "Observer order", createdAt: 1,
+        schema: "bao.workflow/v4", version: 2, id: "observer-order", name: "Observer order", createdAt: 1,
         startUrl: `http://127.0.0.1:${address.port}/`, inputs: [], steps: [
           { id: "confirm", index: 0, action: "confirm", human: true, label: "Finish on the site", surface: "dom", timeoutMs: 5000, postcondition: { kind: "text", match: "Ready", timeoutMs: 1000 } },
           { id: "finish", index: 1, action: "click", label: "Finish", surface: "dom", timeoutMs: 1000, heal: "never",

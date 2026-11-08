@@ -12,7 +12,7 @@ const fileBytes = `{
   "id": "export-é",
   "inputs": [],
   "name": "Café & notes",
-  "schema": "bao.workflow/v2",
+  "schema": "bao.workflow/v4",
   "startUrl": "http://127.0.0.1:9/fixture",
   "steps": [
     {

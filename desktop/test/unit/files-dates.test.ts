@@ -25,7 +25,7 @@ import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 const v2Schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
@@ -604,7 +604,7 @@ test("a datepicker opener is dropped and the day becomes one date input", () => 
   ], { id: "wf-dob", startUrl: "https://demoqa.com/automation-practice-form", zone: ZONE });
   const date = doc.inputs.find((item) => item.type === "date");
   assert.equal(date?.name, "dateOfBirthInput");
-  assert.equal(doc.steps.filter((step) => step.datePicker).length, 1);
+  assert.equal(doc.steps.filter((step) => projectStep(step).datePicker).length, 1);
   assert.equal(doc.steps.some((step) => step.action === "select"), false);
-  assert.equal(doc.steps.some((step) => step.action === "click" && !step.datePicker), false);
+  assert.equal(doc.steps.some((step) => step.action === "click" && !projectStep(step).datePicker), false);
 });

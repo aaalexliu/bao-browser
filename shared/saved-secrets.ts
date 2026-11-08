@@ -1,4 +1,5 @@
 import { INPUT_BINDING } from "./bindings";
+import { projectStep } from "../desktop/src/v1/schema";
 import type { ReplayArgs, WorkflowV2, WorkflowStep } from "../desktop/src/v1/schema";
 
 export const STRIPPED_SECRET = "[secret stripped]";
@@ -13,7 +14,7 @@ export function isSealedArtifact(value: unknown): boolean {
   if (typeof value === "string") return /^sha256:[a-f0-9]{64}$/.test(value);
   const node = record(value);
   return node.kind === "read-back" && typeof node.hash === "string" && node.hash.length > 0
-    || typeof node.documentHash === "string" && node.documentHash.length > 0 && record(node.document).schema === "bao.workflow/v2";
+    || typeof node.documentHash === "string" && node.documentHash.length > 0 && record(node.document).schema === "bao.workflow/v4";
 }
 
 export function oneTimeCodeField(value: unknown): boolean {
@@ -22,9 +23,12 @@ export function oneTimeCodeField(value: unknown): boolean {
 }
 
 export function oneTimeCodeInput(workflow: Pick<WorkflowV2, "steps">, name: string): boolean {
-  return workflow.steps.some((step) => oneTimeCodeField(step.identity) && (step.input === name
-    || typeof step.value === "string" && [...step.value.matchAll(INPUT_BINDING)].some((match) => match[1] === name))
-    || !!step.forEach && oneTimeCodeInput(step.forEach, name));
+  return workflow.steps.some((step) => {
+    const view = projectStep(step);
+    return oneTimeCodeField(view.identity) && (view.input === name
+      || typeof view.value === "string" && [...view.value.matchAll(INPUT_BINDING)].some((match) => match[1] === name)
+      || !!view.forEach && oneTimeCodeInput(view.forEach, name));
+  });
 }
 
 export function reusableInputs(workflow: Pick<WorkflowV2, "steps">, args: ReplayArgs): ReplayArgs {
@@ -52,14 +56,15 @@ export function hasStrippedSecret(value: unknown): boolean {
 }
 
 export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, args: ReplayArgs): boolean {
-  const reason = step.unresolved?.reason;
-  if (reason === "redacted key" || hasStrippedSecret(step.key)) return true;
-  const override = step.input && args[step.input] != null && ["type", "digits", "select"].includes(step.action);
-  if (!override && hasStrippedSecret(step.value)) return true;
+  const view = projectStep(step);
+  const reason = view.unresolved?.reason;
+  if (reason === "redacted key" || hasStrippedSecret(view.key)) return true;
+  const override = view.input != null && args[view.input] != null && ["type", "digits", "select"].includes(step.action);
+  if (!override && hasStrippedSecret(view.value)) return true;
   const inputs = new Set<string>();
-  if (step.input) inputs.add(step.input);
-  if (typeof step.value === "string") for (const match of step.value.matchAll(INPUT_BINDING)) inputs.add(match[1]!);
-  const source = step.forEach?.over;
+  if (view.input) inputs.add(view.input);
+  if (typeof view.value === "string") for (const match of view.value.matchAll(INPUT_BINDING)) inputs.add(match[1]!);
+  const source = view.forEach?.over;
   const tableName = source?.kind === "input" ? source.name : undefined;
   if (tableName) inputs.add(tableName);
   if ([...inputs].some((name) => {

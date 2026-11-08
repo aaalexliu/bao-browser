@@ -70,7 +70,7 @@ test("rendered product pages never contain the listen address", () => {
     now: 1_000,
   });
   const doc: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Fixture",

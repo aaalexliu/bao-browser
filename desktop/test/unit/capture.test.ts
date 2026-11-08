@@ -8,7 +8,7 @@ import { startApp } from "../../src/app/server";
 import { BrowserDriver, elementShot, pagePoster } from "../../src/v1/browser-driver";
 import { interpret } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
-import { validateWorkflow } from "../../src/v1/schema";
+import { projectStep, validateWorkflow } from "../../src/v1/schema";
 
 test("idle capture stays unpaused and rejects recording input", () => {
   const capture = new Capture();
@@ -50,7 +50,7 @@ test("paused capture keeps handoffs, notes and checks while dropping UI events",
   assert.equal(capture.recording, true);
   assert.equal(capture.paused, false);
   assert.equal(capture.push({ kind: "act", op: "click" }), true);
-  assert.deepEqual(capture.steps.map((step) => step.label), ["Check: Welcome", "Click"]);
+  assert.deepEqual(capture.steps.map((step) => projectStep(step).label), ["Check: Welcome", "Click"]);
 });
 
 for (const paused of [false, true]) {
@@ -130,7 +130,7 @@ test("pause drops UI events while notes retain typed values", () => {
   assert.equal(check.label, "Check: Welcome");
   assert.equal(capture.note("123-45-6789").note, "123-45-6789");
   assert.equal(capture.events.some((event) => event.op === "note" && event.afterText === "123-45-6789"), true);
-  assert.equal(capture.steps.map((step) => step.label).join("|"), "Click Open|Check: Welcome");
+  assert.equal(capture.steps.map((step) => projectStep(step).label).join("|"), "Click Open|Check: Welcome");
   assert.equal(capture.steps[0]?.note, "wait for the banner");
   assert.equal(capture.steps[1]?.note, "123-45-6789");
   const kept = capture.stop();

@@ -59,7 +59,7 @@ interface HostInfo {
 
 function workflow(id: string, name: string, steps: WorkflowV2["steps"], startUrl = BOOKS): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,

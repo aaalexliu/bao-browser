@@ -88,7 +88,7 @@ function serve(reqPath: string, res: ServerResponse): void {
 
 function workflow(startUrl: string, id = "wf"): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: "Fixture",
@@ -258,7 +258,7 @@ test("the needs_human run page and act prompt render in light and dark", { timeo
   const home = mkdtempSync(path.join(tmpdir(), "bao-shot-"));
   const library = new Library(home);
   library.save({
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "experian",
     name: "Experian",

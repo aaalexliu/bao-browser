@@ -1,6 +1,6 @@
 # Workflow schema v2
 
-The contract is `schema/workflow-v2.schema.json`, id `bao.workflow/v2`. A document validates against that file, and `desktop/src/v1/schema.ts` `validateWorkflow` checks the same rules the replayer depends on. Extension workflows stay version 1. `migrate()` is the door from those, and from the spike version-2 steps, into this shape.
+The contract is `schema/workflow.schema.json`, id `bao.workflow/v4`. `desktop/src/v1/schema.ts` `validateWorkflow` checks the same document the replayer reads. A file with another schema id is not loaded. There is no migrate.
 
 ## Document
 
