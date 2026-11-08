@@ -3,7 +3,7 @@
 Bao lets an agent drive Chrome through the `agent_browser` pass-through MCP tool.
 See [Direct MCP commands](docs/agent-browser-engine.md#direct-mcp-commands) for commands and limits.
 
-Supported pass-through tasks save replayable workflows in Workflows; see [Workflow reuse](docs/agent-browser-engine.md#workflow-reuse) for the recording limits. The older live tools and their replay driver are retired. Saved `cdp-live` workflows stay readable but cannot replay. Bao does not block final clicks.
+Supported pass-through tasks save replayable workflows in Workflows; see [Workflow reuse](docs/agent-browser-engine.md#workflow-reuse) for the recording limits. The older live tools and their replay driver are retired. A saved file that is not the [current workflow schema](docs/workflow-schema.md) is not loaded. Bao does not block final clicks.
 
 ## Install
 

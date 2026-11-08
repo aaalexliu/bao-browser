@@ -10,9 +10,7 @@ import { BrowserDriver } from "../../v1/browser-driver";
 import { launchOwnedChrome } from "../../launch";
 import { replay, type RunResult } from "../../v1/replay";
 import type { TrajectoryStep } from "../../v1/trajectory";
-import { stepTitle, stepQuery, stepInputName, stepKey, stepCheck, handoffReason } from "../../v1/schema"
-import type { ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
-import { validateWorkflow } from "../../v1/schema";
+import { stepTitle, stepQuery, stepInputName, stepKey, stepCheck, handoffReason, validateWorkflow, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../../v1/schema";
 import type { IntentCase } from "../intent/cases";
 import { GOOD_INTENTS } from "../intent/good-intents";
 import { lintIntent, prejudgeLint, type LintTarget } from "../intent/lint";

@@ -322,7 +322,14 @@ export function stepTarget(step: WorkflowStep): Target | undefined {
     case "handoff":
     case "download":
       return step.target;
-    default:
+    case "extract":
+    case "finish":
+    case "for_each":
+    case "navigate":
+    case "note":
+    case "open":
+    case "verify":
+    case "wait":
       return undefined;
   }
 }
@@ -357,7 +364,18 @@ export function stepInputName(step: WorkflowStep): string | undefined {
       return step.dialog?.input ?? step.selection?.input;
     case "pickDate":
       return step.date.input;
-    default:
+    case "check":
+    case "download":
+    case "extract":
+    case "finish":
+    case "for_each":
+    case "handoff":
+    case "key":
+    case "navigate":
+    case "note":
+    case "open":
+    case "verify":
+    case "wait":
       return undefined;
   }
 }
@@ -372,7 +390,20 @@ export function stepLiteral(step: WorkflowStep): string | undefined {
       return step.url;
     case "note":
       return step.text;
-    default:
+    case "check":
+    case "click":
+    case "download":
+    case "drop":
+    case "extract":
+    case "finish":
+    case "for_each":
+    case "handoff":
+    case "key":
+    case "open":
+    case "pickDate":
+    case "upload":
+    case "verify":
+    case "wait":
       return undefined;
   }
 }

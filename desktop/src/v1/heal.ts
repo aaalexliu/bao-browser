@@ -326,7 +326,14 @@ export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): Wo
     case "download":
     case "handoff":
       return { ...step, target };
-    default:
+    case "extract":
+    case "finish":
+    case "for_each":
+    case "navigate":
+    case "note":
+    case "open":
+    case "verify":
+    case "wait":
       return step;
   }
 }
