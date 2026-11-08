@@ -1,6 +1,6 @@
 # Element identity
 
-Replay finds an element by attributes, then refuses if the match is not clearly the same one. A coordinate is provenance from capture. It is not an input to this scorer.
+Replay finds an element by attributes, then refuses if the match is not clearly the same one. A coordinate recorded at capture is not an input to this scorer.
 
 The implementation is `desktop/src/v1/identity.ts`. `ACCEPT` is 60. `MARGIN` is 25. A candidate is used only when its score is at least 60 and it leads the next candidate by at least 25. Otherwise the lookup returns `tie`, `below-threshold`, `no-candidates`, or `app-mismatch`, plus the attribute that broke.
 
