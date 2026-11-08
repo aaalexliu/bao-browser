@@ -52,7 +52,7 @@ export function liveRunView(active: ActiveRun, run?: RunSummary | null, workflow
     const current = !continuing && step.id === ask?.stepId;
     const status = stepStatus(step.id);
     const word = status === "passed" ? "Done" : current ? "Needs you" : status === "pending" ? "Not yet" : status === "continuing" ? "Handoff ended" : status;
-    const label = current && ask?.kind === "confirm" ? `Wait for you: press ${ask.button || "the button"}` : stepTitle(step);
+    const label = current && ask?.kind === "confirm" && ask.button ? `Wait for you: press ${ask.button}` : current && ask?.instruction ? ask.instruction : stepTitle(step);
     const named = stepInputName(step);
     const input = named ? run?.inputs?.[named] : undefined;
     const ms = result?.startedAt != null && result.endedAt != null ? result.endedAt - result.startedAt : undefined;
@@ -71,8 +71,8 @@ export function liveRunView(active: ActiveRun, run?: RunSummary | null, workflow
   let location = ask?.site || "";
   try { if (workflow?.startUrl) { const url = new URL(workflow.startUrl); location = url.host + url.pathname; } } catch { /* Keep the ask's site if the workflow has no web URL. */ }
   const deadline = ask?.deadline ? `<span>Bao waits until ${esc(formatTime(ask.deadline))} · <b id="live-wait-left">${esc(runWaitLeft(ask.deadline, now))}</b></span><span class="live-meter" aria-hidden="true"><i style="width:${ask.timeoutMs > 0 ? Math.min(100, Math.max(0, (ask.deadline - now) / ask.timeoutMs * 100)) : 0}%"></i></span>` : `<span>Bao waits for you · no timeout</span>`;
-  const lead = unsaved ? "This run is running." : continuing ? "Bao is working through the remaining steps." : ask?.kind === "confirm" ? `Waiting for you to press ${ask.button || "the button"}.` : ownerStopText(ask?.instruction || "");
-  const continueLabel = ask?.kind === "confirm" ? `I pressed ${ask.button || "the button"}` : ask?.kind === "login" ? "I’m signed in, continue" : "Continue";
+  const lead = unsaved ? "This run is running." : continuing ? "Bao is working through the remaining steps." : ask?.kind === "confirm" && ask.button ? `Waiting for you to press ${ask.button}.` : ownerStopText(ask?.instruction || "");
+  const continueLabel = ask?.kind === "confirm" && ask.button ? `I pressed ${ask.button}` : ask?.kind === "login" ? "I’m signed in, continue" : "Continue";
   const currentShot = latest ? `<img src="${esc(latest.src)}" alt="Latest screen from Bao’s Chrome: ${esc(latest.label)}">` : `<p class="live-no-shot">${unsaved ? "Screens appear when the run pauses or ends." : "No screen captured yet."}</p>`;
   return `<section id="live-run" data-run="${esc(active.id)}" data-step="${esc(`${active.id}:${ask?.stepId ?? ""}:${ask?.startedAt ?? ""}`)}" aria-label="Run: ${esc(name)}">
     <p class="live-kicker"><span class="live-state run-glyph ${continuing ? "continuing" : "paused"}">${runStatusGlyph(continuing ? "continuing" : "paused")} ${continuing ? "Running" : "Needs you"}</span>${startedAt != null ? `<span class="live-dot"></span><span>Started ${esc(formatTime(startedAt))}</span>` : ""}${ask ? `<span class="live-dot"></span><span>${continuing ? "Last paused at" : "Paused at"} ${esc(formatTime(ask.startedAt))}</span>` : ""}</p>

@@ -52,8 +52,3 @@ export function filesDatesErrors(doc: WorkflowV2): string[] {
   return errors;
 }
 
-export function usesFilesDates(doc: WorkflowV2): boolean {
-  if (doc.inputs.some((input) => input.type === "date" || input.fromOutput || input.relative || input.format)) return true;
-  return doc.steps.some((step) => step.action === "download" || step.action === "open" || step.action === "pickDate"
-    || ((step.action === "upload" || step.action === "drop") && "fromOutput" in step.file));
-}

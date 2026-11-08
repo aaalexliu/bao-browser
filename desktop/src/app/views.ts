@@ -8,6 +8,7 @@ import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatTime, formatWhen } from "../v1/time";
+import { stepTitle } from "../v1/schema";
 import { shotFile, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -539,20 +540,10 @@ function ownerCheckLimit(step: StepView | undefined): string | undefined {
 }
 
 function stepLabel(step: StepView, workflowSteps: { id: string; caption?: { text: string; citation?: { text: string } }; label?: string; action?: string }[]): string {
-  if (step.caption?.text) return quotedCaption(step.caption);
+  if (step.caption?.text) return stepTitle(step);
   const match = workflowSteps.find((item) => item.id === step.id);
-  if (match?.caption?.text) return quotedCaption(match.caption);
+  if (match?.caption?.text) return stepTitle(match);
   return step.label || match?.label || match?.action || step.id;
-}
-
-function quotedCaption(caption: { text: string; citation?: { text: string } }): string {
-  const cite = caption.citation?.text?.trim();
-  if (!cite) return caption.text;
-  const quoted = `"${cite}"`;
-  if (caption.text.includes(quoted)) return caption.text;
-  const at = caption.text.indexOf(cite);
-  if (at >= 0) return `${caption.text.slice(0, at)}${quoted}${caption.text.slice(at + cite.length)}`;
-  return `${caption.text} (${quoted})`;
 }
 
 export interface ViewerContext {
@@ -1391,7 +1382,7 @@ function runTitle(run: RunSummary): string {
   return `${run.id} · ${formatWhen(run.at)}`;
 }
 
-export function passGrid(runs: RunSummary[], steps: { id: string; label?: string }[]): string {
+export function passGrid(runs: RunSummary[], steps: { id: string; label?: string; caption?: { text: string; citation?: { text: string } } }[]): string {
   const cols = [...runs].sort((a, b) => (a.at || 0) - (b.at || 0)).slice(-8);
   if (!cols.length || !steps.length) return "";
   const head = cols.map((run) => {
@@ -1405,7 +1396,7 @@ export function passGrid(runs: RunSummary[], steps: { id: string; label?: string
       const label = kind === "paused" ? "needs you" : kind === "empty" ? "not run" : kind;
       return `<td title="${esc(`${runTitle(run)} · ${label}`)}"><span class="cell ${kind}"></span></td>`;
     }).join("");
-    return `<tr><th scope="row">${esc(step.label || step.id)}</th>${cells}</tr>`;
+    return `<tr><th scope="row">${esc(stepTitle(step) || step.label || step.id)}</th>${cells}</tr>`;
   }).join("");
   return `<div class="grid-wrap"><h3 class="section">Recent runs</h3>${statusLegend()}<table id="pass-grid" aria-label="Recent runs"><thead><tr><th scope="col"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -1522,7 +1513,7 @@ function workflowStepKind(step: StepCard): { label: string; glyph: string } {
 }
 
 function workflowStepTitle(step: StepCard, inputs: TokenInput[]): string {
-  const text = step.caption?.text ? quotedCaption(step.caption) : step.label || step.action || step.id;
+  const text = step.caption?.text ? stepTitle(step) : step.label || step.action || step.id;
   return workflowInputLabels(text, inputs);
 }
 
@@ -1624,7 +1615,7 @@ export function workflowDetail(
     return `<section data-step-panel="${esc(step.id)}"${step !== selected ? " hidden" : ""}>
       <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
       <h2>${esc(workflowStepTitle(step, inputs))}</h2>
-      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}${step.caption?.targetBox ? ` data-box="${step.caption.targetBox.x},${step.caption.targetBox.y},${step.caption.targetBox.width},${step.caption.targetBox.height}" data-view="${step.caption.targetBox.viewport.width},${step.caption.targetBox.viewport.height}"` : ""}></div>
+      <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}></div>
       ${step.intent ? `<p>${esc(step.intent)}</p>` : ""}${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
       <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" || step.action === "open" || step.action === "download" ? pageUrl || doc.startUrl || "The saved page" : "No saved target"))}</dd>
         ${input ? `<dt>${inputVerb}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : typeof step.text === "object" && step.text.literal ? `<dt>Value</dt><dd>${esc(step.text.literal)}</dd>` : ""}

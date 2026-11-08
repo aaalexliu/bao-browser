@@ -116,10 +116,19 @@ export function siteName(urlOrHost: string): string {
   return raw.split(/[-_]+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
-export function recordingExpectsLogin(steps: { action?: string; reason?: string; identity?: PageNode }[]): { password: boolean; login: boolean } {
-  const password = steps.some((step) => isPasswordIdentity(step.identity));
+export function recordingExpectsLogin(steps: readonly { action?: string; reason?: string; sensitive?: boolean; identity?: PageNode; target?: { hint?: { role?: string; label?: string; nameAttr?: string }; locators?: readonly object[] } }[]): { password: boolean; login: boolean } {
+  const password = steps.some((step) => step.sensitive === true || isPasswordIdentity(step.identity) || isPasswordIdentity(passwordNode(step)));
   const login = steps.some((step) => step.action === "handoff" && step.reason === "sign-in");
   return { password, login };
+}
+
+function passwordNode(step: { target?: { hint?: { role?: string; label?: string; nameAttr?: string }; locators?: readonly object[] } }): PageNode | undefined {
+  const hint = step.target?.hint;
+  const locators = (step.target?.locators ?? []) as { role?: string; name?: string }[];
+  const named = locators.find((item) => item.name);
+  const role = locators.find((item) => item.role)?.role || hint?.role;
+  if (!hint && !named && !role) return undefined;
+  return { role: role || "unknown", name: named?.name, label: hint?.label, nameAttr: hint?.nameAttr };
 }
 
 export function isPasswordIdentity(node: PageNode | undefined): boolean {

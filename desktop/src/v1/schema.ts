@@ -294,7 +294,7 @@ export function popupDismissName(identity: Identity | undefined): string {
   return identity?.surface === "dom" && identity.role === "button" && /^(?:close|x|no thanks|not now|dismiss)$/i.test(name) ? name : "";
 }
 
-export function stepTitle(step: { caption?: StepCaption; action?: string; id?: string }): string {
+export function stepTitle(step: { caption?: { text?: string; citation?: { text?: string } }; action?: string; id?: string }): string {
   const text = step.caption?.text?.trim();
   const cite = step.caption?.citation?.text?.trim();
   if (!text) return step.action || step.id || "Step";

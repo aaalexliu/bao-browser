@@ -5,7 +5,7 @@
 import type { SavedContext } from "../../../shared/outbound-secrets";
 import type { IdentityView } from "../app/view-types";
 import { locatorsFromIdentity } from "./locators";
-import { withHealVersion, withRevertVersion } from "./element-history";
+import { changedAttrs, withHealVersion, withRevertVersion } from "./element-history";
 import { hintFromIdentity, stepTarget, type HealMode, type Identity, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface FailureSnapshot {
@@ -323,6 +323,8 @@ export function applyPatch(step: WorkflowStep, patch: HealProposal["patch"]): Wo
     case "key":
     case "digits":
     case "pickDate":
+    case "download":
+    case "handoff":
       return { ...step, target };
     default:
       return step;
@@ -342,6 +344,7 @@ export function keepPatch(
     steps: workflow.steps.map((step) => {
       if (step.id !== stepId) return step;
       const patched = applyPatch(step, patch);
+      if (changedAttrs(step, patched).length === 0) return step;
       return withHealVersion(step, patched, { at, recordedAt: workflow.createdAt, runId: meta.runId, score: meta.score });
     }),
   };

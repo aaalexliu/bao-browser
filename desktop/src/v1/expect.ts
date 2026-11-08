@@ -6,7 +6,7 @@
 // When none of those happened, the step expects the page to settle and is
 // marked low-confidence. A browser error page is not an effect.
 
-import { stepQuery, type Identity, type WorkflowStep } from "./schema";
+import type { Identity } from "./schema";
 
 export interface Postcondition {
   kind: "url" | "text" | "value" | "element" | "absent";
@@ -96,20 +96,6 @@ export function inferExpect(
   return {
     expect: { kind: "settled", match: SETTLED_EXPECT, timeoutMs: 4000 },
     confidence: "low",
-  };
-}
-
-export function applyExpect(
-  step: WorkflowStep,
-  event: ExpectEvent,
-  opts: { input?: string; secret?: boolean; known: readonly KnownTyped[]; secrets: readonly string[] },
-): WorkflowStep {
-  const result = inferExpect({ ...event, identity: stepQuery(step) ?? event.identity }, opts);
-  return {
-    ...step,
-    ...(result.postcondition ? { postcondition: result.postcondition } : {}),
-    ...(result.expect ? { expect: result.expect } : {}),
-    ...(result.confidence ? { confidence: result.confidence } : {}),
   };
 }
 

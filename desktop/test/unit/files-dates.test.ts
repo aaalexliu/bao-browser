@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import Ajv from "ajv/dist/2020";
 import { canonical } from "../../src/v1/canonical";
-import { civilInZone, composeV3Schema, datePreview, downloadFileName, fileDigest, formatCivil, isoOf, NEEDS_MAC_TEST, openTarget, planOpen, prepareFilesDatesRun, renderTemplate, resolveRelative } from "../../src/v1/files-dates";
+import { civilInZone, datePreview, downloadFileName, fileDigest, formatCivil, isoOf, NEEDS_MAC_TEST, openTarget, planOpen, prepareFilesDatesRun, renderTemplate, resolveRelative } from "../../src/v1/files-dates";
 import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
@@ -24,7 +24,7 @@ function migrateFilesDates(_raw: unknown): WorkflowV2 {
 const v2Schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateV2 = ajv.compile(v2Schema);
-const validateV3 = ajv.compile(composeV3Schema(v2Schema));
+const validateV3 = validateV2;
 
 const OCT_22 = new Date("2026-10-22T15:00:00Z");
 const ZONE = "UTC";
