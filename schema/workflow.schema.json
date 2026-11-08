@@ -438,6 +438,42 @@
                     "type": "array"
                   }
                 }
+              },
+              "optional": {
+                "const": "dismiss"
+              },
+              "selection": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "by",
+                  "input"
+                ],
+                "properties": {
+                  "by": {
+                    "enum": [
+                      "name",
+                      "title",
+                      "text",
+                      "value"
+                    ]
+                  },
+                  "input": {
+                    "type": "string"
+                  }
+                }
+              },
+              "dialog": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "input"
+                ],
+                "properties": {
+                  "input": {
+                    "type": "string"
+                  }
+                }
               }
             }
           },
@@ -3303,30 +3339,6 @@
               "readBack": {
                 "type": "object"
               },
-              "check": {
-                "type": "object",
-                "required": [
-                  "kind",
-                  "timeoutMs"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string"
-                  },
-                  "match": {
-                    "type": "string"
-                  },
-                  "timeoutMs": {
-                    "type": "number"
-                  },
-                  "locators": {
-                    "type": "array"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                }
-              },
               "extract": {
                 "type": "object"
               }
@@ -3447,30 +3459,6 @@
               "readBack": {
                 "type": "object"
               },
-              "check": {
-                "type": "object",
-                "required": [
-                  "kind",
-                  "timeoutMs"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string"
-                  },
-                  "match": {
-                    "type": "string"
-                  },
-                  "timeoutMs": {
-                    "type": "number"
-                  },
-                  "locators": {
-                    "type": "array"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                }
-              },
               "forEach": {
                 "type": "object"
               }
@@ -3590,30 +3578,6 @@
               },
               "readBack": {
                 "type": "object"
-              },
-              "check": {
-                "type": "object",
-                "required": [
-                  "kind",
-                  "timeoutMs"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string"
-                  },
-                  "match": {
-                    "type": "string"
-                  },
-                  "timeoutMs": {
-                    "type": "number"
-                  },
-                  "locators": {
-                    "type": "array"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                }
               },
               "text": {
                 "type": "string"
@@ -4929,30 +4893,6 @@
               "readBack": {
                 "type": "object"
               },
-              "check": {
-                "type": "object",
-                "required": [
-                  "kind",
-                  "timeoutMs"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string"
-                  },
-                  "match": {
-                    "type": "string"
-                  },
-                  "timeoutMs": {
-                    "type": "number"
-                  },
-                  "locators": {
-                    "type": "array"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                }
-              },
               "reason": {
                 "type": "string"
               },
@@ -5074,30 +5014,6 @@
               },
               "readBack": {
                 "type": "object"
-              },
-              "check": {
-                "type": "object",
-                "required": [
-                  "kind",
-                  "timeoutMs"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string"
-                  },
-                  "match": {
-                    "type": "string"
-                  },
-                  "timeoutMs": {
-                    "type": "number"
-                  },
-                  "locators": {
-                    "type": "array"
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                }
               },
               "reason": {
                 "type": "string"

@@ -31,9 +31,12 @@ export function domainsOf(document: unknown): string[] {
       /* not a url */
     }
   };
-  const doc = document as { startUrl?: string; steps?: { text?: { literal?: string }; check?: { match?: string } }[] };
+  const doc = document as { startUrl?: string; steps?: { url?: string; text?: { literal?: string }; check?: { match?: string }; open?: { url?: string }; download?: { url?: string } }[] };
   add(doc?.startUrl);
   for (const step of doc?.steps ?? []) {
+    add(step.url);
+    add(step.open?.url);
+    add(step.download?.url);
     add(step.text?.literal);
     add(step.check?.match);
   }

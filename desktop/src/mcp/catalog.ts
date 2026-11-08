@@ -903,7 +903,7 @@ function readBack(step: WorkflowStep, status: string, inputs: ReplayArgs): strin
 
 function missingHuman(workflow: WorkflowV2, filled: ReplayArgs, given: ReplayArgs): { stepId: string; reason: string } | null {
   for (const input of workflow.inputs) {
-    if (input.supply === "saved") continue;
+    if (input.supply === "saved" || input.fromOutput) continue;
     const value = inputs[input.name];
     const empty = value === undefined || value === "";
     const authorOmitted = workflow.imported === true && input.ownerSaved !== true && omitted(given, input.name);
