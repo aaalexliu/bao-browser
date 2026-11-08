@@ -665,7 +665,7 @@ test("proxy rejects malformed commands and attempts to replace its fixed session
     await assert.rejects(f.proxy.execute("eval", ["1"]), /unknown/);
     await assert.rejects(f.proxy.execute("open", "http://127.0.0.1/"), /array of strings/);
     await assert.rejects(f.proxy.execute("open", [null]), /array of strings/);
-    for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p", "--pin-tab", "--no-pin-tab"]) {
+    for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p"]) {
       await assert.rejects(f.proxy.execute("open", [arg]), /Bao fixes/);
     }
     await assert.rejects(readFile(path.join(f.root, "calls.jsonl")), /ENOENT/);

@@ -23,11 +23,9 @@ const SESSION_IDLE_MS = 10 * 60 * 1000;
 
 const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 
-const TASK_TAB_CLOSED = "Bao's task tab was closed, so this session ended. Reconnect with command=open and browser=current to get a new task tab.";
-
 const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",
-  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab",
+  "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all",
 ]);
 
 export function validateAgentBrowserCommand(command: unknown, args: unknown): asserts args is string[] {
@@ -37,29 +35,6 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
   }
   if (args.some((arg) => FIXED_OPTIONS.has(arg.split("=", 1)[0]!))) {
     throw new Error("Bao fixes the agent-browser session, browser, headed mode, profile, and lifetime");
-  }
-}
-
-async function stopDaemon(stateDir: string): Promise<void> {
-  try {
-    const pid = Number((await readFile(path.join(stateDir, "bao.pid"), "utf8")).trim());
-    if (!Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid) return;
-    const running = () => {
-      try { process.kill(pid, 0); return true; }
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-        throw error;
-      }
-    };
-    for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
-      process.kill(pid, signal);
-      const deadline = performance.now() + 1000;
-      while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-      if (!running()) break;
-    }
-    if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
-  } catch (error) {
-    if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
   }
 }
 
@@ -199,10 +174,7 @@ export class AgentBrowserProxy {
     try {
       if (this.disconnected) throw new Error("agent-browser client disconnected");
       if (continuing && command !== "close" && command !== "wait_for_owner") {
-        if (!await this.detectOwnerWall(session)) {
-          results.push(...this.taskTabClosed(session));
-          return results;
-        }
+        await this.detectOwnerWall(session);
         if (session.ownerWait) {
           results.push(...this.ownerResult("halted"));
           return results;
@@ -223,19 +195,14 @@ export class AgentBrowserProxy {
         await this.captureTarget(session, step, args[0]);
         if (session.ownerWait) { results.push(...this.ownerResult("halted")); return results; }
       }
-      let taskTabGone = false;
       await session.workflow.record(command as string, args, step.id, async () => {
         const result = command === "close" && (session.kind === "current" || session.chrome.isClosed())
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
           : await this.run(session, command as string, args);
         results.push(result);
-        if (command !== "close" && result.exitCode === 0) taskTabGone = !await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
+        if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => !!session.ownerWait);
-      if (taskTabGone) {
-        results.splice(0, results.length, ...this.taskTabClosed(session));
-        return results;
-      }
       if (session.ownerWait) {
         results.splice(0, results.length, ...this.ownerResult("halted"));
         return results;
@@ -351,7 +318,7 @@ export class AgentBrowserProxy {
           return { ...endpoint, targetId: active.targetId, targetIds: active.targetIds };
         }),
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
-          ...browser.kind === "current" ? ["--pin-tab"] : [], "--idle-timeout", "0"],
+          "--idle-timeout", "0"],
         env: {
           HOME: stateDir, TMPDIR: stateDir, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8",
           AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", BAO_HEAL_CURSOR_ACCOUNT: "0",
@@ -396,48 +363,18 @@ export class AgentBrowserProxy {
     } finally { if (session.kind === "copy") cdp.close(); }
   }
 
-  private async agentPage(session: Session): Promise<Awaited<ReturnType<AgentBrowserProxy["activePage"]>>> {
-    if (session.kind === "copy") return this.activePage(session);
-    const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string; url: string; type?: string; openerId?: string }[] }>("Target.getTargets", {}, undefined, 5000);
-    const opened = targetInfos.filter((target) => target.type === "page" && target.openerId && session.taskTabs.has(target.openerId) && !session.taskTabs.has(target.targetId));
-    for (const target of opened) session.taskTabs.add(target.targetId);
-    const popup = opened.at(-1)?.targetId;
-    if (popup) {
-      const switched = await this.run(session, "tab", [popup], 5000);
-      if (switched.exitCode !== 0) throw new Error(`Native tab switch failed (exit ${switched.exitCode}): ${switched.stderr || switched.stdout}`);
-      return this.activePage(session);
-    }
-    const active = await this.activePage(session);
-    const taskTab = targetInfos.find((target) => target.targetId === session.taskTabs.values().next().value);
-    if (active || !taskTab) return active;
-    await stopDaemon(session.stateDir);
-    await writeFile(path.join(session.stateDir, "bao.target"), JSON.stringify({ targetId: taskTab.targetId, url: taskTab.url, pinned: true }), { mode: 0o600 });
-    return this.activePage(session);
-  }
-
-  private taskTabClosed(session: Session): AgentBrowserCommandResult[] {
-    session.outcome = { outcome: "failed", reason: "Bao's task tab closed before the task finished." };
-    session.workflow.unavailable("the task tab closed before the task finished");
-    session.abort.abort();
-    return [{ stdout: JSON.stringify({ outcome: "closed", instruction: TASK_TAB_CLOSED }), stderr: "", exitCode: 0 }];
-  }
-
-  private async detectOwnerWall(session: Session, openedSite?: string): Promise<boolean> {
-    if (session.ownerWait) return true;
-    const noPage = () => {
-      if (session.kind === "current") return false;
-      throw new Error("no active Bao page metadata");
-    };
-    let active = await this.agentPage(session);
-    if (!active) return noPage();
-    if (!ownerWall(active.page)) return true;
+  private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
+    if (session.ownerWait) return;
+    let active = await this.activePage(session);
+    if (!active) throw new Error("no active Bao page metadata");
+    if (!ownerWall(active.page)) return;
     if (openedSite && ownerWall(active.page) === "login_wall" && "importLogin" in session.chrome) {
       if (await session.chrome.importLogin(new URL(active.page.url).origin, true)) {
         const retry = await this.run(session, "open", [openedSite]);
         if (retry.exitCode !== 0) throw new Error(`Bao sign-in retry failed: ${retry.stderr || retry.stdout || `exit ${retry.exitCode}`}`);
         active = await this.activePage(session);
-        if (!active) return noPage();
-        if (!ownerWall(active.page)) return true;
+        if (!active) throw new Error("no active Bao page metadata");
+        if (!ownerWall(active.page)) return;
       }
     }
     session.ownerWait = active;
@@ -445,7 +382,6 @@ export class AgentBrowserProxy {
     session.ownerSince = Date.now();
     session.recording.ownerWaiting(true);
     await this.ownerBanner(session, active.targetId, true);
-    return true;
   }
 
   /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
@@ -499,7 +435,7 @@ export class AgentBrowserProxy {
         if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
         try {
           if (!session.ownerWait || session.ownerWait === "pending") {
-            const active = await this.agentPage(session);
+            const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
             session.ownerWait = active;
             session.ownerPage = active.page;
@@ -512,14 +448,7 @@ export class AgentBrowserProxy {
           if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
           const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
-          if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
-          if (!page) {
-            const taskTab = session.kind === "current" ? session.taskTabs.values().next().value : undefined;
-            if (!taskTab || taskTab === waiting.targetId || !targetInfos.some((tab) => tab.targetId === taskTab)) return this.ownerClosed(session);
-            session.ownerWait = undefined;
-            session.recording.ownerWaiting(false);
-            return this.ownerResult("ready");
-          }
+          if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           const ready = ownerCanResume(waiting.page, page);
           const signature = ready ? JSON.stringify([page.url, page.title]) : "";
           if (!ready || candidate !== signature) { candidate = signature; stableAt = Date.now(); }
@@ -578,7 +507,7 @@ export class AgentBrowserProxy {
 
   private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
     if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
-    if (!await this.detectOwnerWall(session)) throw new Error("no active page");
+    await this.detectOwnerWall(session);
     if (session.ownerWait) throw new Error("owner input is private");
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
@@ -683,7 +612,25 @@ export class AgentBrowserProxy {
         if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
         try {
           try {
-            await stopDaemon(session.stateDir);
+            const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
+            if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) {
+              const running = () => {
+                try { process.kill(pid, 0); return true; }
+                catch (error) {
+                  if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+                  throw error;
+                }
+              };
+              for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
+                process.kill(pid, signal);
+                const deadline = performance.now() + 1000;
+                while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+                if (!running()) break;
+              }
+              if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
+            }
+          } catch (error) {
+            if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
           } finally {
             if (session.kind === "current") {
               try {
