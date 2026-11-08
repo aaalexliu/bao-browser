@@ -1954,9 +1954,7 @@ async function runReplay(): Promise<void> {
       let bin = "";
       for (const byte of bytes) bin += String.fromCharCode(byte);
       args[el.name] = { name: file.name, base64: btoa(bin) };
-    } else if (el instanceof HTMLInputElement && el.type === "number") {
-      if (el.value.trim()) args[el.name] = Number(el.value);
-    }
+    } else if (el instanceof HTMLInputElement && el.type === "number") args[el.name] = Number(el.value);
     else args[el.name] = el.value;
   }
   const live = document.getElementById("live");
