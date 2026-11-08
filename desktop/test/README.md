@@ -20,7 +20,7 @@ Artifacts use `BAO_ARTIFACTS_DIR`, then `BAO_ARTIFACTS`, then `out/test-artifact
 
 `desktop/test/live/agent-browser-proxy.test.ts` separately checks raw native output parity, stored screenshots, partial/final runs, and cleanup. Set `AGENT_BROWSER_PROXY_ARTIFACTS` to keep evidence. Its installed-Chrome proof requires the separate explicit `AGENT_BROWSER_PROXY_INSTALLED_CHROME=1` opt-in and still uses a synthetic source profile and `chrome://` pages. Do not use that opt-in for ordinary fixture work. [Native executable and tests](../../docs/agent-browser-engine.md#native-executable-and-tests) describes staging.
 
-The old guarded live-driver recording, mode, replay, and private Instacart evaluator fixtures have been removed. [CI selection](../../docs/ci-test-selection.md) records their last measured times and behaviors. Historical `cdp-live` records stay readable, but replay returns `this workflow used the retired live driver`.
+The old guarded live-driver recording, mode, replay, and private Instacart evaluator fixtures have been removed. [CI selection](../../docs/ci-test-selection.md) records their last measured times and behaviors. A saved file that is not [schema v4](../../docs/workflow-schema.md) is not loaded.
 
 ## Public and live files
 

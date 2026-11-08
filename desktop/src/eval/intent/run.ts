@@ -8,9 +8,7 @@ import path from "node:path";
 import { applyHybrid, isNoiseStep, parseHybrid } from "../../v1/hybrid";
 import { interpret } from "../../v1/interpret";
 import type { TrailEvent } from "../../v1/interpret";
-import { stepTitle, stepInputName, handoffReason } from "../../v1/schema"
-import type { WorkflowV2 } from "../../v1/schema";
-import { validateWorkflow } from "../../v1/schema";
+import { stepTitle, stepInputName, handoffReason, validateWorkflow, type WorkflowV2 } from "../../v1/schema";
 import { INTENT_CASES, noisyTrail, type IntentCase } from "./cases";
 import { caseJudgePrompt, calibrationPrompt, HAND_LABELS } from "./labels";
 import { complete, configuredModel, parseCaseJudge, parseDecision, parseFlagMap } from "./model";
