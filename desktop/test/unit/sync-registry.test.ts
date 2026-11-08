@@ -48,7 +48,7 @@ const owner = { userId: "owner" };
 const reader = { userId: "reader" };
 const credentials = ["fixture-password-99", "sk-fixtureApiToken", "4111111111111111"];
 const source = {
-  schema: "bao.workflow/v2", version: 2, id: "owner-sync", name: "Owner sync", createdAt: 1,
+  schema: "bao.workflow/v4", version: 2, id: "owner-sync", name: "Owner sync", createdAt: 1,
   startUrl: "https://example.test/",
   inputs: [
     { name: "email", type: "text", default: "ada@fixture.test" },

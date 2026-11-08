@@ -13,7 +13,7 @@ function ident(partial: Partial<Identity>): Identity {
 
 function workflow(port: number, id: string, name: string, start: string, steps: WorkflowV2["steps"]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,

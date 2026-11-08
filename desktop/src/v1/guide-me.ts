@@ -4,7 +4,7 @@
 import { lookup } from "./identity";
 import type { Driver, GuideAct } from "./replay";
 import { holdsExpect, pageShows, pageWhen, type PageGuard } from "./replay";
-import { subst, type Identity, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { projectStep, subst, type Identity, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface GuideStepResult {
   id: string;
@@ -52,7 +52,7 @@ export async function guideMe(
       index,
       total,
       stepId: step.id,
-      intent: step.intent || step.label,
+      intent: projectStep(step).intent || projectStep(step).label,
       status,
       actions: actionCount(driver),
     });
@@ -113,9 +113,10 @@ function actionCount(driver: Driver): number {
 
 async function highlight(step: WorkflowStep, driver: Driver): Promise<Identity | undefined> {
   const draw = driver.highlightTarget ?? driver.outline;
-  if (!step.identity || !draw) return undefined;
+  const identity = projectStep(step).identity;
+  if (!identity || !draw) return undefined;
   const tree = await driver.tree();
-  const hit = lookup(step.identity, tree.nodes);
+  const hit = lookup(identity, tree.nodes);
   if (!hit.ok || hit.index == null) return undefined;
   const node = tree.nodes[hit.index];
   if (!node) return undefined;
@@ -130,7 +131,7 @@ async function waitForCheck(
   timeoutMs: number,
   pollMs: number,
 ): Promise<"done" | "stopped" | "timeout"> {
-  const expect = step.expect;
+  const expect = projectStep(step).expect;
   if (!expect) return "done";
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -166,15 +167,15 @@ async function waitForPerson(
 }
 
 function actMatches(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolean {
-  if (!sameTarget(step.identity, act)) return false;
+  if (!sameTarget(projectStep(step).identity, act)) return false;
   if (step.action === "type") return act.op === "type" && typeDone(step, act, args);
-  if (step.action === "key") return act.op === "key" && (!step.key || act.key === step.key);
+  if (step.action === "key") return act.op === "key" && (!projectStep(step).key || act.key === projectStep(step).key);
   if (step.action === "check") return act.op === "click" || act.op === "check";
   return act.op === "click";
 }
 
 function typeDone(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolean {
-  if (step.sensitive || act.secret || step.identity?.role === "password") return true;
+  if (projectStep(step).sensitive || act.secret || projectStep(step).identity?.role === "password") return true;
   const want = expectedValue(step, args);
   const got = act.value || "";
   if (!want) return got.length > 0;
@@ -183,18 +184,19 @@ function typeDone(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolean 
 
 function valueDone(step: WorkflowStep, args: ReplayArgs, before: string, now: string): boolean {
   if (!now || now === before) return false;
-  if (step.sensitive || step.identity?.role === "password") return true;
+  if (projectStep(step).sensitive || projectStep(step).identity?.role === "password") return true;
   const want = expectedValue(step, args);
   if (!want) return true;
   return now === want;
 }
 
 function expectedValue(step: WorkflowStep, args: ReplayArgs): string {
-  if (step.input) {
-    const arg = args[step.input];
+  const input = projectStep(step).input;
+  if (input) {
+    const arg = args[input];
     if (typeof arg === "string" || typeof arg === "number") return String(arg);
   }
-  return subst(step.value || "", args);
+  return subst(projectStep(step).value || "", args);
 }
 
 async function fieldValue(driver: Driver, step: WorkflowStep, node: Identity | undefined): Promise<string> {
@@ -202,7 +204,7 @@ async function fieldValue(driver: Driver, step: WorkflowStep, node: Identity | u
   const tree = await driver.tree();
   const hit = node ? tree.values.find((item) => item.identity === node) : undefined;
   if (hit) return hit.value;
-  const found = tree.values.find((item) => sameTarget(step.identity, {
+  const found = tree.values.find((item) => sameTarget(projectStep(step).identity, {
     id: item.identity.id,
     testId: item.identity.testId,
     name: item.identity.nameAttr,

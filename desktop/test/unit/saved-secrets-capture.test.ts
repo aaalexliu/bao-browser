@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -62,10 +63,10 @@ test("browser capture retains password changes and ordinary fields in Library de
     assert.equal(saved.steps.length, fields.length);
     const trail = library.readTrail(doc.id) as TrailEvent[];
     for (const field of fields) {
-      const step = saved.steps.find((step) => step.identity?.id === field.id)!;
-      const input = saved.inputs.find((input) => input.name === step.input)!;
+      const step = saved.steps.find((step) => projectStep(step).identity?.id === field.id)!;
+      const input = saved.inputs.find((input) => input.name === projectStep(step).input)!;
       assert.equal(step.action, "type");
-      assert.equal(step.identity?.autocomplete, field.autocomplete);
+      assert.equal(projectStep(step).identity?.autocomplete, field.autocomplete);
       assert.equal(input.default, field.id === "otp" ? undefined : field.value, field.id);
       assert.equal(input.type, field.secret ? "secret" : "text", field.id);
       assert.equal(trail.filter((event) => event.identity?.id === field.id).at(-1)!.value, field.value);
@@ -116,7 +117,7 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
     const saved = library.read(document.id);
     const taught = projectTeach(events, [], meta).workflow;
     for (const workflow of [saved, taught, interpret(events, { ...meta, preserveActions: true })]) {
-      const guests = workflow.steps.find((step) => step.identity?.id === "guests")!;
+      const guests = workflow.steps.find((step) => projectStep(step).identity?.id === "guests")!;
       assert.ok(guests);
       const input = workflow.inputs.find((input) => input.name === guests.input)!;
       assert.equal(input.type, "text");
@@ -126,12 +127,12 @@ test("sequential password prefixes do not turn Guests into a secret or erase ord
       assert.ok(guests.postcondition);
     }
     for (const [id, value] of [["password", "1qaz2wsx"], ["next-password", "Book!password"]] as const) {
-      const step = saved.steps.find((step) => step.identity?.id === id)!;
-      const input = saved.inputs.find((input) => input.name === step.input)!;
+      const step = saved.steps.find((step) => projectStep(step).identity?.id === id)!;
+      const input = saved.inputs.find((input) => input.name === projectStep(step).input)!;
       assert.equal(input.type, "secret");
       assert.equal(input.default, value);
     }
-    const otp = saved.steps.find((step) => step.identity?.id === "otp")!;
+    const otp = saved.steps.find((step) => projectStep(step).identity?.id === "otp")!;
     assert.equal(saved.inputs.find((input) => input.name === otp.input)!.default, undefined);
     assert.equal(cleanSaveField("Book a table", 80), "Book a table");
     const prompt = saveIntentPrompt({ floorTitle: "Book a table", steps: [{ id: "guests", action: "type", label: "Book a table" }] });

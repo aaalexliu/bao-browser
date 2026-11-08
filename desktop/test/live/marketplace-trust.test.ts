@@ -193,7 +193,7 @@ test("a marketplace listing installs and runs without a Bao approval", { timeout
 
 function workflow(startUrl: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: LISTING_ID,
     name: "Submit a payment",

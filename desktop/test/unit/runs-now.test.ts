@@ -11,7 +11,7 @@ import type { WorkflowV2 } from "../../src/v1/schema";
 import { applyHermeticApp } from "../runtime";
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
-  return { schema: "bao.workflow/v2", version: 2, id, name, createdAt: 1, startUrl, inputs: [], steps };
+  return { schema: "bao.workflow/v4", version: 2, id, name, createdAt: 1, startUrl, inputs: [], steps };
 }
 
 function confirmStep(postcondition: boolean): WorkflowV2["steps"][number] {

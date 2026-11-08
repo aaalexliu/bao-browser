@@ -16,7 +16,7 @@ import { plainReplayReason } from "../../../web/src/lib/review-gate";
 
 function workflow(id: string, name: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,

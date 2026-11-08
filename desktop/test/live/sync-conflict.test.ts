@@ -138,7 +138,7 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
 
 function workflow(id: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: id === "offline-note" ? "Offline note" : "Shared note",

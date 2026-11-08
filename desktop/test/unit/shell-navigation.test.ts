@@ -112,7 +112,7 @@ test("the running app keeps navigation, details, keyboard focus and narrow layou
   const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "wf-shell", name: "Read the local fixture", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "wf-shell", name: "Read the local fixture", createdAt: 1,
     startUrl: "/fixture", inputs: [], steps: [{ id: "open", index: 0, action: "click", label: "Open fixture", surface: "dom", identity: { surface: "dom", role: "button", name: "Open fixture", path: [] }, timeoutMs: 1000 }],
   };
   app.library.save(workflow);
@@ -354,7 +354,7 @@ test("Workflows list keeps long names, search recovery, warnings and actions rea
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const longName = "Create production Google OAuth client for 五秒 in the Chinglish AI project using the shared sign-in screen";
   for (const [id, name] of [["long", longName], ["short", "Read fixture"], ["unused", "Not run"]] as const) {
-    app.library.save({ schema: "bao.workflow/v2", version: 2, id, name, createdAt: 1, startUrl: "/fixture", inputs: Array.from({ length: 13 }, (_, n) => ({ name: `text${n}`, type: "text" as const })), steps: [] });
+    app.library.save({ schema: "bao.workflow/v4", version: 2, id, name, createdAt: 1, startUrl: "/fixture", inputs: Array.from({ length: 13 }, (_, n) => ({ name: `text${n}`, type: "text" as const })), steps: [] });
   }
   app.library.saveRun({ id: "old", workflowId: "long", status: "passed", at: 1, steps: [], heals: [] });
   app.library.saveRun({ id: "latest", workflowId: "long", status: "failed", at: 20, steps: [], heals: [] });
@@ -449,7 +449,7 @@ test("the palette takes focus from the modal sidebar without a queued close stea
   const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "wf-palette", name: "Local palette fixture", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "wf-palette", name: "Local palette fixture", createdAt: 1,
     startUrl: "/fixture", inputs: [], steps: [],
   };
   app.library.save(workflow);

@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
@@ -59,11 +60,11 @@ test("describe omits a generated token check while retaining local data and expl
     library.saveTrail(document.id, events);
     const saved = library.read(document.id);
     const trail = JSON.stringify(library.readTrail(document.id));
-    const generated = saved.steps.find((step) => step.identity?.id === "generate");
+    const generated = saved.steps.find((step) => projectStep(step).identity?.id === "generate");
     assert.ok(generated);
     assert.equal(generated.postcondition?.match, token);
     assert.equal(generated.expect?.match, token);
-    const guests = saved.steps.find((step) => step.identity?.id === "guests");
+    const guests = saved.steps.find((step) => projectStep(step).identity?.id === "guests");
     assert.ok(guests);
     assert.equal(saved.inputs.find((input) => input.name === guests.input)?.default, "2");
     assert.ok(events.some((event) => event.op === "type" && event.value === "2"));
@@ -73,7 +74,7 @@ test("describe omits a generated token check while retaining local data and expl
     assert.ok(projected);
     assert.equal(projected.postcondition, undefined);
     assert.equal(projected.expect, undefined);
-    const ordinary = described.workflow.steps.find((step) => step.identity?.id === "ordinary");
+    const ordinary = described.workflow.steps.find((step) => projectStep(step).identity?.id === "ordinary");
     assert.equal(ordinary?.postcondition?.match, "Saved ordinary fixture");
     assert.equal(ordinary?.expect?.match, "Saved ordinary fixture");
     assert.ok(described.workflow.steps.some((step) => step.intent === explicit));

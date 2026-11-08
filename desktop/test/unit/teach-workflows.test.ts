@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 // Teach a new workflow, correct it, and replay twice.
 // A second test merges demonstrations into a login route.
 // The capture browser is the local fixture page. No vendor network.
@@ -155,7 +156,7 @@ test("teach a new workflow, correct three cards, and replay twice", { timeout: 1
     assert.equal(savedBlob.includes(secret), true);
     assert.equal(savedBlob.includes(file), false);
     assert.equal(saved.steps.find((step) => step.input === "note")?.intent, "type the note");
-    assert.equal(saved.steps.some((step) => step.action === "confirm" && step.human), true);
+    assert.equal(saved.steps.some((step) => step.action === "confirm" && projectStep(step).human), true);
     assert.equal(saved.steps.find((step) => step.action === "verify")?.postcondition?.match, "Applied");
     const pair = app.library.readIntentEval(saved.id) as {
       decisions: { kind: string; detail: string }[];
@@ -253,7 +254,7 @@ test("a logged-in demo and a login demo merge into one route", { timeout: 180000
     const route = merged.inputs.find((input) => input.type === "choice");
     assert.deepEqual(route?.choices, ["Log in first", "Already signed in"]);
     assert.ok(merged.steps.some((step) => step.when?.value === "Log in first"));
-    assert.equal(merged.steps.find((step) => step.identity?.id === "apply-btn")?.when, undefined);
+    assert.equal(merged.steps.find((step) => projectStep(step).identity?.id === "apply-btn")?.when, undefined);
     await page.goto(`${base}/`);
     await page.click('#rail button[data-place="workflows"]');
     await page.click(`[data-open-workflow="${merged.id}"]`);

@@ -1,7 +1,8 @@
 // Locator versions for one step. A heal, a revert, and a rollback append a row.
-// Nothing rewrites an older row.
+// A row stores the changed names and the locator list after the change.
 
-import type { Identity, StepLocator, WorkflowStep } from "./schema";
+import type { StepLocator, Target, TargetHint, WorkflowStep } from "./schema";
+import { stepTarget } from "./schema";
 
 export type VersionSource = "recorded" | "heal" | "revert" | "rollback";
 
@@ -10,16 +11,16 @@ export interface ElementVersion {
   at: number;
   source: VersionSource;
   runId?: string;
-  /** 100 is a unique visible hit. */
   score?: number;
   changed: string[];
-  identity?: Identity;
-  locators?: StepLocator[];
+  locators: StepLocator[];
+  hint?: TargetHint;
 }
 
-const ATTRS = ["role", "name", "text", "testId", "id", "label", "cssPath", "xpath"] as const;
+const HINT_ATTRS = ["label", "nameAttr", "role", "surface"] as const;
 
-export function recordedVersion(step: Pick<WorkflowStep, "identity" | "locators">, at: number, runId?: string): ElementVersion {
+export function recordedVersion(step: WorkflowStep, at: number, runId?: string): ElementVersion {
+  const target = stepTarget(step);
   return {
     id: `recorded-${at}`,
     at,
@@ -27,36 +28,37 @@ export function recordedVersion(step: Pick<WorkflowStep, "identity" | "locators"
     runId,
     score: 100,
     changed: [],
-    identity: copyIdentity(step.identity),
-    locators: copyLocators(step.locators),
+    locators: copyLocators(target?.locators) ?? [],
+    hint: copyHint(target?.hint),
   };
 }
 
-export function versionsFor(step: Pick<WorkflowStep, "history" | "identity" | "locators">, at = 0): ElementVersion[] {
-  if (step.history && step.history.length > 0) return step.history;
+export function versionsFor(step: WorkflowStep, at = 0): ElementVersion[] {
+  const history = stepTarget(step)?.history;
+  if (history && history.length > 0) return history;
   return [recordedVersion(step, at)];
 }
 
-export function changedAttrs(
-  before: Pick<WorkflowStep, "identity" | "locators">,
-  after: Pick<WorkflowStep, "identity" | "locators">,
-): string[] {
+export function changedAttrs(before: WorkflowStep, after: WorkflowStep): string[] {
+  const left = stepTarget(before);
+  const right = stepTarget(after);
   const changed: string[] = [];
-  for (const attr of ATTRS) {
-    if ((before.identity?.[attr] || "") !== (after.identity?.[attr] || "")) changed.push(attr);
+  for (const attr of HINT_ATTRS) {
+    if ((left?.hint?.[attr] || "") !== (right?.hint?.[attr] || "")) changed.push(attr);
   }
-  if (locatorKey(before.locators) !== locatorKey(after.locators)) changed.push("locators");
+  if (locatorKey(left?.locators) !== locatorKey(right?.locators)) changed.push("locators");
   return changed;
 }
 
-/** Append a heal row. The recorded row is created once, from the step before the patch. */
 export function withHealVersion(
   before: WorkflowStep,
   after: WorkflowStep,
   meta: { at: number; recordedAt: number; runId?: string; score?: number },
 ): WorkflowStep {
-  const history = before.history && before.history.length > 0
-    ? [...before.history]
+  const target = stepTarget(after);
+  if (!target) return after;
+  const history = stepTarget(before)?.history?.length
+    ? [...stepTarget(before)!.history!]
     : [recordedVersion(before, meta.recordedAt)];
   const version: ElementVersion = {
     id: `heal-${meta.at}-${history.length}`,
@@ -65,20 +67,21 @@ export function withHealVersion(
     runId: meta.runId,
     score: meta.score ?? 100,
     changed: changedAttrs(before, after),
-    identity: copyIdentity(after.identity),
-    locators: copyLocators(after.locators),
+    locators: copyLocators(target.locators) ?? [],
+    hint: copyHint(target.hint),
   };
-  return { ...after, history: [...history, version] };
+  return withTarget(after, { ...target, history: [...history, version] });
 }
 
-/** Append a revert row. Older rows stay as they were. */
 export function withRevertVersion(
   current: WorkflowStep,
   before: WorkflowStep,
   meta: { at: number; recordedAt: number; runId?: string },
 ): WorkflowStep {
-  const history = current.history && current.history.length > 0
-    ? [...current.history]
+  const target = stepTarget(before);
+  if (!target) return before;
+  const history = stepTarget(current)?.history?.length
+    ? [...stepTarget(current)!.history!]
     : [recordedVersion(before, meta.recordedAt)];
   const version: ElementVersion = {
     id: `revert-${meta.at}-${history.length}`,
@@ -87,24 +90,20 @@ export function withRevertVersion(
     runId: meta.runId,
     score: history[0]?.score ?? 100,
     changed: changedAttrs(current, before),
-    identity: copyIdentity(before.identity),
-    locators: copyLocators(before.locators),
+    locators: copyLocators(target.locators) ?? [],
+    hint: copyHint(target.hint),
   };
-  return { ...before, history: [...history, version] };
+  return withTarget(before, { ...target, history: [...history, version] });
 }
 
-/**
- * Copy one older version onto the step and append that copy.
- * The chosen row is not edited.
- */
 export function rollbackTo(
   step: WorkflowStep,
   versionId: string,
   meta: { at: number; recordedAt: number; runId?: string },
 ): WorkflowStep {
-  const history = step.history && step.history.length > 0
-    ? [...step.history]
-    : [recordedVersion(step, meta.recordedAt)];
+  const target = stepTarget(step);
+  if (!target) return step;
+  const history = target.history?.length ? [...target.history] : [recordedVersion(step, meta.recordedAt)];
   const picked = history.find((row) => row.id === versionId);
   if (!picked) return step;
   const version: ElementVersion = {
@@ -113,32 +112,38 @@ export function rollbackTo(
     source: "rollback",
     runId: meta.runId,
     score: picked.score,
-    changed: changedAttrs(step, picked),
-    identity: copyIdentity(picked.identity),
-    locators: copyLocators(picked.locators),
+    changed: changedAttrs(step, withTarget(step, { ...target, locators: picked.locators, hint: picked.hint })),
+    locators: copyLocators(picked.locators) ?? [],
+    hint: copyHint(picked.hint),
   };
-  return {
-    ...step,
-    identity: copyIdentity(picked.identity),
-    locators: copyLocators(picked.locators),
+  return withTarget(step, {
+    ...target,
+    locators: copyLocators(picked.locators) ?? [],
+    hint: copyHint(picked.hint),
     history: [...history, version],
-  };
+  });
+}
+
+function withTarget(step: WorkflowStep, target: Target): WorkflowStep {
+  if (!stepTarget(step) && step.action !== "key" && step.action !== "digits" && step.action !== "pickDate") return step;
+  if (step.action === "navigate" || step.action === "verify" || step.action === "login" || step.action === "extract"
+    || step.action === "for_each" || step.action === "note" || step.action === "download" || step.action === "open"
+    || step.action === "wait" || step.action === "finish") return step;
+  return { ...step, target };
 }
 
 function locatorKey(list: StepLocator[] | undefined): string {
-  return (list || []).map((locator) => [locator.kind, locator.role, locator.name, locator.value, locator.relation].join(":")).join("|");
+  return (list || []).map((locator) => [locator.kind, locator.kind === "role" ? locator.role : "", locator.kind === "role" ? locator.name : "", locator.kind === "anchor" ? locator.relation : "", "value" in locator ? locator.value : ""].join(":")).join("|");
 }
 
-function copyIdentity(identity: Identity | undefined): Identity | undefined {
-  if (!identity) return undefined;
-  return { ...identity, path: [...(identity.path || [])] };
+function copyHint(hint: TargetHint | undefined): TargetHint | undefined {
+  if (!hint) return undefined;
+  return { ...hint, path: hint.path ? hint.path.map((seg) => ({ ...seg })) : undefined };
 }
 
 function copyLocators(list: StepLocator[] | undefined): StepLocator[] | undefined {
   if (!list) return undefined;
-  return list.map((locator) => {
-    const anchor = locator.anchor ? { ...locator.anchor } : undefined;
-    if (locator.kind === "anchor") return anchor ? { ...locator, anchor } : { ...locator };
-    return { ...locator, anchor };
-  });
+  return list.map((locator) => locator.kind === "anchor"
+    ? { ...locator, anchor: { ...locator.anchor } }
+    : { ...locator });
 }

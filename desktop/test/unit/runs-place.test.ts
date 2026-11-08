@@ -18,7 +18,7 @@ test("Runs shows stored step reasons after workflow edits or deletion in both th
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage();
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "edited", createdAt: 1, name: "Review report", startUrl: "/fixture", inputs: [],
+    schema: "bao.workflow/v4", version: 2, id: "edited", createdAt: 1, name: "Review report", startUrl: "/fixture", inputs: [],
     steps: [{ id: "review", index: 0, action: "click", label: "Review report", sensitive: true, surface: "dom", timeoutMs: 1000 }],
   };
   try {
@@ -303,7 +303,7 @@ test("running Runs groups history, opens shared receipts, survives polling and r
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 }, reducedMotion: "reduce" });
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "wf-runs", createdAt: 1, name: "Download the electricity bill and save the PDF to the monthly household records folder", startUrl: "/fixture", inputs: [],
+    schema: "bao.workflow/v4", version: 2, id: "wf-runs", createdAt: 1, name: "Download the electricity bill and save the PDF to the monthly household records folder", startUrl: "/fixture", inputs: [],
     steps: [{ id: "open", index: 0, label: "Open account", action: "click", surface: "dom", identity: { surface: "dom", role: "button", name: "Open account", path: [] }, timeoutMs: 1000 }],
   };
   app.library.save(workflow);

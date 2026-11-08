@@ -18,7 +18,7 @@ const reason = "this workflow used the retired live driver";
 test("Library and Replay explain retired workflows; replay and live API never open a browser", async () => {
   const dirs = applyHermeticApp("retired-live");
   const library = new Library(dirs.home);
-  const workflow: WorkflowV2 = { schema: "bao.workflow/v2", version: 2, id: "retired", name: "Saved task", createdAt: 1, driver: "cdp-live", startUrl: "http://127.0.0.1/", inputs: [], steps: [] };
+  const workflow: WorkflowV2 = { schema: "bao.workflow/v4", version: 2, id: "retired", name: "Saved task", createdAt: 1, driver: "cdp-live", startUrl: "http://127.0.0.1/", inputs: [], steps: [] };
   library.save(workflow);
   writeFileSync(path.join(dirs.home, "settings.json"), JSON.stringify({ careful: true, liveChromeProfile: "Profile 2" }));
   const app = await startApp({ home: dirs.home, port: 0 });
@@ -61,7 +61,7 @@ test("HTTP edits and replacement paths retain retirement and refuse browser laun
   const fixtureOrigin = `http://127.0.0.1:${(fixture.address() as { port: number }).port}`;
   const library = new Library(dirs.home);
   const ordinary: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "historical", name: "Before retirement", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "historical", name: "Before retirement", createdAt: 1,
     startUrl: `${fixtureOrigin}/`, inputs: [],
     steps: [{ id: "target", index: 0, action: "click", label: "Target", surface: "dom", timeoutMs: 1000, identity: { surface: "dom", role: "button", path: [], testId: "target" } }],
   };

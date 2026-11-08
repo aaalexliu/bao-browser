@@ -330,7 +330,7 @@ for (const ending of ["complete", "cancel", "timeout"] as const) {
 
 function signInWorkflow(base: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "fixture-signin",
     name: "Fixture sign-in",
@@ -363,7 +363,7 @@ function signInWorkflow(base: string): WorkflowV2 {
 
 function confirmWorkflow(startUrl: string, id = "confirm-apply"): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: "Confirm apply",

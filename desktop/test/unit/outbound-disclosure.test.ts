@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -17,7 +18,7 @@ const stripped = "[secret stripped]";
 
 function workflow(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id: "outbound", name: "Outbound", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "outbound", name: "Outbound", createdAt: 1,
     startUrl: "https://example.test/",
     inputs: [{ name: "password", type: "secret", label: "Password", default: secret }],
     steps: [{
@@ -95,7 +96,7 @@ test("MCP describe scrubs outbound text defaults and entry values without changi
   const described = await describeWorkflow(library, doc.id);
   assert.equal(described.workflow.inputs[0]?.default, undefined);
   assert.deepEqual(described.workflow.inputs.slice(1).map((input) => input.default), [stripped, stripped, "Keep this note"]);
-  assert.deepEqual(described.workflow.steps.slice(1).map((step) => step.value), [stripped, stripped, stripped]);
+  assert.deepEqual(described.workflow.steps.slice(1).map((step) => projectStep(step).value), [stripped, stripped, stripped]);
   assert.equal(described.workflow.steps[0]?.value, "{{password}}");
   assert.deepEqual(described.inputs.map(({ name, type, required }) => ({ name, type, required })), [
     { name: "password", type: "secret", required: false },
@@ -167,7 +168,7 @@ for (const damage of ["missing", "invalid JSON", "invalid structure", "unreadabl
     const library = new Library(root);
     const workflowFile = path.join(root, "workflows", "outbound.json");
     if (damage === "invalid JSON") writeFileSync(workflowFile, "{");
-    if (damage === "invalid structure") writeFileSync(workflowFile, JSON.stringify({ schema: "bao.workflow/v2" }));
+    if (damage === "invalid structure") writeFileSync(workflowFile, JSON.stringify({ schema: "bao.workflow/v4" }));
     if (damage === "unreadable file") mkdirSync(workflowFile);
     const outputs = [
       { name: "token", type: "text" as const, value: "sk-damagedWorkflowToken" },

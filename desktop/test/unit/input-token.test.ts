@@ -13,7 +13,7 @@ import { draftVersion, promoteVersion } from "../../src/v1/versions";
 
 function doc(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-note",
     name: "Note",

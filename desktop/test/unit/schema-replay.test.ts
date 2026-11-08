@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { lookup } from "../../src/v1/identity";
 import { expectedText, holds, replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { parseRecordedDate } from "../../src/v1/dates";
-import { migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { projectStep, migrate, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow-v2.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -255,7 +255,7 @@ test("interpret is deterministic and lifts a secret default and a file input", (
   assert.equal(upload?.postcondition?.kind, "text");
   assert.equal(upload?.postcondition?.match, "{{file}}");
   assert.equal(JSON.stringify(upload).includes("taxes.pdf"), false);
-  assert.equal(once.steps.some((step) => step.unresolved), false);
+  assert.equal(once.steps.some((step) => projectStep(step).unresolved), false);
   const typed = once.steps.find((step) => step.input === "username");
   assert.equal(typed?.value, "{{username}}");
   assert.equal(typed?.label.includes("tomsmith") || once.inputs.find((item) => item.name === "username")?.default === "tomsmith", true);
@@ -270,8 +270,8 @@ test("interpret uses requested navigation targets while legacy navigation keeps 
   assert.equal(interpret([{ ...event, afterUrl: undefined }], meta).steps[0]?.expect?.match, "target.test");
   for (const afterUrl of ["about:blank", "file:///private", "not a URL"]) {
     const step = interpret([{ ...event, afterUrl }], meta).steps[0]!;
-    assert.equal(step.value, event.value);
-    assert.equal(step.expect, undefined);
+    assert.equal(projectStep(step).value, event.value);
+    assert.equal(projectStep(step).expect, undefined);
   }
   const legacy = interpret([{ ...event, value: undefined }], meta);
   assert.equal(legacy.steps[0]?.value, event.afterUrl);
@@ -287,7 +287,7 @@ test("sensitive generic fields retain defaults beside ordinary long text", () =>
   ];
   const workflow = interpret(events, { id: "wf-secret-fields", startUrl: "https://example.test/form" });
   assert.deepEqual(workflow.inputs.map((input) => [input.type, input.default]), [["secret", "demo-private-password"], ["secret", "654321"], ["text", note]]);
-  assert.deepEqual(workflow.steps.map((step) => !!step.sensitive), [true, true, false]);
+  assert.deepEqual(workflow.steps.map((step) => !!projectStep(step).sensitive), [true, true, false]);
   assert.equal(JSON.stringify(workflow).includes("demo-private-password"), true);
   assert.equal(JSON.stringify(workflow).includes("654321"), true);
   assert.deepEqual(validateWorkflow(workflow), []);
@@ -304,7 +304,7 @@ test("calculator clicks become number inputs and the equals check is the express
   assert.deepEqual(doc.inputs.map((item) => item.type), ["number", "number"]);
   assert.equal(doc.inputs[0]?.default, "7");
   assert.equal(doc.inputs[1]?.default, "5");
-  const equals = doc.steps.find((step) => step.identity?.name === "=");
+  const equals = doc.steps.find((step) => projectStep(step).identity?.name === "=");
   assert.equal(equals?.postcondition?.match, "{{a}}+{{b}}");
   assert.equal(expectedText("{{a}}+{{b}}", { a: 1, b: 2 }), "3");
   assert.equal(JSON.stringify(doc).includes("\"7\""), true);
@@ -373,7 +373,7 @@ function driver(nodes: Identity[], extra: Partial<LiveTree> = {}): Driver & { cl
 
 function workflow(identity: Identity): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "Login",
@@ -567,8 +567,8 @@ test("a drop postcondition is the visible echo and a bare filename does not pass
     },
   ], { id: "wf-drop", name: "Drop", startUrl: "https://example.test/fixture" });
   const step = doc.steps.find((item) => item.action === "drop");
-  assert.equal(step?.input, "file");
-  assert.equal(step?.postcondition?.match, "Dropped file: {{file}}");
+  assert.equal((step ? projectStep(step).input : undefined), "file");
+  assert.equal((step ? projectStep(step).postcondition : undefined)?.match, "Dropped file: {{file}}");
   assert.equal(JSON.stringify(doc).includes("note.txt"), false);
   assert.equal(JSON.stringify(doc).includes("/tmp/note.txt"), false);
   const args = { file: { name: "bao-fix-run1.txt", path: "/tmp/bao-fix-run1.txt" } };

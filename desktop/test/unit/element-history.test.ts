@@ -1,3 +1,4 @@
+import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -34,7 +35,7 @@ function step(partial: Partial<WorkflowStep> & Pick<WorkflowStep, "id" | "action
 
 function doc(steps: WorkflowStep[], id = "wf"): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name: "Fixture",

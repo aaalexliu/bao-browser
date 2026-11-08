@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +26,7 @@ const reply = JSON.stringify({ identity: { surface: "dom", role: "button", testI
 
 function fixture(secret: string) {
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "heal-outbound", name: secret, createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "heal-outbound", name: secret, createdAt: 1,
     startUrl: "https://example.test/", inputs: [{ name: "password", type: "secret", label: "Password", default: secret }],
     steps: [{
       id: "missing", index: 0, action: "type", label: secret, surface: "dom", timeoutMs: 0,
@@ -63,8 +64,8 @@ function assertPrompt(prompt: string, secret: string): void {
   assert.ok(prompt.includes(`Reason: ${secret}`));
   assert.equal(prompt.includes("AAAALOCALSCREENSHOT"), false);
   const step = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Step: "))!.slice(6)) as WorkflowStep;
-  assert.equal(step.value, "{{password}}");
-  assert.equal(step.label, secret);
+  assert.equal(projectStep(step).value, "{{password}}");
+  assert.equal(projectStep(step).label, secret);
 }
 
 for (const provider of ["openai", "anthropic", "cursor-session", "cursor-print"] as const) {

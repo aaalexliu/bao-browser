@@ -8,7 +8,7 @@ import { launchOwnedChrome } from "../launch";
 import { BrowserDriver } from "./browser-driver";
 import { unavailableHeal } from "./heal";
 import { replay } from "./replay";
-import { migrate, type ReplayArgs } from "./schema";
+import { parseWorkflow, stepTitle, type ReplayArgs } from "./schema";
 
 export interface GateResult {
   ok: boolean;
@@ -18,10 +18,10 @@ export interface GateResult {
 }
 
 export async function runThrowawayGate(document: unknown, samples: Record<string, string> = {}): Promise<GateResult> {
-  const workflow = migrate(document);
+  const workflow = parseWorkflow(document);
   const first = workflow.steps[0];
   if (!/^https?:\/\//i.test(workflow.startUrl)) {
-    return { ok: false, stepId: first?.id || "start", stepLabel: first?.label || "Open the public site", reason: "the workflow has no public site" };
+    return { ok: false, stepId: first?.id || "start", stepLabel: first ? stepTitle(first) : "Open the public site", reason: "the workflow has no public site" };
   }
   const profile = await mkdtemp(path.join(tmpdir(), "bao-gate-"));
   const context = await launchOwnedChrome({ userDataDir: profile, headless: true });
@@ -49,7 +49,8 @@ export async function runThrowawayGate(document: unknown, samples: Record<string
     });
     if (result.status === "passed") return { ok: true };
     const failed = result.failure?.stepId || result.steps.find((step) => step.status === "failed")?.id || first?.id || "start";
-    const label = workflow.steps.find((step) => step.id === failed)?.label || failed;
+    const failedStep = workflow.steps.find((step) => step.id === failed);
+    const label = failedStep ? stepTitle(failedStep) : failed;
     return {
       ok: false,
       stepId: failed,
@@ -60,7 +61,7 @@ export async function runThrowawayGate(document: unknown, samples: Record<string
     return {
       ok: false,
       stepId: first?.id || "start",
-      stepLabel: first?.label || "Open the public site",
+      stepLabel: first ? stepTitle(first) : "Open the public site",
       reason: err instanceof Error ? err.message : String(err),
     };
   } finally {

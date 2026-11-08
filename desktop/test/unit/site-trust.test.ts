@@ -14,7 +14,7 @@ function ident(text: string): Identity {
 
 function doc(steps: WorkflowStep[]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, id: "requested", name: "Requested actions",
+    schema: "bao.workflow/v4", version: 2, id: "requested", name: "Requested actions",
     startUrl: "http://127.0.0.1:9/fixture", createdAt: 1, inputs: [],
     steps: steps.map((step, index) => ({ ...step, index })),
   };

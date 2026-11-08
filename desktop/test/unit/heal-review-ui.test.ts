@@ -8,7 +8,7 @@ import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 
 const workflow: WorkflowV2 = {
-  schema: "bao.workflow/v2", version: 2, id: "statements", name: "Download statement", createdAt: 1,
+  schema: "bao.workflow/v4", version: 2, id: "statements", name: "Download statement", createdAt: 1,
   startUrl: "/fixture", inputs: [], steps: [{ id: "statements", index: 0, action: "click", label: "Open statements", surface: "dom", identity: { surface: "dom", role: "link", name: "Statements", path: [{ role: "navigation", name: "Main menu" }] }, timeoutMs: 1000 }],
 };
 

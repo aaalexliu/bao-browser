@@ -61,6 +61,8 @@ export interface StepView {
   startedAt?: number;
   endedAt?: number;
   label?: string;
+  caption?: { text: string; citation?: { text: string; source: string } };
+  target?: { rect: { x: number; y: number; width: number; height: number }; viewport: { width: number; height: number } };
   action?: string;
   native?: { command: string; args: string[]; results?: { stdout: string; stderr: string; exitCode: number }[] };
   identity?: IdentityView;

@@ -14,7 +14,8 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
-import type { FileArg, ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { projectStep, stepTarget } from "./schema";
+import type { FileArg, Identity, ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { FILE_BINDING } from "./bindings";
 import {
   addDays,
@@ -283,7 +284,7 @@ export function filesFor(
   step: WorkflowStep,
   workflow: WorkflowV2,
 ): FileArg[] | undefined {
-  const bound = step.fileFrom || workflow.inputs.find((input) => input.name === step.input)?.fromOutput;
+  const bound = projectStep(step).fileFrom || workflow.inputs.find((input) => input.name === projectStep(step).input)?.fromOutput;
   if (!bound) return undefined;
   const output = runs.get(runId)?.outputs.get(bound);
   if (!output) throw new Error(`file is bound to ${bound}, which has no download yet`);
@@ -367,12 +368,6 @@ function mergeRevision(schema: JsonSchema, extra: FilesDatesSchema): void {
   }
 }
 
-/** Same door as migrate(). A plain version 2 document stays version 2. */
-export function migrateFilesDates(raw: unknown): WorkflowV2 {
-  const { migrate } = require("./schema") as typeof import("./schema");
-  return migrate(raw);
-}
-
 function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
   if (!group || group.length === 0) return undefined;
   return group[group.length - 1];
@@ -383,7 +378,7 @@ function lastEvent(group: ShapeEvent[] | undefined): ShapeEvent | undefined {
  * That node is gone on the next run, and its query string is the recorded search.
  * The button the person pressed is the trigger replay can press again.
  */
-function isGeneratedDownloadLink(identity: WorkflowStep["identity"]): boolean {
+function isGeneratedDownloadLink(identity: Identity | undefined): boolean {
   if (!identity || identity.id || identity.testId) return false;
   const tag = (identity.tag || "").toLowerCase();
   if (tag !== "a" && identity.role !== "link") return false;
@@ -391,23 +386,34 @@ function isGeneratedDownloadLink(identity: WorkflowStep["identity"]): boolean {
   return /\/download\b|[?&]format=csv/i.test(identity.href || "");
 }
 
-function takeDownloadTrigger(
-  outSteps: WorkflowStep[],
-  outGroups: ShapeEvent[][],
-  identity: WorkflowStep["identity"],
-): WorkflowStep["identity"] {
+function dropGeneratedDownloadLink(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): void {
   const prev = outSteps[outSteps.length - 1];
-  if (!prev || prev.action !== "click" || prev.datePicker) return identity;
+  if (!prev || prev.action !== "click") return;
+  if (!isGeneratedDownloadLink(projectStep(prev).identity)) return;
   outSteps.pop();
   outGroups.pop();
-  if (!isGeneratedDownloadLink(prev.identity)) return prev.identity || identity;
-  const button = outSteps[outSteps.length - 1];
-  if (!button || button.action !== "click" || button.datePicker || isGeneratedDownloadLink(button.identity)) {
-    return prev.identity || identity;
-  }
-  outSteps.pop();
-  outGroups.pop();
-  return button.identity || identity;
+}
+
+function carried(step: WorkflowStep, text: string, timeoutMs: number): Pick<WorkflowStep, "id" | "index" | "caption" | "timeoutMs" | "when" | "heal" | "readBack"> {
+  return {
+    id: step.id,
+    index: step.index,
+    caption: { ...step.caption, text },
+    timeoutMs,
+    when: step.when,
+    heal: step.heal,
+    readBack: step.readBack,
+  };
+}
+
+function pickDateFrom(step: WorkflowStep, date: { input: string; endInput?: string }, text: string): WorkflowStep {
+  const target = stepTarget(step);
+  return {
+    ...carried(step, text, step.timeoutMs),
+    action: "pickDate",
+    date,
+    ...(target ? { target } : {}),
+  };
 }
 
 function dateInput(inputs: WorkflowInput[], hint: string, event: ShapeEvent, zone: string): WorkflowInput {
@@ -415,16 +421,17 @@ function dateInput(inputs: WorkflowInput[], hint: string, event: ShapeEvent, zon
   if (!parsed) throw new Error("date value");
   const today = civilInZone(new Date(event.ts || 0), zone);
   const name = uniqueName(inputs, hint);
+  const relative = relativeBetween(today, parsed.civil);
   const input: WorkflowInput = {
     name,
     type: "date",
-    required: true,
+    supply: "saved",
     label: name,
     format: event.format || parsed.format,
-    relative: relativeBetween(today, parsed.civil),
+    relative,
     zone,
+    default: relative,
   };
-  input.default = input.relative;
   inputs.push(input);
   return input;
 }
@@ -460,8 +467,8 @@ function outputName(suggested: string, used: Set<string>): string {
 }
 
 /**
- * Turn a typed or picked date into a date input, fold picker clicks into one cell plan,
- * and turn a download event into a download step. Unrelated workflows stay version 2.
+ * Turn a typed or picked date into a date input, fold picker clicks into one pickDate step,
+ * and turn a download event into a download step.
  */
 export function shapeFilesDates(
   doc: WorkflowV2,
@@ -479,7 +486,7 @@ export function shapeFilesDates(
     const group = groups[index] || [];
     const event = lastEvent(group);
     if (!event?.picker || !event.value) return undefined;
-    const start = dateInput(inputs, hintFor(event, outSteps.some((step) => step.datePicker) ? "checkOut" : "checkIn"), event, zone);
+    const start = dateInput(inputs, hintFor(event, outSteps.some((step) => step.action === "pickDate") ? "checkOut" : "checkIn"), event, zone);
     let endName: string | undefined;
     const bundled = [...group];
     if (event.endValue) {
@@ -489,24 +496,10 @@ export function shapeFilesDates(
     }
     const step = steps[index]!;
     changed = true;
+    const text = endName ? `Pick {{${start.name}}} to {{${endName}}}` : `Pick {{${start.name}}}`;
     return {
       group: bundled,
-      step: {
-        ...step,
-        action: "click",
-        input: start.name,
-        value: `{{${start.name}}}`,
-        label: endName ? `Pick {{${start.name}}} to {{${endName}}}` : `Pick {{${start.name}}}`,
-        datePicker: endName ? { input: start.name, endInput: endName } : { input: start.name },
-        identity: event.identity
-          ? {
-              surface: "dom",
-              ...event.identity,
-              role: event.identity.role || "group",
-              path: [],
-            }
-          : step.identity,
-      },
+      step: pickDateFrom(step, endName ? { input: start.name, endInput: endName } : { input: start.name }, text),
     };
   };
 
@@ -545,14 +538,11 @@ export function shapeFilesDates(
       const suggested = event.suggestedFilename || event.fileName || "download";
       const output = outputName(suggested, usedOutputs);
       const step = steps[i]!;
-      const identity = takeDownloadTrigger(outSteps, outGroups, step.identity);
+      dropGeneratedDownloadLink(outSteps, outGroups);
       outSteps.push({
-        ...step,
+        ...carried(step, "Download", 30_000),
         action: "download",
-        label: "Download",
-        identity,
         download: { output, name: "{{run.date}}-{{suggested}}" },
-        timeoutMs: 30_000,
       });
       outGroups.push(group);
       i += 1;
@@ -561,16 +551,13 @@ export function shapeFilesDates(
     if (event?.op === "open") {
       changed = true;
       const step = steps[i]!;
-      const target = event.value && /^https?:\/\//i.test(event.value) ? "url" : "file";
+      const open = event.value && /^https?:\/\//i.test(event.value)
+        ? { target: "url" as const, url: event.value }
+        : { target: "file" as const, file: event.fileFrom ? `{{${event.fileFrom}.path}}` : event.value || "", app: event.format };
       outSteps.push({
-        ...step,
+        ...carried(step, open.target === "url" ? "Open url" : "Open file", 15_000),
         action: "open",
-        surface: target === "url" ? "dom" : "os",
-        label: target === "url" ? "Open url" : "Open file",
-        open: target === "url"
-          ? { target, url: event.value }
-          : { target, file: event.fileFrom ? `{{${event.fileFrom}.path}}` : event.value, app: event.format },
-        timeoutMs: 15_000,
+        open,
       });
       outGroups.push(group);
       i += 1;
@@ -579,8 +566,8 @@ export function shapeFilesDates(
     const step = steps[i]!;
     if (step.action === "type" && event && (event.dateField || looksLikeDateField(event.identity))) {
       const parsed = event.value ? parseRecordedDate(event.value) : undefined;
-      if (parsed && step.input) {
-        const input = inputs.find((item) => item.name === step.input);
+      if (parsed && projectStep(step).input) {
+        const input = inputs.find((item) => item.name === projectStep(step).input);
         if (input && input.type !== "secret") {
           const today = civilInZone(new Date(event.ts || 0), zone);
           input.type = "date";
@@ -588,15 +575,10 @@ export function shapeFilesDates(
           input.relative = relativeBetween(today, parsed.civil);
           input.default = input.relative;
           input.zone = zone;
+          input.supply = "saved";
           changed = true;
           if (event.dateField && event.inputType !== "date") {
-            outSteps.push({
-              ...step,
-              action: "click",
-              value: `{{${input.name}}}`,
-              label: `Pick {{${input.name}}}`,
-              datePicker: { input: input.name },
-            });
+            outSteps.push(pickDateFrom(step, { input: input.name }, `Pick {{${input.name}}}`));
             outGroups.push(group);
             i += 1;
             continue;
@@ -605,11 +587,13 @@ export function shapeFilesDates(
       }
     }
     if ((step.action === "upload" || step.action === "drop") && event?.fileFrom) {
-      step.fileFrom = event.fileFrom;
-      const input = inputs.find((item) => item.name === step.input);
+      const inputName = "input" in step.file ? step.file.input : undefined;
+      step.file = { fromOutput: event.fileFrom };
+      const input = inputName ? inputs.find((item) => item.name === inputName) : undefined;
       if (input) {
         input.fromOutput = event.fileFrom;
-        input.required = false;
+        input.supply = "must";
+        delete input.default;
       }
       changed = true;
     }
@@ -623,8 +607,6 @@ export function shapeFilesDates(
   return {
     doc: {
       ...doc,
-      version: FILES_DATES_WORKFLOW_VERSION,
-      filesDates: FILES_DATES_REVISION,
       inputs,
       steps: nextSteps,
     },

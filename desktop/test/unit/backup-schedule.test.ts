@@ -12,7 +12,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 function workflow(): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-backup",
     name: "Backup me",

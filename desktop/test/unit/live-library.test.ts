@@ -12,7 +12,7 @@ import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2", version: 2, driver: "cdp-live", id: "wf-live", name: "Saved live form",
+    schema: "bao.workflow/v4", version: 2, driver: "cdp-live", id: "wf-live", name: "Saved live form",
     startUrl: "https://example.test/", createdAt: 1,
     inputs: [{ name: "text", type: "text", default: "value" }],
     steps: identities.map((identity, index) => ({

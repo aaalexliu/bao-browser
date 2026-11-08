@@ -350,7 +350,7 @@ function saveWorkflows(library: Library, origin: string): void {
 
 function workflow(id: string, name: string, startUrl: string, steps: WorkflowV2["steps"]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,

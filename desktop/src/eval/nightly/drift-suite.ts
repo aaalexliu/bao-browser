@@ -10,7 +10,7 @@ import { launchOwnedChrome } from "../../launch";
 import { BrowserDriver } from "../../v1/browser-driver";
 import { unavailableHeal } from "../../v1/heal";
 import { replay } from "../../v1/replay";
-import type { WorkflowV2 } from "../../v1/schema";
+import { stepTitle, type WorkflowV2 } from "../../v1/schema";
 import type { SuiteCase } from "./result";
 
 const CHANGES: { name: string; query: string; scale?: number; slow?: boolean }[] = [
@@ -80,7 +80,7 @@ async function replayChange(
     const steps = result.steps.map((step, index) => {
       const savedStep = workflow.steps.find((item) => item.id === step.id);
       return {
-        stepId: `${index}:${savedStep?.label || step.id}`,
+        stepId: `${index}:${savedStep ? stepTitle(savedStep) : step.id}`,
         passed: step.status === "passed",
         detail: step.reason || "",
       };

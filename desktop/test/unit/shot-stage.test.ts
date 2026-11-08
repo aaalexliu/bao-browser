@@ -31,7 +31,7 @@ test("Library step frame fits the captured viewport without letterboxing or crop
     const jpeg = await fetch(`http://127.0.0.1:${app.port}/api/runs/${runId}/shots/after.jpg`);
     assert.equal(jpeg.status, 200);
     assert.equal(jpeg.headers.get("content-type"), "image/jpeg");
-    app.library.save({ schema: "bao.workflow/v2", version: 2, id: "wf-shot-stage", name: "Step screenshot fixture",
+    app.library.save({ schema: "bao.workflow/v4", version: 2, id: "wf-shot-stage", name: "Step screenshot fixture",
       startUrl: `http://127.0.0.1:${app.port}/fixture`, inputs: [], createdAt: 1,
       steps: [
         { id: "shot", index: 0, action: "note", label: "Fixture page", surface: "dom", timeoutMs: 1000 },

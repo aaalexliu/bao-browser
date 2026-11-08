@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ACCEPT, lookup, type Identity } from "../../src/v1/identity";
@@ -169,12 +170,12 @@ test("the real signup-email tie is broken by the recorded test id and css path",
     },
   ], { id: "wf-tie", name: "Tie", startUrl: "https://automationexercise.com/login" });
   const step = recorded.steps[0]!;
-  assert.equal(step.locators?.some((item) => item.kind === "testid" && item.value === "signup-email"), true);
-  assert.equal(step.locators?.some((item) => item.kind === "css" && item.value === signup.cssPath), true);
+  assert.equal(projectStep(step).locators?.some((item) => item.kind === "testid" && item.value === "signup-email"), true);
+  assert.equal(projectStep(step).locators?.some((item) => item.kind === "css" && item.value === signup.cssPath), true);
   assert.equal(scoreLocator({ kind: "testid", value: "signup-email" }, fields).score, 100);
   assert.equal(matchLocator({ kind: "css", value: signup.cssPath || "" }, fields)?.index, 1);
-  delete step.expect;
-  delete step.postcondition;
+  delete projectStep(step).expect;
+  delete projectStep(step).postcondition;
   const filled: string[] = [];
   const live = tree(fields, { url: "https://automationexercise.com/login" });
   const driver: Driver = {
@@ -373,7 +374,7 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
 
 test("replay of an empty workflow is not passed", async () => {
   const workflow: WorkflowV2 = {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-empty",
     name: "Empty",

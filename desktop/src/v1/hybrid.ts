@@ -2,6 +2,7 @@
 // The model may drop a noise step, write intent text, and flag human steps.
 // It cannot add a step, change an input, or clear a secret or gate tag.
 
+import { projectStep } from "./schema";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface HybridHuman {
@@ -103,21 +104,17 @@ export function applyHybrid(base: WorkflowV2, raw: unknown, secrets: string[]): 
     const intent = edit.intents.get(step.id);
     const copy = structuredClone(step);
     copy.index = index;
-    copy.intent = scrub(intent && intent.trim() ? intent : step.label);
-    copy.input = step.input;
-    copy.value = step.value;
-    copy.sensitive = step.sensitive;
-    copy.gate = step.gate;
+    copy.caption = { ...copy.caption, text: scrub(intent && intent.trim() ? intent : projectStep(step).label) };
     return copy;
   });
   return { workflow, refused, ignored: edit.ignored, human: edit.human, rewritten };
 }
 
 export function isNoiseStep(step: WorkflowStep): boolean {
-  if (step.input || step.sensitive || step.gate) return false;
-  const effect = step.postcondition?.kind;
+  if (projectStep(step).input || projectStep(step).sensitive || projectStep(step).gate) return false;
+  const effect = projectStep(step).postcondition?.kind;
   if (effect === "text" || effect === "url" || effect === "value") return false;
-  const name = [step.identity?.name, step.identity?.text, step.identity?.label, step.label].filter(Boolean).join(" ");
+  const name = [projectStep(step).identity?.name, projectStep(step).identity?.text, projectStep(step).identity?.label, projectStep(step).label].filter(Boolean).join(" ");
   return /\bhelp\b/i.test(name);
 }
 
@@ -135,8 +132,9 @@ function literals(workflow: WorkflowV2, secrets: string[]): { from: string; to: 
     if (input.default) out.push({ from: input.default, to: `{{${input.name}}}` });
   }
   for (const step of workflow.steps) {
-    if (step.action === "type" && step.value && !step.value.includes("{{")) {
-      out.push({ from: step.value, to: "{{literal}}" });
+    const literal = projectStep(step).value;
+    if (step.action === "type" && literal && !literal.includes("{{")) {
+      out.push({ from: literal, to: "{{literal}}" });
     }
   }
   return out;

@@ -2,18 +2,19 @@
 
 import { interpret, isConstantType } from "../../v1/interpret";
 import { replay, type Driver } from "../../v1/replay";
+import { projectStep, stepQuery } from "../../v1/schema";
 import type { Identity, ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { condense } from "../../v1/condense";
 import { INTENT_CASES, noisyTrail, type IntentCase, type World } from "./cases";
 import type { TrailEvent } from "../../v1/interpret";
 
-export function targetOf(step: { identity?: Identity }): string {
-  const id = step.identity;
+export function targetOf(step: { identity?: Identity } | WorkflowStep): string {
+  const id = "caption" in step ? stepQuery(step) : step.identity;
   return id?.testId || id?.id || id?.name || id?.nameAttr || "";
 }
 
 export function stepSignature(step: WorkflowStep): string {
-  return [step.action, targetOf(step), step.gate || "-", step.input || "-"].join("|");
+  return [step.action, targetOf(step), projectStep(step).gate || "-", projectStep(step).input || "-"].join("|");
 }
 
 export function multisetScore(expected: string[], predicted: string[]): {
@@ -58,7 +59,7 @@ export function truthLiterals(item: IntentCase): string[] {
 }
 
 export function stepLiterals(workflow: WorkflowV2): string[] {
-  return workflow.steps.filter((step) => step.action === "type" && !step.input).map((step) => step.value || "");
+  return workflow.steps.filter((step) => step.action === "type" && !projectStep(step).input).map((step) => projectStep(step).value || "");
 }
 
 export interface ParamScore {
@@ -97,7 +98,7 @@ export function scoreParams(workflow: WorkflowV2, item: IntentCase): ParamScore 
 }
 
 export function humanKeys(workflow: WorkflowV2): string[] {
-  return workflow.steps.filter((step) => step.gate).map((step) => `${step.gate}|${targetOf(step)}`);
+  return workflow.steps.filter((step) => projectStep(step).gate).map((step) => `${projectStep(step).gate}|${targetOf(step)}`);
 }
 
 export function expectedHuman(item: IntentCase): string[] {

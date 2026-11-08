@@ -20,7 +20,7 @@ import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 const outputs = [{ name: "result", type: "table" as const, columns: [{ name: "value", type: "text" as const }], rows: [{ value: "Imported cloud run" }] }];
 const workflow: WorkflowV2 = {
-  schema: "bao.workflow/v2", version: 2, id: "cloud", name: "Cloud", startUrl: "https://example.test/", createdAt: 1, inputs: [],
+  schema: "bao.workflow/v4", version: 2, id: "cloud", name: "Cloud", startUrl: "https://example.test/", createdAt: 1, inputs: [],
   steps: [{ id: "note", index: 0, action: "note", label: "Read cloud", surface: "dom", timeoutMs: 0 }],
 };
 const stored: StoredRun = {

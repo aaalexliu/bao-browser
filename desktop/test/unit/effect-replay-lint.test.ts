@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
@@ -55,11 +56,11 @@ test("effect filter drops a still click and keeps one that changed state", () =>
   const dropped = droppedNoEffectIds(events);
   assert.deepEqual(dropped, ["head"]);
   const workflow = condense(events, { id: "fx", name: "fx", startUrl: url });
-  assert.equal(workflow.steps.some((step) => step.identity?.text === "Title"), false);
-  assert.equal(workflow.steps.some((step) => step.identity?.nameAttr === "size"), true);
-  assert.equal(workflow.steps.some((step) => step.identity?.id === "go"), true);
-  assert.equal(workflow.steps.some((step) => step.identity?.name === "Help"), true);
-  assert.equal(workflow.steps.some((step) => step.identity?.cssPath === "details"), true);
+  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.text === "Title"), false);
+  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.nameAttr === "size"), true);
+  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.id === "go"), true);
+  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.name === "Help"), true);
+  assert.equal(workflow.steps.some((step) => projectStep(step).identity?.cssPath === "details"), true);
 });
 
 test("a shared radio name resolves to the input inside the recorded label", async () => {
@@ -90,10 +91,10 @@ test("a shared radio name resolves to the input inside the recorded label", asyn
   ], { id: "order", name: "order", startUrl: url });
   const step = workflow.steps[0];
   assert.equal(step?.action, "check");
-  assert.equal(step?.locators?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
+  assert.equal((step ? projectStep(step).locators : undefined)?.some((item) => item.kind === "css" && item.value === 'input[name="size"]'), true);
   const nodes = [label, small, medium, large];
   const ambiguous = matchLabeledControl(
-    step?.locators || [],
+    (step ? projectStep(step).locators : undefined) || [],
     { ...recorded, label: "Small" },
     [small, { ...small, cssPath: "form label.other input" }, medium],
   );
@@ -257,7 +258,7 @@ test("stored locators find an id-less control by css and reveal a collapsed sear
 
 function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]["locators"]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "wf",
@@ -279,7 +280,7 @@ function clickWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number
 
 function typeWorkflow(identity: Identity, locators?: WorkflowV2["steps"][number]["locators"]): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf",
     name: "wf",

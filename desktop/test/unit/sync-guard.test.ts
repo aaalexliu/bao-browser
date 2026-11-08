@@ -1,3 +1,4 @@
+import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,7 +49,7 @@ test("a push retains owner data and screenshots while stripping credentials", ()
 test("workflow pushes omit typed token, card and SSN crops only", () => {
   const values = ["sk-FixtureCropToken123", "4111111111111111", "123-45-6789", "ordinary text"];
   const doc: WorkflowV2 = {
-    schema: "bao.workflow/v2", version: 2, id: "crop-values", name: "Crop values", createdAt: 1,
+    schema: "bao.workflow/v4", version: 2, id: "crop-values", name: "Crop values", createdAt: 1,
     startUrl: "https://example.test/", inputs: values.map((value, index) => ({ name: `text${index}`, type: "text" as const, default: value })),
     steps: values.flatMap((value, index) => [
       { id: `bound${index}`, index: index * 2, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000,
@@ -62,13 +63,13 @@ test("workflow pushes omit typed token, card and SSN crops only", () => {
   assert.deepEqual(body.shots.map((shot) => shot.stepId), ["bound3", "literal3"]);
   assert.deepEqual(doc, original);
   assert.ok(doc.inputs.every((input) => input.type === "text"));
-  assert.ok(doc.steps.every((step) => !step.sensitive));
+  assert.ok(doc.steps.every((step) => !projectStep(step).sensitive));
 });
 
 test("push accepts saved passwords that also occur in metadata", () => {
   for (const password of ["password", "secret", "test", "pass", "admin", "8000", "5000"]) {
     const doc: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "sync-password", name: "Password test", createdAt: 1,
+      schema: "bao.workflow/v4", version: 2, id: "sync-password", name: "Password test", createdAt: 1,
       startUrl: "https://example.test/admin",
       inputs: [{ name: "password", type: "secret", default: password }],
       steps: [

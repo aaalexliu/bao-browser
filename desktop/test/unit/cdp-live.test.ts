@@ -91,7 +91,7 @@ test("historical cdp-live workflows stay valid but cannot launch replay", () => 
     id: "wf-cdp-live",
     name: "Live",
     version: 2,
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     startUrl: "https://books.toscrape.com/",
     createdAt: 1,
     inputs: [],

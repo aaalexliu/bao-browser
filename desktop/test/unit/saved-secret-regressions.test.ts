@@ -19,7 +19,7 @@ import { applyHermeticApp } from "../runtime";
 const secret = "BaoSecretFixture9kQ7m";
 const field: Identity = { surface: "dom", role: "textbox", id: "credential", nameAttr: "credential", path: [] };
 const doc = (step: WorkflowStep): WorkflowV2 => ({
-  schema: "bao.workflow/v2", version: 2, id: "secret-regression", name: "Secret regression", createdAt: 1,
+  schema: "bao.workflow/v4", version: 2, id: "secret-regression", name: "Secret regression", createdAt: 1,
   startUrl: "http://127.0.0.1/", inputs: [], steps: [step],
 });
 
@@ -221,7 +221,7 @@ test("plain Replay uses the current saved secret while pinned and run-link input
     const address = fixture.address();
     assert.ok(address && typeof address !== "string");
     const workflow: WorkflowV2 = {
-      schema: "bao.workflow/v2", version: 2, id: "replay-secret-default", name: "Replay secret default", createdAt: 1,
+      schema: "bao.workflow/v4", version: 2, id: "replay-secret-default", name: "Replay secret default", createdAt: 1,
       startUrl: `http://127.0.0.1:${address.port}/`,
       inputs: [
         { name: "password", type: "secret", label: "Password", default: "old-password" },

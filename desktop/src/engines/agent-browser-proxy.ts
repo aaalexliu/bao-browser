@@ -480,10 +480,9 @@ export class AgentBrowserProxy {
   private async captureTarget(session: Session, step: RecordedAgentBrowserCommand, target: string): Promise<void> {
     try {
       const rect = await this.box(session, target);
-      if (!rect) return;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       const frame = await this.screenshot(session, step.native.command, true);
-      if (!frame.viewport || rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0
-          || rect.x + rect.width > frame.viewport.width || rect.y + rect.height > frame.viewport.height) return;
+      if (!frame.viewport) return;
       await session.recording.actionPicture(step, frame.bytes, { rect, viewport: frame.viewport });
     } catch {
       // Missing action evidence must not change the native command.

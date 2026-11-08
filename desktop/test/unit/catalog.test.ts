@@ -531,7 +531,7 @@ for (const replaceOnResume of [false, true]) {
     let token = "";
     try {
       const doc: WorkflowV2 = {
-        schema: "bao.workflow/v2", version: 2, id: "otp-live", name: "Live OTP", createdAt: 1,
+        schema: "bao.workflow/v4", version: 2, id: "otp-live", name: "Live OTP", createdAt: 1,
         startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
         inputs: [{ name: "code", type: "text", label: "Verification code", default: "123456" }],
         steps: [
@@ -614,7 +614,7 @@ test("a stopped run keeps the saved-values receipt", { timeout: 60_000 }, async 
 
 function clickWorkflow(startUrl: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id: "wf-click",
     name: "Click Go",
@@ -651,7 +651,7 @@ function hit(id: string, source: string, score: number, title: string): SearchHi
 
 function workflow(id: string, name: string): WorkflowV2 {
   return {
-    schema: "bao.workflow/v2",
+    schema: "bao.workflow/v4",
     version: 2,
     id,
     name,

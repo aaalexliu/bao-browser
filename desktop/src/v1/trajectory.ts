@@ -1,6 +1,7 @@
 // Trajectory diff. Replay is compared with the recording, one step at a time:
 // target identity, action, postcondition, and a coarse timing bucket.
 
+import { projectStep } from "./schema";
 import type { Identity, WorkflowStep, WorkflowV2 } from "./schema";
 
 export type TimingBucket = "lt1s" | "lt10s" | "lt60s" | "slower";
@@ -45,12 +46,13 @@ export function targetKey(identity?: Identity): string {
   return role;
 }
 
-export function postKey(step: Pick<WorkflowStep, "expect" | "postcondition" | "waitFor" | "gone" | "readBack">): string {
+export function postKey(step: WorkflowStep): string {
+  const view = projectStep(step);
   const parts: string[] = [];
-  if (step.waitFor) parts.push(`wait_for ${step.waitFor.kind} ${step.waitFor.match || ""}`.trim());
-  if (step.expect) parts.push(`${step.expect.kind} ${step.expect.match || step.expect.state || ""}`.trim());
-  else if (step.postcondition) parts.push(`${step.postcondition.kind} ${step.postcondition.match || ""}`.trim());
-  if (step.gone) parts.push(`gone ${step.gone.kind} ${step.gone.match || ""}`.trim());
+  if (view.waitFor) parts.push(`wait_for ${view.waitFor.kind} ${"match" in view.waitFor ? view.waitFor.match || "" : ""}`.trim());
+  if (view.expect) parts.push(`${view.expect.kind} ${view.expect.match || view.expect.state || ""}`.trim());
+  else if (view.postcondition) parts.push(`${view.postcondition.kind} ${view.postcondition.match || ""}`.trim());
+  if (view.gone) parts.push(`gone ${view.gone.kind} ${"match" in view.gone ? view.gone.match || "" : ""}`.trim());
   if (step.readBack) parts.push(`read-back ${step.readBack.source} ${step.readBack.match}`);
   return parts.filter(Boolean).join("; ") || "none";
 }
@@ -59,7 +61,7 @@ export function trajectoryFromWorkflow(workflow: WorkflowV2, timings: number[] =
   return workflow.steps.map((step, index) => ({
     stepId: step.id,
     action: step.action,
-    target: targetKey(step.identity),
+    target: targetKey(projectStep(step).identity),
     postcondition: postKey(step),
     timing: timingBucket(timings[index] ?? 0),
   }));

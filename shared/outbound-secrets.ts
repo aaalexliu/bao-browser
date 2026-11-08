@@ -3,6 +3,7 @@ import { canonicalKey, KEY_EVENTS, keyMayInsertText } from "./keys";
 import { isSensitiveField, type FieldHint } from "./mask";
 import { mapCsv, parseTable, sanitizeName } from "./table";
 import { fixedSavedChoice, hasStrippedSecret, isSealedArtifact, NEEDS_SECRET_VALUE, secretSavedField, STRIPPED_SECRET } from "./saved-secrets";
+import { projectStep } from "../desktop/src/v1/schema";
 import type { WorkflowInput, WorkflowReceipt, WorkflowStep, WorkflowV2 } from "../desktop/src/v1/schema";
 import type { TrailEvent } from "../desktop/src/v1/interpret";
 import type { ReceiptBody } from "../desktop/src/v1/receipt";
@@ -11,7 +12,7 @@ const ENTRY = new Set(["type", "input", "fill", "key", "keypress", "digits", "os
 const TOKENS = /^(?:(?:sk-|gh[pousr]_|github_pat_|xox[a-z]-|AKIA|GOCSPX-)[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})$/;
 
 type ValueFields = {
-  step: readonly (keyof WorkflowStep)[];
+  step: readonly string[];
   event: readonly (keyof (TrailEvent & { text?: string }))[];
   effect: readonly (keyof TrailEvent)[];
   dialog: readonly (keyof TrailEvent)[];
@@ -95,18 +96,19 @@ export function hasPrivatePictureInput(workflow: Pick<WorkflowV2, "inputs" | "st
     || /\bcard\b|\bcc-/i.test([hint.name, hint.id, hint.autocomplete, hint.ariaLabel, hint.placeholder].filter(Boolean).join(" "));
   if (workflow.inputs.some((input) => input.type === "secret" || privateField({ name: input.name, ariaLabel: input.label }))) return true;
   const privateSteps = (steps: WorkflowStep[]): boolean => steps.some((step) => {
-    const identity = step.identity;
+    const view = projectStep(step);
+    const identity = view.identity;
     const field = step.action === "type" || step.action === "digits" || identity && (identity.inputType || identity.autocomplete
       || ["input", "textarea", "select"].includes(identity.tag || "")
       || /^(input|textbox|searchbox|combobox|password|axtextfield|axsecuretextfield|axtextarea)$/i.test(identity.role));
-    return !!field && (step.sensitive === true || !!identity && privateField({
+    return !!field && (view.sensitive === true || !!identity && privateField({
       type: identity.inputType || identity.role,
       autocomplete: identity.autocomplete,
       name: [identity.nameAttr, identity.name].filter(Boolean).join(" "),
       id: identity.id,
       ariaLabel: identity.label,
       placeholder: identity.placeholder,
-    })) || !!step.forEach && privateSteps(step.forEach.steps);
+    })) || !!view.forEach && privateSteps(view.forEach.steps);
   });
   return privateSteps(workflow.steps);
 }
@@ -203,7 +205,7 @@ export function scrubSaved<T>(value: T, context: SavedContext = {}): T {
     if (Array.isArray(item)) { item.forEach(collect); return; }
     const node = record(item);
     if (isSealedArtifact(node)) return;
-    if ((node.schema === "bao.workflow/v2" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
+    if ((node.schema === "bao.workflow/v4" || node === context.workflow) && Array.isArray(node.steps) && Array.isArray(node.inputs)) {
       workflows.add(node);
       bind(node);
     }

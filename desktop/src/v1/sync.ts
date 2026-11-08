@@ -12,7 +12,7 @@ import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { retainLocalDefaults } from "./local-defaults";
-import { migrate, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
+import { projectStep, parseWorkflow, toJson, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -269,8 +269,8 @@ export function openConflict(library: Library, id: string): { id: string; name: 
   const state = loadState(library.root);
   const note = state.conflicts.find((item) => item.id === id);
   if (!note || !existsSync(note.file)) throw new Error("no conflict");
-  const doc = migrate(JSON.parse(readFileSync(note.file, "utf8")));
-  return { id: doc.id, name: doc.name, steps: doc.steps.map((step) => step.label) };
+  const doc = parseWorkflow(JSON.parse(readFileSync(note.file, "utf8")));
+  return { id: doc.id, name: doc.name, steps: doc.steps.map((step) => projectStep(step).label) };
 }
 
 export async function keepMine(library: Library, id: string): Promise<SyncView> {
@@ -293,12 +293,12 @@ export async function resolveConflict(
     copyVersion?: number;
     copy?: unknown;
   }>(state, "POST", `/api/workflows/${encodeURIComponent(id)}/conflict`, { action });
-  const local = migrate(JSON.parse(readFileSync(note.file, "utf8")));
-  const chosen = action === "keep-mine" ? local : retainLocalDefaults(migrate(result.document), local);
+  const local = parseWorkflow(JSON.parse(readFileSync(note.file, "utf8")));
+  const chosen = action === "keep-mine" ? local : retainLocalDefaults(parseWorkflow(result.document), local);
   library.save(chosen);
   state.workflows[chosen.id] = { version: result.version, hash: docHash(library.read(chosen.id)) };
   if (action === "keep-both" && result.copy && result.copyId && result.copyVersion) {
-    const copy = retainLocalDefaults(migrate(result.copy), local);
+    const copy = retainLocalDefaults(parseWorkflow(result.copy), local);
     library.save(copy);
     state.workflows[copy.id] = { version: result.copyVersion, hash: docHash(library.read(copy.id)) };
   }
@@ -660,7 +660,7 @@ function stash(
   const file = path.join(library.root, "conflicts", `${safeId(local.id)}.json`);
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, toJson(local));
-  const theirs = migrate(remote.document);
+  const theirs = parseWorkflow(remote.document);
   const errors = validateWorkflow(theirs);
   if (errors.length) throw new Error(errors.join(", "));
   noteConflict(library, {
@@ -697,7 +697,7 @@ function enqueueDirty(library: Library, state: SyncState): void {
 }
 
 function writeRemote(library: Library, state: SyncState, remote: PullBody, local?: WorkflowV2): void {
-  const doc = retainLocalDefaults(migrate(remote.document), local);
+  const doc = retainLocalDefaults(parseWorkflow(remote.document), local);
   library.save(doc);
   state.workflows[doc.id] = { version: remote.version, hash: docHash(library.read(doc.id)) };
 }
@@ -752,8 +752,9 @@ function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png
   const runs = library.listRuns().filter((run) => run.workflowId === doc.id).sort((a, b) => (b.at || 0) - (a.at || 0));
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of doc.steps) {
-    if (step.sensitive || (step.input && secrets.has(step.input))
-      || redactSavedValue(step.value ?? "") === STRIPPED_SECRET) continue;
+    const view = projectStep(step);
+    if (view.sensitive || (view.input && secrets.has(view.input))
+      || redactSavedValue(view.value ?? "") === STRIPPED_SECRET) continue;
     const names = [
       ...runs.map((run) => path.join(library.root, "shots", "runs", run.id, shotFile(step.id, "after"))),
       path.join(library.root, "shots", "workflows", doc.id, workflowShotName(step.id)),
