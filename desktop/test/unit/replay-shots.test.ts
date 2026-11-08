@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepQuery } from "../../src/v1/schema";
 import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -156,7 +156,7 @@ test("workflow sync keeps the recorded control crop after a replay navigates awa
         postcondition: { kind: "url", match: "/next", timeoutMs: 3000 } })],
     });
     library.save(doc);
-    const crop = await driver.shot({ identity: projectStep(doc.steps[0]!).identity });
+    const crop = await driver.shot({ identity: stepQuery(doc.steps[0]!) });
     assert.ok(crop);
     const recorded = await sharp(crop).metadata();
     assert.ok(recorded.width! < 720 && recorded.height! < 480);

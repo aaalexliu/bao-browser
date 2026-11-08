@@ -5,7 +5,7 @@ import { lookup } from "./identity";
 import type { Driver } from "./replay";
 import { identityView } from "./run-trace";
 import type { IdentityView } from "../app/view-types";
-import { projectStep } from "./schema";
+import { stepQuery } from "./schema";
 import type { WorkflowStep } from "./schema";
 
 export interface TryOutcome {
@@ -19,7 +19,7 @@ export interface TryOutcome {
 
 export async function tryStep(step: WorkflowStep, driver: Driver, heal?: HealProvider): Promise<TryOutcome> {
   void heal;
-  const recorded = projectStep(step).identity;
+  const recorded = stepQuery(step);
   if (!recorded) {
     return { matched: false, actions: 0, modelCalls: 0, reason: "no identity" };
   }

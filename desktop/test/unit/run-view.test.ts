@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepTitle, stepQuery } from "../../src/v1/schema";
 import { fixtureDoc, fixtureInput, fixtureStep, withStep } from "../support/fixture-step";
 import assert from "node:assert/strict";
 import fs, { fstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
@@ -23,6 +23,7 @@ function fixture(t: test.TestContext) {
   });
   const reason = "The report needs review: private-value";
   const run: StoredRun = {
+    schema: "bao.run/v4",
     id: "run-fixture", workflowId: workflow.id, at: 1_700_000_001_000, videoStartedAt: 1_700_000_000_000, status: "paused",
     steps: [{ id: "preview", status: "paused", startedAt: 1_700_000_000_000, endedAt: 1_700_000_000_100, reason, readBack: "private-value", snapshot: { ax: "raw snapshot" } }],
     receipts: [{ kind: "read-back", ts: 1, runId: "run-fixture", workflowId: workflow.id, stepId: "preview", source: "text", expected: "private-value", actual: "private-value", pass: true }],
@@ -72,7 +73,7 @@ test("secret, file, sensitive, nested, and unknown bindings do not hide stored e
     { sensitive: true }, { input: "password" }, { input: "attachment" },
     { readBack: { source: "text" as const, match: "{{password}}", timeoutMs: 0 } },
     { expect: { kind: "text" as const, match: "{{missing}}", timeoutMs: 0 } },
-    { identity: { ...projectStep(workflow.steps[0]!).identity!, inputType: "password", autocomplete: "current-password" } },
+    { identity: { ...stepQuery(workflow.steps[0]!)!, inputType: "password", autocomplete: "current-password" } },
   ]) {
     library.save(fixtureDoc({ ...workflow, steps: [{ ...workflow.steps[0]!, ...patch }] }));
     assertEvidence(library, run, reason);
@@ -117,7 +118,7 @@ test("workflow snapshots bind parsed contents to the checked file time", (t) => 
   const snapshot = library.readWorkflowSnapshot(workflow.id, { maxBytes: VIEW_RECORD_BYTES });
   assert.equal(snapshot.modifiedAtMs, 1_000_000);
   assert.equal(snapshot.workflow.name, "Preview report");
-  assert.equal((snapshot.workflow.steps[0] == null ? undefined : projectStep(snapshot.workflow.steps[0]).label), "Preview report");
+  assert.equal((snapshot.workflow.steps[0] == null ? undefined : stepTitle(snapshot.workflow.steps[0])), "Preview report");
 });
 
 test("workflow snapshot reads reject a replacement between the read and final check", (t) => {

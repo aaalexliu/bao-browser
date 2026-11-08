@@ -9,7 +9,7 @@ import { unavailableHeal } from "../../src/v1/heal";
 import { isCollapsedBox, matchLocator } from "../../src/v1/locators";
 import { ReceiptLog, verifyReceiptChain } from "../../src/v1/receipt";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { projectStep, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTitle, stepQuery, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { diffTrajectory, type TrajectoryStep } from "../../src/v1/trajectory";
 
 function ident(partial: Partial<Identity>): Identity {
@@ -272,10 +272,10 @@ test("the drift report shows the failure phase", () => {
 test("credit freeze read-back is the status text and validates", () => {
   const freeze = JSON.parse(readFileSync("examples/workflows/credit-freeze.json", "utf8")) as WorkflowV2;
   assert.deepEqual(validateWorkflow(freeze), []);
-  const frozen = freeze.steps.find((item) => projectStep(item).label === "Click Frozen");
+  const frozen = freeze.steps.find((item) => stepTitle(item) === "Click Frozen");
   assert.equal(frozen?.readBack?.source, "text");
   assert.equal(frozen?.readBack?.match, "Status: none");
-  assert.equal(freeze.steps.some((item) => item.action === "click" && projectStep(item).identity?.id === "apply"), false);
-  assert.equal(freeze.steps.at(-1)?.action, "confirm");
+  assert.equal(freeze.steps.some((item) => item.action === "click" && stepQuery(item)?.id === "apply"), false);
+  assert.equal(freeze.steps.at(-1)?.action, "handoff");
   assert.equal(freeze.precondition?.phase, "auth");
 });

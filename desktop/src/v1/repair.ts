@@ -3,7 +3,7 @@
 
 import { lookup } from "./identity";
 import { isCollapsedBox, locatorIndexes, matchLocator } from "./locators";
-import { projectStep, stepLocators } from "./schema";
+import { stepTitle, stepQuery, stepReveal, stepLocators } from "./schema";
 import type { Identity, StepLocator, WorkflowStep } from "./schema";
 
 export interface Box {
@@ -75,7 +75,7 @@ export function anchorCandidate(
   if (!found.ok || found.index == null) return undefined;
   const origin = center(boxes[found.index]);
   if (!origin) return undefined;
-  const role = normRole(projectStep(step).identity?.role);
+  const role = normRole(stepQuery(step)?.role);
   let best: { index: number; distance: number } | undefined;
   nodes.forEach((node, index) => {
     if (index === found.index) return;
@@ -102,7 +102,7 @@ export function collapsedTarget(
   hidden?: boolean[],
   locators?: StepLocator[],
 ): { index: number; detail: string } | undefined {
-  const list = locators && locators.length ? locators : projectStep(step).locators;
+  const list = locators && locators.length ? locators : stepLocators(step);
   if (list && list.length) {
     for (const locator of list) {
       const indexes = locatorIndexes(locator, nodes);
@@ -114,7 +114,7 @@ export function collapsedTarget(
     }
     return undefined;
   }
-  const identity = projectStep(step).identity;
+  const identity = stepQuery(step);
   if (!identity) return undefined;
   const found = lookup(identity, nodes);
   if (!found.ok || found.index == null) return undefined;
@@ -123,7 +123,7 @@ export function collapsedTarget(
 }
 
 /**
- * A visible search toggle for a collapsed field. Recorded `projectStep(step).reveal` wins
+ * A visible search toggle for a collapsed field. Recorded `stepReveal(step)` wins
  * when it is on the step; this is the discoverable fallback.
  */
 export function discoverReveal(
@@ -158,7 +158,7 @@ export function recordedReveal(
   boxes?: Box[],
   hidden?: boolean[],
 ): { index: number; detail: string } | undefined {
-  const reveal = projectStep(step).reveal;
+  const reveal = stepReveal(step);
   if (!reveal) return undefined;
   const found = matchLocator(reveal, nodes, boxes, hidden);
   if (!found) return undefined;
@@ -173,12 +173,12 @@ export function overlayClose(nodes: Identity[]): Identity | undefined {
 }
 
 export function intentText(step: WorkflowStep): string {
-  const raw = projectStep(step).intent || projectStep(step).label || "";
+  const raw = step.caption.text || stepTitle(step) || "";
   return raw.replace(/^(click|type|press|verify|upload|drop)\s+/i, "").replace(/^"|"$/g, "").replace(/"/g, "").trim();
 }
 
 function scoreNode(want: string, node: Identity, step: WorkflowStep): number {
-  const role = normRole(projectStep(step).identity?.role);
+  const role = normRole(stepQuery(step)?.role);
   if (role && normRole(node.role) && normRole(node.role) !== role) return 0;
   const texts = [node.name, node.text, node.label, node.title, node.description].filter((item): item is string => !!item);
   if (!texts.length) return 0;

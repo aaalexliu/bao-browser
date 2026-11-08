@@ -12,6 +12,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { openBaoChromeForProxy } from "./bao-profile";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, OWNER_WAIT_INSTRUCTION, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
+import { targetBox } from "../v1/caption";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -443,7 +444,9 @@ export class AgentBrowserProxy {
       if (width <= 0 || height <= 0) return;
       const frame = await this.screenshot(session, step.native.command, true);
       if (!frame.viewport) return;
-      await session.recording.actionPicture(step, frame.bytes, { rect: { x, y, width, height }, viewport: frame.viewport });
+      const box = targetBox({ x, y, width, height }, frame.viewport);
+      if (!box) return;
+      await session.recording.actionPicture(step, frame.bytes, { rect: box, viewport: frame.viewport });
     } catch {
       // Missing action evidence must not change the native command.
     }

@@ -46,7 +46,7 @@ export interface Settings extends HealSettings {
 }
 
 export interface StoredRun {
-  schema?: string;
+  schema: string;
   id: string;
   kind?: "replay" | "capture";
   toolTimings?: import("../cdp-live/live-record").LiveToolTiming[];
@@ -287,11 +287,12 @@ export class Library {
     }
   }
 
-  saveRun(run: StoredRun): void {
-    const file = path.join(this.root, "runs", `${run.id}.json`);
+  saveRun(run: Omit<StoredRun, "schema"> & { schema?: string }): void {
+    const stored: StoredRun = { ...run, schema: RUN_SCHEMA_ID };
+    const file = path.join(this.root, "runs", `${stored.id}.json`);
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporary, JSON.stringify(run, null, 2));
+      writeFileSync(temporary, JSON.stringify(stored, null, 2));
       renameSync(temporary, file);
     } finally {
       rmSync(temporary, { force: true });

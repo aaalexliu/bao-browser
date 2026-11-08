@@ -1,4 +1,4 @@
-# Workflow schema v2
+# Workflow schema v4
 
 The contract is `schema/workflow.schema.json`, id `bao.workflow/v4`. `desktop/src/v1/schema.ts` `validateWorkflow` checks the same document the replayer reads. A file with another schema id is not loaded. There is no migrate.
 

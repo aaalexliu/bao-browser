@@ -11,7 +11,7 @@ import type { BrowserChoice } from "../browser-choice";
 import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
-import { hasStrippedSecret, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { hasPrivatePictureInput, scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
@@ -22,7 +22,7 @@ import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
-import { projectStep, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepTitle, stepValueTemplate, stepCheck, stepForEach, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
 import { runRecordStatus } from "../v1/run-status";
@@ -76,7 +76,7 @@ export interface WorkflowOutcome {
   source?: string;
   lastGreen?: string;
   /** Saved status spelling; may differ from the normalized outcome. `completed` follows resume. */
-  status?: OutcomeName | "completed" | "timed-out" | "timeout" | "stopped" | "passed" | "paused" | "running" | "idle" | "needs-sign-in";
+  status?: OutcomeName | "completed" | "timed-out" | "timeout" | "stopped" | "passed" | "paused" | "running" | "idle" | "needs-sign-in" | "waiting-for-sign-in";
   run_id?: string;
   step?: string;
   ask?: string;
@@ -105,7 +105,6 @@ export interface RemoteAuth {
   authorization?: string;
 }
 
-const SIGN_IN = /login|sign[\s-]?in|password/i;
 
 type Bucket = "mine" | "team" | "public";
 
@@ -166,7 +165,7 @@ export async function searchWorkflows(
     summary: summaryOf(doc),
     site: domainsOf(doc)[0] || "",
     category: categoryFor(doc),
-    steps: doc.steps.map((step) => projectStep(step).label),
+    steps: doc.steps.map((step) => stepTitle(step)),
     source: "mine" as const,
     inputs: inputSchema(doc, agentSavedDefaults(doc)),
     link: linkFor(doc.id),
@@ -199,12 +198,12 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   const checks: { step: WorkflowStep; value: string }[] = [];
   const collect = (steps: WorkflowStep[]): void => {
     for (const step of steps) {
-      const view = projectStep(step);
-      const check = view.check;
+      const check = stepCheck(step);
       if (step.action !== "note" && step.action !== "verify" && check && (check.kind === "text" || check.kind === "value") && check.match) {
         checks.push({ step, value: check.match });
       }
-      if (view.forEach) collect(view.forEach.steps);
+      const nested = stepForEach(step);
+      if (nested) collect(nested.steps);
     }
   };
   collect(workflow.steps);
@@ -311,7 +310,7 @@ export function heldConfirmStep(token: string): { stepId: string; stepLabel: str
   const index = live.workflow.steps.findIndex((step) => step.id === live.stepId);
   return {
     stepId: live.stepId,
-    stepLabel: (index >= 0 ? projectStep(live.workflow.steps[index]!).label : undefined) || "the site interaction",
+    stepLabel: (index >= 0 ? stepTitle(live.workflow.steps[index]!) : undefined) || "the site interaction",
     stepNumber: index + 1,
     stepCount: live.workflow.steps.length,
     canDetectCompletion: live.confirmPending === true,
@@ -324,7 +323,7 @@ export async function heldConfirmReady(token: string): Promise<boolean> {
   if (live.observing) return live.observing;
   const stepId = live.stepId;
   const matched = live.workflow.steps.find((step) => step.id === stepId);
-  const post = matched ? projectStep(matched).postcondition : undefined;
+  const post = matched ? stepCheck(matched) : undefined;
   if (!post) return false;
   live.observing = (async () => {
     const tree = await (live.observer ??= new BrowserDriver(live.page)).tree();
@@ -392,7 +391,7 @@ function stepShots(library: Library, workflow: WorkflowV2, runId: string): { ste
 const runOutcomes = {
   recording: "recording",
   passed: "ok", ok: "ok", completed: "ok",
-  "needs-sign-in": "needs_signin", needs_signin: "needs_signin",
+  "needs-sign-in": "needs_signin", needs_signin: "needs_signin", "waiting-for-sign-in": "needs_signin",
   needs_approval: "needs_approval", needs_human: "needs_human",
   paused: "needs_human", running: "needs_human", idle: "needs_human",
   failed: "failed", "timed-out": "failed", timeout: "failed", stopped: "failed",
@@ -642,8 +641,9 @@ async function observeConfirm(live: LiveRun): Promise<void> {
   live.confirmPending = false;
   if (live.kind !== "confirm") return;
   const matched = live.workflow.steps.find((step) => step.id === live.stepId);
-  const post = matched ? projectStep(matched).postcondition : undefined;
-  if (!post || ((post.kind === "element" || post.kind === "absent") ? !post.identity : !post.match?.trim())) return;
+  const post = matched ? stepCheck(matched) : undefined;
+  const locators = post && "locators" in post ? post.locators : undefined;
+  if (!post || ((post.kind === "element" || post.kind === "absent") ? !locators?.length : !("match" in post && post.match?.trim()))) return;
   try {
     live.confirmPending = !holds(post, await (live.observer ??= new BrowserDriver(live.page)).tree(), live.inputs);
   } catch { /* The owner can use Continue if the page cannot be read. */ }
@@ -894,10 +894,11 @@ function baseOutcome(
 
 function readBack(step: WorkflowStep, status: string, inputs: ReplayArgs): string {
   if (status === "pending") return "";
-  const view = projectStep(step);
-  if (view.postcondition?.match) return expectedText(view.postcondition.match, inputs);
-  if (view.value?.includes("{{")) return expectedText(view.value, inputs);
-  return view.label;
+  const check = stepCheck(step);
+  if (check && "match" in check && check.match) return expectedText(check.match, inputs);
+  const value = stepValueTemplate(step);
+  if (typeof value === "string" && value.includes("{{")) return expectedText(value, inputs);
+  return stepTitle(step);
 }
 
 function missingHuman(workflow: WorkflowV2, filled: ReplayArgs, given: ReplayArgs): { stepId: string; reason: string } | null {
@@ -936,32 +937,17 @@ function usableSaved(value: unknown): boolean {
 
 function signInStep(step: WorkflowStep | undefined): boolean {
   if (!step) return false;
-  const view = projectStep(step);
-  return SIGN_IN.test(`${step.id} ${view.label} ${view.input || ""}`) || view.sensitive === true;
+  return step.action === "handoff" && step.reason === "sign-in";
 }
 
-function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
-  const passwords = new Set<string>();
-  const collect = (steps: WorkflowStep[]): void => {
-    for (const step of steps) {
-      const view = projectStep(step);
-      if (step.action === "login") {
-        const name = secretInputName(doc, view.input);
-        if (name) passwords.add(name);
-      }
-      if (view.forEach) collect(view.forEach.steps);
-    }
-  };
-  collect(doc.steps);
+function inputSchema(doc: WorkflowV2, _defaults: ReplayArgs): InputField[] {
   return doc.inputs.map((input) => {
-    const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
-    const saved = usableSaved(value);
     return {
       name: input.name,
       type: input.type,
       label: input.label || input.name,
       supply: input.supply,
-      required: input.supply !== "saved" && !saved,
+      required: input.supply !== "saved",
       choices: input.choices,
     };
   });

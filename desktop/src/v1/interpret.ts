@@ -4,9 +4,9 @@
 import { applyCapturedData, type ExtractSpec, type ListCapture } from "./data-steps";
 import { inferExpect, type KnownTyped } from "./expect";
 import { fileAct } from "./file-chooser";
-import { caption, citeIdentity, clickSentence, openSentence, typeSentence } from "./caption";
+import { caption, citeIdentity, clickSentence, openSentence, targetBox, typeSentence } from "./caption";
 import { locatorsFromIdentity } from "./locators";
-import { hintFromIdentity, projectStep, WORKFLOW_SCHEMA_ID, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepSensitive, stepSurface, stepForEach, finishInput, hintFromIdentity, WORKFLOW_SCHEMA_ID, type Check, type Identity, type StepLocator, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { shapeFilesDates } from "./files-dates";
 import { fixedSavedChoice, hasStrippedSecret, oneTimeCodeField, secretSavedField } from "../../../shared/saved-secrets";
 
@@ -59,6 +59,8 @@ export interface TrailEvent {
   format?: string;
   /** Suggested filename from Browser.downloadWillBegin. Basename only. */
   suggestedFilename?: string;
+  box?: { x: number; y: number; width?: number; height?: number; w?: number; h?: number };
+  viewport?: { width: number; height: number };
   /** Bind an upload to a previous download output. */
   fileFrom?: string;
   /** Set when capture refused the action and a person has to do it. */
@@ -142,10 +144,10 @@ function buildWorkflow(events: readonly TrailEvent[], meta: InterpretMeta): { do
   const known: KnownTyped[] = [];
   const mapped = kept.map((event) => {
     const step = toStep(event, 0, seen, inputs, known);
-    const skip = projectStep(step).sensitive ? undefined : event.skipWhen?.trim();
+    const skip = stepSensitive(step) ? undefined : event.skipWhen?.trim();
     if (skip) step.when = { absent: skip, ...(event.skipAnyCount ? { anyCount: true } : {}) };
-    const named = projectStep(step).input;
-    if (step.action === "type" && named && event.value && !projectStep(step).sensitive && !secrets.includes(event.value)) {
+    const named = stepInputName(step);
+    if (step.action === "type" && named && event.value && !stepSensitive(step) && !secrets.includes(event.value)) {
       known.push({ name: named, value: event.value });
     }
     return { events: [event], step };
@@ -282,7 +284,7 @@ function foldNotes(pieces: InterpretPiece[]): InterpretPiece[] {
 
 function isIntentNote(piece: InterpretPiece): boolean {
   if (piece.step.action !== "note") return false;
-  const text = piece.events[0]?.afterText || projectStep(piece.step).label || "";
+  const text = piece.events[0]?.afterText || stepTitle(piece.step) || "";
   return !/^Handoff (started|ended)\b/.test(text);
 }
 
@@ -290,7 +292,7 @@ function noteText(piece: InterpretPiece): string {
   const raw = piece.events.map((event) => event.afterText || "").find(Boolean) || "";
   const cleaned = raw.replace(/\s+/g, " ").trim();
   if (cleaned) return cleaned;
-  return projectStep(piece.step).label.replace(/^Note:\s*/, "").trim();
+  return stepTitle(piece.step).replace(/^Note:\s*/, "").trim();
 }
 
 function applyNote(target: InterpretPiece, note: InterpretPiece): void {
@@ -338,7 +340,7 @@ function bindTypedOptions(pieces: InterpretPiece[]): void {
   for (let i = 1; i < pieces.length; i++) {
     const piece = pieces[i]!;
     const prev = pieces[i - 1]!;
-    const typed = projectStep(prev.step).input;
+    const typed = stepInputName(prev.step);
     if (piece.step.action !== "click" || prev.step.action !== "type" || !typed) continue;
     const identity = piece.events[0]?.identity;
     if (identity?.role !== "option") continue;
@@ -387,7 +389,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
   ) : event.locators;
   const target = targetFor(identity, locators);
   const id = `${meta.id}-${index}`;
-  const box = undefined;
+  const box = targetBox(event.box, event.viewport);
   const cite = citeIdentity(identity);
   if (event.op === "navigate") {
     const url = event.value || event.afterUrl || event.beforeUrl || meta.startUrl || "";
@@ -409,9 +411,12 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     };
   }
   if (event.op === "login" || event.op === "confirm") {
+    const owner = event.op === "confirm";
+    const named = identity?.name || identity?.text || identity?.label;
     return {
-      id, index, action: "login", timeoutMs: 8000,
-      caption: caption("Sign in"),
+      id, index, action: "handoff", reason: owner ? "owner-press" : "sign-in", timeoutMs: 8000,
+      ...(owner ? { target } : {}),
+      caption: caption(owner ? (named ? `You press ${named}` : "You press the button") : "Sign in", owner ? cite : undefined, owner ? box : undefined),
       ...observed(event, undefined, false, known, meta.secrets ?? []),
     };
   }
@@ -466,10 +471,10 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     const kind = secret ? "secret" : numberLike(event.value) && identity?.surface === "ax" ? "number" : "text";
     const named = !secret && event.parameter && NAME_RE.test(event.parameter) ? event.parameter : nameHint(secret ? { ...event, identity } : event, secret);
     const input = addInput(inputs, kind, named);
-    if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity) && kind !== "secret") {
-      input.supply = "saved";
+    if (event.value !== undefined && !event.rawPath && !oneTimeCodeField(event.identity)) {
       input.default = event.value;
     }
+    Object.assign(input, finishInput(input));
     return {
       id, index, action: "type", timeoutMs: 8000, target,
       caption: caption(typeSentence(field, secret), secret ? undefined : cite, box),
@@ -627,7 +632,7 @@ function collapseDigits(
     const sample = pieces[i]!.step;
     const input = addInput(inputs, "number", inputs.some((item) => item.name === "a") ? "b" : "a");
     input.supply = "saved";
-    input.default = run.map((step) => projectStep(step).identity?.name).join("");
+    input.default = run.map((step) => stepQuery(step)?.name).join("");
     input.label = input.name;
     out.push({
       events: pieces.slice(i, i + run.length).flatMap((piece) => piece.events),
@@ -649,8 +654,8 @@ function digitRun(steps: WorkflowStep[], start: number): WorkflowStep[] {
   const run: WorkflowStep[] = [];
   for (let i = start; i < steps.length; i++) {
     const step = steps[i]!;
-    if (step.action !== "click" || projectStep(step).surface === "dom") break;
-    const digit = projectStep(step).identity?.name;
+    if (step.action !== "click" || stepSurface(step) === "dom") break;
+    const digit = stepQuery(step)?.name;
     if (!digit || !DIGIT.test(digit)) break;
     run.push(step);
   }
@@ -664,12 +669,12 @@ function attachExpr(steps: WorkflowStep[]): WorkflowStep[] {
   const right = nums[1]!;
   const leftAt = steps.indexOf(left);
   const rightAt = steps.indexOf(right);
-  const op = steps.slice(leftAt + 1, rightAt).find((step) => step.action === "click" && OP.has(projectStep(step).identity?.name || ""));
-  const equals = steps.slice(rightAt + 1).find((step) => projectStep(step).identity?.name === "=");
+  const op = steps.slice(leftAt + 1, rightAt).find((step) => step.action === "click" && OP.has(stepQuery(step)?.name || ""));
+  const equals = steps.slice(rightAt + 1).find((step) => stepQuery(step)?.name === "=");
   const leftName = left.action === "digits" && "input" in left.text ? left.text.input : undefined;
   const rightName = right.action === "digits" && "input" in right.text ? right.text.input : undefined;
   if (!op || !equals || !leftName || !rightName || equals.action !== "click") return steps;
-  const opName = projectStep(op).identity?.name;
+  const opName = stepQuery(op)?.name;
   const symbol = opName === "×" ? "*" : opName === "÷" ? "/" : opName;
   equals.check = { kind: "value", match: `{{${leftName}}}${symbol}{{${rightName}}}`, timeoutMs: 4000 };
   return steps;
@@ -677,11 +682,11 @@ function attachExpr(steps: WorkflowStep[]): WorkflowStep[] {
 
 function assertFileSlots(doc: WorkflowV2): void {
   const walk = (step: WorkflowStep): void => {
-    const value = projectStep(step).value;
+    const value = stepValueTemplate(step);
     if (value && value.startsWith("/") && !value.includes("{{")) {
       throw new Error("interpret kept a file path");
     }
-    for (const nested of projectStep(step).forEach?.steps ?? []) walk(nested);
+    for (const nested of stepForEach(step)?.steps ?? []) walk(nested);
   };
   for (const step of doc.steps) walk(step);
 }

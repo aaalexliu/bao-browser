@@ -809,7 +809,7 @@ async function locateTarget(page: Page, target?: ShotTarget): Promise<{ box: Sho
   if (identity?.id && /^[\w-]+$/.test(identity.id)) tries.push(() => page.locator(`#${identity.id}`));
   if (identity?.nameAttr && /^[\w.-]+$/.test(identity.nameAttr)) tries.push(() => page.locator(`[name="${identity.nameAttr}"]`));
   if (name) tries.push(() => page.getByRole(role, { name, exact: true }));
-  if (hint.action === "login") tries.push(() => page.locator("#login"));
+  if (hint.action === "handoff") tries.push(() => page.locator("#login"));
   if (hint.action === "confirm") tries.push(() => page.locator("#apply-btn, [data-testid='apply']"));
   if (hint.action === "type" && name) tries.push(() => page.getByLabel(name, { exact: false }));
   for (const locate of tries) {

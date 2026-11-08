@@ -14,24 +14,10 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright";
-import { projectStep, stepTarget } from "./schema";
-import type { FileArg, Identity, ReplayArgs, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
+import { stepInputName, stepFileFrom, stepQuery, stepTarget } from "./schema";
+import type { FileArg, Identity, ReplayArgs, Target, WorkflowInput, WorkflowStep, WorkflowV2 } from "./schema";
 import { FILE_BINDING } from "./bindings";
-import {
-  addDays,
-  civilInZone,
-  datePreview,
-  defaultZone,
-  diffDays,
-  formatCivil,
-  isoOf,
-  looksLikeDateField,
-  parseRecordedDate,
-  relativeBetween,
-  resolveRelative,
-  zoneOk,
-  type Civil,
-} from "./dates";
+import { addDays, civilInZone, datePreview, defaultZone, diffDays, formatCivil, isoOf, looksLikeDateField, parseRecordedDate, relativeBetween, resolveRelative, zoneOk, type Civil } from "./dates";
 
 export { filesDatesErrors } from "./files-dates-check";
 export {
@@ -284,7 +270,7 @@ export function filesFor(
   step: WorkflowStep,
   workflow: WorkflowV2,
 ): FileArg[] | undefined {
-  const bound = projectStep(step).fileFrom || workflow.inputs.find((input) => input.name === projectStep(step).input)?.fromOutput;
+  const bound = stepFileFrom(step) || workflow.inputs.find((input) => input.name === stepInputName(step))?.fromOutput;
   if (!bound) return undefined;
   const output = runs.get(runId)?.outputs.get(bound);
   if (!output) throw new Error(`file is bound to ${bound}, which has no download yet`);
@@ -386,12 +372,18 @@ function isGeneratedDownloadLink(identity: Identity | undefined): boolean {
   return /\/download\b|[?&]format=csv/i.test(identity.href || "");
 }
 
-function dropGeneratedDownloadLink(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): void {
+function takeDownloadTrigger(outSteps: WorkflowStep[], outGroups: ShapeEvent[][]): Target | undefined {
+  const generated = outSteps[outSteps.length - 1];
+  if (generated?.action === "click" && isGeneratedDownloadLink(stepQuery(generated))) {
+    outSteps.pop();
+    outGroups.pop();
+  }
   const prev = outSteps[outSteps.length - 1];
-  if (!prev || prev.action !== "click") return;
-  if (!isGeneratedDownloadLink(projectStep(prev).identity)) return;
+  if (!prev || prev.action !== "click") return undefined;
+  const target = stepTarget(prev);
   outSteps.pop();
   outGroups.pop();
+  return target;
 }
 
 function carried(step: WorkflowStep, text: string, timeoutMs: number): Pick<WorkflowStep, "id" | "index" | "caption" | "timeoutMs" | "when" | "heal" | "readBack"> {
@@ -538,10 +530,11 @@ export function shapeFilesDates(
       const suggested = event.suggestedFilename || event.fileName || "download";
       const output = outputName(suggested, usedOutputs);
       const step = steps[i]!;
-      dropGeneratedDownloadLink(outSteps, outGroups);
+      const target = takeDownloadTrigger(outSteps, outGroups);
       outSteps.push({
         ...carried(step, "Download", 30_000),
         action: "download",
+        ...(target ? { target } : {}),
         download: { output, name: "{{run.date}}-{{suggested}}" },
       });
       outGroups.push(group);
@@ -566,8 +559,8 @@ export function shapeFilesDates(
     const step = steps[i]!;
     if (step.action === "type" && event && (event.dateField || looksLikeDateField(event.identity))) {
       const parsed = event.value ? parseRecordedDate(event.value) : undefined;
-      if (parsed && projectStep(step).input) {
-        const input = inputs.find((item) => item.name === projectStep(step).input);
+      if (parsed && stepInputName(step)) {
+        const input = inputs.find((item) => item.name === stepInputName(step));
         if (input && input.type !== "secret") {
           const today = civilInZone(new Date(event.ts || 0), zone);
           input.type = "date";

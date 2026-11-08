@@ -62,8 +62,10 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
   } else if (!outcome && command === "close" && evidence?.lastPicture) {
     picture = { kind: "captured", ...evidence.lastPicture };
   }
-  const spoken = step?.caption ? stepTitle(step) : fallbackCaption(command, failed, outcome);
-  const card: BrowserToolCard = { command, status, caption: spoken, runId, stepId: step?.id ?? null, picture };
+  const spoken = step?.caption ? stepTitle(step) : "";
+  const lead = outcome === "halted" || outcome === "waiting" || failed ? fallbackCaption(command, failed, outcome) : "";
+  const caption = [lead, spoken].filter(Boolean).join(" ") || fallbackCaption(command, failed, outcome);
+  const card: BrowserToolCard = { command, status, caption, runId, stepId: step?.id ?? null, picture };
   return {
     content: [
       { type: "text", text: card.caption },

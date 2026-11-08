@@ -1,5 +1,4 @@
 import { fixtureDoc, writeStep } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -47,7 +46,6 @@ test("review crop eligibility covers literal, default and actual run text values
       const step = document.steps[index]!;
       if (source !== "default") delete document.inputs[index]!.default;
       if (source === "literal") {
-        delete projectStep(step).input;
         writeStep(step, { value: value });
       } else if (source === "run") run.inputs[`sample${index}`] = value;
       assert.equal(privateReviewStep(document, step, run), index < 3, `${source}: ${index}`);

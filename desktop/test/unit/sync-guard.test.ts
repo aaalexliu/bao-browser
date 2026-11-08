@@ -1,5 +1,5 @@
 import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
-import { projectStep } from "../../src/v1/schema";
+import { stepQuery, stepValueTemplate, stepSensitive } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,7 +64,7 @@ test("workflow pushes omit typed token, card and SSN crops only", () => {
   assert.deepEqual(body.shots.map((shot) => shot.stepId), ["bound3", "literal3"]);
   assert.deepEqual(doc, original);
   assert.ok(doc.inputs.every((input) => input.type === "text"));
-  assert.ok(doc.steps.every((step) => !projectStep(step).sensitive));
+  assert.ok(doc.steps.every((step) => !stepSensitive(step)));
 });
 
 test("push accepts saved passwords that also occur in metadata", () => {
@@ -83,11 +83,11 @@ test("push accepts saved passwords that also occur in metadata", () => {
     assert.equal(pushed.inputs[0]!.default, undefined);
     assert.equal(pushed.inputs[0]!.name, "password");
     assert.equal(pushed.inputs[0]!.type, "secret");
-    assert.equal(projectStep(pushed.steps[0]!).value, "{{password}}");
-    assert.equal(projectStep(pushed.steps[0]!).identity!.testId, "password");
+    assert.equal(stepValueTemplate(pushed.steps[0]!), "{{password}}");
+    assert.equal(stepQuery(pushed.steps[0]!)!.testId, "password");
     assert.equal(pushed.steps[0]!.timeoutMs, 8000);
     assert.equal(pushed.steps[1]!.timeoutMs, 5000);
-    assert.equal(projectStep(pushed.steps[1]!).value, "[secret stripped]");
+    assert.equal(stepValueTemplate(pushed.steps[1]!), "[secret stripped]");
     assert.equal(pushed.startUrl, doc.startUrl);
     assert.equal(doc.inputs[0]!.default, password);
   }

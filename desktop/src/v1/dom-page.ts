@@ -35,6 +35,7 @@ export interface PageDump {
   nodes: DomDump[];
   texts: string[];
   values: { handle: string; value: string }[];
+  viewport?: { width: number; height: number };
 }
 
 export function dumpPage(): PageDump {
@@ -229,7 +230,7 @@ export function dumpPage(): PageDump {
     });
   };
   document.querySelectorAll("body *").forEach((el) => consider(el));
-  return { url: location.href, title: document.title, nodes, texts, values };
+  return { url: location.href, title: document.title, nodes, texts, values, viewport: { width: window.innerWidth, height: window.innerHeight } };
 }
 
 /** Status lines a teach check can name. Runs in the page. Skips typed values and file echoes. */

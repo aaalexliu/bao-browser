@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import {  } from "../../src/v1/schema";
 import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Live narration latency, a typed note as intent, and Guide Me on the fixture.
 // The fixture page only. No vendor network and no real login.
@@ -127,7 +127,7 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     const cases = loadTeachIntentCases(path.join(home, "evals", "intent", "cases"));
     const saved = cases[0];
     assert.ok(saved, "the intent case was not written");
-    assert.equal(saved.workflow.steps.some((item) => projectStep(item).intent === "alpha note"), true);
+    assert.equal(saved.workflow.steps.some((item) => item.caption.text === "alpha note"), true);
     assert.equal(saved.events.some((event) => event.op === "note" && event.afterText === "alpha note"), true);
     assert.equal(saved.decisions.some((decision) => decision.detail === "renamed intent"), true);
     assert.equal(saved.workflow.inputs.find((input) => input.type === "secret")?.default, "demo-pass");

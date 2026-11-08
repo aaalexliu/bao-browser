@@ -2,7 +2,7 @@
 // The model may drop a noise step, write intent text, and flag human steps.
 // It cannot add a step, change an input, or clear a secret or gate tag.
 
-import { projectStep } from "./schema";
+import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepCheck, handoffReason, stepSensitive } from "./schema";
 import type { WorkflowStep, WorkflowV2 } from "./schema";
 
 export interface HybridHuman {
@@ -104,17 +104,17 @@ export function applyHybrid(base: WorkflowV2, raw: unknown, secrets: string[]): 
     const intent = edit.intents.get(step.id);
     const copy = structuredClone(step);
     copy.index = index;
-    copy.caption = { ...copy.caption, text: scrub(intent && intent.trim() ? intent : projectStep(step).label) };
+    copy.caption = { ...copy.caption, text: scrub(intent && intent.trim() ? intent : stepTitle(step)) };
     return copy;
   });
   return { workflow, refused, ignored: edit.ignored, human: edit.human, rewritten };
 }
 
 export function isNoiseStep(step: WorkflowStep): boolean {
-  if (projectStep(step).input || projectStep(step).sensitive || projectStep(step).gate) return false;
-  const effect = projectStep(step).postcondition?.kind;
+  if (stepInputName(step) || stepSensitive(step) || handoffReason(step)) return false;
+  const effect = stepCheck(step)?.kind;
   if (effect === "text" || effect === "url" || effect === "value") return false;
-  const name = [projectStep(step).identity?.name, projectStep(step).identity?.text, projectStep(step).identity?.label, projectStep(step).label].filter(Boolean).join(" ");
+  const name = [stepQuery(step)?.name, stepQuery(step)?.text, stepQuery(step)?.label, stepTitle(step)].filter(Boolean).join(" ");
   return /\bhelp\b/i.test(name);
 }
 
@@ -132,7 +132,7 @@ function literals(workflow: WorkflowV2, secrets: string[]): { from: string; to: 
     if (input.default) out.push({ from: input.default, to: `{{${input.name}}}` });
   }
   for (const step of workflow.steps) {
-    const literal = projectStep(step).value;
+    const literal = stepValueTemplate(step);
     if (step.action === "type" && literal && !literal.includes("{{")) {
       out.push({ from: literal, to: "{{literal}}" });
     }

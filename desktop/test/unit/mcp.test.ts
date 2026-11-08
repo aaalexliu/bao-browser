@@ -112,7 +112,7 @@ test("MCP search and describe mark the owner's saved inputs optional", async () 
     const selected = JSON.parse(fallback.text) as typeof described;
     assert.equal(selected.inputs[0]?.required, false);
     assert.equal(selected.inputs.at(-1)?.required, false);
-    library.save(fixtureDoc({ ...saved, steps: saved.steps.filter((step) => step.action !== "login").map((step, index) => ({ ...step, index })) }));
+    library.save(fixtureDoc({ ...saved, steps: saved.steps.filter((step) => !(step.action === "handoff" && step.reason === "sign-in")).map((step, index) => ({ ...step, index })) }));
     const withoutLogin = await client.call("describe_workflow", { id: saved.id });
     const ordinary = JSON.parse(withoutLogin.text) as typeof described;
     assert.equal(ordinary.inputs[0]?.required, true);

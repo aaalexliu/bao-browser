@@ -99,13 +99,17 @@ export interface TargetBox {
   viewport: { width: number; height: number };
 }
 
-/** Fields the matcher reads that a locator does not carry. */
+/** Fields the matcher reads that a locator does not carry. OTP detection reads autocomplete. */
 export interface TargetHint {
   label?: string;
   nameAttr?: string;
   role?: string;
   surface?: Surface;
   path?: PathSeg[];
+  tag?: string;
+  inputType?: string;
+  autocomplete?: string;
+  placeholder?: string;
 }
 
 export interface AnchorRef {
@@ -186,6 +190,7 @@ export interface Precondition {
 
 export type TextOf = { input: string } | { literal: string };
 export type FileOf = { input: string } | { fromOutput: string };
+export type HandoffReason = "sign-in" | "code" | "owner-press";
 
 interface StepBase {
   id: string;
@@ -205,12 +210,12 @@ export type WorkflowStep =
   | StepBase & { action: "select"; target: Target; text: TextOf; check?: Check }
   | StepBase & { action: "navigate"; url: string; check?: Check }
   | StepBase & { action: "verify"; check: Check }
-  | StepBase & { action: "login"; check?: Check }
+  | StepBase & { action: "handoff"; reason: HandoffReason; target?: Target; check?: Check }
   | StepBase & { action: "upload" | "drop"; target: Target; file: FileOf; check?: Check }
   | StepBase & { action: "extract"; extract: ExtractSpec; heal?: "never" }
   | StepBase & { action: "for_each"; forEach: ForEachSpec }
   | StepBase & { action: "note"; text: string }
-  | StepBase & { action: "download"; download: { output: string; name: string; url?: string }; check?: Check }
+  | StepBase & { action: "download"; target?: Target; download: { output: string; name: string; url?: string }; check?: Check }
   | StepBase & { action: "open"; open: { target: "url"; url: string } | { target: "file"; file: string; app?: string }; check?: Check }
   | StepBase & { action: "digits"; text: TextOf; target?: Target; check?: Check }
   | StepBase & { action: "pickDate"; date: { input: string; endInput?: string }; target?: Target; check?: Check }
@@ -309,10 +314,11 @@ export function stepTarget(step: WorkflowStep): Target | undefined {
     case "select":
     case "upload":
     case "drop":
-      return step.target;
     case "key":
     case "digits":
     case "pickDate":
+    case "handoff":
+    case "download":
       return step.target;
     default:
       return undefined;
@@ -322,6 +328,14 @@ export function stepTarget(step: WorkflowStep): Target | undefined {
 export function stepLocators(step: WorkflowStep): StepLocator[] | undefined {
   const target = stepTarget(step);
   return target?.locators?.length ? target.locators : undefined;
+}
+
+export function checkMatch(check: Check | undefined): string | undefined {
+  return check && "match" in check ? check.match : undefined;
+}
+
+export function checkState(check: Check | undefined): string | undefined {
+  return check && "state" in check ? check.state : undefined;
 }
 
 export function stepCheck(step: WorkflowStep): Check | undefined {
@@ -394,128 +408,62 @@ export function queryFromTarget(target: Target | undefined): Identity | undefine
     xpath: xpath?.kind === "xpath" ? xpath.value : undefined,
     label: target.hint?.label,
     nameAttr: target.hint?.nameAttr,
+    tag: target.hint?.tag,
+    inputType: target.hint?.inputType,
+    autocomplete: target.hint?.autocomplete,
+    placeholder: target.hint?.placeholder,
     id,
     path: target.hint?.path ?? [],
   };
 }
 
+export function stepSensitive(step: WorkflowStep): boolean {
+  return step.action === "type" && step.sensitive === true;
+}
+
+export function stepSurface(step: WorkflowStep): Surface {
+  return stepTarget(step)?.hint?.surface ?? "dom";
+}
+
+export function stepForEach(step: WorkflowStep): ForEachSpec | undefined {
+  return step.action === "for_each" ? step.forEach : undefined;
+}
+
+export function stepOptional(step: WorkflowStep): "dismiss" | undefined {
+  return step.action === "click" ? step.optional : undefined;
+}
+
+export function stepReveal(step: WorkflowStep): StepLocator | undefined {
+  return stepTarget(step)?.reveal;
+}
+
+export function stepHistory(step: WorkflowStep): HealChange[] | undefined {
+  return stepTarget(step)?.history;
+}
+
+export function stepFileFrom(step: WorkflowStep): string | undefined {
+  if (step.action !== "upload" && step.action !== "drop") return undefined;
+  return "fromOutput" in step.file ? step.file.fromOutput : undefined;
+}
+
+export function stepDownload(step: WorkflowStep): { output: string; name: string; url?: string } | undefined {
+  return step.action === "download" ? step.download : undefined;
+}
+
+export function stepOpen(step: WorkflowStep): Extract<WorkflowStep, { action: "open" }>["open"] | undefined {
+  return step.action === "open" ? step.open : undefined;
+}
+
+export function stepDate(step: WorkflowStep): { input: string; endInput?: string } | undefined {
+  return step.action === "pickDate" ? step.date : undefined;
+}
+
+export function handoffReason(step: WorkflowStep): HandoffReason | undefined {
+  return step.action === "handoff" ? step.reason : undefined;
+}
+
 export function stepQuery(step: WorkflowStep): Identity | undefined {
   return queryFromTarget(stepTarget(step));
-}
-
-/** Read-only view. Not stored. Display text is the quoted caption. */
-export interface StepProjection {
-  id: string;
-  index: number;
-  action: StepAction;
-  caption: StepCaption;
-  timeoutMs: number;
-  label: string;
-  identity?: Identity;
-  locators?: StepLocator[];
-  value?: string;
-  input?: string;
-  key?: string;
-  checked?: boolean;
-  sensitive?: boolean;
-  check?: Check;
-  expect?: FlatCheck;
-  postcondition?: FlatCheck;
-  target?: Target;
-  surface: Surface;
-  human: boolean;
-  when?: StepWhen;
-  heal?: "auto" | "ask" | "never";
-  readBack?: ReadBack;
-  optional?: "dismiss";
-  selection?: SelectionRule;
-  reveal?: StepLocator;
-  history?: HealChange[];
-  download?: { output: string; name: string; url?: string };
-  open?: { target: "url"; url: string } | { target: "file"; file: string; app?: string };
-  extract?: ExtractSpec;
-  forEach?: ForEachSpec;
-  datePicker?: { input: string; endInput?: string };
-  fileFrom?: string;
-  text?: TextOf;
-  url?: string;
-  dialog?: { input: string };
-  intent?: string;
-  waitFor?: Check;
-  gone?: Check;
-  unresolved?: { reason: string };
-  provenance?: TargetBox;
-  confirm?: undefined;
-  gate?: "login";
-  anchor?: undefined;
-  confidence?: undefined;
-}
-
-export interface FlatCheck {
-  kind: Check["kind"];
-  match?: string;
-  state?: "checked" | "unchecked" | "enabled" | "disabled" | "visible";
-  timeoutMs: number;
-  locators?: StepLocator[];
-  identity?: Identity;
-}
-
-export function projectStep(step: WorkflowStep): StepProjection {
-  const target = stepTarget(step);
-  const check = stepCheck(step);
-  const input = stepInputName(step);
-  return {
-    id: step.id,
-    index: step.index,
-    action: step.action,
-    caption: step.caption,
-    timeoutMs: step.timeoutMs,
-    label: stepTitle(step),
-    identity: stepQuery(step),
-    locators: target?.locators,
-    value: stepValueTemplate(step),
-    input,
-    key: stepKey(step),
-    checked: step.action === "check" ? step.checked : undefined,
-    sensitive: step.action === "type" ? step.sensitive : undefined,
-    check,
-    expect: flatCheck(check),
-    postcondition: flatCheck(check),
-    target,
-    surface: target?.hint?.surface ?? "dom",
-    human: step.action === "login",
-    when: step.when,
-    heal: step.heal,
-    readBack: step.readBack,
-    optional: step.action === "click" ? step.optional : undefined,
-    selection: step.action === "click" ? step.selection : undefined,
-    reveal: target?.reveal,
-    history: target?.history,
-    download: step.action === "download" ? step.download : undefined,
-    open: step.action === "open" ? step.open : undefined,
-    extract: step.action === "extract" ? step.extract : undefined,
-    forEach: step.action === "for_each" ? step.forEach : undefined,
-    datePicker: step.action === "pickDate" ? step.date : undefined,
-    fileFrom: step.action === "upload" || step.action === "drop" ? ("fromOutput" in step.file ? step.file.fromOutput : undefined) : undefined,
-    text: step.action === "type" || step.action === "select" || step.action === "digits" ? step.text : undefined,
-    url: step.action === "navigate" ? step.url : undefined,
-    dialog: step.action === "click" ? step.dialog : undefined,
-    intent: step.caption.text,
-    provenance: step.caption.targetBox,
-    gate: step.action === "login" ? "login" : undefined,
-  };
-}
-
-function flatCheck(check: Check | undefined): FlatCheck | undefined {
-  if (!check) return undefined;
-  return {
-    kind: check.kind,
-    timeoutMs: check.timeoutMs,
-    match: "match" in check ? check.match : undefined,
-    state: "state" in check ? check.state : undefined,
-    locators: "locators" in check ? check.locators : undefined,
-    identity: "locators" in check ? queryFromTarget({ locators: check.locators }) : undefined,
-  };
 }
 
 export function hintFromIdentity(node: Identity | undefined): TargetHint | undefined {
@@ -525,6 +473,10 @@ export function hintFromIdentity(node: Identity | undefined): TargetHint | undef
   if (node.nameAttr) hint.nameAttr = node.nameAttr;
   if (node.role && node.role !== "unknown") hint.role = node.role;
   if (node.surface) hint.surface = node.surface;
+  if (node.tag) hint.tag = node.tag;
+  if (node.inputType) hint.inputType = node.inputType;
+  if (node.autocomplete) hint.autocomplete = node.autocomplete;
+  if (node.placeholder) hint.placeholder = node.placeholder;
   if (node.path?.length) hint.path = node.path.map((seg) => ({ role: seg.role, name: seg.name }));
   return Object.keys(hint).length ? hint : undefined;
 }
@@ -571,7 +523,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     names.add(input.name);
     if (input.supply !== "saved" && input.supply !== "must") errors.push(`supply ${input.name}`);
     if (input.supply === "saved") {
-      if (input.type === "secret" || input.type === "file" || !input.default) errors.push(`supply ${input.name}`);
+      if (input.type === "file" || !input.default) errors.push(`supply ${input.name}`);
     }
     if (input.supply === "must" && input.default) errors.push(`supply ${input.name}`);
     if (input.type === "file" && input.default && looksLikePath(input.default)) errors.push(`file path default ${input.name}`);
@@ -583,13 +535,13 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
     if (doc.precondition.kind !== "url" || !doc.precondition.match) errors.push("precondition");
     if (doc.precondition.phase !== "auth") errors.push("precondition phase");
   }
-  doc.steps.forEach((step, i) => errors.push(...stepErrors(step, i, names)));
+  doc.steps.forEach((step, i) => errors.push(...stepErrors(step, i, names, doc.inputs)));
   errors.push(...filesDatesErrors(doc));
   errors.push(...validateDataSteps(doc));
   return errors;
 }
 
-function stepErrors(step: WorkflowStep, index: number, names: Set<string>): string[] {
+function stepErrors(step: WorkflowStep, index: number, names: Set<string>, inputs: WorkflowInput[]): string[] {
   const errors: string[] = [];
   if (!step) return ["index"];
   if (step.index !== index) errors.push(`index ${step.id}`);
@@ -634,14 +586,17 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>): stri
     case "verify":
       errors.push(...checkErrors(step.check, step.id));
       break;
-    case "login":
+    case "handoff":
+      if (step.reason !== "sign-in" && step.reason !== "code" && step.reason !== "owner-press") errors.push(`handoff ${step.id}`);
+      if (step.target) errors.push(...targetErrors(step.target, step.id));
+      if (step.check) errors.push(...checkErrors(step.check, step.id));
+      break;
     case "wait":
     case "finish":
     case "note":
       if (step.caption?.targetBox || step.caption?.citation) errors.push(`caption ${step.id}`);
       if (step.action === "wait" && !step.reason) errors.push(`wait ${step.id}`);
       if (step.action === "note" && !step.text) errors.push(`note ${step.id}`);
-      if (step.action === "login" && step.check) errors.push(...checkErrors(step.check, step.id));
       break;
     case "upload":
     case "drop":
@@ -657,6 +612,7 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>): stri
       break;
     case "download":
       if (!step.download?.output || !step.download.name) errors.push(`download ${step.id}`);
+      if (step.target) errors.push(...targetErrors(step.target, step.id));
       if (step.check) errors.push(...checkErrors(step.check, step.id));
       break;
     case "open":
@@ -672,7 +628,7 @@ function stepErrors(step: WorkflowStep, index: number, names: Set<string>): stri
       errors.push(`action ${(step as { id?: string }).id}`);
   }
   if (step.heal && step.heal !== "auto" && step.heal !== "ask" && step.heal !== "never") errors.push(`heal ${step.id}`);
-  if (step.when) errors.push(...whenErrors(step, names));
+  if (step.when) errors.push(...whenErrors(step, names, inputs));
   if (step.readBack) errors.push(...readBackErrors(step.readBack, step.id, names));
   for (const locator of stepTarget(step)?.locators ?? []) errors.push(...locatorErrors(locator, step.id));
   return errors;
@@ -737,13 +693,31 @@ function readBackErrors(read: ReadBack, id: string, names: Set<string>): string[
   return errors;
 }
 
-function whenErrors(step: WorkflowStep, names: Set<string>): string[] {
+function whenErrors(step: WorkflowStep, names: Set<string>, inputs: WorkflowInput[]): string[] {
   const when = step.when;
   if (!when) return [];
   const present = when.present?.trim();
   const absent = when.absent?.trim();
+  const hasElement = Boolean(present || absent);
+  const hasChoice = Boolean(when.input || when.value);
+  if (hasElement && hasChoice) return [`when ${step.id}`];
   if (when.anyCount !== undefined && !absent) return [`when ${step.id}`];
-  if (present || absent) return present && absent ? [`when ${step.id}`] : [];
+  if (present && absent) return [`when ${step.id}`];
+  if (hasElement) return [];
   if (!when.input || !names.has(when.input) || !when.value) return [`when ${step.id}`];
+  const input = inputs.find((item) => item.name === when.input);
+  if (!input || input.type !== "choice" || !input.choices?.includes(when.value)) return [`when ${step.id}`];
   return [];
+}
+
+/** saved needs a default. must has none. A secret may keep a saved default. A file may not. */
+export function finishInput<T extends { type: InputType; supply: "saved" | "must"; default?: string }>(input: T): T {
+  const next = { ...input };
+  if (next.type === "file" || !next.default) {
+    delete next.default;
+    next.supply = "must";
+    return next;
+  }
+  next.supply = "saved";
+  return next;
 }

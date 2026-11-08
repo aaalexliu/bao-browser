@@ -8,7 +8,7 @@ import { startApp } from "../../src/app/server";
 import { BrowserDriver, elementShot, pagePoster } from "../../src/v1/browser-driver";
 import { interpret } from "../../src/v1/interpret";
 import { replay, type Driver } from "../../src/v1/replay";
-import { projectStep, validateWorkflow } from "../../src/v1/schema";
+import { checkMatch, stepTitle, stepCheck, validateWorkflow } from "../../src/v1/schema";
 
 test("idle capture stays unpaused and rejects recording input", () => {
   const capture = new Capture();
@@ -139,7 +139,7 @@ test("pause drops UI events while notes retain typed values", () => {
   const doc = interpret(kept, { id: "wf-cap-note", name: "Fixture capture", startUrl: "http://127.0.0.1/fixture" });
   assert.equal(doc.steps.length, 2);
   assert.equal(doc.steps[0]?.action, "click");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).intent), "wait for the banner");
+  assert.equal((doc.steps[0] == null ? undefined : doc.steps[0].caption.text), "wait for the banner");
   assert.equal(doc.steps[1]?.action, "verify");
   capture.discard();
   assert.equal(capture.events.length, 0);
@@ -159,9 +159,9 @@ test("a note replays without touching the page and a check becomes a verify step
   assert.equal(validateWorkflow(doc).length, 0);
   assert.equal(doc.steps.length, 1);
   assert.equal(doc.steps[0]?.action, "verify");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).intent), "wait for the banner");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).label), "Check: Welcome");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).expect)?.match, "Welcome");
+  assert.equal((doc.steps[0] == null ? undefined : doc.steps[0].caption.text), "wait for the banner");
+  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Check: Welcome");
+  assert.equal(checkMatch(doc.steps[0] == null ? undefined : stepCheck(doc.steps[0])), "Welcome");
   let looked = 0;
   const driver: Driver = {
     tree: async () => {

@@ -22,39 +22,13 @@ import { actAskLine, actDeadlineLine, actSurfaceText, siteHost, type HumanAsk } 
 import { formatClock } from "../v1/time";
 import { ensureTrailTimes } from "../v1/trail-time";
 import { visibleStatusLines } from "../v1/dom-page";
-import {
-  cookieHeader,
-  loginDocument,
-  loginRedirect,
-  newToken,
-  PENDING_COOKIE,
-  readCookie,
-  safeNext,
-  SESSION_COOKIE,
-  SESSION_TTL_MS,
-  sessionExpiry,
-  sessionStatus,
-  type FreezeSession,
-} from "../v1/freeze-session";
+import { cookieHeader, loginDocument, loginRedirect, newToken, PENDING_COOKIE, readCookie, safeNext, SESSION_COOKIE, SESSION_TTL_MS, sessionExpiry, sessionStatus, type FreezeSession } from "../v1/freeze-session";
 import { dismissCoveringAds } from "../v1/page-class";
 import { clickInDrive } from "../v1/drive-click";
 import { recorderSource } from "../v1/recorder";
 import { armBrowserDownloads, captureDownloads } from "../v1/files-dates";
 import { armFileChooser, queueChooserFile, storedFileEvent } from "../v1/file-chooser";
-import {
-  auditLine,
-  chooseProfile,
-  chromeUserDataDir,
-  assertDomain,
-  importConfirmText,
-  injectCookies,
-  loadChromeSiteCookies,
-  readChromeSafeStoragePassword,
-  readProfileNames,
-  safeImportError,
-  type ChromeProfile,
-  type ImportAudit,
-} from "../v1/chrome-login";
+import { auditLine, chooseProfile, chromeUserDataDir, assertDomain, importConfirmText, injectCookies, loadChromeSiteCookies, readChromeSafeStoragePassword, readProfileNames, safeImportError, type ChromeProfile, type ImportAudit } from "../v1/chrome-login";
 import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } from "../v1/window-bounds";
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
@@ -73,20 +47,7 @@ import { isElementCrop, isFullPageShot } from "../v1/redacted-png";
 import { isPageAct, selectCardPoster } from "../v1/poster";
 import { applySaveEdits, inferSavedWorkflow, saveCompleter } from "../v1/save-intent";
 import { workflowFloorTitle } from "../v1/workflow-name";
-import {
-  decide,
-  decisionEvent,
-  intentEvalPair,
-  mergeDemonstrations,
-  narratorFromEnv,
-  projectTeach,
-  publicTrail,
-  teachIntentCase,
-  teachSummaryFrom,
-  type Spoken,
-  type TeachCorrection,
-  type TeachDecision,
-} from "../v1/teach";
+import { decide, decisionEvent, intentEvalPair, mergeDemonstrations, narratorFromEnv, projectTeach, publicTrail, teachIntentCase, teachSummaryFrom, type Spoken, type TeachCorrection, type TeachDecision } from "../v1/teach";
 import { guideCrops, guideHtml } from "../v1/guide";
 import { guideMe, type GuideProgress } from "../v1/guide-me";
 import { guideShotName, shotFile, shotFormat, workflowShotName } from "../v1/shots";
@@ -101,13 +62,7 @@ import { SiteStore, siteOrigin } from "../login-import/sites";
 import { formatProbeTime } from "../login-import/time";
 import { ConsentRequired, type BotCookiePolicy, type SiteLoginConfig } from "../login-import/types";
 import { replay, withInputDefaults, type HealNotice, type ReplayOptions, type RunResult } from "../v1/replay";
-import {
-  clearPendingPrompt,
-  markPromptTimedOut,
-  promptDue,
-  readPendingPrompt,
-  writePendingPrompt,
-} from "../v1/pending-prompt";
+import { clearPendingPrompt, markPromptTimedOut, promptDue, readPendingPrompt, writePendingPrompt } from "../v1/pending-prompt";
 import { editInput } from "../v1/input-token";
 import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
@@ -125,7 +80,7 @@ import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
-import { projectStep, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepTitle, stepInputName, stepValueTemplate, stepCheck, stepSensitive, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { runRecordStatus } from "../v1/run-status";
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
 import { reusableInputs } from "../../../shared/saved-secrets";
@@ -2215,13 +2170,13 @@ export async function startApp(opts: {
           inputs: projected.workflow.inputs.map((input) => ({ name: input.name, type: input.type })),
           steps: projected.workflow.steps.map((step) => ({
             id: step.id,
-            label: projectStep(step).label,
-            intent: projectStep(step).intent,
+            label: stepTitle(step),
+            intent: step.caption.text,
             action: step.action,
-            human: projectStep(step).human,
-            value: projectStep(step).value,
-            input: projectStep(step).input,
-            sensitive: projectStep(step).sensitive,
+            human: (step.action === "handoff"),
+            value: stepValueTemplate(step),
+            input: stepInputName(step),
+            sensitive: stepSensitive(step),
           })),
         },
       } : undefined,
@@ -2321,14 +2276,13 @@ export async function startApp(opts: {
     await driver.watchGuide();
     const runId = `guide-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const first = workflow.steps[0];
-    const firstView = first ? projectStep(first) : undefined;
     guideLive = {
       workflowId: workflow.id,
       runId,
       index: 0,
       total: workflow.steps.length,
       stepId: first?.id || "",
-      intent: firstView?.intent || firstView?.label || "",
+      intent: first ? stepTitle(first) : "",
       status: "highlight",
       actions: 0,
     };
@@ -2597,8 +2551,7 @@ function applyStepHeal(step: WorkflowStep, policy: "auto" | "ask" | "never" | un
 
 function guideIntent(workflow: WorkflowV2, stepId: string, fallback: string): string {
   const step = workflow.steps.find((item) => item.id === stepId);
-  const view = step ? projectStep(step) : undefined;
-  return view?.intent || view?.label || fallback;
+  return step ? stepTitle(step) : fallback;
 }
 
 interface LoginGate {
@@ -2753,7 +2706,7 @@ function rememberHostGrant(
 ) {
   const step = workflow.steps[0];
   const stepId = step?.id || "open";
-  const label = (step ? projectStep(step).label : undefined) || "Open the site";
+  const label = (step ? stepTitle(step) : undefined) || "Open the site";
   const ask: HumanAsk = {
     kind: "wall",
     workflowId: workflow.id,
@@ -2781,7 +2734,7 @@ function rememberHostGrant(
     failure: {
       stepId,
       index: step?.index ?? 0,
-      intent: (step ? projectStep(step).intent : undefined) || label,
+      intent: (step ? step.caption.text : undefined) || label,
       phase: "find",
       reason: message,
       snapshot: {},
@@ -3348,11 +3301,11 @@ function summary(doc: WorkflowV2) {
     steps: doc.steps.length,
     inputs: doc.inputs,
     heal: doc.heal,
-    heals: doc.steps.filter((step) => projectStep(step).label.startsWith("healed")).length,
+    heals: doc.steps.filter((step) => stepTitle(step).startsWith("healed")).length,
     replayed: doc.replayed,
-    waits: doc.steps.filter((step) => step.action === "login").length,
-    expects: doc.steps.filter((step) => step.action === "verify" || projectStep(step).expect || step.readBack).length,
-    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: projectStep(doc.steps[0]).label } : undefined,
+    waits: doc.steps.filter((step) => step.action === "handoff").length,
+    expects: doc.steps.filter((step) => step.action === "verify" || stepCheck(step) || step.readBack).length,
+    firstStep: doc.steps[0] ? { action: doc.steps[0].action, label: stepTitle(doc.steps[0]) } : undefined,
     startUrl: doc.startUrl,
     driver: refusesOwnedBrowser(doc.driver) ? doc.driver : workflowDriver(doc),
   };

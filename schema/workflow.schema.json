@@ -2140,7 +2140,8 @@
               "index",
               "action",
               "caption",
-              "timeoutMs"
+              "timeoutMs",
+              "reason"
             ],
             "properties": {
               "id": {
@@ -2150,7 +2151,7 @@
                 "type": "number"
               },
               "action": {
-                "const": "login"
+                "const": "handoff"
               },
               "caption": {
                 "type": "object",
@@ -2267,6 +2268,219 @@
                   },
                   "state": {
                     "type": "string"
+                  }
+                }
+              },
+              "reason": {
+                "enum": [
+                  "sign-in",
+                  "code",
+                  "owner-press"
+                ]
+              },
+              "target": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "locators"
+                ],
+                "properties": {
+                  "locators": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "role",
+                            "name"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "role"
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "value"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "text",
+                                "testid",
+                                "css",
+                                "xpath"
+                              ]
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "relation",
+                            "anchor"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "anchor"
+                            },
+                            "relation": {
+                              "enum": [
+                                "below",
+                                "above",
+                                "right",
+                                "left"
+                              ]
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "anchor": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "role"
+                              ],
+                              "properties": {
+                                "role": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                },
+                                "testId": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "hint": {
+                    "type": "object"
+                  },
+                  "reveal": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "role",
+                          "name"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "role"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "text",
+                              "testid",
+                              "css",
+                              "xpath"
+                            ]
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "relation",
+                          "anchor"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "anchor"
+                          },
+                          "relation": {
+                            "enum": [
+                              "below",
+                              "above",
+                              "right",
+                              "left"
+                            ]
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "anchor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "role"
+                            ],
+                            "properties": {
+                              "role": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "testId": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "history": {
+                    "type": "array"
                   }
                 }
               }
@@ -3547,6 +3761,212 @@
               },
               "download": {
                 "type": "object"
+              },
+              "target": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "locators"
+                ],
+                "properties": {
+                  "locators": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "role",
+                            "name"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "role"
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "value"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "text",
+                                "testid",
+                                "css",
+                                "xpath"
+                              ]
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "kind",
+                            "relation",
+                            "anchor"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "anchor"
+                            },
+                            "relation": {
+                              "enum": [
+                                "below",
+                                "above",
+                                "right",
+                                "left"
+                              ]
+                            },
+                            "role": {
+                              "type": "string"
+                            },
+                            "anchor": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "role"
+                              ],
+                              "properties": {
+                                "role": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                },
+                                "testId": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "hint": {
+                    "type": "object"
+                  },
+                  "reveal": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "role",
+                          "name"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "role"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "text",
+                              "testid",
+                              "css",
+                              "xpath"
+                            ]
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "kind",
+                          "relation",
+                          "anchor"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "anchor"
+                          },
+                          "relation": {
+                            "enum": [
+                              "below",
+                              "above",
+                              "right",
+                              "left"
+                            ]
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "anchor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "role"
+                            ],
+                            "properties": {
+                              "role": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "testId": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "history": {
+                    "type": "array"
+                  }
+                }
               }
             }
           },

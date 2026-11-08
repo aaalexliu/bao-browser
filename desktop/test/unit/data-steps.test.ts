@@ -7,20 +7,9 @@ import test from "node:test";
 import { testChromium as chromium } from "../../src/test-browser.js";
 import { dataCases } from "../../src/eval/data/cases";
 import { installDataPage } from "../../src/v1/data-page";
-import {
-  bindStep,
-  materializeOutputs,
-  outputCsv,
-  outputsHtml,
-  parseCsv,
-  performDataStep,
-  specFromProposal,
-  validateDataSteps,
-  type ExtractSpec,
-  type PageProposal,
-} from "../../src/v1/data-steps";
+import { bindStep, materializeOutputs, outputCsv, outputsHtml, parseCsv, performDataStep, specFromProposal, validateDataSteps, type ExtractSpec, type PageProposal } from "../../src/v1/data-steps";
 import { interpret } from "../../src/v1/interpret";
-import { projectStep, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { checkMatch, stepValueTemplate, stepCheck, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 function migrate(_raw: unknown): WorkflowV2 {
   return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
@@ -70,8 +59,8 @@ test("csv, column choices, and the run table", () => {
   assert.deepEqual(spec.columns.filter((column) => !column.dropped).map((column) => column.name), ["title", "price"]);
   assert.equal(spec.pagination?.maxPages, 3);
   const bound = bindStep(fixtureStep(withStep(clickStep("row-0"), { action: "type", value: "{{row.note}}", postcondition: { kind: "value", match: "{{row.note}}", timeoutMs: 4000 } })), { note: "hello, world" }, 0);
-  assert.equal(projectStep(bound).value, "hello, world");
-  assert.equal(projectStep(bound).postcondition?.match, "hello, world");
+  assert.equal(stepValueTemplate(bound), "hello, world");
+  assert.equal(checkMatch(stepCheck(bound)), "hello, world");
   const outputs = materializeOutputs(
     { outputs: [{ name: "books", type: "table", from: "books", columns: [{ name: "title", type: "text" }] }] },
     new Map([["books", [{ title: "Alpha" }]]]),
@@ -128,7 +117,7 @@ test("interpret proposes extract and for_each, and leaves an ordinary trail on v
       assert.ok(loop?.forEach);
       assert.equal(loop?.forEach?.over.kind, "input");
       assert.ok(doc.inputs.some((input) => input.type === "table"));
-      const values = (loop?.forEach?.steps ?? []).map((step) => projectStep(step).value);
+      const values = (loop?.forEach?.steps ?? []).map((step) => stepValueTemplate(step));
       assert.ok(values.includes("{{row.name}}"), values.join(" "));
       assert.ok(values.includes("{{row.email}}"), values.join(" "));
       assert.equal(blob.includes("ada@example.com"), false);
@@ -170,7 +159,7 @@ test("extract paginates until next is gone and for_each binds each row", async (
   const walked = await performDataStep(loop, {
     people: "email\nada@example.com\ngrace@example.com\nlinus@example.com\n",
   }, tables, {}, false, async (nested) => {
-    seen.push(projectStep(nested).value || "");
+    seen.push(stepValueTemplate(nested) || "");
     return { ok: true };
   });
   assert.equal(walked.ok && walked.detail, "3 rows");

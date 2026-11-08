@@ -2,7 +2,7 @@
 
 import { interpret, isConstantType } from "../../v1/interpret";
 import { replay, type Driver } from "../../v1/replay";
-import { projectStep, stepQuery } from "../../v1/schema";
+import { stepInputName, stepValueTemplate, handoffReason, stepQuery } from "../../v1/schema";
 import type { Identity, ReplayArgs, WorkflowStep, WorkflowV2 } from "../../v1/schema";
 import { condense } from "../../v1/condense";
 import { INTENT_CASES, noisyTrail, type IntentCase, type World } from "./cases";
@@ -14,7 +14,7 @@ export function targetOf(step: { identity?: Identity } | WorkflowStep): string {
 }
 
 export function stepSignature(step: WorkflowStep): string {
-  return [step.action, targetOf(step), projectStep(step).gate || "-", projectStep(step).input || "-"].join("|");
+  return [step.action, targetOf(step), handoffReason(step) || "-", stepInputName(step) || "-"].join("|");
 }
 
 export function multisetScore(expected: string[], predicted: string[]): {
@@ -59,7 +59,7 @@ export function truthLiterals(item: IntentCase): string[] {
 }
 
 export function stepLiterals(workflow: WorkflowV2): string[] {
-  return workflow.steps.filter((step) => step.action === "type" && !projectStep(step).input).map((step) => projectStep(step).value || "");
+  return workflow.steps.filter((step) => step.action === "type" && !stepInputName(step)).map((step) => stepValueTemplate(step) || "");
 }
 
 export interface ParamScore {
@@ -98,7 +98,7 @@ export function scoreParams(workflow: WorkflowV2, item: IntentCase): ParamScore 
 }
 
 export function humanKeys(workflow: WorkflowV2): string[] {
-  return workflow.steps.filter((step) => projectStep(step).gate).map((step) => `${projectStep(step).gate}|${targetOf(step)}`);
+  return workflow.steps.filter((step) => handoffReason(step)).map((step) => `${handoffReason(step)}|${targetOf(step)}`);
 }
 
 export function expectedHuman(item: IntentCase): string[] {

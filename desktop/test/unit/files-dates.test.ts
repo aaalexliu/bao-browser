@@ -6,26 +6,12 @@ import path from "node:path";
 import test from "node:test";
 import Ajv from "ajv/dist/2020";
 import { canonical } from "../../src/v1/canonical";
-import {
-  civilInZone,
-  composeV3Schema,
-  datePreview,
-  downloadFileName,
-  fileDigest,
-  formatCivil,
-  isoOf,
-  NEEDS_MAC_TEST,
-  openTarget,
-  planOpen,
-  prepareFilesDatesRun,
-  renderTemplate,
-  resolveRelative,
-} from "../../src/v1/files-dates";
+import { civilInZone, composeV3Schema, datePreview, downloadFileName, fileDigest, formatCivil, isoOf, NEEDS_MAC_TEST, openTarget, planOpen, prepareFilesDatesRun, renderTemplate, resolveRelative } from "../../src/v1/files-dates";
 import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { projectStep, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTitle, stepQuery, stepDate, stepFileFrom, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
 function migrate(_raw: unknown): WorkflowV2 {
@@ -110,7 +96,7 @@ test("slash dates follow the field, and an ambiguous pair stays day/month", () =
   assert.equal(doc.inputs[0]?.format, "DD/MM/YYYY");
   assert.equal(doc.inputs[0]?.zone, "UTC");
   assert.equal(doc.steps[0]?.action, "click");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).datePicker)?.input, doc.inputs[0]?.name);
+  assert.equal((doc.steps[0] == null ? undefined : stepDate(doc.steps[0]))?.input, doc.inputs[0]?.name);
   assert.equal(JSON.stringify(doc).includes("05/11/2026"), false);
 });
 
@@ -140,8 +126,8 @@ test("a native date field stays a type step and a picker range becomes one plan"
     }),
   ], { id: "wf-range", startUrl: "https://fixture.test/reservation", zone: ZONE });
   assert.equal(range.steps.length, 1);
-  assert.equal((range.steps[0] == null ? undefined : projectStep(range.steps[0]).datePicker)?.input, "checkIn");
-  assert.equal((range.steps[0] == null ? undefined : projectStep(range.steps[0]).datePicker)?.endInput, "checkOut");
+  assert.equal((range.steps[0] == null ? undefined : stepDate(range.steps[0]))?.input, "checkIn");
+  assert.equal((range.steps[0] == null ? undefined : stepDate(range.steps[0]))?.endInput, "checkOut");
   assert.equal(range.inputs.find((item) => item.name === "checkIn")?.relative, "+14d");
   assert.equal(range.inputs.find((item) => item.name === "checkOut")?.relative, "+17d");
   assert.equal(JSON.stringify(range).includes("2026-11-05"), false);
@@ -175,10 +161,10 @@ test("a generated download anchor is not the trigger the next run clicks", () =>
     event({ id: "d", op: "download", suggestedFilename: "ctg-studies.csv" }),
   ], { id: "wf-ctg", startUrl: "https://clinicaltrials.gov/search", zone: ZONE });
   assert.equal(doc.steps.length, 2);
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).label), "Click \"CSV\"");
+  assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Click \"CSV\"");
   assert.equal(doc.steps[1]?.action, "download");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).identity)?.tag, "button");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).identity)?.cssPath, "#download-modal > div > button:nth-of-type(1)");
+  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.tag, "button");
+  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.cssPath, "#download-modal > div > button:nth-of-type(1)");
   assert.equal(JSON.stringify(doc).includes("type+1+diabetes"), false);
   assert.equal(JSON.stringify(doc).includes("California"), false);
 });
@@ -199,8 +185,8 @@ test("a download folds the trigger click into a templated step and binds a later
   assert.equal(doc.steps[0]?.action, "download");
   assert.equal(doc.steps[0]?.download?.output, "note");
   assert.equal(doc.steps[0]?.download?.name, "{{run.date}}-{{suggested}}");
-  assert.equal((doc.steps[0] == null ? undefined : projectStep(doc.steps[0]).identity)?.id, "dl");
-  assert.equal(selectorForIdentity(projectStep(doc.steps[0]!).identity!), "#dl");
+  assert.equal((doc.steps[0] == null ? undefined : stepQuery(doc.steps[0]))?.id, "dl");
+  assert.equal(selectorForIdentity(stepQuery(doc.steps[0]!)!), "#dl");
   const modal = ident({
     role: "button",
     tag: "button",
@@ -209,7 +195,7 @@ test("a download folds the trigger click into a templated step and binds a later
   });
   assert.equal(selectorForIdentity(modal), "#download-modal > div > button:nth-of-type(1)");
   assert.equal(doc.steps[1]?.action, "upload");
-  assert.equal((doc.steps[1] == null ? undefined : projectStep(doc.steps[1]).fileFrom), "note");
+  assert.equal((doc.steps[1] == null ? undefined : stepFileFrom(doc.steps[1])), "note");
   assert.equal(doc.inputs.find((item) => item.type === "file")?.fromOutput, "note");
   const blob = JSON.stringify(doc);
   assert.equal(blob.includes("/tmp"), false);
@@ -262,7 +248,7 @@ test("a plain version 2 document stays version 2 in memory and on disk", () => {
   const loaded = library.read("wf-old");
   assert.equal((loaded as { version?: number }).version, 2);
   assert.equal((loaded as { filesDates?: number }).filesDates, undefined);
-  assert.equal((loaded.steps[0] == null ? undefined : projectStep(loaded.steps[0]).label), v2.steps[0] ? projectStep(v2.steps[0]).label : undefined);
+  assert.equal((loaded.steps[0] == null ? undefined : stepTitle(loaded.steps[0])), v2.steps[0] ? stepTitle(v2.steps[0]) : undefined);
   assert.equal(readFileSync(file, "utf8"), before);
 });
 
@@ -434,7 +420,7 @@ test("replay resolves dates at run start and picks those cells, with no model ca
   }), { clock: OCT_22, zone: "UTC", runId: "run-pick", heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
-  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: (workflow.steps[0] == null ? undefined : projectStep(workflow.steps[0]).identity) }]);
+  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: (workflow.steps[0] == null ? undefined : stepQuery(workflow.steps[0])) }]);
 });
 
 test("replay saves a templated download and a later upload reads that file", async () => {
@@ -611,7 +597,7 @@ test("a datepicker opener is dropped and the day becomes one date input", () => 
   ], { id: "wf-dob", startUrl: "https://demoqa.com/automation-practice-form", zone: ZONE });
   const date = doc.inputs.find((item) => item.type === "date");
   assert.equal(date?.name, "dateOfBirthInput");
-  assert.equal(doc.steps.filter((step) => projectStep(step).datePicker).length, 1);
+  assert.equal(doc.steps.filter((step) => stepDate(step)).length, 1);
   assert.equal(doc.steps.some((step) => step.action === "select"), false);
-  assert.equal(doc.steps.some((step) => step.action === "click" && !projectStep(step).datePicker), false);
+  assert.equal(doc.steps.some((step) => step.action === "click" && !stepDate(step)), false);
 });

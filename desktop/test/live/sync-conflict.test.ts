@@ -1,4 +1,4 @@
-import { projectStep } from "../../src/v1/schema";
+import { stepTitle } from "../../src/v1/schema";
 import { fixtureDoc, fixtureStep } from "../support/fixture-step";
 // Two Macs edit one workflow against a local `vercel dev`. No deploy.
 // Run: node --test desktop/dist/desktop/test/live/sync-conflict.test.js
@@ -54,15 +54,15 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
     home.save(relabel(home.read("shared-note"), "two", "Save at home"));
     const conflicted = await syncAll(home);
     assert.match(conflicted.lastResult || "", /conflicts 1/);
-    assert.equal((() => { const _step = home.read("shared-note").steps[1]; return _step == null ? undefined : projectStep(_step).label; })(), "Save at home");
-    assert.equal((() => { const _step = home.read("shared-note").steps[0]; return _step == null ? undefined : projectStep(_step).label; })(), "Open");
+    assert.equal((() => { const _step = home.read("shared-note").steps[1]; return _step == null ? undefined : stepTitle(_step); })(), "Save at home");
+    assert.equal((() => { const _step = home.read("shared-note").steps[0]; return _step == null ? undefined : stepTitle(_step); })(), "Open");
 
     const token = JSON.parse(readFileSync(path.join(homeHome, "sync.json"), "utf8")).deviceToken as string;
     const head = await fetch(`${origin}/api/workflows/shared-note`, { headers: { authorization: `Bearer ${token}` } });
     const headBody = await head.json() as { version: number; document: WorkflowV2; deviceName?: string; parentVersion?: number | null };
     assert.equal(head.ok, true, JSON.stringify(headBody));
-    assert.equal((headBody.document.steps[0] == null ? undefined : projectStep(headBody.document.steps[0]).label), "Open Ada");
-    assert.equal((headBody.document.steps[1] == null ? undefined : projectStep(headBody.document.steps[1]).label), "Save");
+    assert.equal((headBody.document.steps[0] == null ? undefined : stepTitle(headBody.document.steps[0])), "Open Ada");
+    assert.equal((headBody.document.steps[1] == null ? undefined : stepTitle(headBody.document.steps[1])), "Save");
     assert.equal(headBody.deviceName, "Ada's Mac");
     assert.equal(headBody.parentVersion, 1);
     const listed = await fetch(`${origin}/api/workflows/shared-note/versions`, { headers: { authorization: `Bearer ${token}` } });
@@ -115,7 +115,7 @@ test("two Macs conflict on one workflow, and an offline edit pushes on reconnect
     await page.getByTestId("conflict-banner").waitFor({ state: "detached" });
     const kept = await fetch(`${origin}/api/workflows/shared-note`, { headers: { authorization: `Bearer ${token}` } });
     const keptBody = await kept.json() as { document: WorkflowV2; deviceName?: string | null };
-    assert.equal((keptBody.document.steps[1] == null ? undefined : projectStep(keptBody.document.steps[1]).label), "Save at home");
+    assert.equal((keptBody.document.steps[1] == null ? undefined : stepTitle(keptBody.document.steps[1])), "Save at home");
     assert.equal(keptBody.deviceName, "Home Mac");
     await page.close();
     await app.close();
