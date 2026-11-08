@@ -394,6 +394,13 @@ function asIdentity(node: Partial<Identity> | undefined): Identity | undefined {
   return { surface: node.surface ?? "dom", role: node.role ?? "unknown", path: node.path ?? [], ...node };
 }
 
+/** A css path on the identity is a weak score. It is not a stored unique selector unless the draft stored locators. */
+function withoutRecordedPath(list: StepLocator[] | undefined, identity: Identity | undefined): StepLocator[] | undefined {
+  if (!list || !identity?.cssPath || identity.cssPath.startsWith("#")) return list;
+  const filtered = list.filter((locator) => !(locator.kind === "css" && locator.value === identity.cssPath));
+  return filtered.length ? filtered : undefined;
+}
+
 function withDraftAnchor(list: StepLocator[] | undefined, draft: LooseStep): StepLocator[] | undefined {
   const raw = draft.anchor as { relation?: string; identity?: Partial<Identity> } | undefined;
   const relation = raw?.relation;
@@ -413,7 +420,7 @@ function targetOf(draft: LooseStep): Target | undefined {
     };
   }
   const identity = asIdentity(draft.identity);
-  const locators = withDraftAnchor(draft.locators ?? locatorsFromIdentity(identity), draft);
+  const locators = withDraftAnchor(draft.locators ?? withoutRecordedPath(locatorsFromIdentity(identity), identity), draft);
   if (!locators?.length && !identity) return draft.history ? { locators: [{ kind: "role", role: "button", name: draft.label || "Click" }], history: draft.history } : undefined;
   const hint = hintFromIdentity(identity);
   return {
