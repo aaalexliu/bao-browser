@@ -6,7 +6,7 @@ Users install Bao with `npx bao-browser` ([README](../README.md#install)). This 
 
 | Piece | File | Job |
 | --- | --- | --- |
-| Release build | `.github/workflows/mac-release.yml` | Runs on a published GitHub release or a manual run, never on a pull request. Apple silicon only (`macos-15`). |
+| Release build | `.github/workflows/mac-release.yml` | Runs on a published GitHub release or a manual run, never on a pull request. Apple silicon only (`macos-15`). It installs a minimal Rust toolchain for the helper and sets `BAO_SKIP_DMG=1`, so `package-app.sh` skips `Bao.dmg`. |
 | Bundled Node | `desktop/packaging/macos/fetch-node.sh`, `node-pin.json` | Downloads the pinned nodejs.org Node and checks its SHA-256. `package-app.sh` copies it to `Contents/Resources/node/bin/node` when `BAO_BUNDLE_NODE` names it. It keeps the Node.js Foundation Developer ID signature. |
 | Node lookup | `bao_node_hint` in `desktop/packaging/macos/bao-launch.c` | `BAO_NODE`, then the bundled Node, then the lookup in [Build Bao on a Mac](mac-build.md#launch). |
 | `bao-cli` | `bao-mcp.c` built with `-DBAO_CLI` | Runs `node src/app/cli.js [args]` from inside the app. The installer links `~/.local/bin/bao` to it. |
@@ -17,7 +17,13 @@ Users install Bao with `npx bao-browser` ([README](../README.md#install)). This 
 
 ## Build a release
 
-Publishing a GitHub release runs `mac-release.yml`. It strips a leading `v` from the tag and sets that as the app version, so the tag must look like `v1.2.3`. It attaches `Bao-<version>-darwin-arm64.zip` and `release.json` to the release. That `release.json` names the zip by its full release URL. A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has either file, the run stops; publish a new release instead.
+Publishing a GitHub release runs `mac-release.yml`. It strips a leading `v` from the tag and sets that as the app version, so the tag must look like `v1.2.3`. It attaches `Bao-<version>-darwin-arm64.zip`, `release.json`, and the installer packed with that `release.json` as `bao-browser.tgz`. That `release.json` names the zip by its full release URL, so the latest release installs with:
+
+```sh
+npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
+```
+
+A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has any of them, the run stops; publish a new release instead.
 
 A manual run (**Actions → Mac release → Run workflow**) builds the same files and uploads them as the `bao-mac-<sha>` artifact. Its `release.json` names the zip by file name, so it installs from a download folder:
 
@@ -25,7 +31,7 @@ A manual run (**Actions → Mac release → Run workflow**) builds the same file
 npx bao-browser --release ~/Downloads/bao-mac-<sha>/release.json
 ```
 
-The installer package is not published yet. The owner decides the npm account, signing, and license first. Publishing would be:
+The installer package is not on npm yet. The owner decides the npm account, signing, and license first. Publishing would be:
 
 ```sh
 bash desktop/packaging/macos/pack-installer.sh path/to/release.json /tmp/bao-installer
