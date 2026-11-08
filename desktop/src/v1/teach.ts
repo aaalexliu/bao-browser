@@ -610,6 +610,8 @@ function absorb(previous: Draft, current: Draft): void {
 }
 
 function setTextCheck(step: WorkflowStep, match: string): void {
+  const current = stepCheck(step);
+  if (current && current.kind !== "element" && current.kind !== "settled") return;
   switch (step.action) {
     case "click":
     case "type":

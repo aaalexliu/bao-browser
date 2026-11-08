@@ -81,7 +81,7 @@ import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link"
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
 import { stepTitle, stepInputName, stepValueTemplate, stepCheck, stepSensitive, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
-import { runRecordStatus } from "../v1/run-status";
+
 import { applyImportAnswers, importQuestions } from "../../../web/src/lib/import-sheet";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
@@ -290,10 +290,10 @@ export async function startApp(opts: {
     },
     clearConfirm(runId: string) {
       humanConfirm = null;
-      const ask = currentAsk();
-      if (ask?.kind === "confirm" && ask.runId === runId) {
-        apply({ type: "clear-ask", kind: "confirm", runId });
-        clearPromptFor(library.root, runId);
+      ownerContinued = false;
+      if (activeRun?.phase === "waiting" && activeRun.ask.kind === "confirm") {
+        activeRun = activeRun.id === ownedRunId ? { ...activeRun, phase: "running" } : null;
+        clearPendingPrompt(library.root);
       }
       clearAct();
     },
@@ -2656,7 +2656,7 @@ function persistedRun(
     traceUnavailable: result.traceUnavailable,
     videoTruncated: result.videoTruncated,
     workflowId: workflow.id,
-    status: result.pausedKind === "signin" ? runRecordStatus({ outcome: "paused", pausedKind: "signin" }) : needsHuman ? "needs_human" : result.status === "failed" ? runRecordStatus({ outcome: "failed" }) : result.status,
+    status: result.pausedKind === "signin" ? "waiting-for-sign-in" : needsHuman ? "needs_human" : result.status === "failed" ? "failed" : result.status,
     at: Date.now(),
     heals: result.heals,
     failure: result.failure,
