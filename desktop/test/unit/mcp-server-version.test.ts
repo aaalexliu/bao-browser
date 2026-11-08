@@ -27,24 +27,45 @@ async function serverInfo(cli: string, scratch: string, env: NodeJS.ProcessEnv =
   return (JSON.parse(output.split("\n")[0]) as { result: { serverInfo: { name: string; version: string } } }).result.serverInfo;
 }
 
+function stageApp(scratch: string, plist?: string): string {
+  const contents = path.join(scratch, "Bao.app", "Contents");
+  const resources = path.join(contents, "Resources");
+  cpSync(path.join(dist, "desktop", "src"), path.join(resources, "bao", "src"), { recursive: true });
+  for (const name of readdirSync(path.join(root, "desktop", "src")).filter((file) => file.endsWith(".cjs"))) {
+    cpSync(path.join(root, "desktop", "src", name), path.join(resources, "bao", "src", name));
+  }
+  for (const name of ["shared", "extension", "web"]) cpSync(path.join(dist, name), path.join(resources, name), { recursive: true });
+  if (plist !== undefined) writeFileSync(path.join(contents, "Info.plist"), plist);
+  return path.join(resources, "bao", "src", "app", "cli.js");
+}
+
+const template = readFileSync(path.join(root, "desktop", "packaging", "macos", "Info.plist"), "utf8");
+const appEnv = { NODE_PATH: path.join(root, "node_modules") };
+
 test("a Bao.app reports the version package-app.sh stamped into its Info.plist", async () => {
   const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
   try {
-    const contents = path.join(scratch, "Bao.app", "Contents");
-    const resources = path.join(contents, "Resources");
-    cpSync(path.join(dist, "desktop", "src"), path.join(resources, "bao", "src"), { recursive: true });
-    for (const name of readdirSync(path.join(root, "desktop", "src")).filter((file) => file.endsWith(".cjs"))) {
-      cpSync(path.join(root, "desktop", "src", name), path.join(resources, "bao", "src", name));
-    }
-    for (const name of ["shared", "extension", "web"]) cpSync(path.join(dist, name), path.join(resources, name), { recursive: true });
-    const template = readFileSync(path.join(root, "desktop", "packaging", "macos", "Info.plist"), "utf8");
     const stamped = template.replace(/<key>CFBundleShortVersionString<\/key><string>[^<]+<\/string>/,
       "<key>CFBundleShortVersionString</key>\n\t<string>9.8.7</string>");
     assert.notEqual(stamped, template);
-    writeFileSync(path.join(contents, "Info.plist"), stamped);
-
-    const info = await serverInfo(path.join(resources, "bao", "src", "app", "cli.js"), scratch, { NODE_PATH: path.join(root, "node_modules") });
+    const info = await serverInfo(stageApp(scratch, stamped), scratch, appEnv);
     assert.deepEqual(info, { name: "bao", version: "9.8.7" });
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+});
+
+test("a Bao.app whose Info.plist lacks the version still answers initialize with version unknown", async () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
+  try {
+    const unversioned = template.replace(/<key>CFBundleShortVersionString<\/key><string>[^<]+<\/string>/, "");
+    assert.notEqual(unversioned, template);
+    assert.deepEqual(await serverInfo(stageApp(scratch, unversioned), scratch, appEnv), { name: "bao", version: "unknown" });
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+});
+
+test("a Bao.app with no Info.plist still answers initialize with version unknown", async () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
+  try {
+    assert.deepEqual(await serverInfo(stageApp(scratch), scratch, appEnv), { name: "bao", version: "unknown" });
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 });
 

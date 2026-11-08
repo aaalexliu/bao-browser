@@ -9,14 +9,20 @@ export function appBundleOf(file: string): string | undefined {
   return /^(.*\.app)\/Contents\/Resources\/bao\/src\//.exec(path.resolve(file))?.[1];
 }
 
-/** The version package-app.sh stamps into the Info.plist of the Bao.app that holds file, or dev outside a Bao.app. */
+/** The version package-app.sh stamps into the Info.plist of app, or undefined when it cannot be read. */
+export function appVersion(app: string): string | undefined {
+  try {
+    const plist = readFileSync(path.join(app, "Contents", "Info.plist"), "utf8");
+    return /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/** The version of the Bao.app that holds file: dev outside a Bao.app, unknown when its Info.plist has none. */
 export function baoVersion(file: string): string {
   const app = appBundleOf(file);
-  if (!app) return "dev";
-  const plist = path.join(app, "Contents", "Info.plist");
-  const version = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(readFileSync(plist, "utf8"))?.[1];
-  if (!version) throw new Error(`${plist} has no CFBundleShortVersionString`);
-  return version;
+  return app ? appVersion(app) ?? "unknown" : "dev";
 }
 
 /** The launcher agents start as the bao MCP server (desktop/packaging/macos/bao-mcp.c). */
