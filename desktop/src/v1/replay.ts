@@ -1224,7 +1224,7 @@ async function runHandoff(
   const ok = await waitForOwner(step, args, driver, gate);
   if (ok) return finishHandoff(driver, gate, step.id);
   endHandoff(driver, gate, step.id);
-  await driver.clearConfirm?.();
+  await driver.clearConfirm?.(gate.runId || "");
   return { ok: false, repairs: [], failure: await fail(driver, step, "expect", "waiting for you", undefined, secrets) };
 }
 
@@ -1351,7 +1351,7 @@ function finishHandoff(driver: Driver, gate: ApplyGate, stepId: string): StepOut
   if (!gate.trail.some((event) => event.kind === "human-confirm" && event.stepId === stepId)) {
     gate.trail.push({ kind: "human-confirm", stepId, ts: Date.now(), text: "Owner confirmed" });
   }
-  void driver.clearConfirm?.();
+  void driver.clearConfirm?.(gate.runId || "");
   return { ok: true, repairs: [] };
 }
 

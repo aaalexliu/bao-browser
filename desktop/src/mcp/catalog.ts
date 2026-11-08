@@ -11,7 +11,7 @@ import type { BrowserChoice } from "../browser-choice";
 import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
-import { reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
+import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { hasPrivatePictureInput, scrubSaved } from "../../../shared/outbound-secrets";
 import { launchOwnedChrome, pidsForDataDir, productHeadless } from "../launch";
 import type { RunTrailEvent } from "../v1/apply-guard";
@@ -211,7 +211,7 @@ export async function describeWorkflow(library: Library, id: string, auth?: Remo
   checks.forEach(({ step, value }, index) => {
     if (projected[index]?.value === STRIPPED_SECRET && value !== STRIPPED_SECRET) clearStepCheck(step);
   });
-  const inputs = inputSchema(workflow, found.local ? withInputDefaults(found.document, {}) : {});
+  const inputs = inputSchema(workflow, found.local ? agentSavedDefaults(found.document) : {});
   for (const input of workflow.inputs) {
     if (input.type === "secret") delete input.default;
   }
@@ -265,8 +265,8 @@ export async function runWorkflow(
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
   const refusal = workflowReplayRefusal(library, request.document ?? placed!.document);
   if (refusal) return emptyOutcome(id, "failed", refusal);
-  if (placed && !placed.local) materializeWorkflow(library, placed);
-  const loaded = request.document ? parseWorkflow(request.document) : placed!.document;
+  const savedCopy = placed && !placed.local ? materializeWorkflow(library, placed) : undefined;
+  const loaded = request.document ? parseWorkflow(request.document) : (savedCopy ?? placed!.document);
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
@@ -903,10 +903,11 @@ function readBack(step: WorkflowStep, status: string, inputs: ReplayArgs): strin
 
 function missingHuman(workflow: WorkflowV2, filled: ReplayArgs, given: ReplayArgs): { stepId: string; reason: string } | null {
   for (const input of workflow.inputs) {
-    if (input.supply === "saved" || input.fromOutput) continue;
-    const value = inputs[input.name];
+    if (input.fromOutput) continue;
+    const value = filled[input.name];
     const empty = value === undefined || value === "";
     const authorOmitted = workflow.imported === true && input.ownerSaved !== true && omitted(given, input.name);
+    if (input.supply === "saved" && !authorOmitted) continue;
     if (!empty && !authorOmitted) continue;
     if (input.type === "secret") return { stepId: input.name, reason: `Enter ${input.label || input.name} on this device` };
     if (input.type === "file") return { stepId: input.name, reason: `Choose ${input.label || input.name} on this device` };
@@ -940,14 +941,23 @@ function signInStep(step: WorkflowStep | undefined): boolean {
   return step.action === "handoff" && step.reason === "sign-in";
 }
 
-function inputSchema(doc: WorkflowV2, _defaults: ReplayArgs): InputField[] {
+function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {
   return doc.inputs.map((input) => {
+    const value = Object.hasOwn(defaults, input.name) ? defaults[input.name] : undefined;
+    const saved = usableSaved(value) && !oneTimeCodeInput(doc, input.name);
+    const authorValue = doc.imported === true && input.ownerSaved !== true;
     return {
       name: input.name,
       type: input.type,
       label: input.label || input.name,
       supply: input.supply,
-      required: input.supply !== "saved",
+      required: (input.supply !== "saved" || authorValue || oneTimeCodeInput(doc, input.name)) && !saved,
+      ...(saved ? {
+        saved: true as const,
+        description: input.type === "secret"
+          ? "Bao fills the saved password when omitted."
+          : "Bao fills the saved value when omitted.",
+      } : {}),
       choices: input.choices,
     };
   });
@@ -1202,8 +1212,10 @@ async function locateWorkflow(library: Library, id: string, auth?: RemoteAuth): 
   throw new Error("workflow not found");
 }
 
-function materializeWorkflow(library: Library, found: Located): void {
-  const doc = parseWorkflow(found.document);
+function materializeWorkflow(library: Library, found: Located): WorkflowV2 {
+  const parsed = parseWorkflow(found.document);
+  const legacyFork = Boolean(found.forkedFrom) && parsed.imported !== true;
+  const doc = found.bucket === "public" || legacyFork ? markImported(parsed, {}) as WorkflowV2 : parsed;
   library.save(doc);
   const saved = library.read(doc.id);
   if (!found.version) return saved;

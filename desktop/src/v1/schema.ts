@@ -34,6 +34,9 @@ export interface WorkflowInput {
   /** saved: a non-secret default is stored and the run may omit it. must: the run supplies the value. */
   supply: "saved" | "must";
   default?: string;
+  /** The owner saved this value after import. Author defaults omit it. */
+  ownerSaved?: true;
+  /** Asked again on import; see docs/bao.md for local and registry answer retention. */
   askOnImport?: boolean;
   example?: string;
   choices?: string[];
@@ -245,6 +248,8 @@ export interface WorkflowV2 {
   intent?: string;
   inference?: WorkflowInference;
   driver?: "playwright" | "extension";
+  /** Set when this copy was installed from someone else. Absent means the owner recorded it. */
+  imported?: true;
 }
 
 export interface WorkflowInference {
@@ -545,6 +550,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   if (!doc.id) errors.push("id");
   if (!doc.name) errors.push("name");
   if (doc.provenance !== undefined && doc.provenance !== "fixture") errors.push("provenance");
+  if (doc.imported !== undefined && doc.imported !== true) errors.push("imported");
   if (doc.driver && doc.driver !== "playwright" && doc.driver !== "extension") errors.push("driver");
   if (!Array.isArray(doc.inputs) || !Array.isArray(doc.steps)) {
     errors.push("steps");
@@ -560,6 +566,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
       if (input.type === "file" || !input.default) errors.push(`supply ${input.name}`);
     }
     if (input.supply === "must" && input.default) errors.push(`supply ${input.name}`);
+    if (input.ownerSaved !== undefined && input.ownerSaved !== true) errors.push(`ownerSaved ${input.name}`);
     if (input.type === "file" && input.default && looksLikePath(input.default)) errors.push(`file path default ${input.name}`);
     if (input.type === "choice" && (!input.choices || input.choices.length === 0)) errors.push(`choice ${input.name}`);
     if (!input.label) errors.push(`input label ${input.name}`);
@@ -575,7 +582,7 @@ export function validateWorkflow(doc: WorkflowV2): string[] {
   return errors;
 }
 
-const DOC_KEYS = new Set(["schema", "id", "name", "startUrl", "inputs", "steps", "createdAt", "updatedAt", "provenance", "outputs", "heal", "replayed", "readBack", "precondition", "summary", "intent", "inference", "driver"]);
+const DOC_KEYS = new Set(["schema", "id", "name", "startUrl", "inputs", "steps", "createdAt", "updatedAt", "provenance", "outputs", "heal", "replayed", "readBack", "precondition", "summary", "intent", "inference", "driver", "imported"]);
 const STEP_KEYS: Record<string, string[]> = {
   click: ["target", "check", "optional", "selection", "dialog"],
   type: ["target", "text", "sensitive", "check"],
