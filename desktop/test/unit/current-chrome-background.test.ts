@@ -10,6 +10,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
+import { startApp } from "../../src/app/server";
 import { runWorkflow } from "../../src/mcp/catalog";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
@@ -147,6 +148,62 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
   } finally {
     if (resume) await runWorkflow(library, { resume, cancel: true }).catch(() => undefined);
     if (priorSource === undefined) delete process.env.BAO_AGENT_BROWSER_PROFILE_ROOT; else process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = priorSource;
+    probe.close();
+    await chrome.close();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("app Replay on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-current-app-replay-"));
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "text/html");
+    response.end(request.url === "/task" ? TASK : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    return { pid: 7, endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
+      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+  });
+  const app = await startApp({ home: path.join(root, "home"), port: 0, extensionHost: false, chromeProfilesRoot: root });
+  const url = (route: string) => `http://127.0.0.1:${app.port}${route}`;
+  const replay = (id: string) => fetch(url("/api/replay"), { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(30_000) }).then(response => response.json() as Promise<{ status: string }>);
+  const identity = (testId: string, role: string) => ({ surface: "dom" as const, role, testId, path: [] });
+  const workflow = (steps: WorkflowV2["steps"]): string => {
+    const id = `app-replay-${steps.length}`;
+    app.library.save({ schema: "bao.workflow/v2", version: 2, id, name: "Background app replay", startUrl: `${base}/task`, createdAt: 1, inputs: [], steps });
+    return id;
+  };
+  const fill: WorkflowV2["steps"][number] = { id: "fill", index: 0, action: "type", label: "Fill name", heal: "never", surface: "dom", value: "Ada",
+    identity: identity("q", "textbox"), timeoutMs: 5000 };
+  const save: WorkflowV2["steps"][number] = { id: "save", index: 1, action: "click", label: "Save", heal: "never", surface: "dom", identity: identity("b", "button"),
+    postcondition: { kind: "text", match: "clicked, typed: Ada", timeoutMs: 5000 }, timeoutMs: 5000 };
+  const hold: WorkflowV2["steps"][number] = { id: "apply", index: 2, action: "confirm", human: true, label: "Confirm before Save", surface: "dom",
+    identity: identity("b", "button"), postcondition: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
+  let held: Promise<{ status: string }> | undefined;
+  try {
+    const { ownerState } = await openOwnerTab(probe, `${base}/owner`);
+
+    assert.equal((await replay(workflow([fill, save]))).status, "passed");
+    assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
+
+    held = replay(workflow([fill, save, hold]));
+    const deadline = Date.now() + 20_000;
+    while ((await ownerState()).visibility !== "hidden" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal((await ownerState()).visibility, "hidden", "a held app Replay brings its tab to the front for the owner");
+  } finally {
+    const state = await fetch(url("/api/state")).then(response => response.json() as Promise<{ activeRun?: { id: string } }>).catch(() => undefined);
+    if (state?.activeRun) await fetch(url("/api/replay/cancel"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId: state.activeRun.id }) });
+    await held?.catch(() => undefined);
+    await app.close();
     probe.close();
     await chrome.close();
     server.close();
