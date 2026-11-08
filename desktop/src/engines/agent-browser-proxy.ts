@@ -74,7 +74,7 @@ interface SessionData {
 
 type Session = SessionData & (
   | { kind: "copy"; chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>> }
-  | { kind: "current"; chrome: CurrentChrome; taskTabPid?: string; taskTabs: Set<string> }
+  | { kind: "current"; chrome: CurrentChrome; taskTabs: Set<string> }
 );
 
 export class AgentBrowserProxy {
@@ -298,6 +298,16 @@ export class AgentBrowserProxy {
       stateDir = await mkdtemp(path.join(tmpdir(), "bao-proxy-"));
       const config = path.join(stateDir, "config.json");
       await writeFile(config, "{}", { mode: 0o600 });
+      if (browser.kind === "current") {
+        // A background target leaves the owner's active tab and window focus alone. agent-browser selects this
+        // session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
+        const { targetId } = await browser.chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 5000);
+        browser.taskTabs.add(targetId);
+        // Focus emulation keeps the background tab painting, running timers, and taking input. It lasts while this session stays attached.
+        const { sessionId } = await browser.chrome.cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000);
+        await browser.chrome.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, 5000);
+        await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId, url: "about:blank" }), { mode: 0o600 });
+      }
       const endpoint = browser.kind === "current" ? browser.chrome.endpoint : await readDevToolsActivePort(browser.chrome.target.portFile);
       const session: Session = {
         ...browser, browser: route, stateDir, executable, abort, recording,
@@ -318,7 +328,10 @@ export class AgentBrowserProxy {
       return session;
     } catch (error) {
       if (stateDir) await rm(stateDir, { recursive: true, force: true });
-      if (browser.kind === "current") browser.chrome.detach();
+      if (browser.kind === "current") {
+        for (const targetId of browser.taskTabs) await browser.chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
+        browser.chrome.detach();
+      }
       else await browser.chrome.close();
       throw error;
     }
@@ -376,6 +389,8 @@ export class AgentBrowserProxy {
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {
+      // The owner's own Chrome keeps the task tab in the background. Show it when the owner has to act in it.
+      if (waiting && session.kind === "current") await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
       const expression = waiting ? `(() => {
@@ -491,8 +506,7 @@ export class AgentBrowserProxy {
   }
 
   private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
-    if (command === "close" || this.disconnected || session.abort.signal.aborted
-      || session.kind === "current" && !session.taskTabPid) throw new Error("page closed");
+    if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
     await this.detectOwnerWall(session);
     if (session.ownerWait) throw new Error("owner input is private");
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
@@ -551,13 +565,6 @@ export class AgentBrowserProxy {
     });
     if (session.kind === "copy") return execute(command, args, readTimeoutMs);
     return session.chrome.withConsent(async () => {
-      const pidFile = path.join(session.stateDir, "bao.pid");
-      const pid = await readFile(pidFile, "utf8").catch(() => undefined);
-      let running = false;
-      if (pid && Number.isSafeInteger(Number(pid)) && Number(pid) > 1) {
-        try { process.kill(Number(pid), 0); running = true; }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-      }
       const rememberTaskTab = async () => {
         try {
           const tabs = await execute("tab", ["list", "--json"], 5000);
@@ -570,13 +577,6 @@ export class AgentBrowserProxy {
           process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
         }
       };
-      if (!running || pid !== session.taskTabPid) {
-        session.taskTabPid = undefined;
-        const tab = await execute("tab", ["new"]);
-        if (tab.exitCode !== 0) return tab;
-        session.taskTabPid = await readFile(pidFile, "utf8");
-        await rememberTaskTab();
-      }
       const result = await execute(command, args, readTimeoutMs);
       if (command === "tab" && args[0] === "new" && result.exitCode === 0) await rememberTaskTab();
       return result;

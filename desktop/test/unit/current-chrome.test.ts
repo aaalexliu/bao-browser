@@ -500,16 +500,15 @@ if (command === 'tab' && args.includes('new')) {
   }
 });
 
-for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy retries task-tab setup, handles daemon resets, and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
+for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy drives a background task tab and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-proxy-"));
   const home = path.join(root, "home");
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
   const endpoint = await readDevToolsActivePort(chrome.portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
   await cdp.send("Target.createTarget", { url: "about:blank" });
-  const before = await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets");
+  const before = await cdp.send<{ targetInfos: { targetId: string; type: string; url: string; attached?: boolean }[] }>("Target.getTargets");
   const marker = path.join(root, "native-close-called");
-  const firstTab = path.join(root, "first-tab");
   const stateMarker = path.join(root, "native-state");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
@@ -518,21 +517,12 @@ const args = process.argv.slice(2);
 const command = args[args.indexOf('--idle-timeout') + 2];
 const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
 (async () => {
-  fs.writeFileSync('bao.pid', ${JSON.stringify(String(process.pid))});
   fs.writeFileSync(${JSON.stringify(stateMarker)}, process.cwd());
-  const attempts = fs.existsSync(${JSON.stringify(firstTab)}) ? Number(fs.readFileSync(${JSON.stringify(firstTab)}, 'utf8')) : 0;
-  if (command === 'tab' && args.includes('new') && attempts < 2) {
-    fs.writeFileSync(${JSON.stringify(firstTab)}, String(attempts + 1));
-    console.error('injected tab failure'); process.exitCode = 1; return;
-  }
+  const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
   if (command === 'close') fs.writeFileSync(${JSON.stringify(marker)}, 'closed');
-  if (command === 'tab' && args.includes('new')) {
-    const target = await (await fetch('http://' + endpoint.host + '/json/new?about:blank', { method: 'PUT' })).json();
-    fs.writeFileSync('active-target', target.id);
-  }
   if (command === 'open') {
     const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    const target = targets.find(t => t.id === fs.readFileSync('active-target', 'utf8'));
+    const target = targets.find(t => t.id === bound);
     await new Promise((resolve, reject) => {
       const socket = new WebSocket(target.webSocketDebuggerUrl);
       socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Page.navigate', params: { url: 'data:text/html,<h1>Task</h1>' } }));
@@ -542,12 +532,17 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
   }
   if (command === 'tab' && args.includes('--json')) {
     const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    const active = fs.readFileSync('active-target', 'utf8');
-    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, active: t.id === active })) } }));
+    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, active: t.id === bound })) } }));
   } else console.log('native output');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 `, { mode: 0o700 });
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
+  const sent: { method: string; params?: Record<string, unknown> }[] = [];
+  const send = cdp.send.bind(cdp);
+  t.mock.method(cdp, "send", (method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => {
+    sent.push({ method, params });
+    return send(method, params, sessionId, timeoutMs);
+  });
   let throwConsent = false;
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, endpoint, cdp, closed: cdp.disconnected,
     isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
@@ -559,63 +554,25 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
   try {
     await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
     await assert.rejects(proxy.execute("snapshot", [], "current"), /only accepted on open/);
-    assert.deepEqual(await proxy.execute("open", [], "current"), [
-      { stdout: "", stderr: "injected tab failure\n", exitCode: 1 },
-    ]);
-    throwConsent = true;
-    await assert.rejects(proxy.execute("open"), /injected consent failure/);
-    await assert.rejects(proxy.execute("open"), /Native tab list failed.*injected tab failure/);
-    const afterFailure = await cdp.send<typeof before>("Target.getTargets");
-    assert.equal(afterFailure.targetInfos.filter(target => target.type === "page").length,
-      before.targetInfos.filter(target => target.type === "page").length);
-    assert.equal((await proxy.execute("open"))[0]!.exitCode, 0);
+    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 0);
     await assert.rejects(proxy.execute("open", [], "copy"), /first open/);
-    const afterOpen = await cdp.send<{ targetInfos: { targetId: string; type: string; url: string; attached?: boolean }[] }>("Target.getTargets");
-    const pageIds = (targets: typeof afterOpen) => targets.targetInfos.filter(target => target.type === "page").map(target => target.targetId).sort();
-    assert.equal(pageIds(afterOpen).length, pageIds(before).length + 1);
-    assert.ok(afterOpen.targetInfos.filter(target => target.type === "page").every(target => target.attached === false), "recording detaches its per-page CDP sessions");
-    const stateDir = await readFile(stateMarker, "utf8");
-    await rm(path.join(stateDir, "bao.pid"));
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
-    t.mock.method(AbortSignal, "timeout", (ms: number) => {
-      const abort = new AbortController();
-      setTimeout(() => abort.abort(new DOMException("Timed out", "TimeoutError")), ms);
-      return abort.signal;
-    });
-    const oldMetadataDeadline = AbortSignal.timeout(5000);
-    const execFile = childProcess.execFile;
-    let setupStarted!: () => void;
-    const starting = new Promise<void>(resolve => { setupStarted = resolve; });
-    let delayed = false;
-    t.mock.method(childProcess, "execFile", (file: string, args: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
-      callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
-      if (!delayed && args.includes("new")) {
-        delayed = true;
-        setupStarted();
-        setTimeout(() => execFile(file, args, options, callback), 27_000);
-        return new EventEmitter();
-      }
-      return execFile(file, args, options, callback);
-    });
-    const recovered = proxy.execute("snapshot");
-    await starting;
-    t.mock.timers.tick(27_000);
-    assert.equal(oldMetadataDeadline.aborted, true);
-    assert.equal((await recovered)[0]!.exitCode, 0);
-    t.mock.timers.reset();
-    const afterReset = await cdp.send<typeof afterOpen>("Target.getTargets");
-    assert.equal(pageIds(afterReset).length, pageIds(afterOpen).length + 1);
-    for (const owner of before.targetInfos.filter(target => target.type === "page")) {
-      assert.equal(afterReset.targetInfos.find(target => target.targetId === owner.targetId)?.url, owner.url);
-    }
+    assert.deepEqual(sent.filter(call => call.method === "Target.createTarget").map(call => call.params), [{ url: "about:blank", background: true }]);
+    assert.ok(sent.some(call => call.method === "Emulation.setFocusEmulationEnabled" && call.params?.enabled === true));
+    const binding = JSON.parse(await readFile(path.join(await readFile(stateMarker, "utf8"), "bao.target"), "utf8")) as { targetId: string };
+    const afterOpen = await cdp.send<typeof before>("Target.getTargets");
+    const pages = (targets: typeof before) => targets.targetInfos.filter(target => target.type === "page");
+    const pageIds = (targets: typeof before) => pages(targets).map(target => target.targetId).sort();
+    assert.deepEqual(pageIds(afterOpen), [...pageIds(before), binding.targetId].sort());
+    assert.equal(pages(afterOpen).find(target => target.targetId === binding.targetId)?.url, "data:text/html,<h1>Task</h1>");
+    assert.ok(pages(afterOpen).every(target => target.attached === (target.targetId === binding.targetId)),
+      "only Bao's focus-emulation session stays attached; recording detaches its per-page sessions");
+    throwConsent = true;
+    await assert.rejects(proxy.execute("snapshot"), /injected consent failure/);
+    assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
     const probe = await connectCdp(endpoint.port, endpoint.browserPath);
-    const taskTargets = new Set(pageIds(afterReset).filter(id => !pageIds(before).includes(id)));
-    let allDestroyed!: () => void;
-    const destroyed = new Promise<void>(resolve => { allDestroyed = resolve; });
-    probe.on("Target.targetDestroyed", undefined, params => {
-      taskTargets.delete(String(params.targetId));
-      if (!taskTargets.size) allDestroyed();
-    });
+    let destroyed!: () => void;
+    const taskDestroyed = new Promise<void>(resolve => { destroyed = resolve; });
+    probe.on("Target.targetDestroyed", undefined, params => { if (params.targetId === binding.targetId) destroyed(); });
     await probe.send("Target.setDiscoverTargets", { discover: true });
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -625,33 +582,32 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
       assert.equal(chrome.isClosed(), false);
       await assert.rejects(access(marker), /ENOENT/);
       // Target.closeTarget acknowledges the request before Chromium destroys the tab.
-      await Promise.race([destroyed, new Promise<never>((_resolve, reject) => {
-        deadline = setTimeout(() => reject(new Error(`task tabs did not close: ${[...taskTargets].join(", ")}`)), 1000);
+      await Promise.race([taskDestroyed, new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => reject(new Error("the task tab did not close")), 1000);
       })]);
-      const afterClose = await probe.send<typeof afterOpen>("Target.getTargets");
-      assert.deepEqual(pageIds(afterClose), pageIds(before), "all Bao-created task tabs close; every pre-existing owner tab survives");
+      const afterClose = await probe.send<typeof before>("Target.getTargets");
+      assert.deepEqual(pageIds(afterClose), pageIds(before), "the task tab closes; every pre-existing owner tab survives");
+      for (const owner of pages(before)) assert.equal(pages(afterClose).find(target => target.targetId === owner.targetId)?.url, owner.url);
     } finally { clearTimeout(deadline); probe.close(); }
     const library = new Library(home);
     const runs = library.listRuns();
     assert.equal(runs.length, 1);
-    assert.equal(runs[0]!.status, ending === "finish" ? "passed" : "failed");
+    assert.equal(runs[0]!.status, "passed");
     const steps = library.readRun(runs[0]!.id).steps as unknown as RecordedAgentBrowserCommand[];
-    const opens = steps.filter(step => step.native.command === "open");
-    // Consent and metadata precheck failures leave no command receipt.
-    assert.deepEqual(steps.map(step => step.native.command), ["open", "open", "snapshot", ...(ending === "close" ? ["close"] : [])]);
-    assert.equal(opens.length, 2);
-    assert.equal(opens[0]!.status, "failed");
-    assert.equal(opens[0]!.afterShot, undefined);
-    assert.equal(opens[0]!.native.isError, true);
-    assert.deepEqual(opens[0]!.native.results, [
-      { stdout: "", stderr: "injected tab failure\n", exitCode: 1 },
-    ]);
-    assert.deepEqual(opens[1]!.native.results, [
+    // Consent failures leave no command receipt.
+    assert.deepEqual(steps.map(step => step.native.command), ["open", "snapshot", ...(ending === "close" ? ["close"] : [])]);
+    assert.deepEqual(steps[0]!.native.results, [
       { stdout: "native output\n", stderr: "", exitCode: 0 },
       { stdout: "native output\n", stderr: "", exitCode: 0 },
     ]);
-    for (const step of [opens[1]!, steps.find(step => step.native.command === "snapshot")!]) {
+    for (const step of steps.slice(0, 2)) {
       assert.equal(step.status, "passed");
+      // The current route runs only on a Mac, where Chrome captures a background tab. Linux Chromium often
+      // never answers Page.captureScreenshot for a hidden tab, so there the step must record the missing picture.
+      if (process.platform !== "darwin" && !step.afterShot) {
+        assert.equal(step.afterShotError, "Page screenshot unavailable.");
+        continue;
+      }
       assert.ok(step.afterShot);
       await access(path.join(home, "shots", "runs", runs[0]!.id, step.afterShot));
     }
@@ -669,7 +625,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const executable = path.join(root, "native");
   await writeFile(executable, "", { mode: 0o700 });
   const stateDirs = new Set<string>();
-  const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false,
+  const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
     closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
     onClose: undefined as (() => Promise<void>) | undefined };
@@ -678,7 +634,14 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     get isOpen() { return !state.closed; },
     disconnected: new Promise<void>(resolve => { disconnected = resolve; }),
     close() { state.closed = true; disconnected(); },
-    async send(method: string) {
+    async send(method: string, params: Record<string, unknown> = {}) {
+      if (method === "Target.createTarget") {
+        assert.deepEqual(params, { url: "about:blank", background: true });
+        state.tabs++;
+        return { targetId: "task" };
+      }
+      if (method === "Emulation.setFocusEmulationEnabled" && state.setupFails) throw new Error("setup failed");
+      if (method === "Target.activateTarget") state.activations.push(params);
       if (method === "Target.getTargets") {
         if (state.cleanupFails) throw new Error("cleanup failed");
         return { targetInfos: state.taskGone ? [] : [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
@@ -705,11 +668,11 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   t.mock.method(childProcess, "execFile", (_file: string, args: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
     callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
     const command = args[args.indexOf("--idle-timeout") + 2]!;
-    state.commands.push(command);
+    const tracking = state.commands.at(-1) === "tab new" && args.includes("--json");
+    state.commands.push(command === "tab" && args.includes("new") ? "tab new" : command);
     stateDirs.add(String(options.cwd));
     void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid)).then(() => {
-      if (command === "tab" && args.includes("new")) state.tabs++;
-      if (state.trackingFails && command === "tab" && args.includes("--json")) {
+      if (state.trackingFails && tracking) {
         state.trackingFails = false;
         callback(Object.assign(new Error("tracking failed"), { code: 1 }), "", "tracking failed");
       } else if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
@@ -797,6 +760,7 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
   await f.proxy.execute("wait_for_owner", ["1"]);
+  assert.deepEqual(f.state.activations, []);
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   f.state.taskGone = true;
   const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
@@ -863,7 +827,9 @@ test("idle backstop never interrupts an active agent command", async (t) => {
 test("disconnect during an owner wait closes task tabs before detaching", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
-  await f.proxy.execute("wait_for_owner", ["1"]);
+  // A 1 ms wait can expire before the first poll reaches the banner, so give that poll room to run.
+  await f.proxy.execute("wait_for_owner", ["200"]);
+  assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner wait brings the background task tab forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.timers.tick(1_800_000);
   assert.equal(f.proxy.hasSession(), true, "an owner handoff never expires");
@@ -900,14 +866,25 @@ test("finish_task after a lost current session clears the browser-choice restric
   await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
 });
 
-test("failed task-tab tracking forwards commands without repeating setup and tolerates a vanished target", async (t) => {
+test("failed task-tab setup closes its tab and detaches before any native command", async (t) => {
   const f = await lifecycleFixture(t);
-  f.state.trackingFails = true;
+  f.state.setupFails = true;
+  await assert.rejects(f.proxy.execute("open", [], "current"), /setup failed/);
+  assert.equal(f.state.tabs, 1);
+  assert.equal(f.state.closes, 1);
+  assert.equal(f.state.closed, true);
+  assert.deepEqual(f.state.commands, []);
+  assert.equal(f.proxy.hasSession(), false);
+});
+
+test("failed tracking of an agent-opened tab forwards commands without repeating setup and tolerates a vanished target", async (t) => {
+  const f = await lifecycleFixture(t);
   assert.equal((await f.proxy.execute("open", [], "current"))[0]!.exitCode, 0);
   await f.proxy.execute("snapshot");
-  assert.equal(f.state.tabs, 1);
   assert.ok(f.state.commands.includes("open"));
-  await f.proxy.execute("tab", ["new"]);
+  f.state.trackingFails = true;
+  assert.equal((await f.proxy.execute("tab", ["new"]))[0]!.exitCode, 0);
+  assert.equal(f.state.tabs, 1);
   f.state.closeTargetFails = true;
   await f.proxy.finishTask({ outcome: "passed", reason: "Checked result" });
   assert.equal(f.state.closes, 1);

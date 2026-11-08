@@ -44,6 +44,8 @@ for (const { mode, force, deny } of [
   t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({
     pid: 7, endpoint: { port: 9222, browserPath: "/fixture" },
+    cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
+      method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
