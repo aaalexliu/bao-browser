@@ -507,7 +507,7 @@ function toStep(event: TrailEvent, index: number, meta: InterpretMeta, inputs: W
     if (at >= 0) inputs[at] = finished;
     return {
       id, index, action: "type", timeoutMs: 8000, target,
-      caption: caption(typeSentence(field || `{{${input.name}}}`, secret), secret ? undefined : cite, box),
+      caption: caption(typeSentence(field, secret), secret ? undefined : cite, box),
       text: { input: input.name },
       ...(secret ? { sensitive: true } : observed(event, input.name, false, known, meta.secrets ?? [])),
     };

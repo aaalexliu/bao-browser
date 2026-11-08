@@ -22,7 +22,7 @@ import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
-import { stepTitle, stepValueTemplate, stepCheck, stepForEach, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepTitle, stepValueTemplate, stepCheck, stepForEach, stepInputName, stepQuery, stepSensitive, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
 
@@ -939,9 +939,14 @@ function usableSaved(value: unknown): boolean {
   return typeof value === "string" && value !== "" && !hasStrippedSecret(value);
 }
 
+const SIGN_IN = /\blog[\s-]?in\b|\bsign[\s-]?in\b|password/i;
+
 function signInStep(step: WorkflowStep | undefined): boolean {
   if (!step) return false;
-  return step.action === "handoff" && step.reason === "sign-in";
+  if (step.action === "handoff") return step.reason === "sign-in";
+  if (stepSensitive(step)) return true;
+  const target = stepQuery(step);
+  return SIGN_IN.test([step.caption.text, stepInputName(step), target?.name, target?.text, target?.label].filter(Boolean).join(" "));
 }
 
 function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {

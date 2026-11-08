@@ -123,11 +123,14 @@ test("a note lands on the step within a second and a fix is a labelled correctio
     assert.equal(notedCard?.noteAsIntent, true);
 
     await post(app.port, "/api/teach/stop");
-    await post(app.port, "/api/teach/save", { name: "Noted fixture" });
+    const taught = await post(app.port, "/api/teach/save", { name: "Noted fixture" }) as WorkflowV2;
     const cases = loadTeachIntentCases(path.join(home, "evals", "intent", "cases"));
     const saved = cases[0];
     assert.ok(saved, "the intent case was not written");
     assert.equal(saved.workflow.steps.some((item) => item.caption.text === "alpha note"), true);
+    const signIn = taught.steps.find((item) => item.action === "handoff");
+    assert.equal(signIn?.action === "handoff" && signIn.reason, "sign-in");
+    assert.equal(signIn?.action === "handoff" && signIn.target, undefined);
     assert.equal(saved.events.some((event) => event.op === "note" && event.afterText === "alpha note"), true);
     assert.equal(saved.decisions.some((decision) => decision.detail === "renamed intent"), true);
     assert.equal(saved.workflow.inputs.find((input) => input.type === "secret")?.default, "demo-pass");

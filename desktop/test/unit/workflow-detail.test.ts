@@ -298,3 +298,11 @@ test("step facts reflect replay checks, destinations, and action-specific input 
     await browser.close();
   }
 });
+
+test("Finds names the control in words and never shows a css or xpath selector", () => {
+  const finds = (step: StepCard) => workflowDetail({ id: "finds", name: "Finds", steps: [step] }).match(/<dt>Finds<\/dt><dd>([^<]*)<\/dd>/)?.[1];
+  assert.equal(finds({ id: "css", action: "click", target: { locators: [{ kind: "css", value: "header > button:nth-of-type(2)" }, { kind: "role", role: "button", name: "Save" }] } }), "The “Save” button");
+  assert.equal(finds({ id: "xpath", action: "click", target: { locators: [{ kind: "xpath", value: "//*[@id=\"x\"]" }, { kind: "text", value: "Continue" }] } }), "The “Continue” control");
+  assert.equal(finds({ id: "cite", action: "type", caption: { text: "Type into Email", citation: { text: "Email" } }, target: { locators: [{ kind: "css", value: "#username" }], hint: { role: "textbox" } } }), "The “Email” box");
+  assert.equal(finds({ id: "bare", action: "click", target: { locators: [{ kind: "css", value: "#username" }, { kind: "testid", value: "login-btn" }] } }), "No saved target");
+});

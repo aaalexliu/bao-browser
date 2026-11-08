@@ -443,3 +443,27 @@ function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
     sleep: async () => {},
   };
 }
+
+test("you-do-this on a password or Log in card is a sign-in, not an owner press", () => {
+  const login = { id: "click-login", ts: 6, kind: "act" as const, op: "click", identity: ident({ id: "login-btn", role: "button", text: "Log in" }) };
+  const events = [...fixtureEvents(), login];
+  for (const cardId of ["type-secret", "click-login"]) {
+    const projected = projectTeach(events, decide([], { kind: "human", cardId }, 1), meta);
+    const step = projected.workflow.steps.find((item) => item.action === "handoff");
+    assert.equal(step?.action === "handoff" && step.reason, "sign-in", cardId);
+    assert.equal(step?.action === "handoff" && step.target, undefined, cardId);
+  }
+  const press = projectTeach(events, decide([], { kind: "human", cardId: "click-apply" }, 1), meta).workflow.steps.find((item) => item.action === "handoff");
+  assert.equal(press?.action === "handoff" && press.reason, "owner-press");
+});
+
+test("merging keeps the card outcome on the check the step still runs", () => {
+  const typed = { id: "type-name", ts: 1, kind: "act" as const, op: "type", value: "alpha", identity: ident({ name: "Name" }) };
+  const saved = { id: "click-save", ts: 2, kind: "act" as const, op: "click", afterText: "Saved", identity: ident({ role: "button", name: "Save" }) };
+  const before = projectTeach([typed, saved], [], meta);
+  assert.equal(stepCheck(before.workflow.steps[0]!)?.kind, "value");
+  const merged = projectTeach([typed, saved], decide([], { kind: "merge", cardId: "click-save" }, 1), meta);
+  assert.equal(merged.workflow.steps.length, 1);
+  assert.deepEqual(stepCheck(merged.workflow.steps[0]!), stepCheck(before.workflow.steps[0]!));
+  assert.equal(merged.cards[0]?.outcome, before.cards[0]?.outcome);
+});

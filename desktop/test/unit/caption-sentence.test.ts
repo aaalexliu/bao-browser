@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { commandSentence } from "../../src/v1/caption";
+import { interpret } from "../../src/v1/interpret";
 import { stepTitle } from "../../src/v1/schema";
 
 const snapshot = '- link "Issues" [ref=e12]\n- textbox "Search issues" [ref=e18]\n';
@@ -25,4 +26,11 @@ test("a type sentence cites the field name from the snapshot", () => {
 
 test("open uses the host and path", () => {
   assert.equal(commandSentence("open", "https://github.com/aaalexliu/bao-browser", undefined).text, "Open github.com/aaalexliu/bao-browser");
+});
+
+test("a field with no words gets a plain Type sentence, never the typed value as its destination", () => {
+  const doc = interpret([{ id: "t", ts: 1, kind: "act", op: "type", value: "alpha", identity: { surface: "dom", role: "textbox", path: [], cssPath: "form > input" } }], { id: "wf", startUrl: "https://example.test/" });
+  const step = doc.steps.find((item) => item.action === "type");
+  assert.equal(step?.caption.text, "Type");
+  assert.equal(step?.caption.citation, undefined);
 });

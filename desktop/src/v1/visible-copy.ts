@@ -1,6 +1,7 @@
 // Product copy never shows this machine's listen address. Replay still opens
 // the real URL. A fixture path reads as Fixture. Any other loopback path
-// reads as that path. A stored open caption may omit the scheme.
+// reads as that path. An open step reads as "Open the fixture" or
+// "Open /path". A stored open caption may omit the scheme.
 
 const LOOPBACK_URL = /https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/[^\s"'<>]*)?/gi;
 
@@ -36,13 +37,11 @@ export function publicSite(site: string): string {
 }
 
 export function visibleCopy(value: string): string {
-  const open = value.trim().match(/^Open\s+(\S+)$/i);
-  if (open) {
-    const raw = open[1] || "";
-    const place = loopbackPlace(raw.includes("://") ? raw : `http://${raw}`);
-    if (place) return place;
-  }
   return value
+    .replace(/\b(Open)\s+(\S+)/gi, (all, verb: string, raw: string) => {
+      const place = loopbackPlace(raw.includes("://") ? raw : `http://${raw}`);
+      return place ? `${verb} ${place === "Fixture" ? "the fixture" : place}` : all;
+    })
     .replace(LOOPBACK_URL, (url) => loopbackPlace(url) || url)
     .replace(/\b(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/[^\s"'<>]*)?/gi, (raw) => {
       if (!raw.includes("/")) return "the fixture";

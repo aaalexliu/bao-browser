@@ -519,7 +519,7 @@ function applyDecision(
   if (decision.kind === "human") {
     const reason = draft.step.action === "handoff" && (draft.step.reason === "sign-in" || draft.step.reason === "code")
       ? draft.step.reason
-      : "owner-press";
+      : signInMark(draft.step) ? "sign-in" : "owner-press";
     const target = reason === "owner-press" ? stepTarget(draft.step) : undefined;
     const timeoutMs = Math.max(draft.step.timeoutMs || 0, 15000);
     draft.step = {
@@ -590,6 +590,11 @@ function applyDecision(
   }
 }
 
+function signInMark(step: WorkflowStep): boolean {
+  const query = stepQuery(step);
+  return stepSensitive(step) || query?.role === "password" || query?.inputType === "password" || /login/i.test(query?.testId || "") || /login/i.test(query?.id || "");
+}
+
 function absorb(previous: Draft, current: Draft): void {
   const richer = ["type", "drop", "upload", "key", "verify", "digits", "check"].includes(current.step.action);
   if (previous.step.action === "click" && richer) {
@@ -602,17 +607,16 @@ function absorb(previous: Draft, current: Draft): void {
     if (!previous.card.outcome) previous.card.outcome = current.card.outcome;
     previous.card.intent = intent || current.card.intent;
     previous.step.caption = { ...previous.step.caption, text: previous.card.intent };
-  } else if (current.card.outcome) {
-    setTextCheck(previous.step, current.card.outcome);
+  } else if (current.card.outcome && setTextCheck(previous.step, current.card.outcome)) {
     previous.card.outcome = current.card.outcome;
   }
   previous.events = [...previous.events, ...current.events];
   previous.card.eventIds = previous.events.map((event) => event.id);
 }
 
-function setTextCheck(step: WorkflowStep, match: string): void {
+function setTextCheck(step: WorkflowStep, match: string): boolean {
   const current = stepCheck(step);
-  if (current && current.kind !== "element" && current.kind !== "settled") return;
+  if (current && current.kind !== "element" && current.kind !== "settled") return false;
   switch (step.action) {
     case "click":
     case "type":
@@ -628,12 +632,12 @@ function setTextCheck(step: WorkflowStep, match: string): void {
     case "pickDate":
     case "verify":
       step.check = { kind: "text", match, timeoutMs: 4000 };
-      return;
+      return true;
     case "extract":
     case "for_each":
     case "navigate":
     case "note":
-      return;
+      return false;
   }
 }
 
