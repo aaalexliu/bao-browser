@@ -17,7 +17,7 @@ Users install Bao with `npx bao-browser` ([README](../README.md#install)). This 
 
 ## Build a release
 
-Publishing a GitHub release runs `mac-release.yml`. It strips a leading `v` from the tag and sets that as the app version, so the tag must look like `v1.2.3`. It attaches `Bao-<version>-darwin-arm64.zip` and `release.json` to the release. That `release.json` names the zip by its full release URL.
+Publishing a GitHub release runs `mac-release.yml`. It strips a leading `v` from the tag and sets that as the app version, so the tag must look like `v1.2.3`. It attaches `Bao-<version>-darwin-arm64.zip` and `release.json` to the release. That `release.json` names the zip by its full release URL. A rerun never replaces those files: a published `bao-browser` pins the zip's size and SHA-256, and a rebuilt zip never matches. When the release already has either file, the run stops; publish a new release instead.
 
 A manual run (**Actions → Mac release → Run workflow**) builds the same files and uploads them as the `bao-mac-<sha>` artifact. Its `release.json` names the zip by file name, so it installs from a download folder:
 

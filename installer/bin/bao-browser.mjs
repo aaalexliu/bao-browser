@@ -186,6 +186,13 @@ function signature(app) {
   return /^Authority=(.+)$/m.exec(details)?.[1] || "unsigned";
 }
 
+/** The designated requirement macOS keys a helper grant to: the helper's when the app carries one, else the app's. */
+function requirement(app) {
+  const helper = path.join(app, "Contents", "Resources", "BaoOSHelper.app");
+  const result = spawnSync(CODESIGN, ["-d", "-r-", existsSync(helper) ? helper : app], { encoding: "utf8" });
+  return /designated => (.*)$/m.exec(`${result.stdout || ""}${result.stderr || ""}`)?.[1]?.trim() || "";
+}
+
 function signerOf(app) {
   const verify = spawnSync(CODESIGN, ["--verify", "--strict", app], { encoding: "utf8" });
   if (verify.status !== 0) throw new InstallError(`Bao.app failed codesign --verify: ${verify.stderr.trim()}. Nothing was installed.`);
@@ -198,9 +205,10 @@ function running(app) {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
-/** True when the owner says to replace a certificate-signed app with an ad-hoc one. Keep is the default. */
-async function replaceSigned(target, old, yes) {
-  const loss = `${target} is signed by ${old}. This release is signed ad-hoc, so replacing it drops the Accessibility grant that running-Chrome mode uses.`;
+/** True when the owner says to replace a certificate-signed app with one signed another way. Keep is the default. */
+async function replaceSigned(target, old, signer, yes) {
+  const how = signer === "ad-hoc" ? "signed ad-hoc" : `signed by ${signer} with a different certificate`;
+  const loss = `${target} is signed by ${old}. This release is ${how}, so replacing it drops the Accessibility grant that running-Chrome mode uses.`;
   if (!yes && process.stdin.isTTY && process.stdout.isTTY) {
     const ask = createInterface({ input: process.stdin, output: process.stdout });
     try {
@@ -232,7 +240,8 @@ async function place(zip, dir, yes) {
     const signer = signerOf(staged);
     if (existsSync(target)) {
       const old = signature(target);
-      if (signer === "ad-hoc" && old !== "ad-hoc" && old !== "unsigned" && !(await replaceSigned(target, old, yes))) return null;
+      const certified = old !== "ad-hoc" && old !== "unsigned";
+      if (certified && requirement(staged) !== requirement(target) && !(await replaceSigned(target, old, signer, yes))) return null;
       renameSync(target, path.join(stage, "previous-Bao.app"));
     }
     renameSync(staged, target);

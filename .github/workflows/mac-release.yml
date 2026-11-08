@@ -70,7 +70,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
-        run: gh release upload "$TAG" "$RUNNER_TEMP"/release/Bao-*-darwin-arm64.zip "$RUNNER_TEMP/release/release.json" --clobber --repo "$REPO"
+        run: |
+          assets=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+          if grep -Eqx 'Bao-.*-darwin-arm64\.zip|release\.json' <<< "$assets"; then
+            echo "::error::Release $TAG already has Bao-<version>-darwin-arm64.zip or release.json. A published bao-browser pins it, so publish a new release instead."
+            exit 1
+          fi
+          gh release upload "$TAG" "$RUNNER_TEMP"/release/Bao-*-darwin-arm64.zip "$RUNNER_TEMP/release/release.json" --repo "$REPO"
       - name: Upload the build
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4

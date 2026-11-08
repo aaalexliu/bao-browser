@@ -134,12 +134,25 @@ test("a missing release.json stops before any download", { skip }, (t) => {
   assert.equal(existsSync(box.apps), false);
 });
 
-/** A codesign that reports a certificate for the app at $SIGNED_APP and passes every other call to /usr/bin/codesign. */
+/**
+ * A codesign that reports a self-signed "bao dev signing" certificate, with leaf hash $OLD_CERT for the app at $SIGNED_APP
+ * and $NEW_CERT for the staged copy, and passes every other call, such as --verify, to /usr/bin/codesign.
+ */
 function certificateCodesign(lab: Lab): string {
   const file = path.join(lab.root, "codesign");
   writeFileSync(file, `#!/bin/sh
-if [ "$1" = "-dvv" ] && [ "$2" = "$SIGNED_APP" ]; then
+for last; do :; done
+cert=""
+case "$last" in
+  "$SIGNED_APP") cert="$OLD_CERT" ;;
+  */.bao-install-*/Bao.app) cert="$NEW_CERT" ;;
+esac
+if [ -n "$cert" ] && [ "$1" = "-dvv" ]; then
   echo "Authority=bao dev signing" >&2
+  exit 0
+fi
+if [ -n "$cert" ] && [ "$1" = "-d" ]; then
+  echo "designated => identifier \\"dev.bao.installer-test\\" and certificate leaf = H\\"$cert\\""
   exit 0
 fi
 exec /usr/bin/codesign "$@"
@@ -154,15 +167,32 @@ test("with --yes or no terminal, an ad-hoc release keeps a certificate-signed Ba
   rmSync(path.join(box.home, "bao-cli.log"));
   publish(box, "9.9.2");
   const app = path.join(box.apps, "Bao.app");
-  const env = { BAO_INSTALLER_CODESIGN: certificateCodesign(box), SIGNED_APP: app };
+  const env = { BAO_INSTALLER_CODESIGN: certificateCodesign(box), SIGNED_APP: app, OLD_CERT: "a".repeat(40) };
   for (const flag of ["--yes", "--none"]) {
     const run = installWith(box, env, flag);
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /signed by bao dev signing/);
+    assert.match(run.stdout, /signed by bao dev signing\. This release is signed ad-hoc/);
     assert.match(run.stdout, /Kept .*Bao\.app\. Nothing was installed\. To replace it: quit Bao, remove /);
     assert.equal(version(app), "9.9.1");
     assert.equal(existsSync(path.join(box.home, "bao-cli.log")), false);
   }
   assert.equal(install(box, "--none").status, 0);
+  assert.equal(version(app), "9.9.2");
+});
+
+test("a release signed by another certificate with the same name keeps the installed app, and the same certificate replaces it", { skip }, (t) => {
+  const box = lab(t);
+  assert.equal(install(box, "--none").status, 0);
+  publish(box, "9.9.2");
+  const app = path.join(box.apps, "Bao.app");
+  const env = { BAO_INSTALLER_CODESIGN: certificateCodesign(box), SIGNED_APP: app, OLD_CERT: "a".repeat(40) };
+  const other = installWith(box, { ...env, NEW_CERT: "b".repeat(40) }, "--yes");
+  assert.equal(other.status, 0, other.stderr);
+  assert.match(other.stdout, /This release is signed by bao dev signing with a different certificate/);
+  assert.match(other.stdout, /Kept .*Bao\.app\. Nothing was installed\./);
+  assert.equal(version(app), "9.9.1");
+  const same = installWith(box, { ...env, NEW_CERT: "a".repeat(40) }, "--none");
+  assert.equal(same.status, 0, same.stderr);
+  assert.doesNotMatch(same.stdout, /Kept /);
   assert.equal(version(app), "9.9.2");
 });
