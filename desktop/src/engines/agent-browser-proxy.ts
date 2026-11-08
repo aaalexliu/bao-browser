@@ -5,7 +5,9 @@ import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, type CurrentChrome } from "../cdp-live/current-chrome";
-import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand } from "./agent-browser-record";
+import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
+import { newInRead } from "./agent-browser-describe";
+import type { ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
@@ -57,6 +59,10 @@ interface SessionData {
   recording: AgentBrowserRun;
   workflow: AgentBrowserWorkflow;
   ownerWait?: { targetId: string; page: OwnerPage } | "pending";
+  /** Chrome's own URL and title for the active tab, from the latest metadata read. */
+  page?: OwnerPage;
+  /** The latest sign-in or check page, kept for the owner-wait card. */
+  ownerPage?: OwnerPage;
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -75,12 +81,17 @@ export class AgentBrowserProxy {
   private starting: Promise<Session> | undefined;
   private startAbort: AbortController | undefined;
   private pendingCloses = 0;
-  private latest: { runId: string; step: RecordedAgentBrowserCommand; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
+  private latest: { runId: string; step: RecordedAgentBrowserCommand; steps: readonly RecordedAgentBrowserCommand[]; lastPicture?: AgentBrowserRun["lastPicture"] } | undefined;
   private workflowOutcome: string | undefined;
 
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
+  /** The sign-in or check page Bao is waiting on, or the latest one it waited on. URL and title only. */
+  get ownerPage(): OwnerPage | undefined {
+    const wait = this.session?.ownerWait;
+    return wait && wait !== "pending" ? wait.page : this.session?.ownerPage;
+  }
   private currentEnded = false;
 
   constructor(private readonly options: { home: string; sourceRoot?: string; directory?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean }) {}
@@ -129,7 +140,7 @@ export class AgentBrowserProxy {
     const continuing = !!this.session;
     const recording = this.session?.recording ?? new AgentBrowserRun(this.options.home);
     let step = continuing ? undefined : recording.begin(command as string, args);
-    if (step) this.latest = { runId: recording.id, step };
+    if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
       try {
         const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? DEFAULT_BROWSER, webSite(args[0])));
@@ -154,6 +165,7 @@ export class AgentBrowserProxy {
     let commandDone!: () => void;
     session.commandDone = new Promise<void>((resolve) => { commandDone = resolve; });
     const results: AgentBrowserCommandResult[] = [];
+    const context: StepContext = {};
     let failure: unknown;
     try {
       if (this.disconnected) throw new Error("agent-browser client disconnected");
@@ -165,7 +177,7 @@ export class AgentBrowserProxy {
         }
       }
       step ??= recording.begin(command as string, args);
-      this.latest = { runId: recording.id, step };
+      this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
         if (continuing && site && "importLogin" in session.chrome) await session.chrome.importLogin(site);
@@ -190,6 +202,7 @@ export class AgentBrowserProxy {
         results.splice(0, results.length, ...this.ownerResult("halted"));
         return results;
       }
+      if (visual && command === "snapshot" && results[0]?.exitCode === 0) context.mark = await this.readMark(session, recording.seenOn(session.page?.url), results[0].stdout);
       if (command === "open" && results[0]!.exitCode === 0) {
         // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
         results.push(await this.run(session, "tab", ["list"]));
@@ -202,8 +215,9 @@ export class AgentBrowserProxy {
     } finally {
       try {
         if (step) {
-          await session.recording.complete(step, results, session.stateDir, async () => (await this.screenshot(session, command as string, visual)).bytes, failure, !!session.ownerWait || command === "wait_for_owner");
-          if (command === "close") this.latest = { runId: recording.id, step, lastPicture: recording.lastPicture };
+          await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string, visual), failure,
+            !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage });
+          if (command === "close") this.latest = { runId: recording.id, step, steps: recording.steps, lastPicture: recording.lastPicture };
         }
       } finally {
         commandDone();
@@ -326,6 +340,7 @@ export class AgentBrowserProxy {
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal });
     try {
       const { targetInfo } = await cdp.send<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, 2000);
+      session.page = { url: targetInfo.url, title: targetInfo.title };
       return { targetId: active.targetId, targetIds: parsed.data?.tabs?.flatMap((tab) => tab.targetId ? [tab.targetId] : []) ?? [], page: { url: targetInfo.url, title: targetInfo.title } };
     } finally { if (session.kind === "copy") cdp.close(); }
   }
@@ -345,6 +360,7 @@ export class AgentBrowserProxy {
       }
     }
     session.ownerWait = active;
+    session.ownerPage = active.page;
     session.recording.ownerWaiting(true);
     await this.ownerBanner(session, active.targetId, true);
   }
@@ -398,6 +414,7 @@ export class AgentBrowserProxy {
             const active = await this.activePage(session);
             if (!active) return this.ownerClosed(session);
             session.ownerWait = active;
+            session.ownerPage = active.page;
             await this.ownerBanner(session, active.targetId, true);
           }
           const waiting = session.ownerWait;
@@ -415,6 +432,7 @@ export class AgentBrowserProxy {
             await this.ownerBanner(session, waiting.targetId, false);
             if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
             session.ownerWait = undefined;
+            session.page = { url: page.url, title: page.title };
             session.recording.ownerWaiting(false);
             return this.ownerResult("ready");
           }
@@ -431,16 +449,29 @@ export class AgentBrowserProxy {
     }
   }
 
+  /** Measure the heading or dialog a read found new, so its card can box it. */
+  private async readMark(session: Session, seen: ReadonlySet<string> | undefined, current: string): Promise<ShotBox | undefined> {
+    const added = newInRead(seen, current);
+    if (!added?.ref) return undefined;
+    try { return await this.box(session, `@${added.ref}`); }
+    catch { return undefined; }
+  }
+
+  private async box(session: Session, target: string): Promise<ShotBox | undefined> {
+    const result = await this.run(session, "get", ["box", target, "--json"], 3000);
+    if (result.exitCode !== 0) return undefined;
+    const { data } = JSON.parse(result.stdout) as { data?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } };
+    if (!data) return undefined;
+    const { x, y, width, height } = data;
+    if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
+        || ![x, y, width, height].every(Number.isFinite)) return undefined;
+    return { x, y, width, height };
+  }
+
   private async captureTarget(session: Session, step: RecordedAgentBrowserCommand, target: string): Promise<void> {
     try {
-      const result = await this.run(session, "get", ["box", target, "--json"], 3000);
-      if (result.exitCode !== 0) return;
-      const { data } = JSON.parse(result.stdout) as { data?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } };
-      if (!data) return;
-      const { x, y, width, height } = data;
-      if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
-          || ![x, y, width, height].every(Number.isFinite)) return;
-      const rect = { x, y, width, height };
+      const rect = await this.box(session, target);
+      if (!rect) return;
       const frame = await this.screenshot(session, step.native.command, true);
       if (!frame.viewport || rect.width <= 0 || rect.height <= 0 || rect.x < 0 || rect.y < 0
           || rect.x + rect.width > frame.viewport.width || rect.y + rect.height > frame.viewport.height) return;

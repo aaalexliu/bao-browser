@@ -55,6 +55,8 @@ export interface StoredRun {
   traceUnavailable?: string;
   workflowId: string;
   task?: string;
+  /** What a finished pass-through task did, as listed by the agent in finish_task. */
+  done?: string[];
   status: string;
   at: number;
   heals: unknown[];

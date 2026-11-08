@@ -544,6 +544,8 @@ test("UI clients negotiate one bundled resource, read history/receipt, and keep 
     assert.deepEqual(tools.find((tool) => tool.name === "open_step_pictures")?._meta?.ui?.visibility, ["app"]);
     assert.deepEqual(tools.find((tool) => tool.name === "open_browser_picture")?._meta?.ui?.visibility, ["app"]);
     assert.equal(tools.find((tool) => tool.name === "agent_browser")?._meta?.ui?.resourceUri, VIEWER_URI);
+    assert.equal(tools.find((tool) => tool.name === "finish_task")?._meta?.ui?.resourceUri, VIEWER_URI);
+    assert.deepEqual(tools.find((tool) => tool.name === "open_browser_card")?._meta?.ui?.visibility, ["app"]);
     const schema = tools.find((tool) => tool.name === "agent_browser")?.outputSchema;
     assert.ok(schema);
     assert.equal(schema.required.includes("results"), false);
@@ -727,12 +729,12 @@ test("update polling preserves a long in-flight call and an idle browser session
     const result = await reply;
     assert.equal(result.error, undefined);
     assert.equal(result.result?.isError, false);
-    assert.deepEqual(result.result?.content, [{ type: "text", text: "finished" }]);
+    assert.deepEqual(result.result?.content, [{ type: "text", text: "Went to https://example.test/." }, { type: "text", text: "finished" }]);
     await new Promise((resolve) => setTimeout(resolve, 4500));
     assert.equal(mcp.child.exitCode, null, "idle browser session prevents poll shutdown");
     const close = await mcp.tool("agent_browser", { command: "close", args: [] });
     assert.equal(close.isError, false);
-    assert.equal(close.text, "closed");
+    assert.equal(close.text, "Closed the Bao browser window.");
   } finally {
     if (mcp.child.exitCode === null && mcp.child.signalCode === null) {
       const exited = once(mcp.child, "exit");
