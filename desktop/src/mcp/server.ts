@@ -303,7 +303,7 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
   }
   const notice = ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : [];
   const command = String(args.command || "");
-  const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [], owner: ctx.proxy.ownerPage };
+  const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [], owner: ctx.proxy.ownerPage, current: ctx.proxy.currentChrome };
   if (!ctx.ui) {
     const current = args.browser === "current" ? ["Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open."] : [];
     return textToolResult(results, stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts), [...current, ...notice],

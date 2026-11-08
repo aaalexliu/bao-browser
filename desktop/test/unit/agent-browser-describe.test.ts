@@ -167,6 +167,19 @@ test("a closed session names the browser that ended", () => {
     "Your Chrome session ended. This session cannot continue.");
 });
 
+test("steps in the owner's own Chrome name that Chrome, not a Bao window", () => {
+  const owner = { url: "https://www.amazon.com/ap/signin?openid=1", title: "Amazon Sign-In" };
+  const say = (command: string, results: { stdout: string; stderr: string; exitCode: number }[], more: { owner?: typeof owner } = {}) =>
+    describeStep({ command, args: [], results, ...more, current: true }).text;
+  assert.match(say("wait_for_owner", reply("waiting"), { owner }), /^Your turn: sign in to amazon\.com in your Chrome\. /);
+  assert.match(say("open", reply("halted"), { owner: { url: "https://shop.example/", title: "Just a moment..." } }), /^Your turn: clear the check on shop\.example in your Chrome\. /);
+  assert.equal(say("wait_for_owner", reply("waiting")), "Your turn: finish the sign-in or check in your Chrome.");
+  assert.equal(say("close", ok("Disconnected from the owner's own Chrome.\n")), "Closed Bao's task tab in your Chrome.");
+  assert.equal(say("close", [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }]), "Could not close Bao's task tab.");
+  assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("waiting") }).text, "Your turn: finish the sign-in or check in Bao's Chrome window.");
+  assert.equal(describeStep({ command: "close", args: [], results: [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }] }).text, "Could not close the window.");
+});
+
 test("a selector target is the agent's value, not page text", () => {
   const clicked = describeStep({ command: "click", args: ["button.primary"], results: ok("✓ Done\n") });
   assert.deepEqual(clicked.parts, ["Clicked ", { value: "button.primary" }]);

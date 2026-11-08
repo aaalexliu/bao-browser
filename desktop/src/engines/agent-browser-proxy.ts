@@ -88,6 +88,8 @@ export class AgentBrowserProxy {
   get lastWorkflowOutcome(): string | undefined { return this.workflowOutcome; }
   get lastCommand(): typeof this.latest { return this.latest; }
   get activeRunId(): string | undefined { return this.session?.recording.id; }
+  /** The open session drives the owner's own running Chrome. */
+  get currentChrome(): boolean { return this.session?.kind === "current"; }
   /** The sign-in or check page Bao is waiting on, or the latest one it waited on. URL and title only. */
   get ownerPage(): OwnerWaitPage | undefined {
     const session = this.session;
@@ -221,7 +223,7 @@ export class AgentBrowserProxy {
         if (step) {
           try {
             await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string, visual), failure,
-              !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage });
+              !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current" });
           } catch (completeError) {
             // A hung command already failed with AbortError. The completion
             // screenshot throws page closed after disconnect and must not replace it.

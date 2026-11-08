@@ -17,6 +17,7 @@ export interface StepContext {
   /** Chrome's page just before the command ran. */
   previousPage?: OwnerPage;
   owner?: OwnerWaitPage;
+  current?: boolean;
   mark?: ShotBox;
 }
 
@@ -132,7 +133,7 @@ export class AgentBrowserRun {
     }
     step.summary = describeStep({
       command: step.native.command, args: step.native.args, results, error: step.native.error,
-      snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: context.previousPage, owner: context.owner, at: step.endedAt,
+      snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: context.previousPage, owner: context.owner, current: context.current, at: step.endedAt,
     });
     if (step.native.command === "open" && !step.native.isError) this.landmarks.clear();
     const read = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;

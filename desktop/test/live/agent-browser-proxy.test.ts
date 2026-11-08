@@ -121,6 +121,11 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       ["tab", ["t1"]], ["snapshot", ["-s", "#identity"], /Signed out/],
       ["tab", ["t2"]], ["snapshot", ["-s", "#identity"], /Signed in/], ["close", []],
     ];
+    const leads: Record<string, RegExp> = {
+      open: /^Went to http:\/\/127\.0\.0\.1:/, snapshot: /^Read /, fill: /^Typed "/, press: /^Pressed Tab\b/, click: /^Clicked /,
+      scroll: /^Scrolled down 100 px/, screenshot: /^Took a screenshot of /, tab: /^(Opened a new tab|Listed the browser tabs|Switched to the tab )/,
+      close: /^Closed the Bao browser window\.$/,
+    };
     for (const [command, args, expectedText] of commands) {
       const actual = await client.call(command, args);
       assert.equal(actual.isError, false, JSON.stringify(actual));
@@ -134,7 +139,8 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       }
       const expected = await native(command, args);
       const output = [expected.stdout, expected.stderr].filter(Boolean);
-      const content = actual.content.map((item) => item.text);
+      const [sentence, ...content] = actual.content.map((item) => item.text);
+      assert.match(sentence!, leads[command]!, `${command} starts with its step sentence`);
       if (command === "close") assert.equal(content.pop(), "Not saved as a workflow: it scrolled the page, which Bao cannot replay yet.");
       assert.deepEqual(command === "open" ? content.slice(0, -1) : content, output, command);
       if (command === "open") {
@@ -210,7 +216,7 @@ test("relative, implicit and JPEG native screenshots survive MCP close, disconne
         const steps = partial.steps as RecordedAgentBrowserCommand[];
         assert.equal(steps.length, 4);
         for (const [index, step] of steps.slice(1).entries()) {
-          assert.deepEqual(step.native.results.flatMap((result) => [result.stdout, result.stderr].filter(Boolean)), replies[index]!.content.map((item) => item.text));
+          assert.deepEqual(step.native.results.flatMap((result) => [result.stdout, result.stderr].filter(Boolean)), replies[index]!.content.slice(1).map((item) => item.text));
           assert.equal(step.native.screenshots.length, 1);
           const artifact = step.native.screenshots[0]!;
           const implicit = JSON.parse(steps[2]!.native.results[0]!.stdout) as { data: { path: string } };
@@ -258,7 +264,8 @@ test("a throwaway marked profile opens headed in installed Google Chrome through
     assert.ok(opened.content.at(-1)!.text.includes("chrome://version"));
     const copy = await currentCopy(env.BAO_HOME!);
     const snapshot = await client.call("snapshot");
-    const text = snapshot.content[0]!.text;
+    assert.match(snapshot.content[0]!.text, /^Read /);
+    const text = snapshot.content[1]!.text;
     assert.ok(text.includes(ACCOUNT_CHROME_MAC), text);
     assert.ok(text.includes(copy), text);
     assert.ok(!text.includes("--headless"), text);

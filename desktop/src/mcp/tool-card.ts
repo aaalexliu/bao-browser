@@ -72,13 +72,13 @@ function latestPicture(steps: readonly Partial<RecordedAgentBrowserCommand>[], e
 
 /** The card for one recorded step. The same function serves the tool result and the app's later read. */
 export function stepCard(runId: string | null, step: RecordedAgentBrowserCommand | undefined, options: {
-  command: string; args?: readonly string[]; results: readonly AgentBrowserCommandResult[]; error?: string; owner?: OwnerWaitPage;
+  command: string; args?: readonly string[]; results: readonly AgentBrowserCommandResult[]; error?: string; owner?: OwnerWaitPage; current?: boolean;
   steps?: readonly Partial<RecordedAgentBrowserCommand>[]; lastPicture?: StepEvidence["lastPicture"];
 }): BrowserToolCard {
   const { command, results } = options;
   const failed = options.error !== undefined || results.some((result) => result.exitCode !== 0);
   const outcome = ownerOutcome(results);
-  const summary: StepSummary = step?.summary ?? describeStep({ command, args: options.args ?? step?.native.args ?? [], results, error: options.error, owner: options.owner });
+  const summary: StepSummary = step?.summary ?? describeStep({ command, args: options.args ?? step?.native.args ?? [], results, error: options.error, owner: options.owner, current: options.current });
   const status = outcome === "halted" || outcome === "waiting" ? "waiting" : failed ? "failed" : "complete";
   const base = { command, status, caption: summary.text, parts: summary.parts, runId, stepId: step?.id ?? null,
     ...(summary.mark ? { mark: summary.mark } : {}), ...(summary.page ? { page: summary.page } : {}) } as const;
@@ -152,14 +152,14 @@ function nativeBlocks(results: readonly AgentBrowserCommandResult[]): { type: "t
 
 /** The sentence that leads every agent_browser result, in MCP Apps hosts and text-only clients alike. */
 export function stepSentence(command: string, results: readonly AgentBrowserCommandResult[], evidence?: StepEvidence, error?: string,
-  options: { args?: readonly string[]; owner?: OwnerWaitPage } = {}): string {
-  return evidence?.step.summary?.text ?? describeStep({ command, args: options.args ?? [], results, error, owner: options.owner }).text;
+  options: { args?: readonly string[]; owner?: OwnerWaitPage; current?: boolean } = {}): string {
+  return evidence?.step.summary?.text ?? describeStep({ command, args: options.args ?? [], results, error, owner: options.owner, current: options.current }).text;
 }
 
 export function browserToolResult(command: string, results: AgentBrowserCommandResult[],
-  evidence?: StepEvidence, activeRunId?: string, error?: string, options: { args?: readonly string[]; owner?: OwnerWaitPage } = {}) {
+  evidence?: StepEvidence, activeRunId?: string, error?: string, options: { args?: readonly string[]; owner?: OwnerWaitPage; current?: boolean } = {}) {
   const runId = evidence?.runId ?? activeRunId ?? null;
-  const card = stepCard(runId, evidence?.step, { command, args: options.args, results, error, owner: options.owner, steps: evidence?.steps, lastPicture: evidence?.lastPicture });
+  const card = stepCard(runId, evidence?.step, { command, args: options.args, results, error, owner: options.owner, current: options.current, steps: evidence?.steps, lastPicture: evidence?.lastPicture });
   return {
     content: [
       { type: "text", text: card.caption },
