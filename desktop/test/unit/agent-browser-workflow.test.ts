@@ -282,7 +282,9 @@ test("selecting the active native tab preserves workflow eligibility", { skip: !
   const f = await fixture();
   try {
     await passed(f, "open", [f.url]);
-    const tabs = await passed(f, "tab", ["list", "--json"]);
+    const listed = await f.call("tab", ["list", "--json"]);
+    assert.equal(listed.isError, false, text(listed));
+    const tabs = listed.content[1]!.text!;
     const data = JSON.parse(tabs) as { data: { tabs: { tabId: string; active: boolean }[] } };
     const active = data.data.tabs.find((tab) => tab.active);
     assert.ok(active, tabs);

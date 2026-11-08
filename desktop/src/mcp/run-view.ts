@@ -2,12 +2,14 @@ import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
 import type { WorkflowV2 } from "../v1/schema";
-import { shotFile, shotFormat } from "../v1/shots";
+import { BROWSER_PICTURE_BYTES, shotFile, shotFormat } from "../v1/shots";
 import { Library, secretInputNames, type StoredRun } from "../v1/store";
+import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import { finishCard, stepCard, type BrowserToolCard, type CardPicture } from "./tool-card";
 
 export const VIEW_RECORD_BYTES = 2 * 1024 * 1024;
 export const VIEW_PICTURE_BYTES = 512 * 1024;
-export const BROWSER_PICTURE_BYTES = 2 * 1024 * 1024;
+export { BROWSER_PICTURE_BYTES };
 const PAGE_SIZE = 5;
 const STEP_PAGE_SIZE = 20;
 const bounded = { maxBytes: VIEW_RECORD_BYTES };
@@ -146,6 +148,37 @@ export function openBrowserPicture(library: Library, args: Record<string, unknow
     if (picture) return { runId, stepId, pictures: [{ phase, ...picture }] };
   }
   return { runId, stepId, pictures: [] };
+}
+
+function cardPicture(library: Library, runId: string, stepId: string | null, picture: CardPicture | undefined) {
+  if (picture?.kind !== "captured") return undefined;
+  const id = picture.stepId ?? stepId;
+  if (!isViewerId(id)) return undefined;
+  for (const format of ["jpg", "png"] as const) {
+    const data = readPicture(library, runId, shotFile(id, picture.phase, format), BROWSER_PICTURE_BYTES);
+    if (data) return data;
+  }
+  return undefined;
+}
+
+export function finishCardFor(library: Library, runId: string): BrowserToolCard {
+  return finishCard(readViewerRun(library, viewerId(runId)));
+}
+
+/** A browser card and its pictures, read from the stored run. The app calls this when the host forwards only the text result. */
+export function openBrowserCard(library: Library, args: Record<string, unknown>): { card: BrowserToolCard; pictures: { main?: { mimeType: string; data: string }; lastSeen?: { mimeType: string; data: string } } } {
+  const runId = viewerId(args.run_id);
+  const run = readViewerRun(library, runId);
+  if (args.step_id === undefined) return { card: finishCard(run), pictures: {} };
+  const stepId = viewerId(args.step_id);
+  const steps = run.steps.map(record) as Partial<RecordedAgentBrowserCommand>[];
+  const step = steps.find((item) => item.id === stepId);
+  if (!step?.native) throw new Error("Step not found in this run");
+  const recorded = step as RecordedAgentBrowserCommand;
+  const card = stepCard(runId, recorded, { command: recorded.native.command, results: recorded.native.results, error: recorded.native.error, steps });
+  const main = cardPicture(library, runId, card.stepId, card.picture);
+  const lastSeen = cardPicture(library, runId, card.stepId, card.lastSeen);
+  return { card, pictures: { ...(main ? { main } : {}), ...(lastSeen ? { lastSeen } : {}) } };
 }
 
 export function openStepPictures(library: Library, args: Record<string, unknown>) {

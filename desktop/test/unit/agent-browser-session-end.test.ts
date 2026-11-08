@@ -337,7 +337,8 @@ for (const keepOpen of [false, true]) {
     assert.equal(f.library.readRun(runId).status, "recording");
     const result = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Verified the task result." } });
     assert.equal(result.isError, false);
-    const receipt = JSON.parse(result.content![0]!.text) as { run_id: string; status: string };
+    assert.match(result.content![0]!.text, /^Passed: Verified the task result\. \d+ steps? in \d+ s\.$/);
+    const receipt = JSON.parse(result.content![1]!.text) as { run_id: string; status: string };
     assert.equal(receipt.run_id, runId);
     assert.equal(receipt.status, "passed");
     assert.equal(f.library.readRun(runId).status, "passed");
@@ -370,7 +371,8 @@ test("finish_task after a completed close leaves the prior task unchanged", { ti
     outcome: "failed", reason: "The requested item was unavailable.",
   } });
   assert.equal(result.isError, false);
-  const receipt = JSON.parse(result.content![0]!.text) as { outcome: string; run_id?: string };
+  assert.equal(result.content![0]!.text, "No browser task was open.");
+  const receipt = JSON.parse(result.content![1]!.text) as { outcome: string; run_id?: string };
   assert.equal(receipt.outcome, "no_session");
   assert.equal(receipt.run_id, undefined);
   assert.deepEqual(f.library.readRun(runId), saved, "a later task cannot relabel a fully removed session");

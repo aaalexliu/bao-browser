@@ -1,5 +1,5 @@
 import type { Library } from "../v1/store";
-import { inspectMcpRunView, openBrowserPicture, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
+import { inspectMcpRunView, openBrowserCard, openBrowserPicture, openStepPictures, VIEWER_ID_PATTERN } from "./run-view";
 import { VIEWER_URI } from "./viewer";
 
 const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
@@ -25,6 +25,11 @@ export const VIEWER_TOOLS = [
     annotations, _meta: appOnly,
   },
   {
+    name: "open_browser_card", description: "Read one browser card after the app mounts: a step's sentence, page pictures, and target box for run_id and step_id, or the finished-run card for run_id alone. Pictures go to the host app in app-only metadata, at most two of at most 2 MiB each.",
+    inputSchema: { type: "object", properties: { run_id: id, step_id: id }, required: ["run_id"], additionalProperties: false },
+    annotations, _meta: appOnly,
+  },
+  {
     name: "open_step_pictures", description: "Read a recorded step's pictures after the owner clicks Open step pictures. Sends at most two PNG/JPEG pictures, each at most 512 KiB for replays or 2 MiB for captures, to the host app in UI-only metadata.",
     inputSchema: { type: "object", properties: { run_id: id, step_id: id }, required: ["run_id", "step_id"], additionalProperties: false },
     annotations, _meta: appOnly,
@@ -36,6 +41,10 @@ export function isViewerTool(name: string): boolean {
 }
 
 export function callViewerTool(library: Library, name: string, args: Record<string, unknown>) {
+  if (name === "open_browser_card") {
+    const { card, pictures } = openBrowserCard(library, args);
+    return { content: [{ type: "text", text: card.caption }], _meta: { baoToolCard: card, baoCardPictures: pictures }, isError: false };
+  }
   if (name === "open_step_pictures" || name === "open_browser_picture") {
     const data = name === "open_browser_picture" ? openBrowserPicture(library, args) : openStepPictures(library, args);
     return {
