@@ -1,5 +1,5 @@
 import path from "node:path";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext, type CDPSession, type Page } from "playwright";
 import type { BrowserChoice } from "../browser-choice";
 import { navigateOwned } from "../launch";
 import { ownerWall } from "../cdp-live/owner-wait";
@@ -36,10 +36,20 @@ export async function openWorkflowBrowser(options: {
       try {
         const context = browser.contexts()[0];
         if (!context) throw new Error("Chrome opened without a profile context");
-        const page = await context.newPage();
-        let closing: Promise<void> | undefined;
-        const close = () => closing ??= (async () => { try { await browser.close(); } finally { chrome.detach(); } })();
-        return { kind: "current", choice: "current", context, page, close };
+        // A background target leaves the owner's active tab and window focus alone; Playwright's newPage() would take the front.
+        const known = new Set(context.pages());
+        const { targetId } = await chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 5000);
+        try {
+          const { page, session } = await pageForTarget(context, known, targetId);
+          // Focus emulation keeps the background tab painting, running timers, and taking input while Playwright stays attached.
+          await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+          let closing: Promise<void> | undefined;
+          const close = () => closing ??= (async () => { try { await browser.close(); } finally { chrome.detach(); } })();
+          return { kind: "current", choice: "current", context, page, close };
+        } catch (error) {
+          await chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
+          throw error;
+        }
       } catch (error) { await browser.close(); throw error; }
     } catch (error) { chrome.detach(); throw error; }
   }
@@ -62,6 +72,24 @@ export async function openWorkflowBrowser(options: {
         keepOpen: async () => { if (!closing && !page.isClosed()) await chrome.keepOpen(); }, close };
     } catch (error) { await browser.close(); throw error; }
   } catch (error) { await chrome.close(); throw error; }
+}
+
+// Only pages that appear after `known` are attached, so the owner's other tabs are never touched.
+async function pageForTarget(context: BrowserContext, known: Set<Page>, targetId: string): Promise<{ page: Page; session: CDPSession }> {
+  for (;;) {
+    const fresh = context.pages().filter((page) => !known.has(page));
+    if (!fresh.length) {
+      await context.waitForEvent("page");
+      continue;
+    }
+    for (const page of fresh) {
+      known.add(page);
+      const session = await context.newCDPSession(page);
+      const { targetInfo } = await session.send("Target.getTargetInfo");
+      if (targetInfo.targetId === targetId) return { page, session };
+      await session.detach();
+    }
+  }
 }
 
 export async function navigateWorkflowBrowser(browser: WorkflowBrowser, site: string): Promise<void> {

@@ -2926,6 +2926,7 @@ async function runRecorded(
             videoStartedAt,
             secretList,
           }));
+          if (session.kind === "current") void page.bringToFront().catch(() => undefined);
         },
       } satisfies ReplayOptions);
     } finally {

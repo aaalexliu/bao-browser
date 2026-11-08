@@ -586,6 +586,8 @@ async function replayInBrowser(
       };
       await observeConfirm(live);
       liveRuns.set(outcome.resume, live);
+      // The owner acts in the held tab, so the owner's own Chrome shows the background replay tab now.
+      if (browser.kind === "current") await page.bringToFront().catch(() => undefined);
       await finishVideo();
       saveWorkflowRun(library, workflow, run, args, outcome, clip);
       return { run, outcome, held: true, clip };
@@ -622,6 +624,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     live.trail = run.trail;
     live.steps = run.steps;
     await observeConfirm(live);
+    if (live.browser.kind === "current") await live.page.bringToFront().catch(() => undefined);
     const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
     return outcome;
