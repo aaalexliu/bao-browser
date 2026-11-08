@@ -159,7 +159,7 @@ function writeCodex(request: Request, entry: string, io: AgentIo): number {
 }
 
 /** Replaces file whole, through a temp file. A linked file, such as one a dotfiles manager owns, keeps its link. The write goes to the file it names. */
-function writeConfig(file: string, text: string): void {
+export function writeConfig(file: string, text: string): void {
   const target = existsSync(file) ? realpathSync(file) : file;
   mkdirSync(path.dirname(target), { recursive: true });
   const tmp = `${target}.bao-${process.pid}.tmp`;

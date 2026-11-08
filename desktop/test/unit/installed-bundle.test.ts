@@ -67,6 +67,18 @@ test("the recorded helper requirement passes and a different certificate hash fa
   assert.equal(acceptHelper(other, identity, helperCertHash({ BAO_HELPER_CERT_HASH: otherHash })).ok, true);
 });
 
+test("an ad-hoc build accepts only an ad-hoc dev.bao.oshelper helper", () => {
+  const verify = "Identifier=dev.bao.oshelper\nSignature=adhoc\n";
+  const adhoc = fromCodesign(verify, 'designated => cdhash H"bac5c56ac584bc325e0961999e028fdb87d74edd"\n');
+  assert.equal(adhoc.adhoc, true);
+  assert.equal(acceptHelper(adhoc, "-", pinnedHash).ok, true, acceptHelper(adhoc, "-", pinnedHash).reason);
+  assert.equal(acceptHelper({ ...adhoc, identifier: "other" }, "-", pinnedHash).ok, false);
+  assert.equal(acceptHelper({ ...adhoc, exists: false }, "-", pinnedHash).reason, "helper is absent");
+  const signed = fromCodesign("Identifier=dev.bao.oshelper\nAuthority=bao dev signing\n", recordedRequirement);
+  assert.match(acceptHelper(signed, "-", pinnedHash).reason, /needs an ad-hoc helper/);
+  assert.match(acceptHelper(adhoc, identity, pinnedHash).reason, /ad-hoc/);
+});
+
 test("a hash signing selector still requires the pinned helper certificate", () => {
   const report = fromCodesign("Identifier=dev.bao.oshelper\nAuthority=bao dev signing\n", recordedRequirement);
   assert.equal(acceptHelper(report, pinnedHash.toUpperCase(), pinnedHash).ok, true);

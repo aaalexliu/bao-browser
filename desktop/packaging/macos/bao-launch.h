@@ -4,10 +4,11 @@
 #include <stddef.h>
 
 /* Finder does not pass a shell PATH. Node 24+ is chosen from BAO_NODE, then
+ * the Node bundled at Resources/node/bin/node when the build has one, then
  * Homebrew (including the keg-only node@24 prefix), /usr/local, mise, nvm,
  * and volta, then one login-shell lookup.
- * A copy of Node inside the app is not shipped: signing that bundle with
- * --deep would replace the helper CDHash and drop the TCC grant. */
+ * A bundled Node keeps its own nodejs.org signature. package-app.sh never
+ * signs with --deep, which would replace the helper CDHash and drop the grant. */
 
 typedef struct BaoVer {
   int major;
@@ -34,6 +35,11 @@ int bao_accept_shell_output(const char *text, char *out, size_t n);
 
 /* Shell to ask once. Prefers SHELL, then /bin/zsh, then /bin/bash. */
 const char *bao_login_shell(const char *env_shell, int (*is_exec)(const char *path, void *ctx), void *ctx);
+
+/* The first Node to try: BAO_NODE when it is set, else Resources/node/bin/node
+ * when that file is executable, else NULL. bao_discover_node still checks the
+ * version and falls back to the system lookup. */
+const char *bao_node_hint(const char *env_node, const char *resources, char *buf, size_t n);
 
 /* 0 and an absolute Node 24+ path in out. -1 when nothing qualifies. */
 int bao_discover_node(const char *bao_node, const char *home, const char *env_shell,
