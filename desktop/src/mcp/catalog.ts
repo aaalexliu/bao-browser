@@ -25,7 +25,7 @@ import { formatClock, when } from "../v1/time";
 import { stepTitle, stepValueTemplate, stepCheck, stepForEach, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
-import { runRecordStatus } from "../v1/run-status";
+
 import { loadState, saveState, type SyncState } from "../v1/sync";
 import { privateReviewStep } from "./review-step-privacy";
 import { markImported, prepareImport, publicSamples } from "../../../web/src/lib/import-sheet";
@@ -813,7 +813,7 @@ function saveWorkflowRun(
     traceUnavailable: run.traceUnavailable,
     videoTruncated: run.videoTruncated,
     workflowId: workflow.id,
-    status: run.pausedKind === "signin" || outcome.status === "needs_signin" ? runRecordStatus({ outcome: "paused", pausedKind: "signin" }) : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status === "failed" ? runRecordStatus({ outcome: "failed" }) : run.status,
+    status: run.pausedKind === "signin" || outcome.status === "needs_signin" ? "waiting-for-sign-in" : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status === "failed" ? "failed" : run.status,
     at: Date.now(),
     heals: run.heals,
     failure: run.failure,

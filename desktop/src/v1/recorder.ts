@@ -152,32 +152,35 @@ export function recorderSource(): string {
       const root = node.getRootNode && node.getRootNode();
       return root && root.host ? root.host : null;
     };
-    const accName = (el) => {
+    const citedName = (el) => {
       const aria = norm(el.getAttribute("aria-label") || "");
-      if (aria) return aria;
+      if (aria) return { text: aria.slice(0, 80), source: "aria-label" };
       const labelled = el.getAttribute("aria-labelledby");
       if (labelled) {
         const text = labelled.split(/\\s+/).map((id) => {
           const node = el.getRootNode ? el.getRootNode().getElementById?.(id) : null;
           return norm((node || document.getElementById(id) || {}).textContent || "");
         }).filter(Boolean).join(" ");
-        if (text) return text.slice(0, 80);
+        if (text) return { text: text.slice(0, 80), source: "label" };
       }
       if (el.id) {
         const label = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]');
         const via = norm(label && label.textContent || "");
-        if (via) return via.slice(0, 80);
+        if (via) return { text: via.slice(0, 80), source: "label" };
       }
       let wrap = el;
       while (wrap && wrap.tagName !== "LABEL") wrap = parentOf(wrap);
       if (wrap && wrap.tagName === "LABEL") {
         const via = norm(wrap.textContent || "");
-        if (via) return via.slice(0, 80);
+        if (via) return { text: via.slice(0, 80), source: "label" };
       }
       const title = norm(el.getAttribute("title") || "");
-      if (title) return title.slice(0, 80);
-      return "";
+      if (title) return { text: title.slice(0, 80), source: "title" };
+      const placeholder = norm(el.getAttribute("placeholder") || "");
+      if (placeholder) return { text: placeholder.slice(0, 80), source: "placeholder" };
+      return { text: "", source: "" };
     };
+    const accName = (el) => citedName(el).text;
     const roleOf = (el) => {
       const aria = el.getAttribute("role");
       if (aria) return aria;
@@ -206,13 +209,17 @@ export function recorderSource(): string {
       return out;
     };
     const ident = (el) => {
-      const name = accName(el);
-      const text = norm(el.innerText || el.textContent || "").slice(0, 80);
+      const cited = citedName(el);
+      const option = el.tagName === "SELECT" && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
+      const text = el.tagName === "SELECT"
+        ? norm((option && (option.label || option.text)) || "").slice(0, 80)
+        : norm(el.innerText || el.textContent || "").slice(0, 80);
       const kind = String(el.type || "").toLowerCase();
       const buttonValue = el.tagName === "INPUT" && (kind === "button" || kind === "submit" || kind === "reset")
         ? norm(String(el.value || "")).slice(0, 80)
         : "";
-      const shown = name || buttonValue;
+      const shown = cited.text || buttonValue;
+      const placeholder = norm(el.getAttribute("placeholder") || "").slice(0, 80);
       return {
         surface: "dom",
         role: roleOf(el),
@@ -225,7 +232,11 @@ export function recorderSource(): string {
         cssPath: cssPathOf(el),
         href: el.tagName === "A" ? (el.getAttribute("href") || undefined) : undefined,
         name: shown || undefined,
-        label: shown || undefined,
+        nameSource: cited.source || undefined,
+        label: cited.source === "label" ? cited.text : undefined,
+        ariaLabel: cited.source === "aria-label" ? cited.text : undefined,
+        title: cited.source === "title" ? cited.text : undefined,
+        placeholder: placeholder || undefined,
         text: text || buttonValue || undefined,
         path: pathOf(el),
         ...(() => {
