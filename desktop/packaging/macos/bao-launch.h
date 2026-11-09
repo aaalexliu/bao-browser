@@ -45,6 +45,11 @@ const char *bao_node_hint(const char *env_node, const char *resources, char *buf
 int bao_discover_node(const char *bao_node, const char *home, const char *env_shell,
                       const BaoDiscoverHooks *hooks, char *out, size_t out_n);
 
+/* bao_discover_node for this process, from bao_node_hint. BAO_NODE counts only
+ * with allow_env: Bao's Files & Folders grant must not run a Node the caller
+ * named, so a process that answers to macOS as Bao passes 0. */
+int bao_pick_node(const char *resources, int allow_env, char *out, size_t n);
+
 /* HOME when it is absolute, else the passwd entry's directory, else empty.
  * Only for the Node lookup: an empty HOME must not become /tmp for the library. */
 void bao_user_home(char *out, size_t n);

@@ -5,18 +5,19 @@
 // open the page. No debugging switch and no Chrome preference file. The only profile file read is
 // DevToolsActivePort.
 
-import { execFile } from "node:child_process";
 import path from "node:path";
+import { chromeDenied } from "../chrome-access";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
+import { processesNaming } from "../launch";
 import { closeInspectTab, logAx, openInspect, type ChromeAx, INSPECT_URL } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
 
-/** The executable of Google Chrome's browser process on a Mac. */
-const CHROME_EXE = /\/Google Chrome\.app\/Contents\/MacOS\/Google Chrome$/;
+/** The end of Google Chrome's executable path on a Mac. */
+export const CHROME_APP_EXE = "/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 /**
- * Browser processes of Google Chrome on this user-data dir, from `ps -axww -o pid=,args=`.
+ * Browser processes of Google Chrome on this user-data dir, from `pid args` lines.
  * A renderer or helper has `--type=`. A headless Chrome, or one on another
  * --user-data-dir, such as a test or an agent's own Chrome, is not the daily Chrome.
  */
@@ -27,7 +28,7 @@ export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: 
     if (!match) continue;
     const args = match[2] as string;
     const exe = args.split(" --")[0]?.trim() || "";
-    if (!CHROME_EXE.test(exe) || /\s--type=/.test(args) || /\s--headless\b/.test(args)) continue;
+    if (!exe.endsWith(CHROME_APP_EXE) || /\s--type=/.test(args) || /\s--headless\b/.test(args)) continue;
     const named = /\s--user-data-dir=(.+?)(?=\s--|$)/.exec(args)?.[1]?.trim();
     const dir = named ? path.resolve(named) : defaultDir;
     if (path.resolve(dir) !== path.resolve(userDataDir)) continue;
@@ -36,12 +37,9 @@ export function chromePidsFromPs(text: string, userDataDir: string, defaultDir: 
   return pids;
 }
 
-export function dailyChromePids(userDataDir: string, defaultDir: string): Promise<number[]> {
-  return new Promise((resolve) => {
-    execFile("ps", ["-axww", "-o", "pid=,args="], { timeout: 5000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
-      resolve(err ? [] : chromePidsFromPs(String(stdout || ""), userDataDir, defaultDir));
-    });
-  });
+export async function dailyChromePids(userDataDir: string, defaultDir: string): Promise<number[]> {
+  const rows = processesNaming(CHROME_APP_EXE);
+  return chromePidsFromPs(rows.map((row) => `${row.pid} ${row.command}`).join("\n"), userDataDir, defaultDir);
 }
 
 export interface RemoteDebuggingDeps {
@@ -193,7 +191,11 @@ export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps)
   const listener = deps.listener || listenPid;
   const readPort = deps.readPort || readDevToolsActivePort;
   const listening = async (): Promise<number | null> => {
-    const endpoint = await readPort(deps.portFile).catch(() => null);
+    const endpoint = await readPort(deps.portFile).catch((error: unknown) => {
+      const denied = chromeDenied(error, userDataDir);
+      if (denied) throw denied;
+      return null;
+    });
     return endpoint && (await listener(endpoint.port)) === pid ? endpoint.port : null;
   };
 

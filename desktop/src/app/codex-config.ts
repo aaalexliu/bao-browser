@@ -8,7 +8,8 @@
 
 /**
  * Codex gives up on a tool call after 60 s unless tool_timeout_sec says otherwise. A profile copy
- * and Chrome startup can take longer, and wait_for_owner can wait up to 120 s.
+ * and Chrome startup can take longer, a Running Chrome call waits for the helper to press Chrome's
+ * Allow prompt, and wait_for_owner can wait up to 120 s.
  */
 export const CODEX_TOOL_TIMEOUT_SEC = 180;
 

@@ -8,6 +8,7 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
+import { ChromeProfileQuestion } from "../engines/browser-pick";
 import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
@@ -235,7 +236,7 @@ export interface RunControl {
 
 export async function runWorkflow(
   library: Library,
-  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2; browser?: BrowserChoice },
+  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2; browser?: BrowserChoice; profile?: string },
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
@@ -261,6 +262,7 @@ export async function runWorkflow(
   }
   const resumed = request.resume ? takeResume(library, request.resume) : undefined;
   const browser = request.browser ?? resumed?.browser;
+  const profile = request.profile ?? resumed?.profile;
   const id = request.id || resumed?.workflowId || "";
   if (!id) return emptyOutcome("", "failed", "workflow id");
   const placed = request.document ? undefined : await locateWorkflow(library, id, auth);
@@ -286,17 +288,19 @@ export async function runWorkflow(
   };
   const inputs = withInputDefaults(workflow, given);
   const missing = missingHuman(workflow, inputs, given);
-  if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, given, browser));
+  if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, given, browser, profile));
   const secrets = secretStrings(workflow, inputs);
   try {
-    const played = await replayInBrowser(library, workflow, inputs, secrets, control, browser);
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control, browser, profile);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
     return stamp(played.outcome);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    return stamp(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs, browser));
+    const reason = err instanceof ChromeProfileQuestion
+      ? `${err.message} ${err.retry({ id, ...browser ? { browser } : {} }, "run_workflow")} Pass the same inputs.`
+      : err instanceof Error ? err.message : String(err);
+    return stamp(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs, browser, profile));
   }
 }
 
@@ -483,6 +487,8 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
 interface LiveRun {
   token: string;
   browser: WorkflowBrowser;
+  /** The Chrome profile folder the agent named. A resume file keeps it. */
+  profile?: string;
   page: Page;
   video: { path(): Promise<string> } | null;
   runId: string;
@@ -516,6 +522,7 @@ async function replayInBrowser(
   secrets: string[],
   control: RunControl | undefined,
   choice?: BrowserChoice,
+  profile?: string,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
@@ -525,7 +532,8 @@ async function replayInBrowser(
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   let browser: WorkflowBrowser;
   if (choice) {
-    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile });
+    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile, profile,
+      extensionRoute: library.settings().runningChromeExtension === true });
   } else {
     const profile = path.join(library.root, "chrome-profile");
     mkdirSync(profile, { recursive: true });
@@ -566,12 +574,13 @@ async function replayInBrowser(
       yieldHuman: true,
       trail,
     });
-    const outcome = rememberRun(library, workflow, run, args, secrets, choice);
+    const outcome = rememberRun(library, workflow, run, args, secrets, choice, undefined, profile);
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
       hold = true;
       const live: LiveRun = {
         token: outcome.resume,
         browser,
+        profile,
         page,
         video,
         runId,
@@ -628,7 +637,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     await observeConfirm(live);
     // A resumed run that holds again asks nothing new, so open Bao's group on the held tab again.
     if (live.browser.kind === "current") await live.browser.show().catch(() => undefined);
-    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token);
+    const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token, live.profile);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
     return outcome;
   }
@@ -637,7 +646,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   clearLivePrompt(live);
   await releaseBrowser(library, live);
   library.savePublicInputs(live.workflow.id, publicInputs(live.workflow, live.inputs));
-  const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser);
+  const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, undefined, live.profile);
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
   return storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets);
@@ -741,6 +750,7 @@ function rememberRun(
   secrets: string[],
   browser?: BrowserChoice,
   resumeToken?: string,
+  profile?: string,
 ): WorkflowOutcome {
   const failed = run.steps.find((step) => step.status === "failed" || step.status === "paused");
   const step = workflow.steps.find((item) => item.id === (run.pausedStepId || failed?.id));
@@ -791,6 +801,7 @@ function rememberRun(
     result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
       kind: run.pausedKind,
       browser,
+      profile,
       deadline: run.ask?.deadline ?? null,
       ask: run.ask?.instruction,
       runId: run.runId,
@@ -854,6 +865,7 @@ function remember(
   stepId: string,
   inputs: ReplayArgs,
   browser?: BrowserChoice,
+  profile?: string,
 ): WorkflowOutcome {
   const result = baseOutcome(workflow, undefined, outcome, reason, stepId, inputs);
   result.runId = result.runId || `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
@@ -861,6 +873,7 @@ function remember(
   result.resume = writeResume(library, workflow.id, publicInputs(workflow, inputs), stepId, {
     kind: "input",
     browser,
+    profile,
     deadline,
     ask: reason,
     runId: result.runId,
@@ -1032,6 +1045,8 @@ function reportPath(library: Library, runId: string): string {
 interface ResumeFile {
   workflowId: string;
   browser?: BrowserChoice;
+  /** The Chrome profile folder the agent named. A file without it uses the Settings pick on resume. */
+  profile?: string;
   stepId: string;
   publicInputs: Record<string, string | number>;
   kind?: "signin" | "confirm" | "input" | "wall";
@@ -1045,7 +1060,7 @@ function writeResume(
   workflowId: string,
   inputs: Record<string, string | number>,
   stepId: string,
-  extra: { kind?: ResumeFile["kind"]; browser?: BrowserChoice; deadline?: number | null; ask?: string; runId?: string } = {},
+  extra: { kind?: ResumeFile["kind"]; browser?: BrowserChoice; profile?: string; deadline?: number | null; ask?: string; runId?: string } = {},
   token = `r_${randomBytes(16).toString("hex")}`,
 ): string {
   const file = path.join(library.root, "resumes", `${token}.json`);

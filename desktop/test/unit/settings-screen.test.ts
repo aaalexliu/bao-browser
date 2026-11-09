@@ -390,7 +390,7 @@ test("grouped Settings saves live controls, preserves secondary settings, opens 
     await eventually(() => app.library.settings().promoteAfter === 6);
     await page.waitForFunction(() => (document.getElementById("promote-after") as HTMLInputElement)?.defaultValue === "6");
     assert.equal(await page.locator("#page-engine").inputValue(), "old");
-    assert.equal(await page.locator("#chrome-profile").isDisabled(), true);
+    assert.equal(await page.locator("#chrome-profile").isEnabled(), true, "app copy and Running Chrome runs use the profile under either engine");
     assert.equal(await page.locator("#chrome-profile-extensions").isDisabled(), true);
     assert.equal(await page.locator("#chrome-profile-extensions").isChecked(), false);
     assert.equal(await page.locator("#keep-agent-browser-open").isChecked(), false);

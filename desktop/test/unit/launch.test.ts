@@ -456,7 +456,7 @@ test("Bao.app uses a native WebKit window and bundles Chromium only for tasks", 
   assert.match(script, /bao-launch\.c/);
   assert.equal(/codesign[^\n]*--deep/.test(script), false);
   assert.equal(main.includes("execlp"), false);
-  assert.match(main, /bao_discover_node/);
+  assert.match(main, /bao_pick_node/);
   assert.match(main, /bao_instance_acquire/);
   assert.match(main, /bao_show_alert/);
   assert.match(main, /bao_focus_pid/);

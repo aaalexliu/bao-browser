@@ -1,5 +1,5 @@
 // The owner's running Chrome, reached through the Bao app's relay and the Bao extension. No debugging port and no
-// macOS permission: the extension drives Bao's own grouped tabs with chrome.debugger.
+// macOS permission: the extension drives Bao's own grouped tabs with chrome.debugger. Gated off by the runningChromeExtension setting.
 
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -8,6 +8,7 @@ import type { DevToolsEndpoint } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 
 export const RUNNING_CHROME_NEEDS_APP = "Running Chrome needs the Bao app. Open Bao, then try again.";
+export const RUNNING_CHROME_EXTENSION_OFF = "Running Chrome through the Bao extension is off. browser=current uses Chrome remote debugging unless runningChromeExtension is true in the Library's settings.json.";
 
 export interface RunningChrome {
   /** CDP endpoint of this run's lease. Clients on it see only the tabs the lease opened. */

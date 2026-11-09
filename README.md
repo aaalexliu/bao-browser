@@ -13,7 +13,7 @@ On an Apple silicon Mac:
 npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz
 ```
 
-The command downloads a prebuilt `Bao.app` with Node inside, checks its SHA-256, and puts it in `/Applications`. Then it asks which agents and desktop apps should use Bao: Claude Code, Codex and ChatGPT, Claude Desktop, and Cursor. You need no Xcode, Rust, Node 24, or signing certificate. `--yes` sets up every agent it finds, `--agents codex` names them, and `--none` skips the question. Run it again to update. `~/.local/bin/bao doctor` checks the install. See [installer/README.md](installer/README.md).
+The command downloads a prebuilt `Bao.app` with Node inside, checks its SHA-256, and puts it in `/Applications`. Then it asks which agents and desktop apps should use Bao: Claude Code, Codex and ChatGPT, Claude Desktop, and Cursor. You need no Xcode, Rust, Node 24, or signing certificate. `--yes` sets up every agent it finds, `--agents codex` names them, and `--none` skips the question. It then checks the optional [Files & Folders > Google Chrome](docs/permissions.md#files--folders--google-chrome) switch, which macOS 27 and later need before Bao can import your Chrome sign-ins. Run it again to update. `~/.local/bin/bao doctor` checks the install. See [installer/README.md](installer/README.md).
 
 That URL is the installer attached to the latest GitHub release. The `bao-browser` package is not on npm. To build from source, see [Build Bao on a Mac](docs/mac-build.md).
 

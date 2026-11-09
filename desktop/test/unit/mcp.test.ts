@@ -50,6 +50,44 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
   });
 });
 
+test("run_workflow with several Chrome profiles and none named or picked lists them and gives the exact call to retry with one", async () => {
+  await fixture(async (client, library) => {
+    const source = path.join(library.root, "chrome-source");
+    mkdirSync(path.join(source, "Profile 2"), { recursive: true });
+    writeFileSync(path.join(source, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture", user_name: "fixture@example.test" }, "Profile 2": { name: "Work" } } } }));
+    library.save(workflow);
+    await client.handshake();
+    const asked = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy" })).text) as { outcome: string; reason: string };
+    assert.equal(asked.outcome, "failed");
+    assert.equal(asked.reason, `Chrome has 2 profiles in ${source}, so Bao opened nothing. Choose one: "Default" (Fixture, fixture@example.test); "Profile 2" (Work). `
+      + 'To continue, call run_workflow again with the folder of the profile you choose: {"id":"saved","browser":"copy","profile":"Default"} Pass the same inputs.');
+    const missing = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy", profile: "Profile 9" })).text) as { outcome: string; reason: string };
+    assert.equal(missing.outcome, "failed");
+    assert.match(missing.reason, /^Chrome has no profile "Profile 9" in .+\. Choose one of: "Default" \(Fixture, fixture@example\.test\); "Profile 2" \(Work\)\.$/);
+    const blank = await client.call("run_workflow", { id: workflow.id, profile: " " });
+    assert.equal(blank.isError, true);
+    assert.match(blank.text, /profile must be a Chrome profile folder/);
+  });
+});
+
+test("a run_workflow resume keeps the Chrome profile the agent named, not the Settings pick", async () => {
+  await fixture(async (client, library) => {
+    library.updateSettings({ chromeProfile: "Default" });
+    library.save(workflow);
+    await client.handshake();
+    const first = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy", profile: "Profile 9" })).text) as { outcome: string; reason: string; resume_token?: string };
+    assert.equal(first.outcome, "failed");
+    assert.match(first.reason, /^Chrome has no profile "Profile 9" in /);
+    assert.ok(first.resume_token);
+    const resumed = JSON.parse((await client.call("run_workflow", { resume: first.resume_token })).text) as { outcome: string; reason: string; resume_token?: string };
+    assert.equal(resumed.outcome, "failed");
+    assert.match(resumed.reason, /^Chrome has no profile "Profile 9" in /, "the resumed run did not fall back to the Settings pick");
+    assert.ok(resumed.resume_token);
+    const again = JSON.parse((await client.call("run_workflow", { resume: resumed.resume_token, profile: "Profile 8" })).text) as { reason: string };
+    assert.match(again.reason, /^Chrome has no profile "Profile 8" in /, "a profile on the resume call wins");
+  });
+});
+
 test("MCP search and describe mark the owner's saved inputs optional", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [
@@ -533,10 +571,12 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       assert.match(guidance!, /For browser=copy, [^.]+signed-in copied tab with tab <id>/);
       assert.match(guidance!, /task tab, which shares the owner's sign-ins; use another tab only when the owner asks/);
       assert.match(guidance!, /native daemon restart returns to the task tab but loses refs; take a fresh snapshot/);
-      assert.match(guidance!, /needs the Bao app open and the extension linked/);
-      assert.match(guidance!, /no Mac permission: no Accessibility, Screen Recording, or Automation grant/);
-      assert.match(guidance!, /browser=bao and browser=copy need no running Bao app/);
-      assert.doesNotMatch(guidance!, /BaoOSHelper|Accessibility access|press(es)? Allow|(This route|It) needs no running Bao app/);
+      assert.match(guidance!, /browser=current (only on the first open to drive|drives) the owner's own running Chrome over remote debugging/);
+      assert.match(guidance!, /(BaoOSHelper uses its|Bao's helper enables debugging and presses Allow through) existing Accessibility access/);
+      assert.match(guidance!, /with profile on the first open/);
+      assert.match(guidance!, /exact calls to fall back to browser=current on the same Chrome profile/);
+      assert.match(guidance!, /No browser choice needs a running Bao app/);
+      assert.doesNotMatch(guidance!, /extension|Default when unset/);
     }
     const search = await legacy.tool("search_workflows", { query: "missing" });
     assert.equal(search.isError, false);

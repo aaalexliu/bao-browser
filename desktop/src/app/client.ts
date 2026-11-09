@@ -544,10 +544,11 @@ function settings(): string {
         <option value="old" ${state.settings?.pageEngine !== "agent-browser" ? "selected" : ""}>Current engine (default)</option>
         <option value="agent-browser" ${state.settings?.pageEngine === "agent-browser" ? "selected" : ""}>agent-browser (trial)</option>
       </select></label>
-      <label>Chrome profile for agent-browser <select id="chrome-profile" data-settings-draft ${state.settings?.pageEngine !== "agent-browser" ? "disabled" : ""}>
+      <label>Chrome profile <select id="chrome-profile" data-settings-draft aria-describedby="chrome-profile-help">
         <option value="">Choose a Chrome profile</option>
         ${chromeProfiles.map((profile) => `<option value="${esc(profile.directory)}" ${state.settings?.chromeProfile === profile.directory ? "selected" : ""}>${esc(profile.name)}${profile.email ? ` - ${esc(profile.email)}` : ""} (${esc(profile.directory)})</option>`).join("")}
       </select></label>
+      <p class="quiet" id="chrome-profile-help">App runs on a Fresh Chrome copy or Running Chrome, and run_workflow, use this profile. An agent using agent_browser names its own.</p>
       <label class="extensions-choice"><input id="chrome-profile-extensions" data-settings-draft type="checkbox" aria-describedby="chrome-extensions-help" ${state.settings?.chromeProfileExtensions?.[state.settings?.chromeProfile || ""] === true ? "checked" : ""} ${state.settings?.pageEngine !== "agent-browser" || !state.settings?.chromeProfile ? "disabled" : ""}> Load my Chrome extensions</label>
       <p class="quiet" id="chrome-extensions-help">Shopping and coupon extensions can cover pages and block the agent.</p>
       <p class="quiet">Each agent-browser run gets a fresh, private copy. Bao leaves your original Chrome untouched, turns sync off in the copy, and deletes the copy when the session ends unless you keep the window open after the agent disconnects or Bao MCP stops. A kept copy stays on disk until the next agent session cleans it up, even if you close its window by hand. No remote-debugging switch, Accessibility, or Automation is needed.</p>
@@ -571,7 +572,7 @@ function settings(): string {
       <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
       <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
     </select></label>
-    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles, Chrome copies, and Running Chrome need no Accessibility, Automation, or Screen Recording permission.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
+    <p id="settings-helper">${state.helper?.platform === "darwin" ? `${state.helper?.label === "helper available" ? "Mac helper available" : "Mac helper unavailable"}. Bao profiles and Chrome copies need no Accessibility, Automation, or Screen Recording permission. Running Chrome needs the helper's Accessibility permission, not Automation or Screen Recording.` : "The Mac helper is only available on macOS. Chrome agents do not need it."}</p>`);
 }
 
 function importSheet(): string {
@@ -1012,7 +1013,6 @@ function bind(): void {
   const profileChoice = document.getElementById("chrome-profile") as HTMLSelectElement | null;
   const extensionsChoice = document.getElementById("chrome-profile-extensions") as HTMLInputElement | null;
   const updateEngineControls = () => {
-    if (profileChoice) profileChoice.disabled = engineChoice?.value !== "agent-browser";
     if (extensionsChoice) extensionsChoice.disabled = engineChoice?.value !== "agent-browser" || !profileChoice?.value;
   };
   updateEngineControls();

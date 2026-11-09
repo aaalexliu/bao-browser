@@ -9,7 +9,7 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts } from "../../src/engines/workflow-browser";
 import { EXTENSION_NOT_LINKED } from "../../src/extension/cdp-relay";
-import { openRunningChrome, RUNNING_CHROME_NEEDS_APP } from "../../src/extension/running-chrome";
+import { openRunningChrome, RUNNING_CHROME_EXTENSION_OFF, RUNNING_CHROME_NEEDS_APP } from "../../src/extension/running-chrome";
 import { pinTestBrowser } from "../../src/launch";
 import { runWorkflow } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
@@ -123,12 +123,14 @@ test("a lease whose connections all close hands its open tabs to the owner", { t
   assert.equal(active(strip)?.id, chrome.ownerTabId);
 });
 
-test("Running Chrome explains a missing app or extension", { timeout: 30_000 }, async (t) => {
+test("Running Chrome through the extension is refused with the gate off and explains a missing app or extension", { timeout: 30_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-running-chrome-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await assert.rejects(openRunningChrome({ home: root }), { message: RUNNING_CHROME_NEEDS_APP });
   const app = await startApp({ home: root, extensionHost: true, extensionConfigHome: path.join(root, "native-host") });
   t.after(() => app.close());
+  await assert.rejects(openRunningChrome({ home: root }), { message: RUNNING_CHROME_EXTENSION_OFF }, "with the gate off the app refuses the relay");
+  app.library.updateSettings({ runningChromeExtension: true });
   await assert.rejects(openRunningChrome({ home: root }), { message: EXTENSION_NOT_LINKED });
 });
 
@@ -137,6 +139,7 @@ test("Running Chrome refuses a workflow that downloads or uploads a file before 
   t.after(() => rm(root, { recursive: true, force: true }));
   const app = await startApp({ home: root, port: 0, extensionHost: true, extensionConfigHome: path.join(root, "native-host") });
   t.after(() => app.close());
+  app.library.updateSettings({ runningChromeExtension: true });
   const refusal = "This workflow downloads or uploads a file, which Bao cannot do on your running Chrome yet. Run it on the Bao profile instead.";
   const upload: WorkflowStep = { id: "up", index: 0, action: "upload", caption: { text: "Upload" }, timeoutMs: 1000, file: { input: "statement" },
     target: targetFor({ surface: "dom", role: "textbox", tag: "input", id: "file", path: [] }) };
@@ -157,6 +160,14 @@ test("Running Chrome refuses a workflow that downloads or uploads a file before 
     assert.deepEqual([response.status, await response.json()], [409, { error: refusal }], `app Replay ${id}`);
   }
   assert.equal((await runWorkflow(app.library, { id: "plain", browser: "current" })).reason, EXTENSION_NOT_LINKED);
+  app.library.updateSettings({ runningChromeExtension: false });
+  for (const id of ["download", "upload", "drop"]) {
+    const outcome = await runWorkflow(app.library, { id, browser: "current" });
+    assert.deepEqual([outcome.outcome, outcome.reason], ["failed", refusal], `run_workflow ${id} over remote debugging`);
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(10_000) });
+    assert.deepEqual([response.status, await response.json()], [409, { error: refusal }], `app Replay ${id} over remote debugging`);
+  }
 });
 
 for (const ending of ["close", "finish", "disconnect"] as const) test(`the agent route drives a grouped background task tab and closes only Bao's tabs on ${ending}`, { timeout: 60_000 }, async (t) => {
@@ -193,7 +204,7 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
 })().catch(error => { console.error(error); process.exitCode = 1; });
 `, { mode: 0o700 });
   const home = chrome.home;
-  const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable });
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable, extensionRoute: () => true });
   t.after(() => proxy.end());
   assert.equal((await proxy.execute("open", [`${chrome.base}/task`], "current"))[0]!.exitCode, 0);
   let strip = await stripWhen(chrome, (s) => s.tabs.some((tab) => tab.url.endsWith("/task")));
@@ -235,7 +246,7 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
 
 test("a workflow on Running Chrome runs in a grouped background tab, opens the group for a handoff, and closes it", { timeout: 60_000 }, async (t) => {
   const chrome = await ownerChrome(t, PAGES);
-  const session = await openWorkflowBrowser({ browser: "current", home: chrome.home, site: `${chrome.base}/task` });
+  const session = await openWorkflowBrowser({ browser: "current", home: chrome.home, site: `${chrome.base}/task`, extensionRoute: true });
   t.after(() => session.close());
   assert.equal(session.kind, "current");
   await navigateWorkflowBrowser(session, `${chrome.base}/task`);

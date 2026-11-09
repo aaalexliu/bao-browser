@@ -12,7 +12,7 @@ The native window keeps the title **Bao** but hides the title text and makes the
 
 `bao-main.c` finds Node 24 or newer on its own:
 
-1. `BAO_NODE`, when it is an absolute path to Node 24 or newer. A relative path is ignored. Without `BAO_NODE`, `Contents/Resources/node/bin/node` when the build bundled one.
+1. `BAO_NODE`, when it is an absolute path to Node 24 or newer. A relative path is ignored. Bao ignores `BAO_NODE` when it answers to macOS for itself, as it does from Finder, so a caller cannot run its own Node under Bao's Files & Folders grant. Without `BAO_NODE`, `Contents/Resources/node/bin/node` when the build bundled one.
 2. `/opt/homebrew/bin/node`, then `/usr/local/bin/node`. Then the keg-only prefixes `/opt/homebrew/opt/node@24/bin/node` and `/usr/local/opt/node@24/bin/node`, because `brew install node@24` does not link `node` into `bin`.
 3. The newest Node 24 or newer under `~/.local/share/mise/installs/node/*/bin/node`, then `~/.nvm/versions/node/*/bin/node`, then `~/.volta/tools/image/node/*/bin/node`, then `~/.volta/bin/node`.
 4. One login shell: `$SHELL -lc 'command -v node'`. Finder often leaves `SHELL` unset, so the fallback is `/bin/zsh`, then `/bin/bash`. An alias is ignored. The shell is not asked when an earlier path already works.
@@ -214,7 +214,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. Check helper presence in Settings against [Which grant each job needs](permissions.md#which-grant-each-job-needs). The default copied-profile Chrome route needs no Mac privacy grant. Explicit current-Chrome control goes through the Bao extension. It needs the Bao app open with the extension linked, and no Mac permission.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. Check helper presence in Settings against [Which grant each job needs](permissions.md#which-grant-each-job-needs). The default copied-profile Chrome route needs no Mac privacy grant. Explicit current-Chrome control uses BaoOSHelper's existing Accessibility grant, without Automation or Screen Recording.
 
 ## Logs
 

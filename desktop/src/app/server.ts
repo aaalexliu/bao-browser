@@ -10,6 +10,7 @@ import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
+import { askedApp, assertChromeReadable, chromeFolderAccess } from "../chrome-access";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
 import { occupy, snapshot, type RunSeat, type SeatEvent } from "./run-seat";
@@ -34,7 +35,7 @@ import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, type BrowserChoice } from "../browser-choice";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, showWorkflowPage, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, settingsProfileQuestion, showWorkflowPage, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -74,6 +75,7 @@ import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extensi
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { createCdpRelay } from "../extension/cdp-relay";
+import { RUNNING_CHROME_EXTENSION_OFF } from "../extension/running-chrome";
 import { workflowDriver, type Gesture } from "../extension/protocol";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../cdp-live/launch-guard";
 import { defaultConfigHome } from "../extension/install-host";
@@ -495,6 +497,7 @@ export async function startApp(opts: {
           trails: library.listTrails(),
           runs: library.listRuns().map(slimRun),
           helper: helperStatus(await readHelperReport()),
+          chromeAccess: profileSourceRoot ? { ...chromeFolderAccess(profileSourceRoot), app: askedApp(), certSigned: process.env.BAO_CERT_SIGNED === "1" } : undefined,
           helperApp: bundledHelperApp() || null,
           model: modelStatus(),
           pendingImport: pending ? publicPending(pending) : null,
@@ -1717,9 +1720,11 @@ export async function startApp(opts: {
     }
   }
 
-  // Running Chrome: CDP for Bao's own grouped tabs, through the extension.
+  // Running Chrome through the extension, behind the runningChromeExtension setting: CDP for Bao's own grouped tabs.
   server.on("upgrade", (req, socket, head) => {
-    if (foreignOrigin(req) || !relay?.upgrade(req, socket, head)) socket.destroy();
+    if (foreignOrigin(req)) socket.destroy();
+    else if (library.settings().runningChromeExtension !== true) socket.end(`HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n${RUNNING_CHROME_EXTENSION_OFF}`);
+    else if (!relay?.upgrade(req, socket, head)) socket.destroy();
   });
   syncPending();
   await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
@@ -2383,6 +2388,7 @@ export async function startApp(opts: {
     try {
       const userData = chromeUserDataDir();
       if (!existsSync(path.join(userData, "Local State"))) throw new Error("Chrome was not found");
+      assertChromeReadable(userData);
       const profiles = readProfileNames(path.join(userData, "Local State"));
       const choice = chooseProfile(profiles, pending.profile);
       if (!choice.ok) {
@@ -2991,7 +2997,8 @@ async function openReplay(
     replays.delete(id);
   }
   if (browser) {
-    const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile });
+    const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
+      extensionRoute: library.settings().runningChromeExtension === true }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
     replays.set(id, session);
     return session;
   }

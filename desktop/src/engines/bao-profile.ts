@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
+import { assertChromeReadable, chromeDenied } from "../chrome-access";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
-import { closeRetainedChrome, launchOwnedChromeEndpoint, pidsForDataDir } from "../launch";
+import { closeRetainedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir } from "../launch";
 import { assertNotDailyChrome } from "../profile";
 import { cookieMatchesHost, findCookieDb, summarizeDb, summarySql, withCookieDb, type DecryptedCookie } from "../login-import/read";
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
@@ -16,11 +17,28 @@ interface LoginCookie extends DecryptedCookie { updated: bigint; signature: stri
 interface LoginState {
   cookies: LoginCookie[];
   storage: StorageItem[];
+  error?: string;
 }
 
 interface SourceLoginState {
   cookies?: LoginCookie[];
   storage: StorageItem[];
+  /** Why Bao could not read the Chrome profile. */
+  error?: string;
+}
+
+/** One sign-in import from the owner's Chrome profile into the Bao profile. */
+export interface SignInImport {
+  origin: string;
+  /** The site's cookies Bao read from the Chrome profile. */
+  found: number;
+  /** Cookies and storage items Bao wrote into its profile. Cookies it already had are not written again. */
+  cookies: number;
+  storage: number;
+  /** Why the import read or wrote nothing. Bao's profile keeps its saved sign-ins. */
+  error?: string;
+  /** Bao ran the import again because the opened page asked for a sign-in. */
+  retry?: true;
 }
 
 interface ChromeCookie {
@@ -72,14 +90,18 @@ async function connect(portFile: string): Promise<CdpSocket> {
 
 async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cookies?: LoginCookie[]): Promise<SourceLoginState> {
   try { return await readSourceLogin(options, site, destination, cookies); }
-  catch {
-    console.error("Bao source sign-in import unavailable; keeping saved Bao state.");
-    return { cookies: [], storage: [] };
+  catch (failure) {
+    const error = chromeDenied(failure, options.sourceRoot) ?? failure;
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`Bao source sign-in import unavailable; keeping saved Bao state: ${reason}`);
+    return { cookies: [], storage: [], error: reason };
   }
 }
 
 async function readSourceLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cachedCookies?: LoginCookie[]): Promise<SourceLoginState> {
   const profile = path.join(options.sourceRoot, options.directory);
+  // The storage readers skip a folder they cannot read, so a refused profile must stop here.
+  assertChromeReadable(profile, options.sourceRoot);
   const origins = [new URL(site).origin];
   const storage = await readLocalStorage(profile, origins);
   if (destination && !matchingIndexedDbOrigins(path.join(destination, "Default"), origins).length) copyIndexedDb(profile, destination, origins);
@@ -118,7 +140,7 @@ async function readSourceLogin(options: { sourceRoot: string; directory: string 
   }
 }
 
-async function seedLogin(portFile: string, login: LoginState): Promise<boolean> {
+async function seedLogin(portFile: string, login: LoginState): Promise<{ cookies: number; storage: number }> {
   const cdp = await connect(portFile);
   let targetId: string | undefined;
   try {
@@ -172,14 +194,18 @@ async function seedLogin(portFile: string, login: LoginState): Promise<boolean> 
         if (targetId) await send("Fetch.disable");
       }
     }
-    return outcomes.some((outcome) => outcome.ok) || stored > 0;
+    return { cookies: outcomes.filter((outcome) => outcome.ok).length, storage: stored };
   } finally {
     if (targetId) await cdp.send("Target.closeTarget", { targetId }).catch(() => undefined);
     cdp.close();
   }
 }
 
-export async function openBaoChromeForProxy(options: { sourceRoot: string; directory: string; home: string; site?: string; detached?: boolean }) {
+/**
+ * Opens Bao's lasting profile. Sign-ins come from Chrome profile `directory` in `sourceRoot`. With `unread` instead, Bao could not
+ * read Chrome's profiles, so it imports nothing and every import reports that reason.
+ */
+export async function openBaoChromeForProxy(options: ({ sourceRoot: string; directory: string } | { unread: string }) & { home: string; site?: string; detached?: boolean }) {
   const profile = baoAgentProfileDir(options.home);
   assertNotDailyChrome(profile);
   const keptWindow = path.join(profile, "bao-kept-window");
@@ -218,7 +244,8 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
     if (!ownsProfile()) return;
     retain();
     await chrome?.close();
-    if (ownsProfile() && !pidsForDataDir(profile).length) unlinkSync(keptWindow);
+    // An unreadable process list keeps the marker, so the next session reclaims whatever is left.
+    if (ownsProfile() && listedPids(profile)?.length === 0) unlinkSync(keptWindow);
   };
   try {
     if (reclaim) await closeRetainedChrome(profile);
@@ -229,9 +256,12 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
       const url = new URL(site);
       let login = snapshots.get(url.origin);
       if (!login) {
-        login = readChromeLogin(options, site, destination, sourceCookies).then((source) => {
+        const read = "unread" in options ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], error: options.unread })
+          : readChromeLogin(options, site, destination, sourceCookies);
+        login = read.then((source) => {
           sourceCookies ??= source.cookies;
-          return { cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)), storage: source.storage };
+          return { cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)), storage: source.storage,
+            ...(source.error ? { error: source.error } : {}) };
         });
         snapshots.set(url.origin, login);
       }
@@ -264,25 +294,27 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
       } finally { cdp.close(); }
     };
     await liveCookies(true);
-    const mergeLogin = async (login: LoginState, preferSource = false): Promise<boolean> => {
+    const mergeLogin = async (origin: string, login: LoginState, preferSource = false): Promise<SignInImport> => {
+      const report = { origin, found: login.cookies.length, cookies: 0, storage: 0, ...(login.error ? { error: login.error } : {}) };
       try {
-        if (!login.cookies.length && !login.storage.length) return false;
+        if (!login.cookies.length && !login.storage.length) return report;
         const live = await liveCookies();
         const cookies = login.cookies.filter((cookie) => {
           const key = cookieKey({ ...cookie, domain: cookie.hostKey });
           const current = live.get(key);
           return !current || (preferSource ? cookie.signature !== cookieSignature(current) : cookie.updated > observed.get(key)!.updated);
         });
-        if (!cookies.length && !login.storage.length) return false;
-        const changed = await seedLogin(browser.portFile, { cookies, storage: login.storage });
+        if (!cookies.length && !login.storage.length) return report;
+        const written = await seedLogin(browser.portFile, { cookies, storage: login.storage });
         await liveCookies();
-        return changed;
+        return { ...report, ...written };
       } catch {
+        // A failed write can echo a cookie or storage value, so the report names the step, not the message.
         console.error("Bao sign-in seed unavailable; continuing without import.");
-        return false;
+        return { ...report, error: "Bao could not write the sign-in into its profile" };
       }
     };
-    if (login) await mergeLogin(login);
+    const signIn = login && options.site ? await mergeLogin(new URL(options.site).origin, login) : undefined;
     return {
       target: { kind: "bao" as const, portFile: browser.portFile },
       closed: browser.closed, isClosed: browser.isClosed, close,
@@ -291,10 +323,12 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
         retain();
         browser.keepOpen();
       },
-      async importLogin(site: string, preferSource = false): Promise<boolean> {
+      /** The import for the site the session opened with. */
+      signIn,
+      async importLogin(site: string, preferSource = false): Promise<SignInImport> {
         if (!ownsProfile()) throw busy();
         if (!preferSource) { snapshots.clear(); sourceCookies = undefined; }
-        return mergeLogin(await snapshot(site), preferSource);
+        return mergeLogin(new URL(site).origin, await snapshot(site), preferSource);
       },
     };
   } catch (error) {

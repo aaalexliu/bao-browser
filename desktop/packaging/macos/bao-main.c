@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include "bao-launch.h"
 #include "bao-notify.h"
+#include "bao-run-node.h"
 #include "bao-window.h"
 
 static const char kNeedNodeTitle[] = "Bao needs Node.js";
@@ -144,12 +145,17 @@ static int run_print_home(const char *node, const char *script, char *home, size
   return failed == 0 ? 0 : -1;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
   char exe[4096];
   uint32_t size = sizeof exe;
   if (_NSGetExecutablePath(exe, &size) != 0) return 1;
   char resolved[4096];
   if (!realpath(exe, resolved)) return 1;
+  /* Node runs here as Bao, so the caller cannot add code to it. */
+  unsetenv("NODE_OPTIONS");
+  unsetenv("NODE_PATH");
+  /* bao-mcp and bao-cli start Node here, before any window code runs. */
+  if (argc > 1 && strcmp(argv[1], "--run-node") == 0) return bao_run_node(resolved, argc - 2, argv + 2);
   /* Contents/MacOS/bao -> Contents */
   dirname_inplace(resolved);
   dirname_inplace(resolved);
@@ -178,17 +184,9 @@ int main(void) {
     setenv("BAO_CAPTURE_BAR_BIN", bar, 1);
   }
 
-  char user_home[4096];
-  bao_user_home(user_home, sizeof user_home);
   char node_bin[4096];
-  BaoDiscoverHooks hooks;
-  hooks.is_exec = bao_real_is_exec;
-  hooks.major = bao_real_major;
-  hooks.shell = bao_real_shell;
-  hooks.ctx = NULL;
-  char bundled[4096];
-  const char *hint = bao_node_hint(getenv("BAO_NODE"), resources, bundled, sizeof bundled);
-  if (bao_discover_node(hint, user_home, getenv("SHELL"), &hooks, node_bin, sizeof node_bin) != 0) {
+  int bao_answers = bao_note_responsible() == (int)getpid();
+  if (bao_pick_node(resources, !bao_answers, node_bin, sizeof node_bin) != 0) {
     bao_show_alert(kNeedNodeTitle, kNeedNodeBody);
     return 1;
   }

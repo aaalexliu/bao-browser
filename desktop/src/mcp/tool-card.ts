@@ -2,6 +2,7 @@ import type { OwnerPage } from "../cdp-live/owner-wait";
 import { describeStep, ownerOutcome, ownerReply, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
 import type { AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import type { ChromeProfileQuestion } from "../engines/browser-pick";
 import type { StoredRun } from "../v1/store";
 
 type Target = NonNullable<RecordedAgentBrowserCommand["target"]>;
@@ -53,8 +54,9 @@ export interface StepEvidence {
 export const BROWSER_RESULT_SCHEMA = {
   type: "object", required: ["command", "status", "run_id", "step_id"],
   properties: {
-    command: { type: "string" }, status: { type: "string", enum: ["complete", "failed", "waiting"] },
+    command: { type: "string" }, status: { type: "string", enum: ["complete", "failed", "waiting", "needs_profile"] },
     run_id: { type: ["string", "null"] }, step_id: { type: ["string", "null"] }, error: { type: "string" },
+    browser: { type: "array", items: { type: "string" } },
   },
 };
 
@@ -174,28 +176,45 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
 }
 
 /**
- * The result for a client without MCP Apps: words only. An owner wait gives its outcome and instruction as structuredContent,
- * which Codex and Claude Code hand the model in place of the text blocks, and its instruction in words for clients that read text.
+ * The result for a client without MCP Apps: words only. An owner wait gives its outcome, instruction, and browser lines as
+ * structuredContent, which Codex and Claude Code hand the model in place of the text blocks, and the same in words for clients that read text.
  */
-export function textToolResult(results: readonly AgentBrowserCommandResult[], sentence: string, notices: readonly string[], runId?: string) {
+export function textToolResult(results: readonly AgentBrowserCommandResult[], sentence: string, notices: readonly string[], browser: readonly string[], runId?: string) {
   const reply = ownerReply(results);
   return {
     content: [textBlock(sentence),
       ...(reply ? [...(runId ? [textBlock(`Run ${runId} · ${reply.outcome}`)] : []), textBlock(reply.instruction)] : nativeBlocks(results)),
       ...notices.map(textBlock)],
-    ...(reply ? { structuredContent: { summary: sentence, ...reply } } : {}),
+    ...(reply ? { structuredContent: { summary: sentence, ...reply, ...browser.length ? { browser } : {} } } : {}),
     isError: results.some((result) => result.exitCode !== 0),
   };
 }
 
-/** finish_task: the sentence, the run line, and the workflow outcome in words; the full receipt as structuredContent. */
-export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean) {
+/** finish_task: the sentence, the run line, the workflow outcome in words, and the session's browser line; the full receipt and that line as structuredContent. */
+export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean, browser: readonly string[] = []) {
   const sentence = card?.caption ?? "No browser task was open.";
   const run = typeof receipt.run_id === "string"
     ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {
-    content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...(ui && card ? [cardKey(card)] : [])],
-    structuredContent: { summary: sentence, ...receipt },
+    content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...browser.map(textBlock), ...(ui && card ? [cardKey(card)] : [])],
+    structuredContent: { summary: sentence, ...receipt, ...browser.length ? { browser } : {} },
+    isError: false,
+  };
+}
+
+/**
+ * Chrome has more than one profile and the open named none. Bao opened nothing; the sentence lists them and the next block gives the retry.
+ * structuredContent carries both, with status needs_profile, so an agent that reads only it does not take this for an owner wait.
+ */
+export function profileQuestionResult(question: ChromeProfileQuestion, call: Record<string, unknown>, ui: boolean) {
+  const retry = question.retry(call);
+  const card: BrowserToolCard = { command: "open", status: "waiting", style: "text", caption: question.message, parts: [question.message],
+    runId: null, stepId: null, picture: unavailable("Bao opened nothing.") };
+  return {
+    content: [textBlock(question.message), textBlock(retry)],
+    structuredContent: { command: "open", status: "needs_profile", run_id: null, step_id: null, summary: question.message, retry,
+      profiles: question.profiles.map((profile) => ({ ...profile, ...(profile.directory === question.settings ? { pickedInSettings: true } : {}) })) },
+    ...(ui ? { _meta: { baoToolCard: card } } : {}),
     isError: false,
   };
 }

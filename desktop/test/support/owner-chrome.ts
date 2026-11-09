@@ -1,5 +1,5 @@
-// A stand-in for the owner's running Chrome: Chrome for Testing on a throwaway profile with the unpacked Bao
-// extension, linked to a Bao app on a throwaway home. The checks look through a raw CDP connection that attaches only
+// A stand-in for the owner's running Chrome on the gated extension route: Chrome for Testing on a throwaway profile with
+// the unpacked Bao extension, linked to a Bao app on a throwaway home with runningChromeExtension on. The checks look through a raw CDP connection that attaches only
 // to the extension's worker and, briefly, to read a page. The owner's tab has no emulation, so its own visibility and
 // focus events are real.
 
@@ -71,6 +71,8 @@ export async function ownerChrome(t: TestContext, pages: Record<string, string |
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const app = await startApp({ home: dirs.home, extensionHost: true, extensionConfigHome: dirs.nativeHostHome,
     extensionHostDirs: [path.join(profile, "NativeMessagingHosts")] });
+  // The extension route is gated off by default.
+  app.library.updateSettings({ runningChromeExtension: true });
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let cdp: CdpSocket | undefined;
   t.after(async () => {

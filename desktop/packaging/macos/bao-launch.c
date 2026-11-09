@@ -199,6 +199,19 @@ int bao_discover_node(const char *bao_node, const char *home, const char *env_sh
   return try_file(picked, hooks, out, out_n);
 }
 
+int bao_pick_node(const char *resources, int allow_env, char *out, size_t n) {
+  char home[4096];
+  bao_user_home(home, sizeof home);
+  BaoDiscoverHooks hooks;
+  hooks.is_exec = bao_real_is_exec;
+  hooks.major = bao_real_major;
+  hooks.shell = bao_real_shell;
+  hooks.ctx = NULL;
+  char bundled[4096];
+  const char *hint = bao_node_hint(allow_env ? getenv("BAO_NODE") : NULL, resources, bundled, sizeof bundled);
+  return bao_discover_node(hint, home, getenv("SHELL"), &hooks, out, n);
+}
+
 /* The passwd directory is copied because getpwuid reuses one buffer. */
 void bao_user_home(char *out, size_t n) {
   if (!out || n == 0) return;

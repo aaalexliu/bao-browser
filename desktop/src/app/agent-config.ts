@@ -34,7 +34,7 @@ interface Request {
 /**
  * The claude arguments that add bao to Claude Code's user config. There is no timeout entry:
  * Claude Code 2.1.308 waits up to 100,000,000 ms for an MCP tool call, and 30 minutes for a
- * silent stdio server, so a long wait_for_owner call fits already. A per-server timeout would only shorten that.
+ * silent stdio server, so the Allow press and a long wait_for_owner call fit already. A per-server timeout would only shorten that.
  */
 export function claudeAddArgs(launcher: string): string[] {
   return ["mcp", "add", "--scope", "user", "bao", "--", launcher];

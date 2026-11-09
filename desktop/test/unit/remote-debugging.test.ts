@@ -1,9 +1,8 @@
 // Bao turns the daily Chrome's remote debugging on and off as a person would: a new tab on
 // chrome://inspect/#remote-debugging, then BaoOSHelper presses the checkbox in that Chrome by pid.
-// BaoOSHelper, Chrome, ps, and lsof are fakes here, so nothing touches the daily Chrome.
+// BaoOSHelper, Chrome, the process list, and lsof are fakes here, so nothing touches the daily Chrome.
 
 import assert from "node:assert/strict";
-import childProcess from "node:child_process";
 import test, { after } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +22,7 @@ import {
 } from "../../src/cdp-live/remote-debugging";
 import { MacOsHelper, type AxHit } from "../../src/proxy/os-macos";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
+import * as launch from "../../src/launch";
 
 const DIR = "/Users/me/Library/Application Support/Google/Chrome";
 const PORT_FILE = `${DIR}/DevToolsActivePort`;
@@ -92,11 +92,12 @@ test("synthetic profile discovery excludes untagged owner Chrome", async (t) => 
   const syntheticRoot = path.join(logDir, "synthetic-chrome");
   let ps = "101 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n";
   t.mock.method(profileCopy, "chromeProfilesRoot", () => DIR);
-  t.mock.method(childProcess, "execFile", (...args: unknown[]) => {
-    assert.equal(args[0], "ps");
-    const callback = args.at(-1) as (error: Error | null, stdout: string, stderr: string) => void;
-    queueMicrotask(() => callback(null, ps, ""));
-    return {};
+  t.mock.method(launch, "processesNaming", (text: string) => {
+    assert.equal(text, "/Google Chrome.app/Contents/MacOS/Google Chrome");
+    return ps.trim().split("\n").map((line) => {
+      const [, pid, command] = /^(\d+) (.*)$/.exec(line)!;
+      return { pid: Number(pid), ppid: 1, command: command! };
+    });
   });
   const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
   deps.portFile = path.join(syntheticRoot, "DevToolsActivePort");

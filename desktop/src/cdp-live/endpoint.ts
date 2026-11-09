@@ -61,11 +61,13 @@ export function listenPidBin(platform: string): string {
   return platform === "darwin" ? "/usr/sbin/lsof" : "lsof";
 }
 
+/** Undefined when nothing listens on the port. Rejects when lsof itself fails, so a failure is not read as "not listening". */
 export function listenPid(port: number, platform = process.platform): Promise<number | undefined> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     execFile(listenPidBin(platform), ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], { timeout: 5000 }, (err, stdout) => {
-      if (err) {
-        resolve(undefined);
+      // lsof exits 1 when nothing matches. Any other failure is not an answer.
+      if (err && (err as { code?: unknown }).code !== 1) {
+        reject(new Error(`Bao could not check which process listens on port ${port}: ${err.message}`));
         return;
       }
       const pid = parseListenPid(stdout, port);

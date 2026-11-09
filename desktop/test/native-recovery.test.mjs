@@ -51,7 +51,7 @@ test("reopen recovers a crashed window's server without killing other listeners"
         return 0;
       }
     `);
-    execFileSync("cc", ["-Wall", "-Wextra", "-Werror", path.join(mac, "bao-main.c"), path.join(mac, "bao-launch.c"), stub, "-o", launcher], { stdio: "inherit" });
+    execFileSync("cc", ["-Wall", "-Wextra", "-Werror", path.join(mac, "bao-main.c"), path.join(mac, "bao-launch.c"), path.join(mac, "bao-run-node.c"), stub, "-o", launcher], { stdio: "inherit" });
     unrelated = net.createServer();
     unrelated.listen(0, "127.0.0.1");
     await once(unrelated, "listening");

@@ -1,3 +1,4 @@
+import { FILES_AND_FOLDERS_PANE } from "../chrome-switch";
 import type { Settings } from "../v1/store";
 import { controlKey } from "../v1/visible-copy";
 import type { SavedSite } from "./logins-view";
@@ -6,6 +7,7 @@ import { esc, htmlEsc, icon as shellIcon, type ShellState } from "./views";
 interface SettingsView {
   settings?: Partial<Settings>;
   helper?: ShellState["helper"];
+  chromeAccess?: ShellState["chromeAccess"];
   model?: ShellState["model"];
   relay?: { paired?: boolean };
   sites: SavedSite[];
@@ -27,6 +29,7 @@ function icon(name: string): string {
     remote: '<rect x="2.25" y="2.75" width="11.5" height="7.5" rx="1.5"/><path d="M5.5 13.25h5M8 10.25v3"/>',
     key: '<circle cx="5.25" cy="10.75" r="2.5"/><path d="m7 9 6-6M11 5l1.5 1.5M9.5 6.5 11 8"/>',
     sparkle: '<path d="M8 2.25 9.3 6.7l4.45 1.3-4.45 1.3L8 13.75 6.7 9.3 2.25 8l4.45-1.3Z"/>',
+    folder: '<path d="M2.25 4.75a1 1 0 0 1 1-1h3l1.5 1.5h5a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1Z"/>',
     globe: '<circle cx="8" cy="8" r="5.75"/><path d="M2.25 8h11.5M8 2.25c1.6 1.6 2.4 3.5 2.4 5.75S9.6 12.15 8 13.75C6.4 12.15 5.6 10.25 5.6 8S6.4 3.85 8 2.25Z"/>',
   };
   return `<span class="settings-icon"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${shapes[name]}</svg></span>`;
@@ -53,13 +56,32 @@ export function settingsIndex(view: SettingsView): string {
   const mac = view.helper?.platform === "darwin";
   const summaries = [
     "Heal policy, waits",
-    mac ? view.helper?.accessibility ? "Accessibility allowed" : "Optional for native apps" : "Mac only",
+    !mac ? "Mac only" : chromeDenied(view) ? "Chrome's folder not allowed" : view.helper?.accessibility ? "Accessibility allowed" : "Optional for Running Chrome and native apps",
     remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     sourceLabel(view),
   ];
   return `<header class="pane-bar"><button id="sidebar-toggle" type="button" aria-label="Show sidebar" aria-haspopup="dialog" aria-controls="sidebar-dialog">${shellIcon("sidebar")}</button><div><h1>Settings</h1><p class="settings-subtitle">Grouped rows save on change</p></div></header>
     <nav class="settings-index" aria-label="Settings sections">${sections.map(([id, glyph, title], i) => `<a href="#set-${id}" data-settings-jump="${id}"${i === 0 ? ' aria-current="true"' : ""}>${icon(glyph)}<span><b>${title}</b><span class="settings-subtitle">${esc(summaries[i])}</span></span></a>`).join("")}</nav>`;
+}
+
+function chromeDenied(view: SettingsView): boolean {
+  return view.chromeAccess?.state === "denied" || view.chromeAccess?.state === "unreadable";
+}
+
+/** Files & Folders > Bao > Google Chrome: why Bao asks, whether it can read the folder now, and the pane that turns it on. */
+function chromeFolderRow(view: SettingsView): string {
+  const access = view.chromeAccess;
+  if (view.helper?.platform !== "darwin" || !access || access.state === "missing") return "";
+  const allowed = access.state === "allowed";
+  const app = access.app ?? "Bao";
+  // An ad-hoc grant names one build, so after an update the switch can look on and not apply.
+  const again = app === "Bao" && !access.certSigned ? " If it is on, turn it off and on again: macOS ties it to one build of Bao." : "";
+  const fix = allowed ? "" : `<p>Turn on ${esc(app)} &gt; Google Chrome in Files &amp; Folders.${again}</p>`;
+  const agents = access.certSigned ? "Agents that start Bao use this switch too." : app === "Bao" ? "Agents use their own app's switch, such as ChatGPT for Codex." : "";
+  return row(
+    `<b>Google Chrome's folder</b><p>Optional. Lets Bao import a site's sign-in from Chrome and use Running Chrome. macOS 27 and later ask first.${agents ? ` ${agents}` : ""}</p>${fix}`,
+    `<span class="settings-permission${allowed ? " allowed" : ""}">${allowed ? "✓ Allowed" : "Not allowed"}</span><a id="chrome-folder-settings" class="button" href="${FILES_AND_FOLDERS_PANE}">Open System Settings</a>`, "folder");
 }
 
 function row(copy: string, control: string, glyph = ""): string {
@@ -86,8 +108,8 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
       `<fieldset class="settings-segmented" aria-labelledby="heal-label"><legend class="settings-sr">When a page changes</legend>${[["auto", "Heal it"], ["approve", "Ask me"], ["never", "Stop"]].map(([value, label]) => `<input type="radio" name="heal" id="heal-${value}" value="${value}" data-setting="heal"${(settings.heal || "auto") === value ? " checked" : ""}><label for="heal-${value}">${label}</label>`).join("")}</fieldset>`)
       + row(`<label for="promote-after">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p>`, `<input id="promote-after" data-setting="promoteAfter" type="number" required min="1" max="20" value="${settings.promoteAfter ?? 3}" aria-describedby="keep-unit promote-after-error"><span id="keep-unit">runs</span><span id="promote-after-error" role="status" hidden></span>`)
       + row(`<label for="act-minutes">Wait for you up to</label><p>How long a run waits for a code, a login, or a button only you press.</p>`, `<select id="act-minutes" data-setting="actTimeoutMin">${waits.map((minutes) => `<option value="${minutes}"${minutes === wait ? " selected" : ""}>${minutes < 60 || minutes % 60 ? `${minutes} ${minutes === 1 ? "minute" : "minutes"}` : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}</option>`).join("")}<option value="custom">Other…</option></select><input id="act-custom" data-setting="actTimeoutMin" type="number" required min="1" max="1440" value="${wait}" aria-label="Wait in minutes" aria-describedby="act-custom-error" hidden><span id="act-custom-error" role="status" hidden></span>`))}
-    ${group("perm", "Mac permissions", row(
-      `<b>Accessibility</b><p>${mac ? "Native Mac app control uses Bao's helper and this permission. Chrome needs no Mac permission, not even for Running Chrome, which works through the Bao extension." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
+    ${group("perm", "Mac permissions", chromeFolderRow(view) + row(
+      `<b>Accessibility</b><p>${mac ? "Running Chrome uses Bao's helper and its Accessibility permission to turn on Chrome's remote debugging and press Chrome's Allow prompt. Bao profiles and Chrome copies do not need it. No Chrome option needs Automation or Screen Recording." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
       `<span class="settings-permission${view.helper?.accessibility && mac ? " allowed" : ""}">${view.helper?.accessibility && mac ? "✓ " : ""}${accessibility}</span>`, "hand")
       + row(`<b>Screen Recording</b><p>${mac ? "Lets Bao's helper capture app windows for pictures and native-app control. Chrome screenshots do not need it." : "Mac window capture uses this permission on macOS. It does not apply on Linux."}</p>`,
         `<span class="settings-permission">${mac ? "Not checked" : "Mac only"}</span>${mac ? '<a id="screen-recording-settings" class="button" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open System Settings</a>' : ""}`, "eye"))}

@@ -14,6 +14,8 @@ import { loadState, saveState } from "../../src/v1/sync";
 import { laneChildEnv } from "../runtime";
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
+/** The fixture opens browser=copy and its Chrome has only the Default profile. */
+const COPY_DEFAULT = 'Browser: Chrome copy, Chrome profile "Default".';
 interface Result { isError?: boolean; content?: { text: string }[]; structuredContent?: Record<string, unknown> }
 
 async function until(read: () => boolean | Promise<boolean>): Promise<void> {
@@ -338,10 +340,11 @@ for (const keepOpen of [false, true]) {
     const result = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Verified the task result." } });
     assert.equal(result.isError, false);
     assert.match(result.content![0]!.text, /^Passed: Verified the task result\. \d+ steps? in \d+ s\.$/);
-    const receipt = result.structuredContent as { summary: string; workflow: string; run_id: string; status: string };
+    const receipt = result.structuredContent as { summary: string; workflow: string; run_id: string; status: string; browser: string[] };
     assert.match(receipt.workflow, /^Not saved as a workflow: /);
-    assert.deepEqual(result.content!.map((block) => block.text), [receipt.summary, `Run ${runId} · passed · bao://receipt/${runId}`, receipt.workflow],
-      "text clients get words only, with the run id to continue");
+    assert.deepEqual(receipt.browser, [COPY_DEFAULT]);
+    assert.deepEqual(result.content!.map((block) => block.text), [receipt.summary, `Run ${runId} · passed · bao://receipt/${runId}`, receipt.workflow, COPY_DEFAULT],
+      "text clients get words only, with the run id to continue and the browser Bao used");
     assert.equal(receipt.run_id, runId);
     assert.equal(receipt.status, "passed");
     assert.equal(f.library.readRun(runId).status, "passed");
@@ -396,10 +399,11 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
     if (outcome === "owner-wait") {
       const waiting = await c.call("wait_for_owner", ["1"]);
       assert.equal(waiting.isError, false);
-      const reply = waiting.structuredContent as { summary: string; outcome: string; instruction: string };
+      const reply = waiting.structuredContent as { summary: string; outcome: string; instruction: string; browser: string[] };
       assert.equal(reply.outcome, "waiting");
-      assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, `Run ${f.library.listRuns()[0]!.id} · waiting`, reply.instruction],
-        "text clients get words and the run id, not the reply's JSON");
+      assert.deepEqual(reply.browser, [COPY_DEFAULT]);
+      assert.deepEqual(waiting.content!.map((block) => block.text), [reply.summary, `Run ${f.library.listRuns()[0]!.id} · waiting`, reply.instruction, COPY_DEFAULT],
+        "text clients get words, the run id, and the browser Bao used, not the reply's JSON");
       assert.equal(f.library.listRuns()[0]!.status, "needs_human", "waiting does not complete a task");
     }
     const copy = await f.copy();

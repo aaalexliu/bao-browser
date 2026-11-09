@@ -3,7 +3,8 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, pidsForDataDir, RESTORE_LAST_SESSION } from "../launch";
+import { assertChromeReadable, chromeDenied } from "../chrome-access";
+import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION } from "../launch";
 
 export interface ChromeProfileChoice {
   directory: string;
@@ -22,10 +23,11 @@ function object(value: unknown): Record<string, unknown> {
 
 async function readChromeState(sourceRoot: string): Promise<Record<string, unknown>> {
   try { return object(JSON.parse(await readFile(path.join(sourceRoot, "Local State"), "utf8"))); }
-  catch { throw new Error("could not read Chrome profile metadata"); }
+  catch (error) { throw chromeDenied(error, sourceRoot) ?? new Error("could not read Chrome profile metadata"); }
 }
 
 export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProfileChoice[]> {
+  assertChromeReadable(sourceRoot);
   const state = await readChromeState(sourceRoot);
   const cache = object(object(state.profile).info_cache);
   const folders = await readdir(sourceRoot, { withFileTypes: true });
@@ -100,8 +102,10 @@ export async function copyChromeProfile(options: {
   const keepOpen = () => writeFile(path.join(userDataDir, "lease.json"), JSON.stringify({ magic: MAGIC, namespace, pid: process.pid, retained: true }), { mode: 0o600 });
   const close = async () => {
     const deadline = Date.now() + 3000;
-    while (pidsForDataDir(userDataDir).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 80));
-    if (pidsForDataDir(userDataDir).length) {
+    // An unreadable process list counts as still open: the copy is kept for the next run to remove.
+    const open = () => listedPids(userDataDir)?.length !== 0;
+    while (open() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 80));
+    if (open()) {
       await keepOpen();
       console.error(`bao profile copy browser still shutting down profile=${userDataDir}`);
       return;
@@ -190,7 +194,7 @@ export async function copyChromeProfile(options: {
     };
   } catch (error) {
     await close();
-    throw error;
+    throw chromeDenied(error, options.sourceRoot) ?? error;
   }
 }
 

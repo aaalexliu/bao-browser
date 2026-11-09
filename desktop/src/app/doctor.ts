@@ -4,6 +4,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
+import { agentsNote, askedApp, chromeFolderAccess } from "../chrome-access";
 import { appVersion, mcpLauncher } from "./bundle";
 import { baoCommand, defaultProbe, detectTargets, parseSetup, type Probe } from "./setup";
 
@@ -106,7 +107,7 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   const helper = path.join(app, "Contents", "Resources", "BaoOSHelper.app");
   if (existsSync(helper)) {
     const check = signatureCheck("helper", helper);
-    checks.push({ ...check, detail: `${check.detail}. Optional: the native Mac app driver (bao mcp-ax) and bao remote-debugging use it, with an Accessibility grant. Running Chrome goes through the Bao extension and needs no Mac permission` });
+    checks.push({ ...check, detail: `${check.detail}. Optional: Running Chrome (browser=current, over remote debugging), the native Mac app driver (bao mcp-ax), and bao remote-debugging use it, with an Accessibility grant` });
   } else {
     checks.push({ level: "ok", name: "helper", detail: "not installed. The default copied-profile mode does not need it" });
   }
@@ -114,6 +115,13 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   checks.push(chrome
     ? { level: "ok", name: "chrome", detail: chrome }
     : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. agent_browser copies a Chrome profile by default" });
+  if (probe.chromeRoot) {
+    // The sign-in import, Chrome copies, and Running Chrome all read this folder. macOS 27 asks first.
+    const access = chromeFolderAccess(probe.chromeRoot, probe.env);
+    const note = agentsNote(probe.env);
+    if (access.state === "allowed") checks.push({ level: "ok", name: "chrome folder", detail: `${askedApp(probe.env) ?? "this process"} can read ${access.root}.${note ? ` ${note}` : ""}` });
+    else if (access.state !== "missing") checks.push({ level: "warn", name: "chrome folder", detail: `${access.message}${note ? ` ${note}` : ""}` });
+  }
   const bao = baoCommand(probe, app);
   for (const target of detectTargets(probe)) {
     if (target.command === launcher) checks.push({ level: "ok", name: target.id, detail: `${target.file} starts this Bao` });

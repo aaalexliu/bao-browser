@@ -55,7 +55,7 @@ Use isolated saved workflows in light and dark at the default window size, 720 p
 
 ## Check the helper only when its feature needs it
 
-The default copied-profile pass-through does not use the helper. Current-Chrome control does not use it either. For the optional `bao mcp-ax` driver and the separate remote-debugging CLI, see [Which grant each job needs](permissions.md#which-grant-each-job-needs). Check only the relevant permission bits without changing grants. Screen Recording affects native window capture, not page screenshots.
+The default copied-profile pass-through does not use the helper. For current-Chrome control, the optional `bao mcp-ax` driver, and the separate remote-debugging CLI, see [Which grant each job needs](permissions.md#which-grant-each-job-needs). Check only the relevant permission bits without changing grants. Screen Recording affects native window capture, not page screenshots.
 
 ```sh
 codesign --verify --strict /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
@@ -83,7 +83,7 @@ Open the running app's Library and Runs, not a component preview. Read the page 
 
 Check the run's saved command arguments, native results, start/end times, and page screenshots under `shots/runs/<runId>/`. Missing pictures must have a reason, not an older picture relabeled as current. For copied and Bao-owned profiles, check explicit close, closing the owned Chrome window during a live session, disconnect, MCP stop, and keep-open against the [profile lifecycle and cleanup contract](agent-browser-engine.md#session-end). Confirm the source profile and unrelated tabs remain unchanged.
 
-For `browser: "current"`, start Chrome for Testing with a throwaway profile, the unpacked Bao extension, and mock-keychain flags, and a Bao app on a throwaway home with its native host in that profile. Seed only a synthetic local sign-in before connecting. On the first MCP `open`, select `current`. Confirm the first navigation opens a background tab in a collapsed Bao group, the owner's tab stays active, native form actions work, and the synthetic sign-in remains. Check Runs for command output and screenshots. Test both explicit `close` and MCP disconnect: Bao's tabs close, and the browser, its profile, and existing tabs remain. Stop only the test-owned Chrome afterward. Never point this fixture pass at daily Chrome.
+For `browser: "current"`, start a separate GUI Chrome with a throwaway profile, no debugging launch flag, and mock-keychain flags. Seed only a synthetic local sign-in before connecting. Use the signed helper with its existing Accessibility grant; record `permissions-ax` without prompting. On the first MCP `open`, select `current`. Confirm the helper enables debugging and presses Allow, the first navigation opens a new tab, native form actions work, and the synthetic sign-in remains. Check Runs for command output and screenshots. Test both explicit `close` and MCP disconnect: the browser, its profile, and existing tabs must remain. Stop only the test-owned Chrome afterward. Never point this fixture pass at daily Chrome.
 
 Historical live-driver workflows, runs, pictures, and videos stay local and readable. Their existence is not evidence that replay still works. Do not alter or delete historical records to make a new test pass.
 
