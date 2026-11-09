@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { OwnerPage } from "../cdp-live/owner-wait";
 import { commandSentence } from "../v1/caption";
+import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
@@ -131,7 +132,10 @@ export class AgentBrowserRun {
       step.native.error = error instanceof Error ? error.message : String(error);
       step.reason = step.native.error;
     } else if (step.native.isError) {
-      step.reason = "Native agent-browser command failed.";
+      step.reason = AGENT_STEP_FAILED;
+    } else if (step.native.command === "wait_for_owner" && this.run.envelope?.reason === "session_closed") {
+      step.status = "failed";
+      step.reason = "The session ended before you finished.";
     }
     step.summary = describeStep({
       command: step.native.command, args: step.native.args, results, error: step.native.error,
@@ -209,7 +213,7 @@ export class AgentBrowserRun {
     if (this.run.status !== "recording" && this.run.status !== "needs_human"
       && (typeof result !== "object" || this.run.envelope)) return;
     if (result === "session_closed" || this.run.status === "needs_human") {
-      this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The Bao session ended before the owner wait completed. This session cannot continue." };
+      this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: AGENT_CLOSED_ASK };
       this.run.status = "failed";
     } else if (result) {
       this.run.status = result.outcome;

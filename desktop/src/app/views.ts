@@ -21,7 +21,7 @@ import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
-import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
+import { agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -1883,7 +1883,8 @@ function plainAgentReason(run: RunSummary): string | undefined {
   const ask = run.envelope?.ask?.trim();
   const failure = run.failure?.reason?.trim();
   const step = (run.steps || []).find((item) => item.status === "failed" && item.reason)?.reason?.trim();
-  return sentence(reason) || sentence(ask) || sentence(failure) || sentence(step)
+  const spoken = sentence(reason) || sentence(ask) || sentence(failure) || sentence(step);
+  return (spoken ? agentRunText(spoken) : undefined)
     || (reason ? ownerStopText(reason) : undefined)
     || (failure ? ownerStopText(failure) : undefined);
 }
@@ -2034,6 +2035,11 @@ export function receiptError(): string {
   return `<section class="connection-card"><h2>Can’t open this receipt</h2><p role="alert">Bao couldn’t load the receipt summary. Try again, choose another run, or open any detailed evidence below.</p><button id="retry-run" type="button">Retry</button></section>`;
 }
 
+function receiptStepStatus(status: string, id: string | undefined, run: RunSummary): string {
+  if (status !== "pending" || ["recording", "running"].includes(run.status) || runWaiting(run)) return status;
+  return typeof run.steps?.find((step) => step.id === id)?.startedAt === "number" ? "did not finish" : "not reached";
+}
+
 export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string, run: RunSummary): string {
   const kind = runListKind(run);
   const at = view.run.at === null ? "Time unknown" : formatWhen(view.run.at);
@@ -2045,7 +2051,7 @@ export function runReceipt(view: ReturnType<typeof inspectRunView>, name: string
     ${spoken ? `<p class="receipt-reason">${esc(spoken)}</p>` : ask ? runWaiting(run) ? `<aside class="receipt-handoff"><h3>Needs you</h3><p>${esc(ownerStopText(ask))}</p>${view.handoff?.deadline ? `<p>Deadline: ${esc(view.handoff.deadline)}</p>` : ""}</aside>` : `<h3>${esc(statusLabel(kind))}</h3><p class="receipt-reason">${esc(ownerStopText(ask))}</p>` : ""}
     ${spoken || (isAgentBrowserSession(run) && ask && runWaiting(run)) ? "" : view.reason || run.failure?.reason ? `<p class="receipt-reason">${esc(ownerStopText(view.reason || run.failure?.reason || ""))}</p>` : ""}
     ${pendingHealCount([run]) ? `<p>A target change is ready to review.</p><button type="button" data-screen="heals">Review heals</button>` : ""}
-    <h3 id="receipt-step-heading" class="section" tabindex="-1">Step results</h3><ol class="receipt-steps" start="${view.stepOffset + 1}">${view.steps.map((step) => `<li><div><strong>${esc(step.label || "Step")}</strong><span class="run-state">${esc(step.status)}</span></div>${step.reason || step.result ? `<p>${esc(ownerStopText(step.reason || step.result || ""))}</p>` : ""}</li>`).join("")}</ol>
+    <h3 id="receipt-step-heading" class="section" tabindex="-1">Step results</h3><ol class="receipt-steps" start="${view.stepOffset + 1}">${view.steps.map((step) => `<li><div><strong>${esc(step.label || "Step")}</strong><span class="run-state">${esc(receiptStepStatus(step.status, step.id, run))}</span></div>${step.reason || step.result ? `<p>${esc(ownerStopText(step.reason || step.result || ""))}</p>` : ""}</li>`).join("")}</ol>
     ${view.steps.length ? "" : `<p class="quiet">No step results recorded.</p>`}
     <div class="receipt-pages">${view.stepOffset ? `<button type="button" data-receipt-offset="${Math.max(0, view.stepOffset - 20)}">Previous steps</button>` : ""}${view.nextStepOffset === null ? "" : `<button type="button" data-receipt-offset="${view.nextStepOffset}">Next steps</button>`}</div>
   </section>`;

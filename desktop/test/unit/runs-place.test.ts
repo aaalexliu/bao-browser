@@ -274,7 +274,7 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
     { id: "timeout", status: "timed-out", envelopeStatus: "timed-out", waiting: false, ask: "Press Reserve in the Bao window." },
     { id: "cancelled", status: "stopped", envelopeStatus: "cancelled", waiting: false, ask: "Press Reserve in the Bao window." },
     { id: "stopped", status: "stopped", envelopeStatus: "stopped", waiting: false, ask: "Press Reserve in the Bao window." },
-    { id: "ended-session", status: "failed", envelopeStatus: "failed", waiting: false, ask: "The Bao session ended before the owner wait completed. This session cannot continue." },
+    { id: "ended-session", status: "failed", envelopeStatus: "failed", waiting: false, ask: "The Bao session ended before the owner wait completed. This session cannot continue.", shown: "The session ended while Bao was waiting for you, so the agent could not go on." },
   ];
   try {
     for (const item of cases) app.library.saveRun({
@@ -289,7 +289,7 @@ test("Runs keeps current owner waits actionable and ended asks informational", {
     for (const item of cases) {
       await page.locator(`#runs [data-open-run="${item.id}"]`).first().click();
       await page.locator("#run-receipt").waitFor();
-      assert.equal((await page.locator("#run-receipt").innerText()).includes(item.ask), true, "ended runs retain the original ask as information");
+      assert.equal((await page.locator("#run-receipt").innerText()).includes(("shown" in item && item.shown) || item.ask), true, "ended runs show the ask, in current words, as information");
       assert.equal(await page.locator(".receipt-handoff").count(), item.waiting ? 1 : 0, item.id);
       assert.equal((await page.locator("#run-receipt").innerText()).includes("Deadline:"), item.waiting, item.id);
       assert.equal(await page.locator(".receipt-kicker .run-state").innerText(), item.waiting ? "needs you" : item.status === "timed-out" ? "stopped, timed out" : item.status);

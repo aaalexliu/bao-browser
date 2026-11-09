@@ -175,6 +175,9 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     assert.equal(ended.status, "failed");
     assert.equal(ended.envelope?.reason, "session_closed");
     assert.equal(ended.envelope?.status, "failed");
+    const cutOff = ended.steps.at(-1) as { status?: string; native?: { command?: string } } | undefined;
+    assert.equal(cutOff?.native?.command, "wait_for_owner");
+    assert.equal(cutOff?.status, "failed");
   } finally {
     t.signal.removeEventListener("abort", abort);
     try { await proxy.close(); }
