@@ -328,8 +328,9 @@ function importLine(browser: WorkflowBrowser, report: SignInImport): string[] {
  * A Bao profile or copy that stopped at a sign-in or check names the run_workflow calls that take the owner's running Chrome on the
  * same profile. A held run is cancelled first; a run that failed at its sign-in step retries from its token.
  */
-function workflowFallback(browser: WorkflowBrowser, outcome: WorkflowOutcome, stop: RunResult["pausedKind"], held: boolean): string[] {
+function workflowFallback(browser: WorkflowBrowser, workflow: { steps: WorkflowStep[] }, outcome: WorkflowOutcome, stop: RunResult["pausedKind"], held: boolean): string[] {
   const pick = browser.pick;
+  if (runningChromeRefusal("current", workflow)) return [];
   if ((pick?.route !== "bao" && pick?.route !== "copy") || (outcome.outcome !== "needs_signin" && stop !== "wall") || !outcome.resume) return [];
   const profile = pick.profile?.directory;
   const current = { browser: "current", ...profile ? { profile } : {} };
@@ -621,7 +622,7 @@ async function replayInBrowser(
       trail,
     });
     const outcome = rememberRun(library, workflow, run, args, secrets, choice, undefined, profile);
-    lines.push(...workflowFallback(browser, outcome, run.pausedKind, run.status === "paused"));
+    lines.push(...workflowFallback(browser, workflow, outcome, run.pausedKind, run.status === "paused"));
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
       hold = true;
       const live: LiveRun = {
@@ -686,7 +687,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     if (live.browser.kind === "current") await live.browser.show().catch(() => undefined);
     const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token, live.profile);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-    return withBrowser(outcome, live.browser, workflowFallback(live.browser, outcome, run.pausedKind, true));
+    return withBrowser(outcome, live.browser, workflowFallback(live.browser, live.workflow, outcome, run.pausedKind, true));
   }
   liveRuns.delete(live.token);
   dropResume(library, live.token);
@@ -697,7 +698,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
   return withBrowser(storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets), live.browser,
-    workflowFallback(live.browser, outcome, run.pausedKind, false));
+    workflowFallback(live.browser, live.workflow, outcome, run.pausedKind, false));
 }
 
 /** A resumed held run names its route and profile in one line, as later agent_browser results do. */

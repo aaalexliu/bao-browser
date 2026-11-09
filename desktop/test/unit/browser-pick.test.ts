@@ -158,6 +158,10 @@ test("run_workflow names its route, Chrome profile, and sign-in import, and a si
   library.save(testWorkflow({ id: "login-check", startUrl: `${site}/locked`, steps: [
     { id: "login", index: 0, timeoutMs: 100, caption: { text: "Check the sign in" }, action: "verify", check: { kind: "text", match: "Welcome back", timeoutMs: 100 } },
   ] }));
+  library.save(testWorkflow({ id: "login-download", startUrl: `${site}/locked`, steps: [
+    { id: "login", index: 0, timeoutMs: 100, caption: { text: "Check the sign in" }, action: "verify", check: { kind: "text", match: "Welcome back", timeoutMs: 100 } },
+    { id: "save", index: 1, timeoutMs: 1000, caption: { text: "Save the report" }, action: "download", download: { output: "report", name: "report.txt" } },
+  ] }));
   await mkdir(path.join(root, "user"));
   const mcp = McpClient.start({ ...process.env, HOME: path.join(root, "user"), BAO_HOME: home, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot, BAO_HEAL_CURSOR_ACCOUNT: "0" });
   let held = "";
@@ -214,4 +218,9 @@ test("run_workflow names its route, Chrome profile, and sign-in import, and a si
   assert.equal(failed.status, "needs_signin", failed.reason);
   assert.equal(failed.browser?.[0], opened.replace("the default", "named by the agent").replace("picked in Bao Settings", "named by the agent"));
   assert.equal(failed.browser?.at(-1), fallback(`{"resume":"${failed.resume_token}","browser":"current","profile":"Default"}`));
+
+  const moves = await run({ id: "login-download", browser: "bao", profile: "Default" });
+  assert.equal(moves.status, "needs_signin", moves.reason);
+  assert.equal(moves.browser?.[0], failed.browser?.[0]);
+  assert.equal(moves.browser?.some((line) => line.includes("browser\":\"current")), false, moves.browser?.join("\n"));
 });
