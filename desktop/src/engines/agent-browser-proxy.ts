@@ -755,7 +755,7 @@ export class AgentBrowserProxy {
       if (tab.tabId && (!info || !await isChromeTab(session.chrome.cdp, info))) surfaces.add(tab.tabId);
     }
     if (named?.tabId && surfaces.has(named.tabId)) {
-      return { stdout: "", stderr: `✗ ${ref} is part of Chrome itself, such as the Gemini panel or a side panel, not a tab. Stay in Bao's task tab.\n`, exitCode: 1 };
+      return { stdout: "", stderr: `✗ ${ref} is not a tab in a Chrome window, such as the Gemini panel or a side panel. Stay in Bao's task tab.\n`, exitCode: 1 };
     }
     const result = await this.run(session, command, args);
     if (result.exitCode !== 0) return result;

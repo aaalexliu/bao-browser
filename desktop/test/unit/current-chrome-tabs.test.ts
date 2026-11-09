@@ -1,4 +1,5 @@
-// The owner's Chrome lists its own surfaces next to tabs: the Gemini in Chrome panel (glic), side panels, and Chrome pages.
+// The owner's Chrome lists its own surfaces next to tabs: the Gemini in Chrome panel (glic) and side panels. An extension page
+// in a window's tab strip is still the owner's tab.
 // A fake Chrome endpoint exposes them next to Bao's task tab and the owner's tab, and a fake native daemon behaves like
 // agent-browser over --cdp: it lists page and webview targets and can make one current on its own.
 
@@ -20,6 +21,7 @@ pinTestBrowser();
 
 const MAPS = "https://www.google.com/maps";
 const GLIC = "https://gemini.google.com/glic?hl=en-US";
+const VAULT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop/vault.html";
 
 interface Target { targetId: string; type: string; url: string; title: string; openerId?: string; inWindow: boolean }
 
@@ -29,6 +31,7 @@ async function fixture(t: TestContext) {
   fakeTaskTab(t);
   const targets: Target[] = [
     { targetId: "owner", type: "page", url: MAPS, title: "Google Maps", inWindow: true },
+    { targetId: "vault", type: "page", url: VAULT, title: "Vault", inWindow: true },
     { targetId: "glic", type: "webview", url: GLIC, title: "Google Gemini", inWindow: false },
     { targetId: "reader", type: "page", url: "chrome-untrusted://read-anything-side-panel.top-chrome/", title: "Reading mode", inWindow: false },
     { targetId: "search", type: "page", url: "https://www.google.com/search?q=pizza", title: "Search side panel", inWindow: false },
@@ -122,11 +125,11 @@ test("Chrome's Gemini panel and side panels stay out of the agent's tab list, an
   const f = await fixture(t);
   const opened = await f.proxy.execute("open", [MAPS], "current");
   assert.equal(f.daemon.pinned, true, "the native daemon stays on its bound tab");
-  assert.equal(opened[1]!.stdout, `→ [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n`,
-    "Bao's task tab and the owner's tab on the same page are told apart; the Gemini panel and both side panels are gone");
+  assert.equal(opened[1]!.stdout, `→ [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Vault - ${VAULT}\n`,
+    "Bao's task tab and the owner's tabs are told apart; the Gemini panel and both side panels are gone, the extension tab stays");
   assert.equal((await f.proxy.execute("tab", []))[0]!.stdout, opened[1]!.stdout);
   const json = JSON.parse((await f.proxy.execute("tab", ["list", "--json"]))[0]!.stdout) as { data: { tabs: { tabId: string; baoTaskTab?: boolean }[] } };
-  assert.deepEqual(json.data.tabs.map(tab => [tab.tabId, tab.baoTaskTab ?? false]), [["t1", true], ["t2", false]]);
+  assert.deepEqual(json.data.tabs.map(tab => [tab.tabId, tab.baoTaskTab ?? false]), [["t1", true], ["t2", false], ["t3", false]]);
 });
 
 test("when the native daemon makes the Gemini panel current mid-session, the next click and snapshot still land in the task tab", async (t) => {
@@ -143,20 +146,22 @@ test("when the native daemon makes the Gemini panel current mid-session, the nex
   assert.ok(f.daemon.commands.filter(entry => entry.command !== "tab").every(entry => entry.on === "task"), "no page command ran on a panel");
 });
 
-test("the agent cannot switch to or close Chrome's own panels, but can switch to the owner's tab and stays there", async (t) => {
+test("the agent cannot switch to or close Chrome's own panels, but can switch to the owner's tabs and stays there", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
   await f.proxy.execute("tab", []);
-  for (const args of [["t3"], ["close", "t3"], ["t5"]]) {
+  for (const args of [["t4"], ["close", "t4"], ["t6"]]) {
     const [result] = await f.proxy.execute("tab", args);
     assert.equal(result!.exitCode, 1);
-    assert.match(result!.stderr, /is part of Chrome itself, such as the Gemini panel or a side panel, not a tab\. Stay in Bao's task tab\./);
+    assert.match(result!.stderr, /is not a tab in a Chrome window, such as the Gemini panel or a side panel\. Stay in Bao's task tab\./);
   }
-  assert.ok(!f.daemon.commands.some(entry => entry.command === "tab" && ["t3", "t5"].includes(entry.args.at(-1)!)), "the refused calls never reached the daemon");
+  assert.ok(!f.daemon.commands.some(entry => entry.command === "tab" && ["t4", "t6"].includes(entry.args.at(-1)!)), "the refused calls never reached the daemon");
+  assert.equal((await f.proxy.execute("tab", ["t3"]))[0]!.exitCode, 0, "an extension page in a window is a tab");
+  assert.equal(f.daemon.active, "vault");
   assert.equal((await f.proxy.execute("tab", ["t2"]))[0]!.exitCode, 0);
   await f.proxy.execute("click", ["@e1"]);
   assert.equal(f.daemon.commands.at(-1)!.on, "owner", "an explicit switch is not undone");
-  assert.equal((await f.proxy.execute("tab", []))[0]!.stdout, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n→ [t2] Google Maps - ${MAPS}\n`);
+  assert.equal((await f.proxy.execute("tab", []))[0]!.stdout, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n→ [t2] Google Maps - ${MAPS}\n  [t3] Vault - ${VAULT}\n`);
 });
 
 test("a tab Bao's task tab opens becomes the agent's tab, once", async (t) => {
