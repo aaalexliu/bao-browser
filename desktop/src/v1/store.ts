@@ -43,6 +43,11 @@ export interface Settings extends HealSettings {
   chromeProfileExtensions?: Record<string, boolean>;
   /** Keep the pass-through window after agent exit. Local, off by default. */
   keepAgentBrowserOpen?: boolean;
+  /**
+   * Running Chrome (browser=current) through the Bao extension and the app's relay, instead of Chrome remote debugging.
+   * Not ready: off unless set to true in settings.json, and no screen offers it.
+   */
+  runningChromeExtension?: boolean;
 }
 
 export interface StoredRun {
@@ -68,6 +73,12 @@ export interface StoredRun {
   steps: unknown[];
   /** Heal proposals that named a model. */
   modelCalls?: number;
+  /** Each sign-in import a Bao-profile session ran, with what it read and wrote, or why it could not. */
+  signInImports?: import("../engines/bao-profile").SignInImport[];
+  /** A pass-through session's cleanup failed after its outcome was recorded. */
+  cleanupError?: string;
+  /** The browser route, Chrome app, user-data-dir, and Chrome profile a pass-through session used, and why. */
+  browser?: import("../engines/browser-pick").BrowserPick;
   /** File values are names, not paths. */
   inputs?: Record<string, string>;
   /** Saved values this run used. Secrets are listed as "saved password". */

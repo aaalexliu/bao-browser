@@ -5,13 +5,14 @@ import fs, { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import * as runningChrome from "../../src/extension/running-chrome";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as launch from "../../src/launch";
 import { Library } from "../../src/v1/store";
+import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 
 launch.pinTestBrowser();
 
@@ -42,14 +43,17 @@ for (const { mode, force, deny } of [
   let detached = false;
   let resolveClosed!: () => void;
   t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
-  t.mock.method(runningChrome, "openRunningChrome", async () => ({
-    endpoint: { port: 9222, browserPath: "/devtools/browser/fixture" },
+  await chromeProfiles(path.join(root, "source"));
+  fakeTaskTab(t);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: 9222, browserPath: "/fixture" },
     cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
       method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
-  } as unknown as Awaited<ReturnType<typeof runningChrome.openRunningChrome>>));
+    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
+  } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
   const signals = path.join(root, "signals");
   daemon = spawn(process.execPath, ["-e", `
     const fs = require('node:fs');
@@ -88,7 +92,8 @@ for (const { mode, force, deny } of [
       if (pid === daemon!.pid && signal !== 0) throw Object.assign(new Error("fixture signal denied"), { code: "EPERM" });
       return kill(pid, signal);
     });
-    await assert.rejects(proxy.execute("close"), { code: "EPERM" });
+    await assert.rejects(proxy.execute("close"), (error: Error) => /^Bao could not clean up the browser session of run .+: fixture signal denied$/.test(error.message)
+      && (error.cause as NodeJS.ErrnoException).code === "EPERM");
     await access(stateDir);
     assert.equal(daemon.exitCode, null);
     assert.equal(daemon.signalCode, null);
@@ -112,14 +117,17 @@ test("a close after the owner's Chrome ended still names the owner's Chrome", { 
   let detached = false;
   let resolveClosed!: () => void;
   t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
-  t.mock.method(runningChrome, "openRunningChrome", async () => ({
-    endpoint: { port: 9222, browserPath: "/devtools/browser/fixture" },
+  await chromeProfiles(path.join(root, "source"));
+  fakeTaskTab(t);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: 9222, browserPath: "/fixture" },
     cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
       method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
-  } as unknown as Awaited<ReturnType<typeof runningChrome.openRunningChrome>>));
+    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
+  } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}\nprocess.exitCode = 1;\n`, { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "source"), executable });
@@ -179,7 +187,7 @@ if (command === 'tab' && args.includes('--json')) {
   });
   let currentStarts = 0;
   t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
-  t.mock.method(runningChrome, "openRunningChrome", async () => {
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
     currentStarts++;
     await assert.rejects(access(copies[0]!), /ENOENT/);
     throw new Error("current startup reached");

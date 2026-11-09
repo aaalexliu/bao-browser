@@ -53,7 +53,7 @@ export function settingsIndex(view: SettingsView): string {
   const mac = view.helper?.platform === "darwin";
   const summaries = [
     "Heal policy, waits",
-    mac ? view.helper?.accessibility ? "Accessibility allowed" : "Optional for native apps" : "Mac only",
+    mac ? view.helper?.accessibility ? "Accessibility allowed" : "Optional for Running Chrome and native apps" : "Mac only",
     remoteLabel(view),
     `${view.sites.length} ${view.sites.length === 1 ? "site" : "sites"} from your Chrome`,
     sourceLabel(view),
@@ -87,7 +87,7 @@ export function settingsScreen(view: SettingsView, advanced: string): string {
       + row(`<label for="promote-after">Keep a heal after</label><p>Clean runs with the new target before Bao keeps it for good.</p>`, `<input id="promote-after" data-setting="promoteAfter" type="number" required min="1" max="20" value="${settings.promoteAfter ?? 3}" aria-describedby="keep-unit promote-after-error"><span id="keep-unit">runs</span><span id="promote-after-error" role="status" hidden></span>`)
       + row(`<label for="act-minutes">Wait for you up to</label><p>How long a run waits for a code, a login, or a button only you press.</p>`, `<select id="act-minutes" data-setting="actTimeoutMin">${waits.map((minutes) => `<option value="${minutes}"${minutes === wait ? " selected" : ""}>${minutes < 60 || minutes % 60 ? `${minutes} ${minutes === 1 ? "minute" : "minutes"}` : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}</option>`).join("")}<option value="custom">Other…</option></select><input id="act-custom" data-setting="actTimeoutMin" type="number" required min="1" max="1440" value="${wait}" aria-label="Wait in minutes" aria-describedby="act-custom-error" hidden><span id="act-custom-error" role="status" hidden></span>`))}
     ${group("perm", "Mac permissions", row(
-      `<b>Accessibility</b><p>${mac ? "Native Mac app control uses Bao's helper and this permission. Chrome needs no Mac permission, not even for Running Chrome, which works through the Bao extension." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
+      `<b>Accessibility</b><p>${mac ? "Running Chrome uses Bao's helper and its Accessibility permission to turn on Chrome's remote debugging and press Chrome's Allow prompt. Bao profiles and Chrome copies do not need it. No Chrome option needs Automation or Screen Recording." : "Native Mac app control uses this permission on macOS. It does not apply on Linux."}</p>`,
       `<span class="settings-permission${view.helper?.accessibility && mac ? " allowed" : ""}">${view.helper?.accessibility && mac ? "✓ " : ""}${accessibility}</span>`, "hand")
       + row(`<b>Screen Recording</b><p>${mac ? "Lets Bao's helper capture app windows for pictures and native-app control. Chrome screenshots do not need it." : "Mac window capture uses this permission on macOS. It does not apply on Linux."}</p>`,
         `<span class="settings-permission">${mac ? "Not checked" : "Mac only"}</span>${mac ? '<a id="screen-recording-settings" class="button" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture">Open System Settings</a>' : ""}`, "eye"))}

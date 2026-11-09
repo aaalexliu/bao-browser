@@ -269,7 +269,7 @@ export async function runWorkflow(
   const savedCopy = placed && !placed.local ? materializeWorkflow(library, placed) : undefined;
   const loaded = request.document ? parseWorkflow(request.document) : (savedCopy ?? placed!.document);
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
-  const fileRefusal = runningChromeRefusal(browser, workflow);
+  const fileRefusal = runningChromeRefusal(browser, workflow, library.settings().runningChromeExtension === true);
   if (fileRefusal) return emptyOutcome(id, "failed", fileRefusal);
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
@@ -525,7 +525,8 @@ async function replayInBrowser(
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   let browser: WorkflowBrowser;
   if (choice) {
-    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile });
+    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile,
+      extensionRoute: library.settings().runningChromeExtension === true });
   } else {
     const profile = path.join(library.root, "chrome-profile");
     mkdirSync(profile, { recursive: true });

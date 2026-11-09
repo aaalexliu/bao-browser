@@ -45,7 +45,7 @@ npm publish /tmp/bao-installer/bao-browser-<version>.tgz
 Without a signing secret, the release build signs every part ad-hoc (`BAO_SIGN_IDENTITY=-`). `desktop/packaging/helper-identity.js` then accepts only an ad-hoc `dev.bao.oshelper` helper.
 
 - `npx` and `curl` downloads carry no quarantine mark, so Gatekeeper does not stop an ad-hoc app. A copy downloaded in a browser needs System Settings → Privacy & Security → Open Anyway.
-- macOS keys an ad-hoc helper's Accessibility grant to one build, so the grant does not survive an update. No Chrome mode needs the grant; running-Chrome mode goes through the Bao extension.
+- macOS keys an ad-hoc helper's Accessibility grant to one build, so the grant does not survive an update. The default copied-profile mode needs no grant. Only running-Chrome mode uses the helper's Accessibility grant.
 - The app still runs `BaoOSHelper permissions-ax` for the Settings label. That reads Accessibility without a prompt.
 
 To sign with one project certificate, add two repository secrets: `BAO_SIGNING_P12`, a base64 `.p12` of the certificate and key, and `BAO_SIGNING_P12_PASSWORD`. `desktop/packaging/macos/ci-signing.sh` imports it into a temporary keychain and sets `BAO_SIGN_IDENTITY` and `BAO_HELPER_CERT_HASH` to its SHA-1. A self-signed certificate like `bao dev signing` works as is. Every update signed by it keeps the helper grant. Gatekeeper treats it like an ad-hoc signature.

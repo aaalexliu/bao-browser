@@ -2,6 +2,7 @@ import type { OwnerPage } from "../cdp-live/owner-wait";
 import { describeStep, ownerOutcome, ownerReply, type OwnerHandoff, type OwnerWaitPage, type StepSummary, type SummaryPart } from "../engines/agent-browser-describe";
 import type { AgentBrowserCommandResult } from "../engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
+import type { ChromeProfileQuestion } from "../engines/browser-pick";
 import type { StoredRun } from "../v1/store";
 
 type Target = NonNullable<RecordedAgentBrowserCommand["target"]>;
@@ -196,6 +197,19 @@ export function finishToolResult(card: BrowserToolCard | undefined, receipt: Rec
   return {
     content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...(ui && card ? [cardKey(card)] : [])],
     structuredContent: { summary: sentence, ...receipt },
+    isError: false,
+  };
+}
+
+/** Chrome has more than one profile and the open named none. Bao opened nothing; the sentence lists them and the next block gives the retry. */
+export function profileQuestionResult(question: ChromeProfileQuestion, call: Record<string, unknown>, ui: boolean) {
+  const card: BrowserToolCard = { command: "open", status: "waiting", style: "text", caption: question.message, parts: [question.message],
+    runId: null, stepId: null, picture: unavailable("Bao opened nothing.") };
+  return {
+    content: [textBlock(question.message), textBlock(question.retry(call))],
+    structuredContent: { command: "open", status: "waiting", run_id: null, step_id: null,
+      profiles: question.profiles.map((profile) => ({ ...profile, ...(profile.directory === question.settings ? { pickedInSettings: true } : {}) })) },
+    ...(ui ? { _meta: { baoToolCard: card } } : {}),
     isError: false,
   };
 }

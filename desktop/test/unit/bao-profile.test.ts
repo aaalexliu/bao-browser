@@ -17,6 +17,7 @@ import { readLocalStorage } from "../../src/login-import/storage";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { browserToolResult } from "../../src/mcp/tool-card";
+import { chromeProfiles } from "../support/chrome-profiles";
 
 launches.pinTestBrowser();
 
@@ -74,6 +75,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       { origin: "https://storage.test", key: "identity", value: "storage-only" },
     ].sort((a, b) => a.origin.localeCompare(b.origin)), "the closed synthetic source contains both saved storage records");
     chrome = await openBaoChromeForProxy({ sourceRoot, directory: "Default", home, site });
+    assert.deepEqual(chrome.signIn, { origin: site, found: 1, cookies: 1, storage: 1 }, "the open's import says what it read and wrote");
     assert.equal(launchOptions.length, 2);
     assert.equal(launchOptions[0]!.headless, false, "source Chrome keeps OS-keychain access");
     assert.deepEqual(launchOptions[0]!.appendArgs, ["--no-startup-window"], "sign-in extraction creates no window");
@@ -89,12 +91,12 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       await page.cdp.send("Network.setCookie", { name: "login", value: "renewed-in-bao", url: site, httpOnly: true }, page.sessionId);
       await page.evaluate("localStorage.setItem('identity', 'bao-account')");
       const before = launchCount;
-      assert.equal(await chrome.importLogin(`${site}/another-path`), false);
+      assert.deepEqual(await chrome.importLogin(`${site}/another-path`), { origin: site, found: 1, cookies: 0, storage: 0 });
       const renewed = await page.cdp.send<{ cookies: { name: string; value: string }[] }>("Storage.getCookies");
       assert.equal(renewed.cookies.find((cookie) => cookie.name === "login")?.value, "renewed-in-bao");
-      assert.equal(await chrome.importLogin("https://empty.test/"), false);
-      assert.equal(await chrome.importLogin("https://storage.test/"), true);
-      assert.equal(await chrome.importLogin("https://storage.test/another-path"), false);
+      assert.deepEqual(await chrome.importLogin("https://empty.test/"), { origin: "https://empty.test", found: 0, cookies: 0, storage: 0 });
+      assert.deepEqual(await chrome.importLogin("https://storage.test/"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 1 });
+      assert.deepEqual(await chrome.importLogin("https://storage.test/another-path"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 0 });
       assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
       assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--no-startup-window"], "later sign-in refreshes also create no window");
     } finally { page.cdp.close(); }
@@ -561,4 +563,33 @@ test("only an explicit mock-keychain launch permits mock flags outside a test la
   assert.equal(launches.assessOwnedCommand(command, profile, {}, "mock").ok, true);
   assert.equal(launches.assessOwnedCommand(command, profile, {}).ok, false);
   assert.equal(launches.ownedChromeLaunchArgs([], {}, "darwin").includes("--use-mock-keychain"), false);
+});
+
+test("a sign-in import that cannot read the Chrome profile says why in the open result and the run file", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-import-error-"));
+  const sourceRoot = await chromeProfiles(path.join(root, "source"));
+  const cookies = path.join(sourceRoot, "Default", "Cookies");
+  await writeFile(cookies, "unreadable", { mode: 0o000 });
+  const home = path.join(root, "home");
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args.includes('--json')) {
+  const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
+  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+    process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
+  });
+} else process.stdout.write('native success\\n');
+`, { mode: 0o700 });
+  const launch = launches.launchOwnedChromeEndpoint;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
+  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
+  t.after(async () => { await proxy.close(); await rm(root, { recursive: true, force: true }); });
+  assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0);
+  const [, imported] = proxy.openLines;
+  assert.match(imported!, /^Sign-in import for https:\/\/news\.example\.test from Chrome profile "Default" failed: EACCES: permission denied, copyfile '.+\/Cookies' -> '.+'\. Bao's profile kept its saved sign-ins\.$/);
+  const run = new Library(home).readRun(proxy.activeRunId!);
+  assert.deepEqual(run.signInImports?.map(({ origin, found, cookies, storage }) => ({ origin, found, cookies, storage })),
+    [{ origin: "https://news.example.test", found: 0, cookies: 0, storage: 0 }]);
+  assert.match(run.signInImports![0]!.error!, /^EACCES: permission denied/);
 });

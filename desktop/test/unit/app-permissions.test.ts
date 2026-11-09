@@ -51,7 +51,8 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
         assert.match(await mac.innerText(), /Screen Recording/);
         assert.doesNotMatch(await mac.innerText(), /bao mcp-ax|bao remote-debugging|click and type in Chrome/);
         if (process.platform === "darwin") {
-          assert.match(await mac.innerText(), /Chrome needs no Mac permission, not even for Running Chrome/);
+          assert.match(await mac.innerText(), /Running Chrome.*Accessibility/);
+          assert.match(await mac.innerText(), /Bao profiles and Chrome copies do not need it/);
           assert.match(await mac.innerText(), /Chrome screenshots do not need it/);
           assert.match(await mac.innerText(), /Not checked/);
           assert.equal(await mac.locator('a[href^="x-apple.systempreferences:"]').count(), 1);

@@ -74,6 +74,7 @@ import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extensi
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
 import { createCdpRelay } from "../extension/cdp-relay";
+import { RUNNING_CHROME_EXTENSION_OFF } from "../extension/running-chrome";
 import { workflowDriver, type Gesture } from "../extension/protocol";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../cdp-live/launch-guard";
 import { defaultConfigHome } from "../extension/install-host";
@@ -1178,7 +1179,7 @@ export async function startApp(opts: {
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
-        const fileRefusal = runningChromeRefusal(browser?.choice, workflow);
+        const fileRefusal = runningChromeRefusal(browser?.choice, workflow, library.settings().runningChromeExtension === true);
         if (fileRefusal) return json(res, { error: fileRefusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -1717,9 +1718,11 @@ export async function startApp(opts: {
     }
   }
 
-  // Running Chrome: CDP for Bao's own grouped tabs, through the extension.
+  // Running Chrome through the extension, behind the runningChromeExtension setting: CDP for Bao's own grouped tabs.
   server.on("upgrade", (req, socket, head) => {
-    if (foreignOrigin(req) || !relay?.upgrade(req, socket, head)) socket.destroy();
+    if (foreignOrigin(req)) socket.destroy();
+    else if (library.settings().runningChromeExtension !== true) socket.end(`HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n${RUNNING_CHROME_EXTENSION_OFF}`);
+    else if (!relay?.upgrade(req, socket, head)) socket.destroy();
   });
   syncPending();
   await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
@@ -2991,7 +2994,8 @@ async function openReplay(
     replays.delete(id);
   }
   if (browser) {
-    const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile });
+    const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
+      extensionRoute: library.settings().runningChromeExtension === true });
     replays.set(id, session);
     return session;
   }

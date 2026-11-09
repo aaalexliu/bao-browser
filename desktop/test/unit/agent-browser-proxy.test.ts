@@ -6,6 +6,9 @@ import { Socket } from "node:net";
 import test, { type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
+import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
@@ -69,7 +72,7 @@ else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout
 else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:fs.existsSync(${JSON.stringify(path.join(root, "no-active"))})?[]:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
-  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, directory: "Profile 2", executable, keepOpen: () => keepOpen });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot, executable, keepOpen: () => keepOpen });
   const calls = async () => (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { args: string[]; env: Record<string, string> });
   return {
     root, sourceRoot, proxy, calls, copy: () => copiedDir, closeWindow: () => closeWindow(), closeCount: () => closeCount,
@@ -377,39 +380,38 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
   });
 }
 
-for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle"] as const) test(`failed copy cleanup after ${ending} retains the session and blocks reopen`, async (t) => {
+for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle"] as const) test(`failed copy cleanup after ${ending} is reported once, is kept on the run, and a later open starts fresh`, async (t) => {
   const f = await fixture(t);
   const openChrome = profiles.openCopiedChromeForProxy;
-  const failure = new Error("copy deletion failed");
-  let cleanup: (() => Promise<void>) | undefined;
-  let cleanupAttempted = false;
+  let opens = 0;
+  let failed = false;
   t.mock.method(profiles, "openCopiedChromeForProxy", async (options: Parameters<typeof openChrome>[0]) => {
+    opens++;
     const chrome = await openChrome(options);
-    cleanup = chrome.close;
-    return { ...chrome, close: async () => { cleanupAttempted = true; throw failure; } };
+    return { ...chrome, close: async () => {
+      await chrome.close();
+      if (!failed) { failed = true; throw new Error("copy deletion failed"); }
+    } };
   });
   try {
     if (ending === "idle") t.mock.timers.enable({ apis: ["setTimeout"] });
     await f.proxy.execute("open", [], "copy");
-    const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
-    if (ending === "close") await assert.rejects(f.proxy.close(), failure);
-    else if (ending === "finish_task") await assert.rejects(f.proxy.finishTask({ outcome: "passed", reason: "task complete" }), failure);
-    else if (ending === "disconnect") await assert.rejects(f.proxy.end(), failure);
-    else {
-      if (ending === "owner-close") {
-        f.closeWindow();
-        await waitFor(async () => cleanupAttempted);
-      } else t.mock.timers.tick(600_000);
-      await assert.rejects(f.proxy.execute("open"), failure);
-    }
-    assert.equal(f.proxy.hasSession(), true, "failed cleanup must retain ownership");
-    await access(f.copy());
-    await access(stateDir);
-    const calls = await f.calls();
-    await assert.rejects(f.proxy.execute("open", [], "copy"), failure);
-    assert.deepEqual(await f.calls(), calls);
+    const runId = f.proxy.activeRunId!;
+    const reported = { message: `Bao could not clean up the browser session of run ${runId}: copy deletion failed` };
+    if (ending === "close") await assert.rejects(f.proxy.close(), reported);
+    else if (ending === "finish_task") await assert.rejects(f.proxy.finishTask({ outcome: "passed", reason: "task complete" }), reported);
+    else if (ending === "disconnect") await assert.rejects(f.proxy.end(), reported);
+    else if (ending === "owner-close") f.closeWindow();
+    else t.mock.timers.tick(600_000);
+    while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(failed, true);
+    assert.equal(new Library(path.join(f.root, "home")).readRun(runId).cleanupError, "copy deletion failed");
+    if (ending === "disconnect") return;
+    const [opened] = await f.proxy.execute("open", [], "copy");
+    assert.equal(opened!.exitCode, 0, "the failed cleanup does not answer later calls");
+    assert.equal(opens, 2);
+    assert.notEqual(f.proxy.activeRunId, runId);
   } finally {
-    await cleanup?.();
     await f.close().catch(() => undefined);
   }
 });
@@ -669,5 +671,72 @@ test("proxy rejects malformed commands and attempts to replace its fixed session
       await assert.rejects(f.proxy.execute("open", [arg]), /Bao fixes/);
     }
     await assert.rejects(readFile(path.join(f.root, "calls.jsonl")), /ENOENT/);
+  } finally { await f.close(); }
+});
+
+test("several Chrome profiles and no named one open nothing and record no run; an unknown name lists the valid ones", async (t) => {
+  const f = await fixture(t);
+  try {
+    await chromeProfiles(f.sourceRoot, { Default: { name: "Alex", user_name: "alex@example.test" }, "Profile 2": { name: "Synthetic" } });
+    const question = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy").then(() => undefined, (error: unknown) => error);
+    assert.ok(question instanceof ChromeProfileQuestion);
+    assert.deepEqual(question.profiles.map((profile) => profile.directory), ["Default", "Profile 2"]);
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9"),
+      /Chrome has no profile "Profile 9" in .*\. Choose one of: "Default" \(Alex, alex@example\.test\); "Profile 2" \(Synthetic\)\./);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, "Default"), /profile is only accepted on open/);
+    assert.equal(f.copy(), "", "no copy started");
+    assert.deepEqual(new Library(path.join(f.root, "home")).listRuns(), [], "no run recorded");
+    assert.equal(f.proxy.hasSession(), false);
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 2"))[0]!.exitCode, 0);
+    assert.match(f.proxy.openLines[0]!, /^Browser: Chrome copy, named by the agent\. Chrome app: .+\. User data: .+, a copy of Chrome profile "Profile 2" \(Synthetic\) in .+, named by the agent\.$/);
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], undefined, false, "Default"), /close the current session before choosing a different Chrome profile/);
+    const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
+    assert.deepEqual(run.browser && { route: run.browser.route, why: run.browser.why, profile: run.browser.route === "extension" ? undefined : run.browser.profile.directory },
+      { route: "copy", why: "named by the agent", profile: "Profile 2" });
+  } finally { await f.close(); }
+});
+
+test("a copy that stops for sign-in names the Running Chrome fallback on the same profile, and that open says it is the fallback", async (t) => {
+  const f = await fixture(t);
+  try {
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        const page = { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Confirm your account" };
+        if (method === "Target.getTargetInfo") return { targetInfo: page };
+        if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+        if (method === "Target.getTargets") return { targetInfos: [page] };
+        return {};
+      });
+      return cdp;
+    });
+    const [halted] = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const reply = JSON.parse(halted!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "halted");
+    assert.ok(reply.instruction.endsWith(" If the sign-in or check does not clear in the Chrome copy, the fallback is the owner's running Chrome over remote debugging on the same Chrome profile \"Profile 2\". "
+      + 'To take it, call agent_browser with {"command":"close"}, then with {"command":"open","args":["http://127.0.0.1/"],"browser":"current","profile":"Profile 2"}. Bao does not switch on its own.'), reply.instruction);
+    const [waiting] = await f.proxy.execute("wait_for_owner", ["1"]);
+    assert.match((JSON.parse(waiting!.stdout) as { instruction: string }).instruction, /the fallback is the owner's running Chrome/);
+    await f.proxy.execute("close");
+
+    fakeTaskTab(t);
+    let detached = false;
+    const owner = {
+      get isOpen() { return !detached; }, disconnected: new Promise<void>(() => {}), close() { detached = true; },
+      async send(method: string) {
+        if (method === "Target.createTarget") return { targetId: "task" };
+        if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+        if (method === "Target.attachToTarget") return { sessionId: "task" };
+        if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
+        return {};
+      },
+    } as unknown as sockets.CdpSocket;
+    t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: f.sourceRoot,
+      endpoint: { port: 9222, browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
+      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"))[0]!.exitCode, 0);
+    assert.equal(f.proxy.openLines[0], `Browser: Running Chrome over remote debugging, fallback after a sign-in wall. Chrome app: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. User data: ${f.sourceRoot}. Profile: "Profile 2" (Synthetic) in ${f.sourceRoot}, named by the agent. Bao's task tab opened in the background.`);
+    const runs = new Library(path.join(f.root, "home")).listRuns();
+    assert.deepEqual(runs.map((run) => run.browser?.why).sort(), ["fallback after a sign-in wall", "named by the agent"]);
   } finally { await f.close(); }
 });

@@ -4,11 +4,14 @@ import type { BrowserChoice } from "../browser-choice";
 import { navigateOwned } from "../launch";
 import { ownerWall } from "../cdp-live/owner-wait";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
+import { openCurrentChrome, openTaskTab } from "../cdp-live/current-chrome";
+import { relayTab } from "../cdp-live/tab-relay";
 import { openRunningChrome } from "../extension/running-chrome";
 import type { PersonPrompts } from "../v1/browser-driver";
 import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
-import { baoAgentProfileDir, openBaoChromeForProxy } from "./bao-profile";
+import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
+import { chooseChromeProfile, ChromeProfileQuestion, type ChosenProfile } from "./browser-pick";
 
 interface BrowserPage {
   context: BrowserContext;
@@ -17,10 +20,11 @@ interface BrowserPage {
 }
 
 export type WorkflowBrowser = BrowserPage & (
-  | { kind: "owned"; choice: "bao" | "copy" | "owned"; profile: string; persistent: boolean; keepOpen?: () => Promise<void>; importLogin?: (site: string, preferSource?: boolean) => Promise<boolean> }
+  | { kind: "owned"; choice: "bao" | "copy" | "owned"; profile: string; persistent: boolean; keepOpen?: () => Promise<void>; importLogin?: (site: string, preferSource?: boolean) => Promise<SignInImport> }
   /**
-   * `show` opens Bao's group for a handoff without switching the owner's tab; `settle` lets it fold again.
-   * `bringToFront` is for the owner's own request to see the run.
+   * `show` makes the held tab visible for a handoff: the extension opens Bao's group without switching the owner's tab, and
+   * remote debugging brings the tab to the front. `settle` lets the group fold again. `bringToFront` is for the owner's own
+   * request to see the run.
    */
   | { kind: "current"; choice: "current"; show(): Promise<void>; settle(): Promise<void>; bringToFront(): Promise<void> }
 );
@@ -31,9 +35,18 @@ const movesFile = (step: WorkflowStep): boolean =>
   step.action === "download" || step.action === "upload" || step.action === "drop"
   || (step.action === "for_each" && step.forEach.steps.some(movesFile));
 
-/** Running Chrome cannot download or upload files yet, so a workflow that does either is refused before it opens a tab. */
-export function runningChromeRefusal(browser: BrowserChoice | undefined, workflow: { steps: WorkflowStep[] }): string | undefined {
-  return browser === "current" && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
+/** Running Chrome through the extension cannot download or upload files yet, so a workflow that does either is refused before it opens a tab. */
+export function runningChromeRefusal(browser: BrowserChoice | undefined, workflow: { steps: WorkflowStep[] }, extensionRoute: boolean): string | undefined {
+  return browser === "current" && extensionRoute && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
+}
+
+/** The Chrome profile a saved workflow runs with: the one picked in Bao Settings, or the only one. Never a silent "Default". */
+async function workflowProfile(root: string, directory: string | undefined): Promise<ChosenProfile> {
+  try { return await chooseChromeProfile(root, directory ? { directory, by: "settings" } : undefined); }
+  catch (error) {
+    if (error instanceof ChromeProfileQuestion) throw new Error(`${error.message} Pick one in Bao Settings under Technical details, Page engine, Chrome profile, then run the workflow again.`, { cause: error });
+    throw error;
+  }
 }
 
 export async function openWorkflowBrowser(options: {
@@ -41,9 +54,12 @@ export async function openWorkflowBrowser(options: {
   home: string;
   site: string;
   sourceRoot?: string;
+  /** The Chrome profile folder picked in Bao Settings. */
   directory?: string;
+  /** The gate for Running Chrome through the Bao extension. Off means remote debugging. */
+  extensionRoute?: boolean;
 }): Promise<WorkflowBrowser> {
-  if (options.browser === "current") {
+  if (options.browser === "current" && options.extensionRoute) {
     const chrome = await openRunningChrome({ home: options.home });
     try {
       const browser = await chromium.connectOverCDP(`ws://127.0.0.1:${chrome.endpoint.port}${chrome.endpoint.browserPath}`, { noDefaults: true });
@@ -75,8 +91,32 @@ export async function openWorkflowBrowser(options: {
   }
   const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
-  const root = sourceRoot ?? chromeProfilesRoot();
-  const launch = { sourceRoot: root, directory: options.directory || "Default", home: options.home, site: options.site };
+  const profile = await workflowProfile(sourceRoot ?? chromeProfilesRoot(), options.directory);
+  if (options.browser === "current") {
+    const chrome = await openCurrentChrome({ root: profile.root, defaultRoot: chromeProfilesRoot(), axLog: path.join(options.home, "audit", "current-chrome.jsonl") });
+    try {
+      const { targetId } = await openTaskTab(chrome, profile.directory);
+      const closeTab = () => chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).then(() => undefined, () => undefined);
+      try {
+        const relay = await relayTab(chrome.endpoint, targetId);
+        void chrome.closed.then(relay.close);
+        const browser = await chrome.withConsent(() => chromium.connectOverCDP(relay.url, { noDefaults: true }));
+        try {
+          const context = browser.contexts()[0];
+          const page = context?.pages()[0];
+          if (!context || !page) throw new Error("Chrome opened without the replay tab");
+          // Focus emulation keeps a background tab painting, running timers, and taking input while Playwright stays attached.
+          await (await context.newCDPSession(page)).send("Emulation.setFocusEmulationEnabled", { enabled: true });
+          const front = () => chrome.cdp.send("Target.activateTarget", { targetId }, undefined, 5000).then(() => undefined);
+          let closing: Promise<void> | undefined;
+          // The run's tab closes with the run. The owner's tabs and windows stay as they were.
+          const close = () => closing ??= (async () => { try { await closeTab(); await browser.close(); } finally { chrome.detach(); } })();
+          return { kind: "current", choice: "current", context, page, close, show: front, settle: async () => undefined, bringToFront: front };
+        } catch (error) { await browser.close(); throw error; }
+      } catch (error) { await closeTab(); throw error; }
+    } catch (error) { chrome.detach(); throw error; }
+  }
+  const launch = { sourceRoot: profile.root, directory: profile.directory, home: options.home, site: options.site };
   const chrome = options.browser === "copy" ? await openCopiedChromeForProxy({ ...launch, restoreTabs: false }) : await openBaoChromeForProxy(launch);
   try {
     const endpoint = await readDevToolsActivePort(chrome.target.portFile);
@@ -102,7 +142,7 @@ export function showWorkflowPage(browser: WorkflowBrowser): Promise<void> {
   return browser.kind === "current" ? browser.bringToFront() : browser.page.bringToFront();
 }
 
-/** On Running Chrome, a step that needs the owner opens Bao's group so he can see the held tab. */
+/** On Running Chrome, a step that needs the owner shows him the held tab. */
 export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts): PersonPrompts | undefined {
   if (browser.kind !== "current") return prompts;
   const settle = () => { void browser.settle().catch(() => undefined); };
@@ -126,7 +166,8 @@ export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts):
 export async function navigateWorkflowBrowser(browser: WorkflowBrowser, site: string): Promise<void> {
   await navigateOwned(browser.page, site, { waitUntil: "domcontentloaded" });
   if (browser.kind === "owned" && browser.importLogin && ownerWall({ url: browser.page.url(), title: await browser.page.title() }) === "login_wall") {
-    if (await browser.importLogin(new URL(browser.page.url()).origin, true)) {
+    const imported = await browser.importLogin(new URL(browser.page.url()).origin, true);
+    if (imported.cookies || imported.storage) {
       await navigateOwned(browser.page, site, { waitUntil: "domcontentloaded" });
     }
   }

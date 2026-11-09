@@ -8,6 +8,8 @@ import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
 import { describeStep, landmarkKeys, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
+import type { BrowserPick } from "./browser-pick";
+import type { SignInImport } from "./bao-profile";
 
 type Viewport = { width: number; height: number };
 
@@ -176,6 +178,23 @@ export class AgentBrowserRun {
       step.afterShotError = step.native.command === "close" ? "Session closed; no page remains." : "Page screenshot unavailable.";
       if (step.native.command !== "close") this.warn("page screenshot");
     }
+    this.persist();
+  }
+
+  /** The route, Chrome app, user-data-dir, and profile this session runs on, and why. */
+  pickBrowser(pick: BrowserPick): void {
+    this.run.browser = pick;
+    this.persist();
+  }
+
+  signInImported(report: SignInImport): void {
+    this.run.signInImports = [...this.run.signInImports ?? [], report];
+    this.persist();
+  }
+
+  /** The session's cleanup failed after its outcome was recorded. */
+  cleanupFailed(error: string): void {
+    this.run.cleanupError = error;
     this.persist();
   }
 

@@ -5,7 +5,7 @@
 // browser evals set BAO_TEST_BROWSER, and then every launch starts that
 // browser with a mock keychain and camera and microphone denied in Chrome.
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { userInfo } from "node:os";
@@ -340,7 +340,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
       if (child.exitCode != null || child.signalCode != null) {
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
-      const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, listProcesses()) : child.pid;
+      const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir)) : child.pid;
       if (browserPath && pid) {
         const text = `${port}\n${browserPath}\n`;
         parseDevToolsActivePort(text);
@@ -356,7 +356,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
   } catch (error) {
     try {
       if (guiArgs) {
-        const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
+        const pid = guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir));
         if (pid) await releaseProfileProcesses({ kind: "gui", launcher: child, pid, executable: exe, userDataDir }, false);
       } else await releaseProfileProcesses({ kind: "direct", child, userDataDir }, false);
     } catch {}
@@ -468,7 +468,7 @@ export async function launchAccountChrome(opts: {
     browser.on("disconnected", () => { if (!closing) void stop().catch(() => undefined); });
     context.close = () => closing ??= (async () => {
       const openPages = context.pages().filter((page) => !page.isClosed()).length;
-      if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
+      if (ownedChromeRunning(owner)) for (const pid of listedPids(opts.userDataDir) ?? []) ownedPids.add(pid);
       const browserCloseSent = await requestBrowserClose(browser);
       const released = await releaseProfileProcesses(owner, browserCloseSent, ownedPids);
       await browser.close().catch(() => undefined);
@@ -582,9 +582,10 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     const retained = state.phase === "retained";
     const completion = Promise.resolve().then(async () => {
       const openPages = pages.size;
-      if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
       let browserClose: ShutdownTrace["browserClose"] = "skipped";
       try {
+        // Inside the try, so nothing before Browser.close can skip it and leave Chrome open.
+        if (ownedChromeRunning(owner)) for (const pid of listedPids(opts.userDataDir) ?? []) ownedPids.add(pid);
         if (retained && !cdp?.isOpen && ownedChromeRunning(owner)) {
           try {
             const endpoint = await readDevToolsActivePort(portFile);
@@ -692,7 +693,7 @@ async function launchNormalChrome(opts: OwnedChromeProcessOptions & { deviceScal
     });
     context.close = () => closing ??= (async () => {
       const open = context.pages().filter((page) => !page.isClosed());
-      if (ownedChromeRunning(owner)) for (const pid of pidsForDataDir(opts.userDataDir)) ownedPids.add(pid);
+      if (ownedChromeRunning(owner)) for (const pid of listedPids(opts.userDataDir) ?? []) ownedPids.add(pid);
       const browserClose: ShutdownTrace["browserClose"] = await requestBrowserClose(browser) ? "sent" : "failed";
       const released = await releaseProfileProcesses(owner, browserClose === "sent", ownedPids);
       await browser.close().catch(() => undefined);
@@ -757,7 +758,8 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
   const { userDataDir } = owner;
   const child = owner.kind === "direct" ? owner.child : owner.launcher;
   const remaining = () => {
-    const pids = pidsForDataDir(userDataDir);
+    const pids = listedPids(userDataDir);
+    if (!pids) return [...ownedPids].filter(alive);
     if (ownedChromeRunning(owner)) for (const pid of pids) ownedPids.add(pid);
     return pids.filter((pid) => ownedPids.has(pid));
   };
@@ -791,7 +793,7 @@ async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSe
 export async function closeRetainedChrome(userDataDir: string): Promise<void> {
   const ownedPids = new Set(pidsForDataDir(userDataDir));
   const exe = resolveNormalChrome();
-  const pid = guiChromeBrowserPid(exe, userDataDir, listProcesses());
+  const pid = guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir));
   const remaining = () => {
     const pids = pidsForDataDir(userDataDir);
     if (pid && ownedChromeBrowserCommand(exe, userDataDir, pid)) for (const pid of pids) ownedPids.add(pid);
@@ -894,7 +896,7 @@ export function assertChromeProfileAvailable(userDataDir: string): void {
 /** The child we spawned. The binary path is not the profile. */
 export function assertOwnedProcess(ctx: BrowserContext, userDataDir: string): void {
   void ctx;
-  const pid = browserPidFromLauncher(userDataDir, process.pid, listProcesses());
+  const pid = browserPidFromLauncher(userDataDir, process.pid, processesNaming(userDataDir));
   const cmd = readOwnedCommand(pid, userDataDir, process.platform);
   const verdict = assessOwnedCommand(cmd, userDataDir);
   if (!verdict.ok) throw new Error(verdict.reason);
@@ -972,15 +974,43 @@ function defaultPs(pid: number): string {
 /** Chrome processes whose --user-data-dir is this profile. */
 export function pidsForDataDir(userDataDir: string): number[] {
   const resolved = path.resolve(userDataDir);
-  return listProcesses().flatMap((row) => {
+  return processesNaming(userDataDir).flatMap((row) => {
     if (!/chrome|chromium/i.test(row.command)) return [];
     const dir = userDataDirArg(row.command);
     return dir && path.resolve(dir) === resolved ? [row.pid] : [];
   });
 }
 
-function listProcesses(): ProcessRow[] {
-  const out = execFileSync("ps", ["-axww", "-o", "pid=,ppid=,command="], { encoding: "utf8" });
+/** pidsForDataDir, or undefined when the process list cannot be read, so shutdown can fall back to the pids it already knows. */
+export function listedPids(userDataDir: string): number[] | undefined {
+  try { return pidsForDataDir(userDataDir); }
+  catch (error) {
+    console.error(`bao process list unavailable profile=${userDataDir}: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
+}
+
+function alive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; }
+}
+
+/**
+ * Processes whose command line contains this text. pgrep returns only the matching pids, and ps reads just those,
+ * so a machine with a large process list never fills a pipe buffer.
+ */
+export function processesNaming(text: string): ProcessRow[] {
+  const found = spawnSync("pgrep", ["-f", "--", text.replace(/[\\^$.|?*+()[\]{}]/g, "\\$&")], { encoding: "utf8" });
+  if (found.error) throw found.error;
+  if (found.status !== 0 && found.status !== 1) throw new Error(`pgrep exited ${found.status ?? found.signal}: ${found.stderr.trim()}`);
+  const pids = found.stdout.split(/\s+/).filter((pid) => /^\d+$/.test(pid));
+  if (!pids.length) return [];
+  const listed = spawnSync("ps", ["-ww", "-o", "pid=,ppid=,command=", "-p", pids.join(",")], { encoding: "utf8" });
+  if (listed.error) throw listed.error;
+  return processRows(listed.stdout);
+}
+
+function processRows(out: string): ProcessRow[] {
   const rows: ProcessRow[] = [];
   for (const line of out.split("\n")) {
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
