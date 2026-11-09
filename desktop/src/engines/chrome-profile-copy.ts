@@ -200,11 +200,17 @@ export async function copyChromeProfile(options: {
   }
 }
 
-async function openFrontTab(portFile: string): Promise<string> {
+export async function openFrontTab(portFile: string): Promise<string> {
   const endpoint = await readDevToolsActivePort(portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 15_000 });
-  try { return (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" }, undefined, 15_000)).targetId; }
-  finally { cdp.close(); }
+  try {
+    const deadline = Date.now() + 15_000;
+    while (!(await cdp.send<{ targetInfos: { type: string }[] }>("Target.getTargets", {}, undefined, 15_000)).targetInfos.some((target) => target.type === "page")) {
+      if (Date.now() >= deadline) throw new Error("Chrome opened no page within 15 seconds");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" }, undefined, 15_000)).targetId;
+  } finally { cdp.close(); }
 }
 
 /**

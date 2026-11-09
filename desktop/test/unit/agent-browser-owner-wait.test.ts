@@ -11,7 +11,6 @@ import * as launches from "../../src/launch";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { connectCdp } from "../../src/cdp-live/socket";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
@@ -60,10 +59,7 @@ async function ownerProxy(t: TestContext) {
     copyDir = copy.userDataDir;
     const browser = await launchOwnedChromeEndpoint({ userDataDir: copy.userDataDir, childHome: path.join(root, "user"), headless: true });
     closeBrowser = browser.close;
-    const endpoint = await readDevToolsActivePort(browser.portFile);
-    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-    const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
-    cdp.close();
+    const targetId = await profiles.openFrontTab(browser.portFile);
     return {
       target: { kind: "bao" as const, portFile: browser.portFile }, targetId, closed: browser.closed,
       bytes: copy.bytes, copyMs: copy.copyMs, isClosed: browser.isClosed,
