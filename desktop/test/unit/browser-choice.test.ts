@@ -291,7 +291,7 @@ test("copy and current runs leave the app Sign in window open", { timeout: 60_00
   fakeTaskTab(t);
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 1, executable: pinTestBrowser(), root: sourceRoot, endpoint, cdp: connection,
     closed: connection.disconnected, isClosed: () => !connection.isOpen,
-    detach: () => {}, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
+    detach: () => {},
   }));
   const doc = workflow(site, "signin-independent");
   doc.steps[0] = { ...doc.steps[0]!, action: "verify", check: { kind: "text", match: "Ready", timeoutMs: 1000 } };
@@ -316,7 +316,7 @@ test("current workflow replay closes its task tab and leaves the attached Chrome
   t.mock.method(profiles, "chromeProfilesRoot", () => root);
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 1, executable: pinTestBrowser(), root, endpoint, cdp,
     closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
-    detach: () => { detached++; }, withConsent: async (operation: (signal: AbortSignal) => Promise<unknown>) => operation(new AbortController().signal),
+    detach: () => { detached++; },
   }));
   const session = await openWorkflowBrowser({ browser: "current", home: root, site: "about:blank", sourceRoot: root });
   assert.equal(session.kind, "current");

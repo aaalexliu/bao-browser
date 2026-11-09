@@ -54,7 +54,6 @@ for (const { mode, force, deny } of [
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
-    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
   } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
   const signals = path.join(root, "signals");
   daemon = spawn(process.execPath, ["-e", `
@@ -129,7 +128,6 @@ test("a close after the owner's Chrome ended still names the owner's Chrome", { 
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
-    withConsent: async <T>(operation: (signal: AbortSignal) => Promise<T>) => operation(new AbortController().signal),
   } as Awaited<ReturnType<typeof currentChrome.openCurrentChrome>>));
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}\nprocess.exitCode = 1;\n`, { mode: 0o700 });

@@ -928,28 +928,20 @@ export class AgentBrowserProxy {
         resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
       });
     });
-    if (session.kind === "copy" || session.relay) return execute(command, args, readTimeoutMs);
-    // Over remote debugging each new connection to the owner's Chrome raises Chrome's Allow prompt, which the helper presses.
-    const chrome = session.chrome;
-    return chrome.withConsent(async () => {
-      const rememberTaskTab = async () => {
-        try {
-          const tabs = await execute("tab", ["list", "--json"], 5000);
-          if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);
-          const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
-          const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
-          if (!targetId) throw new Error("Native task tab has no target id");
-          session.taskTabs.add(targetId);
-        } catch (error) {
-          process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
-        }
-      };
-      const result = await execute(command, args, readTimeoutMs);
-      if (command === "tab" && args[0] === "new" && result.exitCode === 0) await rememberTaskTab();
-      return result;
-    }, session.abort.signal, (result, context) => result.exitCode === 0 ? result : {
-      ...result, stderr: `${result.stderr}${result.stderr && !result.stderr.endsWith("\n") ? "\n" : ""}${context}`,
-    });
+    const result = await execute(command, args, readTimeoutMs);
+    if (session.kind === "current" && !session.relay && command === "tab" && args[0] === "new" && result.exitCode === 0) {
+      try {
+        const tabs = await execute("tab", ["list", "--json"], 5000);
+        if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);
+        const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
+        const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+        if (!targetId) throw new Error("Native task tab has no target id");
+        session.taskTabs.add(targetId);
+      } catch (error) {
+        process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    }
+    return result;
   }
 
   /** Ends a session's owner wait and the session, so no later request inherits it. */

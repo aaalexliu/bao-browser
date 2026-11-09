@@ -7,6 +7,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
@@ -18,6 +19,7 @@ import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browse
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 pinTestBrowser();
 
@@ -129,8 +131,6 @@ test("current Chrome leaves an enabled switch and the owner's tabs alone", async
     const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
     assert.ok(f.state.helperCalls.every(call => call[0] === "debug-allow"));
     assert.ok(!f.state.cdpCalls.some(call => call.method === "Target.closeTarget"));
-    const output = await chrome.withConsent(async () => "native output");
-    assert.equal(output, "native output");
     chrome.detach();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
@@ -148,17 +148,6 @@ test("current Chrome stops without input when Accessibility is absent, the scree
       assert.equal(f.state.connected, false);
     } finally { await rm(f.root, { recursive: true, force: true }); }
   }
-});
-
-test("current Chrome approves native connection prompts already present when polling starts", async () => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    f.state.pending = true;
-    assert.equal(await chrome.withConsent(async () => "reconnected"), "reconnected");
-    assert.equal(f.state.pending, false);
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
 test("a port wait failure closes the inspect tab Bao opened", async () => {
@@ -205,101 +194,6 @@ test("current Chrome reports a missing checkbox and audits only actual presses",
         assert.equal(audit.filter(hit => hit.role === "AXCheckBox").length, mode === "pressed" ? 1 : 0);
         chrome.detach();
       }
-    } finally { await rm(f.root, { recursive: true, force: true }); }
-  }
-});
-
-test("native commands outlive the former consent deadline", async (t) => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-    t.mock.method(AbortSignal, "timeout", (ms: number) => {
-      const abort = new AbortController();
-      setTimeout(() => abort.abort(new DOMException("Timed out", "TimeoutError")), ms);
-      return abort.signal;
-    });
-    const oldDeadline = AbortSignal.timeout(25_000);
-    const pending = chrome.withConsent(async (signal) => {
-      await new Promise(resolve => setTimeout(resolve, 26_000));
-      signal.throwIfAborted();
-      return "slow native output";
-    });
-    await Promise.resolve();
-    t.mock.timers.tick(26_000);
-    await new Promise<void>(resolve => setImmediate(resolve));
-    t.mock.timers.tick(250);
-    assert.equal(oldDeadline.aborted, true);
-    assert.equal(await pending, "slow native output");
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("consent retries transient errors and approves connections that start after 25 seconds", async (t) => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
-    for (const delay of [0, 27_000]) {
-      const started = Date.now();
-      let pendingSheet = false;
-      let attempts = 0;
-      let approvals = 0;
-      let approved!: () => void;
-      const result = { stdout: "connected native output", stderr: "native warning", exitCode: 0 };
-      f.deps.helper!.exec = async () => {
-        attempts++;
-        if (attempts === 1) throw new Error("transient AX failure");
-        if (!pendingSheet) return { ok: true, found: false, pressed: false };
-        pendingSheet = false;
-        approvals++;
-        assert.ok(Date.now() - started >= delay);
-        approved();
-        return { ok: true, found: true, pressed: true };
-      };
-      const pending = chrome.withConsent(async (signal) => {
-        await new Promise<void>(resolve => {
-          approved = resolve;
-          setTimeout(() => { pendingSheet = true; }, delay);
-        });
-        signal.throwIfAborted();
-        return result;
-      });
-      for (let elapsed = 0; elapsed < delay + 1000; elapsed += 250) {
-        t.mock.timers.tick(250);
-        await new Promise<void>(resolve => setImmediate(resolve));
-      }
-      assert.equal(approvals, 1);
-      assert.ok(attempts >= 2);
-      assert.deepEqual(await pending, result);
-    }
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("consent poll errors preserve effects and native results on either side of completion", async () => {
-  for (const settlesFirst of [true, false]) {
-    const f = await fixture(true);
-    try {
-      const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-      let rejectPoll!: (error: Error) => void;
-      let finish!: () => void;
-      let effects = 0;
-      f.deps.helper!.exec = async () => new Promise<AxHit>((_resolve, reject) => { rejectPoll = reject; });
-      const result = { stdout: "submitted", stderr: "native warning", exitCode: 0 };
-      const pending = chrome.withConsent(async (signal) => {
-        effects++;
-        await new Promise<void>(resolve => { finish = resolve; });
-        signal.throwIfAborted();
-        return result;
-      });
-      if (settlesFirst) { finish(); await Promise.resolve(); await Promise.resolve(); }
-      rejectPoll(new Error("helper poll failed"));
-      await Promise.resolve();
-      if (!settlesFirst) finish();
-      assert.deepEqual(await pending, result);
-      assert.equal(effects, 1);
-      chrome.detach();
     } finally { await rm(f.root, { recursive: true, force: true }); }
   }
 });
@@ -411,10 +305,9 @@ test("a failed handshake exposes the helper reason in the public error and run r
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test("a recovered consent poll does not taint a later operation failure", async () => {
+test("a recovered consent poll does not taint a later connection failure", async () => {
   const f = await fixture(true);
   try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
     let recovered!: () => void;
     const recovery = new Promise<void>(resolve => { recovered = resolve; });
     let polls = 0;
@@ -423,84 +316,19 @@ test("a recovered consent poll does not taint a later operation failure", async 
       recovered();
       return { ok: true, found: false, pressed: false };
     };
-    const failure = new Error("unrelated operation failure");
-    await assert.rejects(chrome.withConsent(async () => {
+    const failure = new Error("unrelated connection failure");
+    f.deps.connect = async () => {
       await recovery;
       throw failure;
-    }), (error: Error) => {
+    };
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), (error: Error) => {
       assert.equal(error, failure);
-      assert.equal(error.message, "unrelated operation failure");
+      assert.equal(error.message, "unrelated connection failure");
       assert.equal(error.cause, undefined);
       return true;
     });
     assert.ok(polls >= 2);
-    chrome.detach();
   } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("native failures expose helper context without changing success or native outcome fields", async (t) => {
-  fakeTaskTab(t);
-  const realOpen = currentChrome.openCurrentChrome;
-  let borrowed!: Awaited<ReturnType<typeof realOpen>>;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => borrowed);
-  const stdout = "native partial output";
-  const stderr = "outcome_unknown: verify the action before retrying";
-  const helperReason = "BaoOSHelper is older than this Bao; rebuild it";
-  for (const exitCode of [0, 9]) {
-    const f = await fixture(true);
-    t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(f.root, "default-chrome"));
-    const home = path.join(f.root, "library");
-    const effect = path.join(f.root, "effect");
-    const executable = path.join(f.root, "native");
-    await writeFile(executable, `#!${process.execPath}
-const fs = require('node:fs');
-const args = process.argv.slice(2);
-const command = args[args.indexOf('--idle-timeout') + 2];
-if (command === 'tab' && args.includes('new')) {
-  fs.writeFileSync('bao.pid', ${JSON.stringify(String(process.pid))});
-} else if (command === 'open') {
-  fs.appendFileSync(${JSON.stringify(effect)}, '1');
-  setTimeout(() => {
-    process.stdout.write(${JSON.stringify(stdout)});
-    process.stderr.write(${JSON.stringify(stderr)});
-    process.exitCode = ${exitCode};
-  }, 300);
-} else {
-  console.log(JSON.stringify({ data: { tabs: [{ active: true, targetId: 'task' }] } }));
-}
-`, { mode: 0o700 });
-    borrowed = await realOpen(f.options, f.deps);
-    t.mock.method(f.socket, "send", async (method: string) => {
-      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
-      if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/task", title: "Task" } };
-      if (method === "Target.attachToTarget") return { sessionId: "shot" };
-      if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB/kAAAAASUVORK5CYII=" };
-      return {};
-    });
-    let polls = 0;
-    f.deps.helper!.exec = async () => { polls++; throw new Error(helperReason); };
-    const proxy = new AgentBrowserProxy({ home, sourceRoot: f.root, executable });
-    try {
-      const [result] = await proxy.execute("open", [], "current");
-      const expected = { stdout, stderr: exitCode ? `${stderr}\nBaoOSHelper: ${helperReason}` : stderr, exitCode };
-      assert.deepEqual(result, expected);
-      assert.ok(polls >= 2);
-      assert.equal(await readFile(effect, "utf8"), "1");
-      await proxy.execute("close");
-      const library = new Library(home);
-      const runs = library.listRuns();
-      assert.equal(runs.length, 1);
-      assert.equal(runs[0]!.status, exitCode ? "failed" : "passed");
-      const step = library.readRun(runs[0]!.id).steps[0] as unknown as RecordedAgentBrowserCommand;
-      assert.equal(step.status, exitCode ? "failed" : "passed");
-      assert.deepEqual(step.native.results[0], expected);
-      assert.equal(step.native.isError, exitCode !== 0);
-    } finally {
-      await proxy.end();
-      borrowed.detach();
-      await rm(f.root, { recursive: true, force: true });
-    }
-  }
 });
 
 for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy drives a background task tab and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
@@ -515,27 +343,30 @@ for (const ending of ["close", "finish", "disconnect"] as const) test(`current p
   const marker = path.join(root, "native-close-called");
   const stateMarker = path.join(root, "native-state");
   const executable = path.join(root, "native");
+  // Like Chrome in approval mode, Bao's shared endpoint has no /json routes and no page sockets: the native agent uses the browser socket.
   await writeFile(executable, `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 const command = args[args.indexOf('--idle-timeout') + 2];
-const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
+const url = args[args.indexOf('--cdp') + 1];
+${LIST_TARGETS}
+const navigate = (targetId, to) => new Promise((resolve, reject) => {
+  const socket = new WebSocket(url);
+  socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Target.attachToTarget', params: { targetId, flatten: true } }));
+  socket.onerror = () => reject(new Error('CDP connection failed'));
+  socket.onmessage = event => {
+    const message = JSON.parse(String(event.data));
+    if (message.id === 1) socket.send(JSON.stringify({ id: 2, method: 'Page.navigate', params: { url: to }, sessionId: message.result.sessionId }));
+    if (message.id === 2) { socket.close(); resolve(); }
+  };
+});
 (async () => {
   fs.writeFileSync(${JSON.stringify(stateMarker)}, process.cwd());
   const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
   if (command === 'close') fs.writeFileSync(${JSON.stringify(marker)}, 'closed');
-  if (command === 'open') {
-    const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    const target = targets.find(t => t.id === bound);
-    await new Promise((resolve, reject) => {
-      const socket = new WebSocket(target.webSocketDebuggerUrl);
-      socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Page.navigate', params: { url: 'data:text/html,<h1>Task</h1>' } }));
-      socket.onmessage = event => { if (JSON.parse(event.data).id === 1) { socket.close(); resolve(); } };
-      socket.onerror = reject;
-    });
-  }
+  if (command === 'open') await navigate(bound, 'data:text/html,<h1>Task</h1>');
   if (command === 'tab' && args.includes('--json')) {
-    const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
+    const targets = await listTargets(url);
     console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, active: t.id === bound })) } }));
   } else console.log('native output');
 })().catch(e => { console.error(e); process.exitCode = 1; });
@@ -547,13 +378,11 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     sent.push({ method, params });
     return send(method, params, sessionId, timeoutMs);
   });
-  let throwConsent = false;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint, cdp, closed: cdp.disconnected,
-    isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => {
-      if (throwConsent) { throwConsent = false; throw new Error("injected consent failure"); }
-      return operation(signal ?? new AbortController().signal);
-    } }));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
   const proxy = new AgentBrowserProxy({ home, sourceRoot: path.join(root, "chrome"), executable, keepOpen: () => true });
   try {
     await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
@@ -571,8 +400,6 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     assert.equal(pages(afterOpen).find(target => target.targetId === binding.targetId)?.url, "data:text/html,<h1>Task</h1>");
     assert.ok(pages(afterOpen).every(target => target.attached === (target.targetId === binding.targetId)),
       "only Bao's focus-emulation session stays attached; recording detaches its per-page sessions");
-    throwConsent = true;
-    await assert.rejects(proxy.execute("snapshot"), /injected consent failure/);
     assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
     const probe = await connectCdp(endpoint.port, endpoint.browserPath);
     let destroyed!: () => void;
@@ -599,7 +426,6 @@ const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
     assert.equal(runs.length, 1);
     assert.equal(runs[0]!.status, "passed");
     const steps = library.readRun(runs[0]!.id).steps as unknown as RecordedAgentBrowserCommand[];
-    // Consent failures leave no command receipt.
     assert.deepEqual(steps.map(step => step.native.command), ["open", "snapshot", ...(ending === "close" ? ["close"] : [])]);
     assert.deepEqual(steps[0]!.native.results, [
       { stdout: "native output\n", stderr: "", exitCode: 0 },
@@ -668,8 +494,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     if (state.closed) throw new Error("reconnect startup reached");
     return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: await trapPort(), browserPath: "/browser" },
-      cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-      withConsent: <T>(operation: () => Promise<T>) => operation() };
+      cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() };
   });
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => ({ target: { portFile: "unused" },
     closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
@@ -936,8 +761,7 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
     fixtures.push(f);
     return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: await trapPort(), browserPath: "/devtools/browser/fixture" },
       cdp: f.socket, closed: f.socket.disconnected, isClosed: () => !f.socket.isOpen,
-      detach: () => f.socket.close(),
-      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+      detach: () => f.socket.close() };
   });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: root, executable });
   const fresh = new AgentBrowserProxy({ home: path.join(root, "fresh"), sourceRoot: root, executable });

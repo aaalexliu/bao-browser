@@ -3,7 +3,8 @@ import { createConnection, type Socket } from "node:net";
 
 /** Local browser socket. The upgrade carries no Origin header. */
 
-const MAX_FRAME = 32 * 1024 * 1024;
+/** Chrome's own DevTools send buffer. Other clients' replies, such as a full-page screenshot, can share Bao's connection. */
+const MAX_FRAME = 256 * 1024 * 1024;
 
 export function handshakeRequest(resource: string, host: string, key: string): string {
   return [
@@ -29,43 +30,48 @@ interface DecodedFrame {
 }
 
 export class ServerFrameDecoder {
-  private buf = Buffer.alloc(0);
+  private chunks: Buffer[] = [];
+  private length = 0;
   private fragments: Buffer[] = [];
   private fragOp = 0;
 
   constructor(private readonly maxFrame = MAX_FRAME) {}
 
   push(chunk: Buffer): DecodedFrame[] {
-    this.buf = Buffer.concat([this.buf, chunk]);
+    if (chunk.length) {
+      this.chunks.push(chunk);
+      this.length += chunk.length;
+    }
     const out: DecodedFrame[] = [];
-    while (this.buf.length >= 2) {
-      const b0 = this.buf[0]!;
-      const b1 = this.buf[1]!;
+    while (this.length >= 2) {
+      const head = this.chunks[0]!.length >= 14 ? this.chunks[0]! : Buffer.concat(this.chunks, Math.min(14, this.length));
+      const b0 = head[0]!;
+      const b1 = head[1]!;
       const fin = (b0 & 0x80) !== 0;
       const opcode = b0 & 0x0f;
       const masked = (b1 & 0x80) !== 0;
       let len = b1 & 0x7f;
       let offset = 2;
       if (len === 126) {
-        if (this.buf.length < 4) break;
-        len = this.buf.readUInt16BE(2);
+        if (this.length < 4) break;
+        len = head.readUInt16BE(2);
         offset = 4;
       } else if (len === 127) {
-        if (this.buf.length < 10) break;
-        const big = this.buf.readBigUInt64BE(2);
+        if (this.length < 10) break;
+        const big = head.readBigUInt64BE(2);
         if (big > BigInt(this.maxFrame)) throw new Error("cdp frame too large");
         len = Number(big);
         offset = 10;
       }
       if (len > this.maxFrame) throw new Error("cdp frame too large");
       const maskLen = masked ? 4 : 0;
-      if (this.buf.length < offset + maskLen + len) break;
-      let payload = Buffer.from(this.buf.subarray(offset + maskLen, offset + maskLen + len));
+      if (this.length < offset + maskLen + len) break;
+      const frame = this.take(offset + maskLen + len);
+      const payload = frame.subarray(offset + maskLen);
       if (masked) {
-        const mask = this.buf.subarray(offset, offset + 4);
+        const mask = frame.subarray(offset, offset + 4);
         for (let i = 0; i < payload.length; i++) payload[i] = payload[i]! ^ mask[i % 4]!;
       }
-      this.buf = Buffer.from(this.buf.subarray(offset + maskLen + len));
       if (opcode === 0) {
         this.fragments.push(payload);
         if (fin) {
@@ -85,6 +91,22 @@ export class ServerFrameDecoder {
       }
       if (opcode === 8 || opcode === 9 || opcode === 10) out.push(this.finish(opcode, payload));
     }
+    return out;
+  }
+
+  /** Removes the first `n` buffered bytes into one new buffer, copying each byte once. */
+  private take(n: number): Buffer {
+    const out = Buffer.allocUnsafe(n);
+    let pos = 0;
+    while (pos < n) {
+      const chunk = this.chunks[0]!;
+      const count = Math.min(chunk.length, n - pos);
+      chunk.copy(out, pos, 0, count);
+      pos += count;
+      if (count === chunk.length) this.chunks.shift();
+      else this.chunks[0] = chunk.subarray(count);
+    }
+    this.length -= n;
     return out;
   }
 
@@ -136,10 +158,29 @@ interface Pending {
 
 type Handler = (params: Record<string, unknown>) => void;
 
+export interface CdpMessage {
+  id?: number;
+  method?: string;
+  sessionId?: string;
+  params?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: { message?: string };
+}
+
+/** Takes the messages of a session that another client owns, and the replies to that client's commands. */
+export type CdpRoute = (text: string, message: CdpMessage) => void;
+
+interface ClientCall {
+  id: number;
+  route: CdpRoute;
+}
+
 export class CdpSocket {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  private readonly calls = new Map<number, ClientCall>();
   private readonly listeners: { method: string; sessionId?: string; handler: Handler }[] = [];
+  private readonly routes = new Map<string, CdpRoute>();
   private closed = false;
   private resolveDisconnected!: () => void;
   readonly disconnected = new Promise<void>((resolve) => { this.resolveDisconnected = resolve; });
@@ -182,19 +223,45 @@ export class CdpSocket {
     this.listeners.push({ method, sessionId, handler });
   }
 
+  /** Sends the messages of `sessionId` to `route` instead of Bao. No route gives them back to Bao. */
+  route(sessionId: string, route: CdpRoute | undefined): void {
+    if (route) this.routes.set(sessionId, route);
+    else this.routes.delete(sessionId);
+  }
+
+  /** Sends a command another client wrote under an id of this socket. Its reply comes back to `route` with the client's id. */
+  write(message: CdpMessage, route: CdpRoute): void {
+    if (this.closed) return;
+    const id = this.nextId++;
+    this.calls.set(id, { id: message.id as number, route });
+    this.socket.write(clientFrame(1, Buffer.from(JSON.stringify({ ...message, id }))));
+  }
+
   takeText(text: string): void {
-    let msg: { id?: number; method?: string; sessionId?: string; params?: Record<string, unknown>; result?: unknown; error?: { message?: string } };
+    let msg: CdpMessage;
     try {
-      msg = JSON.parse(text) as typeof msg;
+      msg = JSON.parse(text) as CdpMessage;
     } catch {
       return;
     }
     if (typeof msg.id === "number") {
+      const call = this.calls.get(msg.id);
+      if (call) {
+        this.calls.delete(msg.id);
+        const reply = { ...msg, id: call.id };
+        call.route(JSON.stringify(reply), reply);
+        return;
+      }
       const waiter = this.pending.get(msg.id);
       if (!waiter) return;
       this.pending.delete(msg.id);
       if (msg.error) waiter.reject(new Error(scrubCdp(msg.error.message || "cdp error")));
       else waiter.resolve(msg.result);
+      return;
+    }
+    const route = msg.sessionId === undefined ? undefined : this.routes.get(msg.sessionId);
+    if (route) {
+      route(text, msg);
       return;
     }
     if (!msg.method) return;
@@ -215,6 +282,7 @@ export class CdpSocket {
     this.closed = true;
     for (const waiter of this.pending.values()) waiter.reject(new Error("cdp closed"));
     this.pending.clear();
+    this.calls.clear();
     this.socket.destroy();
     this.resolveDisconnected();
   }

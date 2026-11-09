@@ -139,8 +139,7 @@ async function harness(t: TestContext, initial: "works" | "refused") {
     if (attach === "refused") throw new Error("Chrome is not open. Open Google Chrome, then try again.");
     const cdp: CdpSocket = await connectCdp(endpoint.port, endpoint.browserPath);
     return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: sourceRoot, endpoint, cdp, closed: cdp.disconnected,
-      isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+      isClosed: () => !cdp.isOpen, detach: () => cdp.close() };
   });
 
   const log = path.join(root, "native.jsonl");
