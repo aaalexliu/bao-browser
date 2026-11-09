@@ -376,7 +376,7 @@ function delay(ms: number): Promise<void> {
 }
 
 /** Startup page Chrome opens when it has no tabs to restore. */
-function startupUrl(url: string): boolean {
+export function startupUrl(url: string): boolean {
   return url === "about:blank"
     || url === ""
     || url.startsWith("chrome://new-tab-page")

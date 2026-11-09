@@ -207,8 +207,8 @@ if (command === 'tab' && args.includes('--json')) {
     try {
       const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; type: string }[] }>("Target.getTargets");
       const pages = targetInfos.filter(target => target.type === "page");
-      assert.equal(pages.length, 1);
-      await cdp.send("Target.closeTarget", { targetId: pages[0]!.targetId });
+      assert.equal(pages.length, 1, "the agent uses the copy's startup tab");
+      for (const page of pages) await cdp.send("Target.closeTarget", { targetId: page.targetId });
       await chrome.closed;
     } finally { cdp.close(); }
     await deleting;
@@ -239,7 +239,7 @@ if (command === 'tab' && args.includes('--json')) {
     const cdp2 = await connectCdp(endpoint2.port, endpoint2.browserPath);
     try {
       const { targetInfos } = await cdp2.send<{ targetInfos: { type: string }[] }>("Target.getTargets");
-      assert.equal(targetInfos.filter(target => target.type === "page").length, 1);
+      assert.equal(targetInfos.filter(target => target.type === "page").length, 1, "the agent uses the new copy's startup tab");
     } finally { cdp2.close(); }
   } finally {
     releaseDelete();
