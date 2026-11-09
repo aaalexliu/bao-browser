@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+import * as net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -17,6 +18,36 @@ test("agent commands that would bring Bao's Chrome forward are answered in place
     { forward: { id: 3, method: "Target.createTarget", params: { url: "https://example.test/", background: true } } });
   const navigate = { id: 4, method: "Page.navigate", params: { url: "https://example.test/" }, sessionId: "S" };
   assert.deepEqual(keepBehind(navigate), { forward: navigate });
+});
+
+test("a refused Chrome debugging connection is retried before the agent gets a gateway error", async () => {
+  const chrome = net.createServer();
+  let attempts = 0;
+  chrome.on("connection", (socket) => {
+    attempts += 1;
+    if (attempts === 1) {
+      socket.destroy();
+      return;
+    }
+    socket.once("data", () => {
+      socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+    });
+  });
+  await new Promise<void>((resolve) => chrome.listen(0, "127.0.0.1", resolve));
+  const port = (chrome.address() as net.AddressInfo).port;
+  const background = await openBackgroundCdp({ port, browserPath: "/devtools/browser/retry" });
+  const socket = new WebSocket(`ws://127.0.0.1:${background.endpoint.port}${background.endpoint.browserPath}`);
+  try {
+    await new Promise((resolve, reject) => {
+      socket.addEventListener("open", resolve, { once: true });
+      socket.addEventListener("error", () => reject(new Error("agent connection failed")), { once: true });
+    });
+    assert.equal(attempts, 2);
+  } finally {
+    socket.close();
+    background.close();
+    await new Promise<void>((resolve) => chrome.close(() => resolve()));
+  }
 });
 
 test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides Bao's own replies", { timeout: 60_000 }, async () => {

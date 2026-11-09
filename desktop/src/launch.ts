@@ -306,8 +306,28 @@ export function stopOwnedChrome(owner: OwnedChromeProcess): void {
   }
 }
 
-/** Trust this launch's stderr endpoint, not whichever listener won the port. */
+/**
+ * A direct Chrome that exits before its debugging port opens is started again.
+ * The macOS open launcher is not: a retry there can leave a second window.
+ */
 async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
+  const direct = guiChromeLaunchArgs(exe, [], "", childHome ?? userInfo().homedir, background) === undefined;
+  const attempts = direct ? 3 : 1;
+  let last: Error | undefined;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await startOwnedChrome(exe, args, userDataDir, childHome, detached, background);
+    } catch (error) {
+      last = error instanceof Error ? error : new Error(String(error));
+      if (attempt === attempts || !/Chrome exited before it opened a debugging port/.test(last.message)) throw last;
+      await delay(200);
+    }
+  }
+  throw last!;
+}
+
+/** Trust this launch's stderr endpoint, not whichever listener won the port. */
+async function startOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
   const port = await ownedDebugPort();
   const stderrFile = path.join(userDataDir, ".bao-chrome-startup.stderr");
   const chromeArgs = args(port);

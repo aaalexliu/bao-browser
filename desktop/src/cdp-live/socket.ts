@@ -225,17 +225,47 @@ export interface ConnectOptions {
   signal?: AbortSignal;
 }
 
+const REFUSED_CONNECTION = new Set(["ECONNREFUSED", "ECONNRESET", "EPIPE", "ETIMEDOUT", "EAI_AGAIN"]);
+
+function refusedConnection(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return typeof code === "string" && REFUSED_CONNECTION.has(code);
+}
+
+/**
+ * Chrome can print its debugging line before the port accepts. A refused connection is retried
+ * until two seconds have passed, and never past the caller's own timeout.
+ */
 export function connectCdp(port: number, browserPath: string, opts: ConnectOptions = {}): Promise<CdpSocket> {
   if (!browserPath.startsWith("/devtools/browser")) {
     return Promise.reject(new Error("refusing a non-browser debugging path"));
   }
-  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const deadline = Date.now() + (opts.timeoutMs ?? 120_000);
+  const retryUntil = Math.min(deadline, Date.now() + 2000);
+  return (async () => {
+    let last: unknown;
+    while (Date.now() <= deadline) {
+      if (opts.signal?.aborted) throw new Error("cdp handshake aborted");
+      try {
+        return await connectCdpOnce(port, browserPath, Math.max(1, deadline - Date.now()), opts.signal);
+      } catch (error) {
+        last = error;
+        if (!refusedConnection(error) || Date.now() >= retryUntil || opts.signal?.aborted) throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, retryUntil - Date.now()))));
+      }
+    }
+    throw last instanceof Error ? last : new Error("cdp handshake timed out");
+  })();
+}
+
+function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, signal?: AbortSignal): Promise<CdpSocket> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const fail = (err: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       socket.destroy();
       reject(err);
     };
@@ -246,7 +276,7 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
     let upgraded = false;
     const timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
     const onAbort = () => fail(new Error("cdp handshake aborted"));
-    opts.signal?.addEventListener("abort", onAbort, { once: true });
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     socket.on("error", (err) => fail(err instanceof Error ? err : new Error(String(err))));
     socket.on("data", (chunk) => {
@@ -269,7 +299,7 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
           if (!settled) {
             settled = true;
             clearTimeout(timer);
-            opts.signal?.removeEventListener("abort", onAbort);
+            signal?.removeEventListener("abort", onAbort);
             resolve(client);
           }
           return;

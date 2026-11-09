@@ -56,18 +56,30 @@ function upgrade(chrome: DevToolsEndpoint): Promise<{ socket: Socket; rest: Buff
 
 /** Joins one agent connection to its own Chrome connection. Each page also gets focus emulation, so it acts as if its window had focus. */
 async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key: string, sockets: Set<Duplex>): Promise<void> {
-  let upstream: Socket;
-  let rest: Buffer;
-  try {
-    ({ socket: upstream, rest } = await upgrade(chrome));
-  } catch {
+  let opened: { socket: Socket; rest: Buffer } | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      opened = await upgrade(chrome);
+      break;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const again = attempt < 2 && (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "EPIPE");
+      if (!again) {
+        client.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  if (!opened) {
     client.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
     return;
   }
-  sockets.add(upstream);
-  const end = () => { client.destroy(); upstream.destroy(); };
-  upstream.once("close", () => { sockets.delete(upstream); client.destroy(); });
-  client.once("close", () => upstream.destroy());
+  const { socket: chromeSocket, rest } = opened;
+  sockets.add(chromeSocket);
+  const end = () => { client.destroy(); chromeSocket.destroy(); };
+  chromeSocket.once("close", () => { sockets.delete(chromeSocket); client.destroy(); });
+  client.once("close", () => chromeSocket.destroy());
   if (client.destroyed) { end(); return; }
   const accept = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
   client.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
@@ -75,7 +87,7 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
   const focused = new Set<string>();
   const own = new Set<number>();
   let nextOwn = FIRST_OWN_ID;
-  const toChrome = (command: CdpCommand) => upstream.write(clientFrame(1, Buffer.from(JSON.stringify(command))));
+  const toChrome = (command: CdpCommand) => chromeSocket.write(clientFrame(1, Buffer.from(JSON.stringify(command))));
   const fromClient = new ServerFrameDecoder(MAX_FRAME);
   const fromChrome = new ServerFrameDecoder(MAX_FRAME);
   const ownReply = (text: string) => {
@@ -98,7 +110,7 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
           const next = keepBehind(command);
           if ("reply" in next) client.write(serverFrame(1, Buffer.from(JSON.stringify({ id: command.id, result: next.reply, ...command.sessionId ? { sessionId: command.sessionId } : {} }))));
           else toChrome(next.forward);
-        } else if (frame.opcode === 2) upstream.write(clientFrame(2, frame.payload!));
+        } else if (frame.opcode === 2) chromeSocket.write(clientFrame(2, frame.payload!));
         else if (frame.opcode === 8) end();
         else if (frame.opcode === 9) client.write(serverFrame(10, frame.payload ?? Buffer.alloc(0)));
       }
@@ -111,15 +123,15 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
         if (frame.opcode === 1 && own.size && frame.payload!.length < 512 && ownReply(frame.text!)) continue;
         if (frame.opcode === 1 || frame.opcode === 2) client.write(serverFrame(frame.opcode, frame.payload!));
         else if (frame.opcode === 8) end();
-        else if (frame.opcode === 9) upstream.write(clientFrame(10, frame.payload ?? Buffer.alloc(0)));
+        else if (frame.opcode === 9) chromeSocket.write(clientFrame(10, frame.payload ?? Buffer.alloc(0)));
       }
     } catch { end(); }
   };
   client.on("data", takeClient).on("error", end).on("end", end);
-  upstream.on("data", takeChrome).on("error", end);
+  chromeSocket.on("data", takeChrome).on("error", end);
   if (head.length) takeClient(head);
   if (rest.length) takeChrome(rest);
-  upstream.resume();
+  chromeSocket.resume();
 }
 
 /** A local endpoint in front of Bao's agent Chrome. Close it when the session ends. */

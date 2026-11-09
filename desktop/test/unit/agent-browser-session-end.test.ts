@@ -45,9 +45,14 @@ if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringif
   console.error('fixture field missing'); process.exitCode = 7;
 } else if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  listTargets(endpoint.href).then(tabs => {
+  const listed = (left) => listTargets(endpoint.href).then((tabs) => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
+  }, (error) => {
+    if (left > 1) return new Promise((resolve) => setTimeout(resolve, 50)).then(() => listed(left - 1));
+    console.error(error && error.message ? error.message : String(error));
+    process.exitCode = 1;
   });
+  listed(4);
 } else process.stdout.write('native success\\n');
 `, { mode: 0o700 });
   const env: NodeJS.ProcessEnv = {
@@ -445,7 +450,9 @@ for (const ending of ["queued-eof", "active-signal"] as const) {
     f.library.updateSettings({ keepAgentBrowserOpen: true });
     const c = f.start();
     await c.request("initialize");
-    assert.equal((await c.call("open")).isError, false);
+    const opened = await c.call("open");
+    const openedText = opened.content?.map((block) => block.text).join("\n") ?? "";
+    assert.equal(opened.isError, false, [openedText, c.diagnostics()].filter(Boolean).join("\n"));
     const copy = await f.copy();
     c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close" } });
     await f.pending();
