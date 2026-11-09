@@ -123,7 +123,7 @@ async function readSourceLogin(options: { sourceRoot: string; directory: string 
     }
     const updates = cookieUpdates(path.join(temporary, "Default"));
     source = await launchOwnedChromeEndpoint({ userDataDir: temporary, childHome: userInfo().homedir, headless: false,
-      loadExtensions: false, appendArgs: ["--no-startup-window"] });
+      loadExtensions: false, background: "none" });
     cdp = await connect(source.portFile);
     const { cookies } = await cdp.send<{ cookies: ChromeCookie[] }>("Storage.getCookies");
     const wanted = cookies.filter((cookie) => cookie.session || cookie.expires > Date.now() / 1000);
@@ -273,7 +273,7 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
     const updates = cookieUpdates(path.join(profile, "Default"));
     launchAttempted = true;
     chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, keychain: "mock", headless: false,
-      loadExtensions: false, detached: options.detached });
+      loadExtensions: false, background: "window", detached: options.detached });
     const browser = chrome;
     const observed = new Map<string, { signature: string; updated: bigint }>();
     const liveCookies = async (initial = false) => {

@@ -276,8 +276,9 @@ test("the owner-wait instruction names the page's ask and sends the owner to the
   assert.match(current, /Ask the owner to sign in to amazon\.com in Bao's task tab in their own Chrome,/);
   assert.match(current, /Bao ends the wait if no wait_for_owner call continues it for 30 minutes\./);
   assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
-  assert.doesNotMatch(current, /Bao window/);
+  assert.doesNotMatch(current, /Bao window|brought/);
   const bao = ownerWaitInstruction(false, { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });
+  assert.match(bao, /^Keep this session open\. Bao brought this window to the front for the owner\. /);
   assert.match(bao, /Ask the owner to finish the check on myaccount\.nytimes\.com in this Bao window,/);
   assert.doesNotMatch(bao, /sign in/);
   assert.match(bao, /On closed, report that the owner closed the window\.$/);

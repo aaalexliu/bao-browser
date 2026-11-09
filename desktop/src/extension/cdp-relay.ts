@@ -5,7 +5,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { ServerFrameDecoder } from "../cdp-live/socket";
+import { ServerFrameDecoder, serverFrame } from "../cdp-live/socket";
 import type { RelayEvent } from "../../../shared/agent-tabs";
 import type { ExtensionLink } from "./link";
 
@@ -18,18 +18,6 @@ interface Tab { tabId: number; targetId: string; url: string; title: string; lea
 interface Lease { id: string; clients: Set<Client>; tabs: Map<number, Tab> }
 interface Client { socket: Duplex; lease: Lease; discover: boolean; autoAttach: boolean; sessions: Map<string, Tab> }
 interface Message { id: number; method: string; params?: Record<string, unknown>; sessionId?: string }
-
-/** A server frame is never masked. */
-function serverFrame(opcode: number, payload: Buffer): Buffer {
-  const length = payload.length;
-  if (length < 126) return Buffer.concat([Buffer.from([0x80 | opcode, length]), payload]);
-  if (length < 65536) return Buffer.concat([Buffer.from([0x80 | opcode, 126, length >> 8, length & 0xff]), payload]);
-  const header = Buffer.alloc(10);
-  header[0] = 0x80 | opcode;
-  header[1] = 127;
-  header.writeBigUInt64BE(BigInt(length), 2);
-  return Buffer.concat([header, payload]);
-}
 
 function sessionId(): string {
   return randomBytes(16).toString("hex").toUpperCase();

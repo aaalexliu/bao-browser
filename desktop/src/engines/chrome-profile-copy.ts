@@ -209,9 +209,10 @@ export async function openCopiedChromeForProxy(options: {
     try { await chrome?.close(); } finally { await copy.close(); }
   })();
   try {
+    const sessions = await readdir(path.join(copy.userDataDir, copy.profileDirectory, "Sessions")).catch(() => []);
     chrome = await launchOwnedChromeEndpoint({
-      userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir,
-      loadExtensions: false, preserveRestoredTabs: true, args: copy.launchArgs, detached: options.detached,
+      userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir, loadExtensions: false, preserveRestoredTabs: true,
+      background: sessions.some((name) => name.startsWith("Session_")) ? "restore" : "window", args: copy.launchArgs, detached: options.detached,
     });
     return {
       target: { kind: "bao", portFile: chrome.portFile }, closed: chrome.closed, close,

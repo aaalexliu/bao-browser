@@ -22,6 +22,7 @@ import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
 import { diffView, findView, snapshotView } from "./snapshot-view";
 import { AGENT_IDLE_REASON } from "../v1/stop-copy";
+import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -92,7 +93,8 @@ interface SessionData {
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
 type Opened = { pick: BrowserPick } & (
-  | { kind: "copy"; chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>> }
+  /** Bao's own agent Chrome. The native agent reaches it through `background`, which keeps it behind the owner's apps. */
+  | { kind: "copy"; chrome: OwnedChrome; background: BackgroundCdp }
   /** The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. */
   | { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string }
   /** The owner's running Chrome through the gated Bao extension relay. */
@@ -100,6 +102,30 @@ type Opened = { pick: BrowserPick } & (
 );
 
 type Session = SessionData & Opened;
+type OwnedChrome = Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>>;
+
+/**
+ * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
+ * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
+ * owner's app keeps the keyboard until he clicks the window.
+ */
+async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<void> {
+  const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
+  const { bounds } = await cdp.send<{ bounds: { windowState: string } }>("Browser.getWindowBounds", { windowId }, undefined, 2000);
+  if (bounds.windowState === "normal") await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "minimized" } }, undefined, 2000);
+  if (bounds.windowState === "normal" || bounds.windowState === "minimized") {
+    await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }, undefined, 2000);
+  }
+}
+
+async function behind(chrome: OwnedChrome): Promise<{ chrome: OwnedChrome; background: BackgroundCdp }> {
+  try {
+    return { chrome, background: await openBackgroundCdp(await readDevToolsActivePort(chrome.target.portFile)) };
+  } catch (error) {
+    await chrome.close();
+    throw error;
+  }
+}
 
 function ownerWaitPage(session: Session): OwnerPage | undefined {
   const wait = session.ownerWait;
@@ -483,14 +509,14 @@ export class AgentBrowserProxy {
       case "bao": {
         const detached = this.options.keepOpen?.() === true;
         const source = plan.profile ? { sourceRoot: plan.profile.root, directory: plan.profile.directory } : { unread: plan.unread };
-        const chrome = await openBaoChromeForProxy({ ...source, home: this.options.home, detached, site });
-        return { kind: "copy", chrome, pick: { route: "bao", why, chrome: resolveNormalChrome(), userDataDir: baoAgentProfileDir(this.options.home),
+        const opened = await behind(await openBaoChromeForProxy({ ...source, home: this.options.home, detached, site }));
+        return { kind: "copy", ...opened, pick: { route: "bao", why, chrome: resolveNormalChrome(), userDataDir: baoAgentProfileDir(this.options.home),
           ...plan.profile ? { profile: plan.profile } : { unread: plan.unread } } };
       }
       case "copy": {
-        const chrome = await openCopiedChromeForProxy({ sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home,
-          detached: this.options.keepOpen?.() === true });
-        return { kind: "copy", chrome, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(chrome.target.portFile) } };
+        const opened = await behind(await openCopiedChromeForProxy({ sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home,
+          detached: this.options.keepOpen?.() === true }));
+        return { kind: "copy", ...opened, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(opened.chrome.target.portFile) } };
       }
     }
   }
@@ -526,7 +552,7 @@ export class AgentBrowserProxy {
       await writeFile(config, "{}", { mode: 0o600 });
       // agent-browser selects this session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
       if (browser.kind === "current") await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
-      const endpoint = browser.kind === "current" ? browser.chrome.endpoint : await readDevToolsActivePort(browser.chrome.target.portFile);
+      const endpoint = browser.kind === "current" ? browser.chrome.endpoint : browser.background.endpoint;
       return {
         stateDir,
         flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`, "--idle-timeout", "0"],
@@ -548,8 +574,10 @@ export class AgentBrowserProxy {
       if (browser.relay) await browser.chrome.cdp.send("Bao.closeTabs", {}, undefined, 5000).catch(() => undefined);
       else for (const targetId of browser.taskTabs) await browser.chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
       browser.chrome.detach();
+    } else {
+      browser.background.close();
+      await browser.chrome.close();
     }
-    else await browser.chrome.close();
   }
 
   /** Ends the session when its browser closes under it, unless Bao closed that browser itself. */
@@ -609,7 +637,7 @@ export class AgentBrowserProxy {
       }
       return fail(error);
     }
-    const old = { chrome: session.chrome, stateDir: session.stateDir };
+    const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = !!session.ownerWait;
     Object.assign(session, next, wired, { ownerWait: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
@@ -620,6 +648,7 @@ export class AgentBrowserProxy {
     try { await this.stopDaemon(old.stateDir); }
     catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
     finally {
+      old.background.close();
       await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
       await rm(old.stateDir, { recursive: true, force: true });
     }
@@ -705,9 +734,12 @@ export class AgentBrowserProxy {
     let attached: string | undefined;
     try {
       // The extension keeps the task tab folded in Bao's group and opens the group while the owner has to act in it.
-      // Over remote debugging the background task tab comes to the front when the owner has to act in it.
+      // Otherwise the tab and its window come to the front when the owner has to act in it. Bao's own Chrome stays behind until then.
       if (session.kind === "current" && session.relay) await cdp.send(waiting ? "Bao.showTab" : "Bao.settleTab", { targetId }, undefined, 2000);
-      else if (session.kind === "current" && waiting) await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
+      else if (waiting) {
+        await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
+        if (session.kind === "copy" && process.platform === "darwin") await windowOnTop(cdp, targetId).catch(() => undefined);
+      }
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
       const expression = waiting ? `(() => {
@@ -978,6 +1010,7 @@ export class AgentBrowserProxy {
         try {
           try { await this.stopDaemon(session.stateDir); }
           finally {
+            if (session.kind === "copy") session.background.close();
             if (session.kind === "current" && session.relay) {
               // The lease holds every tab Bao opened in the owner's Chrome, including the agent's tab new and popups.
               // Detaching without closing hands them to the owner.

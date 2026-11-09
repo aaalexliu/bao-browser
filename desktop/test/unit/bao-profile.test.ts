@@ -78,10 +78,10 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
     assert.deepEqual(chrome.signIn, { origin: site, found: 1, cookies: 1, storage: 1 }, "the open's import says what it read and wrote");
     assert.equal(launchOptions.length, 2);
     assert.equal(launchOptions[0]!.headless, false, "source Chrome keeps OS-keychain access");
-    assert.deepEqual(launchOptions[0]!.appendArgs, ["--no-startup-window"], "sign-in extraction creates no window");
+    assert.equal(launchOptions[0]!.background, "none", "sign-in extraction creates no window");
     assert.equal(launchOptions[0]!.keychain, undefined);
     assert.equal(launchOptions[1]!.headless, false, "the lasting Bao browser still opens its window");
-    assert.equal(launchOptions[1]!.appendArgs, undefined);
+    assert.equal(launchOptions[1]!.background, "window", "behind the owner's apps");
     assert.equal(launchOptions[1]!.keychain, "mock");
     let page = await inspect();
     try {
@@ -98,7 +98,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.deepEqual(await chrome.importLogin("https://storage.test/"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 1 });
       assert.deepEqual(await chrome.importLogin("https://storage.test/another-path"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 0 });
       assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
-      assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--no-startup-window"], "later sign-in refreshes also create no window");
+      assert.equal(launchOptions.at(-1)!.background, "none", "later sign-in refreshes also create no window");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
     assert.notDeepEqual(launches.pidsForDataDir(baoAgentProfileDir(home)), []);

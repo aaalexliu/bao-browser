@@ -94,6 +94,18 @@ export class ServerFrameDecoder {
   }
 }
 
+/** A server frame is never masked. */
+export function serverFrame(opcode: number, payload: Buffer): Buffer {
+  const length = payload.length;
+  if (length < 126) return Buffer.concat([Buffer.from([0x80 | opcode, length]), payload]);
+  if (length < 65536) return Buffer.concat([Buffer.from([0x80 | opcode, 126, length >> 8, length & 0xff]), payload]);
+  const header = Buffer.alloc(10);
+  header[0] = 0x80 | opcode;
+  header[1] = 127;
+  header.writeBigUInt64BE(BigInt(length), 2);
+  return Buffer.concat([header, payload]);
+}
+
 export function clientFrame(opcode: number, payload: Buffer): Buffer {
   const mask = randomBytes(4);
   let header: Buffer;

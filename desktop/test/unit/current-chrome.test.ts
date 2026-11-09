@@ -764,8 +764,8 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
-  await f.proxy.execute("wait_for_owner", ["1"]);
-  assert.deepEqual(f.state.activations, []);
+  await f.proxy.execute("wait_for_owner", ["50"]);
+  assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner's handoff brings Bao's window forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   f.state.taskGone = true;
   const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);

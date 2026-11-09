@@ -238,7 +238,9 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     assert.deepEqual(filled.args.slice(-3), ["fill", "@e2", text]);
     const flags = records[0]!.args;
     assert.equal(flags[flags.indexOf("--session") + 1], "bao");
-    assert.equal(flags[flags.indexOf("--cdp") + 1], "ws://127.0.0.1:12345/devtools/browser/proxy-test");
+    const cdp = flags[flags.indexOf("--cdp") + 1]!;
+    assert.match(cdp, /^ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[0-9a-f-]{36}$/, "the agent reaches Chrome through Bao's endpoint, which keeps it behind");
+    assert.notEqual(cdp, "ws://127.0.0.1:12345/devtools/browser/proxy-test");
     assert.equal(flags.includes("--profile"), false);
     assert.equal(flags.includes("--executable-path"), false);
     assert.equal(flags[flags.indexOf("--idle-timeout") + 1], "0");

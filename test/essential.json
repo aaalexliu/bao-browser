@@ -96,6 +96,7 @@
       "desktop/test/unit/mcp-viewer-client.test.ts",
       "desktop/test/unit/mcp-viewer-design.test.ts",
       "desktop/test/unit/agent-browser-proxy.test.ts",
+      "desktop/test/unit/background-cdp.test.ts",
       "desktop/test/unit/driver-fixes.test.ts",
       "desktop/test/unit/capture.test.ts",
       "desktop/test/unit/human-envelope.test.ts"
