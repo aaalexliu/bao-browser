@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import type { Page } from "playwright";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
-import { browserToolResult, finishToolResult, profileQuestionResult, type BrowserToolCard } from "../../src/mcp/tool-card";
+import { browserToolResult, finishToolResult, profileQuestionResult, textToolResult, type BrowserToolCard } from "../../src/mcp/tool-card";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import { callViewerTool } from "../../src/mcp/viewer-tools";
 import { getRun } from "../../src/mcp/catalog";
@@ -606,8 +606,23 @@ test("the Chrome profile question is a sentence and the exact retry call, with a
     'Chrome has 2 profiles in /Chrome, so Bao opened nothing. Choose one: "Default" (Alex, alex@example.test); "Profile 2" (Work), picked in Bao Settings.',
     'To continue, call agent_browser again with the folder of the profile you choose: {"command":"open","args":["https://example.test/"],"browser":"bao","profile":"Profile 2"}',
   ]);
-  assert.deepEqual(result.structuredContent, { command: "open", status: "waiting", run_id: null, step_id: null,
+  assert.deepEqual(result.structuredContent, { command: "open", status: "needs_profile", run_id: null, step_id: null,
+    summary: result.content[0]!.text, retry: result.content[1]!.text,
     profiles: [{ directory: "Default", name: "Alex", email: "alex@example.test" }, { directory: "Profile 2", name: "Work", email: "", pickedInSettings: true }] });
   assert.deepEqual([result.isError, result._meta?.baoToolCard.style, result._meta?.baoToolCard.caption], [false, "text", result.content[0]!.text]);
   assert.equal("_meta" in profileQuestionResult(question, { command: "open" }, false), false);
+});
+
+test("an owner wait and finish_task carry the browser lines in structuredContent, which Codex and Claude Code read instead of text", () => {
+  const browser = ['Browser: Bao profile, Chrome profile "Default".', 'If the site asks for a sign-in that did not carry over, the fallback is the owner\'s running Chrome.'];
+  const wait = textToolResult([{ stdout: JSON.stringify({ outcome: "waiting", instruction: "Keep waiting." }), stderr: "", exitCode: 0 }],
+    "Waited for the owner.", ["Current Chrome: note.", ...browser], browser, "run-1");
+  assert.deepEqual(wait.structuredContent, { summary: "Waited for the owner.", outcome: "waiting", instruction: "Keep waiting.", browser });
+  assert.deepEqual(wait.content.slice(-3).map((block) => block.text), ["Current Chrome: note.", ...browser]);
+  const plain = textToolResult([{ stdout: "snapshot\n", stderr: "", exitCode: 0 }], "Read the page.", browser, browser);
+  assert.equal("structuredContent" in plain, false, "an ordinary result keeps its words in text blocks");
+  const finished = finishToolResult(undefined, { run_id: "run-1", status: "passed" }, false, browser.slice(0, 1));
+  assert.deepEqual(finished.structuredContent, { summary: "No browser task was open.", run_id: "run-1", status: "passed", browser: browser.slice(0, 1) });
+  assert.equal(finished.content.at(-1)!.text, browser[0]);
+  assert.equal("browser" in finishToolResult(undefined, { run_id: "run-1", status: "passed" }, false).structuredContent, false);
 });

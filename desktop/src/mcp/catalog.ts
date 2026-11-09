@@ -269,7 +269,7 @@ export async function runWorkflow(
   const savedCopy = placed && !placed.local ? materializeWorkflow(library, placed) : undefined;
   const loaded = request.document ? parseWorkflow(request.document) : (savedCopy ?? placed!.document);
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
-  const fileRefusal = runningChromeRefusal(browser, workflow, library.settings().runningChromeExtension === true);
+  const fileRefusal = runningChromeRefusal(browser, workflow);
   if (fileRefusal) return emptyOutcome(id, "failed", fileRefusal);
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";

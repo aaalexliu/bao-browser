@@ -313,16 +313,18 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
     results = ctx.proxy.lastCommand?.step.native.results ?? [];
     error = cause instanceof Error ? cause.message : String(cause);
   }
-  const notice = [...ctx.proxy.pickLines, ...ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : []];
+  const picked = ctx.proxy.pickLines;
+  const notice = [...picked, ...ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : []];
   const command = String(args.command || "");
   const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [], owner: ctx.proxy.ownerPage, current: ctx.proxy.currentChrome };
   if (!ctx.ui) {
     const current = args.browser === "current" ? ["Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open."] : [];
-    return textToolResult(results, stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts), [...current, ...notice],
+    return textToolResult(results, stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts), [...current, ...notice], picked,
       ctx.proxy.lastCommand?.runId ?? ctx.proxy.activeRunId ?? activeRunId);
   }
   const result = browserToolResult(command, results, ctx.proxy.lastCommand, ctx.proxy.activeRunId ?? activeRunId, error, facts);
-  return { ...result, content: [...result.content, ...notice.map((text) => ({ type: "text" as const, text }))] };
+  return { ...result, content: [...result.content, ...notice.map((text) => ({ type: "text" as const, text }))],
+    structuredContent: { ...result.structuredContent, ...picked.length ? { browser: picked } : {} } };
 }
 
 async function callTool(library: Library, identity: LibraryIdentity, name: string, args: Record<string, unknown>): Promise<unknown> {

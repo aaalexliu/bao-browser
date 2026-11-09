@@ -29,7 +29,7 @@ Bao fixes one session in a private socket directory, installed Google Chrome, an
 
 ### Choose the Chrome profile
 
-The first `open` names the Chrome profile folder with `profile`, such as `"Default"` or `"Profile 2"`. Bao lists the `Default` and `Profile N` folders in Chrome's user-data-dir, with display names and account emails from Chrome's `Local State`. When Chrome has one profile, Bao uses it and says so. When Chrome has more than one and the call names none, Bao opens nothing and records no run. The result's sentence lists every profile with its folder, name, and email, marks the one picked in Bao Settings, and the next text block gives the exact call to retry. `structuredContent` lists the same profiles. A folder Chrome does not have is an error that lists the valid ones. Bao never falls back to `Default` on its own.
+The first `open` names the Chrome profile folder with `profile`, such as `"Default"` or `"Profile 2"`. Bao lists the `Default` and `Profile N` folders in Chrome's user-data-dir, with display names and account emails from Chrome's `Local State`. When Chrome has one profile, Bao uses it and says so. When Chrome has more than one and the call names none, Bao opens nothing and records no run. The result's sentence lists every profile with its folder, name, and email, marks the one picked in Bao Settings, and the next text block gives the exact call to retry. `structuredContent` has status `needs_profile`, not an owner wait, with the sentence as `summary`, the call as `retry`, and the same profiles. A folder Chrome does not have is an error that lists the valid ones. Bao never falls back to `Default` on its own.
 
 ```json
 {"command":"open","args":["https://www.nytimes.com/"],"browser":"bao","profile":"Default"}

@@ -1181,7 +1181,7 @@ export async function startApp(opts: {
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
-        const fileRefusal = runningChromeRefusal(browser?.choice, workflow, library.settings().runningChromeExtension === true);
+        const fileRefusal = runningChromeRefusal(browser?.choice, workflow);
         if (fileRefusal) return json(res, { error: fileRefusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;

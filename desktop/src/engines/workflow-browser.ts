@@ -36,9 +36,9 @@ const movesFile = (step: WorkflowStep): boolean =>
   step.action === "download" || step.action === "upload" || step.action === "drop"
   || (step.action === "for_each" && step.forEach.steps.some(movesFile));
 
-/** Running Chrome through the extension cannot download or upload files yet, so a workflow that does either is refused before it opens a tab. */
-export function runningChromeRefusal(browser: BrowserChoice | undefined, workflow: { steps: WorkflowStep[] }, extensionRoute: boolean): string | undefined {
-  return browser === "current" && extensionRoute && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
+/** Running Chrome cannot download or upload files yet, so a workflow that does either is refused before it opens a tab. */
+export function runningChromeRefusal(browser: BrowserChoice | undefined, workflow: { steps: WorkflowStep[] }): string | undefined {
+  return browser === "current" && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
 }
 
 /** The Chrome profile a saved workflow runs with: the one picked in Bao Settings, or the only one. Never a silent "Default". */
