@@ -9,6 +9,7 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { ChromeProfileQuestion } from "../../src/engines/browser-pick";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
+import { trapPort } from "../support/trap-port";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
@@ -761,7 +762,7 @@ test("a copy that stops for sign-in names the Running Chrome fallback on the sam
       },
     } as unknown as sockets.CdpSocket;
     t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: f.sourceRoot,
-      endpoint: { port: 9222, browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
+      endpoint: { port: await trapPort(), browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
       withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
     assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"))[0]!.exitCode, 0);
     assert.equal(f.proxy.pickLines[0], `Browser: Running Chrome over remote debugging, fallback after a sign-in wall. Chrome app: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. User data: ${f.sourceRoot}. Profile: "Profile 2" (Synthetic) in ${f.sourceRoot}, named by the agent. Bao's task tab opened in the background.`);
@@ -785,7 +786,7 @@ function fakeOwnerChrome(t: TestContext, root: string) {
     },
   } as unknown as sockets.CdpSocket;
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root,
-    endpoint: { port: 9222, browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
+    endpoint: { port: await trapPort(), browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
     withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
 }
 

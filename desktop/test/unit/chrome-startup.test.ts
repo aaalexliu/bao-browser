@@ -8,6 +8,7 @@ import test from "node:test";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { CdpSocket, connectCdp } from "../../src/cdp-live/socket";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
+import { trapPort } from "../support/trap-port";
 
 pinTestBrowser();
 
@@ -20,13 +21,14 @@ test("owned Chrome publishes its own nonzero debugging endpoint, replacing a sta
   });
   const root = await mkdtemp(path.join(tmpdir(), "bao-startup-marker-"));
   const portFile = path.join(root, "DevToolsActivePort");
-  await writeFile(portFile, "9222\n/devtools/browser/stale\n");
+  const stalePort = await trapPort();
+  await writeFile(portFile, `${stalePort}\n/devtools/browser/stale\n`);
   const chrome = await launchOwnedChromeEndpoint({ userDataDir: root, headless: true });
   try {
     assert.equal(chrome.portFile, portFile);
     assert.deepEqual(sent, ["Target.setDiscoverTargets"], "Bao startup must not enable renderer domains or inject scripts");
     const endpoint = await readDevToolsActivePort(portFile);
-    assert.notEqual(endpoint.port, 9222);
+    assert.notEqual(endpoint.port, stalePort);
     assert.notEqual(endpoint.browserPath, "/devtools/browser/stale");
     const pid = pidsForDataDir(root)[0]!;
     const { execFileSync } = await import("node:child_process");

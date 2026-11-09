@@ -14,6 +14,7 @@ import * as launch from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
+import { trapPort } from "../support/trap-port";
 
 launch.pinTestBrowser();
 
@@ -47,7 +48,7 @@ for (const { mode, force, deny } of [
   await chromeProfiles(path.join(root, "source"));
   fakeTaskTab(t);
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({
-    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: 9222, browserPath: "/fixture" },
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: await trapPort(), browserPath: "/fixture" },
     cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
       method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
@@ -122,7 +123,7 @@ test("a close after the owner's Chrome ended still names the owner's Chrome", { 
   await chromeProfiles(path.join(root, "source"));
   fakeTaskTab(t);
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({
-    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: 9222, browserPath: "/fixture" },
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: await trapPort(), browserPath: "/fixture" },
     cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
       method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),

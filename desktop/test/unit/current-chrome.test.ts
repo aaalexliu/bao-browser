@@ -17,6 +17,7 @@ import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
+import { trapPort } from "../support/trap-port";
 
 pinTestBrowser();
 
@@ -99,7 +100,7 @@ async function fixture(on = false) {
   const options = { root, axLog: path.join(root, "ax.jsonl") };
   const deps: NonNullable<Parameters<typeof currentChrome.openCurrentChrome>[1]> = {
     helper, findChrome: async () => state.pids, executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    readPort: async () => ({ port: 9222, browserPath: "/devtools/browser/fixture" }),
+    readPort: async () => ({ port: await trapPort(), browserPath: "/devtools/browser/fixture" }),
     listener: async () => state.on ? 7 : undefined,
     connect: async () => { state.connected = true; return socket; },
   };
@@ -666,7 +667,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   } as unknown as CdpSocket;
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     if (state.closed) throw new Error("reconnect startup reached");
-    return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: 9222, browserPath: "/browser" },
+    return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: await trapPort(), browserPath: "/browser" },
       cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
       withConsent: <T>(operation: () => Promise<T>) => operation() };
   });
@@ -701,7 +702,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
 for (const keepOpen of [false, true]) test(`idle backstop releases an owned session with keep-open=${keepOpen}`, async (t) => {
   const f = await lifecycleFixture(t, keepOpen);
   const endpoint = await import("../../src/cdp-live/endpoint");
-  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
@@ -763,7 +764,7 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
 for (const keepOpen of [false, true]) test(`a copied session whose waiting tab closed still expires with keep-open=${keepOpen}`, async (t) => {
   const f = await lifecycleFixture(t, keepOpen);
   const endpoint = await import("../../src/cdp-live/endpoint");
-  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
@@ -791,7 +792,7 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     t.after(() => { Object.defineProperty(process, "platform", platform); });
     const f = await lifecycleFixture(t);
     const endpoint = await import("../../src/cdp-live/endpoint");
-    t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+    t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
     const socket = await import("../../src/cdp-live/socket");
     t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
     f.state.windowState = windowState;
@@ -806,7 +807,7 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
 test("finish_task during async window cleanup applies the same session's checked outcome", async (t) => {
   const f = await lifecycleFixture(t);
   const endpoint = await import("../../src/cdp-live/endpoint");
-  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
@@ -933,7 +934,7 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const f = await fixture(true);
     fixtures.push(f);
-    return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: 9222, browserPath: "/devtools/browser/fixture" },
+    return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: await trapPort(), browserPath: "/devtools/browser/fixture" },
       cdp: f.socket, closed: f.socket.disconnected, isClosed: () => !f.socket.isOpen,
       detach: () => f.socket.close(),
       withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };

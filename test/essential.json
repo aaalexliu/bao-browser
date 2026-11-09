@@ -67,9 +67,10 @@
   },
   "isolation": {
     "kind": "desktop",
-    "reason": "Safety: native and extension permissions, daily-profile refusal, model-account isolation, signed helper identity, staged secret owner, and camera/microphone denial.",
+    "reason": "Safety: native and extension permissions, the test guard for the owner's Chrome port, daily-profile refusal, model-account isolation, signed helper identity, staged secret owner, and camera/microphone denial.",
     "tests": [
       "desktop/test/unit/home.test.ts",
+      "desktop/test/unit/connection-guard.test.ts",
       "desktop/test/unit/launch.test.ts",
       "desktop/test/unit/installed-bundle.test.ts",
       "desktop/test/unit/install-scripts.test.ts",

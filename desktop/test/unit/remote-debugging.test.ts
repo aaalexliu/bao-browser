@@ -23,6 +23,7 @@ import {
 import { MacOsHelper, type AxHit } from "../../src/proxy/os-macos";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as launch from "../../src/launch";
+import { trapPort } from "../support/trap-port";
 
 const DIR = "/Users/me/Library/Application Support/Google/Chrome";
 const PORT_FILE = `${DIR}/DevToolsActivePort`;
@@ -80,8 +81,8 @@ function fakeChrome(start: { on: boolean; inspectOpen: boolean }) {
       assert.equal(dir, DIR);
       return state.pids;
     },
-    readPort: async () => ({ port: 9222, browserPath: "/devtools/browser/x" }),
-    listener: async (port) => (state.on && !state.portStuck && port === 9222 ? 7 : undefined),
+    readPort: async () => ({ port: await trapPort(), browserPath: "/devtools/browser/x" }),
+    listener: async (port) => (state.on && !state.portStuck && port === await trapPort() ? 7 : undefined),
     sleep: async () => undefined,
     timeoutMs: 1_000,
   };
@@ -114,13 +115,13 @@ test("synthetic profile discovery excludes untagged owner Chrome", async (t) => 
 
 test("Bao opens the inspect page, presses the checkbox on, and waits for Chrome to listen", async () => {
   const { state, deps } = fakeChrome({ on: false, inspectOpen: false });
-  assert.deepEqual(await setRemoteDebugging(true, deps), { pid: 7, pressed: true, opened: true, port: 9222, already: false });
+  assert.deepEqual(await setRemoteDebugging(true, deps), { pid: 7, pressed: true, opened: true, port: await trapPort(), already: false });
   assert.deepEqual([state.opened, state.presses, state.closed], [1, 1, 1]);
 });
 
 test("a Chrome that already listens is left as it is", async () => {
   const { state, deps } = fakeChrome({ on: true, inspectOpen: false });
-  assert.deepEqual(await setRemoteDebugging(true, deps), { pid: 7, pressed: false, opened: false, port: 9222, already: true });
+  assert.deepEqual(await setRemoteDebugging(true, deps), { pid: 7, pressed: false, opened: false, port: await trapPort(), already: true });
   assert.deepEqual([state.opened, state.presses], [0, 0]);
 });
 
@@ -220,7 +221,7 @@ test("a granted prompt resumes the toggle and clears the app notice", async () =
   state.gate = { ok: true, wouldPrompt: true };
   const notices: string[] = [];
   deps.onNotice = (message) => notices.push(message);
-  assert.equal((await setRemoteDebugging(true, deps)).port, 9222);
+  assert.equal((await setRemoteDebugging(true, deps)).port, await trapPort());
   assert.deepEqual(notices, [AUTOMATION_PROMPT, ""]);
   assert.equal(state.closed, 1);
 });
