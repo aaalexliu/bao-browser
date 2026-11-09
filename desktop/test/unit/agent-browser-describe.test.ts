@@ -148,16 +148,32 @@ test("owner waits name the site and page, and the return names where Bao is now"
   assert.deepEqual(waiting.owner, { kind: "sign-in", site: "amazon.com", url: owner.url, title: owner.title });
   const check = describeStep({ command: "open", args: ["https://shop.example"], results: reply("halted"), owner: { url: "https://shop.example/", title: "Just a moment..." } });
   assert.match(check.text, /^Your turn: clear the check on shop\.example in Bao's Chrome window\./);
-  const ready = describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page });
+  const ready = describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page, owner });
   const since = Date.UTC(2026, 10, 8, 8, 0, 0);
   const later = describeStep({ command: "wait_for_owner", args: ["60000"], results: reply("waiting"), owner: { ...owner, since }, at: since + 245_000 });
-  assert.equal(later.text, 'Your turn: sign in to amazon.com in Bao\'s Chrome window. The page is "Amazon Sign-In" (https://www.amazon.com/ap/signin?openid=1), waiting 4:05. Bao reads only the title and address until the page changes.');
+  assert.equal(later.text, 'Your turn: sign in to amazon.com in Bao\'s Chrome window. The page is "Amazon Sign-In" (https://www.amazon.com/ap/signin?openid=1), waiting 4 min. Bao reads only the title and address until the page changes.');
   assert.equal(later.owner?.waitedMs, 245_000);
   const halted = describeStep({ command: "click", args: ["@e5"], results: reply("halted"), owner: { ...owner, since }, at: since + 61_000 });
-  assert.match(halted.text, /, waiting 1:01\. /, "a halted step counts from the same handoff start");
+  assert.match(halted.text, /, waiting 1 min\. /, "a halted step counts from the same handoff start");
   assert.equal(ready.text, 'Back from sign-in: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
   const cleared = describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page, owner: { url: "https://shop.example/", title: "Just a moment..." } });
   assert.equal(cleared.text, 'Back from the check: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
+});
+
+test("an owner wait names what the page asks and reads its time in words", () => {
+  const since = Date.UTC(2026, 10, 9, 2, 59, 0);
+  const wait = (url: string, title: string, ms = 0) =>
+    describeStep({ command: "wait_for_owner", args: ["60000"], results: reply("waiting"), owner: { url, title, since }, at: since + ms });
+  const confirm = wait("https://myaccount.nytimes.com/auth/login", "Confirm your account", (9 * 60 + 53) * 60_000 + 1000);
+  assert.equal(confirm.text, 'Your turn: finish the check on myaccount.nytimes.com in Bao\'s Chrome window. The page is "Confirm your account" (https://myaccount.nytimes.com/auth/login), waiting 9 h 53 min. Bao reads only the title and address until the page changes.');
+  assert.equal(confirm.owner?.kind, "other", "a device check on a sign-in address is never called a sign-in");
+  assert.match(wait("https://github.com/sessions/two-factor", "Two-factor authentication").text, /^Your turn: finish the check on github\.com in /);
+  assert.match(wait("https://shop.example/mfa", "Shop").text, /^Your turn: finish the check on shop\.example in /);
+  assert.match(wait("https://www.nytimes.com/article/pizza.html", "The New York Times", 45_000).text,
+    /^Your turn: finish the check on nytimes\.com in Bao's Chrome window\. .*, waiting 45 s\. /, "an unrecognized page is never called a sign-in");
+  assert.match(wait("https://shop.example/login", "Shop", 2 * 3600_000).text, /^Your turn: sign in to shop\.example in .*, waiting 2 h\. /);
+  assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page, owner: { url: "https://shop.example/a", title: "Verify your identity" } }).text,
+    'Back from the check: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
 });
 
 test("a closed session names the browser that ended", () => {
@@ -173,10 +189,10 @@ test("steps in the owner's own Chrome name that Chrome, not a Bao window", () =>
     describeStep({ command, args: [], results, ...more, current: true }).text;
   assert.match(say("wait_for_owner", reply("waiting"), { owner }), /^Your turn: sign in to amazon\.com in your Chrome\. /);
   assert.match(say("open", reply("halted"), { owner: { url: "https://shop.example/", title: "Just a moment..." } }), /^Your turn: clear the check on shop\.example in your Chrome\. /);
-  assert.equal(say("wait_for_owner", reply("waiting")), "Your turn: finish the sign-in or check in your Chrome.");
+  assert.equal(say("wait_for_owner", reply("waiting")), "Your turn: finish the check on the page in your Chrome.");
   assert.equal(say("close", ok("Disconnected from the owner's own Chrome.\n")), "Closed Bao's task tab in your Chrome.");
   assert.equal(say("close", [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }]), "Could not close Bao's task tab.");
-  assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("waiting") }).text, "Your turn: finish the sign-in or check in Bao's Chrome window.");
+  assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("waiting") }).text, "Your turn: finish the check on the page in Bao's Chrome window.");
   assert.equal(describeStep({ command: "close", args: [], results: [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }] }).text, "Could not close the window.");
 });
 

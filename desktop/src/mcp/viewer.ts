@@ -217,9 +217,13 @@ function viewerMain(): void {
     }
     return target;
   }
-  function clock(ms: number): string {
-    const seconds = Math.max(0, Math.round(ms / 1000));
-    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  /** The same words as `waited` in agent-browser-describe.ts, which this bundled script cannot import. */
+  function waited(ms: number): string {
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    if (seconds < 60) return `${seconds} s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} min`;
+    return minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes / 60} h`;
   }
   /** Only the box goes on the page picture, so no label ever covers the text around the target. */
   function mark(target: NonNullable<Extract<BrowserToolCard["picture"], { kind: "captured" }>["target"]>): HTMLElement {
@@ -303,7 +307,7 @@ function viewerMain(): void {
       const line = el("p", undefined, "muted");
       if (card.owner.title) line.append(el("q", card.owner.title, "cite"), " · ");
       line.append(el("span", card.owner.url, "mono"));
-      if (card.owner.waitedMs !== undefined) line.append(` · waiting ${clock(card.owner.waitedMs)}`);
+      if (card.owner.waitedMs !== undefined) line.append(` · waiting ${waited(card.owner.waitedMs)}`);
       body.append(line);
     } else if (card.page?.url) body.append(el("p", card.page.url, "mono"));
     if (card.status === "waiting") body.append(el("p", "Bao keeps no picture of this page. It reads only the title and address until the page changes.", "muted"));

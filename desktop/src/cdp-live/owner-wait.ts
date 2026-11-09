@@ -18,12 +18,44 @@ export function ownerWall(page: OwnerPage): OwnerWall | null {
   return null;
 }
 
+/** What the page asks the owner to do, read from its title first, then its address. */
+export type OwnerAsk = "sign-in" | "check" | "other";
+
+export function ownerAsk(page: OwnerPage): OwnerAsk {
+  if (ownerWall(page) === "bot_wall") return "check";
+  const { title } = page;
+  if (/\b(?:confirm|verify|verification|code|two.factor|two.step|2.step)\b/i.test(title)) return "other";
+  if (/\b(?:sign[ -]?in|log[ -]?in)\b/i.test(title)) return "sign-in";
+  let path = "";
+  try { path = new URL(page.url).pathname; } catch {}
+  if (/(?:^|\/)(?:login|signin|sign-in|log-in)(?:\/|$)/i.test(path)) return "sign-in";
+  return "other";
+}
+
+export function ownerSite(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+/** The owner's task as a verb phrase, such as "sign in to nytimes.com". A page Bao does not recognize gets neutral words. */
+export function ownerTask(page: OwnerPage | undefined): string {
+  if (!page) return "finish the check on the page";
+  const site = ownerSite(page.url);
+  switch (ownerAsk(page)) {
+    case "sign-in": return `sign in to ${site}`;
+    case "check": return `clear the check on ${site}`;
+    case "other": return `finish the check on ${site}`;
+  }
+}
+
+/** An owner wait ends by itself this long after it started or the latest wait_for_owner call returned. */
+export const OWNER_WAIT_LIMIT_MS = 30 * 60 * 1000;
+
 export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {
   if (!/^https?:\/\//.test(now.url) || !now.title.trim() || ownerWall(now)) return false;
   return before.url !== now.url || before.title !== now.title;
 }
 
-export const ownerWaitInstruction = (current: boolean) => `Keep this session open. Ask the owner to sign in or clear the check in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner and args=[\"60000\"]. Repeat it while the result is waiting; do not end your turn or start another session. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
+export const ownerWaitInstruction = (current: boolean, page?: OwnerPage) => `Keep this session open. Ask the owner to ${ownerTask(page)} in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner and args=[\"60000\"]. Repeat it while the result is waiting; do not end your turn or start another session. Bao ends the wait if no wait_for_owner call continues it for ${OWNER_WAIT_LIMIT_MS / 60_000} minutes. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
 
 export function ownerWaitTimeout(value: unknown): number {
   if (value === undefined) return 60_000;
