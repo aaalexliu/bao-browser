@@ -20,10 +20,12 @@ test("official MCPB tooling validates and packs the install artifact", { timeout
     const manifestResult = spawnSync("/usr/bin/unzip", ["-p", output, "manifest.json"], { encoding: "utf8" });
     assert.equal(manifestResult.status, 0, manifestResult.stderr);
     const manifest = JSON.parse(manifestResult.stdout) as {
+      version: string;
       server: { type: string; entry_point: string; mcp_config: { command: string; args: string[] } };
       compatibility: { platforms: string[]; runtimes?: unknown };
       user_config?: Record<string, unknown>;
     };
+    assert.equal(manifest.version, (JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }).version);
     assert.equal(manifest.server.type, "node");
     assert.deepEqual(manifest.compatibility.platforms, ["darwin"]);
     assert.equal(manifest.compatibility.runtimes, undefined);

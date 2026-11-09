@@ -5,8 +5,6 @@
   <key>CFBundleName</key><string>Bao</string>
   <key>CFBundleDisplayName</key><string>Bao</string>
   <key>CFBundleIdentifier</key><string>dev.bao.desktop</string>
-  <key>CFBundleVersion</key><string>0.1.0</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleExecutable</key><string>bao</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleURLTypes</key>

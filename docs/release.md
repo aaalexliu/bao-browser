@@ -17,7 +17,9 @@ Users install Bao with the one `npx` command in the [README](../README.md#instal
 
 ## Build a release
 
-Publishing a GitHub release runs `mac-release.yml`. It strips a leading `v` from the tag and sets that as the app version, so the tag must look like `v1.2.3`. It attaches `Bao-<version>-darwin-arm64.zip`, `release.json`, and the installer packed with that `release.json` as `bao-browser.tgz`. That `release.json` names the zip by its full release URL, so the latest release installs with:
+Bao's version is `version` in the root `package.json`. `desktop/packaging/macos/stamp-version.sh` writes it into the app's `Info.plist`, and `desktop/packaging/build-mcpb.mjs` writes it into the `bao.mcpb` manifest. Every build, local or release, reports it in the About panel, `bao --version`, `bao doctor`, and the MCP `initialize` reply. To release, bump that version on `main` first, then publish a release tagged `v` plus that version from that commit, such as `v1.2.3`.
+
+Publishing a GitHub release runs `mac-release.yml`. When the tag is not `v` plus the `package.json` version, the run still builds and attaches the files, using the tag's version, and posts a warning that names both versions. That warning means `main` missed the bump: set `package.json` to the tag's version on `main`. The run attaches `Bao-<version>-darwin-arm64.zip`, `release.json`, and the installer packed with that `release.json` as `bao-browser.tgz`. That `release.json` names the zip by its full release URL, so the latest release installs with:
 
 ```sh
 npx https://github.com/aaalexliu/bao-browser/releases/latest/download/bao-browser.tgz

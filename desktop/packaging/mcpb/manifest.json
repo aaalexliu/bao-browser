@@ -2,7 +2,6 @@
   "manifest_version": "0.3",
   "name": "bao",
   "display_name": "Bao",
-  "version": "0.1.0",
   "description": "Connect Claude Desktop to Bao's local browser tools and read-only run viewer. Requires Bao.app and Node 24 or newer.",
   "author": { "name": "Bao" },
   "server": {

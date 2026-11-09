@@ -3,6 +3,7 @@
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { baoVersion } from "../app/bundle";
 import { AuditTrail, type AuditSource } from "./audit";
 import { MacOsExecutor } from "./macos-exec";
 import { MacOsHelper, type AxNode } from "./os-macos";
@@ -274,7 +275,7 @@ async function handle(msg: { id?: unknown; method?: string; params?: { protocolV
       result: {
         protocolVersion: msg.params?.protocolVersion ?? "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "bao", version: "0.1.0" },
+        serverInfo: { name: "bao", version: baoVersion(__filename) },
       },
     });
     return;
