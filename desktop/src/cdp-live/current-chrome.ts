@@ -111,11 +111,12 @@ type RunFile = (file: string, args: string[], env: NodeJS.ProcessEnv) => Promise
 const runFile: RunFile = (file, args, env) => new Promise((resolve, reject) => execFile(file, args, { env }, (error) => error ? reject(error) : resolve()));
 
 /**
- * Starts the owner's Chrome app as he would, in the background, when `root` is his own Chrome user data; false otherwise. `-n`
+ * Starts the owner's Chrome app as he would, in the background, when `root` is his own Chrome user data; false otherwise, and off macOS unless `ownerRoot` is given. `-n`
  * starts his Chrome even while a Bao-owned Chrome of the same app runs, so LaunchServices never brings that window up instead.
  */
-export async function startOwnerChrome(root: string, ownerRoot = chromeProfilesRoot(), run: RunFile = runFile): Promise<boolean> {
-  if (path.resolve(root) !== path.resolve(ownerRoot)) return false;
+export async function startOwnerChrome(root: string, ownerRoot?: string, run: RunFile = runFile): Promise<boolean> {
+  if (ownerRoot === undefined && process.platform !== "darwin") return false;
+  if (path.resolve(root) !== path.resolve(ownerRoot ?? chromeProfilesRoot())) return false;
   try { await run("/usr/bin/open", ["-n", "-g", "-b", CHROME_BUNDLE], { ...process.env, HOME: userInfo().homedir }); }
   catch (error) { throw new Error(`Bao could not start Google Chrome: ${error instanceof Error ? error.message : String(error)}`); }
   return true;

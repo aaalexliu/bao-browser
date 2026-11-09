@@ -96,7 +96,7 @@ import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deepli
  * The app picker's route. `why` is "the default" when the run kept the picker's default. `appProfile` is the app's own Bao profile,
  * which opens with no sign-in import when running Chrome cannot be used.
  */
-type RunBrowser = { choice: BrowserChoice; why: RouteWhy; sourceRoot?: string; appProfile: string };
+type RunBrowser = { choice: BrowserChoice; why: RouteWhy; sourceRoot?: string; appProfile: string; closeSignIn: () => Promise<void> };
 
 export interface Notice extends HealNotice {
   id: string;
@@ -1190,7 +1190,11 @@ export async function startApp(opts: {
         const chosen = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : "named by the agent", movesFiles);
         const route: { browser: BrowserChoice; why: RouteWhy } | undefined = chosen && boundRoute(chosen.browser, workflow.startUrl, sourceRoot && settingsProfile ? path.join(sourceRoot, settingsProfile) : undefined, movesFiles)
           ? { browser: "current", why: BOUND_REASON } : chosen;
-        const browser: RunBrowser | undefined = route && { choice: route.browser, why: route.why, sourceRoot, appProfile: baoProfile };
+        const closeSignIn = async () => {
+          await signIn?.close();
+          signIn = undefined;
+        };
+        const browser: RunBrowser | undefined = route && { choice: route.browser, why: route.why, sourceRoot, appProfile: baoProfile, closeSignIn };
         if (refusesOwnedBrowser(workflow.driver)) {
           return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
@@ -1235,10 +1239,7 @@ export async function startApp(opts: {
           const run = await runWorkflow(library, workflow, args, notices, replays, runId, prompts, {
             baoProfile,
             sites,
-            closeSignIn: async () => {
-              await signIn?.close();
-              signIn = undefined;
-            },
+            closeSignIn,
           }, fromStep, browser);
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
@@ -3018,7 +3019,7 @@ async function openReplay(
   if (browser) {
     const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
       why: browser.why, movesFiles, extensionRoute: library.settings().runningChromeExtension === true,
-      fallback: () => openReplay(library, id, replays, browser.appProfile, undefined, site) }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
+      fallback: async () => { await browser.closeSignIn(); return openReplay(library, id, replays, browser.appProfile, undefined, site); } }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
     replays.set(id, session);
     return session;
   }
