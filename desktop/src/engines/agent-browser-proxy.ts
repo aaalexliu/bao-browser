@@ -98,6 +98,9 @@ interface SessionData {
   daemonStarted?: boolean;
 }
 
+/** Whether a native command opens a new tab itself: `tab new`, or a click that opens its link in a new tab. */
+const opensTab = (command: string, args: readonly string[]) => (command === "tab" && args[0] === "new") || (command === "click" && args.includes("--new-tab"));
+
 /**
  * The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. `targetId` is the tab the agent works in:
  * Bao's task tab, until the agent switches tabs or its tab opens one. `seen` holds every target the native tab list has shown.
@@ -304,7 +307,7 @@ export class AgentBrowserProxy {
     }
     const session = this.session;
     this.shown = { session, command: command as string };
-    if (session.pick.route === "current" && !session.pick.background && command === "tab" && args[0] === "new") {
+    if (session.pick.route === "current" && !session.pick.background && opensTab(command as string, args)) {
       throw new Error(`Chrome would open a new tab in the profile you used last, not necessarily "${session.pick.profile.directory}". Stay in Bao's task tab and use open there.`);
     }
     clearTimeout(session.idleTimer);
@@ -1018,7 +1021,7 @@ export class AgentBrowserProxy {
       });
     });
     const result = await execute(command, args, readTimeoutMs);
-    if (session.kind === "current" && !session.relay && command === "tab" && args[0] === "new" && result.exitCode === 0) {
+    if (session.kind === "current" && !session.relay && opensTab(command, args) && result.exitCode === 0) {
       try {
         const tabs = await execute("tab", ["list", "--json"], 5000);
         if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);

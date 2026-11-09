@@ -54,6 +54,7 @@ async function fixture(t: TestContext) {
   };
   const listed = () => tracked().map(target => ({ tabId: daemon.tabIds.get(target.targetId)!, targetId: target.targetId, label: null, title: target.title,
     url: target.url, type: target.type, active: target.targetId === daemon.active }));
+  const closed: string[] = [];
   const cdp = {
     isOpen: true,
     disconnected: new Promise<void>(() => undefined),
@@ -70,6 +71,7 @@ async function fixture(t: TestContext) {
         if (!target?.inWindow) throw new Error("Browser window not found");
         return { windowId: 1 };
       }
+      if (method === "Target.closeTarget") closed.push(String(params.targetId));
       if (method === "Target.attachToTarget") return { sessionId: "page" };
       if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
       return {};
@@ -118,7 +120,7 @@ async function fixture(t: TestContext) {
   await writeFile(executable, "", { mode: 0o700 });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: root, executable });
   t.after(() => proxy.end());
-  return { proxy, targets, daemon };
+  return { proxy, targets, daemon, closed };
 }
 
 test("Chrome's Gemini panel and side panels stay out of the agent's tab list, and Bao's task tab says so", async (t) => {
@@ -177,4 +179,17 @@ test("a tab Bao's task tab opens becomes the agent's tab, once", async (t) => {
   f.targets.push({ targetId: "owner-new", type: "page", url: "https://example.com/", title: "Owner's new tab", inWindow: true });
   await f.proxy.execute("snapshot", ["-i"]);
   assert.equal(f.daemon.commands.at(-1)!.on, "task", "a tab the owner opens never takes the agent");
+});
+
+test("a tab the agent's click opens with --new-tab becomes the agent's tab, and finish_task closes it with the task tab", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.clicked = () => {
+    f.targets.push({ targetId: "opened", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", inWindow: true });
+    f.daemon.active = "opened";
+  };
+  assert.equal((await f.proxy.execute("click", ["@e5", "--new-tab"]))[0]!.exitCode, 0);
+  assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.stdout, "✓ Done on opened\n", "the agent stays in the tab it just opened");
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.deepEqual([...f.closed].sort(), ["opened", "task"], "Bao closes both tabs it opened and none of the owner's");
 });
