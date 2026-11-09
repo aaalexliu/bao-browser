@@ -1,5 +1,6 @@
 // The owner's running Chrome over remote debugging. BaoOSHelper turns on Chrome's remote-debugging setting and presses
-// Chrome's Allow prompt with its Accessibility access. Bao's task tab opens in a window of the Chrome profile the call chose.
+// Chrome's Allow prompt with its Accessibility access. Chrome asks for every new connection, so Bao makes one and every other
+// client shares it. Bao's task tab opens in a window of the Chrome profile the call chose.
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -14,6 +15,7 @@ import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
 import { CHROME_APP_EXE, dailyChromePids } from "./remote-debugging";
+import { shareConnection } from "./shared-connection";
 import { connectCdp, type CdpSocket } from "./socket";
 import { remoteDebuggingBlock } from "../helper-capabilities";
 
@@ -33,18 +35,17 @@ export interface CurrentChrome {
   executable: string;
   /** Chrome's user-data-dir. */
   root: string;
+  /** The endpoint for every other client of this Chrome. Its clients share `cdp`, so they raise no Allow prompt. */
   endpoint: DevToolsEndpoint;
+  /** Bao's one connection to this Chrome, the one the owner's Allow approved. */
   cdp: CdpSocket;
   closed: Promise<void>;
   isClosed(): boolean;
   detach(): void;
-  withConsent<T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal,
-    failureContext?: (result: T, context: string) => T): Promise<T>;
 }
 
 async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, axLog: string,
-  operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal,
-  failureContext?: (result: T, context: string) => T): Promise<T> {
+  operation: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T> {
   const signal = parent ?? new AbortController().signal;
   signal.throwIfAborted();
   let finished = false;
@@ -61,10 +62,7 @@ async function withConsent<T>(helper: CurrentChromeDeps["helper"], pid: number, 
       } catch (error) { pollError = error; }
       if (!finished) await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    const result = await pending;
-    return pollError !== undefined && failureContext
-      ? failureContext(result, `BaoOSHelper: ${pollError instanceof Error ? pollError.message : String(pollError)}`)
-      : result;
+    return await pending;
   } catch (error) {
     if (pollError !== undefined) {
       throw new Error(`${error instanceof Error ? error.message : String(error)} (BaoOSHelper: ${pollError instanceof Error ? pollError.message : String(pollError)})`, { cause: error });
@@ -176,10 +174,7 @@ export async function openCurrentChrome(options: {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
-    const consent = <T>(operation: (signal: AbortSignal) => Promise<T>, signal = options.signal,
-      failureContext?: (result: T, context: string) => T) =>
-      withConsent(deps.helper, pid, options.axLog, operation, signal, failureContext);
-    const cdp = await consent(async (parent) => {
+    const cdp = await withConsent(deps.helper, pid, options.axLog, async (parent) => {
       const signal = AbortSignal.any([parent, AbortSignal.timeout(25_000)]);
       const socket = await deps.connect(endpoint!.port, endpoint!.browserPath, { timeoutMs: 20_000, signal });
       const cancel = () => socket.close();
@@ -190,15 +185,16 @@ export async function openCurrentChrome(options: {
         return socket;
       } catch (error) { socket.close(); throw error; }
       finally { signal.removeEventListener("abort", cancel); }
-    });
+    }, options.signal);
     try {
       if (openedInspect) {
         const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets", {}, undefined, 5000);
         const inspect = targetInfos.filter((target) => target.url === INSPECT_URL);
         if (inspect.length === 1) await cdp.send("Target.closeTarget", { targetId: inspect[0]!.targetId }, undefined, 5000);
       }
-      return { pid, executable, root: options.root, endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
-        detach: () => cdp.close(), withConsent: consent };
+      const shared = await shareConnection(cdp);
+      return { pid, executable, root: options.root, endpoint: shared.endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
+        detach: () => { shared.close(); cdp.close(); } };
     } catch (error) {
       cdp.close();
       throw error;

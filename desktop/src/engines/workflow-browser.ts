@@ -141,7 +141,7 @@ export async function openWorkflowBrowser(options: WorkflowBrowserOptions, plan?
       try {
         const relay = await relayTab(chrome.endpoint, targetId);
         void chrome.closed.then(relay.close);
-        const browser = await chrome.withConsent(() => chromium.connectOverCDP(relay.url, { noDefaults: true }));
+        const browser = await chromium.connectOverCDP(relay.url, { noDefaults: true });
         try {
           const context = browser.contexts()[0];
           const page = context?.pages()[0];

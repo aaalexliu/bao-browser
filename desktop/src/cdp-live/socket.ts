@@ -3,7 +3,8 @@ import { createConnection, type Socket } from "node:net";
 
 /** Local browser socket. The upgrade carries no Origin header. */
 
-const MAX_FRAME = 32 * 1024 * 1024;
+/** Chrome's own DevTools send buffer. Other clients' replies, such as a full-page screenshot, can share Bao's connection. */
+const MAX_FRAME = 256 * 1024 * 1024;
 
 export function handshakeRequest(resource: string, host: string, key: string): string {
   return [
@@ -130,16 +131,30 @@ export function clientFrame(opcode: number, payload: Buffer): Buffer {
 }
 
 interface Pending {
+  sessionId?: string;
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
 }
 
 type Handler = (params: Record<string, unknown>) => void;
 
+export interface CdpMessage {
+  id?: number;
+  method?: string;
+  sessionId?: string;
+  params?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: { message?: string };
+}
+
+/** Takes the messages of a session that another client owns, as Chrome sent them. */
+export type CdpRoute = (text: string, message: CdpMessage) => void;
+
 export class CdpSocket {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private readonly listeners: { method: string; sessionId?: string; handler: Handler }[] = [];
+  private readonly routes = new Map<string, CdpRoute>();
   private closed = false;
   private resolveDisconnected!: () => void;
   readonly disconnected = new Promise<void>((resolve) => { this.resolveDisconnected = resolve; });
@@ -165,6 +180,7 @@ export class CdpSocket {
         reject(new Error(`cdp timeout ${method}`));
       }, timeoutMs);
       this.pending.set(id, {
+        sessionId: sessionId || undefined,
         resolve: (value) => {
           clearTimeout(timer);
           resolve(value as T);
@@ -182,16 +198,32 @@ export class CdpSocket {
     this.listeners.push({ method, sessionId, handler });
   }
 
+  /** Sends the messages of `sessionId` to `route` instead of Bao. No route gives them back to Bao. */
+  route(sessionId: string, route: CdpRoute | undefined): void {
+    if (route) this.routes.set(sessionId, route);
+    else this.routes.delete(sessionId);
+  }
+
+  /** Sends a message another client wrote. Its reply comes back through that client's route. */
+  write(text: string): void {
+    if (!this.closed) this.socket.write(clientFrame(1, Buffer.from(text)));
+  }
+
   takeText(text: string): void {
-    let msg: { id?: number; method?: string; sessionId?: string; params?: Record<string, unknown>; result?: unknown; error?: { message?: string } };
+    let msg: CdpMessage;
     try {
-      msg = JSON.parse(text) as typeof msg;
+      msg = JSON.parse(text) as CdpMessage;
     } catch {
+      return;
+    }
+    const route = msg.sessionId === undefined ? undefined : this.routes.get(msg.sessionId);
+    if (route) {
+      route(text, msg);
       return;
     }
     if (typeof msg.id === "number") {
       const waiter = this.pending.get(msg.id);
-      if (!waiter) return;
+      if (!waiter || waiter.sessionId !== msg.sessionId) return;
       this.pending.delete(msg.id);
       if (msg.error) waiter.reject(new Error(scrubCdp(msg.error.message || "cdp error")));
       else waiter.resolve(msg.result);

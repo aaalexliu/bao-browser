@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
@@ -67,9 +68,11 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
   const probe = await connectCdp(endpoint.port, endpoint.browserPath);
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint, cdp, closed: cdp.disconnected,
-    isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "chrome"), executable: binary });
   try {
     const { owner, ownerState } = await openOwnerTab(probe, `${base}/owner`);
@@ -124,8 +127,9 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
   });
   const priorSource = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = path.join(root, "chrome");
@@ -179,8 +183,9 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
   });
   const app = await startApp({ home: path.join(root, "home"), port: 0, extensionHost: false, chromeProfilesRoot: path.join(root, "chrome") });
   const url = (route: string) => `http://127.0.0.1:${app.port}${route}`;
@@ -235,8 +240,9 @@ test("replay on the owner's Chrome starts and finishes while another owner tab n
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
   });
   const priorSource = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = path.join(root, "chrome");
