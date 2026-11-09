@@ -111,6 +111,13 @@ test("a refused workflow save names the step that blocked it", async () => {
     const closed = new AgentBrowserWorkflow(root, "run-closed", async () => { throw new Error("unused"); });
     closed.unavailable("the owner closed the window before the task finished");
     assert.equal(closed.finish(), "Not saved as a workflow: the owner closed the window before the task finished.");
+
+    const inflight = new AgentBrowserWorkflow(root, "run-inflight", async () => { throw new Error("unused"); });
+    await inflight.record("close", [], "command-6", async () => {
+      inflight.unavailable("the owner closed the window before the task finished");
+      return ok;
+    }, () => false);
+    assert.equal(inflight.finish(), "Not saved as a workflow: the owner closed the window before the task finished.");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -140,6 +147,36 @@ test("a missing page picture names the cause in the tool result", async () => {
 
     assert.equal(pageShotLine({ ...missed, native: { ...missed.native, command: "close" } }), undefined);
     assert.equal(pageShotLine({ ...missed, native: { ...missed.native, command: "wait_for_owner" } }), undefined);
+
+    const marked = recording.begin("snapshot", []);
+    const mark = { x: 4, y: 8, width: 12, height: 16 };
+    const viewport = { width: 800, height: 600 };
+    await recording.complete(marked, [ok], home, async () => ({ bytes: png, viewport }), undefined, false, { mark });
+    assert.deepEqual(marked.afterTarget, { rect: mark, viewport });
+
+    const fallback = recording.begin("snapshot", []);
+    await recording.complete(fallback, [ok], home, async () => ({
+      bytes: png, viewport, note: "The active tab could not be pictured, so Bao kept a picture of its task tab.",
+    }), undefined, false, { mark });
+    assert.equal(fallback.afterTarget, undefined);
+    assert.equal(fallback.shotNote, "The active tab could not be pictured, so Bao kept a picture of its task tab.");
+
+    for (const command of ["open", "click"] as const) {
+      const halted = recording.begin(command, command === "open" ? ["https://fixture.invalid/login"] : ["@e1"]);
+      await recording.complete(halted, [{ stdout: JSON.stringify({ outcome: "halted", instruction: "Ask the owner" }), stderr: "", exitCode: 0 }], home, async () => png, undefined, true);
+      const reply = browserToolResult(command, halted.native.results, { runId: recording.id, step: halted });
+      assert.equal(halted.afterShotError, "Owner input is private; no page screenshot or snapshot was taken.");
+      assert.equal(pageShotLine(halted), undefined);
+      assert.equal(reply.content.some((item) => /owner input is private/i.test(item.text)), false);
+    }
+
+    const wall = recording.begin("snapshot", []);
+    await recording.complete(wall, [ok], home, async () => { throw new Error("owner input is private"); });
+    const wallReply = browserToolResult("snapshot", wall.native.results, { runId: recording.id, step: wall });
+    assert.equal(wall.afterShotError, "Page screenshot unavailable: owner input is private.");
+    assert.equal(wall.afterShot, undefined);
+    assert.equal(pageShotLine(wall), undefined);
+    assert.equal(wallReply.content.some((item) => /owner input is private/i.test(item.text)), false);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

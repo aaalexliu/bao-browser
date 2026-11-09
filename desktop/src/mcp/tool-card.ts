@@ -162,7 +162,9 @@ export function stepSentence(command: string, results: readonly AgentBrowserComm
 export function pageShotLine(step: { afterShotError?: string; shotNote?: string; native?: { command?: string } } | undefined): string | undefined {
   const command = step?.native?.command;
   if (!step || command === "close" || command === "wait_for_owner") return undefined;
-  return step.shotNote || step.afterShotError;
+  const line = step.shotNote || step.afterShotError;
+  if (!line || /owner input is private/i.test(line)) return undefined;
+  return line;
 }
 
 export function browserToolResult(command: string, results: AgentBrowserCommandResult[],

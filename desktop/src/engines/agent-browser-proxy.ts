@@ -64,6 +64,18 @@ export function uncapturablePage(url: string | undefined, type: string | undefin
 }
 
 const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
+const OWNER_PRIVATE = "owner input is private";
+
+class ActiveTargetMiss extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "ActiveTargetMiss";
+  }
+}
+
+function privatePicture(error: unknown): boolean {
+  return error instanceof Error && error.message === OWNER_PRIVATE;
+}
 
 function webSite(value: string | undefined): string | undefined {
   try {
@@ -331,7 +343,8 @@ export class AgentBrowserProxy {
     try {
       if (this.disconnected) throw new Error("The agent disconnected.");
       if (continuing && command !== "close" && command !== "wait_for_owner") {
-        await this.detectOwnerWall(session);
+        try { await this.detectOwnerWall(session); }
+        catch (error) { if (!(error instanceof ActiveTargetMiss)) throw error; }
         const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site) : undefined;
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
         if (opened && (session.ownerWait || command !== "snapshot" && command !== "open")) {
@@ -383,7 +396,10 @@ export class AgentBrowserProxy {
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
           : await this.forward(session, command as string, args);
         results.push(result);
-        if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
+        if (command !== "close" && result.exitCode === 0) {
+          try { await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined); }
+          catch (error) { if (!(error instanceof ActiveTargetMiss)) throw error; }
+        }
         return result;
       }, () => !!session.ownerWait);
       if (command !== "close" && results[0]?.exitCode === 0) {
@@ -810,6 +826,9 @@ export class AgentBrowserProxy {
       const { targetInfo } = await cdp.send<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, 2000);
       session.page = { url: targetInfo.url, title: targetInfo.title };
       return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: { url: targetInfo.url, title: targetInfo.title } };
+    } catch (error) {
+      if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
+      throw new ActiveTargetMiss(error);
     } finally { if (session.kind === "copy") cdp.close(); }
   }
 
@@ -960,7 +979,7 @@ export class AgentBrowserProxy {
       const rect = await this.box(session, target);
       if (!rect || rect.width <= 0 || rect.height <= 0) return;
       const frame = await this.screenshot(session, step.native.command, true);
-      if (!frame.viewport) return;
+      if (frame.note || !frame.viewport) return;
       const box = targetBox(rect, frame.viewport);
       if (!box) return;
       await session.recording.actionPicture(step, frame.bytes, { rect: { x: box.x, y: box.y, width: box.width, height: box.height }, viewport: frame.viewport });
@@ -973,40 +992,51 @@ export class AgentBrowserProxy {
 
   private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number }; note?: string }> {
     if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
-    await this.detectOwnerWall(session);
-    if (session.ownerWait) throw new Error("owner input is private");
+    const taskId = session.kind === "current" ? session.targetId : undefined;
+    try {
+      await this.detectOwnerWall(session);
+    } catch (error) {
+      if (session.kind !== "current" || session.abort.signal.aborted || !(error instanceof ActiveTargetMiss)) throw error;
+      return this.taskTabPicture(session, session.targetId, visual);
+    }
+    if (session.ownerWait) throw new Error(OWNER_PRIVATE);
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
     const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
     const activeId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
     if (!activeId) throw new Error("no active page");
-    const taskId = session.kind === "current" ? session.targetId : undefined;
     const preferred = await this.pictureTarget(session, activeId, taskId);
     try {
+      if (preferred !== activeId && session.kind === "current") await this.refusePrivateTarget(session, preferred);
       const frame = await this.captureFrame(session, preferred, visual);
       return preferred === activeId ? frame : { ...frame, note: TASK_TAB_PICTURE };
     } catch (error) {
-      if (!taskId || preferred === taskId || session.abort.signal.aborted) throw error;
-      return { ...await this.captureFrame(session, taskId, visual), note: TASK_TAB_PICTURE };
+      if (privatePicture(error) || session.kind !== "current" || preferred === taskId || session.abort.signal.aborted) throw error;
+      return this.taskTabPicture(session, session.targetId, visual);
     }
   }
 
   /** On running Chrome, a side panel or a target that will not answer is pictured from the task tab instead. */
   private async pictureTarget(session: Session, activeId: string, taskId: string | undefined): Promise<string> {
-    if (!taskId || taskId === activeId) return activeId;
+    if (!taskId || taskId === activeId || session.kind !== "current") return activeId;
     try {
-      const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(500)]);
-      const cdp = await this.connectSession(session, { signal, timeoutMs: 500 });
-      try {
-        const { targetInfo } = await cdp.send<{ targetInfo: { url?: string; type?: string } }>("Target.getTargetInfo", { targetId: activeId }, undefined, 500);
-        return uncapturablePage(targetInfo.url, targetInfo.type) ? taskId : activeId;
-      } finally {
-        if (session.kind === "copy") cdp.close();
-      }
+      const { targetInfo } = await session.chrome.cdp.send<{ targetInfo: { url?: string; type?: string } }>("Target.getTargetInfo", { targetId: activeId }, undefined, 500);
+      return uncapturablePage(targetInfo.url, targetInfo.type) ? taskId : activeId;
     } catch (error) {
-      if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
+      if (session.abort.signal.aborted) throw error;
       return taskId;
     }
+  }
+
+  private async taskTabPicture(session: Extract<Session, { kind: "current" }>, taskId: string, visual: boolean): Promise<{ bytes: Buffer; viewport?: { width: number; height: number }; note: string }> {
+    await this.refusePrivateTarget(session, taskId);
+    return { ...await this.captureFrame(session, taskId, visual), note: TASK_TAB_PICTURE };
+  }
+
+  private async refusePrivateTarget(session: Extract<Session, { kind: "current" }>, targetId: string): Promise<void> {
+    const { targetInfo } = await session.chrome.cdp.send<{ targetInfo: { url?: string; title?: string } }>("Target.getTargetInfo", { targetId }, undefined, 2000);
+    if (session.abort.signal.aborted) throw new Error("page closed");
+    if (ownerWall({ url: targetInfo.url ?? "", title: targetInfo.title ?? "" })) throw new Error(OWNER_PRIVATE);
   }
 
   private async captureFrame(session: Session, targetId: string, visual: boolean): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {

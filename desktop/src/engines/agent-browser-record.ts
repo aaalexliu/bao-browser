@@ -179,10 +179,12 @@ export class AgentBrowserRun {
       const frame = Buffer.isBuffer(shot) ? { bytes: shot } : shot;
       step.afterShot = await this.picture(step, frame.bytes, "after");
       if (frame.note) step.shotNote = frame.note;
-      const rect = context.mark;
-      if (rect && frame.viewport && rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0
-        && rect.x + rect.width <= frame.viewport.width && rect.y + rect.height <= frame.viewport.height) {
-        step.afterTarget = { rect, viewport: frame.viewport };
+      else {
+        const rect = context.mark;
+        if (rect && frame.viewport && rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0
+          && rect.x + rect.width <= frame.viewport.width && rect.y + rect.height <= frame.viewport.height) {
+          step.afterTarget = { rect, viewport: frame.viewport };
+        }
       }
     } catch (shotError) {
       step.afterShotError = step.native.command === "close" ? "Session closed; no page remains." : pageShotError(shotError);

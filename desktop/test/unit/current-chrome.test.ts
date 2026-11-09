@@ -13,6 +13,7 @@ import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import { browserToolResult, pageShotLine } from "../../src/mcp/tool-card";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -459,7 +460,8 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
     windowState: undefined as string | undefined, windowStates: [] as unknown[], closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
-    activeTarget: "task", captures: [] as string[], failCapture: "",
+    activeTarget: "task", captures: [] as string[], failCapture: "", missActive: false,
+    taskUrl: "https://fixture.invalid/", taskTitle: "Task",
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
     onClose: undefined as (() => Promise<void>) | undefined };
   let disconnected!: () => void;
@@ -488,9 +490,14 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       }
       if (method === "Target.getTargetInfo") {
         const id = String(params.targetId || "");
+        if (state.missActive && id === state.activeTarget) throw new Error("cdp timeout Target.getTargetInfo");
         if (id === "glic") return { targetInfo: { url: "https://gemini.google.com/glic?hl=en-US", type: "page", title: "Gemini" } };
-        return { targetInfo: { url: "https://fixture.invalid/", type: "page", title: "Task" } };
+        if (id === "login") return { targetInfo: { url: "https://fixture.invalid/login", type: "page", title: "Sign in" } };
+        if (id === "task") return { targetInfo: { url: state.taskUrl, type: "page", title: state.taskTitle } };
+        return { targetInfo: { url: "https://fixture.invalid/other", type: "page", title: "Other" } };
       }
+      if (method === "Page.getLayoutMetrics") return { cssLayoutViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 600 } };
+      if (method === "Runtime.evaluate") return { result: { value: 1 } };
       if (method === "Target.attachToTarget") return { sessionId: String(params.targetId || "page") };
       if (method === "Page.captureScreenshot") {
         state.captures.push(sessionId || "");
@@ -519,6 +526,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
         state.trackingFails = false;
         callback(Object.assign(new Error("tracking failed"), { code: 1 }), "", "tracking failed");
       } else if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
+      else if (command === "get" && args.includes("box")) callback(null, JSON.stringify({ data: { x: 12, y: 24, width: 36, height: 18 } }), "");
       else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: state.noActivePage ? [] : [{ active: true, targetId: state.activeTarget }] } }) : "native output", "");
     });
     return new EventEmitter();
@@ -562,6 +570,96 @@ test("a capture failure on the active tab keeps the task tab's picture", async (
   assert.ok(step.afterShot);
   assert.equal(step.shotNote, TASK_TAB_PICTURE);
   assert.deepEqual(f.state.captures, ["other", "task"]);
+});
+
+const LOGIN_TASK = { taskUrl: "https://fixture.invalid/login", taskTitle: "Sign in" };
+
+function assertPrivatePicture(step: RecordedAgentBrowserCommand, captures: readonly string[]) {
+  assert.equal(step.afterShot, undefined);
+  assert.equal(step.afterTarget, undefined);
+  assert.equal(step.target, undefined);
+  assert.match(step.afterShotError ?? "", /owner input is private/);
+  assert.equal(captures.includes("task"), false);
+  assert.equal(pageShotLine(step), undefined);
+}
+
+test("a side panel does not picture a sign-in task tab", async (t) => {
+  const f = await lifecycleFixture(t);
+  Object.assign(f.state, { activeTarget: "glic", ...LOGIN_TASK });
+  const step = await picturedStep(f);
+  assertPrivatePicture(step, f.state.captures);
+});
+
+test("a capture failure does not fall back to a sign-in task tab", async (t) => {
+  const f = await lifecycleFixture(t);
+  Object.assign(f.state, { activeTarget: "other", failCapture: "other", ...LOGIN_TASK });
+  const step = await picturedStep(f);
+  assertPrivatePicture(step, f.state.captures);
+  assert.deepEqual(f.state.captures, ["other"]);
+});
+
+test("an active target that does not answer is pictured from a safe task tab", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
+  f.state.missActive = true;
+  f.state.activeTarget = "silent";
+  f.state.captures.length = 0;
+  assert.equal((await f.proxy.execute("snapshot"))[0]!.exitCode, 0);
+  const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.ok(step.afterShot);
+  assert.equal(step.shotNote, TASK_TAB_PICTURE);
+  assert.equal(step.afterShotError, undefined);
+  assert.equal(pageShotLine(step), TASK_TAB_PICTURE);
+  assert.deepEqual(f.state.captures, ["task"]);
+});
+
+test("an active target that does not answer does not picture a sign-in task tab", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
+  Object.assign(f.state, { missActive: true, activeTarget: "silent", captures: [], ...LOGIN_TASK });
+  assert.equal((await f.proxy.execute("snapshot"))[0]!.exitCode, 0);
+  const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assertPrivatePicture(step, f.state.captures);
+});
+
+test("a task-tab fallback picture does not keep the active tab's box", async (t) => {
+  const f = await lifecycleFixture(t);
+  f.state.activeTarget = "glic";
+  await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
+  f.state.captures.length = 0;
+  await f.proxy.execute("click", ["@e1"]);
+  const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.equal(step.beforeShot, undefined);
+  assert.equal(step.target, undefined);
+  assert.equal(step.afterTarget, undefined);
+  assert.ok(step.afterShot);
+  assert.equal(step.shotNote, TASK_TAB_PICTURE);
+});
+
+test("a picture of the active tab keeps the measured box", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
+  f.state.captures.length = 0;
+  await f.proxy.execute("click", ["@e1"]);
+  const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.ok(step.beforeShot);
+  assert.deepEqual(step.target, { rect: { x: 12, y: 24, width: 36, height: 18 }, viewport: { width: 800, height: 600 } });
+  assert.equal(step.shotNote, undefined);
+});
+
+test("a halted open does not add the owner-privacy picture line", async (t) => {
+  const f = await lifecycleFixture(t);
+  f.state.activeTarget = "login";
+  const results = await f.proxy.execute("open", ["https://fixture.invalid/login"], "current");
+  const run = f.library.readRun(f.library.listRuns()[0]!.id);
+  const step = (run.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  const reply = browserToolResult("open", results, { runId: run.id, step, steps: run.steps as RecordedAgentBrowserCommand[] });
+  assert.equal(step.native.command, "open");
+  assert.equal(step.afterShot, undefined);
+  assert.equal(step.afterShotError, "Owner input is private; no page screenshot or snapshot was taken.");
+  assert.equal(pageShotLine(step), undefined);
+  assert.equal(reply.content.some((item) => /owner input is private/i.test(item.text) || item.text.startsWith("Page screenshot unavailable")), false);
+  assert.deepEqual(f.state.captures, []);
 });
 
 for (const keepOpen of [false, true]) test(`idle backstop releases an owned session with keep-open=${keepOpen}`, async (t) => {
