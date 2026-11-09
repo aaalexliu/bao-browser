@@ -25,6 +25,18 @@ Use `finish_task`, not `close`, to end a task. It returns a sentence of the resu
 {"command":"close","args":[]}
 ```
 
+A plain `snapshot` returns the whole native tree, often 5,000 to 20,000 characters on a real site. Two snapshot options keep the result short. Bao still runs the full native snapshot and records it in the run; only the text the agent gets changes.
+
+- `find` takes `text`, `role`, or both. It returns only the lines whose accessible name or value contains `text` (any case) and whose role is `role`, each with its ref, the lines that hold it, and everything inside it, in page order. Refs and attributes are not searched. A miss says so in one line.
+- `diff: true` returns only the lines added (`+`) or removed (`-`) since the session's last snapshot with the same `args`, with the unchanged lines that hold them. With no earlier snapshot for those `args`, or when the diff would not be shorter than the page, it returns the full tree with one line saying why. An unchanged page returns one line.
+
+```json
+{"command":"snapshot","args":[],"find":{"text":"Sign in","role":"button"}}
+{"command":"snapshot","args":["-i"],"diff":true}
+```
+
+Both are accepted only on `snapshot`, one at a time. `click`, `fill`, and `press` results stay one sentence plus native status; the sentence names the new page when the address changed.
+
 Bao fixes one session in a private socket directory, installed Google Chrome, and a visible window. On `open`, `browser: "bao"` (the default, **Bao profile**) uses Bao's separate lasting agent profile, imports site sign-ins from one of the owner's Chrome profiles, and keeps sign-ins and site data between runs. `browser: "copy"` (**Fresh Chrome copy**) starts a fresh marked copy of that Chrome profile. `browser: "current"` explicitly uses the owner's running Chrome on that profile, as described below. Close the session before changing browser or profile.
 
 ### Choose the Chrome profile
@@ -51,7 +63,7 @@ Pass-through startup connects only to Chrome's browser-level CDP endpoint and di
 
 `desktop/test/unit/agent-browser-startup.test.ts` covers startup with a stalled restored renderer. `desktop/test/unit/chrome-startup.test.ts` covers launch flags, a stale endpoint file, a port-bind race, browser-only startup commands, and headed `navigator.webdriver` before and after a Runtime-domain attach.
 
-Every call's first text block is one sentence of what the step did, such as `Went to https://example.com/ ("Example")` or `Clicked "Save" (button)`. The quoted name comes from the latest snapshot line for the ref. Native stdout and stderr follow as separate MCP text blocks. Sign-in and human-check handoffs follow the sentence with Bao's wait status instead. Without MCP Apps, that status is a `Run <run_id> · <outcome>` line and the instruction in words, and `structuredContent` carries the `outcome` and `instruction`. [Browser tool cards](mcp-viewer.md#browser-tool-cards) describes the visual result and receipt handoff in MCP Apps hosts. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. Closing a successful, representable single-document task saves a replayable workflow. The closing result gives its workflow id or one line explaining why it was not saved. A saved file that is not [schema v4](workflow-schema.md) is not loaded.
+Every call's first text block is one sentence of what the step did, such as `Went to https://example.com/ ("Example")` or `Clicked "Save" (button)`. The quoted name comes from the latest snapshot line for the ref. Native stdout and stderr follow as separate MCP text blocks; a snapshot with `find` or `diff` gives Bao's shorter view of its stdout instead. Sign-in and human-check handoffs follow the sentence with Bao's wait status instead. Without MCP Apps, that status is a `Run <run_id> · <outcome>` line and the instruction in words, and `structuredContent` carries the `outcome` and `instruction`. [Browser tool cards](mcp-viewer.md#browser-tool-cards) describes the visual result and receipt handoff in MCP Apps hosts. A native failure sets `isError` and leaves the session available unless the command is `close`, which attempts cleanup even after a native failure. Bao does not block final clicks. Closing a successful, representable single-document task saves a replayable workflow. The closing result gives its workflow id or one line explaining why it was not saved. A saved file that is not [schema v4](workflow-schema.md) is not loaded.
 
 ### Workflow reuse
 

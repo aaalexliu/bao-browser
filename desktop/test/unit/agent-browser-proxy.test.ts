@@ -69,6 +69,7 @@ else if (args.includes('wait')) {
   }, 10);
 }
 else if (args.includes('fail') || args.includes('daemon-fail')) { process.stdout.write('native failure output\\n'); process.stderr.write('native error\\n'); process.exitCode = 1; }
+else if (command === 'snapshot' && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
 else if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({data:{tabs:fs.existsSync(${JSON.stringify(path.join(root, "no-active"))})?[]:[{active:true,targetId:'ABC123'}]}}));
 else process.stdout.write(command === 'tab' ? 't1 Synthetic - http://127.0.0.1/\\n' : command + ' unchanged\\n');
 `, { mode: 0o700 });
@@ -256,6 +257,32 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
     await f.proxy.execute("open", [], "copy");
     assert.notEqual(f.copy(), copy);
+  } finally { await f.close(); }
+});
+
+test("snapshot find and diff return short views while the run keeps the full native tree", async (t) => {
+  const f = await fixture(t);
+  const page = (dialog: string) => `- banner\n  - button "Open search" [ref=e1]\n- main\n  - heading "Repos" [level=1, ref=e2]\n${dialog}  - list\n${Array.from({ length: 40 }, (_, i) => `    - listitem\n      - link "Repo ${i}" [ref=e${i + 10}]\n`).join("")}`;
+  const before = page("");
+  const after = page(`  - dialog "Search"\n    - combobox "Search or jump to" [ref=e3]\n`);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    await writeFile(path.join(f.root, "page.txt"), before);
+    await assert.rejects(f.proxy.execute("click", ["@e1"], undefined, false, undefined, { find: { text: "x" } }), /only accepted on snapshot/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, { find: {} }), /non-empty text, role, or both/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, { find: { text: "x" }, diff: true }), /find or diff, not both/);
+
+    const [found] = await f.proxy.execute("snapshot", [], undefined, false, undefined, { find: { text: "search", role: "button" } });
+    assert.equal(found!.stdout, `1 of ${before.trimEnd().split("\n").length} snapshot lines match text "search" and role button. Each is shown with the lines that hold it and everything inside it.\n- banner\n  - button "Open search" [ref=e1]`);
+    assert.equal(f.proxy.lastCommand!.step.native.results[0]!.stdout, before, "the run records the full native tree");
+
+    assert.match((await f.proxy.execute("snapshot", [], undefined, false, undefined, { diff: true }))[0]!.stdout, /^No change since the last snapshot/);
+    await writeFile(path.join(f.root, "page.txt"), after);
+    const [changed] = await f.proxy.execute("snapshot", [], undefined, false, undefined, { diff: true });
+    assert.equal(changed!.stdout, "Changed since the last snapshot: 2 lines added (+), 0 removed (-). Unchanged lines are left out except the ones that hold a change.\n"
+      + "  - main\n+   - dialog \"Search\"\n+     - combobox \"Search or jump to\" [ref=e3]");
+    assert.match((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, { diff: true }))[0]!.stdout, /^No earlier snapshot with these args in this session, so this is the full snapshot\.\n- banner/);
+    assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, after, "a plain snapshot stays the exact native output");
   } finally { await f.close(); }
 });
 
