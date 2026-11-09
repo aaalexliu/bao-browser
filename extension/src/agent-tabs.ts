@@ -77,7 +77,7 @@ async function joinGroup(tabId: number, windowId: number): Promise<void> {
   } else {
     groupId = await chrome.tabs.group({ tabIds: [tabId], createProperties: { windowId } });
     saved.groups[key] = groupId;
-    await chrome.tabGroups.update(groupId, { title: TITLE, color: "grey", collapsed: true });
+    await chrome.tabGroups.update(groupId, { title: TITLE, color: "grey" });
   }
   await persist();
   await keepFirst(windowId, groupId!);

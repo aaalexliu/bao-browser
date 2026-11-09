@@ -87,6 +87,8 @@ In **Settings → Technical details → Agent window**, **Keep window open after
 
 Kept Chrome has no Bao owner and keeps a local debugging port open, even after you close its window, until you quit that Chrome or the next agent session reclaims its copy. Other local processes, including those run by another OS user, can use that port to read the copy's cookies or control its signed-in pages. Bao has already finished the run and no longer records those actions.
 
+While the Bao app runs and the Bao extension is linked, any local program on this Mac, including one run by another macOS user, can open and read tabs in the owner's Chrome through the app's relay. The relay asks for no secret and shows no prompt; the only signs are Chrome's debugging bar and a folded Bao group.
+
 ### Wait for owner input in the same session
 
 When the active tab's URL or title signals sign-in, a verification code, Imperva, or hCaptcha, Bao returns `outcome: "halted"`. It keeps that tab, browser session, MCP process, and Library run. The page shows a **Bao is waiting for you** banner, and the Library run says **needs you**. The owner signs in or clears the check in that tab.
@@ -118,6 +120,10 @@ The copy has mode `0700`. Copying stops after five minutes or 20 GiB. Bao refuse
 Chrome shows '"Bao" started debugging this browser' on every tab while the extension drives a Bao tab, and for a few seconds after. An extension cannot hide it; only a Chrome started with `--silent-debugger-extension-api` does.
 
 A page a Bao tab opens in front shows for a moment before the extension gives the owner his tab back. A popup window a Bao page opens joins the lease but not the group, because Chrome groups only tabs in normal windows, and it can take focus.
+
+While the Bao app runs and the Bao extension is linked, any local program on this Mac, including one run by another macOS user, can open and read tabs in the owner's Chrome through the app's relay. The relay asks for no secret and shows no prompt; the only signs are Chrome's debugging bar and a folded Bao group.
+
+A page a Bao tab opens can commit before the extension attaches to it. On the agent-browser route that page then misses focus emulation until it navigates again, so in a folded group it can stop painting and running timers.
 
 File steps (downloads, uploads, drops) do not run on Running Chrome yet. App Replay and `run_workflow` refuse such a workflow with `browser: "current"` before it starts, and name the Bao profile as the place to run it.
 
