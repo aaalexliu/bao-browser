@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -257,7 +257,7 @@ test("settings chooser persists a whole-run choice and rejects paths and unknown
     assert.equal((await put({ pageEngine: "agent-browser", chromeProfile: "Default" })).status, 200);
     assert.equal(app.library.settings().pageEngine, "agent-browser");
     for (const driver of [undefined, "extension"] as const) {
-      app.library.save(fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: `wf-${driver}`, name: "Fixture", driver, startUrl: "https://example.test/", createdAt: 1, inputs: [], steps: [fixtureStep({ id: "s0", index: 0, action: "key", key: "Enter", label: "Enter", surface: "dom", timeoutMs: 1000 })] }));
+      app.library.save(testWorkflow({ schema: "bao.workflow/v4", id: `wf-${driver}`, name: "Fixture", driver, startUrl: "https://example.test/", createdAt: 1, inputs: [], steps: [{ id: "s0", index: 0, timeoutMs: 1000, caption: { text: "Enter" }, action: "key", key: "Enter" }] }));
       for (const guide of [false, true]) {
         const response = await fetch(`${base}/api/replay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: `wf-${driver}`, guide }) });
         assert.equal(response.status, 409);

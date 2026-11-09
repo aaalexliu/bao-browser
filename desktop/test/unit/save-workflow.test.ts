@@ -1,5 +1,5 @@
-import { stepTitle, stepValueTemplate } from "../../src/v1/schema";
-import { fixtureDoc, withStep } from "../support/fixture-step";
+import { stepText, testWorkflow } from "../support/workflow";
+import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -14,7 +14,6 @@ import { blankPng, isElementCrop, isFullPageShot, redactedPng } from "../../src/
 import { applySaveEdits, inferSavedWorkflow, saveCompleter, saveIntentPrompt } from "../../src/v1/save-intent";
 import { Library } from "../../src/v1/store";
 import { workflowFloorTitle } from "../../src/v1/workflow-name";
-import type { WorkflowV2 } from "../../src/v1/schema";
 
 const HOST = "https://restful-booker.herokuapp.com/";
 const SECRET = "SuperSecretPassword!";
@@ -52,7 +51,7 @@ test("a saved workflow is named from the verb and the first host", () => {
       act({ id: "n", op: "navigate", afterUrl: "https://example.com/page" }),
       act({ id: "c", op: "click", identity: { surface: "dom", role: "link", name: "More", path: [] } }),
     ],
-    steps: [{ action: "click", label: 'Click "More"' }],
+    steps: [{ action: "click", caption: { text: 'Click "More"' } }],
   }), "example.com");
   assert.notEqual(workflowFloorTitle({}), "Captured workflow");
   assert.equal(workflowFloorTitle({}), "Untitled workflow");
@@ -100,7 +99,7 @@ test("a loopback recording is titled Fixture and never the listen address", () =
     const titled = workflowFloorTitle({
       startUrl: url,
       events,
-      steps: [{ action: "click", label: 'Click "Save note"' }],
+      steps: [{ action: "click", caption: { text: 'Click "Save note"' } }],
       pageTitle: "127.0.0.1:4787",
     });
     assert.equal(titled, "Save note · Fixture", url);
@@ -209,9 +208,9 @@ test("the model prompt and saved titles retain captured values", async () => {
       identity: { surface: "dom", role: "password", name: "Password", path: [] },
     }),
   ], { id: "wf-secret", startUrl: "https://example.com/login" });
-  const leaked: WorkflowV2 = fixtureDoc({
+  const leaked: WorkflowV2 = testWorkflow({
     ...workflow,
-    steps: workflow.steps.map((step) => step.action === "type" ? withStep(step, { label: `Type ${SECRET}` }) : step),
+    steps: workflow.steps.map((step) => step.action === "type" ? { ...step, caption: { ...step.caption, text: `Type ${SECRET}` } } : step),
   });
   const prompt = saveIntentPrompt({
     floorTitle: "example.com",
@@ -248,7 +247,7 @@ test("the model prompt and saved titles retain captured values", async () => {
   assert.equal(saved.intent, "Sign in to the site.");
   const typed = saved.steps.find((step) => step.action === "type")!;
   assert.equal(stepTitle(typed), `Enter ${SECRET}`);
-  assert.equal(stepValueTemplate(typed), "{{password}}");
+  assert.deepEqual(stepText(typed), { input: "password" });
   assert.equal(saved.inputs.find((input) => input.name === "password")!.default, SECRET);
 });
 

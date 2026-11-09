@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -177,9 +177,16 @@ test("Runs names agent sessions, shows the failure reason, and leaves ended sess
   const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   page.setDefaultTimeout(8_000);
-  const workflow: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "bill", createdAt: 1, name: "Download the bill", startUrl: "/fixture", inputs: [],
-    steps: [fixtureStep({ id: "open", index: 0, action: "click", label: "Open account", surface: "dom", timeoutMs: 1000 })],
+  const workflow: WorkflowV2 = testWorkflow({
+    schema: "bao.workflow/v4", id: "bill", createdAt: 1, name: "Download the bill", startUrl: "/fixture", inputs: [],
+    steps: [{
+      id: "open",
+      index: 0,
+      timeoutMs: 1000,
+      caption: { text: "Open account" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Open account" }] },
+    }],
   });
   const now = Date.now();
   try {

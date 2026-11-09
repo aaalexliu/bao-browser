@@ -1,5 +1,5 @@
-import { stepTitle, stepQuery } from "../../src/v1/schema";
-import { fixtureDoc, fixtureInput, fixtureStep, withStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
+import { stepTitle, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import fs, { fstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,17 +9,26 @@ import Ajv from "ajv";
 import { inspectRunView, listRunViews, openStepPictures, VIEW_PICTURE_BYTES, VIEW_RECORD_BYTES } from "../../src/mcp/run-view";
 import { callViewerTool, VIEWER_TOOLS } from "../../src/mcp/viewer-tools";
 import { shotFile } from "../../src/v1/shots";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library, type StoredRun } from "../../src/v1/store";
 
 function fixture(t: test.TestContext) {
   const root = mkdtempSync(path.join(tmpdir(), "bao-run-view-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const library = new Library(path.join(root, "library"));
-  const workflow: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "fixture", name: "Preview report", startUrl: "https://example.test/", createdAt: 1,
-    inputs: [fixtureInput({ name: "password", type: "secret" }), fixtureInput({ name: "attachment", type: "file" })],
-    steps: [fixtureStep({ id: "preview", index: 0, action: "click", label: "Preview report", surface: "dom", identity: { surface: "dom", role: "button", name: "Preview", path: [] }, timeoutMs: 1000 })],
+  const workflow: WorkflowV2 = testWorkflow({
+    schema: "bao.workflow/v4", id: "fixture", name: "Preview report", startUrl: "https://example.test/", createdAt: 1,
+    inputs: [{ name: "password", type: "secret", label: "password", supply: "must" }, { name: "attachment", type: "file", label: "attachment", supply: "must" }],
+    steps: [{
+      id: "preview",
+      index: 0,
+      timeoutMs: 1000,
+      caption: { text: "Preview report", citation: { text: "Preview", source: "name" } },
+      action: "click",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Preview" }, { kind: "text", value: "Preview" }],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
   });
   const reason = "The report needs review: private-value";
   const run: StoredRun = {
@@ -39,6 +48,19 @@ function fixture(t: test.TestContext) {
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
   for (const phase of ["before", "after"]) writeFileSync(path.join(shots, `preview-${phase}.png`), png);
   return { root, library, workflow, run, shots, png, reason };
+}
+
+function passwordStep(id: string): WorkflowStep {
+  return {
+    id,
+    index: 0,
+    timeoutMs: 1000,
+    caption: { text: "Type the password" },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "textbox", name: "Password" }], hint: { role: "textbox", surface: "dom" } },
+    text: { input: "password" },
+    sensitive: true,
+  };
 }
 
 function assertEvidence(library: Library, run: StoredRun, reason: string): void {
@@ -69,20 +91,31 @@ test("history and receipt read Library data without inventing model counts", (t)
 
 test("secret, file, sensitive, nested, and unknown bindings do not hide stored evidence", (t) => {
   const { library, workflow, run, reason } = fixture(t);
-  for (const patch of [
-    { sensitive: true }, { input: "password" }, { input: "attachment" },
-    { readBack: { source: "text" as const, match: "{{password}}", timeoutMs: 0 } },
-    { expect: { kind: "text" as const, match: "{{missing}}", timeoutMs: 0 } },
-    { identity: { ...stepQuery(workflow.steps[0]!)!, inputType: "password", autocomplete: "current-password" } },
+  const click = workflow.steps[0]!;
+  assert.ok(click.action === "click");
+  const typed = passwordStep("preview");
+  assert.ok(typed.action === "type");
+  for (const step of [
+    { ...typed, text: { literal: "private-value" } },
+    typed,
+    { ...click, action: "upload" as const, file: { input: "attachment" } },
+    { ...click, readBack: { source: "text" as const, match: "{{password}}", timeoutMs: 0 } },
+    { ...click, check: { kind: "text" as const, match: "{{missing}}", timeoutMs: 0 } },
+    { ...click, target: { ...click.target, hint: { ...click.target.hint, inputType: "password", autocomplete: "current-password" } } },
   ]) {
-    library.save(fixtureDoc({ ...workflow, steps: [{ ...workflow.steps[0]!, ...patch }] }));
+    library.save(testWorkflow({ ...workflow, steps: [step] }));
     assertEvidence(library, run, reason);
   }
   library.save({ ...workflow, readBack: { source: "text", match: "{{password}}", timeoutMs: 0 } });
   assertEvidence(library, run, reason);
-  library.save(fixtureDoc({ ...workflow, version: 3, inputs: [...workflow.inputs, fixtureInput({ name: "rows", type: "table" })], steps: [fixtureStep({
-    ...workflow.steps[0]!, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [{ ...workflow.steps[0]!, id: "nested", sensitive: true }] },
-  })] }));
+  library.save(testWorkflow({ ...workflow, inputs: [...workflow.inputs, { name: "rows", type: "table", label: "rows", supply: "must" }], steps: [{
+    id: "preview",
+    index: 0,
+    timeoutMs: 1000,
+    caption: { text: "Preview report" },
+    action: "for_each",
+    forEach: { over: { kind: "input", name: "rows" }, steps: [passwordStep("nested")] },
+  }] }));
   assertEvidence(library, run, reason);
 });
 
@@ -93,7 +126,7 @@ test("workflow edits, missing definitions, and missing timing never hide histori
     utimesSync(file, modified / 1000, modified / 1000);
     assertEvidence(library, run, reason);
   }
-  library.save(fixtureDoc({ ...workflow, steps: [] }));
+  library.save(testWorkflow({ ...workflow, steps: [] }));
   assertEvidence(library, run, reason);
   library.saveRun({ ...run, videoStartedAt: undefined });
   assertEvidence(library, run, reason);
@@ -106,7 +139,7 @@ test("workflow edits, missing definitions, and missing timing never hide histori
 
 test("viewer does not scrub a stored read-back against today's workflow", (t) => {
   const { library, workflow, run } = fixture(t);
-  library.save(fixtureDoc({ ...workflow, inputs: [fixtureInput({ name: "password", type: "secret" })], steps: [withStep(workflow.steps[0]!, { input: "password" })] }));
+  library.save(testWorkflow({ ...workflow, inputs: [{ name: "password", type: "secret", label: "password", supply: "must" }], steps: [passwordStep("preview")] }));
   writeFileSync(path.join(library.root, "runs", `${run.id}.json`), JSON.stringify({ ...run, receipts: [], inputs: { password: "stored-password" }, steps: [{ id: "preview", status: "passed", readBack: "stored-password" }] }));
   assert.equal(inspectRunView(library, { run_id: run.id }).steps[0]?.result, "stored-password");
 });
@@ -145,7 +178,7 @@ test("workflow snapshot reads reject a replacement between the read and final ch
 test("viewer text preserves slash separators, web paths, and local paths", (t) => {
   const { library, run, workflow } = fixture(t);
   for (const value of ["Invoice / March", "/orders/1042", "Home / Orders / 1042", "ENOENT open '/Users/O'Brien/secret.txt'", "C:\\Users\\Owner Name\\report.csv", "https://example.test/export-/report.csv"]) {
-    library.save(fixtureDoc({ ...workflow, name: value, steps: [withStep(workflow.steps[0]!, { label: value })] }));
+    library.save(testWorkflow({ ...workflow, name: value, steps: [{ ...workflow.steps[0]!, caption: { ...workflow.steps[0]!.caption, text: value } }] }));
     library.saveRun({ ...run, receipts: [], steps: [{ id: "preview", status: "failed", reason: value, readBack: value }], failure: { reason: value }, envelope: { status: "failed", reason: value, ask: value } });
     const detail = inspectRunView(library, { run_id: run.id });
     assert.equal(detail.run.name, value);
@@ -195,8 +228,8 @@ test("capture runs open recorded pictures without a saved workflow", (t) => {
 
 test("history, run steps, and workflow steps page independently with bounded text", (t) => {
   const { library, run, workflow } = fixture(t);
-  const steps = Array.from({ length: 43 }, (_, index) => (withStep(workflow.steps[0]!, { id: `step-${index}`, index, label: "x".repeat(1000) })));
-  library.save(fixtureDoc({ ...workflow, steps }));
+  const steps = Array.from({ length: 43 }, (_, index) => ({ ...workflow.steps[0]!, id: `step-${index}`, index, caption: { ...workflow.steps[0]!.caption, text: "x".repeat(1000) } }));
+  library.save(testWorkflow({ ...workflow, steps }));
   library.saveRun({ ...run, steps: steps.map((step) => ({ id: step.id, status: "passed", reason: "y".repeat(10_000) })) });
   for (let index = 0; index < 11; index++) library.saveRun({ ...run, id: `run-page-${index}` });
   let next: number | null = 0;
@@ -238,7 +271,7 @@ test("stored dotted and other supported Library IDs work across history, tools, 
   const pictureSchema = ajv.compile(VIEWER_TOOLS.find((tool) => tool.name === "open_step_pictures")!.inputSchema);
   for (const id of ["wf-my.flow", "saved report", "%2e%2e"]) {
     const stepId = `${id}-step.1`;
-    library.save(fixtureDoc({ ...workflow, id, steps: [{ ...workflow.steps[0]!, id: stepId }] }));
+    library.save(testWorkflow({ ...workflow, id, steps: [{ ...workflow.steps[0]!, id: stepId }] }));
     library.saveRun({ ...run, workflowId: id, steps: [{ id: stepId, status: "passed" }] });
     writeFileSync(path.join(shots, shotFile(stepId, "after")), png);
     assert.equal(inspectSchema({ run_id: run.id }), true);

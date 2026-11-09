@@ -1,5 +1,5 @@
-import {  } from "../../src/v1/schema";
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
+import type { WorkflowV2 } from "../../src/v1/schema";
 // Live narration latency, a typed note as intent, and Guide Me on the fixture.
 // The fixture page only. No vendor network and no real login.
 
@@ -10,7 +10,6 @@ import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
 
 process.env.BAO_DRIVE = "1";
 
@@ -144,11 +143,8 @@ test(`old-engine guide me highlights the ${driver} fixture without an extension 
   const home = mkdtempSync(path.join(tmpdir(), "bao-guide-"));
   const app = await startApp({ home, port: 0 });
   try {
-    const user: Identity = { surface: "dom", role: "textbox", path: [], id: "username", nameAttr: "username" };
-    const login: Identity = { surface: "dom", role: "button", path: [], id: "login-btn", name: "Log in", text: "Log in", testId: "login" };
-    const doc: WorkflowV2 = fixtureDoc({
+    const doc: WorkflowV2 = testWorkflow({
       schema: "bao.workflow/v4",
-      version: 2,
       id: "wf-guide-me",
       driver,
       name: "Guide me fixture",
@@ -156,9 +152,46 @@ test(`old-engine guide me highlights the ${driver} fixture without an extension 
       inputs: [],
       createdAt: 1,
       steps: [
-        fixtureStep({ id: "focus-user", index: 0, action: "click", label: "Click Username", intent: "Focus the username field", surface: "dom", timeoutMs: 8000, identity: user }),
-        fixtureStep({ id: "type-user", index: 1, action: "type", label: "Type demo", intent: "Type the demo username", surface: "dom", timeoutMs: 8000, value: "demo", identity: user }),
-        fixtureStep({ id: "login", index: 2, action: "click", label: "Click Log in", intent: "Log in", surface: "dom", timeoutMs: 8000, identity: login }),
+        {
+          id: "focus-user",
+          index: 0,
+          timeoutMs: 8000,
+          caption: { text: "Click Username" },
+          action: "click",
+          target: {
+            locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+            hint: { nameAttr: "username", role: "textbox", surface: "dom", id: "username" },
+          },
+        },
+        {
+          id: "type-user",
+          index: 1,
+          timeoutMs: 8000,
+          caption: { text: "Type demo" },
+          action: "type",
+          target: {
+            locators: [{ kind: "css", value: "#username" }, { kind: "xpath", value: "//*[@id=\"username\"]" }],
+            hint: { nameAttr: "username", role: "textbox", surface: "dom", id: "username" },
+          },
+          text: { literal: "demo" },
+        },
+        {
+          id: "login",
+          index: 2,
+          timeoutMs: 8000,
+          caption: { text: "Click Log in", citation: { text: "Log in", source: "text" } },
+          action: "click",
+          target: {
+            locators: [
+              { kind: "role", role: "button", name: "Log in" },
+              { kind: "text", value: "Log in" },
+              { kind: "testid", value: "login" },
+              { kind: "css", value: "#login-btn" },
+              { kind: "xpath", value: "//*[@id=\"login-btn\"]" },
+            ],
+            hint: { role: "button", surface: "dom", id: "login-btn" },
+          },
+        },
       ],
     });
     app.library.save(doc);

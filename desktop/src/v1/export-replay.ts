@@ -1,7 +1,7 @@
 // One-way export to a Chrome DevTools Recorder / puppeteer-replay JSON file.
 // Anchor locators have no selector in that format, so they are left out.
 
-import { stepLocators, stepValueTemplate, stepKey, stepCheck, stepForEach, subst, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { argText, stepLocators, stepKey, stepCheck, stepForEach, subst, type ReplayArgs, type StepLocator, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { hasStrippedSecret, NEEDS_SECRET_VALUE, stepNeedsSecretValue } from "../../../shared/saved-secrets";
 
 export interface PuppeteerReplayFile {
@@ -44,7 +44,7 @@ export function toPuppeteerReplay(workflow: WorkflowV2, args: ReplayArgs = {}): 
       // waits until timeout. One pixel in from the top left still hits the node.
       if (selectors.length) steps.push({ type: "click", selectors, offsetX: 1, offsetY: 1 });
     } else if (step.action === "type" || step.action === "select") {
-      const value = subst(stepValueTemplate(step) || "", args);
+      const value = "input" in step.text ? argText(args[step.text.input]) : subst(step.text.literal, args);
       if (selectors.length) steps.push({ type: "change", selectors, value });
     } else if (step.action === "key" && stepKey(step)) {
       steps.push({ type: "keyDown", key: stepKey(step) });

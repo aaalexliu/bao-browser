@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actBar, commandItems, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, passGrid, plainFailure, promotionLine, rail, recordBar, runViewer, stopHeadline, workflowDetail } from "../../src/app/views";
+import { actBar, commandItems, consolePane, healDetail, healInbox, healWorkflowName, htmlEsc, identityTable, imageRef, importErrorCard, libraryTable, notices, passGrid, plainFailure, promotionLine, rail, recordBar, runsList, type RunSummary, runViewer, stopHeadline, teachReview, trailPane, tryResult, workflowDetail } from "../../src/app/views";
 import { importErrorView } from "../../src/app/import-error";
 import { actSurfaceText, attentionCount, formatWait, makeAsk } from "../../src/v1/human-ask";
-import { notices, runsList, teachReview, trailPane, consolePane, tryResult, type RunSummary } from "../../src/app/views";
 import { liveSessionView } from "../../src/app/live-view";
 import { emptyLogin, loginsScreen } from "../../src/app/logins-view";
 import { ownerStopMessage, ownerStopText } from "../../src/v1/stop-copy";
@@ -317,7 +316,7 @@ test("heal review shows both targets and retains the collapsed prompt text", () 
     prompt: "the password is SuperSecretPassword! please",
     rawResponse: "{\"identity\":true} SuperSecretPassword!",
     model: { name: "bao-heal-fixture", version: "1" },
-    failedStep: { id: "c", label: "click Upload", identity: { role: "button", name: "Upload", id: "file-submit" } },
+    failedStep: { id: "c", caption: { text: "click Upload" }, action: "click", target: { locators: [{ kind: "role", role: "button", name: "Upload" }], hint: { id: "file-submit" } } },
     proposedPatch: { identity: { role: "button", name: "Upload file", id: "file-submit" } },
     postconditionPassed: true,
     identity: viewFromLookup(id({ name: "Upload", id: "file-submit" }), [
@@ -382,7 +381,7 @@ test("a heal shows its own workflow, never a sibling name", () => {
       workflowId: "wf-text",
       status: "passed",
       decisions: [],
-      heals: [{ id: "h1", workflowId: "wf-login", failedStep: { id: "login", label: "Click login" } }],
+      heals: [{ id: "h1", workflowId: "wf-login", failedStep: { id: "login", caption: { text: "Click login" } } }],
     },
   ], [
     { id: "wf-login", name: "fixture login", steps: 1 },
@@ -391,7 +390,7 @@ test("a heal shows its own workflow, never a sibling name", () => {
   assert.match(html, /fixture login/);
   assert.equal(html.includes("textedit write"), false);
   assert.equal(healWorkflowName(
-    { workflowId: "missing", failedStep: { label: "Click login" } },
+    { workflowId: "missing", failedStep: { caption: { text: "Click login" } } },
     { workflowId: "wf-text" },
     new Map([["wf-text", "textedit write"]]),
   ), "Click login");
@@ -454,11 +453,11 @@ test("workflow detail has compact ordered steps, one inspector, and no placehold
     id: "wf",
     name: "fixture apply",
     steps: [
-      { id: "a", action: "login", label: "Sign in", human: true, intent: "sign in first", sensitive: true },
-      { id: "b", action: "type", label: "Type {{note}}", value: "{{note}}", input: "note", identity: { role: "textbox", name: "Note" }, expect: { kind: "text" } },
-      { id: "c", action: "verify", label: "re-read the status" },
-      { id: "d", action: "upload", label: "Upload file" },
-      { id: "e", action: "confirm", label: "confirm before applying", human: true, intent: "you press Apply" },
+      { id: "a", action: "handoff", reason: "sign-in", caption: { text: "Sign in" } },
+      { id: "b", action: "type", caption: { text: "Type {{note}}" }, text: { input: "note" }, target: { locators: [{ kind: "role", role: "textbox", name: "Note" }] }, check: { kind: "text" } },
+      { id: "c", action: "verify", caption: { text: "re-read the status" } },
+      { id: "d", action: "upload", caption: { text: "Upload file" } },
+      { id: "e", action: "handoff", reason: "owner-press", caption: { text: "you press Apply" } },
     ],
   });
   assert.match(html, /data-step-row="a" class="selected"/);
@@ -473,7 +472,7 @@ test("workflow detail has compact ordered steps, one inspector, and no placehold
   assert.match(html, /id="workflow-steps"/);
   const steps = html.slice(html.indexOf("workflow-steps"));
   assert.ok(steps.indexOf("Type {{note}}") < steps.indexOf("re-read the status"));
-  assert.ok(steps.indexOf("re-read the status") < steps.indexOf("confirm before applying"));
+  assert.ok(steps.indexOf("re-read the status") < steps.indexOf("you press Apply"));
   assert.match(html, /aria-label="Back to all workflows"/);
   assert.match(html, /data-screen="library"/);
   assert.equal(html.includes("id=\"library\""), false);
@@ -496,7 +495,7 @@ test("workflow detail has compact ordered steps, one inspector, and no placehold
       { name: "username", type: "text" },
       { name: "route", type: "choice", label: "Which way", choices: ["Log in first", "Already signed in"] },
     ],
-    steps: [{ id: "u", action: "type", label: "Type {{username}}", input: "username", when: { input: "route", value: "Log in first" } }],
+    steps: [{ id: "u", action: "type", caption: { text: "Type {{username}}" }, text: { input: "username" }, when: { input: "route", value: "Log in first" } }],
   });
   assert.match(routed, /id="route-branch"[^>]*>Paths: Log in first \/ Already signed in</);
   assert.match(routed, /\{\{username\}\}/);
@@ -509,7 +508,7 @@ test("workflow detail has compact ordered steps, one inspector, and no placehold
   const cropped = workflowDetail({
     id: "wf",
     name: "fixture apply",
-    steps: [{ id: "signed-in", action: "click", label: "Click signed in" }],
+    steps: [{ id: "signed-in", action: "click", caption: { text: "Click signed in" } }],
   }, { shots: { "signed-in": "/api/runs/run-1/shots/signed-in-after.png" } });
   assert.match(cropped, /data-shot="\/api\/runs\/run-1\/shots\/signed-in-after\.png"/);
   assert.match(cropped, /class="wf-picture"/);
@@ -584,7 +583,7 @@ test("a provisional heal can be shown as promoted without editing the record", (
   }, {
     id: "heal-1",
     workflowId: "wf-login",
-    failedStep: { label: "Click login" },
+    failedStep: { caption: { text: "Click login" } },
     proposedPatch: { identity: { testId: "login" } },
   }, {
     workflowName: "fixture login",

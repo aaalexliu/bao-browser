@@ -12,7 +12,8 @@ import { isElementCrop } from "../../../web/src/lib/png";
 import { fitPictureBody } from "./sync-pictures";
 import { categoryFor } from "../../../web/src/lib/publish";
 import { retainLocalDefaults } from "./local-defaults";
-import { parseWorkflow, stepInputName, stepSensitive, stepTitle, stepValueTemplate, toJson, UnsupportedWorkflow, validateWorkflow, type WorkflowV2 } from "./schema";
+import { stepEnteredLiteral } from "../../../shared/step-read";
+import { parseWorkflow, stepInputName, stepSensitive, stepTitle, toJson, UnsupportedWorkflow, validateWorkflow, type WorkflowV2 } from "./schema";
 import { shotFile, workflowShotName } from "./shots";
 import { Library, type DamagedWorkflow, type Settings } from "./store";
 import { clearConflict, noteConflict, type CloudVersionRow } from "./versions";
@@ -779,7 +780,7 @@ function workflowShots(library: Library, doc: WorkflowV2): { stepId: string; png
   const crops: { stepId: string; png: Buffer }[] = [];
   for (const step of doc.steps) {
     const input = stepInputName(step);
-    const value = stepValueTemplate(step);
+    const value = stepEnteredLiteral(step);
     if (stepSensitive(step) || (input && secrets.has(input))
       || redactSavedValue(value ?? "") === STRIPPED_SECRET) continue;
     const names = [

@@ -1,5 +1,5 @@
-import { fixtureDoc, fixtureInput, fixtureStep, writeStep } from "../support/fixture-step";
-import { stepTitle, stepValueTemplate } from "../../src/v1/schema";
+import { stepText, testWorkflow } from "../support/workflow";
+import { stepTitle, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { describeWorkflow, getRun, runWorkflow, type WorkflowOutcome } from "../../src/mcp/catalog";
-import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { buildPushBody as push, stripUnsafe as strip } from "../../../web/src/lib/guard";
 import { applyImportAnswers, applyRegistryImportAnswers } from "../../../web/src/lib/import-sheet";
@@ -18,63 +17,104 @@ const secret = "fixture-outbound-password";
 const stripped = "[secret stripped]";
 
 function workflow(): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "outbound", name: "Outbound", createdAt: 1,
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "outbound", name: "Outbound", createdAt: 1,
     startUrl: "https://example.test/",
-    inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", default: secret })],
-    steps: [fixtureStep({
-      id: "password", index: 0, action: "type", label: "Password", surface: "dom", timeoutMs: 5000,
-      input: "password", value: "{{password}}",
-      identity: { surface: "dom", role: "textbox", testId: "password", path: [] },
-      postcondition: { kind: "value", match: "{{password}}", timeoutMs: 5000 },
-    })],
+    inputs: [{ name: "password", type: "secret", label: "Password", supply: "saved", default: secret }],
+    steps: [{
+      id: "password",
+      index: 0,
+      timeoutMs: 5000,
+      caption: { text: "Password" },
+      action: "type",
+      target: {
+        locators: [{ kind: "testid", value: "password" }, { kind: "css", value: "[data-testid=\"password\"]" }],
+        hint: { role: "textbox", surface: "dom" },
+      },
+      text: { input: "password" },
+      check: { kind: "value", match: "{{password}}", timeoutMs: 5000 },
+    }],
   });
 }
 
 test("outbound guard scrubs whole user values without rewriting metadata or local input", () => {
   const doc = workflow();
-  doc.steps.push(fixtureStep({
-    id: "copy", index: 1, action: "type", label: secret, surface: "dom", timeoutMs: 0, value: secret,
-  }));
-  doc.steps.push(fixtureStep({
-    id: "card", index: 2, action: "type", label: "Card", surface: "dom", timeoutMs: 0, value: "4111111111111111",
-  }));
-  doc.steps.push(fixtureStep({
-    id: "prose", index: 3, action: "type", label: "Prose", surface: "dom", timeoutMs: 0, value: `prefix ${secret} suffix`,
-  }));
+  doc.steps.push({
+    id: "copy",
+    index: 1,
+    timeoutMs: 0,
+    caption: { text: secret },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "textbox", name: secret }] },
+    text: { literal: secret },
+  });
+  doc.steps.push({
+    id: "card",
+    index: 2,
+    timeoutMs: 0,
+    caption: { text: "Card" },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "textbox", name: "Card" }] },
+    text: { literal: "4111111111111111" },
+  });
+  doc.steps.push({
+    id: "prose",
+    index: 3,
+    timeoutMs: 0,
+    caption: { text: "Prose" },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "textbox", name: "Prose" }] },
+    text: { literal: `prefix ${secret} suffix` },
+  });
   const original = structuredClone(doc);
   const cleaned = strip(doc, [secret]) as WorkflowV2;
   assert.equal(cleaned.inputs[0]?.default, undefined);
-  assert.equal((cleaned.steps[0] == null ? undefined : stepValueTemplate(cleaned.steps[0])), "{{password}}");
-  assert.equal((cleaned.steps[1] == null ? undefined : stepValueTemplate(cleaned.steps[1])), stripped);
+  assert.deepEqual(stepText(cleaned.steps[0]), { input: "password" });
+  assert.deepEqual(stepText(cleaned.steps[1]), { literal: stripped });
   assert.equal((cleaned.steps[1] == null ? undefined : stepTitle(cleaned.steps[1])), secret);
-  assert.equal((cleaned.steps[2] == null ? undefined : stepValueTemplate(cleaned.steps[2])), stripped);
-  assert.equal((cleaned.steps[3] == null ? undefined : stepValueTemplate(cleaned.steps[3])), `prefix ${secret} suffix`);
+  assert.deepEqual(stepText(cleaned.steps[2]), { literal: stripped });
+  assert.deepEqual(stepText(cleaned.steps[3]), { literal: `prefix ${secret} suffix` });
   const projected = push(doc, { baseVersion: 0 }).document as WorkflowV2;
   assert.equal(projected.inputs[0]?.default, undefined);
-  assert.equal((projected.steps[0] == null ? undefined : stepValueTemplate(projected.steps[0])), "{{password}}");
-  assert.equal((projected.steps[1] == null ? undefined : stepValueTemplate(projected.steps[1])), stripped);
+  assert.deepEqual(stepText(projected.steps[0]), { input: "password" });
+  assert.deepEqual(stepText(projected.steps[1]), { literal: stripped });
   assert.equal((projected.steps[1] == null ? undefined : stepTitle(projected.steps[1])), secret);
-  assert.equal((projected.steps[2] == null ? undefined : stepValueTemplate(projected.steps[2])), stripped);
-  assert.equal((projected.steps[3] == null ? undefined : stepValueTemplate(projected.steps[3])), `prefix ${secret} suffix`);
+  assert.deepEqual(stepText(projected.steps[2]), { literal: stripped });
+  assert.deepEqual(stepText(projected.steps[3]), { literal: `prefix ${secret} suffix` });
   const pushDoc = structuredClone(doc);
-  writeStep(pushDoc.steps[1]!, { label: "Copy" });
+  pushDoc.steps[1]!.caption = { text: "Copy" };
   pushDoc.steps.pop();
   const pushed = push(pushDoc, { baseVersion: 0 }).document as WorkflowV2;
-  assert.equal((pushed.steps[1] == null ? undefined : stepValueTemplate(pushed.steps[1])), stripped);
-  assert.equal((pushed.steps[2] == null ? undefined : stepValueTemplate(pushed.steps[2])), stripped);
+  assert.deepEqual(stepText(pushed.steps[1]), { literal: stripped });
+  assert.deepEqual(stepText(pushed.steps[2]), { literal: stripped });
   assert.deepEqual(doc, original);
 });
 
 test("publishing scrubs copied secret and token values without changing the local document", () => {
   const doc = workflow();
-  doc.steps.push(fixtureStep({ id: "copy", index: 1, action: "type", label: "Copy", surface: "dom", timeoutMs: 0, value: secret }));
-  doc.steps.push(fixtureStep({ id: "token", index: 2, action: "type", label: "Token", surface: "dom", timeoutMs: 0, value: "sk-outboundFixtureToken" }));
+  doc.steps.push({
+    id: "copy",
+    index: 1,
+    timeoutMs: 0,
+    caption: { text: "Copy" },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "textbox", name: "Copy" }] },
+    text: { literal: secret },
+  });
+  doc.steps.push({
+    id: "token",
+    index: 2,
+    timeoutMs: 0,
+    caption: { text: "Token" },
+    action: "type",
+    target: { locators: [{ kind: "role", role: "textbox", name: "Token" }] },
+    text: { literal: "sk-outboundFixtureToken" },
+  });
   const original = structuredClone(doc);
   const released = redactForRelease(doc).document as WorkflowV2;
   assert.equal(released.inputs[0]?.default, undefined);
-  assert.equal((released.steps[1] == null ? undefined : stepValueTemplate(released.steps[1])), stripped);
-  assert.equal((released.steps[2] == null ? undefined : stepValueTemplate(released.steps[2])), stripped);
+  assert.deepEqual(stepText(released.steps[1]), { literal: stripped });
+  assert.deepEqual(stepText(released.steps[2]), { literal: stripped });
   assert.deepEqual(doc, original);
 });
 
@@ -86,20 +126,28 @@ test("MCP describe scrubs outbound text defaults and entry values without changi
   doc.inputs[0]!.supply = "must";
   delete doc.inputs[0]!.default;
   doc.inputs.push(
-    fixtureInput({ name: "token", type: "text", label: "Token", required: true, default: "sk-describeFixtureToken" }),
-    fixtureInput({ name: "card", type: "text", label: "Card", required: false, default: "4111111111111111" }),
-    fixtureInput({ name: "note", type: "text", label: "Note", default: "Keep this note" }),
+    { name: "token", type: "text", label: "Token", supply: "saved", default: "sk-describeFixtureToken" },
+    { name: "card", type: "text", label: "Card", supply: "saved", default: "4111111111111111" },
+    { name: "note", type: "text", label: "Note", supply: "saved", default: "Keep this note" },
   );
   for (const [id, value] of [["copy", secret], ["token", "sk-describeFixtureToken"], ["card", "4111111111111111"]] as const) {
-    doc.steps.push(fixtureStep({ id, index: doc.steps.length, action: "type", label: id, surface: "dom", timeoutMs: 0, value }));
+    doc.steps.push({
+      id: id,
+      index: doc.steps.length,
+      timeoutMs: 0,
+      caption: { text: id },
+      action: "type",
+      target: { locators: [{ kind: "role", role: "textbox", name: id }] },
+      text: { literal: value },
+    });
   }
   library.save(doc);
   const original = library.read(doc.id);
   const described = await describeWorkflow(library, doc.id);
   assert.equal(described.workflow.inputs[0]?.default, undefined);
   assert.deepEqual(described.workflow.inputs.slice(1).map((input) => input.default), [stripped, stripped, "Keep this note"]);
-  assert.deepEqual(described.workflow.steps.slice(1).map((step) => stepValueTemplate(step)), [stripped, stripped, stripped]);
-  assert.equal((described.workflow.steps[0] == null ? undefined : stepValueTemplate(described.workflow.steps[0])), "{{password}}");
+  assert.deepEqual(described.workflow.steps.slice(1).map((step) => stepText(step)), [{ literal: stripped }, { literal: stripped }, { literal: stripped }]);
+  assert.deepEqual(stepText(described.workflow.steps[0]), { input: "password" });
   assert.deepEqual(described.inputs.map(({ name, type, required }) => ({ name, type, required })), [
     { name: "password", type: "secret", required: true },
     { name: "token", type: "text", required: false },

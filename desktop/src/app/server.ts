@@ -68,7 +68,7 @@ import { tryStep } from "../v1/try-step";
 import { baoUserHome, showOnce } from "../home";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
 import { DesktopMcpInstaller } from "./desktop-mcp-config";
-import { Library, secretInputNames } from "../v1/store";
+import { Library, secretInputNames, type Settings } from "../v1/store";
 import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-grant";
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
@@ -80,13 +80,12 @@ import { createRemoteAgent } from "../v1/remote-agent";
 import { clearRelay, loadRelay, relayStatus, saveRelay } from "../v1/relay-link";
 import { keepMine, loadState, openConflict, pairDevice, publishWorkflow, resolveConflict, restoreScheduledBackup, revealBackup, runScheduledBackup, setBackupSchedule, setCategoryEnabled, syncAll, syncStatus, workflowShare } from "../v1/sync";
 import { draftVersion, listVersions, promoteVersion, restoreVersion, versionDocument } from "../v1/versions";
-import { stepTitle, stepInputName, stepValueTemplate, stepCheck, stepSensitive, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepTitle, stepInputName, stepCheck, stepSensitive, parseWorkflow, type HealMode, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 
 import { applyImportAnswers, importQuestions, markImported } from "../../../web/src/lib/import-sheet";
 import { savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
-import type { Settings } from "../v1/store";
 
 type RunBrowser = { choice: BrowserChoice; sourceRoot?: string };
 
@@ -2191,11 +2190,8 @@ export async function startApp(opts: {
           inputs: projected.workflow.inputs.map((input) => ({ name: input.name, type: input.type })),
           steps: projected.workflow.steps.map((step) => ({
             id: step.id,
-            label: stepTitle(step),
-            intent: step.caption.text,
             action: step.action,
-            human: (step.action === "handoff"),
-            value: stepValueTemplate(step),
+            caption: step.caption,
             input: stepInputName(step),
             sensitive: stepSensitive(step),
           })),

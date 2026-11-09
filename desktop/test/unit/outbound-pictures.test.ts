@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep, fixtureInput, withStep, writeStep } from "../support/fixture-step";
+import { targetFor, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -12,29 +12,40 @@ import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/
 import { createRemoteAgent } from "../../src/v1/remote-agent";
 import { saveRelay } from "../../src/v1/relay-link";
 import { blankPng } from "../../src/v1/redacted-png";
-import type { Identity, WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 import { shotFile, workflowShotName } from "../../src/v1/shots";
 import { Library } from "../../src/v1/store";
 import { saveState, syncAll } from "../../src/v1/sync";
 
+function typeStep(id: string, index: number, node: Identity): WorkflowStep {
+  return { id, index, timeoutMs: 1000, caption: { text: "Click Pay" }, action: "type", target: targetFor(node), text: { literal: "" } };
+}
+
 function workflow(id: string): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id, name: "Synthetic picture upload", createdAt: 1,
+  return testWorkflow({
+    schema: "bao.workflow/v4", id, name: "Synthetic picture upload", createdAt: 1,
     startUrl: "http://127.0.0.1:9/fixture", inputs: [],
-    steps: [fixtureStep({ id: "go", index: 0, action: "click", label: "Click Pay", surface: "dom", timeoutMs: 1000 })],
+    steps: [{
+      id: "go",
+      index: 0,
+      timeoutMs: 1000,
+      caption: { text: "Click Pay" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Click Pay" }] },
+    }],
   });
 }
 
 test("the shared outbound picture rule recognizes private input kinds and nested field identities", () => {
   for (const name of ["password", "card", "cc-exp", "one time code", "SSN", "CVV", "routing number", "PIN"]) {
     const doc = workflow("declaration");
-    doc.inputs = [fixtureInput({ name: "answer", label: name, type: "text" })];
+    doc.inputs = [{ name: "answer", type: "text", label: name, supply: "must" }];
     assert.equal(hasPrivatePictureInput(doc), true, name);
-    doc.inputs = [fixtureInput({ name, type: "text" })];
+    doc.inputs = [{ name: name, type: "text", label: name, supply: "must" }];
     assert.equal(hasPrivatePictureInput(doc), true, name);
   }
   const secret = workflow("secret");
-  secret.inputs = [fixtureInput({ name: "answer", type: "secret" })];
+  secret.inputs = [{ name: "answer", type: "secret", label: "answer", supply: "must" }];
   assert.equal(hasPrivatePictureInput(secret), true);
   const hints: Partial<Identity>[] = [
     { inputType: "password" },
@@ -44,14 +55,14 @@ test("the shared outbound picture rule recognizes private input kinds and nested
   ];
   for (const hint of hints) {
     const doc = workflow("field");
-    const typed = withStep(doc.steps[0]!, { action: "type" as const, identity: { surface: "dom" as const, role: "textbox", tag: "input", path: [], ...hint } });
+    const typed = typeStep("go", 0, { surface: "dom", role: "textbox", tag: "input", path: [], ...hint });
     doc.steps = [typed];
     assert.equal(hasPrivatePictureInput(doc), true, JSON.stringify(hint));
-    doc.steps = [fixtureStep(withStep(doc.steps[0]!, { action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [typed] }, identity: undefined }))];
+    doc.steps = [{ id: "go", index: 0, timeoutMs: 1000, caption: { text: "Click Pay" }, action: "for_each", forEach: { over: { kind: "input", name: "rows" }, steps: [typed] } }];
     assert.equal(hasPrivatePictureInput(doc), true, `nested ${JSON.stringify(hint)}`);
   }
   const ordinary = workflow("ordinary");
-  ordinary.inputs = [fixtureInput({ name: "email", type: "text" }), fixtureInput({ name: "attachment", type: "file" })];
+  ordinary.inputs = [{ name: "email", type: "text", label: "email", supply: "must" }, { name: "attachment", type: "file", label: "attachment", supply: "must" }];
   assert.equal(hasPrivatePictureInput(ordinary), false);
 });
 
@@ -83,8 +94,8 @@ test("sync omits private-workflow step pictures from versions and runs without c
     const localFiles: string[] = [];
     for (const id of ["private-declared", "private-field", "ordinary"]) {
       const doc = workflow(id);
-      if (id === "private-declared") doc.inputs = [fixtureInput({ name: "PIN", type: "text" })];
-      if (id === "private-field") doc.steps.push(fixtureStep(withStep(doc.steps[0]!, { id: "card", index: 1, action: "type", identity: { surface: "dom", role: "textbox", tag: "input", autocomplete: "cc-number", path: [] } })));
+      if (id === "private-declared") doc.inputs = [{ name: "PIN", type: "text", label: "PIN", supply: "must" }];
+      if (id === "private-field") doc.steps.push(typeStep("card", 1, { surface: "dom", role: "textbox", tag: "input", autocomplete: "cc-number", path: [] }));
       library.save(doc);
       const runId = `run-${id}`;
       library.saveRun({ id: runId, workflowId: id, status: "passed", at: 1, heals: [], steps: doc.steps.map((step) => ({ id: step.id, status: "passed" })) });
@@ -162,8 +173,9 @@ test("relay run results omit private-input pictures and reject unreadable workfl
     for (const id of ["private", "ordinary"]) {
       const doc = workflow(id);
       doc.startUrl = `http://127.0.0.1:${address.port}/`;
-      if (id === "private") doc.inputs = [fixtureInput({ name: "PIN", type: "text" })];
-      writeStep(doc.steps[0]!, { identity: { surface: "dom", role: "button", tag: "button", id: "go", path: [] } });
+      if (id === "private") doc.inputs = [{ name: "PIN", type: "text", label: "PIN", supply: "must" }];
+      const go = doc.steps[0]!;
+      if (go.action === "click") go.target = targetFor({ surface: "dom", role: "button", tag: "button", id: "go", path: [] });
       doc.steps[0]!.heal = "never";
       library.save(doc);
     }

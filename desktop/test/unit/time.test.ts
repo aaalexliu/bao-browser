@@ -61,14 +61,14 @@ test("rendered pages have no ISO timestamp and no clock without a zone", () => {
     passGrid([
       { id: "run-old", workflowId: "wf", status: "passed", at: Date.parse("2026-10-22T04:41:51.000Z"), steps: [{ id: "s1", status: "passed" }] },
       { id: "run-new", workflowId: "wf", status: "passed", at: AT, steps: [{ id: "s1", status: "passed" }], heals: [{ id: "h1", failedStep: { id: "s1" } }] },
-    ], [{ id: "s1", label: "Click login" }]),
+    ], [{ id: "s1", caption: { text: "Click login" } }]),
     healInbox([{
       id: "run-new",
       workflowId: "wf",
       status: "passed",
       at: AT,
       decisions: [],
-      heals: [{ id: "h1", ts: AT, workflowId: "wf", intent: "Click missing control", failedStep: { id: "s1", label: "Click login" } }],
+      heals: [{ id: "h1", ts: AT, workflowId: "wf", intent: "Click missing control", failedStep: { id: "s1", caption: { text: "Click login" } } }],
     }], [{ id: "wf", name: "Fixture login", steps: 1 }]),
     healDetail({
       id: "run-new",
@@ -81,7 +81,7 @@ test("rendered pages have no ISO timestamp and no clock without a zone", () => {
       ts: AT,
       intent: "Click missing control",
       mode: "auto",
-      failedStep: { id: "s1", label: "Click login" },
+      failedStep: { id: "s1", caption: { text: "Click login" } },
       model: { name: "bao-heal-fixture", version: "1" },
     }),
     trailPane([{ ts: AT, kind: "repair", op: "reveal", id: "s1" }]),

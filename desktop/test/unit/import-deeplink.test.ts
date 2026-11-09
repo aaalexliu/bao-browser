@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // Import questions follow author marks. bao:// opens the running app.
 
 import assert from "node:assert/strict";
@@ -16,29 +16,20 @@ import { applyImportAnswers, importQuestions, markImported, missingAnswers, prep
 import { plainReplayReason } from "../../../web/src/lib/review-gate";
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name,
     startUrl: "https://example.com",
     createdAt: 1,
     inputs: [
-      fixtureInput({ name: "email", type: "text", label: "Email", required: true, default: "ada@acme.com" }),
-      fixtureInput({ name: "who", type: "text", label: "Name", required: true, default: "Ada Lovelace" }),
-      fixtureInput({ name: "note", type: "text", label: "Note", required: true, default: "/home/ada/note.txt" }),
-      fixtureInput({ name: "desk", type: "text", label: "Desk", required: true, default: "front", askOnImport: true }),
-      fixtureInput({ name: "password", type: "secret", label: "Password", required: true }),
+      { name: "email", type: "text", label: "Email", supply: "saved", default: "ada@acme.com" },
+      { name: "who", type: "text", label: "Name", supply: "saved", default: "Ada Lovelace" },
+      { name: "note", type: "text", label: "Note", supply: "saved", default: "/home/ada/note.txt" },
+      { name: "desk", type: "text", label: "Desk", supply: "saved", default: "front", askOnImport: true },
+      { name: "password", type: "secret", label: "Password", supply: "must" },
     ],
-    steps: [fixtureStep({
-      id: "go",
-      index: 0,
-      action: "key",
-      key: "Enter",
-      label: "Submit",
-      surface: "dom",
-      timeoutMs: 1000,
-    })],
+    steps: [{ id: "go", index: 0, timeoutMs: 1000, caption: { text: "Submit" }, action: "key", key: "Enter" }],
   });
 }
 

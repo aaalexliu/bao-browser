@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { targetFor, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,17 +8,23 @@ import { startApp } from "../../src/app/server";
 import { libraryTable, runKind, runViewer, runsList, type RunSummary } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 import { blankPng, redactedPng } from "../../src/v1/redacted-png";
-import { stepQuery, stepValueTemplate, subst, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import type { Identity, WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
+import { replay, type Driver } from "../../src/v1/replay";
 import { Library } from "../../src/v1/store";
 
 function recorded(identities: Partial<Identity>[]): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "wf-live", name: "Saved live form",
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "wf-live", name: "Saved live form",
     startUrl: "https://example.test/", createdAt: 1,
-    inputs: [fixtureInput({ name: "text", type: "text", default: "value" })],
-    steps: identities.map((identity, index) => ({
-      id: `live-${index}`, index, action: "type", label: "Saved field", surface: "dom", timeoutMs: 1000,
-      identity: { surface: "dom", role: "textbox", path: [], ...identity }, input: "text", value: "{{text}}",
+    inputs: [{ name: "text", type: "text", label: "text", supply: "saved", default: "value" }],
+    steps: identities.map((identity, index): WorkflowStep => ({
+      id: `live-${index}`,
+      index,
+      timeoutMs: 1000,
+      caption: { text: "Saved field" },
+      action: "type",
+      target: targetFor({ surface: "dom", role: "textbox", path: [], ...identity }),
+      text: { input: "text" },
     })),
   });
 }
@@ -33,16 +39,31 @@ async function pagePng(width: number, height: number, veiled = false): Promise<B
   } finally { await browser.close(); }
 }
 
-test("saved generic input tokens stay usable without a migration", () => {
+test("saved generic input tokens stay usable without a migration", async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-live-legacy-"));
   try {
-    const workflow = recorded([{}]);
-    stepQuery(workflow.steps[0]!)!.label = "App name";
+    const field: Identity = { surface: "dom", role: "textbox", label: "App name", id: "app-name", path: [] };
+    const workflow = recorded([field]);
     const library = new Library(home);
     library.save(workflow);
     const saved = library.read(workflow.id);
-    assert.equal(saved.inputs[0]?.name, "text");
-    assert.equal(subst(stepValueTemplate(saved.steps[0]!)!, { text: "existing argument" }), "existing argument");
+    const fills: { id?: string; text: string }[] = [];
+    const driver: Driver = {
+      tree: async () => ({ nodes: [field], texts: [], values: [] }),
+      snapshot: async () => ({ dom: {}, ax: [] }),
+      click: async () => {},
+      fill: async (node, text) => { fills.push({ id: node.id, text }); },
+      key: async () => {},
+      upload: async () => {},
+      drop: async () => {},
+      digits: async () => {},
+      check: async () => {},
+      notify: async () => {},
+      sleep: async () => {},
+    };
+    const result = await replay(saved, { text: "existing argument" }, driver);
+    assert.equal(result.status, "passed");
+    assert.deepEqual(fills, [{ id: "app-name", text: "existing argument" }]);
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

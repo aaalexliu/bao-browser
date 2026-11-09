@@ -1,10 +1,9 @@
-import { fixtureStep } from "../support/fixture-step";
+import type { WorkflowStep } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { heldoutSplit } from "../../src/eval/heldout/split";
 import { modelCondensePrompt, reviseDecision, reviseStepGates, type ModelDecision } from "../../src/eval/intent/revise";
 import type { TrailEvent } from "../../src/v1/interpret";
-import type { WorkflowStep } from "../../src/v1/schema";
 
 test("the prompt states the three condenser rules", () => {
   const text = modelCondensePrompt([]);
@@ -135,12 +134,45 @@ test("the last remaining effect stays when the model drops it", () => {
 });
 
 test("hybrid gates follow the same login and confirm rule", () => {
-  const steps = [
-    step("h", "click", "Forms overview"),
-    step("p", "type", "Password", { sensitive: true }),
-    step("c", "click", "Confirm purchase", {
-      postcondition: { kind: "text", match: "Confirmed", timeoutMs: 8000 },
-    }),
+  const steps: WorkflowStep[] = [
+    {
+      id: "h",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Forms overview", citation: { text: "Forms overview", source: "name" } },
+      action: "click",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Forms overview" }, { kind: "text", value: "Forms overview" }],
+        hint: { role: "button", surface: "dom" },
+      },
+      check: { kind: "settled", timeoutMs: 8000 },
+    },
+    {
+      id: "p",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Password", citation: { text: "Password", source: "name" } },
+      action: "type",
+      target: {
+        locators: [{ kind: "role", role: "textbox", name: "Password" }, { kind: "text", value: "Password" }],
+        hint: { role: "textbox", surface: "dom" },
+      },
+      text: { literal: "" },
+      sensitive: true,
+      check: { kind: "settled", timeoutMs: 8000 },
+    },
+    {
+      id: "c",
+      index: 0,
+      timeoutMs: 8000,
+      caption: { text: "Confirm purchase", citation: { text: "Confirm purchase", source: "name" } },
+      action: "click",
+      target: {
+        locators: [{ kind: "role", role: "button", name: "Confirm purchase" }, { kind: "text", value: "Confirm purchase" }],
+        hint: { role: "button", surface: "dom" },
+      },
+      check: { kind: "text", match: "Confirmed", timeoutMs: 8000 },
+    },
   ];
   const human = reviseStepGates(steps, [
     { id: "h", gate: "login" },
@@ -199,16 +231,3 @@ function act(id: string, op: string, extra: Partial<TrailEvent> & { name?: strin
   };
 }
 
-function step(id: string, action: WorkflowStep["action"], name: string, extra: object = {}): WorkflowStep {
-  return fixtureStep({
-    id,
-    index: 0,
-    action,
-    label: name,
-    surface: "dom",
-    timeoutMs: 8000,
-    identity: { surface: "dom", role: action === "type" ? "textbox" : "button", name, path: [] },
-    ...("postcondition" in extra ? {} : { expect: { kind: "settled", timeoutMs: 8000 } }),
-    ...extra,
-  });
-}

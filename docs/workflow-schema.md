@@ -30,7 +30,30 @@ Every step has `id`, `index`, `action`, `caption`, and `timeoutMs`. `caption.tex
 
 `action` is `click`, `type`, `key`, `check`, `select`, `navigate`, `verify`, `handoff`, `upload`, `drop`, `extract`, `for_each`, `note`, `download`, `open`, `digits`, or `pickDate`.
 
-A target is `{ locators, hint }`. Locators are `role`, `text`, `testid`, `css`, `xpath`, or `anchor`. Replay does not invent a locator when the list is empty.
+Any step may also carry optional `when`, `heal`, and `readBack`. Each action adds its own fields below. `validateWorkflow` refuses any other key.
+
+| action | fields |
+| --- | --- |
+| `click` | `target`, optional `check`, `optional`, `selection`, `dialog` |
+| `type` | `target`, `text`, optional `sensitive`, `check` |
+| `select` | `target`, `text`, optional `check` |
+| `digits` | `text`, optional `target`, `check` |
+| `key` | `key`, optional `target`, `check` |
+| `check` | `target`, `checked`, optional `check` |
+| `navigate` | `url`, optional `check` |
+| `verify` | `check` |
+| `handoff` | `reason`, optional `target`, `check` |
+| `upload`, `drop` | `target`, `file`, optional `check` |
+| `download` | `download`, optional `target`, `check` |
+| `open` | `open`, optional `check` |
+| `pickDate` | `date`, optional `target`, `check` |
+| `extract` | `extract` |
+| `for_each` | `forEach` |
+| `note` | `text` as a string |
+
+`text` is `{ input }` or `{ literal }`. `file` is `{ input }` or `{ fromOutput }`. Only a `type` step is `sensitive`.
+
+A target is `{ locators, hint }`. Locators are `role`, `text`, `testid`, `css`, `xpath`, or `anchor`. Replay does not invent a locator when the list is empty. Replay tries the locators in order. When the locators do not find exactly one node, `targetQuery` in `desktop/src/v1/identity.ts` turns the locators and hint into the fields the scorer compares with live nodes.
 
 `check` is one of `settled`, `url`, `text`, `value`, `element`, `absent`, or `state`. A true check of those kinds passes. `extract`, `for_each`, and `note` have no check.
 

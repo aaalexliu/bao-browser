@@ -70,7 +70,7 @@ export interface HealRecord {
   model?: { provider: string; name: string; version?: string };
   rawResponse?: string;
   proposedPatch?: HealProposal["patch"];
-  executed?: { action: string; identity?: Identity };
+  executed?: { action: string; target?: Target };
   postconditionPassed?: boolean;
   kept?: boolean;
   /** PNG from the start of the failed step. Absent when shots were not captured. */

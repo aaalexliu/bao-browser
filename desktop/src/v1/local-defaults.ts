@@ -1,7 +1,6 @@
 import { hasStrippedSecret, oneTimeCodeInput } from "../../../shared/saved-secrets";
 import { stripUnsafe } from "../../../shared/sync-guard";
-import { finishInput, stepValueTemplate } from "./schema";
-import type { WorkflowStep, WorkflowV2 } from "./schema";
+import { finishInput, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export function retainLocalDefaults(doc: WorkflowV2, local?: WorkflowV2): WorkflowV2 {
   const projected = local ? stripUnsafe(local) as WorkflowV2 : undefined;
@@ -46,10 +45,14 @@ function restoreSecretText(step: WorkflowStep, saved: WorkflowStep | undefined, 
     const next = keptSecret(step.key, stripped.key, saved.key);
     if (next !== undefined) step.key = next;
   }
-  if (step.action === "type" || step.action === "select" || step.action === "digits") {
-    const next = keptSecret(stepValueTemplate(step), stepValueTemplate(stripped), stepValueTemplate(saved));
+  if ((step.action === "type" || step.action === "select" || step.action === "digits") && "literal" in step.text) {
+    const next = keptSecret(step.text.literal, typedLiteral(stripped), typedLiteral(saved));
     if (next !== undefined) step.text = { literal: next };
   }
+}
+
+function typedLiteral(step: WorkflowStep): string | undefined {
+  return (step.action === "type" || step.action === "select" || step.action === "digits") && "literal" in step.text ? step.text.literal : undefined;
 }
 
 function keptSecret(current: string | undefined, stripped: string | undefined, saved: string | undefined): string | undefined {

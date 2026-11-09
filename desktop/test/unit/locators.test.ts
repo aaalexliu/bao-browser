@@ -1,4 +1,5 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc, fixtureInput } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, type Identity, locatorValue, stepLocators, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -12,7 +13,6 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildLocators, matchLabeledControl, matchLocator } from "../../src/v1/locators";
 import { uniqueNamedRole } from "../../src/v1/os-driver";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepQuery, stepLocators, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 
 const schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -22,19 +22,14 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
-}
-
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "Locators",
     startUrl: "https://example.test/",
     createdAt: 1,
-    inputs: [fixtureInput({ name: "query", type: "text", default: "ada" })],
+    inputs: [{ name: "query", type: "text", label: "query", supply: "saved", default: "ada" }],
     steps: steps.map((item, index) => ({ ...item, index })),
   });
 }
@@ -101,14 +96,14 @@ test("locators are stored in role, text, test id, css, xpath order and validate"
 
 test("label repair does not click a collapsed node", async () => {
   const hidden = ident({ role: "button", text: "Add Element" });
-  const workflow = doc([step({
+  const workflow = doc([{
     id: "add",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click \"Add\"", citation: { text: "Add now", source: "text" } },
     action: "click",
-    label: 'Click "Add"',
-    intent: "Add",
-    identity: ident({ role: "button", text: "Add now" }),
-    locators: [{ kind: "role", role: "button", name: "Add now" }],
-  })]);
+    target: { locators: [{ kind: "role", role: "button", name: "Add now" }], hint: { role: "button", surface: "dom" } },
+  }]);
   const driver = fake([tree([hidden], { boxes: [{ x: 0, y: 0, w: 0, h: 0 }] })]);
   const result = await replay(workflow, {}, driver, { locators: "primary", heal: unavailableHeal() });
   assert.equal(result.status, "failed");
@@ -118,8 +113,8 @@ test("label repair does not click a collapsed node", async () => {
 test("a calculator button wins the tie with its label when the role is button", () => {
   const button = ident({ surface: "atspi", role: "button", name: "7", app: "gnome-calculator" });
   const label = ident({ surface: "atspi", role: "label", name: "7", app: "gnome-calculator" });
-  assert.equal(uniqueNamedRole([button, label], "gnome-calculator", "button", "7"), button);
-  assert.equal(uniqueNamedRole([button, { ...button }], "gnome-calculator", "button", "7"), undefined);
+  assert.equal(uniqueNamedRole([button, label], "button", "7"), button);
+  assert.equal(uniqueNamedRole([button, { ...button }], "button", "7"), undefined);
 });
 
 test("a role or text locator with no price matches a node at any price, and a priced one keeps its price", () => {
@@ -207,23 +202,28 @@ test("an anchor locator hits one node on that side and misses an ambiguous or mi
 });
 
 test("export keeps the four value locators and drops an anchor", () => {
-  const exported = toPuppeteerReplay(doc([step({
+  const exported = toPuppeteerReplay(doc([{
     id: "go",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click" },
     action: "click",
-    locators: [
-      { kind: "role", role: "link", name: "Travel" },
-      { kind: "text", value: "Travel" },
-      { kind: "testid", value: "travel" },
-      { kind: "css", value: "#travel" },
-      { kind: "xpath", value: '//*[@id="travel"]' },
-      {
-        kind: "anchor",
-        relation: "below",
-        role: "link",
-        anchor: ident({ role: "heading", text: "Trips" }),
-      },
-    ],
-  })]), {});
+    target: {
+      locators: [
+        { kind: "role", role: "link", name: "Travel" },
+        { kind: "text", value: "Travel" },
+        { kind: "testid", value: "travel" },
+        { kind: "css", value: "#travel" },
+        { kind: "xpath", value: "//*[@id=\"travel\"]" },
+        {
+          kind: "anchor",
+          relation: "below",
+          role: "link",
+          anchor: { role: "heading", text: "Trips" },
+        },
+      ],
+    },
+  }]), {});
   const click = exported.steps.find((item) => item.type === "click");
   const selectors = click?.selectors as string[][];
   assert.deepEqual(selectors.map((chain) => chain[0]), [
@@ -246,17 +246,17 @@ test("a duplicated text locator is refused and a unique test id hits", () => {
 
 test("multi-locator uses the test id after the role misses and does not repair", async () => {
   const live = ident({ role: "button", testId: "go", text: "Continue" });
-  const workflow = doc([step({
+  const workflow = doc([{
     id: "go",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Go", citation: { text: "Go now", source: "text" } },
     action: "click",
-    label: "Go",
-    intent: "Go",
-    identity: ident({ role: "button", text: "Go now" }),
-    locators: [
-      { kind: "role", role: "button", name: "Go now" },
-      { kind: "testid", value: "go" },
-    ],
-  })]);
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Go now" }, { kind: "testid", value: "go" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  }]);
   const driver = fake([tree([live])]);
   const result = await replay(workflow, {}, driver, { locators: "all", heal: unavailableHeal() });
   assert.equal(result.status, "passed");
@@ -267,17 +267,17 @@ test("multi-locator uses the test id after the role misses and does not repair",
 
 test("the primary locator misses, so the label repair runs and the later locator is not tried", async () => {
   const live = ident({ role: "button", testId: "go", text: "Go" });
-  const workflow = doc([step({
+  const workflow = doc([{
     id: "go",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click \"Go\"", citation: { text: "Missing", source: "text" } },
     action: "click",
-    label: 'Click "Go"',
-    intent: "Go",
-    identity: ident({ role: "button", text: "Missing" }),
-    locators: [
-      { kind: "role", role: "button", name: "Missing" },
-      { kind: "testid", value: "go" },
-    ],
-  })]);
+    target: {
+      locators: [{ kind: "role", role: "button", name: "Missing" }, { kind: "testid", value: "go" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  }]);
   const driver = fake([tree([live])]);
   const result = await replay(workflow, {}, driver, { locators: "primary", heal: unavailableHeal() });
   assert.equal(result.status, "passed");
@@ -287,16 +287,18 @@ test("the primary locator misses, so the label repair runs and the later locator
 });
 
 test("a healed identity replaces the locators instead of keeping the miss", () => {
-  const before = step({
+  const before: WorkflowStep = {
     id: "go",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click Submit freeze", citation: { text: "Submit freeze", source: "text" } },
     action: "click",
-    identity: ident({ role: "button", testId: "missing", text: "Submit freeze" }),
-    locators: [{ kind: "role", role: "button", name: "Submit freeze" }],
-  });
+    target: { locators: [{ kind: "role", role: "button", name: "Submit freeze" }], hint: { role: "button", surface: "dom" } },
+  };
   const patched = applyPatch(before, {
     identity: ident({ role: "button", text: "Add Element" }),
   });
-  assert.equal(stepQuery(patched)?.testId, undefined);
+  assert.equal(locatorValue(stepTarget(patched), "testid"), undefined);
   const first = stepLocators(patched)?.[0];
   assert.equal(first?.kind, "role");
   assert.equal(first?.kind === "role" ? first.name : undefined, "Add Element");
@@ -305,24 +307,30 @@ test("a healed identity replaces the locators instead of keeping the miss", () =
 
 test("puppeteer export inlines the query and does not keep a secret", () => {
   const workflow = doc([
-    step({
+    {
       id: "q",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Type" },
       action: "type",
-      input: "query",
-      value: "{{query}}",
-      identity: ident({ role: "textbox", id: "q", nameAttr: "q", tag: "input" }),
-      locators: [{ kind: "css", value: 'input[name="q"]' }],
-    }),
-    step({
+      target: {
+        locators: [{ kind: "css", value: "input[name=\"q\"]" }],
+        hint: { nameAttr: "q", role: "textbox", surface: "dom", tag: "input", id: "q" },
+      },
+      text: { input: "query" },
+    },
+    {
       id: "secret",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Type the password" },
       action: "type",
-      value: "{{password}}",
+      target: { locators: [{ kind: "css", value: "#password" }], hint: { role: "textbox", surface: "dom", id: "password" } },
+      text: { literal: "{{password}}" },
       sensitive: true,
-      identity: ident({ role: "textbox", id: "password" }),
-      locators: [{ kind: "css", value: "#password" }],
-    }),
+    },
   ]);
-  workflow.inputs.push(fixtureInput({ name: "password", type: "secret" }));
+  workflow.inputs.push({ name: "password", type: "secret", label: "password", supply: "must" });
   const exported = toPuppeteerReplay(workflow, { query: "json" });
   const blob = JSON.stringify(exported);
   assert.match(blob, /json/);
@@ -344,12 +352,15 @@ test("property: a unique name hits and a repeated name is refused", () => {
       assert.equal(locs[0]?.kind, "role");
       assert.equal(matchLocator(locs[0]!, [node, other])?.index, 0);
       assert.equal(matchLocator({ kind: "text", value: name }, [node, { ...node, testId: "z", id: "z" }]), undefined);
-      const exported = toPuppeteerReplay(doc([step({
+      const exported = toPuppeteerReplay(doc([{
         id: "s",
+        index: 0,
+        timeoutMs: 0,
+        caption: { text: "Type" },
         action: "type",
-        value: "{{query}}",
-        locators: locs,
-      })]), { query: name });
+        target: { locators: locs },
+        text: { literal: "{{query}}" },
+      }]), { query: name });
       const blob = JSON.stringify(exported);
       assert.equal(blob.includes("{{"), false);
       assert.equal(blob.includes(name), true);

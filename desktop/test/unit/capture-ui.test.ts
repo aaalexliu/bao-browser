@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { captureStream, captureView, recordBar } from "../../src/app/views";
-import type { ShellState, TeachView } from "../../src/app/views";
+import { captureStream, captureView, recordBar, type ShellState, type TeachView } from "../../src/app/views";
 import { testChromium } from "../../src/test-browser";
 
 type CaptureTestState = ShellState & {

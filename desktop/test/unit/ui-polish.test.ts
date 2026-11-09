@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -32,10 +32,23 @@ test("historical sessions, Runs and Capture keep their content aligned in the ap
     for (const name of ["shot-001.png", "shot-002.png"]) writeFileSync(path.join(sessionDir, "shots", name), png);
     writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: "live", intent: "Read member report", status: "passed", host: "", updatedAt: 1, steps: liveSteps, audit, note: "" }));
     const label = 'Click "View full credit report"';
-    const workflow: WorkflowV2 = fixtureDoc({
-      schema: "bao.workflow/v4", version: 2, id: "wf-ui-polish", name: "Read member report", createdAt: 1,
+    const workflow: WorkflowV2 = testWorkflow({
+      schema: "bao.workflow/v4", id: "wf-ui-polish", name: "Read member report", createdAt: 1,
       startUrl: `${base}/fixture`, inputs: [],
-      steps: [fixtureStep({ id: "s1", index: 0, action: "click", label, surface: "dom", timeoutMs: 1000, identity: { surface: "dom", role: "link", name: "View full credit report", path: [] } })],
+      steps: [{
+        id: "s1",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: label, citation: { text: "View full credit report", source: "name" } },
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "link", name: "View full credit report" },
+            { kind: "text", value: "View full credit report" },
+          ],
+          hint: { role: "link", surface: "dom" },
+        },
+      }],
     });
     app.library.save(workflow);
     const steps = [{ id: "s1", label, action: "click", status: "passed", startedAt: 1000, endedAt: 1100 }];

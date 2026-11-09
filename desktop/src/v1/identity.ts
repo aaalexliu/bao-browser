@@ -2,7 +2,8 @@
 // A match is accepted only when it clears ACCEPT and leads the runner-up by MARGIN.
 // Otherwise replay refuses. Coordinates are not an input.
 
-import type { Identity, PathSeg, Surface } from "./schema";
+import { idFromCss, targetElementId } from "../../../shared/step-read";
+import type { Identity, PathSeg, Surface, Target } from "./schema";
 
 export type { Identity };
 
@@ -92,6 +93,36 @@ export function unstableId(id: string): boolean {
     || /[0-9a-f]{8,}/i.test(id)
     || /:r[0-9a-z]+:/i.test(id)
     || /\d{4,}/.test(id);
+}
+
+/**
+ * What the scorer looks for when replay finds a stored target among live nodes.
+ * A target pins only the fields a locator or its hint keeps, so AX-only fields stay empty.
+ */
+export function targetQuery(target: Target): Identity {
+  const role = target.locators.find((item) => item.kind === "role");
+  const text = target.locators.find((item) => item.kind === "text");
+  const testid = target.locators.find((item) => item.kind === "testid");
+  const css = target.locators.flatMap((item) => item.kind === "css" && item.value ? [item.value] : []);
+  const idSelector = css.find((value) => idFromCss(value));
+  const xpath = target.locators.find((item) => item.kind === "xpath");
+  return {
+    surface: target.hint?.surface ?? "dom",
+    role: (role?.kind === "role" ? role.role : target.hint?.role) || "unknown",
+    name: role?.kind === "role" ? role.name : undefined,
+    text: text?.kind === "text" ? text.value : undefined,
+    testId: testid?.kind === "testid" ? testid.value : undefined,
+    cssPath: css.find((value) => value !== idSelector) ?? idSelector,
+    xpath: xpath?.kind === "xpath" ? xpath.value : undefined,
+    label: target.hint?.label,
+    nameAttr: target.hint?.nameAttr,
+    tag: target.hint?.tag,
+    inputType: target.hint?.inputType,
+    autocomplete: target.hint?.autocomplete,
+    placeholder: target.hint?.placeholder,
+    id: targetElementId(target),
+    path: target.hint?.path ?? [],
+  };
 }
 
 function sameApp(query: Identity, candidate: Identity): boolean {

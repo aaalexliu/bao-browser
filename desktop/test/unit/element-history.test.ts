@@ -1,4 +1,5 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc, withStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
+import { stepTarget, type Identity, locatorValue, stepHistory, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -10,7 +11,6 @@ import { runViewer, versionsPanel } from "../../src/app/views";
 import { rollbackTo } from "../../src/v1/element-history";
 import { keepPatch, revertPatch, type HealProposal } from "../../src/v1/heal";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepQuery, stepHistory, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 import { formatClock } from "../../src/v1/time";
 import { draftVersion, listVersions, restoreVersion, versionDocument } from "../../src/v1/versions";
@@ -23,14 +23,9 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, index: 0, ...partial, label: partial.label || partial.action });
-}
-
 function doc(steps: WorkflowStep[], id = "wf"): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name: "Fixture",
     startUrl: "http://127.0.0.1/fixture",
@@ -78,7 +73,22 @@ test("heal twice, roll back to the recorded version, and replay with no model ca
   const recordedAt = 1_700_000_000_000;
   const original = ident({ testId: "save", text: "Save" });
   let workflow = doc([
-    step({ id: "save", action: "click", label: "Click Save", identity: original }),
+    {
+      id: "save",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Save", citation: { text: "Save", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Save" },
+          { kind: "text", value: "Save" },
+          { kind: "testid", value: "save" },
+          { kind: "css", value: "[data-testid=\"save\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   workflow.createdAt = recordedAt;
   const patch = (text: string, testId: string): HealProposal["patch"] => ({ identity: ident({ text, testId }) });
@@ -98,15 +108,15 @@ test("heal twice, roll back to the recorded version, and replay with no model ca
   assert.deepEqual(stepHistory(rolled)?.[0], snap);
   assert.deepEqual(history[0], snap);
   assert.equal(stepHistory(rolled)?.[3]?.source, "rollback");
-  assert.equal(stepQuery(rolled)?.text, "Save");
-  assert.equal(stepQuery(rolled)?.testId, "save");
+  assert.equal(locatorValue(stepTarget(rolled), "text"), "Save");
+  assert.equal(locatorValue(stepTarget(rolled), "testid"), "save");
   assert.notEqual(stepHistory(rolled)?.[3]?.id, history[0]?.id);
-  workflow = fixtureDoc({ ...workflow, steps: [{ ...rolled, index: 0 }] });
+  workflow = testWorkflow({ ...workflow, steps: [{ ...rolled, index: 0 }] });
   const reverted = revertPatch(workflow, workflow.steps[0]!, { at: recordedAt + 200_000, runId: "run-3" });
   assert.equal((reverted.steps[0] == null ? undefined : stepHistory(reverted.steps[0]))?.at(-1)?.source, "revert");
   assert.equal((reverted.steps[0] == null ? undefined : stepHistory(reverted.steps[0]))?.[0]?.id, snap?.id);
   assert.deepEqual((reverted.steps[0] == null ? undefined : stepHistory(reverted.steps[0]))?.[0], snap);
-  workflow = fixtureDoc({ ...workflow, steps: [rolled] });
+  workflow = testWorkflow({ ...workflow, steps: [rolled] });
   assert.deepEqual(validateWorkflow(workflow), []);
   assert.equal(validate(workflow), true, ajv.errorsText(validate.errors));
   const result = await replay(workflow, {}, fake([tree([original])]), { heal: throwingHeal });
@@ -118,7 +128,22 @@ test("heal twice, roll back to the recorded version, and replay with no model ca
 
 test("a cookie banner is dismissed for this run and the workflow file is unchanged", async () => {
   const workflow = doc([
-    step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) }),
+    {
+      id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ], "wf-banner");
   const home = mkdtempSync(path.join(tmpdir(), "bao-banner-"));
   const library = new Library(home);
@@ -147,7 +172,22 @@ test("a cookie banner is dismissed for this run and the workflow file is unchang
 
 test("a captcha and a signed-out page stop for a person, and a 5xx stays a failure", async () => {
   const workflow = doc([
-    step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) }),
+    {
+      id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]);
   let proposed = 0;
   const heal = { available: () => true, propose: async () => { proposed += 1; return null; } };
@@ -206,11 +246,21 @@ test("the fourth obstruction is a failure and is not healed", async () => {
     notify: async () => {},
     sleep: async () => {},
   };
-  const workflow = doc([1, 2, 3, 4].map((n) => step({
+  const workflow = doc([1, 2, 3, 4].map((n) => ({
     id: `apply-${n}`,
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
     action: "click",
-    label: "Click Apply",
-    identity: ident({ testId: "apply", text: "Apply" }),
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Apply" },
+        { kind: "text", value: "Apply" },
+        { kind: "testid", value: "apply" },
+        { kind: "css", value: "[data-testid=\"apply\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
   })));
   let proposed = 0;
   const result = await replay(workflow, {}, driver, {
@@ -231,7 +281,22 @@ test("the versions panel holds the locator versions and the run viewer keeps the
   const home = mkdtempSync(path.join(tmpdir(), "bao-versions-locators-"));
   const library = new Library(home);
   let workflow = doc([
-    step({ id: "apply", action: "click", label: "Click Apply", identity: ident({ testId: "apply", text: "Apply" }) }),
+    {
+      id: "apply",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ], "wf-history");
   workflow.createdAt = at;
   library.save(workflow);
@@ -239,9 +304,9 @@ test("the versions panel holds the locator versions and the run viewer keeps the
   draftVersion(library, once, "heal");
   const twice = keepPatch(once, "apply", { identity: ident({ testId: "apply-3", text: "Continue" }) }, { at: at + 2000, runId: "run-2", score: 88 });
   draftVersion(library, twice, "heal");
-  const reverted = revertPatch(twice, withStep(workflow.steps[0]!, {
-    history: twice.steps[0] ? stepHistory(twice.steps[0]) : undefined,
-  }), { at: at + 3000, runId: "run-2" });
+  const base = workflow.steps[0]!;
+  assert.ok(base.action === "click");
+  const reverted = revertPatch(twice, { ...base, target: { ...base.target, history: stepHistory(twice.steps[0]!) } }, { at: at + 3000, runId: "run-2" });
   draftVersion(library, reverted, "restore");
   const recorded = (twice.steps[0] == null ? undefined : stepHistory(twice.steps[0]))?.[0];
   const rolled = {
@@ -266,12 +331,12 @@ test("the versions panel holds the locator versions and the run viewer keeps the
   const restored = restoreVersion(library, "wf-history", 1);
   assert.deepEqual(versionDocument(library, "wf-history", 1), snap);
   assert.notEqual(restored.n, 1);
-  assert.equal((restored.document.steps[0] == null ? undefined : stepQuery(restored.document.steps[0]))?.testId, "apply");
+  assert.equal(locatorValue(stepTarget(restored.document.steps[0]), "testid"), "apply");
   const result = await replay(restored.document, {}, fake([tree([ident({ testId: "apply", text: "Apply" })])]), { heal: throwingHeal });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
   assert.equal(result.heals.length, 0);
-  assert.equal((() => { const _step = library.read("wf-history").steps[0]; return _step == null ? undefined : stepQuery(_step); })()?.testId, "apply");
+  assert.equal(locatorValue(stepTarget(library.read("wf-history").steps[0]), "testid"), "apply");
   const viewer = runViewer({
     id: "run-banner",
     workflowId: "wf-history",

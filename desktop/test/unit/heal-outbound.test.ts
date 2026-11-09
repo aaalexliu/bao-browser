@@ -1,5 +1,5 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
-import { stepTitle, stepValueTemplate } from "../../src/v1/schema";
+import { stepText, testWorkflow } from "../support/workflow";
+import { stepTitle, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,7 +9,6 @@ import fc from "fast-check";
 import { cursorAccountHeal, resetCursorAccountCache, type CursorAgentRun } from "../../src/v1/cursor-account";
 import { cursorSessionHeal, llmHealFromEnv, type StepFailure } from "../../src/v1/heal";
 import { replay, type Driver } from "../../src/v1/replay";
-import type { WorkflowStep, WorkflowV2 } from "../../src/v1/schema";
 
 type PromptDom = [
   { value: string; identity: { value: string } },
@@ -26,14 +25,21 @@ type CursorRequest = { prompt: string; dom: PromptDom; intent: string; reason: s
 const reply = JSON.stringify({ identity: { surface: "dom", role: "button", testId: "fixed", path: [] } });
 
 function fixture(secret: string) {
-  const workflow: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "heal-outbound", name: secret, createdAt: 1,
-    startUrl: "https://example.test/", inputs: [fixtureInput({ name: "password", type: "secret", label: "Password", default: secret })],
-    steps: [fixtureStep({
-      id: "missing", index: 0, action: "type", label: secret, surface: "dom", timeoutMs: 0,
-      input: "password", value: "{{password}}",
-      identity: { surface: "dom", role: "textbox", testId: "missing", path: [] },
-    })],
+  const workflow: WorkflowV2 = testWorkflow({
+    schema: "bao.workflow/v4", id: "heal-outbound", name: secret, createdAt: 1,
+    startUrl: "https://example.test/", inputs: [{ name: "password", type: "secret", label: "Password", supply: "saved", default: secret }],
+    steps: [{
+      id: "missing",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: secret },
+      action: "type",
+      target: {
+        locators: [{ kind: "testid", value: "missing" }, { kind: "css", value: "[data-testid=\"missing\"]" }],
+        hint: { role: "textbox", surface: "dom" },
+      },
+      text: { input: "password" },
+    }],
   });
   const dom = [
     { op: "type", value: secret, identity: { surface: "dom", role: "textbox", value: secret } },
@@ -65,7 +71,7 @@ function assertPrompt(prompt: string, secret: string): void {
   assert.ok(prompt.includes(`Reason: ${secret}`));
   assert.equal(prompt.includes("AAAALOCALSCREENSHOT"), false);
   const step = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Step: "))!.slice(6)) as WorkflowStep;
-  assert.equal(stepValueTemplate(step), "{{password}}");
+  assert.deepEqual(stepText(step), { input: "password" });
   assert.equal(stepTitle(step), secret);
 }
 
@@ -131,7 +137,7 @@ for (const mode of ["logged-out", "print-fails"] as const) {
     assert.equal(request.dom[0].identity.value, secret);
     assert.equal(request.intent, secret);
     assert.equal(request.reason, secret);
-    assert.equal(stepValueTemplate(request.step), "{{password}}");
+    assert.deepEqual(stepText(request.step), { input: "password" });
     assert.equal(readFileSync(path.join(dir, "heal-shot.png"), "base64"), Buffer.from(data.failure.snapshot.screenshot!, "base64").toString("base64"));
     assert.deepEqual(data, original);
   });

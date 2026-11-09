@@ -1,5 +1,5 @@
 import { INPUT_BINDING } from "./bindings";
-import { stepForEach, stepInputName, stepKey, stepQuery, stepTarget, stepValueTemplate } from "./step-read";
+import { stepEnteredLiteral, stepForEach, stepInputName, stepKey, stepTarget, targetRole } from "./step-read";
 import type { ReplayArgs, WorkflowV2, WorkflowStep } from "../desktop/src/v1/schema";
 
 export const STRIPPED_SECRET = "[secret stripped]";
@@ -26,9 +26,9 @@ export function oneTimeCodeInput(workflow: Pick<WorkflowV2, "steps">, name: stri
   return workflow.steps.some((step) => {
     const nested = stepForEach(step);
     if (nested?.steps) return oneTimeCodeInput({ steps: nested.steps as WorkflowStep[] }, name);
-    const value = stepValueTemplate(step);
-    return oneTimeCodeField(stepQuery(step)) && (stepInputName(step) === name
-      || typeof value === "string" && [...value.matchAll(INPUT_BINDING)].some((match) => match[1] === name));
+    const literal = stepEnteredLiteral(step);
+    return oneTimeCodeField(stepTarget(step)?.hint) && (stepInputName(step) === name
+      || typeof literal === "string" && [...literal.matchAll(INPUT_BINDING)].some((match) => match[1] === name));
   });
 }
 
@@ -59,14 +59,14 @@ export function hasStrippedSecret(value: unknown): boolean {
 export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, args: ReplayArgs): boolean {
   const key = stepKey(step);
   const input = stepInputName(step);
-  const value = stepValueTemplate(step);
+  const literal = stepEnteredLiteral(step);
   if (hasStrippedSecret(key)) return true;
   if (step.action === "key" && (step as { sensitive?: boolean }).sensitive && !key) return true;
   const override = input != null && args[input] != null && ["type", "digits", "select"].includes(step.action);
-  if (!override && hasStrippedSecret(value)) return true;
+  if (!override && hasStrippedSecret(literal)) return true;
   const inputs = new Set<string>();
   if (input) inputs.add(input);
-  if (typeof value === "string") for (const match of value.matchAll(INPUT_BINDING)) inputs.add(match[1]!);
+  if (typeof literal === "string") for (const match of literal.matchAll(INPUT_BINDING)) inputs.add(match[1]!);
   const source = stepForEach(step)?.over;
   const tableName = source?.kind === "input" ? source.name : undefined;
   if (tableName) inputs.add(tableName);
@@ -75,7 +75,8 @@ export function stepNeedsSecretValue(step: WorkflowStep, workflow: WorkflowV2, a
     const value = args[name] ?? input?.default;
     return input?.type === "table" && tableName === name ? typeof value === "string" && value.trim() === STRIPPED_SECRET : hasStrippedSecret(value);
   })) return true;
-  if ((step.action === "type" || step.action === "digits") && (secretSavedField(stepQuery(step)) || secretSavedField(stepTarget(step)?.hint)) && !hasOwnValue(value)) {
+  const target = stepTarget(step);
+  if ((step.action === "type" || step.action === "digits") && (secretSavedField(target?.hint) || secretSavedField({ role: targetRole(target) })) && !input && !hasOwnValue(literal)) {
     return workflow.inputs.some((input) => input.type === "secret" && hasStrippedSecret(args[input.name] ?? input.default) && !hasOwnValue(args[input.name]));
   }
   return false;

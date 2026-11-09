@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep, type FixtureDraft } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -12,23 +12,17 @@ import { runField } from "../../src/app/views";
 import { BrowserDriver } from "../../src/v1/browser-driver";
 import { replay } from "../../src/v1/replay";
 import { unavailableHeal } from "../../src/v1/heal";
-import { WORKFLOW_SCHEMA_ID, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
+import { WORKFLOW_SCHEMA_ID, type WorkflowV2 } from "../../src/v1/schema";
 import { testArtifacts } from "../artifacts";
 
 const CLOCK = new Date("2026-10-22T15:00:00Z");
 
 function workflow(partial: Pick<WorkflowV2, "id" | "name" | "startUrl" | "inputs" | "steps">): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: WORKFLOW_SCHEMA_ID,
-    version: 3,
-    filesDates: 1,
     createdAt: CLOCK.getTime(),
     ...partial,
   });
-}
-
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: partial.timeoutMs ?? 20000, index: partial.index ?? 0, ...partial });
 }
 
 function listen(handler: (req: IncomingMessage, res: ServerResponse) => void): Promise<{ url: string; close: () => Promise<void> }> {
@@ -131,16 +125,37 @@ describe("files and dates demos", { concurrency: 1 }, () => {
           name: "Fixture dates",
           startUrl: site.url,
           inputs: [
-            fixtureInput({ name: "checkIn", type: "date", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
-            fixtureInput({ name: "checkOut", type: "date", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
+            {
+              name: "checkIn",
+              type: "date",
+              label: "checkIn",
+              supply: "must",
+              format: "YYYY-MM-DD",
+              relative: "+14d",
+              zone: "UTC",
+            },
+            {
+              name: "checkOut",
+              type: "date",
+              label: "checkOut",
+              supply: "must",
+              format: "YYYY-MM-DD",
+              relative: "+17d",
+              zone: "UTC",
+            },
           ],
-          steps: [step({
+          steps: [{
             id: "stay",
-            action: "click",
-            label: "Pick dates",
-            identity: { surface: "dom", role: "button", tag: "button", path: [], id: "trap" },
-            datePicker: { input: "checkIn", endInput: "checkOut" },
-          })],
+            index: 0,
+            timeoutMs: 20000,
+            caption: { text: "Pick dates" },
+            action: "pickDate",
+            date: { input: "checkIn", endInput: "checkOut" },
+            target: {
+              locators: [{ kind: "css", value: "#trap" }, { kind: "xpath", value: "//*[@id=\"trap\"]" }],
+              hint: { role: "button", surface: "dom", tag: "button", id: "trap" },
+            },
+          }],
         });
         const result = await replay(doc, { checkIn: "+21d", checkOut: "+23d" }, new BrowserDriver(page), {
           clock: CLOCK,
@@ -187,48 +202,62 @@ describe("files and dates demos", { concurrency: 1 }, () => {
           name: "Fixture chain",
           startUrl: site.url,
           inputs: [
-            fixtureInput({ name: "company", type: "text", default: "acme" }),
-            fixtureInput({ name: "upload", type: "file", fromOutput: "note", required: false }),
+            { name: "company", type: "text", label: "company", supply: "saved", default: "acme" },
+            { name: "upload", type: "file", label: "upload", supply: "must", fromOutput: "note" },
           ],
           steps: [
-            step({
+            {
               id: "dl",
               index: 0,
+              timeoutMs: 20000,
+              caption: { text: "Download" },
               action: "download",
-              label: "Download",
               download: { output: "note", name: "{{run.date}}-{{company}}-{{suggested}}", url: `${site.url}/file.txt` },
-            }),
-            step({
+            },
+            {
               id: "back",
               index: 1,
+              timeoutMs: 20000,
+              caption: { text: "Open upload" },
               action: "open",
-              label: "Open upload",
               open: { target: "url", url: `${site.url}/` },
-            }),
-            step({
+            },
+            {
               id: "up",
               index: 2,
+              timeoutMs: 20000,
+              caption: { text: "Upload" },
               action: "upload",
-              label: "Upload",
-              input: "upload",
-              value: "{{upload}}",
-              fileFrom: "note",
-              identity: { surface: "dom", role: "textbox", tag: "input", path: [], id: "file-upload" },
-            }),
-            step({
+              target: {
+                locators: [{ kind: "css", value: "#file-upload" }, { kind: "xpath", value: "//*[@id=\"file-upload\"]" }],
+                hint: { role: "textbox", surface: "dom", tag: "input", id: "file-upload" },
+              },
+              file: { fromOutput: "note" },
+            },
+            {
               id: "submit",
               index: 3,
+              timeoutMs: 20000,
+              caption: { text: "Submit", citation: { text: "Upload", source: "text" } },
               action: "click",
-              label: "Submit",
-              identity: { surface: "dom", role: "button", tag: "button", path: [], id: "file-submit", text: "Upload" },
-            }),
-            step({
+              target: {
+                locators: [
+                  { kind: "role", role: "button", name: "Upload" },
+                  { kind: "text", value: "Upload" },
+                  { kind: "css", value: "#file-submit" },
+                  { kind: "xpath", value: "//*[@id=\"file-submit\"]" },
+                ],
+                hint: { role: "button", surface: "dom", tag: "button", id: "file-submit" },
+              },
+            },
+            {
               id: "see",
               index: 4,
+              timeoutMs: 20000,
+              caption: { text: "Filename is shown" },
               action: "verify",
-              label: "Filename is shown",
-              expect: { kind: "text", match: "2026-10-22-acme-note.txt", timeoutMs: 8000 },
-            }),
+              check: { kind: "text", match: "2026-10-22-acme-note.txt", timeoutMs: 8000 },
+            },
           ],
         });
         const result = await replay(doc, { company: "acme" }, new BrowserDriver(page), {
@@ -254,8 +283,8 @@ describe("files and dates demos", { concurrency: 1 }, () => {
   test("the run form previews the resolved date in light and dark", { timeout: 60_000 }, async () => {
     const sheet = readFileSync("desktop/src/app/public/index.html", "utf8").match(/<style>([\s\S]*?)<\/style>/)?.[1] || "";
     const fields = [
-      runField({ name: "checkIn", type: "date", label: "Check in", relative: "+14d", format: "D MMM YYYY", zone: "UTC", required: true }, undefined, CLOCK),
-      runField({ name: "checkOut", type: "date", label: "Check out", relative: "+17d", format: "D MMM YYYY", zone: "UTC", required: true }, undefined, CLOCK),
+      runField({ name: "checkIn", type: "date", label: "Check in", relative: "+14d", format: "D MMM YYYY", zone: "UTC", supply: "must" }, undefined, CLOCK),
+      runField({ name: "checkOut", type: "date", label: "Check out", relative: "+17d", format: "D MMM YYYY", zone: "UTC", supply: "must" }, undefined, CLOCK),
       runField({ name: "monday", type: "date", label: "Next Monday", relative: "next monday", format: "D MMM YYYY", zone: "UTC" }, undefined, CLOCK),
       runField({ name: "month", type: "date", label: "First of next month", relative: "first of next month", format: "D MMM YYYY", zone: "UTC" }, undefined, CLOCK),
       runField({ name: "statement", type: "file", label: "Statement", fromOutput: "statement", boundStep: "Download W-9" }),

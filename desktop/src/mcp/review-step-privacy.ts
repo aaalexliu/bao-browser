@@ -1,7 +1,8 @@
 import { FILE_BINDING } from "../../../shared/bindings";
 import { redactSavedValue } from "../../../shared/outbound-secrets";
 import { secretSavedField, STRIPPED_SECRET } from "../../../shared/saved-secrets";
-import { stepValueTemplate, stepForEach, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepEnteredLiteral } from "../../../shared/step-read";
+import { stepForEach, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import type { StoredRun } from "../v1/store";
 
 function* fields(value: unknown, excluded?: unknown): Generator<unknown> {
@@ -45,7 +46,7 @@ export function privateReviewStep(workflow: WorkflowV2, step: WorkflowStep, run:
   const hidden = (item: WorkflowStep): boolean => {
     const scope = scopes.find((candidate) => candidate.step === item);
     return !scope || structural(scope.nodes) || bound(scope.nodes)
-      || redactSavedValue(stepValueTemplate(item) ?? "") === STRIPPED_SECRET || Boolean(stepForEach(item)?.steps.some(hidden));
+      || redactSavedValue(stepEnteredLiteral(item) ?? "") === STRIPPED_SECRET || Boolean(stepForEach(item)?.steps.some(hidden));
   };
   const recorded = [...(run.receipts || []), run.failure].some((item) =>
     item !== null && typeof item === "object" && "stepId" in item && item.stepId === step.id)

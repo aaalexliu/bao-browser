@@ -5,8 +5,7 @@
 
 import { completeFor, saveModel } from "../eval/intent/model";
 import { askCursorAgent, readCursorAccount, realCursorAgent, type CursorAgentRun } from "./cursor-account";
-import { stepTitle, stepQuery } from "./schema";
-import type { WorkflowV2 } from "./schema";
+import { locatorValue, targetName, stepTarget, stepTitle, type WorkflowV2 } from "./schema";
 import { primaryHost, type NameSource } from "./workflow-name";
 
 export interface SaveCompleter {
@@ -173,7 +172,8 @@ function promptSteps(
   return workflow.steps.map((step, index) => {
     const group = groups?.[index] || [];
     const event = [...group].reverse().find((item) => item.afterUrl || item.beforeUrl);
-    const visible = [stepQuery(step)?.name, stepQuery(step)?.text, stepQuery(step)?.label, stepTitle(step)]
+    const target = stepTarget(step);
+    const visible = [targetName(target), locatorValue(target, "text"), target?.hint?.label, stepTitle(step)]
       .filter((item): item is string => typeof item === "string" && !!item.trim())
       .join(" · ");
     return {

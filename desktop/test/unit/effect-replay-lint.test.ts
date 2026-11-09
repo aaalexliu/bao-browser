@@ -1,5 +1,6 @@
-import { fixtureDoc, fixtureStep, fixtureInput } from "../support/fixture-step";
-import { stepQuery, stepLocators } from "../../src/v1/schema";
+import { testWorkflow } from "../support/workflow";
+import { targetElementId } from "../../../shared/step-read";
+import { stepTarget, hintFromIdentity, type Identity, locatorValue, targetName, stepLocators, type Target, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds, condense } from "../../src/v1/condense";
@@ -8,7 +9,6 @@ import { GOOD_INTENTS } from "../../src/eval/intent/good-intents";
 import { BAD_INTENT_TEXTS } from "../../src/eval/heldout/bad-judge";
 import { buildLocators, matchLabeledControl } from "../../src/v1/locators";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import type { Identity, StepLocator, WorkflowV2 } from "../../src/v1/schema";
 import type { TrailEvent } from "../../src/v1/interpret";
 
 const url = "https://example.test/page";
@@ -57,11 +57,11 @@ test("effect filter drops a still click and keeps one that changed state", () =>
   const dropped = droppedNoEffectIds(events);
   assert.deepEqual(dropped, ["head"]);
   const workflow = condense(events, { id: "fx", name: "fx", startUrl: url });
-  assert.equal(workflow.steps.some((step) => stepQuery(step)?.text === "Title"), false);
-  assert.equal(workflow.steps.some((step) => stepQuery(step)?.nameAttr === "size"), true);
-  assert.equal(workflow.steps.some((step) => stepQuery(step)?.id === "go"), true);
-  assert.equal(workflow.steps.some((step) => stepQuery(step)?.name === "Help"), true);
-  assert.equal(workflow.steps.some((step) => stepQuery(step)?.cssPath === "details"), true);
+  assert.equal(workflow.steps.some((step) => locatorValue(stepTarget(step), "text") === "Title"), false);
+  assert.equal(workflow.steps.some((step) => stepTarget(step)?.hint?.nameAttr === "size"), true);
+  assert.equal(workflow.steps.some((step) => targetElementId(stepTarget(step)) === "go"), true);
+  assert.equal(workflow.steps.some((step) => targetName(stepTarget(step)) === "Help"), true);
+  assert.equal(workflow.steps.some((step) => stepTarget(step)?.locators.some((locator) => locator.kind === "css" && locator.value === "details")), true);
 });
 
 test("a shared radio name resolves to the input inside the recorded label", async () => {
@@ -212,10 +212,10 @@ test("repairs resolve a text tie with a unique css path and leave the tie alone 
     { surface: "dom", role: "link", text: "(about)", cssPath: "a.one", path: [] },
     { surface: "dom", role: "link", text: "(about)", cssPath: "a.two", path: [] },
   ];
-  const plain = await replay(clickWorkflow(query), {}, memory(nodes), {});
+  const plain = await replay(clickWorkflow({ locators: [{ kind: "role", role: "link", name: "(about)" }, { kind: "text", value: "(about)" }], hint: { role: "link", surface: "dom" } }), {}, memory(nodes), {});
   assert.equal(plain.status, "failed");
   assert.equal(plain.failure?.reason, "tie");
-  const repaired = await replay(clickWorkflow(query, buildLocators(query, nodes)), {}, memory(nodes), {});
+  const repaired = await replay(clickWorkflow({ locators: buildLocators(query, nodes), hint: hintFromIdentity(query) }), {}, memory(nodes), {});
   assert.equal(repaired.status, "passed");
 });
 
@@ -227,7 +227,7 @@ test("stored locators find an id-less control by css and reveal a collapsed sear
     path: [],
   };
   const nodes = [field];
-  const found = await replay(typeWorkflow(field, buildLocators(field, nodes)), { text: "milk" }, memory(nodes), {});
+  const found = await replay(typeWorkflow({ locators: buildLocators(field, nodes), hint: hintFromIdentity(field) }), { text: "milk" }, memory(nodes), {});
   assert.equal(found.status, "passed");
 
   const hidden: Identity = {
@@ -252,53 +252,27 @@ test("stored locators find an id-less control by css and reveal a collapsed sear
       hidden: [false, false],
     };
   });
-  const result = await replay(typeWorkflow(hidden, buildLocators(hidden, [hidden, toggle])), { text: "q" }, driver, {});
+  const result = await replay(typeWorkflow({ locators: buildLocators(hidden, [hidden, toggle]), hint: hintFromIdentity(hidden) }), { text: "q" }, driver, {});
   assert.equal(revealed, true);
   assert.equal(result.status, "passed");
 });
 
-function clickWorkflow(identity: Identity, locators?: StepLocator[]): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4",
-    version: 2,
+function clickWorkflow(target: Target): WorkflowV2 {
+  return testWorkflow({
     id: "wf",
     name: "wf",
     startUrl: url,
-    createdAt: 1,
-    inputs: [],
-    steps: [fixtureStep({
-      id: "s0",
-      index: 0,
-      action: "click",
-      label: "Click",
-      surface: "dom",
-      identity,
-      locators,
-      timeoutMs: 0,
-    })],
+    steps: [{ id: "s0", index: 0, timeoutMs: 0, caption: { text: "Click" }, action: "click", target }],
   });
 }
 
-function typeWorkflow(identity: Identity, locators?: StepLocator[]): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4",
-    version: 2,
+function typeWorkflow(target: Target): WorkflowV2 {
+  return testWorkflow({
     id: "wf",
     name: "wf",
     startUrl: url,
-    createdAt: 1,
-    inputs: [fixtureInput({ name: "text", type: "text", required: true })],
-    steps: [fixtureStep({
-      id: "s0",
-      index: 0,
-      action: "type",
-      label: "Type",
-      surface: "dom",
-      identity,
-      locators,
-      input: "text",
-      timeoutMs: 0,
-    })],
+    inputs: [{ name: "text", type: "text", label: "text", supply: "must" }],
+    steps: [{ id: "s0", index: 0, timeoutMs: 0, caption: { text: "Type" }, action: "type", target, text: { input: "text" } }],
   });
 }
 

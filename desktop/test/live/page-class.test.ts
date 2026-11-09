@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // Live page class. Local fixtures mimic each vendor, a modal the tree does not
 // list, and the Experian session: member 200, graphql 403, then a client
 // navigation to /login/index with no HTTP redirect. Public pages are only
@@ -88,23 +88,29 @@ function serve(reqPath: string, res: ServerResponse): void {
 }
 
 function workflow(startUrl: string, id = "wf"): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name: "Fixture",
     startUrl,
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "apply",
       index: 0,
-      action: "click",
-      label: "Click Apply",
-      surface: "dom",
       timeoutMs: 2000,
-      identity: { surface: "dom", role: "button", text: "Apply", testId: "apply", path: [] },
-    })],
+      caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    }],
   });
 }
 
@@ -258,15 +264,21 @@ test("the-internet modals classify as clutter and a public challenge is reported
 test("the needs_human run page and act prompt render in light and dark", { timeout: 90_000 }, async () => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-shot-"));
   const library = new Library(home);
-  library.save(fixtureDoc({
+  library.save(testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "experian",
     name: "Experian",
     startUrl: "https://usa.experian.com/member",
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({ id: "open", index: 0, action: "click", label: "Open account", surface: "dom", timeoutMs: 2000 })],
+    steps: [{
+      id: "open",
+      index: 0,
+      timeoutMs: 2000,
+      caption: { text: "Open account" },
+      action: "click",
+      target: { locators: [{ kind: "role", role: "button", name: "Open account" }] },
+    }],
   }));
   const ask = makeAsk({
     kind: "wall",

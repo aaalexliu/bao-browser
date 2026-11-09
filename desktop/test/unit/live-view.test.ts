@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep, fixtureInput } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -18,13 +18,38 @@ import { createRelay, listenRelay, MemoryDirectory } from "../../../web/src/lib/
 import { applyHermeticApp } from "../runtime";
 
 function workflow(startUrl: string): WorkflowV2 {
-  return fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "wf-live-detail", name: "Book a class",
+  return testWorkflow({
+    schema: "bao.workflow/v4", id: "wf-live-detail", name: "Book a class",
     startUrl, createdAt: 1, inputs: [],
     steps: [
-      fixtureStep({ id: "open", index: 0, label: "Open the schedule", action: "click", surface: "dom", identity: { surface: "dom", role: "button", name: "Apply", path: [] }, timeoutMs: 1000 }),
-      fixtureStep({ id: "reserve", index: 1, label: "Press Reserve", action: "confirm", human: true, surface: "dom", postcondition: { kind: "text", match: "Booked", timeoutMs: 60000 }, timeoutMs: 60000 }),
-      fixtureStep({ id: "check", index: 2, label: "Check the booking", action: "verify", surface: "dom", expect: { kind: "text", match: "Booked", timeoutMs: 1000 }, timeoutMs: 1000 }),
+      {
+        id: "open",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: "Open the schedule", citation: { text: "Apply", source: "name" } },
+        action: "click",
+        target: {
+          locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+          hint: { role: "button", surface: "dom" },
+        },
+      },
+      {
+        id: "reserve",
+        index: 1,
+        timeoutMs: 60000,
+        caption: { text: "Press Reserve" },
+        action: "handoff",
+        reason: "owner-press",
+        check: { kind: "text", match: "Booked", timeoutMs: 60000 },
+      },
+      {
+        id: "check",
+        index: 2,
+        timeoutMs: 1000,
+        caption: { text: "Check the booking" },
+        action: "verify",
+        check: { kind: "text", match: "Booked", timeoutMs: 1000 },
+      },
     ],
   });
 }
@@ -174,7 +199,14 @@ test("a returned-paused confirm does not block the next Run", { timeout: 60000 }
   try {
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      fixtureStep({ id: "reserve", index: 0, action: "confirm", human: true, label: "Press Reserve", surface: "dom", timeoutMs: 60000 }),
+      {
+        id: "reserve",
+        index: 0,
+        timeoutMs: 60000,
+        caption: { text: "Press Reserve" },
+        action: "handoff",
+        reason: "owner-press",
+      },
     ];
     app.library.save(wf);
     const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
@@ -226,12 +258,33 @@ test("a relay extension run leaves a waiting local run controllable", { timeout:
     };
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      fixtureStep({ id: "login-first", index: 0, action: "login", human: true, label: "Sign in first", surface: "dom", timeoutMs: 60000 }),
-      fixtureStep({ id: "login-next", index: 1, action: "login", human: true, label: "Sign in next", surface: "dom", timeoutMs: 60000 }),
+      {
+        id: "login-first",
+        index: 0,
+        timeoutMs: 60000,
+        caption: { text: "Sign in first" },
+        action: "handoff",
+        reason: "sign-in",
+      },
+      {
+        id: "login-next",
+        index: 1,
+        timeoutMs: 60000,
+        caption: { text: "Sign in next" },
+        action: "handoff",
+        reason: "sign-in",
+      },
     ];
     app.library.save(wf);
-    app.library.save(fixtureDoc({ ...wf, id: "relay-note", name: "Relay overlap", driver: "extension", steps: [
-      fixtureStep({ id: "note", index: 0, action: "note", label: "Relay overlap", surface: "dom", timeoutMs: 1000 }),
+    app.library.save(testWorkflow({ ...wf, id: "relay-note", name: "Relay overlap", driver: "extension", steps: [
+      {
+        id: "note",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: "Relay overlap" },
+        action: "note",
+        text: "Relay overlap",
+      },
     ] }));
     const issued = await relayPost("/api/agent/pair", {});
     const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Overlap Mac", deviceId: "overlap-device" });
@@ -322,7 +375,7 @@ test("a relay clear does not remove a local hold or its pending prompt", { timeo
     app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 }),
+      { id: "login", index: 0, timeoutMs: 60000, caption: { text: "Sign in" }, action: "handoff", reason: "sign-in" },
     ];
     app.library.save(wf);
     app.library.save({
@@ -330,7 +383,14 @@ test("a relay clear does not remove a local hold or its pending prompt", { timeo
       id: "relay-login",
       name: "Relay login",
       driver: "extension",
-      steps: [fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Relay sign in", surface: "dom", timeoutMs: 1000 })],
+      steps: [{
+        id: "login",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: "Relay sign in" },
+        action: "handoff",
+        reason: "sign-in",
+      }],
     });
     const issued = await relayPost("/api/agent/pair", {});
     const paired = await relayPost("/api/agent/pair/claim", { code: issued.code, name: "Clear-hold Mac", deviceId: "clear-hold-device" });
@@ -406,7 +466,7 @@ test("a passed extension rerun drops the earlier host-grant hold", { timeout: 60
     };
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [fixtureStep({ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 1000 })];
+    wf.steps = [{ id: "note", index: 0, timeoutMs: 1000, caption: { text: "Note" }, action: "note", text: "Note" }];
     app.library.save(wf);
     const first = await post(`${base}/api/replay`, { id: wf.id, args: {} });
     assert.equal(first.status, "needs_human");
@@ -446,7 +506,7 @@ test("Guide me during an owned wait says the run is waiting", { timeout: 60000 }
     app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 })];
+    wf.steps = [{ id: "login", index: 0, timeoutMs: 60000, caption: { text: "Sign in" }, action: "handoff", reason: "sign-in" }];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
     let owned = "";
@@ -499,7 +559,7 @@ test("a refused Guide me shows the owned-wait sentence on screen", { timeout: 60
     app.extensionLink.command = async () => ({ nodes: [], texts: [], url: "https://example.test/login" });
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000 })];
+    wf.steps = [{ id: "login", index: 0, timeoutMs: 60000, caption: { text: "Sign in" }, action: "handoff", reason: "sign-in" }];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
     let owned = "";
@@ -559,7 +619,7 @@ test("a refused Guide me shows the still-going sentence on screen", { timeout: 6
     };
     const wf = workflow(`${base}/fixture`);
     wf.driver = "extension";
-    wf.steps = [fixtureStep({ id: "note", index: 0, action: "note", label: "Note", surface: "dom", timeoutMs: 60000 })];
+    wf.steps = [{ id: "note", index: 0, timeoutMs: 60000, caption: { text: "Note" }, action: "note", text: "Note" }];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
     let owned = "";
@@ -648,8 +708,23 @@ test("delayed R1 Stop and Continue cannot act on R2 before the client polls", { 
   try {
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Owner signed in", timeoutMs: 60000 } }),
-      fixtureStep({ id: "finish", index: 1, action: "verify", label: "Check the final note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Finish the run", timeoutMs: 60000 } }),
+      {
+        id: "login",
+        index: 0,
+        timeoutMs: 60000,
+        caption: { text: "Sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "text", match: "Owner signed in", timeoutMs: 60000 },
+      },
+      {
+        id: "finish",
+        index: 1,
+        timeoutMs: 60000,
+        caption: { text: "Check the final note" },
+        action: "verify",
+        check: { kind: "text", match: "Finish the run", timeoutMs: 60000 },
+      },
     ];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
@@ -722,10 +797,40 @@ test("a continuing run row opens live detail after navigation and reload, until 
   try {
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      fixtureStep({ id: "reserve", index: 0, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } }),
-      fixtureStep({ id: "working", index: 1, action: "verify", label: "Wait for the note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Go to login", timeoutMs: 60000 } }),
-      fixtureStep({ id: "login", index: 2, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Owner signed in", timeoutMs: 60000 } }),
-      fixtureStep({ id: "finish", index: 3, action: "verify", label: "Check the final note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Finish the run", timeoutMs: 60000 } }),
+      {
+        id: "reserve",
+        index: 0,
+        timeoutMs: 60000,
+        caption: { text: "Press \"Apply\"" },
+        action: "handoff",
+        reason: "owner-press",
+        check: { kind: "text", match: "Applied", timeoutMs: 60000 },
+      },
+      {
+        id: "working",
+        index: 1,
+        timeoutMs: 60000,
+        caption: { text: "Wait for the note" },
+        action: "verify",
+        check: { kind: "text", match: "Go to login", timeoutMs: 60000 },
+      },
+      {
+        id: "login",
+        index: 2,
+        timeoutMs: 60000,
+        caption: { text: "Sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "text", match: "Owner signed in", timeoutMs: 60000 },
+      },
+      {
+        id: "finish",
+        index: 3,
+        timeoutMs: 60000,
+        caption: { text: "Check the final note" },
+        action: "verify",
+        check: { kind: "text", match: "Finish the run", timeoutMs: 60000 },
+      },
     ];
     app.library.save(wf);
     mkdirSync(path.join(dirs.home, "live-session"), { recursive: true });
@@ -803,8 +908,23 @@ test("the Needs-you row becomes Running as soon as its server run continues", { 
   try {
     const wf = workflow(`${base}/fixture`);
     wf.steps = [
-      fixtureStep({ id: "reserve", index: 0, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } }),
-      fixtureStep({ id: "finish", index: 1, action: "verify", label: "Check the final note", surface: "dom", timeoutMs: 60000, expect: { kind: "text", match: "Finish the run", timeoutMs: 60000 } }),
+      {
+        id: "reserve",
+        index: 0,
+        timeoutMs: 60000,
+        caption: { text: "Press \"Apply\"" },
+        action: "handoff",
+        reason: "owner-press",
+        check: { kind: "text", match: "Applied", timeoutMs: 60000 },
+      },
+      {
+        id: "finish",
+        index: 1,
+        timeoutMs: 60000,
+        caption: { text: "Check the final note" },
+        action: "verify",
+        check: { kind: "text", match: "Finish the run", timeoutMs: 60000 },
+      },
     ];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: {} });
@@ -845,12 +965,46 @@ test("live confirmation checks the site without pressing its final action", { ti
   let replay: Promise<{ status: string; runId: string }> | undefined;
   try {
     const wf = workflow(`${base}/fixture`);
-    wf.inputs = [fixtureInput({ name: "class", type: "text", required: true })];
+    wf.inputs = [{ name: "class", type: "text", label: "class", supply: "must" }];
     wf.steps = [
-      fixtureStep({ id: "open", index: 0, action: "verify", label: "Read the fixture", surface: "dom", timeoutMs: 1000, expect: { kind: "text", match: "Bao fixture", timeoutMs: 1000 } }),
-      fixtureStep({ id: "reserve", index: 1, action: "confirm", human: true, label: 'Press "Apply"', surface: "dom", identity: { surface: "dom", role: "button", name: "Apply", path: [] }, timeoutMs: 60000, postcondition: { kind: "text", match: "Applied", timeoutMs: 60000 } }),
-      fixtureStep({ id: "login", index: 2, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 60000, postcondition: { kind: "text", match: "Owner signed in", timeoutMs: 60000 } }),
-      fixtureStep({ id: "check", index: 3, action: "verify", label: "Check the result", surface: "dom", timeoutMs: 1000, expect: { kind: "text", match: "Applied", timeoutMs: 1000 } }),
+      {
+        id: "open",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: "Read the fixture" },
+        action: "verify",
+        check: { kind: "text", match: "Bao fixture", timeoutMs: 1000 },
+      },
+      {
+        id: "reserve",
+        index: 1,
+        timeoutMs: 60000,
+        caption: { text: "Press \"Apply\"" },
+        action: "handoff",
+        reason: "owner-press",
+        target: {
+          locators: [{ kind: "role", role: "button", name: "Apply" }, { kind: "text", value: "Apply" }],
+          hint: { role: "button", surface: "dom" },
+        },
+        check: { kind: "text", match: "Applied", timeoutMs: 60000 },
+      },
+      {
+        id: "login",
+        index: 2,
+        timeoutMs: 60000,
+        caption: { text: "Sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "text", match: "Owner signed in", timeoutMs: 60000 },
+      },
+      {
+        id: "check",
+        index: 3,
+        timeoutMs: 1000,
+        caption: { text: "Check the result" },
+        action: "verify",
+        check: { kind: "text", match: "Applied", timeoutMs: 1000 },
+      },
     ];
     app.library.save(wf);
     replay = post(`${base}/api/replay`, { id: wf.id, args: { class: "Morning class" } });

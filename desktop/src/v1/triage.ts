@@ -2,6 +2,8 @@
 // A temporary blocker and an outage stop the run. A burst of failures opens
 // the circuit and auto-heal stays off until the window clears.
 
+import { stepTitle } from "./schema";
+
 export type FailureClass = "change" | "blocker" | "outage";
 
 export interface ClassifiedFailure {
@@ -36,7 +38,7 @@ export interface HealStamp {
   kind?: "replay" | "capture";
   at?: number;
   workflowId: string;
-  heals?: { failedStep?: { id?: string; label?: string } }[];
+  heals?: { failedStep?: { id?: string; caption?: { text?: string; citation?: { text?: string } } } }[];
   steps?: { id?: string; status?: string; triage?: string }[];
 }
 
@@ -81,7 +83,7 @@ export function stepsNeedingReview(runs: HealStamp[], limit = STEP_REVIEW_LIMIT)
       const stepId = heal.failedStep?.id;
       if (!stepId) continue;
       const key = `${run.workflowId}\0${stepId}`;
-      if (!seen.has(key)) seen.set(key, { workflowId: run.workflowId, stepId, label: heal.failedStep?.label || stepId });
+      if (!seen.has(key)) seen.set(key, { workflowId: run.workflowId, stepId, label: heal.failedStep?.caption?.text ? stepTitle(heal.failedStep) : stepId });
     }
   }
   const out: StepReview[] = [];

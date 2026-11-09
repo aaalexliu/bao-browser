@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { targetFor, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -13,16 +13,35 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
   const dirs = applyHermeticApp("workflow-detail");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
   const name = `Set up the sign-in screen for 五秒 ${"A long workflow title ".repeat(12)}`;
-  app.library.save(fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "detail", name, createdAt: 1,
+  app.library.save(testWorkflow({
+    schema: "bao.workflow/v4", id: "detail", name, createdAt: 1,
     startUrl: "https://example.test/", summary: "Sets up the sign-in screen.",
-    inputs: [fixtureInput({ name: "appName", label: "App name", type: "text", default: "五秒", required: true })],
+    inputs: [{ name: "appName", type: "text", label: "App name", supply: "saved", default: "五秒" }],
     steps: [
-      fixtureStep({ id: "open", index: 0, action: "navigate", surface: "dom", timeoutMs: 100, label: "Open the sign-in page", value: "https://example.test/" }),
-      fixtureStep({ id: "name", index: 1, action: "type", surface: "dom", timeoutMs: 100, label: "Type the app name", input: "appName", identity: { surface: "dom", path: [], role: "textbox", name: "App name" }, expect: { kind: "text", match: "Saved", timeoutMs: 100 } }),
+      {
+        id: "open",
+        index: 0,
+        timeoutMs: 100,
+        caption: { text: "Open the sign-in page" },
+        action: "navigate",
+        url: "https://example.test/",
+      },
+      {
+        id: "name",
+        index: 1,
+        timeoutMs: 100,
+        caption: { text: "Type the app name", citation: { text: "App name", source: "name" } },
+        action: "type",
+        target: {
+          locators: [{ kind: "role", role: "textbox", name: "App name" }, { kind: "text", value: "App name" }],
+          hint: { role: "textbox", surface: "dom" },
+        },
+        text: { input: "appName" },
+        check: { kind: "text", match: "Saved", timeoutMs: 100 },
+      },
     ],
   }));
-  app.library.save(fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: "empty-detail", name: "Empty workflow", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] }));
+  app.library.save(testWorkflow({ schema: "bao.workflow/v4", id: "empty-detail", name: "Empty workflow", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] }));
   app.library.saveRun({ id: "detail-run", workflowId: "detail", status: "passed", at: Date.now(), steps: [{ id: "open", status: "passed" }], heals: [] });
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   try {
@@ -182,7 +201,7 @@ test("Inbox workflow detail keeps selection, inputs, history, and existing actio
 test("workflow loading and retry stay in the current visit across state polls", { timeout: 30_000 }, async () => {
   const dirs = applyHermeticApp("workflow-detail-polls");
   const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
-  app.library.save(fixtureDoc({ schema: "bao.workflow/v4", version: 2, id: "poll-detail", name: "Poll detail", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] }));
+  app.library.save(testWorkflow({ schema: "bao.workflow/v4", id: "poll-detail", name: "Poll detail", createdAt: 1, startUrl: "/fixture", inputs: [], steps: [] }));
   let browser: Awaited<ReturnType<typeof testChromium.launch>> | undefined;
   let release!: () => void;
   const pending = new Promise<void>((resolve) => { release = resolve; });
@@ -246,32 +265,25 @@ test("step facts reflect replay checks, destinations, and action-specific input 
     const page = await browser.newPage();
     const inputs = [{ name: "file", label: "Report file", type: "text" as const }];
     const cases: { step: StepCard; checks: string[] }[] = [
-      { step: { id: "settled", expect: { kind: "settled", match: "no error and the page settled" } }, checks: ["The page finishes loading"] },
-      { step: { id: "url", postcondition: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address matches “https://example.test/” followed by the Report file input"] },
-      { step: { id: "url-exact", postcondition: { kind: "url", match: "{{file}}" } }, checks: ["The address matches the Report file input"] },
-      { step: { id: "text", postcondition: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input"] },
-      { step: { id: "text-exact", postcondition: { kind: "text", match: "{{file}}" } }, checks: ["The page matches the Report file input"] },
-      { step: { id: "value", postcondition: { kind: "value", match: "{{file}}" } }, checks: ["The value matches the Report file input"] },
-      { step: { id: "value-embedded", postcondition: { kind: "value", match: "File: {{file}}!" } }, checks: ["The value matches “File: ” followed by the Report file input followed by “!”"] },
-      { step: { id: "literal-label", postcondition: { kind: "value", match: "Report file" } }, checks: ["The value shows “Report file”"] },
-      { step: { id: "expect-text", expect: { kind: "text", match: "{{file}}" } }, checks: ["The page matches the Report file input"] },
-      { step: { id: "expect-text-embedded", expect: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input"] },
-      { step: { id: "expect-url", expect: { kind: "url", match: "{{file}}" } }, checks: ["The address matches the Report file input"] },
-      { step: { id: "expect-url-embedded", expect: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address matches “https://example.test/” followed by the Report file input"] },
-      { step: { id: "element", postcondition: { kind: "element", identity: { name: "{{file}}" } } }, checks: ["The control matching the Report file input is on the page"] },
-      { step: { id: "element-embedded", postcondition: { kind: "element", identity: { text: "Open {{file}}" } } }, checks: ["The control matching “Open ” followed by the Report file input is on the page"] },
-      { step: { id: "absent", postcondition: { kind: "absent", identity: { name: "Login" } } }, checks: ["The “Login” is gone"] },
-      { step: { id: "absent-exact", postcondition: { kind: "absent", identity: { text: "{{file}}" } } }, checks: ["The control matching the Report file input is gone"] },
-      { step: { id: "absent-embedded", postcondition: { kind: "absent", identity: { name: "Open {{file}}" } } }, checks: ["The control matching “Open ” followed by the Report file input is gone"] },
+      { step: { id: "settled", check: { kind: "settled" } }, checks: ["The page finishes loading"] },
+      { step: { id: "url", check: { kind: "url", match: "https://example.test/{{file}}" } }, checks: ["The address matches “https://example.test/” followed by the Report file input"] },
+      { step: { id: "url-exact", check: { kind: "url", match: "{{file}}" } }, checks: ["The address matches the Report file input"] },
+      { step: { id: "text", check: { kind: "text", match: "Saved {{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input"] },
+      { step: { id: "text-exact", check: { kind: "text", match: "{{file}}" } }, checks: ["The page matches the Report file input"] },
+      { step: { id: "value", check: { kind: "value", match: "{{file}}" } }, checks: ["The value matches the Report file input"] },
+      { step: { id: "value-embedded", check: { kind: "value", match: "File: {{file}}!" } }, checks: ["The value matches “File: ” followed by the Report file input followed by “!”"] },
+      { step: { id: "literal-label", check: { kind: "value", match: "Report file" } }, checks: ["The value shows “Report file”"] },
+      { step: { id: "element", check: { kind: "element", locators: [{ role: "button", name: "Open" }] } }, checks: ["The “saved control” is on the page"] },
+      { step: { id: "absent", check: { kind: "absent", locators: [{ value: "Login" }] } }, checks: ["The “saved control” is gone"] },
       { step: { id: "read-exact", readBack: { source: "value", match: "{{file}}" } }, checks: ["Reads value matching the Report file input"] },
       { step: { id: "read-embedded", readBack: { source: "text", match: "Saved {{file}}" } }, checks: ["Reads text matching “Saved ” followed by the Report file input"] },
       { step: { id: "read-literal", readBack: { source: "url", match: "https://example.test/" } }, checks: ["Reads url matching “https://example.test/”"] },
-      { step: { id: "multiple", expect: { kind: "text", match: "{{file}} / {{file}}" } }, checks: ["The page matches the Report file input followed by “ / ” followed by the Report file input"] },
-      { step: { id: "unknown", postcondition: { kind: "value", match: "{{missing}}" } }, checks: ["The value matches the saved input"] },
-      { step: { id: "combined", expect: { kind: "text", match: "Saved {{file}}" }, postcondition: { kind: "value", match: "{{file}}" }, readBack: { source: "value", match: "{{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input", "The value matches the Report file input", "Reads value matching the Report file input"] },
+      { step: { id: "multiple", check: { kind: "text", match: "{{file}} / {{file}}" } }, checks: ["The page matches the Report file input followed by “ / ” followed by the Report file input"] },
+      { step: { id: "unknown", check: { kind: "value", match: "{{missing}}" } }, checks: ["The value matches the saved input"] },
+      { step: { id: "combined", check: { kind: "text", match: "Saved {{file}}" }, readBack: { source: "value", match: "{{file}}" } }, checks: ["The page matches “Saved ” followed by the Report file input", "Reads value matching the Report file input"] },
     ];
     for (const { step, checks } of cases) {
-      await page.setContent(workflowDetail({ id: "facts", name: "Facts", inputs, steps: [{ ...step, action: "type", label: "Use {{file}}" }] }));
+      await page.setContent(workflowDetail({ id: "facts", name: "Facts", inputs, steps: [{ ...step, action: "type", caption: { text: "Use {{file}}" } }] }));
       const facts = await page.locator(".wf-facts").innerText();
       for (const check of checks) assert.ok(facts.includes(check), facts);
       assert.equal(facts.includes("{{"), false);
@@ -281,7 +293,7 @@ test("step facts reflect replay checks, destinations, and action-specific input 
     }
     for (const [action, verb] of Object.entries({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens", click: "Uses" })) {
       const usesFile = action === "upload" || action === "drop" ? { file: { input: "file" } } : { text: { input: "file" } };
-      await page.setContent(workflowDetail({ id: "verbs", name: "Verbs", inputs, startUrl: "https://example.test/start", steps: [{ id: "one", action, ...usesFile, value: "https://example.test/next" }] }));
+      await page.setContent(workflowDetail({ id: "verbs", name: "Verbs", inputs, startUrl: "https://example.test/start", steps: [{ id: "one", action, ...usesFile, url: "https://example.test/next" }] }));
       assert.ok((await page.locator(".wf-facts dt").allTextContents()).includes(verb));
       if (action === "navigate") assert.equal(await page.locator(".wf-facts dd").first().innerText(), "https://example.test/next");
     }
@@ -322,9 +334,9 @@ test("the Inspector zooms a boxed step picture around its target and keeps the m
     writeFileSync(path.join(shots, "name.viewport.png"), png);
     await fixture.close();
     const targetBox = { x: field.x, y: field.y, width: field.width, height: field.height, viewport: { width: 1280, height: 820 } };
-    app.library.save(fixtureDoc({
-      schema: "bao.workflow/v4", version: 2, id: "zoom", name: "Zoom", createdAt: 1, startUrl: "/fixture", inputs: [],
-      steps: [fixtureStep({ id: "name", index: 0, action: "click", surface: "dom", timeoutMs: 100, label: "Click Username", identity: { surface: "dom", path: [], role: "textbox", name: "Username" }, targetBox })],
+    app.library.save(testWorkflow({
+      id: "zoom", name: "Zoom", startUrl: "/fixture",
+      steps: [{ id: "name", index: 0, action: "click", timeoutMs: 100, caption: { text: "Click Username", targetBox }, target: targetFor({ surface: "dom", path: [], role: "textbox", name: "Username" }) }],
     }));
     for (const theme of ["light", "dark"]) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });

@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // A human step returns an envelope and does not block. Resume continues the same
 // page. Confirm is never pressed by resume. The fixture is 127.0.0.1 only.
 
@@ -330,9 +330,8 @@ for (const ending of ["complete", "cancel", "timeout"] as const) {
 }
 
 function signInWorkflow(base: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "fixture-signin",
     name: "Fixture sign-in",
     startUrl: `${base}/login?next=/freeze`,
@@ -340,48 +339,53 @@ function signInWorkflow(base: string): WorkflowV2 {
     precondition: { kind: "url", match: "/freeze", phase: "auth" },
     inputs: [],
     steps: [
-      fixtureStep({
+      {
         id: "signin",
         index: 0,
-        action: "login",
-        label: "Sign in",
-        surface: "dom",
         timeoutMs: 5000,
-        postcondition: { kind: "url", match: "/freeze", timeoutMs: 5000 },
-      }),
-      fixtureStep({
+        caption: { text: "Sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "url", match: "/freeze", timeoutMs: 5000 },
+      },
+      {
         id: "status",
         index: 1,
-        action: "verify",
-        label: "Status is none",
-        surface: "dom",
         timeoutMs: 2000,
-        expect: { kind: "text", match: "Status: none", timeoutMs: 2000 },
-      }),
+        caption: { text: "Status is none" },
+        action: "verify",
+        check: { kind: "text", match: "Status: none", timeoutMs: 2000 },
+      },
     ],
   });
 }
 
 function confirmWorkflow(startUrl: string, id = "confirm-apply"): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name: "Confirm apply",
     startUrl,
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "apply",
       index: 0,
-      action: "confirm",
-      human: true,
-      label: "Confirm before Apply",
-      surface: "dom",
       timeoutMs: 1000,
-      identity: { surface: "dom", role: "button", testId: "apply", text: "Apply", path: [] },
-      postcondition: { kind: "text", match: "Applied", timeoutMs: 1000 },
-    })],
+      caption: { text: "Confirm before Apply" },
+      action: "handoff",
+      reason: "owner-press",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Apply" },
+          { kind: "text", value: "Apply" },
+          { kind: "testid", value: "apply" },
+          { kind: "css", value: "[data-testid=\"apply\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+      check: { kind: "text", match: "Applied", timeoutMs: 1000 },
+    }],
   });
 }
 

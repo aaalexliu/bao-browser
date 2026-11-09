@@ -1,4 +1,6 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { targetQuery } from "../../src/v1/identity";
+import { testWorkflow } from "../support/workflow";
+import { targetElementId } from "../../../shared/step-read";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,20 +13,12 @@ import { selectorForIdentity } from "../../src/v1/browser-driver";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { recorderSource } from "../../src/v1/recorder";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
-import { stepTitle, stepQuery, stepDate, stepFileFrom, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, stepTitle, stepDate, stepFileFrom, validateWorkflow, WORKFLOW_SCHEMA_ID, type Identity, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
-function migrate(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
-function migrateFilesDates(_raw: unknown): WorkflowV2 {
-  return fixtureDoc(_raw && typeof _raw === "object" ? _raw as Record<string, unknown> : {});
-}
-
-const v2Schema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
+const publishedSchema = JSON.parse(readFileSync(path.join(process.cwd(), "schema/workflow.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
-const validateV2 = ajv.compile(v2Schema);
-const validateV3 = validateV2;
+const validateSchema = ajv.compile(publishedSchema);
 
 const OCT_22 = new Date("2026-10-22T15:00:00Z");
 const ZONE = "UTC";
@@ -91,7 +85,6 @@ test("slash dates follow the field, and an ambiguous pair stays day/month", () =
     }),
   ], { id: "wf-slash", startUrl: "https://fixture.test/", zone: ZONE });
   assert.equal(doc.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((doc as { version?: number }).version, undefined);
   assert.equal(doc.inputs[0]?.type, "date");
   assert.equal(doc.inputs[0]?.relative, "+14d");
   assert.equal(doc.inputs[0]?.format, "DD/MM/YYYY");
@@ -133,7 +126,7 @@ test("a native date field stays a type step and a picker range becomes one plan"
   assert.equal(range.inputs.find((item) => item.name === "checkOut")?.relative, "+17d");
   assert.equal(JSON.stringify(range).includes("2026-11-05"), false);
   assert.deepEqual(validateWorkflow(range), []);
-  assert.equal(validateV3(range), true, JSON.stringify(validateV3.errors));
+  assert.equal(validateSchema(range), true, JSON.stringify(validateSchema.errors));
 });
 
 test("a generated download anchor is not the trigger the next run clicks", () => {
@@ -164,8 +157,8 @@ test("a generated download anchor is not the trigger the next run clicks", () =>
   assert.equal(doc.steps.length, 2);
   assert.equal((doc.steps[0] == null ? undefined : stepTitle(doc.steps[0])), "Click \"CSV\"");
   assert.equal(doc.steps[1]?.action, "download");
-  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.tag, "button");
-  assert.equal((doc.steps[1] == null ? undefined : stepQuery(doc.steps[1]))?.cssPath, "#download-modal > div > button:nth-of-type(1)");
+  assert.equal(stepTarget(doc.steps[1])?.hint?.tag, "button");
+  assert.equal(targetQuery(stepTarget(doc.steps[1])!).cssPath, "#download-modal > div > button:nth-of-type(1)");
   assert.equal(JSON.stringify(doc).includes("type+1+diabetes"), false);
   assert.equal(JSON.stringify(doc).includes("California"), false);
 });
@@ -186,8 +179,8 @@ test("a download folds the trigger click into a templated step and binds a later
   assert.equal(doc.steps[0]?.action, "download");
   assert.equal(doc.steps[0]?.download?.output, "note");
   assert.equal(doc.steps[0]?.download?.name, "{{run.date}}-{{suggested}}");
-  assert.equal((doc.steps[0] == null ? undefined : stepQuery(doc.steps[0]))?.id, "dl");
-  assert.equal(selectorForIdentity(stepQuery(doc.steps[0]!)!), "#dl");
+  assert.equal(targetElementId(stepTarget(doc.steps[0])), "dl");
+  assert.equal(selectorForIdentity(targetQuery(stepTarget(doc.steps[0])!)), "#dl");
   const modal = ident({
     role: "button",
     tag: "button",
@@ -204,151 +197,56 @@ test("a download folds the trigger click into a templated step and binds a later
   assert.deepEqual(validateWorkflow(doc), []);
 });
 
-test("an ordinary trail stays version 2 and byte-identical", () => {
+test("an ordinary trail interprets the same bytes each time and matches the published schema", () => {
   const events = [event({ id: "c", op: "click", identity: ident({ id: "go", testId: "go", text: "Go" }) })];
   const meta = { id: "wf-plain", startUrl: "https://fixture.test/" };
   const doc = interpret(events, meta);
   assert.equal(doc.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((doc as { version?: number }).version, undefined);
-  assert.equal((doc as { filesDates?: number }).filesDates, undefined);
   assert.equal(canonical(doc), canonical(interpret(events, meta)));
-  assert.equal(validateV2(doc), true, JSON.stringify(validateV2.errors));
+  assert.equal(validateSchema(doc), true, JSON.stringify(validateSchema.errors));
 });
 
-test("a plain version 2 document stays version 2 in memory and on disk", () => {
-  const raw = {
-    id: "wf-old",
-    name: "Old",
-    version: 1,
-    startUrl: "https://example.test/login",
-    createdAt: 1,
-    variables: [],
-    steps: [
-      {
-        id: "go",
-        action: "click",
-        label: "Go",
-        ts: 1,
-        target: { selectors: [{ type: "id", value: "#go" }], text: "Go" },
-      },
-    ],
-  };
-  const v2 = migrate(raw);
-  assert.equal(v2.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((v2 as { version?: number }).version, undefined);
-  assert.equal((v2 as { filesDates?: number }).filesDates, undefined);
-  assert.equal(validateV2(v2), true, JSON.stringify(validateV2.errors));
-  assert.equal(migrateFilesDates(raw).schema, WORKFLOW_SCHEMA_ID);
-  assert.equal(migrate(v2).schema, v2.schema);
-
-  const root = mkdtempSync(path.join(tmpdir(), "bao-lib-"));
-  const library = new Library(root);
-  library.save(v2);
-  const file = path.join(root, "workflows", "wf-old.json");
-  const before = readFileSync(file, "utf8");
-  assert.equal((JSON.parse(before) as { schema?: string }).schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((JSON.parse(before) as { version?: number }).version, undefined);
-  assert.equal((JSON.parse(before) as { filesDates?: number }).filesDates, undefined);
-  const loaded = library.read("wf-old");
-  assert.equal(loaded.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((loaded as { version?: number }).version, undefined);
-  assert.equal((loaded as { filesDates?: number }).filesDates, undefined);
-  assert.equal((loaded.steps[0] == null ? undefined : stepTitle(loaded.steps[0])), v2.steps[0] ? stepTitle(v2.steps[0]) : undefined);
-  assert.equal(readFileSync(file, "utf8"), before);
-});
-
-test("version 3 is data steps, files and dates, or both", () => {
-  const published = JSON.parse(readFileSync("schema/workflow.schema.json", "utf8")) as {
-    $id: string;
-    revisions: { $ref: string }[];
-  };
-  assert.equal(published.$id, "bao.workflow/v4");
-  assert.equal(published.revisions, undefined);
-
+test("data steps, files and dates, and both validate and keep their bytes on disk", () => {
   const plain = JSON.parse(readFileSync("examples/workflows/browser-form.json", "utf8")) as WorkflowV2;
-  const data = {
-    schema: WORKFLOW_SCHEMA_ID,
-    version: 2 as const,
-    id: "wf-data",
-    name: "Data",
-    startUrl: "https://books.toscrape.com/",
-    createdAt: 1,
-    inputs: [],
-    outputs: [{ name: "books", type: "table" as const, from: "books", columns: [{ name: "title", type: "text" as const }] }],
-    steps: [{
-      id: "extract-1",
-      index: 0,
-      action: "extract" as const,
-      label: "Books",
-      surface: "dom" as const,
-      timeoutMs: 8000,
-      heal: "never" as const,
-      locators: [{ kind: "css" as const, value: "article.product_pod" }],
-      extract: {
-        mode: "list" as const,
-        as: "books",
-        locators: [{ kind: "css" as const, value: "article.product_pod" }],
-        columns: [{ name: "title", type: "text" as const, read: "title" as const, locators: [{ kind: "css" as const, value: "h3 > a" }] }],
-      },
-    }],
+  const extract: WorkflowStep = {
+    id: "extract-1",
+    index: 0,
+    timeoutMs: 8000,
+    caption: { text: "Books" },
+    heal: "never",
+    action: "extract",
+    extract: {
+      mode: "list",
+      as: "books",
+      locators: [{ kind: "css", value: "article.product_pod" }],
+      columns: [{ name: "title", type: "text", read: "title", locators: [{ kind: "css", value: "h3 > a" }] }],
+    },
   };
-  const files = {
-    schema: WORKFLOW_SCHEMA_ID,
-    version: 2 as const,
-    id: "wf-files",
-    name: "Files",
-    startUrl: "https://fixture.test/files",
-    createdAt: 1,
-    inputs: [{ name: "when", type: "date" as const, relative: "+14d", format: "D MMM YYYY", zone: "UTC" }],
-    steps: [{
-      id: "dl",
-      index: 0,
-      action: "download" as const,
-      label: "Download W-9",
-      surface: "dom" as const,
-      timeoutMs: 30000,
-      download: { output: "statement", name: "{{run.date}}-statement.pdf" },
-    }],
+  const download: WorkflowStep = {
+    id: "dl",
+    index: 0,
+    timeoutMs: 30000,
+    caption: { text: "Download W-9" },
+    action: "download",
+    download: { output: "statement", name: "{{run.date}}-statement.pdf" },
   };
-  const both = {
-    ...data,
-    id: "wf-both",
-    name: "Both",
-    inputs: files.inputs,
-    steps: [
-      data.steps[0]!,
-      { ...files.steps[0]!, index: 1, id: "dl" },
-    ],
-  };
-
-  assert.equal(plain.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((plain as { version?: number }).version, undefined);
-  const dataDoc = migrate(data);
-  assert.equal(dataDoc.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((dataDoc as { version?: number }).version, undefined);
-  assert.equal((dataDoc as { filesDates?: number }).filesDates, undefined);
-  const filesDoc = migrate(files);
-  assert.equal(filesDoc.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((filesDoc as { version?: number }).version, undefined);
-  const bothDoc = migrate(both);
-  assert.equal(bothDoc.schema, WORKFLOW_SCHEMA_ID);
-  assert.equal((bothDoc as { version?: number }).version, undefined);
-  assert.equal(bothDoc.outputs?.[0]?.name, "books");
-  assert.equal(bothDoc.steps.some((step) => step.action === "download"), true);
+  const when: WorkflowInput = { name: "when", type: "date", label: "when", supply: "must", relative: "+14d", format: "D MMM YYYY", zone: "UTC" };
+  const outputs: WorkflowV2["outputs"] = [{ name: "books", type: "table", from: "books", columns: [{ name: "title", type: "text" }] }];
+  const dataDoc = testWorkflow({ id: "wf-data", name: "Data", startUrl: "https://books.toscrape.com/", outputs, steps: [extract] });
+  const filesDoc = testWorkflow({ id: "wf-files", name: "Files", startUrl: "https://fixture.test/files", inputs: [when], steps: [download] });
+  const bothDoc = testWorkflow({ id: "wf-both", name: "Both", startUrl: "https://books.toscrape.com/", inputs: [when], outputs, steps: [extract, download] });
   for (const doc of [plain, dataDoc, filesDoc, bothDoc]) {
     assert.deepEqual(validateWorkflow(doc), [], doc.id);
-    assert.equal(validateV3(doc), true, `${doc.id} ${JSON.stringify(validateV3.errors)}`);
+    assert.equal(validateSchema(doc), true, `${doc.id} ${JSON.stringify(validateSchema.errors)}`);
   }
 
-  const root = mkdtempSync(path.join(tmpdir(), "bao-v3-"));
+  const root = mkdtempSync(path.join(tmpdir(), "bao-v4-"));
   const library = new Library(root);
   for (const doc of [plain, dataDoc, filesDoc, bothDoc]) {
     library.save(doc);
     const file = path.join(root, "workflows", `${doc.id}.json`);
     const before = readFileSync(file, "utf8");
-    const loaded = library.read(doc.id);
-    assert.equal((loaded as { version?: number }).version, (doc as { version?: number }).version, doc.id);
-    assert.equal((loaded as { filesDates?: number }).filesDates, (doc as { filesDates?: number }).filesDates, doc.id);
+    assert.deepEqual(library.read(doc.id), JSON.parse(before), doc.id);
     assert.equal(readFileSync(file, "utf8"), before, doc.id);
   }
 });
@@ -397,28 +295,49 @@ test("open on macOS is open -a, and Linux runs xdg-open and marks the app", asyn
 });
 
 test("replay resolves dates at run start and picks those cells, with no model call", async () => {
-  const workflow: WorkflowV2 = fixtureDoc({
+  const workflow: WorkflowV2 = testWorkflow({
     schema: WORKFLOW_SCHEMA_ID,
-    version: 3,
-    filesDates: 1,
     id: "wf-pick",
     name: "Pick",
     startUrl: "https://fixture.test/reservation",
     createdAt: 1,
     inputs: [
-      fixtureInput({ name: "checkIn", type: "date", relative: "+14d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
-      fixtureInput({ name: "checkOut", type: "date", relative: "+17d", format: "YYYY-MM-DD", zone: "UTC", required: true }),
+      {
+        name: "checkIn",
+        type: "date",
+        label: "checkIn",
+        supply: "must",
+        format: "YYYY-MM-DD",
+        relative: "+14d",
+        zone: "UTC",
+      },
+      {
+        name: "checkOut",
+        type: "date",
+        label: "checkOut",
+        supply: "must",
+        format: "YYYY-MM-DD",
+        relative: "+17d",
+        zone: "UTC",
+      },
     ],
-    steps: [fixtureStep({
+    steps: [{
       id: "stay",
       index: 0,
-      action: "pickDate",
-      label: "Pick dates",
-      surface: "dom",
       timeoutMs: 1000,
-      identity: ident({ role: "button", tag: "button", id: "trap", text: "1" }),
-      datePicker: { input: "checkIn", endInput: "checkOut" },
-    })],
+      caption: { text: "Pick dates", citation: { text: "1", source: "text" } },
+      action: "pickDate",
+      date: { input: "checkIn", endInput: "checkOut" },
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "1" },
+          { kind: "text", value: "1" },
+          { kind: "css", value: "#trap" },
+          { kind: "xpath", value: "//*[@id=\"trap\"]" },
+        ],
+        hint: { role: "button", surface: "dom", tag: "button", id: "trap" },
+      },
+    }],
   });
   const picked: { iso?: string; endIso?: string }[] = [];
   const result = await replay(workflow, { checkIn: "+21d", checkOut: "+23d" }, driver({
@@ -426,44 +345,42 @@ test("replay resolves dates at run start and picks those cells, with no model ca
   }), { clock: OCT_22, zone: "UTC", runId: "run-pick", heal: { available: () => false, propose: async () => null } });
   assert.equal(result.status, "passed");
   assert.equal(result.modelCalls, 0);
-  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: (workflow.steps[0] == null ? undefined : stepQuery(workflow.steps[0])) }]);
+  assert.deepEqual(picked, [{ iso: "2026-11-12", endIso: "2026-11-14", formatted: "2026-11-12", node: targetQuery(stepTarget(workflow.steps[0])!) }]);
 });
 
 test("replay saves a templated download and a later upload reads that file", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "bao-runs-"));
-  const workflow: WorkflowV2 = fixtureDoc({
+  const workflow: WorkflowV2 = testWorkflow({
     schema: WORKFLOW_SCHEMA_ID,
-    version: 3,
-    filesDates: 1,
     id: "wf-chain",
     name: "Chain",
     startUrl: "https://fixture.test/",
     createdAt: 1,
     inputs: [
-      fixtureInput({ name: "company", type: "text", default: "irs" }),
-      fixtureInput({ name: "upload", type: "file", fromOutput: "statement", required: false }),
+      { name: "company", type: "text", label: "company", supply: "saved", default: "irs" },
+      { name: "upload", type: "file", label: "upload", supply: "must", fromOutput: "statement" },
     ],
     steps: [
-      fixtureStep({
+      {
         id: "dl",
         index: 0,
-        action: "download",
-        label: "Download",
-        surface: "dom",
         timeoutMs: 1000,
+        caption: { text: "Download" },
+        action: "download",
         download: { output: "statement", name: "{{run.date}}-{{company}}-statement.pdf", url: "https://example.test/fw9.pdf" },
-      }),
-      fixtureStep({
+      },
+      {
         id: "up",
         index: 1,
-        action: "upload",
-        label: "Upload",
-        surface: "dom",
         timeoutMs: 1000,
-        input: "upload",
-        value: "{{upload}}",
-        identity: ident({ role: "textbox", tag: "input", id: "file-upload" }),
-      }),
+        caption: { text: "Upload" },
+        action: "upload",
+        target: {
+          locators: [{ kind: "css", value: "#file-upload" }, { kind: "xpath", value: "//*[@id=\"file-upload\"]" }],
+          hint: { role: "textbox", surface: "dom", tag: "input", id: "file-upload" },
+        },
+        file: { input: "upload" },
+      },
     ],
   });
   let uploaded: { name: string; path: string }[] = [];
@@ -495,21 +412,22 @@ test("replay saves a templated download and a later upload reads that file", asy
   assert.equal(uploaded[0]?.name, a.name);
   assert.equal(uploaded[0]?.path, b.path);
 
-  const loose: WorkflowV2 = fixtureDoc({
+  const loose: WorkflowV2 = testWorkflow({
     ...workflow,
     id: "wf-loose",
-    inputs: [fixtureInput({ name: "upload", type: "file", required: true })],
-    steps: [fixtureStep({
+    inputs: [{ name: "upload", type: "file", label: "upload", supply: "must" }],
+    steps: [{
       id: "up",
       index: 0,
-      action: "upload",
-      label: "Upload",
-      surface: "dom",
       timeoutMs: 1000,
-      input: "upload",
-      value: "{{upload}}",
-      identity: ident({ id: "file-upload", tag: "input", role: "textbox" }),
-    })],
+      caption: { text: "Upload" },
+      action: "upload",
+      target: {
+        locators: [{ kind: "css", value: "#file-upload" }, { kind: "xpath", value: "//*[@id=\"file-upload\"]" }],
+        hint: { role: "textbox", surface: "dom", tag: "input", id: "file-upload" },
+      },
+      file: { input: "upload" },
+    }],
   });
   let looseFiles: { name: string }[] = [];
   const kept = await replay(loose, { upload: { name: "alpha.txt", path: "/tmp/alpha.txt" } }, driver({
@@ -522,24 +440,21 @@ test("replay saves a templated download and a later upload reads that file", asy
 
 test("replay open file records needs Mac test on Linux", async () => {
   const seen: string[][] = [];
-  const workflow: WorkflowV2 = fixtureDoc({
+  const workflow: WorkflowV2 = testWorkflow({
     schema: WORKFLOW_SCHEMA_ID,
-    version: 3,
-    filesDates: 1,
     id: "wf-open",
     name: "Open",
     startUrl: "https://fixture.test/",
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "open",
       index: 0,
-      action: "open",
-      label: "Open file",
-      surface: "os",
       timeoutMs: 1000,
+      caption: { text: "Open file" },
+      action: "open",
       open: { target: "file", file: "/tmp/fw9.pdf", app: "Preview" },
-    })],
+    }],
   });
   const result = await replay(workflow, {}, driver(), {
     runId: "run-open",
@@ -558,15 +473,21 @@ test("replay open file records needs Mac test on Linux", async () => {
 });
 
 test("dates are prepared once, and a bad expression fails before the first step", () => {
-  const workflow: WorkflowV2 = fixtureDoc({
+  const workflow: WorkflowV2 = testWorkflow({
     schema: WORKFLOW_SCHEMA_ID,
-    version: 3,
-    filesDates: 1,
     id: "wf-prep",
     name: "Prep",
     startUrl: "https://fixture.test/",
     createdAt: 1,
-    inputs: [fixtureInput({ name: "checkIn", type: "date", relative: "+14d", format: "DD/MM/YYYY", zone: "UTC" })],
+    inputs: [{
+      name: "checkIn",
+      type: "date",
+      label: "checkIn",
+      supply: "must",
+      format: "DD/MM/YYYY",
+      relative: "+14d",
+      zone: "UTC",
+    }],
     steps: [],
   });
   const run = prepareFilesDatesRun(workflow, {}, { now: OCT_22, zone: "UTC", runId: "r", downloadDir: "/tmp" });

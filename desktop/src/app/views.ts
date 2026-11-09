@@ -8,7 +8,8 @@ import type { ImportLoginError } from "../v1/import-login-error";
 import { ownerWaitTimeout } from "../cdp-live/owner-wait";
 import { attentionCount, formatWait, pendingHealCount, type HumanAsk } from "../v1/human-ask";
 import { formatClock, formatTime, formatWhen } from "../v1/time";
-import { stepQuery, stepTitle, type Target, type WorkflowStep } from "../v1/schema";
+import { targetElementId } from "../../../shared/step-read";
+import { type Identity, locatorValue, targetName, stepTitle, type Target, targetRole } from "../v1/schema";
 import { shotFile, viewportShotName, workflowShotName } from "../v1/shots";
 import { bucketWords, diffTrajectory, type TimingBucket, type TrajectoryStep } from "../v1/trajectory";
 import { filmstripSpans, idleSkippedMs, idleSkips, skipLabel } from "../v1/filmstrip";
@@ -22,7 +23,6 @@ import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-gra
 import { visibleCopy } from "../v1/visible-copy";
 import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
-import type { Identity } from "../v1/schema";
 
 /** Chromium app mode uses the document title as the window title. */
 export function productWindowTitle(): string {
@@ -152,8 +152,8 @@ export interface HealView {
   prompt?: string;
   rawResponse?: string;
   model?: { name?: string; version?: string; provider?: string };
-  proposedPatch?: { identity?: HealTarget; label?: string };
-  failedStep?: { id?: string; index?: number; label?: string; action?: string; identity?: HealTarget; caption?: { text?: string; citation?: { text?: string } }; target?: Target };
+  proposedPatch?: { identity?: HealTarget };
+  failedStep?: { id?: string; index?: number; action?: string; caption?: { text?: string; citation?: { text?: string } }; target?: Target };
   postconditionPassed?: boolean;
   snapshot?: { screenshot?: string; screenshotRef?: string };
   beforeShot?: string;
@@ -1216,14 +1216,20 @@ export function healDetail(run: RunSummary, heal: HealView, extra: { promotion?:
 
 function healRecorded(step: HealView["failedStep"] | HealView["proposedPatch"]): HealTarget | undefined {
   if (!step) return undefined;
-  if ("identity" in step && step.identity) return step.identity;
-  if ("action" in step && step.action && "target" in step && step.target) return stepQuery(step as WorkflowStep);
-  return undefined;
+  if (!("target" in step) || !step.target) return "identity" in step ? step.identity : undefined;
+  const target = step.target;
+  return {
+    name: targetName(target),
+    text: locatorValue(target, "text"),
+    testId: locatorValue(target, "testid"),
+    id: targetElementId(target),
+    role: targetRole(target),
+    path: target.hint?.path ?? [],
+  };
 }
 
 function healStepLabel(step: HealView["failedStep"] | HealView["proposedPatch"]): string | undefined {
   if (!step) return undefined;
-  if ("label" in step && step.label) return step.label;
   if ("caption" in step && step.caption?.text) return stepTitle(step);
   return undefined;
 }
@@ -1301,14 +1307,14 @@ export function notices(items: { id?: string; title?: string; body?: string }[])
 }
 
 export function healWorkflowName(
-  heal: { workflowId?: string; failedStep?: { label?: string }; intent?: string },
+  heal: { workflowId?: string; failedStep?: { caption?: { text?: string; citation?: { text?: string } } }; intent?: string },
   run: { workflowId?: string },
   names: Map<string, string>,
 ): string {
   const id = heal.workflowId || run.workflowId || "";
   const named = id ? names.get(id) : undefined;
   if (named) return named;
-  return heal.failedStep?.label || heal.intent || "this step";
+  return (heal.failedStep?.caption?.text ? stepTitle(heal.failedStep) : undefined) || heal.intent || "this step";
 }
 
 function countedModelCalls(run: RunSummary): number | undefined {
@@ -1430,13 +1436,8 @@ export interface StepCard {
   index?: number;
   action?: string;
   reason?: string;
-  label?: string;
   caption?: { text: string; citation?: { text: string }; targetBox?: { x: number; y: number; width: number; height: number; viewport: { width: number; height: number } } };
-  intent?: string;
-  human?: boolean;
   sensitive?: boolean;
-  input?: string;
-  value?: string;
   url?: string;
   text?: string | { input?: string; literal?: string };
   file?: { input?: string; fromOutput?: string };
@@ -1444,10 +1445,7 @@ export interface StepCard {
   download?: { url?: string; output?: string; name?: string };
   check?: { kind?: string; match?: string; state?: string; locators?: { name?: string; value?: string; role?: string }[] };
   target?: { hint?: { role?: string; label?: string; nameAttr?: string }; locators?: { kind?: string; role?: string; name?: string; value?: string }[] };
-  expect?: { kind?: string; match?: string; state?: string };
-  postcondition?: { kind: "url" | "text" | "value" | "element" | "absent"; match?: string; identity?: { name?: string; text?: string; role?: string } };
   readBack?: { source?: string; match?: string };
-  identity?: { role?: string; name?: string; text?: string; testId?: string; id?: string };
   heal?: string;
   when?: { input?: string; value?: string; present?: string };
 }
@@ -1504,7 +1502,7 @@ export function hostAccessPanel(access: unknown): string {
 }
 
 function workflowStepKind(step: StepCard): { label: string; glyph: string } {
-  const human = step.human || step.action === "handoff" || step.action === "login" || step.action === "confirm";
+  const human = step.action === "handoff";
   const label = human ? "Waits for you" : ({ navigate: "Open page", click: "Click", type: "Type", digits: "Type", key: "Press key", check: "Choose", select: "Choose", verify: "Check", upload: "Upload file", drop: "Drop file", download: "Save file", open: "Open file", extract: "Read table", for_each: "Repeat", note: "Note" } as Record<string, string>)[step.action || ""] || "Step";
   const path = human ? "M5.25 8.5V3.75a1 1 0 0 1 2 0V7.5M7.25 7V2.75a1 1 0 0 1 2 0V7M9.25 7V3.75a1 1 0 0 1 2 0v4.5M11.25 6.5a1 1 0 0 1 2 0v2.75a4.75 4.75 0 0 1-4.75 4.75h-.4a4.1 4.1 0 0 1-3.3-1.66L2.9 9.85a1 1 0 0 1 1.5-1.3l.85.95"
     : step.action === "type" ? "M3.5 4h9A1.75 1.75 0 0 1 14.25 5.75v4.5A1.75 1.75 0 0 1 12.5 12h-9a1.75 1.75 0 0 1-1.75-1.75v-4.5A1.75 1.75 0 0 1 3.5 4ZM4.5 6.75h.01M7 6.75h.01M9.5 6.75h.01M12 6.75h.01M5.5 9.5h5"
@@ -1516,7 +1514,7 @@ function workflowStepKind(step: StepCard): { label: string; glyph: string } {
 }
 
 function workflowStepTitle(step: StepCard, inputs: TokenInput[]): string {
-  const text = step.caption?.text ? stepTitle(step) : step.label || step.action || step.id;
+  const text = step.caption?.text ? stepTitle(step) : step.action || step.id;
   return workflowInputLabels(text, inputs);
 }
 
@@ -1529,34 +1527,28 @@ function workflowInputLabels(text: string, inputs: TokenInput[]): string {
 
 function cardInputName(step: StepCard): string {
   const typed = typeof step.text === "string" ? undefined : step.text;
-  return typed?.input || step.file?.input || mustacheName(typed?.literal) || mustacheName(step.value) || mustacheName(step.caption?.text) || mustacheName(step.label);
+  return typed?.input || step.file?.input || mustacheName(typed?.literal) || mustacheName(step.caption?.text);
 }
 
 function cardTargetName(step: StepCard): string {
   const locators = step.target?.locators || [];
   return locators.find((item) => item.kind === "role" && item.name)?.name || locators.find((item) => item.kind === "text" && item.value)?.value
-    || step.target?.hint?.label || step.caption?.citation?.text || step.identity?.name || step.identity?.text || "";
+    || step.target?.hint?.label || step.caption?.citation?.text || "";
 }
 
 function cardTargetKind(step: StepCard): string {
-  const role = step.target?.locators?.find((item) => item.role)?.role || step.target?.hint?.role || step.identity?.role;
+  const role = step.target?.locators?.find((item) => item.role)?.role || step.target?.hint?.role;
   return role === "textbox" ? "box" : role === "combobox" ? "menu" : role || "control";
 }
 
 function cardUrl(step: StepCard): string {
-  return step.url || step.open?.url || step.download?.url || (step.action === "navigate" ? step.value || "" : "");
+  return step.url || step.open?.url || step.download?.url || "";
 }
 
-function cardCheck(step: StepCard): StepCard["check"] {
-  return step.check || step.expect || step.postcondition;
-}
-
-function describeCheck(saved: NonNullable<StepCard["check"]> | NonNullable<StepCard["expect"]> | NonNullable<StepCard["postcondition"]>, inputs: TokenInput[]): string {
+function describeCheck(saved: NonNullable<StepCard["check"]>, inputs: TokenInput[]): string {
   if (saved.kind === "settled") return "The page finishes loading";
   if (saved.kind === "element" || saved.kind === "absent") {
-    const named = "identity" in saved ? saved.identity : undefined;
-    const target = named?.name || named?.text || named?.role || "saved control";
-    return `The ${mustacheName(target) ? "control matching " : ""}${workflowCheckText(target, inputs)} ${saved.kind === "absent" ? "is gone" : "is on the page"}`;
+    return `The ${workflowCheckText("saved control", inputs)} ${saved.kind === "absent" ? "is gone" : "is on the page"}`;
   }
   if ("match" in saved && saved.match) {
     const kind = saved.kind === "url" ? "address" : saved.kind === "value" ? "value" : "page";
@@ -1608,7 +1600,7 @@ export function workflowDetail(
       <td class="wf-number">${index + 1}</td><td class="wf-kind" title="${esc(kind.label)}">${kind.glyph}<span class="sr-only">${esc(kind.label)}</span></td>
       <td><button type="button" class="wf-step-pick" data-workflow-step="${esc(step.id)}" data-step-input="${esc(input)}" aria-pressed="${step === selected}" aria-controls="workflow-inspector">${esc(workflowStepTitle(step, inputs))}</button></td>
       <td class="wf-uses">${input ? `<span class="wf-token">${esc(inputs.find((item) => item.name === input)?.label || input)}</span>` : ""}</td>
-      <td class="wf-check">${cardCheck(step) || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
+      <td class="wf-check">${step.check || step.readBack || step.action === "verify" ? `<span title="Then checks the page" aria-label="Then checks the page">${workflowStepKind({ id: "", action: "verify" }).glyph}</span>` : ""}</td>
     </tr>`;
   }).join("");
   const panels = doc.steps.map((step, index) => {
@@ -1627,9 +1619,7 @@ export function workflowDetail(
     const pageUrl = cardUrl(step);
     const branch = step.when?.present ? `Only when “${step.when.present}” is on the page.` : step.when?.value ? `Only for “${step.when.value}”.` : "";
     const checks: string[] = [];
-    for (const saved of [step.check, step.expect, step.postcondition]) {
-      if (saved) checks.push(describeCheck(saved, inputs));
-    }
+    if (step.check) checks.push(describeCheck(step.check, inputs));
     if (step.readBack) checks.push(`Reads ${step.readBack.source || "the value"}${step.readBack.match ? ` matching ${workflowCheckText(step.readBack.match, inputs)}` : ""}`);
     const check = [...new Set(checks)].join(". ") || (step.action === "verify" ? "The saved check" : "Nothing extra");
     const inputVerb = ({ type: "Types", digits: "Types", select: "Picks", upload: "Uploads", drop: "Drops", navigate: "Opens" } as Record<string, string>)[step.action || ""] || "Uses";
@@ -1637,7 +1627,7 @@ export function workflowDetail(
       <p class="wf-eyebrow">${kind.glyph}Step ${index + 1} of ${doc.steps.length} · ${esc(kind.label)}</p>
       <h2>${esc(workflowStepTitle(step, inputs))}</h2>
       <div class="wf-picture" data-shot-alt="Saved page for step ${index + 1}: ${esc(workflowStepTitle(step, inputs))}" data-shot="${esc(shot)}"${shot !== captured ? ` data-shot-fallback="${esc(captured)}"` : ""}${viewportShot ? ` data-viewport="${esc(viewportShot)}" data-box="${esc(box)}"` : ""}></div>
-      ${step.intent ? `<p>${esc(step.intent)}</p>` : ""}${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
+      ${branch ? `<p class="quiet"${step.when?.value ? ` data-route="${esc(step.when.value)}"` : ""}>${esc(branch)}</p>` : ""}
       <dl class="wf-facts"><dt>Finds</dt><dd>${esc(target || (step.action === "navigate" || step.action === "open" || step.action === "download" ? pageUrl || doc.startUrl || "The saved page" : "No saved target"))}</dd>
         ${input ? `<dt>${inputVerb}</dt><dd>${inputToken(input)} <span class="quiet">${esc(tokenFields(input).masked ? "••••" : tokenFields(input).default)}</span></dd>` : typeof step.text === "object" && step.text.literal ? `<dt>Value</dt><dd>${esc(step.text.literal)}</dd>` : ""}
         <dt>Then checks</dt><dd>${esc(check)}</dd>
@@ -1674,7 +1664,7 @@ export function workflowDetail(
     </div></div>
     <aside id="workflow-inspector" aria-label="Step inspector"><div class="wf-toolbar"><h3>Inspector</h3><span class="wf-toolbar-spacer"></span><button type="button" id="workflow-search" aria-label="Search workflows and runs">${icon("search")}</button></div><div class="wf-inspector-body">${panels || `<p class="quiet">Select a step once this workflow has steps.</p>`}
       <p id="workflow-step-help" class="quiet">Select a step to see what it does. Try this step finds its target without clicking or typing. Run from here skips earlier steps.</p>
-      <section id="workflow-inputs" tabindex="-1"><h3>Inputs <span>· ${inputs.length}${inputs.length ? ", asked before each run" : ""}</span></h3>${inputs.length ? `<ul>${inputs.map((input) => `<li data-workflow-input="${esc(input.name)}"${input.name === (selected?.input || mustacheName(selected?.value) || mustacheName(selected?.label)) ? ` class="selected"` : ""}>${inputToken(input)}</li>`).join("")}</ul>` : `<p class="quiet">This workflow needs no inputs.</p>`}</section>
+      <section id="workflow-inputs" tabindex="-1"><h3>Inputs <span>· ${inputs.length}${inputs.length ? ", asked before each run" : ""}</span></h3>${inputs.length ? `<ul>${inputs.map((input) => `<li data-workflow-input="${esc(input.name)}">${inputToken(input)}</li>`).join("")}</ul>` : `<p class="quiet">This workflow needs no inputs.</p>`}</section>
     </div></aside>
   </section>`;
 }
@@ -2115,7 +2105,7 @@ export interface TeachView {
     workflow: {
       name: string;
       inputs: { name: string; type: string }[];
-      steps: { id: string; label?: string; intent?: string; action?: string; human?: boolean; value?: string; input?: string; sensitive?: boolean }[];
+      steps: { id: string; action?: string; caption?: { text?: string }; input?: string; sensitive?: boolean }[];
     };
   };
 }

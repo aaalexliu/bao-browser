@@ -1,4 +1,4 @@
-import { fixtureInput, fixtureStep, fixtureDoc } from "../support/fixture-step";
+import { targetFor, testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -11,7 +11,7 @@ import { runAttention, type RunSummary } from "../../src/app/views";
 import { EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, getRun, greenLabel, originLabel, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
-import { validateWorkflow, type WorkflowV2 } from "../../src/v1/schema";
+import { validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { loadState, saveState } from "../../src/v1/sync";
 
 test("search returns at most five hits and each hit has an input schema", async () => {
@@ -412,7 +412,7 @@ for (const driver of [undefined, "extension"] as const) {
 test("describe omits secret defaults and a missing secret does not launch a browser", async () => {
   const library = new Library(mkdtempSync(path.join(tmpdir(), "bao-cat-")));
   const doc = workflow("sign-in", "Sign in");
-  doc.inputs.push(fixtureInput({ name: "password", type: "secret", label: "Password" }));
+  doc.inputs.push({ name: "password", type: "secret", label: "Password", supply: "must" });
   library.save(doc);
   const described = await describeWorkflow(library, "sign-in");
   const secret = described.workflow.inputs.find((input) => input.name === "password");
@@ -439,14 +439,21 @@ test("MCP rerun and saved resume require fresh OTP input while keeping local his
   const library = new Library(home);
   const doc = workflow("otp-rerun", "OTP rerun");
   doc.inputs.push(
-    fixtureInput({ name: "code", type: "secret", label: "Verification code", default: "123456" }),
-    fixtureInput({ name: "attachment", type: "file", label: "Attachment" }),
+    { name: "code", type: "secret", label: "Verification code", supply: "saved", default: "123456" },
+    { name: "attachment", type: "file", label: "Attachment", supply: "must" },
   );
-  doc.steps.unshift(fixtureStep({
-    id: "code", index: 0, action: "type", label: "Verification code", input: "code", value: "{{code}}",
-    surface: "dom", timeoutMs: 0,
-    identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "section-login one-time-code", path: [] },
-  }));
+  doc.steps.unshift({
+    id: "code",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Verification code" },
+    action: "type",
+    target: {
+      locators: [{ kind: "css", value: "#code" }, { kind: "xpath", value: "//*[@id=\"code\"]" }],
+      hint: { role: "textbox", surface: "dom", autocomplete: "section-login one-time-code", id: "code" },
+    },
+    text: { input: "code" },
+  });
   doc.steps.forEach((step, index) => { step.index = index; });
   library.save(doc);
   library.savePublicInputs(doc.id, { code: "234567", query: "Ada" });
@@ -522,21 +529,33 @@ for (const replaceOnResume of [false, true]) {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     let token = "";
     try {
-      const doc: WorkflowV2 = fixtureDoc({
-        schema: "bao.workflow/v4", version: 2, id: "otp-live", name: "Live OTP", createdAt: 1,
+      const doc: WorkflowV2 = testWorkflow({
+        schema: "bao.workflow/v4", id: "otp-live", name: "Live OTP", createdAt: 1,
         startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
-        inputs: [fixtureInput({ name: "code", type: "text", label: "Verification code", default: "123456" })],
+        inputs: [{ name: "code", type: "text", label: "Verification code", supply: "saved", default: "123456" }],
         steps: [
-          fixtureStep({
-            id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
-            postcondition: { kind: "text", match: "Signed in", timeoutMs: 5000 },
-          }),
-          fixtureStep({
-            id: "code", index: 1, action: "type", label: "Verification code", surface: "dom", timeoutMs: 5000,
-            input: "code", value: "{{code}}",
-            identity: { surface: "dom", role: "textbox", id: "code", autocomplete: "one-time-code", path: [] },
-            postcondition: { kind: "value", match: "{{code}}", timeoutMs: 5000 },
-          }),
+          {
+            id: "signin",
+            index: 0,
+            timeoutMs: 5000,
+            caption: { text: "Sign in" },
+            action: "handoff",
+            reason: "sign-in",
+            check: { kind: "text", match: "Signed in", timeoutMs: 5000 },
+          },
+          {
+            id: "code",
+            index: 1,
+            timeoutMs: 5000,
+            caption: { text: "Verification code" },
+            action: "type",
+            target: {
+              locators: [{ kind: "css", value: "#code" }, { kind: "xpath", value: "//*[@id=\"code\"]" }],
+              hint: { role: "textbox", surface: "dom", autocomplete: "one-time-code", id: "code" },
+            },
+            text: { input: "code" },
+            check: { kind: "value", match: "{{code}}", timeoutMs: 5000 },
+          },
         ],
       });
       library.save(doc);
@@ -582,10 +601,15 @@ test("a stopped run keeps the saved-values receipt", { timeout: 60_000 }, async 
       ...workflow("stop-saved", "Stop saved"),
       startUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
       inputs: [{ name: "name", type: "text", label: "Name", supply: "saved", default: "Ada" }],
-      steps: [fixtureStep({
-        id: "signin", index: 0, action: "login", label: "Sign in", surface: "dom", timeoutMs: 5000,
-        postcondition: { kind: "text", match: "Signed in", timeoutMs: 5000 },
-      })],
+      steps: [{
+        id: "signin",
+        index: 0,
+        timeoutMs: 5000,
+        caption: { text: "Sign in" },
+        action: "handoff",
+        reason: "sign-in",
+        check: { kind: "text", match: "Signed in", timeoutMs: 5000 },
+      }],
     };
     library.save(doc);
     const first = await runWorkflow(library, { id: doc.id });
@@ -605,24 +629,30 @@ test("a stopped run keeps the saved-values receipt", { timeout: 60_000 }, async 
 });
 
 function clickWorkflow(startUrl: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-click",
     name: "Click Go",
     startUrl,
     createdAt: 1,
     inputs: [],
-    steps: [fixtureStep({
+    steps: [{
       id: "go",
       index: 0,
-      action: "click",
-      label: "Go",
-      surface: "dom",
       timeoutMs: 5000,
-      identity: { surface: "dom", role: "button", testId: "go", text: "Go", path: [] },
-      postcondition: { kind: "text", match: "Clicked", timeoutMs: 5000 },
-    })],
+      caption: { text: "Go", citation: { text: "Go", source: "text" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Go" },
+          { kind: "text", value: "Go" },
+          { kind: "testid", value: "go" },
+          { kind: "css", value: "[data-testid=\"go\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+      check: { kind: "text", match: "Clicked", timeoutMs: 5000 },
+    }],
   });
 }
 
@@ -642,23 +672,14 @@ function hit(id: string, source: string, score: number, title: string): SearchHi
 }
 
 function workflow(id: string, name: string): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id,
     name,
     startUrl: "https://example.com",
     createdAt: 1,
-    inputs: [fixtureInput({ name: "query", type: "text", label: "Query" })],
-    steps: [fixtureStep({
-      id: "go",
-      index: 0,
-      action: "key",
-      key: "Enter",
-      label: `${name} step`,
-      surface: "dom",
-      timeoutMs: 1000,
-    })],
+    inputs: [{ name: "query", type: "text", label: "Query", supply: "must" }],
+    steps: [{ id: "go", index: 0, timeoutMs: 1000, caption: { text: `${name} step` }, action: "key", key: "Enter" }],
   });
 }
 
@@ -674,17 +695,17 @@ test("a run that stops on a password or Log in step asks the agent to send the o
   const startUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
   try {
     const steps = {
-      password: fixtureStep({ id: "password", index: 0, action: "type", label: "Type the password", surface: "dom", timeoutMs: 800, heal: "never", input: "pass", value: "{{pass}}", sensitive: true,
-        identity: { surface: "dom", role: "textbox", inputType: "password", id: "password", path: [] } }),
-      login: fixtureStep({ id: "login", index: 0, action: "click", label: "Click Log in", surface: "dom", timeoutMs: 800, heal: "never",
-        identity: { surface: "dom", role: "button", name: "Log in", path: [] } }),
-      other: fixtureStep({ id: "other", index: 0, action: "click", label: "Click Export", surface: "dom", timeoutMs: 800, heal: "never",
-        identity: { surface: "dom", role: "button", name: "Export", path: [] } }),
-    };
+      password: { id: "password", index: 0, action: "type", caption: { text: "Type the password" }, timeoutMs: 800, heal: "never", text: { input: "pass" }, sensitive: true,
+        target: targetFor({ surface: "dom", role: "textbox", inputType: "password", id: "password", path: [] }) },
+      login: { id: "login", index: 0, action: "click", caption: { text: "Click Log in" }, timeoutMs: 800, heal: "never",
+        target: targetFor({ surface: "dom", role: "button", name: "Log in", path: [] }) },
+      other: { id: "other", index: 0, action: "click", caption: { text: "Click Export" }, timeoutMs: 800, heal: "never",
+        target: targetFor({ surface: "dom", role: "button", name: "Export", path: [] }) },
+    } satisfies Record<string, WorkflowStep>;
     for (const [id, step] of Object.entries(steps)) {
-      library.save(fixtureDoc({
-        schema: "bao.workflow/v4", version: 2, id: `signin-${id}`, name: `Sign in ${id}`, createdAt: 1, startUrl,
-        inputs: id === "password" ? [fixtureInput({ name: "pass", type: "secret", label: "Password", default: "hunter2" })] : [],
+      library.save(testWorkflow({
+        id: `signin-${id}`, name: `Sign in ${id}`, startUrl,
+        inputs: id === "password" ? [{ name: "pass", type: "secret", label: "Password", supply: "saved", default: "hunter2" }] : [],
         steps: [step],
       }));
       const outcome = await runWorkflow(library, { id: `signin-${id}` });

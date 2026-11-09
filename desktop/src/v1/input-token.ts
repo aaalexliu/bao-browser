@@ -8,7 +8,6 @@ export interface TokenInput {
   type?: string;
   label?: string;
   default?: string;
-  required?: boolean;
   choices?: string[];
   multiple?: boolean;
   format?: string;
@@ -38,7 +37,7 @@ export function tokenFields(input: TokenInput): TokenFields {
     label: input.label || input.name,
     type,
     default: input.fresh || hasStrippedSecret(input.default) ? "" : input.default || "",
-    required: input.supply ? input.supply === "must" : input.required === true,
+    required: input.supply === "must",
     masked,
   };
 }

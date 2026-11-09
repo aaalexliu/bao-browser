@@ -1,10 +1,10 @@
 // Guide Me replays a workflow as guidance. It highlights the next target and
 // advances when the person does that step. It never clicks, types, or presses keys.
 
-import { lookup } from "./identity";
-import type { Driver, GuideAct } from "./replay";
-import { holdsExpect, pageShows, pageWhen, type PageGuard } from "./replay";
-import { stepTitle, stepQuery, stepInputName, stepValueTemplate, stepKey, stepCheck, stepSensitive, subst, type Identity, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { stepEnteredLiteral, targetElementId } from "../../../shared/step-read";
+import { lookup, targetQuery } from "./identity";
+import { checkHolds, type Driver, type GuideAct, type PageGuard, pageShows, pageWhen } from "./replay";
+import { argText, locatorValue, targetName, stepTitle, stepInputName, stepKey, stepCheck, stepSensitive, stepTarget, subst, targetRole, type Identity, type Target, type ReplayArgs, type WorkflowStep, type WorkflowV2 } from "./schema";
 
 export interface GuideStepResult {
   id: string;
@@ -113,10 +113,10 @@ function actionCount(driver: Driver): number {
 
 async function highlight(step: WorkflowStep, driver: Driver): Promise<Identity | undefined> {
   const draw = driver.highlightTarget ?? driver.outline;
-  const identity = stepQuery(step);
-  if (!identity || !draw) return undefined;
+  const target = stepTarget(step);
+  if (!target || !draw) return undefined;
   const tree = await driver.tree();
-  const hit = lookup(identity, tree.nodes);
+  const hit = lookup(targetQuery(target), tree.nodes);
   if (!hit.ok || hit.index == null) return undefined;
   const node = tree.nodes[hit.index];
   if (!node) return undefined;
@@ -136,7 +136,7 @@ async function waitForCheck(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (driver.shouldStop?.()) return "stopped";
-    if (holdsExpect(expect, await driver.tree(), args)) return "done";
+    if (checkHolds(expect, await driver.tree(), args)) return "done";
     await sleep(pollMs);
   }
   return "timeout";
@@ -167,7 +167,7 @@ async function waitForPerson(
 }
 
 function actMatches(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolean {
-  if (!sameTarget(stepQuery(step), act)) return false;
+  if (!sameTarget(stepTarget(step), act)) return false;
   if (step.action === "type") return act.op === "type" && typeDone(step, act, args);
   if (step.action === "key") return act.op === "key" && (!stepKey(step) || act.key === stepKey(step));
   if (step.action === "check") return act.op === "click" || act.op === "check";
@@ -175,7 +175,7 @@ function actMatches(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolea
 }
 
 function typeDone(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolean {
-  if (stepSensitive(step) || act.secret || stepQuery(step)?.role === "password") return true;
+  if (stepSensitive(step) || act.secret || targetRole(stepTarget(step)) === "password") return true;
   const want = expectedValue(step, args);
   const got = act.value || "";
   if (!want) return got.length > 0;
@@ -184,7 +184,7 @@ function typeDone(step: WorkflowStep, act: GuideAct, args: ReplayArgs): boolean 
 
 function valueDone(step: WorkflowStep, args: ReplayArgs, before: string, now: string): boolean {
   if (!now || now === before) return false;
-  if (stepSensitive(step) || stepQuery(step)?.role === "password") return true;
+  if (stepSensitive(step) || targetRole(stepTarget(step)) === "password") return true;
   const want = expectedValue(step, args);
   if (!want) return true;
   return now === want;
@@ -192,11 +192,8 @@ function valueDone(step: WorkflowStep, args: ReplayArgs, before: string, now: st
 
 function expectedValue(step: WorkflowStep, args: ReplayArgs): string {
   const input = stepInputName(step);
-  if (input) {
-    const arg = args[input];
-    if (typeof arg === "string" || typeof arg === "number") return String(arg);
-  }
-  return subst(stepValueTemplate(step) || "", args);
+  if (input) return argText(args[input]);
+  return subst(stepEnteredLiteral(step) || "", args);
 }
 
 async function fieldValue(driver: Driver, step: WorkflowStep, node: Identity | undefined): Promise<string> {
@@ -204,7 +201,7 @@ async function fieldValue(driver: Driver, step: WorkflowStep, node: Identity | u
   const tree = await driver.tree();
   const hit = node ? tree.values.find((item) => item.identity === node) : undefined;
   if (hit) return hit.value;
-  const found = tree.values.find((item) => sameTarget(stepQuery(step), {
+  const found = tree.values.find((item) => sameTarget(stepTarget(step), {
     id: item.identity.id,
     testId: item.identity.testId,
     name: item.identity.nameAttr,
@@ -212,12 +209,16 @@ async function fieldValue(driver: Driver, step: WorkflowStep, node: Identity | u
   return found?.value || "";
 }
 
-function sameTarget(identity: Identity | undefined, act: { id?: string; testId?: string; name?: string }): boolean {
-  if (!identity) return false;
-  if (identity.id && act.id && identity.id === act.id) return true;
-  if (identity.testId && act.testId && identity.testId === act.testId) return true;
-  if (identity.nameAttr && act.name && identity.nameAttr === act.name) return true;
-  if (identity.name && act.name && identity.name === act.name) return true;
+function sameTarget(target: Target | undefined, act: { id?: string; testId?: string; name?: string }): boolean {
+  if (!target) return false;
+  const id = targetElementId(target);
+  const testId = locatorValue(target, "testid");
+  const nameAttr = target.hint?.nameAttr;
+  const name = targetName(target);
+  if (id && act.id && id === act.id) return true;
+  if (testId && act.testId && testId === act.testId) return true;
+  if (nameAttr && act.name && nameAttr === act.name) return true;
+  if (name && act.name && name === act.name) return true;
   return false;
 }
 

@@ -6,7 +6,8 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { buildPushBody } from "../../../shared/sync-guard";
 import { retainLocalDefaults } from "./local-defaults";
-import { stepHistory, stepQuery, stepTitle, parseWorkflow, validateWorkflow, type Identity, type WorkflowStep, type WorkflowV2 } from "./schema";
+import { targetElementId } from "../../../shared/step-read";
+import { locatorValue, targetName, stepHistory, stepTarget, stepTitle, parseWorkflow, targetRole, validateWorkflow, type Target, type WorkflowStep, type WorkflowV2 } from "./schema";
 import { Library } from "./store";
 
 export type VersionRole = "live" | "draft" | "past";
@@ -157,8 +158,8 @@ function conflictSides(theirs: WorkflowV2, mine: WorkflowV2): ConflictSide[] {
     const right = mine.steps.find((step) => step.id === id);
     const leftLabel = left ? stepLabel(left, id) : "—";
     const rightLabel = right ? stepLabel(right, id) : "—";
-    const leftDetail = left ? identityPhrase(stepQuery(left)) : "—";
-    const rightDetail = right ? identityPhrase(stepQuery(right)) : "—";
+    const leftDetail = left ? targetPhrase(stepTarget(left)) : "—";
+    const rightDetail = right ? targetPhrase(stepTarget(right)) : "—";
     return {
       id,
       leftLabel,
@@ -170,24 +171,28 @@ function conflictSides(theirs: WorkflowV2, mine: WorkflowV2): ConflictSide[] {
   });
 }
 
-/** How a step is found, in one phrase. A test id wins, then an id, then the role and its name. */
-export function identityPhrase(identity: Identity | undefined): string {
-  if (!identity) return "no target";
-  if (identity.testId) return `testId ${identity.testId}`;
-  if (identity.id) return `id ${identity.id}`;
-  const quoted = identity.name || identity.text || identity.label;
-  if (identity.role) return quoted ? `role ${identity.role} "${quoted}"` : `role ${identity.role}`;
-  if (quoted) return `"${quoted}"`;
-  return "no target";
+function targetWords(target: Target | undefined): string {
+  return targetName(target) || locatorValue(target, "text") || target?.hint?.label || "";
 }
 
-function phrasePair(before: Identity | undefined, after: Identity | undefined): { before: string; after: string } {
-  const left = identityPhrase(before);
-  const right = identityPhrase(after);
+/** How a step is found, in one phrase. A test id wins, then an id, then the role and its name. */
+function targetPhrase(target: Target | undefined): string {
+  if (!target) return "no target";
+  const testId = locatorValue(target, "testid");
+  if (testId) return `testId ${testId}`;
+  const id = targetElementId(target);
+  if (id) return `id ${id}`;
+  const quoted = targetWords(target);
+  const role = targetRole(target) || "unknown";
+  return quoted ? `role ${role} "${quoted}"` : `role ${role}`;
+}
+
+function phrasePair(before: Target | undefined, after: Target | undefined): { before: string; after: string } {
+  const left = targetPhrase(before);
+  const right = targetPhrase(after);
   if (left !== right) return { before: left, after: right };
-  const quoted = (identity: Identity | undefined) => identity?.name || identity?.text || identity?.label || "";
-  const leftQuote = quoted(before);
-  const rightQuote = quoted(after);
+  const leftQuote = targetWords(before);
+  const rightQuote = targetWords(after);
   if (leftQuote === rightQuote) return { before: left, after: right };
   return {
     before: leftQuote ? `${left} "${leftQuote}"` : left,
@@ -207,7 +212,7 @@ export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2
   for (const step of next.steps) {
     const before = prior.find((item) => item.id === step.id);
     if (before) used.add(before.id);
-    const pair = phrasePair(before ? stepQuery(before) : undefined, stepQuery(step));
+    const pair = phrasePair(before ? stepTarget(before) : undefined, stepTarget(step));
     const label = stepLabel(step, step.id);
     const changed = Boolean(previous) && (
       !before
@@ -228,7 +233,7 @@ export function versionChange(previous: WorkflowV2 | undefined, next: WorkflowV2
     steps.push({
       id: step.id,
       label: stepLabel(step, step.id),
-      before: identityPhrase(stepQuery(step)),
+      before: targetPhrase(stepTarget(step)),
       after: "removed",
       changed: true,
     });
@@ -294,7 +299,7 @@ function locatorHeld(document: WorkflowV2): HeldLocator | undefined {
     }
   }
   if (tip) return tip;
-  const step = document.steps.find((item) => stepQuery(item));
+  const step = document.steps.find((item) => stepTarget(item));
   if (!step) return undefined;
   return {
     stepId: step.id,

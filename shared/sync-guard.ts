@@ -1,7 +1,7 @@
 import { isSealedArtifact, STRIPPED_SECRET } from "./saved-secrets";
 import { redactSavedValue, scrubSaved, type SavedContext } from "./outbound-secrets";
 import { isElementCrop } from "./png";
-import { stepInputName, stepValueTemplate, type StepRead } from "./step-read";
+import { stepEnteredLiteral, stepInputName, type StepRead } from "./step-read";
 
 const DROP_KEY = /^(cookie|cookies|set-cookie|setcookie|authorization|proxy-authorization|args|params)$/i;
 
@@ -31,7 +31,7 @@ export function buildPushBody(
   opts: { baseVersion: number; heal?: unknown; category?: string; crops?: { stepId: string; png: Buffer }[] },
 ): SyncPush {
   const secrets = collectSecretStrings(document, opts.heal);
-  const copy = stripUnsafe(document, secrets) as { inputs?: { name?: string; type?: string; default?: string }[]; steps?: { id?: string; sensitive?: boolean; input?: string; value?: string }[] };
+  const copy = stripUnsafe(document, secrets) as { inputs?: { name?: string; type?: string; default?: string }[]; steps?: (StepRead & { id?: string })[] };
   const body: SyncPush = {
     baseVersion: opts.baseVersion,
     document: copy,
@@ -65,7 +65,7 @@ export function buildRunBody(
 }
 
 function stepShots(
-  steps: { id?: string; sensitive?: boolean; input?: string; value?: string }[],
+  steps: (StepRead & { id?: string })[],
   crops: { stepId: string; png: Buffer }[] | undefined,
   inputs: { name?: string; type?: string; default?: string }[] = [],
 ): SyncShot[] {
@@ -74,8 +74,8 @@ function stepShots(
   const byId = new Map((crops || []).map((crop) => [crop.stepId, crop.png]));
   const shots: SyncShot[] = [];
   steps.forEach((step, index) => {
-    const value = stepValueTemplate(step as StepRead) ?? step.value ?? "";
-    const input = stepInputName(step as StepRead);
+    const value = stepEnteredLiteral(step) ?? "";
+    const input = stepInputName(step);
     if (step.sensitive || redactSavedValue(value) === STRIPPED_SECRET) return;
     if (input && secrets.has(input)) return;
     const id = String(step.id ?? index);

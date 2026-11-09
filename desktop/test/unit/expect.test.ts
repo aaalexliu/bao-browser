@@ -1,11 +1,10 @@
-import { checkState, checkMatch, stepCheck } from "../../src/v1/schema";
+import { checkMatch, checkState, type Identity, stepCheck } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { droppedNoEffectIds } from "../../src/v1/condense";
 import { SETTLED_EXPECT } from "../../src/v1/expect";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
-import { holdsExpect, type LiveTree } from "../../src/v1/replay";
-import type { Identity } from "../../src/v1/schema";
+import { checkHolds, type LiveTree } from "../../src/v1/replay";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
@@ -180,7 +179,7 @@ test("a javascript dialog counts as an effect and keeps the click", () => {
 test("settled means the page is not a browser error", () => {
   const expect = { kind: "settled" as const, match: SETTLED_EXPECT, timeoutMs: 4000 };
   const tree = (url: string, texts: string[] = []): LiveTree => ({ nodes: [], url, texts, values: [] });
-  assert.equal(holdsExpect(expect, tree("https://example.com/?say=Hi"), {}), true);
-  assert.equal(holdsExpect(expect, tree("chrome-error://chromewebdata/"), {}), false);
-  assert.equal(holdsExpect(expect, tree("https://example.com/", ["This site can’t be reached"]), {}), false);
+  assert.equal(checkHolds(expect, tree("https://example.com/?say=Hi"), {}), true);
+  assert.equal(checkHolds(expect, tree("chrome-error://chromewebdata/"), {}), false);
+  assert.equal(checkHolds(expect, tree("https://example.com/", ["This site can’t be reached"]), {}), false);
 });

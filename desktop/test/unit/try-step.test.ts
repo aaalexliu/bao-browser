@@ -1,4 +1,3 @@
-import { fixtureStep, type FixtureDraft } from "../support/fixture-step";
 // Try looks up a fixture step and does not act.
 
 import assert from "node:assert/strict";
@@ -6,15 +5,11 @@ import test from "node:test";
 import { tryResult, workflowDetail } from "../../src/app/views";
 import type { HealProvider } from "../../src/v1/heal";
 import type { Driver, LiveTree } from "../../src/v1/replay";
-import type { Identity, WorkflowStep } from "../../src/v1/schema";
+import type { Identity,  } from "../../src/v1/schema";
 import { tryStep } from "../../src/v1/try-step";
 
 function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
-}
-
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
 }
 
 function tree(nodes: Identity[]): LiveTree {
@@ -43,12 +38,17 @@ test("Try on a fixture step matches with no actions and no model call", async ()
     available: () => true,
     propose: async () => { models += 1; return null; },
   };
-  const result = await tryStep(step({
+  const result = await tryStep({
     id: "save",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "Save note" },
     action: "click",
-    label: "Save note",
-    identity: ident({ testId: "save-note" }),
-  }), driver, heal);
+    target: {
+      locators: [{ kind: "testid", value: "save-note" }, { kind: "css", value: "[data-testid=\"save-note\"]" }],
+      hint: { role: "button", surface: "dom" },
+    },
+  }, driver, heal);
   assert.equal(result.matched, true);
   assert.equal(actions, 0);
   assert.equal(result.actions, 0);
@@ -69,9 +69,9 @@ test("Try on a fixture step matches with no actions and no model call", async ()
     id: "wf",
     name: "fixture",
     steps: [
-      { id: "note", action: "type", label: "Type the note" },
-      { id: "save", action: "click", label: "Save note" },
-      { id: "apply", action: "confirm", label: "Apply" },
+      { id: "note", action: "type", caption: { text: "Type the note" } },
+      { id: "save", action: "click", caption: { text: "Save note" } },
+      { id: "apply", action: "handoff", reason: "owner-press", caption: { text: "Apply" } },
     ],
   });
   assert.match(page, /data-try-step="save"/);

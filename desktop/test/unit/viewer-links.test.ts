@@ -1,4 +1,4 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // Finished runs open their failed step; a separate active login opens its live detail.
 
 import assert from "node:assert/strict";
@@ -22,21 +22,35 @@ test("the runs list opens failed receipts while an active login owns its live de
   const browser = await chromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
-    const doc: WorkflowV2 = fixtureDoc({
+    const doc: WorkflowV2 = testWorkflow({
       schema: "bao.workflow/v4",
-      version: 2,
       id: "wf-note",
       name: "upload note",
       startUrl: "http://127.0.0.1/fixture",
       createdAt: 1,
       inputs: [
-        fixtureInput({ name: "note", type: "text", label: "Note" }),
-        fixtureInput({ name: "password", type: "secret", label: "Password" }),
+        { name: "note", type: "text", label: "Note", supply: "must" },
+        { name: "password", type: "secret", label: "Password", supply: "must" },
       ],
       steps: [
-        fixtureStep({ id: "login", index: 0, action: "login", human: true, label: "Sign in", surface: "dom", timeoutMs: 0 }),
-        fixtureStep({ id: "save", index: 1, action: "click", label: "Save", surface: "dom", timeoutMs: 0 }),
-        fixtureStep({ id: "note", index: 2, action: "type", label: "Type the note", surface: "dom", timeoutMs: 0, input: "note" }),
+        { id: "login", index: 0, timeoutMs: 0, caption: { text: "Sign in" }, action: "handoff", reason: "sign-in" },
+        {
+          id: "save",
+          index: 1,
+          timeoutMs: 0,
+          caption: { text: "Save" },
+          action: "click",
+          target: { locators: [{ kind: "role", role: "button", name: "Save" }] },
+        },
+        {
+          id: "note",
+          index: 2,
+          timeoutMs: 0,
+          caption: { text: "Type the note" },
+          action: "type",
+          target: { locators: [{ kind: "role", role: "textbox", name: "Type the note" }] },
+          text: { input: "note" },
+        },
       ],
     });
     app.library.save(doc);

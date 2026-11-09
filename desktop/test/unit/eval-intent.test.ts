@@ -1,11 +1,12 @@
-import { fixtureInput, withStep } from "../support/fixture-step";
+import { stepText } from "../support/workflow";
+import { targetElementId } from "../../../shared/step-read";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canonical } from "../../src/v1/canonical";
 import { condense, condenseWithGroups, droppedNoEffectIds } from "../../src/v1/condense";
 import type { TrailEvent } from "../../src/v1/interpret";
 import { applyHybrid } from "../../src/v1/hybrid";
-import { stepTitle, stepQuery, stepInputName, stepValueTemplate, handoffReason, validateWorkflow } from "../../src/v1/schema";
+import { stepTitle, stepInputName, stepTarget, handoffReason, validateWorkflow, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import { INTENT_CASES, noisyTrail } from "../../src/eval/intent/cases";
 import { HAND_LABELS } from "../../src/eval/intent/labels";
 import { deterministicWorkflow, expectedHuman, humanKeys, multisetScore, replayCase, scoreParams, stepSignature, targetOf, textDefaults, truthLiterals, truthTexts, truthWorkflow } from "../../src/eval/intent/score";
@@ -62,9 +63,11 @@ test("parameter scoring permits local secret defaults but rejects secrets elsewh
   assert.deepEqual(scoreParams(workflow, item), { recall: 1, secret: 1, leaked: [] });
   for (const leaked of [
     { ...workflow, summary: secret },
-    { ...workflow, steps: workflow.steps.map((step, index) => index === 0 ? withStep(step, { value: secret }) : step) },
-    { ...workflow, inputs: [...workflow.inputs, fixtureInput({ name: "leaked", type: "text", label: "Leaked", default: secret })] },
-  ]) {
+    { ...workflow, steps: workflow.steps.map((step, index): WorkflowStep => index === 0
+      ? { id: step.id, index, timeoutMs: step.timeoutMs, caption: step.caption, action: "type", target: { locators: [{ kind: "css", value: "#leak" }] }, text: { literal: secret } }
+      : step) },
+    { ...workflow, inputs: [...workflow.inputs, { name: "leaked", type: "text", label: "Leaked", supply: "saved", default: secret }] },
+  ] satisfies WorkflowV2[]) {
     const score = scoreParams(leaked, item);
     assert.equal(score.secret, 0);
     assert.ok(score.leaked.includes(secret));
@@ -99,7 +102,8 @@ test("condense retains explicit navigation targets and still drops incidental na
   const meta = { id: "wf-explicit-navigation", startUrl: start };
   const workflow = condense(events, meta);
   assert.deepEqual(workflow.steps.map((step) => step.action), ["click", "navigate", "click"]);
-  assert.equal((workflow.steps[1] == null ? undefined : stepValueTemplate(workflow.steps[1])), target);
+  const opened = workflow.steps[1];
+  assert.equal(opened?.action === "navigate" ? opened.url : undefined, target);
   const grouped = condenseWithGroups(events, meta);
   assert.deepEqual(grouped.workflow, workflow);
   assert.deepEqual(grouped.groups.map((group) => group.map((event) => event.id)), [["first-click"], ["explicit"], ["last-click"]]);
@@ -124,7 +128,7 @@ test("a long abort is dropped and a currency value stays a literal", () => {
   assert.deepEqual(priced.inputs.map((input) => input.name), ["amount"]);
   const currency = priced.steps.find((step) => targetOf(step) === "currency");
   assert.equal((currency == null ? undefined : stepInputName(currency)), undefined);
-  assert.equal((currency == null ? undefined : stepValueTemplate(currency)), "USD");
+  assert.deepEqual(stepText(currency), { literal: "USD" });
   assert.deepEqual(truthLiterals(fare), ["USD"]);
   assert.deepEqual(textDefaults(priced), truthTexts(fare));
 });
@@ -155,8 +159,8 @@ test("condense drops a partial retype, a wiped field, an undone click, and a rep
   assert.equal(blob.includes("nope"), false);
   assert.equal(blob.includes("Away"), false);
   assert.deepEqual(workflow.inputs.map((input) => input.default), ["Ada Lovelace"]);
-  assert.equal(workflow.steps.filter((step) => stepQuery(step)?.cssPath === "h2.title").length, 1);
-  assert.equal(workflow.steps.some((step) => stepQuery(step)?.id === "go"), true);
+  assert.equal(workflow.steps.filter((step) => stepTarget(step)?.locators.some((locator) => locator.kind === "css" && locator.value === "h2.title")).length, 1);
+  assert.equal(workflow.steps.some((step) => targetElementId(stepTarget(step)) === "go"), true);
   assert.equal(workflow.steps.length, 3);
 });
 
@@ -180,7 +184,7 @@ test("hybrid can drop help and cannot drop a param or keep a secret literal", ()
   assert.deepEqual(applied.ignored, ["made-up"]);
   assert.deepEqual(applied.workflow.inputs, base.inputs);
   assert.equal((() => { const _step = applied.workflow.steps.find((step) => step.id === typed.id); return _step == null ? undefined : handoffReason(_step); })(), handoffReason(typed));
-  assert.equal((() => { const _step = applied.workflow.steps.find((step) => step.id === typed.id); return _step == null ? undefined : stepValueTemplate(_step); })(), stepValueTemplate(typed));
+  assert.deepEqual(stepText(applied.workflow.steps.find((step) => step.id === typed.id)), stepText(typed));
   assert.equal(applied.workflow.summary?.includes("Ada"), false);
   assert.equal(JSON.stringify(applied.workflow.steps).includes("SuperSecretPassword!"), false);
   assert.deepEqual(validateWorkflow(applied.workflow), []);

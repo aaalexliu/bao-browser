@@ -1,4 +1,4 @@
-import { fixtureStep, type FixtureDraft, fixtureDoc } from "../support/fixture-step";
+import { testWorkflow } from "../support/workflow";
 // Re-run from a past run, collapsed idle, and the per-step heal limit.
 
 import assert from "node:assert/strict";
@@ -14,14 +14,9 @@ function ident(partial: Partial<Identity>): Identity {
   return { surface: "dom", role: "button", path: [], ...partial };
 }
 
-function step(partial: FixtureDraft): WorkflowStep {
-  return fixtureStep({ timeoutMs: 0, ...partial });
-}
-
 function doc(steps: WorkflowStep[]): WorkflowV2 {
-  return fixtureDoc({
+  return testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf",
     name: "upload note",
     startUrl: "http://127.0.0.1/fixture",
@@ -88,7 +83,7 @@ test("three consecutive heals on one step stop auto-heal and open the act bar", 
   const healed = (at: number) => ({
     at,
     workflowId: "wf",
-    heals: [{ id: `h-${at}`, failedStep: { id: "save", label: "save" } }],
+    heals: [{ id: `h-${at}`, failedStep: { id: "save", action: "click", caption: { text: "Click Save" } } }],
     steps: [{ id: "save", status: "passed" as const }],
   });
   const runs = [healed(1), healed(2), healed(3)];
@@ -106,7 +101,8 @@ test("three consecutive heals on one step stop auto-heal and open the act bar", 
     runs: runs.map((run, index) => ({ ...run, id: `run-${index}`, status: "passed" as const })),
   });
   assert.match(bar, /data-ask="review"/);
-  assert.match(bar, /needs review/);
+  assert.match(bar, /You need to act · upload note · Click Save/);
+  assert.match(bar, /Click Save needs review/);
   assert.match(bar, /3 runs in a row/);
   assert.match(bar, /auto-heal is off/);
   assert.equal(attentionCount({ pendingHeals: 0, reviews: reviewItems(runs.map((run, index) => ({
@@ -117,13 +113,22 @@ test("three consecutive heals on one step stop auto-heal and open the act bar", 
 
   const missing = tree([ident({ role: "button", testId: "save", text: "Continue" })]);
   let calls = 0;
-  const click = step({
+  const click: WorkflowStep = {
     id: "save",
+    index: 0,
+    timeoutMs: 0,
+    caption: { text: "save", citation: { text: "Save", source: "text" } },
     action: "click",
-    label: "save",
-    intent: "Save the note",
-    identity: ident({ testId: "missing-save", text: "Save" }),
-  });
+    target: {
+      locators: [
+        { kind: "role", role: "button", name: "Save" },
+        { kind: "text", value: "Save" },
+        { kind: "testid", value: "missing-save" },
+        { kind: "css", value: "[data-testid=\"missing-save\"]" },
+      ],
+      hint: { role: "button", surface: "dom" },
+    },
+  };
   const stopped = await replay(doc([click]), {}, fake([missing]), {
     heal: { available: () => true, propose: async () => { calls += 1; return null; } },
     reviewSteps: new Set(["save"]),
@@ -151,8 +156,38 @@ test("debug from a later step does not run the earlier step", async () => {
     sleep: async () => {},
   };
   const result = await replay(doc([
-    step({ id: "type", action: "click", identity: button }),
-    step({ id: "save", action: "click", identity: button }),
+    {
+      id: "type",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Save", citation: { text: "Save", source: "name" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Save" },
+          { kind: "text", value: "Save" },
+          { kind: "testid", value: "save" },
+          { kind: "css", value: "[data-testid=\"save\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
+    {
+      id: "save",
+      index: 0,
+      timeoutMs: 0,
+      caption: { text: "Click Save", citation: { text: "Save", source: "name" } },
+      action: "click",
+      target: {
+        locators: [
+          { kind: "role", role: "button", name: "Save" },
+          { kind: "text", value: "Save" },
+          { kind: "testid", value: "save" },
+          { kind: "css", value: "[data-testid=\"save\"]" },
+        ],
+        hint: { role: "button", surface: "dom" },
+      },
+    },
   ]), {}, driver, { fromStepId: "save" });
   assert.equal(result.steps[0]?.status, "skipped");
   assert.equal(result.steps[0]?.reason, "not re-run");

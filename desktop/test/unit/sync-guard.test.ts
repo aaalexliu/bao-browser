@@ -1,5 +1,5 @@
-import { fixtureDoc, fixtureInput, fixtureStep } from "../support/fixture-step";
-import { stepQuery, stepValueTemplate, stepSensitive } from "../../src/v1/schema";
+import { stepText, testWorkflow } from "../support/workflow";
+import { stepTarget, locatorValue, stepSensitive, type Target, type WorkflowInput, type WorkflowStep, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,7 +12,6 @@ import { isElementCrop, redactedPng } from "../../src/v1/redacted-png";
 import { buildPushBody, buildRunBody } from "../../../web/src/lib/guard";
 import { fitPictureBody } from "../../../web/src/lib/sync-pictures";
 import sharp from "sharp";
-import type { WorkflowV2 } from "../../src/v1/schema";
 
 test("a push retains owner data and screenshots while stripping credentials", () => {
   const secret = "SuperSecret";
@@ -48,14 +47,15 @@ test("a push retains owner data and screenshots while stripping credentials", ()
 });
 
 test("workflow pushes omit typed token, card and SSN crops only", () => {
+  const field: Target = { locators: [{ kind: "role", role: "textbox", name: "Type" }] };
   const values = ["sk-FixtureCropToken123", "4111111111111111", "123-45-6789", "ordinary text"];
-  const doc: WorkflowV2 = fixtureDoc({
-    schema: "bao.workflow/v4", version: 2, id: "crop-values", name: "Crop values", createdAt: 1,
-    startUrl: "https://example.test/", inputs: values.map((value, index) => ({ name: `text${index}`, type: "text" as const, default: value })),
-    steps: values.flatMap((value, index) => [
-      { id: `bound${index}`, index: index * 2, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000,
-        input: `text${index}`, value: `{{text${index}}}` },
-      { id: `literal${index}`, index: index * 2 + 1, action: "type" as const, label: "Type", surface: "dom" as const, timeoutMs: 1000, value },
+  const doc: WorkflowV2 = testWorkflow({
+    schema: "bao.workflow/v4", id: "crop-values", name: "Crop values", createdAt: 1,
+    startUrl: "https://example.test/",
+    inputs: values.map((value, index): WorkflowInput => ({ name: `text${index}`, type: "text", label: `text${index}`, supply: "saved", default: value })),
+    steps: values.flatMap((value, index): WorkflowStep[] => [
+      { id: `bound${index}`, index: index * 2, timeoutMs: 1000, caption: { text: "Type" }, action: "type", target: field, text: { input: `text${index}` } },
+      { id: `literal${index}`, index: index * 2 + 1, timeoutMs: 1000, caption: { text: "Type" }, action: "type", target: field, text: { literal: value } },
     ]),
   });
   const original = structuredClone(doc);
@@ -69,25 +69,43 @@ test("workflow pushes omit typed token, card and SSN crops only", () => {
 
 test("push accepts saved passwords that also occur in metadata", () => {
   for (const password of ["password", "secret", "test", "pass", "admin", "8000", "5000"]) {
-    const doc: WorkflowV2 = fixtureDoc({
-      schema: "bao.workflow/v4", version: 2, id: "sync-password", name: "Password test", createdAt: 1,
+    const doc: WorkflowV2 = testWorkflow({
+      schema: "bao.workflow/v4", id: "sync-password", name: "Password test", createdAt: 1,
       startUrl: "https://example.test/admin",
-      inputs: [fixtureInput({ name: "password", type: "secret", default: password })],
+      inputs: [{ name: "password", type: "secret", label: "password", supply: "saved", default: password }],
       steps: [
-        fixtureStep({ id: "pass", index: 0, action: "type", label: "Type password", surface: "dom", timeoutMs: 8000,
-          input: "password", value: "{{password}}", identity: { surface: "dom", role: "textbox", testId: "password", path: [] } }),
-        fixtureStep({ id: "echo", index: 1, action: "type", label: "Echo", surface: "dom", timeoutMs: 5000, value: password }),
+        {
+          id: "pass",
+          index: 0,
+          timeoutMs: 8000,
+          caption: { text: "Type password" },
+          action: "type",
+          target: {
+            locators: [{ kind: "testid", value: "password" }, { kind: "css", value: "[data-testid=\"password\"]" }],
+            hint: { role: "textbox", surface: "dom" },
+          },
+          text: { input: "password" },
+        },
+        {
+          id: "echo",
+          index: 1,
+          timeoutMs: 5000,
+          caption: { text: "Echo" },
+          action: "type",
+          target: { locators: [{ kind: "role", role: "textbox", name: "Echo" }] },
+          text: { literal: password },
+        },
       ],
     });
     const pushed = buildPushBody(doc, { baseVersion: 0 }).document as WorkflowV2;
     assert.equal(pushed.inputs[0]!.default, undefined);
     assert.equal(pushed.inputs[0]!.name, "password");
     assert.equal(pushed.inputs[0]!.type, "secret");
-    assert.equal(stepValueTemplate(pushed.steps[0]!), "{{password}}");
-    assert.equal(stepQuery(pushed.steps[0]!)!.testId, "password");
+    assert.deepEqual(stepText(pushed.steps[0]), { input: "password" });
+    assert.equal(locatorValue(stepTarget(pushed.steps[0]), "testid"), "password");
     assert.equal(pushed.steps[0]!.timeoutMs, 8000);
     assert.equal(pushed.steps[1]!.timeoutMs, 5000);
-    assert.equal(stepValueTemplate(pushed.steps[1]!), "[secret stripped]");
+    assert.deepEqual(stepText(pushed.steps[1]), { literal: "[secret stripped]" });
     assert.equal(pushed.startUrl, doc.startUrl);
     assert.equal(doc.inputs[0]!.default, password);
   }
@@ -125,12 +143,12 @@ test("workflow pictures skip private steps and retain control crops without mark
 test("known-secret values strip without refusing or corrupting metadata and bindings", () => {
   const body = buildPushBody({
     inputs: [{ name: "password", type: "secret", default: "pass" }],
-    steps: [{ id: "pass", input: "password", value: "{{password}}" }],
+    steps: [{ id: "pass", action: "type", caption: { text: "Enter the secret" }, text: { input: "password" }, sensitive: true }],
     args: { password: "pass" },
   }, { baseVersion: 0 });
-  const document = body.document as { steps: { id: string; input: string; value: string }[]; args?: unknown };
+  const document = body.document as { steps: unknown[]; args?: unknown };
   assert.equal(document.args, undefined);
-  assert.deepEqual(document.steps, [{ id: "pass", input: "password", value: "{{password}}" }]);
+  assert.deepEqual(document.steps, [{ id: "pass", action: "type", caption: { text: "Enter the secret" }, text: { input: "password" }, sensitive: true }]);
 });
 
 test("picture sizing preserves samples, nested data and sealed references", async () => {

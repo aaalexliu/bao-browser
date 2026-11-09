@@ -1,4 +1,6 @@
-import { fixtureDoc, fixtureStep } from "../support/fixture-step";
+import { stepText, testWorkflow } from "../support/workflow";
+import { targetQuery } from "../../src/v1/identity";
+import { targetElementId } from "../../../shared/step-read";
 // Teach narration, corrections, eval pairs, saved branch compatibility, and merging takes.
 // No browser. The fixture replay lives in teach-workflows.test.ts.
 
@@ -13,7 +15,7 @@ import { loadTeachIntentCases } from "../../src/eval/intent/teach-cases";
 import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { replay, type Driver, type LiveTree } from "../../src/v1/replay";
 import { Library } from "../../src/v1/store";
-import { checkMatch, stepQuery, stepInputName, stepValueTemplate, stepCheck, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
+import { stepTarget, checkMatch, stepInputName, stepCheck, validateWorkflow, type Identity, type WorkflowV2 } from "../../src/v1/schema";
 import { decide, decisionEvent, intentEvalPair, measureIntentPair, mergeDemonstrations, type MergeShot, narratorFromEnv, projectTeach, teachIntentCase, teachSummary } from "../../src/v1/teach";
 import { rail, runViewer, shellList, teachCard, teachPanel, teachReview, type TeachCardView } from "../../src/app/views";
 
@@ -129,7 +131,7 @@ test("three corrections change the workflow and the eval pair measures them", ()
   const blob = JSON.stringify(pair);
   assert.equal(blob.includes(secret), true);
   assert.equal(blob.includes("/tmp/secret-folder"), false);
-  assert.equal(pair.workflow.steps.some((step) => stepQuery(step)?.id === "note-input" && step.action === "click"), false);
+  assert.equal(pair.workflow.steps.some((step) => targetElementId(stepTarget(step)) === "note-input" && step.action === "click"), false);
   const typed = pair.workflow.steps.find((step) => stepInputName(step) === "note");
   assert.equal((typed == null ? undefined : typed.caption.text), "type the note");
   const confirm = pair.workflow.steps.find((step) => step.action === "handoff");
@@ -222,7 +224,7 @@ test("failed runs keep step details but no longer offer Teach repair", () => {
 test("marking a secret constant keeps its value, and a check is a verify step", () => {
   const constant = projectTeach(fixtureEvents(), decide([], { kind: "constant", cardId: "type-secret" }, 1), meta);
   assert.equal(constant.workflow.inputs.some((input) => input.type === "secret"), false);
-  assert.ok(constant.workflow.steps.some((step) => stepValueTemplate(step) === secret));
+  assert.ok(constant.workflow.steps.some((step) => { const text = stepText(step); return !!text && "literal" in text && text.literal === secret; }));
   const checked = projectTeach(
     fixtureEvents(),
     decide([], { kind: "verify", cardId: "click-apply", outcome: "Applied" }, 2),
@@ -280,33 +282,83 @@ test("merge keeps the shared step and branches where the takes differ", async ()
 test("previously saved taught branches still load and replay with or without the notice", async (t) => {
   const home = mkdtempSync(path.join(tmpdir(), "bao-taught-compat-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const saved: WorkflowV2 = fixtureDoc({
+  const saved: WorkflowV2 = testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-broken",
     name: "Broken",
     startUrl: "http://127.0.0.1/fixture",
     createdAt: 1,
     inputs: [],
     steps: [
-      fixtureStep({
-        id: "keep", index: 0, action: "click", label: "Click save", surface: "dom", timeoutMs: 1000,
-        identity: ident({ id: "save-note", role: "button", text: "Save note" }),
-      }),
-      fixtureStep({
-        id: "wf-broken-fix-1-0", index: 1, action: "click", label: "Review notice", surface: "dom", timeoutMs: 1000,
-        identity: ident({ id: "interstitial-go", role: "button", testId: "interstitial-go", text: "Review notice" }),
+      {
+        id: "keep",
+        index: 0,
+        timeoutMs: 1000,
+        caption: { text: "Click save", citation: { text: "Save note", source: "text" } },
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Save note" },
+            { kind: "text", value: "Save note" },
+            { kind: "css", value: "#save-note" },
+            { kind: "xpath", value: "//*[@id=\"save-note\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "save-note" },
+        },
+      },
+      {
+        id: "wf-broken-fix-1-0",
+        index: 1,
+        timeoutMs: 1000,
+        caption: { text: "Review notice", citation: { text: "Review notice", source: "text" } },
         when: { present: "Review notice" },
-      }),
-      fixtureStep({
-        id: "wf-broken-fix-1-1", index: 2, action: "click", label: "Next", surface: "dom", timeoutMs: 1000,
-        identity: ident({ id: "continue-btn", role: "button", testId: "continue", text: "Next" }),
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Review notice" },
+            { kind: "text", value: "Review notice" },
+            { kind: "testid", value: "interstitial-go" },
+            { kind: "css", value: "#interstitial-go" },
+            { kind: "xpath", value: "//*[@id=\"interstitial-go\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "interstitial-go" },
+        },
+      },
+      {
+        id: "wf-broken-fix-1-1",
+        index: 2,
+        timeoutMs: 1000,
+        caption: { text: "Next", citation: { text: "Next", source: "text" } },
         when: { present: "Review notice" },
-      }),
-      fixtureStep({
-        id: "bad", index: 3, action: "click", label: "Click Apply", surface: "dom", timeoutMs: 1000,
-        identity: ident({ id: "apply-btn", role: "button", testId: "apply", text: "Apply" }),
-      }),
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Next" },
+            { kind: "text", value: "Next" },
+            { kind: "testid", value: "continue" },
+            { kind: "css", value: "#continue-btn" },
+            { kind: "xpath", value: "//*[@id=\"continue-btn\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "continue-btn" },
+        },
+      },
+      {
+        id: "bad",
+        index: 3,
+        timeoutMs: 1000,
+        caption: { text: "Click Apply", citation: { text: "Apply", source: "text" } },
+        action: "click",
+        target: {
+          locators: [
+            { kind: "role", role: "button", name: "Apply" },
+            { kind: "text", value: "Apply" },
+            { kind: "testid", value: "apply" },
+            { kind: "css", value: "#apply-btn" },
+            { kind: "xpath", value: "//*[@id=\"apply-btn\"]" },
+          ],
+          hint: { role: "button", surface: "dom", id: "apply-btn" },
+        },
+      },
     ],
   });
   mkdirSync(path.join(home, "workflows"));
@@ -425,8 +477,8 @@ function guardedDriver(texts: string[], clicks: string[]): Driver {
 
 function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
   const nodes = doc.steps.flatMap((step) => {
-    const identity = stepQuery(step);
-    return identity ? [identity] : [];
+    const target = stepTarget(step);
+    return target ? [targetQuery(target)] : [];
   });
   const values: LiveTree["values"] = [];
   return {

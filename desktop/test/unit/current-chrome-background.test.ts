@@ -14,7 +14,8 @@ import { startApp } from "../../src/app/server";
 import { runWorkflow } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
 import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
-import { fixtureDoc } from "../support/fixture-step";
+import type { WorkflowStep } from "../../src/v1/schema";
+import { targetFor, testWorkflow } from "../support/workflow";
 
 pinTestBrowser();
 
@@ -25,12 +26,12 @@ const replaySkip = process.platform !== "darwin" && "replay pictures of a backgr
 const TASK = `<!doctype html><title>Task</title><input id=q aria-label=Name><button id=b>Save</button><p id=out>not clicked</p>
 <script>let frames=0;(function f(){frames++;requestAnimationFrame(f)})();b.onclick=()=>{out.textContent='clicked, typed: '+q.value};</script>`;
 
-const identity = (id: string, role: string) => ({ surface: "dom", role, id, path: [] });
-const FILL = { id: "fill", action: "type", label: "Fill name", heal: "never", surface: "dom", value: "Ada", identity: identity("q", "textbox"), timeoutMs: 5000 };
-const SAVE = { id: "save", action: "click", label: "Save", heal: "never", surface: "dom", identity: identity("b", "button"),
-  postcondition: { kind: "text", match: "clicked, typed: Ada", timeoutMs: 5000 }, timeoutMs: 5000 };
-const HOLD = { id: "apply", action: "confirm", human: true, label: "Confirm before Save", surface: "dom", identity: identity("b", "button"),
-  postcondition: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
+const target = (id: string, role: string) => targetFor({ surface: "dom", role, id, path: [] });
+const FILL: WorkflowStep = { id: "fill", index: 0, action: "type", caption: { text: "Fill name" }, heal: "never", text: { literal: "Ada" }, target: target("q", "textbox"), timeoutMs: 5000 };
+const SAVE: WorkflowStep = { id: "save", index: 0, action: "click", caption: { text: "Save" }, heal: "never", target: target("b", "button"),
+  check: { kind: "text", match: "clicked, typed: Ada", timeoutMs: 5000 }, timeoutMs: 5000 };
+const HOLD: WorkflowStep = { id: "apply", index: 0, action: "handoff", reason: "owner-press", caption: { text: "Confirm before Save" }, target: target("b", "button"),
+  check: { kind: "text", match: "never", timeoutMs: 1000 }, timeoutMs: 1000 };
 
 async function evaluate<T>(cdp: CdpSocket, targetId: string, expression: string): Promise<T> {
   const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
@@ -126,9 +127,9 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
   const priorSource = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = path.join(root, "chrome");
   const library = new Library(path.join(root, "home"));
-  const workflow = (steps: object[]): string => {
+  const workflow = (steps: WorkflowStep[]): string => {
     const id = `replay-${steps.length}`;
-    library.save(fixtureDoc({ id, name: "Background replay", startUrl: `${base}/task`, steps }));
+    library.save(testWorkflow({ id, name: "Background replay", startUrl: `${base}/task`, steps }));
     return id;
   };
   let resume: string | undefined;
@@ -178,9 +179,9 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
   const url = (route: string) => `http://127.0.0.1:${app.port}${route}`;
   const replay = (id: string) => fetch(url("/api/replay"), { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(30_000) }).then(response => response.json() as Promise<{ status: string }>);
-  const workflow = (steps: object[]): string => {
+  const workflow = (steps: WorkflowStep[]): string => {
     const id = `app-replay-${steps.length}`;
-    app.library.save(fixtureDoc({ id, name: "Background app replay", startUrl: `${base}/task`, steps }));
+    app.library.save(testWorkflow({ id, name: "Background app replay", startUrl: `${base}/task`, steps }));
     return id;
   };
   let held: Promise<{ status: string }> | undefined;
@@ -233,7 +234,7 @@ test("replay on the owner's Chrome starts and finishes while another owner tab n
   process.env.BAO_AGENT_BROWSER_PROFILE_ROOT = path.join(root, "chrome");
   const library = new Library(path.join(root, "home"));
   const base = `http://127.0.0.1:${port}`;
-  library.save(fixtureDoc({ id: "stuck-neighbor", name: "Replay next to a stuck tab", startUrl: `${base}/task`, steps: [FILL, SAVE] }));
+  library.save(testWorkflow({ id: "stuck-neighbor", name: "Replay next to a stuck tab", startUrl: `${base}/task`, steps: [FILL, SAVE] }));
   try {
     const { owner, ownerState } = await openOwnerTab(probe, `${base}/owner`);
     // Another site keeps the stuck page out of the task tab's process.

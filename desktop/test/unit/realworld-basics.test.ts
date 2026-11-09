@@ -1,5 +1,5 @@
-import { fixtureDoc } from "../support/fixture-step";
-import { checkMatch, stepLocators, stepValueTemplate, stepCheck, handoffReason } from "../../src/v1/schema";
+import { stepText, testWorkflow } from "../support/workflow";
+import { checkMatch, handoffReason, stepCheck, stepLocators, type WorkflowV2 } from "../../src/v1/schema";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ACCEPT, lookup, type Identity } from "../../src/v1/identity";
@@ -7,7 +7,6 @@ import { interpret, type TrailEvent } from "../../src/v1/interpret";
 import { buildLocators, matchLocator, scoreLocator } from "../../src/v1/locators";
 import { replay, runPassed, type Driver, type LiveTree } from "../../src/v1/replay";
 import { unavailableHeal } from "../../src/v1/heal";
-import type { WorkflowV2 } from "../../src/v1/schema";
 
 function dom(partial: Partial<Identity> & { role: string }): Identity {
   return { surface: "dom", path: [], ...partial };
@@ -103,7 +102,8 @@ test("a recording opens on the URL the capture began on", () => {
   const doc = interpret(events, { id: "wf-open", name: "Open", startUrl: "https://books.toscrape.com/" });
   assert.equal(doc.startUrl, "https://books.toscrape.com/");
   assert.equal(doc.steps[0]?.action, "navigate");
-  assert.equal((doc.steps[0] == null ? undefined : stepValueTemplate(doc.steps[0])), "https://books.toscrape.com/");
+  const opened = doc.steps[0];
+  assert.equal(opened?.action === "navigate" ? opened.url : undefined, "https://books.toscrape.com/");
   assert.equal(doc.steps[1]?.action, "click");
 });
 
@@ -116,7 +116,7 @@ test("radios, checkboxes, and selects are check and select steps", () => {
   const doc = interpret(events, { id: "wf-form", name: "Form", startUrl: "https://demoqa.com/automation-practice-form" });
   assert.deepEqual(doc.steps.map((step) => step.action), ["check", "check", "select"]);
   assert.equal((doc.steps[0] == null ? undefined : (doc.steps[0].action === "check" ? doc.steps[0].checked : undefined)), true);
-  assert.equal((doc.steps[2] == null ? undefined : stepValueTemplate(doc.steps[2])), "{{months}}");
+  assert.deepEqual(stepText(doc.steps[2]), { input: "months" });
   assert.equal(doc.inputs.find((input) => input.name === "months")?.default, "January");
   assert.equal(doc.steps.some((step) => step.action === "type"), false);
 });
@@ -245,7 +245,8 @@ test("Reserve Now stays a click and a prompt keeps the text it returned", () => 
   assert.equal(doc.steps[0]?.action, "click");
   assert.equal((doc.steps[0] == null ? undefined : handoffReason(doc.steps[0])), undefined);
   assert.equal(doc.steps[1]?.action, "click");
-  assert.equal((doc.steps[1] == null ? undefined : stepValueTemplate(doc.steps[1])), "{{prompt}}");
+  const prompted = doc.steps[1];
+  assert.equal(prompted?.action === "click" ? prompted.dialog?.input : undefined, "prompt");
   assert.equal(doc.inputs.find((input) => input.name === "prompt")?.default, "proof-prompt");
   assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), "You entered: {{prompt}}");
   assert.equal(checkMatch(doc.steps[1] == null ? undefined : stepCheck(doc.steps[1])), "You entered: {{prompt}}");
@@ -366,9 +367,8 @@ test("a click inside an open shadow root is recorded on the inner control", asyn
 });
 
 test("replay of an empty workflow is not passed", async () => {
-  const workflow: WorkflowV2 = fixtureDoc({
+  const workflow: WorkflowV2 = testWorkflow({
     schema: "bao.workflow/v4",
-    version: 2,
     id: "wf-empty",
     name: "Empty",
     startUrl: "https://example.test/",
