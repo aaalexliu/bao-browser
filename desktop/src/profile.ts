@@ -4,18 +4,24 @@
 // the user's daily Chrome profile. Tests and the spike 1 demo pass an explicit
 // fresh temp dir and delete it when the run ends (docs/desktop-design.md §4).
 
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import path from "node:path";
 
-/** Daily-driver profile roots. Launch refuses anything inside these. */
-export function dailyChromeProfileRoots(): string[] {
-  const home = homedir();
+function chromeRoots(home: string): string[] {
   return [
     path.join(home, ".config", "google-chrome"),
     path.join(home, ".config", "chromium"),
     path.join(home, "Library", "Application Support", "Google", "Chrome"),
     path.join(home, "AppData", "Local", "Google", "Chrome", "User Data"),
   ];
+}
+
+/** Daily-driver profile roots. Launch refuses anything inside these. The passwd home is included because $HOME can be a temp directory. */
+export function dailyChromeProfileRoots(): string[] {
+  const homes = [homedir()];
+  const passwd = userInfo().homedir;
+  if (passwd && !homes.includes(passwd)) homes.push(passwd);
+  return homes.flatMap(chromeRoots);
 }
 
 /**

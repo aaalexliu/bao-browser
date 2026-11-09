@@ -72,7 +72,9 @@ test("a debugging-port bind race fails without connecting to the other listener"
 });
 
 test("headed owned Chrome keeps navigator.webdriver false before and after a Runtime attach", {
-  skip: process.platform !== "darwin" && !process.env.DISPLAY,
+  skip: process.env.BAO_LANE === "live" || process.env.BAO_LIVE_TESTS === "1"
+    ? process.platform !== "darwin" && !process.env.DISPLAY
+    : "a headed browser belongs in the live lane",
   timeout: 30_000,
 }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-headed-marker-"));

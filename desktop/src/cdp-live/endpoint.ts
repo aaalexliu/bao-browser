@@ -3,15 +3,14 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-/** The only Chrome profile file this driver reads. */
-export const DEVTOOLS_ACTIVE_PORT = path.join(
-  homedir(),
-  "Library",
-  "Application Support",
-  "Google",
-  "Chrome",
-  "DevToolsActivePort",
-);
+/** The only Chrome profile file this driver reads. A test points BAO_CHROME_USER_DATA at a fixture. */
+export function devToolsActivePortFile(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.BAO_CHROME_USER_DATA?.trim();
+  const root = override ? path.resolve(override) : path.join(homedir(), "Library", "Application Support", "Google", "Chrome");
+  return path.join(root, "DevToolsActivePort");
+}
+
+export const DEVTOOLS_ACTIVE_PORT = devToolsActivePortFile();
 
 export interface DevToolsEndpoint {
   port: number;
@@ -37,7 +36,7 @@ export function parseDevToolsActivePort(text: string): DevToolsEndpoint {
   return { port, browserPath };
 }
 
-export async function readDevToolsActivePort(file = DEVTOOLS_ACTIVE_PORT): Promise<DevToolsEndpoint> {
+export async function readDevToolsActivePort(file = devToolsActivePortFile()): Promise<DevToolsEndpoint> {
   assertActivePortFile(file);
   const text = await readFile(file, "utf8");
   return parseDevToolsActivePort(text);

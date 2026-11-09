@@ -80,7 +80,9 @@ pass on the shared Mac. Local browser integration uses
 rules, media isolation, concurrency, and stale-output checks. Tests use temp
 homes, Libraries, native-host config, and profiles. Never use the owner's Chrome
 profile or Library. `BAO_HOME` alone does not isolate native-messaging writes;
-set a temp `HOME` too. Keep model keys unset and `BAO_HEAL_CURSOR_ACCOUNT=0`.
+set a temp `HOME` too. A temp `HOME` does not move Chrome's profile folder:
+`laneChildEnv` points `BAO_CHROME_USER_DATA` at a fixture. Keep model keys unset
+and `BAO_HEAL_CURSOR_ACCOUNT=0`.
 
 ## Verify the desktop extension and package
 

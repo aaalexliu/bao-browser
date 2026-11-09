@@ -51,7 +51,8 @@ export const CONNECTION_GUARD = path.resolve("desktop/test/connection-guard.cjs"
  * Both lanes. BAO_TEST_BROWSER makes every owned launch start Playwright's
  * Chromium with a mock keychain. Without it a test would open the user's
  * Chrome, so a missing browser stops the run. NODE_OPTIONS preloads the
- * connection guard into every node process the run starts.
+ * connection guard into every node process the run starts. BAO_CHROME_USER_DATA
+ * is a fixture directory: Bao finds Chrome's folder from the passwd home, not $HOME.
  */
 export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrightPath?: () => string): NodeJS.ProcessEnv {
   const env = laneEnv(lane, parent);
@@ -60,6 +61,10 @@ export function laneChildEnv(lane: TestLane, parent: NodeJS.ProcessEnv, playwrig
   if (!env.NODE_OPTIONS?.includes(preload)) env.NODE_OPTIONS = [env.NODE_OPTIONS, preload].filter(Boolean).join(" ");
   env.NODE_PATH = [path.resolve("web/node_modules"), env.NODE_PATH].filter(Boolean).join(path.delimiter);
   pinTestBrowser(env, playwrightPath);
+  const chromeRoot = path.join(tmpdir(), `bao-chrome-root-${env.BAO_TEST_RUN_ID}`);
+  mkdirSync(chromeRoot, { recursive: true });
+  env.BAO_CHROME_USER_DATA = chromeRoot;
+  env.BAO_AGENT_BROWSER_PROFILE_ROOT = chromeRoot;
   return env;
 }
 

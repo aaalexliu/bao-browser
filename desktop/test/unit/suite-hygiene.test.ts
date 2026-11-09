@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { artifactsRoot, testArtifacts, tryWriteEvidence } from "../artifacts";
+import { chromeProfilesRoot } from "../../src/engines/chrome-profile-copy";
 import { ACCOUNT_CHROME_MAC, LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs, resolveNormalChrome } from "../../src/launch";
+import { assertNotDailyChrome } from "../../src/profile";
 import { classifyStatus, compiledTestPlan, cookieKeys, laneChildEnv, liveSkip, MAC_MOCK_KEYCHAIN_PASSWORD, ownApiOutage } from "../runtime";
 
 function fakeChromium(): string {
@@ -111,6 +113,23 @@ test("the live lane turns public demos on, stays headless, and launches the test
   const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
   assert.equal(resolveNormalChrome(installed, env, "darwin"), pin);
   assert.equal(resolveNormalChrome(installed, env, "linux"), pin);
+});
+
+test("the lane points Bao at a fixture Chrome root, not the passwd home", () => {
+  const pin = fakeChromium();
+  const env = laneChildEnv("hermetic", {}, () => pin);
+  assert.equal(env.BAO_CHROME_USER_DATA, env.BAO_AGENT_BROWSER_PROFILE_ROOT);
+  assert.equal(existsSync(env.BAO_CHROME_USER_DATA ?? ""), true);
+  assert.equal(chromeProfilesRoot(env), path.resolve(env.BAO_CHROME_USER_DATA ?? ""));
+  assert.equal(chromeProfilesRoot(env).startsWith(path.join(userInfo().homedir, "Library")), false);
+  const previous = process.env.HOME;
+  process.env.HOME = path.join(tmpdir(), "bao-not-the-passwd-home");
+  try {
+    assert.throws(() => assertNotDailyChrome(path.join(userInfo().homedir, "Library", "Application Support", "Google", "Chrome")), /daily Chrome profile/);
+  } finally {
+    if (previous === undefined) delete process.env.HOME;
+    else process.env.HOME = previous;
+  }
 });
 
 test("both lanes stop when the test browser is missing", () => {
@@ -223,6 +242,8 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
   const env = laneChildEnv("hermetic", { ...process.env, ...canaries, LANG: "C" }, () => pin);
   const names = Object.keys(env).filter((key) => /^bao/i.test(key)).sort();
   assert.deepEqual(names, [
+    "BAO_AGENT_BROWSER_PROFILE_ROOT",
+    "BAO_CHROME_USER_DATA",
     "BAO_HEADED",
     "BAO_HEAL_CURSOR_ACCOUNT",
     "BAO_LANE",
@@ -271,6 +292,8 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     if (!raw) throw new Error(`Chrome environ was not readable: ${last}`);
     const got = raw.split("\0").filter(Boolean).map((row) => row.slice(0, row.indexOf("="))).filter((key) => /^bao/i.test(key)).sort();
     assert.deepEqual(got, [
+      "BAO_AGENT_BROWSER_PROFILE_ROOT",
+      "BAO_CHROME_USER_DATA",
       "BAO_HEADED",
       "BAO_HEAL_CURSOR_ACCOUNT",
       "BAO_LANE",

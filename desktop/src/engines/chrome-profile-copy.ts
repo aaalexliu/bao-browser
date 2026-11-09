@@ -14,7 +14,10 @@ export interface ChromeProfileChoice {
   email: string;
 }
 
-export function chromeProfilesRoot(): string {
+/** The owner's Chrome folder. Tests set BAO_CHROME_USER_DATA, because this path comes from the passwd home, not $HOME. */
+export function chromeProfilesRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.BAO_CHROME_USER_DATA?.trim();
+  if (override) return path.resolve(override);
   if (process.platform !== "darwin") throw new Error("Chrome profile copies are a Mac-only trial");
   return path.join(userInfo().homedir, "Library", "Application Support", "Google", "Chrome");
 }

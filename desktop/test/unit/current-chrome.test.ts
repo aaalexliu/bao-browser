@@ -988,7 +988,12 @@ async function tabProfile(cdp: CdpSocket, targetId: string): Promise<string> {
 }
 
 // Chrome hands a second launch's command line to the running browser only when that browser has a window, so this needs a headed Mac Chrome.
-test("Bao's task tab opens in a window of the chosen Chrome profile and never in another one", { skip: process.platform !== "darwin" && "a headed test Chrome is Mac-only here", timeout: 90_000 }, async (t) => {
+test("Bao's task tab opens in a window of the chosen Chrome profile and never in another one", {
+  skip: process.env.BAO_LANE === "live" || process.env.BAO_LIVE_TESTS === "1"
+    ? process.platform !== "darwin" && "a headed test Chrome is Mac-only here"
+    : "a headed browser belongs in the live lane",
+  timeout: 90_000,
+}, async (t) => {
   const root = await chromeProfiles(await realpath(await mkdtemp(path.join(tmpdir(), "bao-task-profile-"))),
     { Default: { name: "Alex", user_name: "alex@example.test" }, "Profile 1": { name: "Work", user_name: "alex@work.test" } });
   const owner = await launchOwnedChromeEndpoint({ userDataDir: root, headless: false, args: ["--profile-directory=Default"] });
