@@ -14,7 +14,7 @@ test("agent commands that would bring Bao's Chrome forward are answered in place
   assert.deepEqual(keepBehind({ id: 1, method: "Page.bringToFront", sessionId: "S" }), { reply: {} });
   assert.deepEqual(keepBehind({ id: 2, method: "Target.activateTarget", params: { targetId: "T" } }), { reply: {} });
   assert.deepEqual(keepBehind({ id: 3, method: "Target.createTarget", params: { url: "https://example.test/" } }),
-    { forward: { id: 3, method: "Target.createTarget", params: { url: "https://example.test/", newWindow: true, background: true } } });
+    { forward: { id: 3, method: "Target.createTarget", params: { url: "https://example.test/", background: true } } });
   const navigate = { id: 4, method: "Page.navigate", params: { url: "https://example.test/" }, sessionId: "S" };
   assert.deepEqual(keepBehind(navigate), { forward: navigate });
 });
@@ -55,7 +55,10 @@ test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides
     assert.deepEqual(await send("Target.activateTarget", { targetId: first }), {});
     const { targetId: second } = await send("Target.createTarget", { url: "about:blank" }) as { targetId: string };
     const windowOf = async (targetId: string) => (await direct.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId })).windowId;
-    assert.notEqual(await windowOf(second), await windowOf(first), "a new tab gets its own window, so it stays visible");
+    assert.equal(await windowOf(second), await windowOf(first), "a new tab opens in the background of Bao's window");
+    const { sessionId: next } = await send("Target.attachToTarget", { targetId: second, flatten: true }) as { sessionId: string };
+    assert.deepEqual(await send("Runtime.evaluate", { expression: "[document.visibilityState, document.hasFocus()]", returnByValue: true }, next),
+      { result: { type: "object", value: ["visible", true] } }, "focus emulation keeps the background tab visible and focused");
     for (const route of ["/json/list", "/json/version", `/json/activate/${first}`]) {
       assert.equal((await fetch(`http://127.0.0.1:${background.endpoint.port}${route}`)).status, 404, `${route} would raise a tab or hand out Chrome's own port`);
     }

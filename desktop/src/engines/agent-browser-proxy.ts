@@ -735,9 +735,9 @@ export class AgentBrowserProxy {
 
   /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
   private async ownerBanner(session: Session, targetId: string, waiting: boolean): Promise<void> {
+    if (waiting) session.raised = false;
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
-    if (waiting) session.raised = false;
     try {
       // The extension keeps the task tab folded in Bao's group and opens the group while the owner has to act in it.
       // Otherwise the tab and its window come to the front when the owner has to act in it. Bao's own Chrome stays behind until then.

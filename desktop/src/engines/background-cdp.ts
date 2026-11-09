@@ -17,7 +17,7 @@ export interface CdpCommand { id: number; method: string; params?: Record<string
 
 /**
  * What Chrome gets for one agent command, or what Bao answers in its place. A tab switch keeps Chrome where it is. A new
- * tab opens in its own background window, so the page stays visible and keeps painting while Chrome is behind.
+ * tab opens in the background. Focus emulation keeps a background tab visible and painting.
  */
 export function keepBehind(command: CdpCommand): { reply: Record<string, unknown> } | { forward: CdpCommand } {
   switch (command.method) {
@@ -25,7 +25,7 @@ export function keepBehind(command: CdpCommand): { reply: Record<string, unknown
     case "Target.activateTarget":
       return { reply: {} };
     case "Target.createTarget":
-      return { forward: { ...command, params: { ...command.params, newWindow: true, background: true } } };
+      return { forward: { ...command, params: { ...command.params, background: true } } };
     default:
       return { forward: command };
   }
