@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { ChromeFolderDenied } from "../../src/chrome-access";
+import { baoAgentProfileDir } from "../../src/engines/bao-profile";
 import { chooseChromeProfile, ChromeProfileQuestion, pickLine, signInLine } from "../../src/engines/browser-pick";
-import { pinTestBrowser } from "../../src/launch";
+import { McpClient } from "../../src/eval/mcp-client";
+import { launchOwnedChrome, pidsForDataDir, pinTestBrowser, resolveNormalChrome } from "../../src/launch";
 import { openWorkflowBrowser, settingsProfileQuestion } from "../../src/engines/workflow-browser";
+import { Library } from "../../src/v1/store";
 import { chromeProfiles, type ProfileNames } from "../support/chrome-profiles";
+import { testWorkflow } from "../support/workflow";
 
 async function chromeRoot(t: TestContext, profiles: ProfileNames): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "bao-pick-"));
@@ -111,4 +117,101 @@ test("a saved workflow runs in Bao's profile with Chrome's folder refused, and a
     await chmod(root, 0o700);
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test("run_workflow names its route, Chrome profile, and sign-in import, and a sign-in stop in Bao's profile gives the call back to Running Chrome", { timeout: 120_000 }, async (t) => {
+  pinTestBrowser();
+  const root = await mkdtemp(path.join(tmpdir(), "bao-run-pick-"));
+  const sourceRoot = path.join(root, "chrome");
+  const home = path.join(root, "library");
+  let signedIn = false;
+  let shownIn = () => {};
+  const server = createServer((request, response) => {
+    if (request.url === "/state") { response.end(signedIn ? "in" : "out"); return; }
+    if (request.url === "/shown") { response.end(); shownIn(); return; }
+    response.setHeader("Content-Type", "text/html");
+    if (request.url === "/account") { response.end(`<title>Account</title><h1>${request.headers.cookie?.includes("login=owner") ? "Signed in" : "Signed out"}</h1>`); return; }
+    response.end(`<title>Locked</title><h1 id="state">Locked</h1><script>(async function poll() {
+      if (await (await fetch("/state")).text() !== "in") { setTimeout(poll, 100); return; }
+      document.getElementById("state").textContent = "Welcome back";
+      fetch("/shown");
+    })();</script>`);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const site = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const source = await launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
+  try { await source.addCookies([{ name: "login", value: "owner", url: site, expires: Date.now() / 1000 + 3600 }]); }
+  finally { await source.close(); }
+  const state = JSON.parse(await readFile(path.join(sourceRoot, "Local State"), "utf8")) as Record<string, unknown>;
+  await mkdir(path.join(sourceRoot, "Profile 2"), { recursive: true });
+  await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ ...state, profile: { info_cache: {
+    Default: { name: "Owner", user_name: "owner@example.test" }, "Profile 2": { name: "Work", user_name: "owner@work.test" },
+  } } }));
+  const library = new Library(home);
+  library.updateSettings({ chromeProfile: "Default" });
+  library.save(testWorkflow({ id: "account", startUrl: `${site}/account`, steps: [
+    { id: "check", index: 0, timeoutMs: 1000, caption: { text: "Check account" }, action: "verify", check: { kind: "text", match: "Signed in", timeoutMs: 1000 } },
+  ] }));
+  library.save(testWorkflow({ id: "locked", startUrl: `${site}/locked`, steps: [
+    { id: "signin", index: 0, timeoutMs: 1000, caption: { text: "Sign in" }, action: "handoff", reason: "sign-in", check: { kind: "text", match: "Welcome back", timeoutMs: 1000 } },
+  ] }));
+  library.save(testWorkflow({ id: "login-check", startUrl: `${site}/locked`, steps: [
+    { id: "login", index: 0, timeoutMs: 100, caption: { text: "Check the sign in" }, action: "verify", check: { kind: "text", match: "Welcome back", timeoutMs: 100 } },
+  ] }));
+  await mkdir(path.join(root, "user"));
+  const mcp = McpClient.start({ ...process.env, HOME: path.join(root, "user"), BAO_HOME: home, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot, BAO_HEAL_CURSOR_ACCOUNT: "0" });
+  let held = "";
+  t.after(async () => {
+    try {
+      if (held) await mcp.call("run_workflow", { resume: held, cancel: true }).catch(() => undefined);
+      await mcp.close();
+    } finally {
+      for (const pid of pidsForDataDir(baoAgentProfileDir(home))) {
+        try { process.kill(pid, "SIGTERM"); } catch {}
+      }
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  await mcp.handshake();
+  const run = async (args: Record<string, unknown>) => {
+    const result = await mcp.call("run_workflow", args);
+    t.diagnostic(`run_workflow ${JSON.stringify(args)}\n${result.text}`);
+    assert.equal(result.isError, false, result.text);
+    return JSON.parse(result.text) as { outcome: string; status: string; reason?: string; resume_token?: string; browser?: string[] };
+  };
+  const chrome = resolveNormalChrome();
+  const opened = `Browser: Bao profile, the default. Chrome app: ${chrome}. User data: ${baoAgentProfileDir(home)}. `
+    + `Sign-ins come from Chrome profile "Default" (Owner, owner@example.test) in ${sourceRoot}, picked in Bao Settings.`;
+  const fallback = (calls: string) => 'If the sign-in or check does not clear in Bao\'s profile, the fallback is the owner\'s running Chrome over remote debugging '
+    + `on the same Chrome profile "Default". To take it, call run_workflow with ${calls}. Bao does not switch on its own.`;
+
+  const passed = await run({ id: "account" });
+  assert.equal(passed.outcome, "ok", passed.reason);
+  assert.deepEqual(passed.browser, [opened,
+    `Sign-in import for ${site} from Chrome profile "Default": read 1 site cookie, wrote 1 new or changed cookie and 0 storage items into Bao's profile.`]);
+
+  const waiting = await run({ id: "locked" });
+  assert.equal(waiting.status, "needs_signin", waiting.reason);
+  held = waiting.resume_token!;
+  assert.deepEqual(waiting.browser, [opened,
+    `Sign-in import for ${site} from Chrome profile "Default": read 1 site cookie, wrote 0 new or changed cookies and 0 storage items into Bao's profile.`,
+    fallback(`{"resume":"${held}","cancel":true}, then with {"id":"locked","browser":"current","profile":"Default"} and the same inputs`)]);
+
+  const still = await run({ resume: held });
+  assert.equal(still.status, "needs_signin", still.reason);
+  assert.deepEqual(still.browser, ['Browser: Bao profile, Chrome profile "Default".',
+    fallback(`{"resume":"${held}","cancel":true}, then with {"id":"locked","browser":"current","profile":"Default"} and the same inputs`)]);
+  // The held page reports when it shows the sign-in.
+  await new Promise<void>((resolve) => { shownIn = resolve; signedIn = true; });
+  const resumed = await run({ resume: held });
+  held = "";
+  assert.equal(resumed.status, "completed", resumed.reason);
+  assert.deepEqual(resumed.browser, ['Browser: Bao profile, Chrome profile "Default".']);
+
+  signedIn = false;
+  const failed = await run({ id: "login-check", browser: "bao", profile: "Default" });
+  assert.equal(failed.status, "needs_signin", failed.reason);
+  assert.equal(failed.browser?.[0], opened.replace("the default", "named by the agent").replace("picked in Bao Settings", "named by the agent"));
+  assert.equal(failed.browser?.at(-1), fallback(`{"resume":"${failed.resume_token}","browser":"current","profile":"Default"}`));
 });

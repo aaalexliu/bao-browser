@@ -8,8 +8,9 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
-import { ChromeProfileQuestion } from "../engines/browser-pick";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, type WorkflowBrowser } from "../engines/workflow-browser";
+import type { SignInImport } from "../engines/bao-profile";
+import { chromeApp, ChromeProfileQuestion, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, runningChromeRefusal, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -99,6 +100,12 @@ export interface WorkflowOutcome {
     evidence: { source: string; detail: string }[];
     line?: string;
   };
+  /**
+   * What the run's browser runs on and why: on a run that opened one, the route, Chrome app, user data, and Chrome profile, and each
+   * sign-in import; on a resumed held run, the route and profile in one line; on an open that failed, what Bao tried. A sign-in or
+   * check stop in a Bao profile or copy adds the calls that fall back to the owner's running Chrome on the same profile.
+   */
+  browser?: string[];
 }
 
 export interface RemoteAuth {
@@ -236,7 +243,12 @@ export interface RunControl {
 
 export async function runWorkflow(
   library: Library,
-  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2; browser?: BrowserChoice; profile?: string },
+  request: {
+    id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2;
+    browser?: BrowserChoice; profile?: string;
+    /** Why the run uses this browser, for its browser lines. */
+    why?: RouteWhy;
+  },
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
@@ -290,18 +302,41 @@ export async function runWorkflow(
   const missing = missingHuman(workflow, inputs, given);
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, given, browser, profile));
   const secrets = secretStrings(workflow, inputs);
+  const lines: string[] = [];
+  const shown = (outcome: WorkflowOutcome): WorkflowOutcome => stamp(lines.length ? { ...outcome, browser: lines } : outcome);
   try {
-    const played = await replayInBrowser(library, workflow, inputs, secrets, control, browser, profile);
-    if (played.held) return stamp(played.outcome);
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control, lines, browser && { choice: browser, profile, why: request.why });
+    if (played.held) return shown(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
-    return stamp(played.outcome);
+    return shown(played.outcome);
   } catch (err) {
     const reason = err instanceof ChromeProfileQuestion
       ? `${err.message} ${err.retry({ id, ...browser ? { browser } : {} }, "run_workflow")} Pass the same inputs.`
       : err instanceof Error ? err.message : String(err);
-    return stamp(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs, browser, profile));
+    return shown(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs, browser, profile));
   }
+}
+
+/** A sign-in import, named by the Chrome profile it read. */
+function importLine(browser: WorkflowBrowser, report: SignInImport): string[] {
+  const from = browser.pick?.route === "bao" ? browser.pick.profile?.directory : undefined;
+  return from ? [signInLine(report, from)] : [];
+}
+
+/**
+ * A Bao profile or copy that stopped at a sign-in or check names the run_workflow calls that take the owner's running Chrome on the
+ * same profile. A held run is cancelled first; a run that failed at its sign-in step retries from its token.
+ */
+function workflowFallback(browser: WorkflowBrowser, outcome: WorkflowOutcome, stop: RunResult["pausedKind"], held: boolean): string[] {
+  const pick = browser.pick;
+  if ((pick?.route !== "bao" && pick?.route !== "copy") || (outcome.outcome !== "needs_signin" && stop !== "wall") || !outcome.resume) return [];
+  const profile = pick.profile?.directory;
+  const current = { browser: "current", ...profile ? { profile } : {} };
+  const calls = held
+    ? [JSON.stringify({ resume: outcome.resume, cancel: true }), `${JSON.stringify({ id: outcome.workflowId, ...current })} and the same inputs`]
+    : [JSON.stringify({ resume: outcome.resume, ...current })];
+  return [fallbackLine(`the sign-in or check does not clear in ${pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}`, profile, "run_workflow", calls)];
 }
 
 /** The scripted proof signs in on the held page. Resume then continues that same run. */
@@ -521,9 +556,12 @@ async function replayInBrowser(
   args: ReplayArgs,
   secrets: string[],
   control: RunControl | undefined,
-  choice?: BrowserChoice,
-  profile?: string,
+  /** Receives the run's browser lines as soon as each is known, so a run that throws still names its browser. */
+  lines: string[],
+  chosen?: { choice: BrowserChoice; profile?: string; why?: RouteWhy },
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
+  const choice = chosen?.choice;
+  const profile = chosen?.profile;
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
   const windowVideo = process.platform === "darwin" && process.env.BAO_HEADED === "1";
@@ -531,9 +569,16 @@ async function replayInBrowser(
   const videoDir = record ? path.join(library.root, "videos", "incoming") : undefined;
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   let browser: WorkflowBrowser;
-  if (choice) {
-    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile, profile,
-      extensionRoute: library.settings().runningChromeExtension === true });
+  if (chosen) {
+    const options = { browser: chosen.choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile, profile, why: chosen.why,
+      extensionRoute: library.settings().runningChromeExtension === true };
+    const plan = await planWorkflowBrowser(options);
+    browser = await openWorkflowBrowser(options, plan).catch((error: unknown) => {
+      lines.push(failedPickLine(plan.route, plan.why, chromeApp(), plan.route === "extension" ? undefined : plan.profile));
+      throw error;
+    });
+    if (browser.pick) lines.push(pickLine(browser.pick));
+    if (browser.kind === "owned" && browser.signIn) lines.push(...importLine(browser, browser.signIn));
   } else {
     const profile = path.join(library.root, "chrome-profile");
     mkdirSync(profile, { recursive: true });
@@ -561,7 +606,8 @@ async function replayInBrowser(
     page.setDefaultNavigationTimeout(20000);
     page.setDefaultTimeout(15000);
     if (workflow.startUrl.startsWith("http")) {
-      await navigateWorkflowBrowser(browser, workflow.startUrl);
+      const retried = await navigateWorkflowBrowser(browser, workflow.startUrl);
+      if (retried) lines.push(...importLine(browser, retried));
     }
     const trail: RunTrailEvent[] = [];
     const driver = new BrowserDriver(page, undefined, ownerPrompts(browser, control?.prompts));
@@ -575,6 +621,7 @@ async function replayInBrowser(
       trail,
     });
     const outcome = rememberRun(library, workflow, run, args, secrets, choice, undefined, profile);
+    lines.push(...workflowFallback(browser, outcome, run.pausedKind, run.status === "paused"));
     if (run.status === "paused" && run.pausedKind && run.ask && outcome.resume) {
       hold = true;
       const live: LiveRun = {
@@ -639,7 +686,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
     if (live.browser.kind === "current") await live.browser.show().catch(() => undefined);
     const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, live.token, live.profile);
     saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-    return outcome;
+    return withBrowser(outcome, live.browser, workflowFallback(live.browser, outcome, run.pausedKind, true));
   }
   liveRuns.delete(live.token);
   dropResume(library, live.token);
@@ -649,7 +696,13 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   const outcome = rememberRun(library, live.workflow, run, live.inputs, live.secrets, browser, undefined, live.profile);
   if (run.status === "passed") outcome.status = "completed";
   saveWorkflowRun(library, live.workflow, run, live.inputs, outcome);
-  return storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets);
+  return withBrowser(storeOutcome(library, outcome, live.workflow, live.inputs, live.secrets), live.browser,
+    workflowFallback(live.browser, outcome, run.pausedKind, false));
+}
+
+/** A resumed held run names its route and profile in one line, as later agent_browser results do. */
+function withBrowser(outcome: WorkflowOutcome, browser: WorkflowBrowser, fallback: string[]): WorkflowOutcome {
+  return browser.pick ? { ...outcome, browser: [shortPickLine(browser.pick), ...fallback] } : outcome;
 }
 
 async function observeConfirm(live: LiveRun): Promise<void> {

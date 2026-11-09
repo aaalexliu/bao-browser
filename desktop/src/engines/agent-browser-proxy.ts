@@ -15,7 +15,7 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { ChromeProfileQuestion, chooseChromeProfile, failedPickLine, pickLine, shortPickLine, signInLine, type BrowserPick, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
@@ -43,10 +43,6 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
 
 export const AGENT_BROWSERS = BROWSER_CHOICES;
 
-function chromeApp(): string {
-  try { return resolveNormalChrome(); }
-  catch { return "not found"; }
-}
 export type AgentBrowser = typeof AGENT_BROWSERS[number];
 
 function webSite(value: string | undefined): string | undefined {
@@ -56,11 +52,6 @@ function webSite(value: string | undefined): string | undefined {
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
   } catch { return undefined; }
 }
-
-/** The route and Chrome profile for a new session, settled before Bao opens anything. */
-type SessionPlan = { why: RouteWhy } & (
-  | { route: "bao"; profile: ChosenProfile } | { route: "bao"; profile?: undefined; unread: string }
-  | { route: "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
 
 interface SessionData {
   browser: AgentBrowser;
@@ -364,7 +355,7 @@ export class AgentBrowserProxy {
   }
 
   /** The route and Chrome profile for a new session. More than one profile and none named is a question, not a guess. */
-  private async plan(browser: AgentBrowser | undefined, named: string | undefined): Promise<SessionPlan> {
+  private async plan(browser: AgentBrowser | undefined, named: string | undefined): Promise<BrowserPlan> {
     const route = browser ?? DEFAULT_BROWSER;
     const why: RouteWhy = browser === undefined ? "the default" : route === "current" && this.afterWall ? "fallback after a sign-in wall" : "named by the agent";
     if (route === "current" && this.options.extensionRoute?.() === true) return { route: "extension", why };
@@ -383,7 +374,7 @@ export class AgentBrowserProxy {
   }
 
   /** Opens the planned browser. On the owner's Chrome this also opens Bao's task tab, which the native daemon binds to. */
-  private async open(plan: SessionPlan, signal: AbortSignal, site?: string): Promise<Opened> {
+  private async open(plan: BrowserPlan, signal: AbortSignal, site?: string): Promise<Opened> {
     const why = plan.why;
     switch (plan.route) {
       case "extension": {
@@ -430,7 +421,7 @@ export class AgentBrowserProxy {
     }
   }
 
-  private async start(recording: AgentBrowserRun, route: AgentBrowser, plan: SessionPlan, site?: string): Promise<Session> {
+  private async start(recording: AgentBrowserRun, route: AgentBrowser, plan: BrowserPlan, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     const abort = this.startAbort = new AbortController();
     const browser = await this.open(plan, abort.signal, site);
@@ -486,17 +477,13 @@ export class AgentBrowserProxy {
     return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${session ? this.fallback(session) : ""}` }), stderr: "", exitCode: 0 }];
   }
 
-  /**
-   * A Bao profile or copy that waits for the owner, or whose sign-in import carried none, names its fallback: the owner's running
-   * Chrome on the same profile, which holds his own sign-in and is a device the site already knows. Bao does not switch routes
-   * itself; the agent makes the call.
-   */
+  /** A Bao profile or copy that waits for the owner, or whose sign-in import carried none, names its fallback. */
   private fallback(session: Session, when = `the sign-in or check does not clear in ${session.pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}`): string {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
     const site = session.site ?? session.ownerPage?.url;
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
-    return ` If ${when}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. Bao does not switch on its own.`;
+    return ` ${fallbackLine(when, profile, "agent_browser", [JSON.stringify({ command: "close" }), JSON.stringify(open)])}`;
   }
 
   private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {

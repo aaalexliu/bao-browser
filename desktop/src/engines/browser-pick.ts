@@ -1,4 +1,5 @@
 import { ChromeFolderDenied } from "../chrome-access";
+import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
 
@@ -26,6 +27,16 @@ export type BrowserPick = { why: RouteWhy } & (
   | { route: "copy" | "current"; chrome: string; userDataDir: string; profile: ChosenProfile; background?: boolean }
   | { route: "extension" }
 );
+
+/** The route and Chrome profile for a new session or workflow run, settled before Bao opens anything. */
+export type BrowserPlan = { why: RouteWhy } & (
+  | { route: "bao"; profile: ChosenProfile } | { route: "bao"; profile?: undefined; unread: string }
+  | { route: "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
+
+export function chromeApp(): string {
+  try { return resolveNormalChrome(); }
+  catch { return "not found"; }
+}
 
 function profileName(profile: ChromeProfileChoice): string {
   return `"${profile.directory}" (${profile.name}${profile.email ? `, ${profile.email}` : ""})`;
@@ -56,6 +67,14 @@ export function failedPickLine(route: BrowserPick["route"], why: RouteWhy, chrom
   const head = `Browser: ${ROUTE_LABELS[route]}, ${why}, did not open.`;
   if (route === "extension") return `${head} It runs in the Chrome profile where the Bao extension is linked.`;
   return `${head} Chrome app: ${chrome}. Profile: ${profile ? `"${profile.directory}" in ${profile.root}` : "none chosen"}.`;
+}
+
+/**
+ * A Bao profile or copy that stopped at a sign-in or check names its fallback: the owner's running Chrome on the same profile, which
+ * holds his own sign-in and is a device the site already knows. Bao does not switch routes itself; the agent makes `calls`.
+ */
+export function fallbackLine(when: string, profile: string | undefined, tool: string, calls: readonly string[]): string {
+  return `If ${when}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call ${tool} with ${calls.join(", then with ")}. Bao does not switch on its own.`;
 }
 
 /** What a sign-in import read from the Chrome profile and wrote into Bao's profile, or why it could not. */
