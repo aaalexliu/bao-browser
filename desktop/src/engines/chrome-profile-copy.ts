@@ -6,7 +6,7 @@ import type { BrowserContext, Page } from "playwright";
 import { assertChromeReadable, chromeDenied } from "../chrome-access";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp } from "../cdp-live/socket";
-import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION } from "../launch";
+import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION, startupUrl } from "../launch";
 
 export interface ChromeProfileChoice {
   directory: string;
@@ -200,15 +200,18 @@ export async function copyChromeProfile(options: {
   }
 }
 
-export async function openFrontTab(portFile: string): Promise<string> {
+export async function frontTab(portFile: string): Promise<string> {
   const endpoint = await readDevToolsActivePort(portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 15_000 });
   try {
     const deadline = Date.now() + 15_000;
-    while (!(await cdp.send<{ targetInfos: { type: string }[] }>("Target.getTargets", {}, undefined, 15_000)).targetInfos.some((target) => target.type === "page")) {
+    let pages: { targetId: string; url: string }[] = [];
+    while (!(pages = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets", {}, undefined, 15_000))
+      .targetInfos.filter((target) => target.type === "page")).length) {
       if (Date.now() >= deadline) throw new Error("Chrome opened no page within 15 seconds");
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
+    if (pages.every((page) => startupUrl(page.url))) return pages[0]!.targetId;
     return (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" }, undefined, 15_000)).targetId;
   } finally { cdp.close(); }
 }
@@ -216,7 +219,8 @@ export async function openFrontTab(portFile: string): Promise<string> {
 /**
  * Pass-through startup owns Chrome without attaching Playwright to restored tabs. With restored tabs, the agent's page opens in
  * `targetId`, a new tab in front of them: the native daemon would otherwise pick a hidden restored tab, where Chrome throttles
- * timers and a page that loads its scripts through timers misses the native load deadline.
+ * timers and a page that loads its scripts through timers misses the native load deadline. With only startup pages, `targetId`
+ * is the visible startup tab.
  */
 export async function openCopiedChromeForProxy(options: {
   sourceRoot: string; directory: string; home: string; detached?: boolean; restoreTabs?: boolean;
@@ -233,7 +237,7 @@ export async function openCopiedChromeForProxy(options: {
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir, loadExtensions: false, preserveRestoredTabs: true,
       background: sessions.some((name) => name.startsWith("Session_")) ? "restore" : "window", args: copy.launchArgs, detached: options.detached,
     });
-    const targetId = options.restoreTabs === false ? undefined : await openFrontTab(chrome.portFile);
+    const targetId = options.restoreTabs === false ? undefined : await frontTab(chrome.portFile);
     return {
       target: { kind: "bao", portFile: chrome.portFile }, targetId, closed: chrome.closed, close,
       isClosed: chrome.isClosed,

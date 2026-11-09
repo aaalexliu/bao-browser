@@ -59,7 +59,7 @@ async function ownerProxy(t: TestContext) {
     copyDir = copy.userDataDir;
     const browser = await launchOwnedChromeEndpoint({ userDataDir: copy.userDataDir, childHome: path.join(root, "user"), headless: true });
     closeBrowser = browser.close;
-    const targetId = await profiles.openFrontTab(browser.portFile);
+    const targetId = await profiles.frontTab(browser.portFile);
     return {
       target: { kind: "bao" as const, portFile: browser.portFile }, targetId, closed: browser.closed,
       bytes: copy.bytes, copyMs: copy.copyMs, isClosed: browser.isClosed,
