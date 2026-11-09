@@ -1,10 +1,12 @@
 import { ChromeFolderDenied } from "../chrome-access";
 import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
+import { BOUND_REASON } from "./bound-sign-in";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
 
 export type ProfileWhy = "named by the agent" | "the only profile" | "picked in Bao Settings";
-export type RouteWhy = "the default" | "named by the agent" | "fallback after a sign-in wall";
+export type RouteWhy = "the default" | "named by the agent" | "fallback after a sign-in wall" | typeof BOUND_REASON
+  | "fallback when running Chrome could not be used" | "the workflow moves files, which running Chrome cannot do yet";
 
 /** One of the owner's Chrome profiles, and why Bao uses it. */
 export interface ChosenProfile extends ChromeProfileChoice {
@@ -22,7 +24,7 @@ export const ROUTE_LABELS = {
 
 /** What a session runs on and why. Every open result and the saved run record carry it; later results carry shortPickLine. */
 export type BrowserPick = { why: RouteWhy } & (
-  /** Without a profile, Bao could not read Chrome's profiles (`unread` says why) and imports no sign-ins. */
+  /** With `unread`, Bao imports no sign-ins and it says why: Bao could not read Chrome's profiles, or could not use running Chrome. */
   | { route: "bao"; chrome: string; userDataDir: string; profile?: ChosenProfile; unread?: string }
   | { route: "copy" | "current"; chrome: string; userDataDir: string; profile: ChosenProfile; background?: boolean }
   | { route: "extension" }
@@ -30,8 +32,21 @@ export type BrowserPick = { why: RouteWhy } & (
 
 /** The route and Chrome profile for a new session or workflow run, settled before Bao opens anything. */
 export type BrowserPlan = { why: RouteWhy } & (
-  | { route: "bao"; profile: ChosenProfile } | { route: "bao"; profile?: undefined; unread: string }
+  /** With `unread`, Bao imports no sign-ins and says why. */
+  | { route: "bao"; profile: ChosenProfile; unread?: string } | { route: "bao"; profile?: undefined; unread: string }
   | { route: "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
+
+/** Where a Bao-profile plan reads sign-ins from, or why it reads none. */
+export function signInSource(plan: Extract<BrowserPlan, { route: "bao" }>): { sourceRoot: string; directory: string } | { unread: string } {
+  return plan.profile && plan.unread === undefined ? { sourceRoot: plan.profile.root, directory: plan.profile.directory }
+    : { unread: plan.unread ?? "it could not read Chrome's profiles" };
+}
+
+/** The pick of a Bao-profile plan. */
+export function baoPick(plan: Extract<BrowserPlan, { route: "bao" }>, userDataDir: string): BrowserPick {
+  return { route: "bao", why: plan.why, chrome: resolveNormalChrome(), userDataDir, ...plan.profile ? { profile: plan.profile } : {},
+    ...plan.unread !== undefined ? { unread: plan.unread } : {} };
+}
 
 export function chromeApp(): string {
   try { return resolveNormalChrome(); }
@@ -48,7 +63,7 @@ export function pickLine(pick: BrowserPick): string {
   const from = (profile: ChosenProfile) => `${profileName(profile)} in ${profile.root}, ${profile.why}`;
   const chrome = `Chrome app: ${pick.chrome}.`;
   switch (pick.route) {
-    case "bao": return `${head} ${chrome} User data: ${pick.userDataDir}. ${pick.profile ? `Sign-ins come from Chrome profile ${from(pick.profile)}.`
+    case "bao": return `${head} ${chrome} User data: ${pick.userDataDir}. ${pick.profile && pick.unread === undefined ? `Sign-ins come from Chrome profile ${from(pick.profile)}.`
       : `Bao imports no sign-ins: ${pick.unread ?? "it could not read Chrome's profiles."}`}`;
     case "copy": return `${head} ${chrome} User data: ${pick.userDataDir}, a copy of Chrome profile ${from(pick.profile)}.`;
     case "current": return `${head} ${chrome} User data: ${pick.userDataDir}. Profile: ${from(pick.profile)}. ${pick.background
@@ -80,6 +95,7 @@ export function fallbackLine(when: string, profile: string | undefined, tool: st
 /** What a sign-in import read from the Chrome profile and wrote into Bao's profile, or why it could not. */
 export function signInLine(report: SignInImport, profile: string): string {
   const head = `Sign-in import for ${report.origin} from Chrome profile "${profile}"${report.retry ? ", again at the sign-in wall" : ""}`;
+  if (report.bound) return `${head}: skipped, because ${BOUND_REASON}.`;
   if (report.error) return `${head} failed: ${report.error.replace(/\.$/, "")}. Bao's profile kept its saved sign-ins.`;
   if (!report.found && !report.storage) return `${head}: the profile has no cookies for this site.`;
   return `${head}: read ${report.found} site ${report.found === 1 ? "cookie" : "cookies"}, wrote ${report.cookies} new or changed ${report.cookies === 1 ? "cookie" : "cookies"} and ${report.storage} storage ${report.storage === 1 ? "item" : "items"} into Bao's profile.`;

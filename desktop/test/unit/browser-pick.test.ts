@@ -185,17 +185,17 @@ test("run_workflow names its route, Chrome profile, and sign-in import, and a si
     return JSON.parse(result.text) as { outcome: string; status: string; reason?: string; resume_token?: string; browser?: string[] };
   };
   const chrome = resolveNormalChrome();
-  const opened = `Browser: Bao profile, the default. Chrome app: ${chrome}. User data: ${baoAgentProfileDir(home)}. `
+  const opened = `Browser: Bao profile, named by the agent. Chrome app: ${chrome}. User data: ${baoAgentProfileDir(home)}. `
     + `Sign-ins come from Chrome profile "Default" (Owner, owner@example.test) in ${sourceRoot}, picked in Bao Settings.`;
   const fallback = (calls: string) => 'If the sign-in or check does not clear in Bao\'s profile, the fallback is the owner\'s running Chrome over remote debugging '
     + `on the same Chrome profile "Default". To take it, call run_workflow with ${calls}. Bao does not switch on its own.`;
 
-  const passed = await run({ id: "account" });
+  const passed = await run({ id: "account", browser: "bao" });
   assert.equal(passed.outcome, "ok", passed.reason);
   assert.deepEqual(passed.browser, [opened,
     `Sign-in import for ${site} from Chrome profile "Default": read 1 site cookie, wrote 1 new or changed cookie and 0 storage items into Bao's profile.`]);
 
-  const waiting = await run({ id: "locked" });
+  const waiting = await run({ id: "locked", browser: "bao" });
   assert.equal(waiting.status, "needs_signin", waiting.reason);
   held = waiting.resume_token!;
   assert.deepEqual(waiting.browser, [opened,
@@ -216,11 +216,16 @@ test("run_workflow names its route, Chrome profile, and sign-in import, and a si
   signedIn = false;
   const failed = await run({ id: "login-check", browser: "bao", profile: "Default" });
   assert.equal(failed.status, "needs_signin", failed.reason);
-  assert.equal(failed.browser?.[0], opened.replace("the default", "named by the agent").replace("picked in Bao Settings", "named by the agent"));
+  assert.equal(failed.browser?.[0], opened.replace("picked in Bao Settings", "named by the agent"));
   assert.equal(failed.browser?.at(-1), fallback(`{"resume":"${failed.resume_token}","browser":"current","profile":"Default"}`));
 
   const moves = await run({ id: "login-download", browser: "bao", profile: "Default" });
   assert.equal(moves.status, "needs_signin", moves.reason);
   assert.equal(moves.browser?.[0], failed.browser?.[0]);
   assert.equal(moves.browser?.some((line) => line.includes("browser\":\"current")), false, moves.browser?.join("\n"));
+
+  const unnamed = await run({ id: "login-download" });
+  assert.equal(unnamed.status, "needs_signin", unnamed.reason);
+  assert.equal(unnamed.browser?.[0], opened.replace("named by the agent", "the workflow moves files, which running Chrome cannot do yet"),
+    "a run that names no browser and moves files uses Bao's profile instead of the default, running Chrome");
 });

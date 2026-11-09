@@ -14,6 +14,18 @@ export async function chromeProfiles(root: string, profiles: ProfileNames = { De
   return root;
 }
 
+/** Chrome's Device Bound Sessions table in a profile folder: one row per session, keyed by its site, such as "https://google.com 3f9a". */
+export function boundSessions(profileDir: string, keys: string[]): void {
+  const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (file: string) => {
+    exec(sql: string): void; prepare(sql: string): { run(...args: unknown[]): void }; close(): void;
+  } };
+  const db = new DatabaseSync(path.join(profileDir, "Device Bound Sessions"));
+  db.exec("CREATE TABLE dbsc_session_tbl (key TEXT NOT NULL, proto BLOB NOT NULL, PRIMARY KEY(key))");
+  const insert = db.prepare("INSERT INTO dbsc_session_tbl (key, proto) VALUES (?, ?)");
+  for (const key of keys) insert.run(key, Buffer.from("session"));
+  db.close();
+}
+
 /** A fake owner's Chrome opens Bao's task tab the way the real route does when the chosen profile is Chrome's default. */
 export function fakeTaskTab(t: TestContext): void {
   t.mock.method(currentChrome, "openTaskTab", async (chrome: Pick<currentChrome.CurrentChrome, "cdp">) => {

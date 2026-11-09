@@ -35,7 +35,7 @@ import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, type BrowserChoice } from "../browser-choice";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, settingsProfileQuestion, showWorkflowPage, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -2891,7 +2891,7 @@ async function runRecorded(
     if (result.status === "passed" || result.status === "failed") clearPendingPrompt(library.root);
     return result;
   }
-  const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl);
+  const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl, workflowMovesFiles(workflow));
   let paused = false;
   try {
     const page = session.page;
@@ -2978,6 +2978,7 @@ async function openReplay(
   fixedDir?: string,
   browser?: RunBrowser,
   site = "about:blank",
+  movesFiles = false,
 ): Promise<WorkflowBrowser> {
   for (const [key, session] of replays) {
     if (session.kind !== "owned") continue;
@@ -2998,7 +2999,7 @@ async function openReplay(
   }
   if (browser) {
     const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
-      extensionRoute: library.settings().runningChromeExtension === true }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
+      movesFiles, extensionRoute: library.settings().runningChromeExtension === true }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
     replays.set(id, session);
     return session;
   }

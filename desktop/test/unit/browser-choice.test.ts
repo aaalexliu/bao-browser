@@ -30,16 +30,16 @@ const workflow = (startUrl: string, id = "choice"): WorkflowV2 => (testWorkflow(
   }],
 }));
 
-test("agent and workflow tools offer the same named browser choices and Bao default", () => {
-  assert.equal(browserChoice(undefined), "bao");
-  assert.equal(DEFAULT_BROWSER, "bao");
+test("agent and workflow tools offer the same named browser choices and Running Chrome by default", () => {
+  assert.equal(browserChoice(undefined), "current");
+  assert.equal(DEFAULT_BROWSER, "current");
   for (const choice of BROWSER_CHOICES) assert.equal(browserChoice(choice), choice);
-  assert.throws(() => browserChoice("other"), /browser=bao.*browser=copy.*browser=current/);
+  assert.throws(() => browserChoice("other"), /browser=current \(default\).*browser=bao.*browser=copy/);
   for (const name of ["agent_browser", "run_workflow"]) {
     const tool = TOOLS.find((entry) => entry.name === name)!;
     const schema = tool.inputSchema as { properties: { browser: { enum: readonly string[]; default: string; description: string } } };
     assert.deepEqual(schema.properties.browser.enum, BROWSER_CHOICES);
-    assert.equal(schema.properties.browser.default, "bao");
+    assert.equal(schema.properties.browser.default, "current");
     for (const value of Object.values(BROWSER_OPTIONS)) {
       assert.ok(tool.description.includes(value.description));
       assert.ok(schema.properties.browser.description.includes(value.description));
@@ -77,7 +77,7 @@ test("replay copies drop only saved tabs in the selected profile; agent copies k
   }
 });
 
-test("the running app marks Bao default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: 150_000 }, async (t) => {
+test("the running app marks Running Chrome default, keeps the chosen browser, and replays with lasting sign-ins", { timeout: 150_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-choice-ui-"));
   const sourceRoot = path.join(root, "source");
   await mkdir(path.join(sourceRoot, "Default"), { recursive: true });
@@ -125,11 +125,11 @@ test("the running app marks Bao default, keeps the chosen browser, and replays w
   assert.match(await choices.innerText(), /Bao's own Chrome profile with your Login sites/);
   assert.match(await choices.innerText(), /different keychains/);
   assert.equal(await choices.getByRole("radio").count(), 3);
-  assert.equal(await choices.getByRole("radio", { name: "Bao profile (default)" }).isChecked(), true);
+  assert.equal(await choices.getByRole("radio", { name: "Running Chrome (default)" }).isChecked(), true);
   await choices.getByRole("radio", { name: "Fresh Chrome copy" }).check();
   await page.waitForTimeout(1100);
   assert.equal(await choices.getByRole("radio", { name: "Fresh Chrome copy" }).isChecked(), true);
-  await choices.getByRole("radio", { name: "Bao profile (default)" }).check();
+  await choices.getByRole("radio", { name: "Bao profile", exact: true }).check();
   const request = page.waitForRequest((request) => request.url().endsWith("/api/replay") && request.method() === "POST");
   const response = page.waitForResponse((response) => response.url().endsWith("/api/replay") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Run", exact: true }).click();

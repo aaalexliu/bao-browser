@@ -2,7 +2,7 @@
 // Chrome's Allow prompt with its Accessibility access. Chrome asks for every new connection, so Bao makes one and every other
 // client shares it. Bao's task tab opens in a window of the Chrome profile the call chose.
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { userInfo } from "node:os";
@@ -22,6 +22,8 @@ import { remoteDebuggingBlock } from "../helper-capabilities";
 interface CurrentChromeDeps {
   helper: Pick<ChromeAx, "exec" | "permissions" | "screenLocked">;
   findChrome: (root: string) => Promise<number[]>;
+  /** Starts the owner's Chrome app as he would, with no flags, when `root` is its own user data. False when Bao cannot. */
+  startChrome: (root: string) => Promise<boolean>;
   /** The executable of the Chrome browser process. */
   executable: (pid: number) => string;
   readPort: typeof readDevToolsActivePort;
@@ -110,9 +112,16 @@ export async function openCurrentChrome(options: {
   signal?: AbortSignal;
 }, overrides: Partial<CurrentChromeDeps> = {}): Promise<CurrentChrome> {
   if (process.platform !== "darwin" && !overrides.helper) throw new Error("Current Chrome control needs BaoOSHelper on a Mac");
+  if (process.env.BAO_LANE === "hermetic" && !overrides.helper) throw new Error("Hermetic tests never drive the owner's running Chrome");
   const deps: CurrentChromeDeps = {
     helper: overrides.helper ?? chromeHelper(),
     findChrome: (root) => dailyChromePids(root, chromeProfilesRoot()),
+    startChrome: async (root) => {
+      if (path.resolve(root) !== path.resolve(chromeProfilesRoot())) return false;
+      await new Promise<void>((resolve, reject) => execFile("/usr/bin/open", ["-b", CHROME_BUNDLE], { env: { ...process.env, HOME: userInfo().homedir } },
+        (error) => error ? reject(new Error(`Bao could not start Google Chrome: ${error.message}`)) : resolve()));
+      return true;
+    },
     executable: (pid) => {
       const exe = processesNaming(CHROME_APP_EXE).find((row) => row.pid === pid)?.command.split(" --")[0]?.trim();
       if (!exe) throw new Error(`Bao could not read the Chrome app path of process ${pid}`);
@@ -130,7 +139,14 @@ export async function openCurrentChrome(options: {
   if (blocked) throw new Error(blocked);
   if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
   options.signal?.throwIfAborted();
-  const pids = await deps.findChrome(options.root);
+  let pids = await deps.findChrome(options.root);
+  if (!pids.length && await deps.startChrome(options.root)) {
+    for (const deadline = Date.now() + 30_000; !pids.length && Date.now() < deadline;) {
+      options.signal?.throwIfAborted();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      pids = await deps.findChrome(options.root);
+    }
+  }
   if (pids.length !== 1) throw new Error(pids.length ? "More than one Chrome runs on this profile root" : "Chrome is not open. Open Google Chrome, then try again");
   const pid = pids[0]!;
   const executable = deps.executable(pid);

@@ -11,6 +11,7 @@ import { assertNotDailyChrome } from "../profile";
 import { cookieMatchesHost, findCookieDb, summarizeDb, summarySql, withCookieDb, type DecryptedCookie } from "../login-import/read";
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
 import { copyIndexedDb, matchingIndexedDbOrigins, readLocalStorage, setLocalStorageItems, type StorageItem } from "../login-import/storage";
+import { boundCookie, boundSessionSites, boundSite, deleteCookieRows } from "./bound-sign-in";
 
 interface LoginCookie extends DecryptedCookie { updated: bigint; signature: string }
 
@@ -18,6 +19,7 @@ interface LoginState {
   cookies: LoginCookie[];
   storage: StorageItem[];
   error?: string;
+  bound?: true;
 }
 
 interface SourceLoginState {
@@ -25,6 +27,8 @@ interface SourceLoginState {
   storage: StorageItem[];
   /** Why Bao could not read the Chrome profile. */
   error?: string;
+  /** The site ties its sign-in to the owner's Chrome, so Bao did not read it. */
+  bound?: true;
 }
 
 /** One sign-in import from the owner's Chrome profile into the Bao profile. */
@@ -39,6 +43,8 @@ export interface SignInImport {
   error?: string;
   /** Bao ran the import again because the opened page asked for a sign-in. */
   retry?: true;
+  /** The site ties its sign-in to the owner's Chrome, so Bao read and wrote nothing for it. */
+  bound?: true;
 }
 
 interface ChromeCookie {
@@ -88,8 +94,11 @@ async function connect(portFile: string): Promise<CdpSocket> {
   return connectCdp(endpoint.port, endpoint.browserPath);
 }
 
-async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cookies?: LoginCookie[]): Promise<SourceLoginState> {
-  try { return await readSourceLogin(options, site, destination, cookies); }
+/** The import's Chrome reaches no host, so it cannot use the copied sign-ins with any site. */
+export const OFFLINE_IMPORT_ARGS = ["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND"];
+
+async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string): Promise<SourceLoginState> {
+  try { return await readSourceLogin(options, site, destination); }
   catch (failure) {
     const error = chromeDenied(failure, options.sourceRoot) ?? failure;
     const reason = error instanceof Error ? error.message : String(error);
@@ -98,14 +107,13 @@ async function readChromeLogin(options: { sourceRoot: string; directory: string 
   }
 }
 
-async function readSourceLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cachedCookies?: LoginCookie[]): Promise<SourceLoginState> {
+async function readSourceLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string): Promise<SourceLoginState> {
   const profile = path.join(options.sourceRoot, options.directory);
   // The storage readers skip a folder they cannot read, so a refused profile must stop here.
   assertChromeReadable(profile, options.sourceRoot);
   const origins = [new URL(site).origin];
   const storage = await readLocalStorage(profile, origins);
   if (destination && !matchingIndexedDbOrigins(path.join(destination, "Default"), origins).length) copyIndexedDb(profile, destination, origins);
-  if (cachedCookies) return { cookies: cachedCookies, storage };
   const db = findCookieDb(profile);
   if (!db || withCookieDb(db.file, (sqlite) => summarizeDb(sqlite, new URL(site).hostname, "include", Date.now()).willImport) === 0) return { storage };
   const temporary = await mkdtemp(path.join(tmpdir(), "bao-login-source-"));
@@ -121,9 +129,11 @@ async function readSourceLogin(options: { sourceRoot: string; directory: string 
     for (const suffix of ["-wal", "-shm"]) {
       await copyFile(db.file + suffix, target + suffix).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
     }
+    // Chrome decrypts every row it loads, so the copy keeps only the site's own cookies.
+    deleteCookieRows(path.join(temporary, "Default"), { keepHost: new URL(site).hostname });
     const updates = cookieUpdates(path.join(temporary, "Default"));
     source = await launchOwnedChromeEndpoint({ userDataDir: temporary, childHome: userInfo().homedir, headless: false,
-      loadExtensions: false, background: "none" });
+      loadExtensions: false, background: "none", appendArgs: OFFLINE_IMPORT_ARGS });
     cdp = await connect(source.portFile);
     const { cookies } = await cdp.send<{ cookies: ChromeCookie[] }>("Storage.getCookies");
     const wanted = cookies.filter((cookie) => cookie.session || cookie.expires > Date.now() / 1000);
@@ -250,25 +260,28 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
   try {
     if (reclaim) await closeRetainedChrome(profile);
     if (!ownsProfile() || pidsForDataDir(profile).length) throw busy();
+    const sourceProfile = "unread" in options ? undefined : path.join(options.sourceRoot, options.directory);
+    const boundSites = sourceProfile ? boundSessionSites(sourceProfile) : [];
     const snapshots = new Map<string, Promise<LoginState>>();
-    let sourceCookies: LoginCookie[] | undefined;
     const snapshot = (site: string, destination?: string) => {
       const url = new URL(site);
       let login = snapshots.get(url.origin);
       if (!login) {
         const read = "unread" in options ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], error: options.unread })
-          : readChromeLogin(options, site, destination, sourceCookies);
-        login = read.then((source) => {
-          sourceCookies ??= source.cookies;
-          return { cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)), storage: source.storage,
-            ...(source.error ? { error: source.error } : {}) };
-        });
+          : boundSite(site, sourceProfile) ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], bound: true })
+            : readChromeLogin(options, site, destination);
+        login = read.then((source) => ({ cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)
+            && !boundCookie(cookie.hostKey, cookie.name, boundSites)), storage: source.storage,
+            ...(source.error ? { error: source.error } : {}), ...(source.bound ? { bound: true as const } : {}) }));
         snapshots.set(url.origin, login);
       }
       return login;
     };
     const login = options.site ? await snapshot(options.site, profile) : undefined;
     if (!ownsProfile()) throw busy();
+    // Copied Google and Times sessions sign the owner out or count as another device, so they go while Chrome is stopped.
+    try { deleteCookieRows(path.join(profile, "Default"), { sites: boundSites }); }
+    catch (error) { console.error(`Bao could not remove copied Google and Times sign-ins from its profile: ${error instanceof Error ? error.message : String(error)}`); }
     // Read saved timestamps while Chrome is stopped; observe live changes through CDP.
     const updates = cookieUpdates(path.join(profile, "Default"));
     launchAttempted = true;
@@ -295,7 +308,8 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
     };
     await liveCookies(true);
     const mergeLogin = async (origin: string, login: LoginState, preferSource = false): Promise<SignInImport> => {
-      const report = { origin, found: login.cookies.length, cookies: 0, storage: 0, ...(login.error ? { error: login.error } : {}) };
+      const report = { origin, found: login.cookies.length, cookies: 0, storage: 0, ...(login.error ? { error: login.error } : {}),
+        ...(login.bound ? { bound: true as const } : {}) };
       try {
         if (!login.cookies.length && !login.storage.length) return report;
         const live = await liveCookies();
@@ -327,7 +341,7 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
       signIn,
       async importLogin(site: string, preferSource = false): Promise<SignInImport> {
         if (!ownsProfile()) throw busy();
-        if (!preferSource) { snapshots.clear(); sourceCookies = undefined; }
+        if (!preferSource) snapshots.clear();
         return mergeLogin(new URL(site).origin, await snapshot(site), preferSource);
       },
     };

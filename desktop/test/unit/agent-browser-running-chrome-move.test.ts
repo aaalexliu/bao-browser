@@ -15,7 +15,7 @@ import * as bao from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
 import { closeRetainedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
-import { chromeProfiles } from "../support/chrome-profiles";
+import { boundSessions, chromeProfiles } from "../support/chrome-profiles";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 pinTestBrowser();
@@ -117,9 +117,15 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   const home = path.join(root, "home");
   const baoDir = bao.baoAgentProfileDir(home);
   const launch = launches.launchOwnedChromeEndpoint;
-  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
+  const launched: string[] = [];
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
+    launched.push(path.basename(options.userDataDir).startsWith("bao-login-source-") ? "import" : options.userDataDir === baoDir ? "bao" : options.userDataDir);
+    return launch({ ...options, headless: true });
+  });
 
-  const owner = await launch({ userDataDir: path.join(root, "owner"), headless: true });
+  // The fake owner's Chrome cannot reach Google or the Times; their pages open as Chrome's error page.
+  const owner = await launch({ userDataDir: path.join(root, "owner"), headless: true,
+    appendArgs: ["--host-resolver-rules=MAP *google.com ~NOTFOUND, MAP *nytimes.com ~NOTFOUND"] });
   const endpoint = await readDevToolsActivePort(owner.portFile);
   const probe = await connectCdp(endpoint.port, endpoint.browserPath);
   await probe.send("Storage.setCookies", { cookies: [{ name: "device", value: "known", url: site }] });
@@ -188,7 +194,7 @@ ${LIST_TARGETS}
     .map((line) => JSON.parse(line) as { command: string; port: string; url: string });
   const pages = async () => (await probe.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos.filter((target) => target.type === "page");
   const ownerTabs = (await pages()).map((target) => target.targetId).sort();
-  return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches,
+  return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
     allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; } };
 }
 
@@ -223,9 +229,9 @@ for (const { wall, page, before, after } of [
   { wall: "a plain sign-in form", page: "/account", before: /textbox "Password"/, after: ACCOUNT },
 ]) test(`a Bao profile whose snapshot shows ${wall} continues in the owner's running Chrome on the same profile`, { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
-  const [opened] = await h.proxy.execute("open", [`${h.site}${page}`]);
+  const [opened] = await h.proxy.execute("open", [`${h.site}${page}`], "bao");
   assert.equal(opened!.exitCode, 0, opened!.stderr);
-  assert.match(h.proxy.pickLines[0]!, /^Browser: Bao profile, the default\./);
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Bao profile, named by the agent\./);
   assert.equal(h.attaches(), 0, "an open whose URL and title look normal stays in Bao's profile");
   const baoPort = (await h.calls()).find((call) => call.command === "open")!.port;
 
@@ -269,7 +275,7 @@ for (const { wall, page, before, after } of [
 
 test("an open that lands on a sign-in URL in a Bao profile continues in the owner's running Chrome", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
-  const [opened, tabs] = await h.proxy.execute("open", [`${h.site}/gate`]);
+  const [opened, tabs] = await h.proxy.execute("open", [`${h.site}/gate`], "bao");
   assert.equal(opened!.stdout, `✓ Article\n  ${h.site}/gate\n`, "the requested page, opened in the owner's Chrome");
   assert.equal(tabs!.stdout, "→ [t1] Article\n");
   assert.ok(savedSteps(h.home)[0]!.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Went to `));
@@ -280,7 +286,7 @@ test("an open that lands on a sign-in URL in a Bao profile continues in the owne
 
 test("a page with no wall stays in Bao's profile", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/article`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, NO_WALL);
   assert.deepEqual(h.proxy.pickLines, ['Browser: Bao profile, Chrome profile "Default".']);
   assert.equal(h.attaches(), 0);
@@ -289,7 +295,7 @@ test("a page with no wall stays in Bao's profile", { timeout: 60_000 }, async (t
 
 test("wait_for_owner on a Bao profile moves to the owner's running Chrome before it waits", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/times`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
   const [moved] = await h.proxy.execute("wait_for_owner", ["1000"]);
   assert.equal(moved!.stdout, `✓ The Best Pizza in New York City - The New York Times\n  ${h.site}/times\n`);
   assert.ok(h.proxy.lastCommand!.step.summary!.text.startsWith(`Bao's own browser hit a step that needs the owner on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`));
@@ -307,7 +313,7 @@ test("wait_for_owner on a Bao profile moves to the owner's running Chrome before
 
 test("when the owner's running Chrome does not attach, the wait stays in Bao's window with the fallback calls, and every wait_for_owner tries again", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "refused");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/times`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, TIMES_CHECK, "the snapshot of Bao's window stands");
   assert.deepEqual(h.proxy.pickLines, ['Browser: Bao profile, Chrome profile "Default".', REFUSED]);
   const fallback = `To take it, call agent_browser with {"command":"close"}, then with {"command":"open","args":["${h.site}/times"],"browser":"current","profile":"Default"}.`;
@@ -336,7 +342,7 @@ test("when the owner's running Chrome does not attach, the wait stays in Bao's w
 
 test("a command that meets a sign-in page between commands does not run; Bao records the open it ran in the owner's Chrome", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/article`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, NO_WALL);
   await navigateBao(h.baoDir, "/article", `${h.site}/login`);
 
@@ -352,7 +358,7 @@ test("a command that meets a sign-in page between commands does not run; Bao rec
 
 test("a command whose move lands on a sign-in page in the owner's Chrome halts there, and the run keeps the move on its step", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/trap`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/trap`], "bao"))[0]!.exitCode, 0);
   assert.equal(h.attaches(), 0, "the page has no wall in Bao's own browser");
   await navigateBao(h.baoDir, "/trap", `${h.site}/login`);
 
@@ -370,7 +376,7 @@ test("a command whose move lands on a sign-in page in the owner's Chrome halts t
 
 test("a slow failed move on wait_for_owner still leaves time to see the owner clear the wall in Bao's window", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "refused");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/times`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, TIMES_CHECK);
   assert.equal((JSON.parse((await h.proxy.execute("wait_for_owner", ["300"]))[0]!.stdout) as { outcome: string }).outcome, "waiting");
   await navigateBao(h.baoDir, "/times", `${h.site}/article`);
@@ -382,7 +388,7 @@ test("a slow failed move on wait_for_owner still leaves time to see the owner cl
 
 test("a sign-in the owner finishes during a slow failed move still ends the wait_for_owner that started before it", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "refused");
-  assert.equal((await h.proxy.execute("open", [`${h.site}/article`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   assert.equal(h.attaches(), 0);
   h.slow(3000);
   const waiting = h.proxy.execute("wait_for_owner", ["2000"]);
@@ -391,4 +397,57 @@ test("a sign-in the owner finishes during a slow failed move still ends the wait
   await navigateBao(h.baoDir, "/article", `${h.site}/account`);
   const [ready] = await waiting;
   assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready", "the page changed after the wait began, during the move");
+});
+
+const OWNER_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+test("an open that names no browser runs in the owner's running Chrome, and Bao starts no Chrome of its own", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  const [opened] = await h.proxy.execute("open", [`${h.site}/article`]);
+  assert.equal(opened!.stdout, `✓ Article\n  ${h.site}/article\n`);
+  assert.deepEqual(h.proxy.pickLines, [`Browser: Running Chrome over remote debugging, the default. Chrome app: ${OWNER_CHROME}. User data: ${h.sourceRoot}. `
+    + `Profile: "Default" (Owner) in ${h.sourceRoot}, the only profile. Bao's task tab opened in the background.`]);
+  assert.deepEqual(h.launched(), [], "no Bao profile and no sign-in import");
+});
+
+test("when running Chrome cannot be used, an open that names no browser runs in Bao's profile without a sign-in import and says why in one line", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`]))[0]!.exitCode, 0);
+  assert.equal(h.proxy.pickLines.length, 1, h.proxy.pickLines.join(" | "));
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Bao profile, fallback when running Chrome could not be used\. Chrome app: .+\. User data: .+agent-browser-profile\. /);
+  assert.ok(h.proxy.pickLines[0]!.endsWith("Bao imports no sign-ins: Bao could not use your running Chrome: Chrome is not open. Open Google Chrome, then try again."), h.proxy.pickLines[0]);
+  assert.deepEqual(h.launched(), ["bao"], "Bao's own profile, and no import Chrome");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/times`]))[0]!.exitCode, 0);
+  assert.deepEqual(h.launched(), ["bao"], "a later open imports nothing either");
+});
+
+for (const url of ["https://www.google.com/maps/@40.73,-73.99,14z", "https://www.nytimes.com/2026/11/09/dining/best-pizza.html"]) {
+  test(`browser=bao on ${new URL(url).hostname} opens in the owner's running Chrome and imports nothing`, { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, "works");
+    await h.proxy.execute("open", [url], "bao");
+    assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, this site ties its sign-in to your Chrome\. .+ Profile: "Default" \(Owner\)/);
+    assert.equal(h.attaches(), 1);
+    assert.deepEqual(h.launched(), [], "no Bao profile and no sign-in import");
+    assert.equal(new Library(h.home).listRuns()[0]!.browser?.why, "this site ties its sign-in to your Chrome");
+  });
+}
+
+test("a site in the Chrome profile's device-bound session table opens in running Chrome, even on browser=copy", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  boundSessions(path.join(h.sourceRoot, "Default"), ["http://127.0.0.1 3f9a"]);
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "copy"))[0]!.stdout, `✓ Article\n  ${h.site}/article\n`);
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, this site ties its sign-in to your Chrome\./);
+  assert.deepEqual(h.launched(), []);
+});
+
+test("a later open of a site that ties its sign-in to Chrome moves the Bao-profile session there before any import", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await h.proxy.execute("open", ["https://www.nytimes.com/"]);
+  const line = `Bao did not open www.nytimes.com in its own browser because this site ties its sign-in to your Chrome; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
+  assert.ok(savedSteps(h.home).at(-1)!.summary!.text.startsWith(line), savedSteps(h.home).at(-1)!.summary!.text);
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, this site ties its sign-in to your Chrome\./);
+  assert.ok(!(new Library(h.home).listRuns()[0]!.signInImports ?? []).some((report) => report.origin.includes("nytimes")), "no import for the Times");
+  assert.deepEqual(h.launched(), ["bao"], "no import Chrome");
+  assert.ok(await baoClosed(h.baoDir));
 });
