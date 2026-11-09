@@ -558,7 +558,7 @@ test("startup persists a pending open before copying and keeps its failure in on
     assert.deepEqual(step!.native.results, []);
     assert.ok(step!.endedAt! >= step!.startedAt);
     assert.equal(step!.afterShot, undefined);
-    assert.equal(step!.afterShotError, "Page screenshot unavailable.");
+    assert.equal(step!.afterShotError, "Page screenshot unavailable: Chrome launch failed before attachment.");
     await assert.rejects(access(path.join(library.root, "shots", "runs", saved.id)), /ENOENT/);
     await assert.rejects(access(path.join(f.root, "calls.jsonl")), /ENOENT/);
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
@@ -686,7 +686,7 @@ test("a stalled recording CDP connection times out without failing the forwarded
   try {
     assert.equal((await f.proxy.execute("open", [], "copy"))[0]!.stdout, "open unchanged\n");
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
-    assert.equal((run.steps as RecordedAgentBrowserCommand[])[0]!.afterShotError, "Page screenshot unavailable.");
+    assert.match((run.steps as RecordedAgentBrowserCommand[])[0]!.afterShotError ?? "", /^Page screenshot unavailable: /);
     assert.equal((await f.proxy.execute("close"))[0]!.stdout, "close unchanged\n");
   } finally { await f.close(); }
 });

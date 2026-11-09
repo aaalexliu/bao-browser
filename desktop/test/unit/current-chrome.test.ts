@@ -436,7 +436,7 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
       // The current route runs only on a Mac, where Chrome captures a background tab. Linux Chromium often
       // never answers Page.captureScreenshot for a hidden tab, so there the step must record the missing picture.
       if (process.platform !== "darwin" && !step.afterShot) {
-        assert.equal(step.afterShotError, "Page screenshot unavailable.");
+        assert.match(step.afterShotError ?? "", /^Page screenshot unavailable/);
         continue;
       }
       assert.ok(step.afterShot);
@@ -459,6 +459,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
     windowState: undefined as string | undefined, windowStates: [] as unknown[], closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
+    activeTarget: "task", captures: [] as string[], failCapture: "",
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
     onClose: undefined as (() => Promise<void>) | undefined };
   let disconnected!: () => void;
@@ -466,7 +467,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     get isOpen() { return !state.closed; },
     disconnected: new Promise<void>(resolve => { disconnected = resolve; }),
     close() { state.closed = true; disconnected(); },
-    async send(method: string, params: Record<string, unknown> = {}) {
+    async send(method: string, params: Record<string, unknown> = {}, sessionId?: string) {
       if (method === "Target.createTarget") {
         assert.deepEqual(params, { url: "about:blank", background: true });
         state.tabs++;
@@ -485,9 +486,17 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
         state.closes++;
         if (state.closeTargetFails) throw new Error("target already gone");
       }
-      if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/", title: "Task" } };
-      if (method === "Target.attachToTarget") return { sessionId: "page" };
-      if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
+      if (method === "Target.getTargetInfo") {
+        const id = String(params.targetId || "");
+        if (id === "glic") return { targetInfo: { url: "https://gemini.google.com/glic?hl=en-US", type: "page", title: "Gemini" } };
+        return { targetInfo: { url: "https://fixture.invalid/", type: "page", title: "Task" } };
+      }
+      if (method === "Target.attachToTarget") return { sessionId: String(params.targetId || "page") };
+      if (method === "Page.captureScreenshot") {
+        state.captures.push(sessionId || "");
+        if (sessionId && sessionId === state.failCapture) throw new Error("side panel did not answer");
+        return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=" };
+      }
       return {};
     },
   } as unknown as CdpSocket;
@@ -510,7 +519,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
         state.trackingFails = false;
         callback(Object.assign(new Error("tracking failed"), { code: 1 }), "", "tracking failed");
       } else if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
-      else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: state.noActivePage ? [] : [{ active: true, targetId: "task" }] } }) : "native output", "");
+      else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: state.noActivePage ? [] : [{ active: true, targetId: state.activeTarget }] } }) : "native output", "");
     });
     return new EventEmitter();
   });
@@ -523,6 +532,37 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   });
   return { proxy, state, cdp, library: new Library(home) };
 }
+
+const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
+
+async function picturedStep(f: Awaited<ReturnType<typeof lifecycleFixture>>, command = "snapshot") {
+  await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
+  f.state.captures.length = 0;
+  await f.proxy.execute(command);
+  const steps = f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[];
+  return steps.at(-1)!;
+}
+
+test("a side panel keeps the task tab's picture instead of waiting on the panel", async (t) => {
+  const f = await lifecycleFixture(t);
+  f.state.activeTarget = "glic";
+  const step = await picturedStep(f);
+  assert.equal(step.afterShotError, undefined);
+  assert.ok(step.afterShot);
+  assert.equal(step.shotNote, TASK_TAB_PICTURE);
+  assert.deepEqual(f.state.captures, ["task"]);
+});
+
+test("a capture failure on the active tab keeps the task tab's picture", async (t) => {
+  const f = await lifecycleFixture(t);
+  f.state.activeTarget = "other";
+  f.state.failCapture = "other";
+  const step = await picturedStep(f);
+  assert.equal(step.afterShotError, undefined);
+  assert.ok(step.afterShot);
+  assert.equal(step.shotNote, TASK_TAB_PICTURE);
+  assert.deepEqual(f.state.captures, ["other", "task"]);
+});
 
 for (const keepOpen of [false, true]) test(`idle backstop releases an owned session with keep-open=${keepOpen}`, async (t) => {
   const f = await lifecycleFixture(t, keepOpen);

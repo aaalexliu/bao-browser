@@ -94,15 +94,32 @@ export class AgentBrowserWorkflow {
   private reason: string | undefined;
   private finished: string | undefined;
   private failedAction = false;
+  private failedStep: { id: string; command: string } | undefined;
+  private recordingStep: { id: string; command: string } | undefined;
+  private blocked: { id: string; command?: string } | undefined;
   private pending: { event: TrailEvent; before: Observation } | undefined;
 
   constructor(private readonly home: string, runId: string, private readonly activePage: () => Promise<BrowserPage>) {
     this.workflowId = `wf-${runId.replace(/^run-/, "")}`;
   }
 
-  unavailable(reason: string): void { this.reason ??= reason; }
+  unavailable(reason: string, step?: { id: string; command?: string }): void {
+    if (this.reason) return;
+    this.reason = reason;
+    const named = step ?? this.recordingStep;
+    if (named) this.blocked = { id: named.id, ...(named.command ? { command: named.command } : {}) };
+  }
 
   async record(command: string, args: string[], id: string, perform: () => Promise<AgentBrowserCommandResult>, ownerWaiting: () => boolean): Promise<AgentBrowserCommandResult> {
+    this.recordingStep = { id, command };
+    try {
+      return await this.recordStep(command, args, id, perform, ownerWaiting);
+    } finally {
+      this.recordingStep = undefined;
+    }
+  }
+
+  private async recordStep(command: string, args: string[], id: string, perform: () => Promise<AgentBrowserCommandResult>, ownerWaiting: () => boolean): Promise<AgentBrowserCommandResult> {
     if (command === "close") {
       const result = await perform();
       if (result.exitCode !== 0) this.unavailable("the closing command failed");
@@ -144,7 +161,10 @@ export class AgentBrowserWorkflow {
       } catch { this.unavailable("its replay target could not be recorded"); }
 
       const result = await perform();
-      if (action) this.failedAction = result.exitCode !== 0;
+      if (action) {
+        this.failedAction = result.exitCode !== 0;
+        this.failedStep = result.exitCode !== 0 ? { id, command } : undefined;
+      }
       if (result.exitCode !== 0 && (command === "snapshot" || command === "screenshot" || command === "tab" && args[0] === "list")) return result;
       if (this.reason || !page) return result;
       try {
@@ -217,7 +237,7 @@ export class AgentBrowserWorkflow {
 
   finish(): string {
     if (this.finished) return this.finished;
-    if (this.failedAction) this.unavailable("the task ended with a failed action");
+    if (this.failedAction) this.unavailable("the task ended with a failed action", this.failedStep);
     if (!this.startUrl || !this.events.length) this.unavailable("it contained no replayable actions");
     if (!this.reason) {
       try {
@@ -231,7 +251,8 @@ export class AgentBrowserWorkflow {
         return this.finished = `Saved workflow: ${workflow.name} (${workflow.id}; bao://workflow/${workflow.id}).`;
       } catch { this.unavailable("its workflow could not be saved"); }
     }
-    return this.finished = `Not saved as a workflow: ${this.reason}.`;
+    const where = this.blocked ? `${this.blocked.id}${this.blocked.command ? ` (${this.blocked.command})` : ""}: ` : "";
+    return this.finished = `Not saved as a workflow: ${where}${this.reason}.`;
   }
 
   private updatePending(after: Observation): void {

@@ -40,6 +40,8 @@ export interface RecordedAgentBrowserCommand {
   /** A box on the after picture, such as the heading a read found new. */
   afterTarget?: { rect: ShotBox; viewport: Viewport };
   afterShotError?: string;
+  /** Why the kept picture is not of the active tab, when Bao fell back to its task tab. */
+  shotNote?: string;
   /** The plain sentence for this step, with the element's own text cited. */
   summary?: StepSummary;
   native: {
@@ -120,7 +122,7 @@ export class AgentBrowserRun {
   }
 
   async complete(step: RecordedAgentBrowserCommand, results: AgentBrowserCommandResult[], stateDir: string,
-    screenshot: () => Promise<Buffer | { bytes: Buffer; viewport?: Viewport }>, error?: unknown, privatePage = false,
+    screenshot: () => Promise<Buffer | { bytes: Buffer; viewport?: Viewport; note?: string }>, error?: unknown, privatePage = false,
     context: StepContext = {}): Promise<void> {
     step.endedAt = Date.now();
     step.native.results = results;
@@ -176,13 +178,14 @@ export class AgentBrowserRun {
       const shot = await screenshot();
       const frame = Buffer.isBuffer(shot) ? { bytes: shot } : shot;
       step.afterShot = await this.picture(step, frame.bytes, "after");
+      if (frame.note) step.shotNote = frame.note;
       const rect = context.mark;
       if (rect && frame.viewport && rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0
         && rect.x + rect.width <= frame.viewport.width && rect.y + rect.height <= frame.viewport.height) {
         step.afterTarget = { rect, viewport: frame.viewport };
       }
-    } catch {
-      step.afterShotError = step.native.command === "close" ? "Session closed; no page remains." : "Page screenshot unavailable.";
+    } catch (shotError) {
+      step.afterShotError = step.native.command === "close" ? "Session closed; no page remains." : pageShotError(shotError);
       if (step.native.command !== "close") this.warn("page screenshot");
     }
     this.persist();
@@ -259,6 +262,12 @@ export class AgentBrowserRun {
   private warn(operation: string): void {
     process.stderr.write(`Bao recording unavailable: ${operation}. Command forwarding continues.\n`);
   }
+}
+
+function pageShotError(error: unknown): string {
+  const detail = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim();
+  if (!detail) return "Page screenshot unavailable.";
+  return `Page screenshot unavailable: ${detail.endsWith(".") ? detail : `${detail}.`}`;
 }
 
 function pageKey(url: string): string {

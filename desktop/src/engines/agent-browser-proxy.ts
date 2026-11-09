@@ -53,6 +53,18 @@ export const AGENT_BROWSERS = BROWSER_CHOICES;
 
 export type AgentBrowser = typeof AGENT_BROWSERS[number];
 
+/** A side panel, internal page, or non-page target cannot be captured. The task tab can. */
+export function uncapturablePage(url: string | undefined, type: string | undefined): boolean {
+  if (type && type !== "page") return true;
+  if (!url) return false;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return true; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return true;
+  return parsed.pathname === "/glic" || parsed.pathname.startsWith("/glic/");
+}
+
+const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
+
 function webSite(value: string | undefined): string | undefined {
   try {
     if (!value) return undefined;
@@ -400,7 +412,7 @@ export class AgentBrowserProxy {
       return results;
     } catch (error) {
       failure = error;
-      session.workflow.unavailable("a browser command was interrupted");
+      session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);
       throw error;
     } finally {
       try {
@@ -959,15 +971,45 @@ export class AgentBrowserProxy {
     }
   }
 
-  private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
+  private async screenshot(session: Session, command: string, visual = false): Promise<{ bytes: Buffer; viewport?: { width: number; height: number }; note?: string }> {
     if (command === "close" || this.disconnected || session.abort.signal.aborted) throw new Error("page closed");
     await this.detectOwnerWall(session);
     if (session.ownerWait) throw new Error("owner input is private");
     const tabs = await this.run(session, "tab", ["list", "--json"], 3000);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
     const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
-    const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
-    if (!targetId) throw new Error("no active page");
+    const activeId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
+    if (!activeId) throw new Error("no active page");
+    const taskId = session.kind === "current" ? session.targetId : undefined;
+    const preferred = await this.pictureTarget(session, activeId, taskId);
+    try {
+      const frame = await this.captureFrame(session, preferred, visual);
+      return preferred === activeId ? frame : { ...frame, note: TASK_TAB_PICTURE };
+    } catch (error) {
+      if (!taskId || preferred === taskId || session.abort.signal.aborted) throw error;
+      return { ...await this.captureFrame(session, taskId, visual), note: TASK_TAB_PICTURE };
+    }
+  }
+
+  /** On running Chrome, a side panel or a target that will not answer is pictured from the task tab instead. */
+  private async pictureTarget(session: Session, activeId: string, taskId: string | undefined): Promise<string> {
+    if (!taskId || taskId === activeId) return activeId;
+    try {
+      const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(500)]);
+      const cdp = await this.connectSession(session, { signal, timeoutMs: 500 });
+      try {
+        const { targetInfo } = await cdp.send<{ targetInfo: { url?: string; type?: string } }>("Target.getTargetInfo", { targetId: activeId }, undefined, 500);
+        return uncapturablePage(targetInfo.url, targetInfo.type) ? taskId : activeId;
+      } finally {
+        if (session.kind === "copy") cdp.close();
+      }
+    } catch (error) {
+      if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
+      return taskId;
+    }
+  }
+
+  private async captureFrame(session: Session, targetId: string, visual: boolean): Promise<{ bytes: Buffer; viewport?: { width: number; height: number } }> {
     const deadline = Date.now() + 3000;
     const remaining = () => Math.max(1, deadline - Date.now());
     const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(3000)]);

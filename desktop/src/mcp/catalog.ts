@@ -445,7 +445,7 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   status?: string;
   stops: { stepId: string; outcome: OutcomeName | "unknown"; reason: string }[];
   nativeOutputNote?: string;
-  receipts: (WorkflowReceipt & Partial<Pick<RecordedAgentBrowserCommand, "label" | "target">> & {
+  receipts: (WorkflowReceipt & Partial<Pick<RecordedAgentBrowserCommand, "label" | "target" | "afterShot" | "afterShotError" | "shotNote">> & {
     native?: Omit<RecordedAgentBrowserCommand["native"], "results"> & {
       results: (RecordedAgentBrowserCommand["native"]["results"][number] & {
         stdoutTruncated: boolean; stdoutLength: number; stderrTruncated: boolean; stderrLength: number;
@@ -461,10 +461,13 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   const outcome = Object.hasOwn(runOutcomes, status) ? runOutcomes[status as keyof typeof runOutcomes] : "unknown";
   const recording = stored.kind === "capture" && status === "recording";
   const failure = recording ? undefined : stored.failure as RunResult["failure"];
-  const stoppedStep = recording ? undefined : (stored.steps as { id?: string; status?: string; reason?: string }[])
+  const steps = stored.steps as { id?: string; status?: string; reason?: string }[];
+  const passed = outcome === "ok";
+  const stoppedStep = recording || passed ? undefined : steps
     .find((item) => item?.status === "paused" || item?.status === "failed" || item?.status === "timeout");
+  const lastStep = passed ? [...steps].reverse().find((item) => item?.id) : undefined;
   const reason = recording ? undefined : envelope?.reason || failure?.reason || stoppedStep?.reason;
-  const step = recording ? undefined : envelope?.step || failure?.stepId || stoppedStep?.id;
+  const step = recording ? undefined : envelope?.step || failure?.stepId || stoppedStep?.id || lastStep?.id;
   const lastClass = stored.pageClasses?.[stored.pageClasses.length - 1];
   const receipts = stored.steps.flatMap((item) => {
     const receipt = item as Partial<RecordedAgentBrowserCommand>;
@@ -473,6 +476,9 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
       ...(stored.kind === "capture" ? {
         ...(receipt.label !== undefined ? { label: receipt.label } : {}),
         ...(receipt.target !== undefined ? { target: receipt.target } : {}),
+        ...(receipt.afterShot !== undefined ? { afterShot: receipt.afterShot } : {}),
+        ...(receipt.afterShotError !== undefined ? { afterShotError: receipt.afterShotError } : {}),
+        ...(receipt.shotNote !== undefined ? { shotNote: receipt.shotNote } : {}),
         ...(receipt.native !== undefined ? { native: {
           ...receipt.native,
           results: receipt.native.results.map((result) => ({
