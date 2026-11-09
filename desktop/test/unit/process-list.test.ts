@@ -7,6 +7,7 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { baoAgentProfileDir } from "../../src/engines/bao-profile";
 import { closeRetainedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 interface Result { isError?: boolean; content?: { text: string }[] }
@@ -91,10 +92,11 @@ test("a process list over 1 MiB never breaks open, close, or finish_task, and an
   await writeFile(path.join(sourceRoot, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Synthetic", user_name: "owner@example.test" } } } }));
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');

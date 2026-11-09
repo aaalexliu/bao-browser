@@ -18,6 +18,7 @@ import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { browserToolResult } from "../../src/mcp/tool-card";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 launches.pinTestBrowser();
 
@@ -78,10 +79,10 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
     assert.deepEqual(chrome.signIn, { origin: site, found: 1, cookies: 1, storage: 1 }, "the open's import says what it read and wrote");
     assert.equal(launchOptions.length, 2);
     assert.equal(launchOptions[0]!.headless, false, "source Chrome keeps OS-keychain access");
-    assert.deepEqual(launchOptions[0]!.appendArgs, ["--no-startup-window"], "sign-in extraction creates no window");
+    assert.equal(launchOptions[0]!.background, "none", "sign-in extraction creates no window");
     assert.equal(launchOptions[0]!.keychain, undefined);
     assert.equal(launchOptions[1]!.headless, false, "the lasting Bao browser still opens its window");
-    assert.equal(launchOptions[1]!.appendArgs, undefined);
+    assert.equal(launchOptions[1]!.background, "window", "behind the owner's apps");
     assert.equal(launchOptions[1]!.keychain, "mock");
     let page = await inspect();
     try {
@@ -98,7 +99,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.deepEqual(await chrome.importLogin("https://storage.test/"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 1 });
       assert.deepEqual(await chrome.importLogin("https://storage.test/another-path"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 0 });
       assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
-      assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--no-startup-window"], "later sign-in refreshes also create no window");
+      assert.equal(launchOptions.at(-1)!.background, "none", "later sign-in refreshes also create no window");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
     assert.notDeepEqual(launches.pidsForDataDir(baoAgentProfileDir(home)), []);
@@ -137,6 +138,7 @@ test("Bao open skips error frames for storage and survives seed failures", { tim
   const log = path.join(root, "native.jsonl");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const fs=require('node:fs');
 const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
 const args=process.argv.slice(2),command=args[args.indexOf('--idle-timeout')+2];
@@ -401,6 +403,7 @@ for (const scenario of ["stale SSO", "signed-out home", "signed-out wall", "newe
   const activeTarget = path.join(root, "active-target");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const fs=require('node:fs');
 const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
 const args=process.argv.slice(2),command=args[args.indexOf('--idle-timeout')+2];
@@ -409,7 +412,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 (async()=>{
  if(command==='close'){console.log('Closed');return;}
  if(${scenario === "failed wall retry"} && command==='open' && fs.readFileSync(${JSON.stringify(log)},'utf8').trim().split('\\n').filter(line=>JSON.parse(line).command==='open').length===2){console.error('synthetic daemon retry failure');process.exitCode=1;return;}
- const tabs=(await (await fetch('http://'+endpoint.host+'/json/list')).json()).filter(t=>t.type==='page');
+ const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
  const active=fs.readFileSync(${JSON.stringify(activeTarget)},'utf8');
  if(command==='tab'){console.log(JSON.stringify({data:{tabs:tabs.map(t=>({targetId:t.id,active:t.id===active}))}}));return;}
  const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
@@ -573,10 +576,11 @@ test("a sign-in import that cannot read the Chrome profile says why in the open 
   const home = path.join(root, "home");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');
@@ -602,10 +606,11 @@ test("without Chrome's profiles, the default Bao profile still opens and says wh
   const home = path.join(root, "home");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');
@@ -629,10 +634,11 @@ test("with Chrome's folder refused, the Bao profile still opens and says why it 
   const home = path.join(root, "home");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');

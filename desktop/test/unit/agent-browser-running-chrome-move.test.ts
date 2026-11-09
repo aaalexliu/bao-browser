@@ -16,6 +16,7 @@ import * as launches from "../../src/launch";
 import { closeRetainedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 pinTestBrowser();
 
@@ -149,10 +150,11 @@ const fs=require('node:fs'), path=require('node:path');
 const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
 const args=process.argv.slice(2), at=args.indexOf('--idle-timeout')+2, command=args[at], rest=args.slice(at+1);
 const endpoint=new URL(args[args.indexOf('--cdp')+1]);
+${LIST_TARGETS}
 (async()=>{
  if(command==='close'){console.log('closed');return;}
  let bound; try{bound=JSON.parse(fs.readFileSync(path.join(process.env.AGENT_BROWSER_SOCKET_DIR,'bao.target'),'utf8')).targetId;}catch{}
- const tabs=(await (await fetch('http://'+endpoint.host+'/json/list')).json()).filter(t=>t.type==='page');
+ const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
  const tab=tabs.find(t=>t.id===bound)??tabs.find(t=>!t.url.startsWith('chrome'))??tabs[0];
  fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,port:endpoint.port,url:tab.url})+'\\n');
  if(command==='tab'){console.log(rest.includes('--json')?JSON.stringify({data:{tabs:[{targetId:tab.id,url:tab.url,title:tab.title,active:true}]}}):'→ [t1] '+tab.title);return;}

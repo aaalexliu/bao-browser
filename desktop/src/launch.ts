@@ -265,13 +265,13 @@ async function ownedDebugPort(): Promise<number> {
   return address.port === 9222 ? ownedDebugPort() : address.port;
 }
 
-/** LaunchServices gives Chrome the GUI login session; -W tracks the new instance. */
+/** LaunchServices gives Chrome the GUI login session; -W tracks the new instance. -g launches it without making it the front app. */
 export function guiChromeLaunchArgs(
-  exe: string, args: string[], stderrFile: string, childHome: string,
+  exe: string, args: string[], stderrFile: string, childHome: string, background: boolean,
   env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform,
 ): string[] | undefined {
   if (platform !== "darwin" || testLaneBrowser(env) || exe !== ACCOUNT_CHROME_MAC) return undefined;
-  return ["-W", "-n", ...(args.includes("--no-startup-window") ? ["-g"] : []), "-a", path.resolve(exe, "../../.."),
+  return ["-W", "-n", ...(background ? ["-g"] : []), "-a", path.resolve(exe, "../../.."),
     "--stdout", "/dev/null", "--stderr", stderrFile, "--env", `HOME=${childHome}`, "--args", ...args];
 }
 
@@ -307,11 +307,11 @@ export function stopOwnedChrome(owner: OwnedChromeProcess): void {
 }
 
 /** Trust this launch's stderr endpoint, not whichever listener won the port. */
-async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
+async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
   const port = await ownedDebugPort();
   const stderrFile = path.join(userDataDir, ".bao-chrome-startup.stderr");
   const chromeArgs = args(port);
-  const guiArgs = guiChromeLaunchArgs(exe, chromeArgs, stderrFile, childHome ?? userInfo().homedir);
+  const guiArgs = guiChromeLaunchArgs(exe, chromeArgs, stderrFile, childHome ?? userInfo().homedir, background);
   if (guiArgs) {
     assertChromeProfileAvailable(userDataDir);
     rmSync(stderrFile, { force: true });
@@ -533,6 +533,12 @@ interface OwnedChromeProcessOptions {
   args?: string[];
   appendArgs?: string[];
   executablePath?: string;
+  /**
+   * Chrome starts behind the owner's apps. "none" opens no window, "window" one blank window, and "restore" the saved windows.
+   * A window Chrome opens for itself at launch takes the front even under -g; restored windows do not. So for "window" Bao
+   * opens the window itself, in the background.
+   */
+  background?: "none" | "window" | "restore";
 }
 
 async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
@@ -548,10 +554,11 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = fal
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args, opts.appendArgs, opts.keychain),
     ...(opts.preserveRestoredTabs ? ["--restore-last-session"] : []),
+    ...(opts.background === "none" || opts.background === "window" ? ["--no-startup-window"] : []),
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
   ];
-  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome, detached);
+  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome, detached, opts.background !== undefined);
 }
 
 type OwnedEndpointState =
@@ -638,6 +645,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     });
     // Discovery reports existing and future targets without attaching to them.
     await cdp.send("Target.setDiscoverTargets", { discover: true });
+    if (opts.background === "window") await cdp.send("Target.createTarget", { url: "about:blank", newWindow: true, background: true });
     if (state.phase !== "starting" || !ownedChromeRunning(owner)) throw new Error("Chrome closed during startup");
     state = { phase: "running" };
     return {

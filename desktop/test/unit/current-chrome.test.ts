@@ -631,7 +631,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   await writeFile(executable, "", { mode: 0o700 });
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
-    closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
+    windowState: undefined as string | undefined, windowStates: [] as unknown[], closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
     onClose: undefined as (() => Promise<void>) | undefined };
   let disconnected!: () => void;
@@ -647,6 +647,9 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       }
       if (method === "Emulation.setFocusEmulationEnabled" && state.setupFails) throw new Error("setup failed");
       if (method === "Target.activateTarget") state.activations.push(params);
+      if (method === "Browser.getWindowForTarget" && state.windowState) return { windowId: 4 };
+      if (method === "Browser.getWindowBounds" && state.windowState) return { bounds: { windowState: state.windowState } };
+      if (method === "Browser.setWindowBounds") state.windowStates.push((params.bounds as { windowState: string }).windowState);
       if (method === "Target.getTargets") {
         if (state.cleanupFails) throw new Error("cleanup failed");
         return { targetInfos: state.taskGone ? [] : [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
@@ -764,8 +767,8 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
-  await f.proxy.execute("wait_for_owner", ["1"]);
-  assert.deepEqual(f.state.activations, []);
+  await f.proxy.execute("wait_for_owner", ["50"]);
+  assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner's handoff brings Bao's window forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   f.state.taskGone = true;
   const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
@@ -780,6 +783,25 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   assert.equal(f.state.kept, keepOpen ? 1 : 0);
   assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
 });
+
+for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minimized", ["normal"]], ["maximized", ["minimized", "normal", "maximized"]], ["fullscreen", []]] as const) {
+  test(`a Mac copy's handoff brings a ${windowState} window back on top only when it can, and says so only then`, async (t) => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+    t.after(() => { Object.defineProperty(process, "platform", platform); });
+    const f = await lifecycleFixture(t);
+    const endpoint = await import("../../src/cdp-live/endpoint");
+    t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: 9222, browserPath: "/browser" }));
+    const socket = await import("../../src/cdp-live/socket");
+    t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+    f.state.windowState = windowState;
+    await f.proxy.execute("open", [], "copy");
+    const [result] = await f.proxy.execute("wait_for_owner", ["50"]);
+    assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a full-screen Space stays put");
+    const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
+    assert.equal(instruction.includes("Bao brought this window to the front"), raise.length > 0);
+  });
+}
 
 test("finish_task during async window cleanup applies the same session's checked outcome", async (t) => {
   const f = await lifecycleFixture(t);

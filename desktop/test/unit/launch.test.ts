@@ -16,19 +16,19 @@ const product: NodeJS.ProcessEnv = {};
 test("installed Mac Chrome launches as a new GUI app and waits for that instance", () => {
   const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--profile-directory=Profile 2"];
   const stderr = `${owned}/.bao-chrome-startup.stderr`;
-  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", {}, "darwin"), [
+  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", false, {}, "darwin"), [
     "-W", "-n", "-a", "/Applications/Google Chrome.app",
     "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
   ]);
-  assert.equal(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), undefined);
-  assert.equal(guiChromeLaunchArgs("/pinned/chromium", args, stderr, "/Users/owner", {}, "darwin"), undefined);
-  assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", {}, "linux"), undefined);
+  assert.equal(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", false, { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), undefined);
+  assert.equal(guiChromeLaunchArgs("/pinned/chromium", args, stderr, "/Users/owner", false, {}, "darwin"), undefined);
+  assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", false, {}, "linux"), undefined);
 });
 
-test("windowless Mac Chrome launches without activating the app", () => {
+test("background Mac Chrome launches without activating the app", () => {
   const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--no-startup-window"];
   const stderr = `${owned}/.bao-chrome-startup.stderr`;
-  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", {}, "darwin"), [
+  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", true, {}, "darwin"), [
     "-W", "-n", "-g", "-a", "/Applications/Google Chrome.app",
     "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
   ]);
