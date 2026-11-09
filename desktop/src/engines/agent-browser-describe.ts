@@ -1,13 +1,13 @@
 // One plain sentence per pass-through step, quoting the element's own text from the latest snapshot.
 
-import { ownerWall, type OwnerPage } from "../cdp-live/owner-wait";
+import { ownerAsk, ownerSite, ownerTask, type OwnerAsk, type OwnerPage } from "../cdp-live/owner-wait";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 
 /** A sentence piece. `cite` is text copied from the page; `value` is text the agent supplied. */
 export type SummaryPart = string | { cite: string } | { value: string };
 
 export interface OwnerHandoff {
-  kind: "sign-in" | "check";
+  kind: OwnerAsk;
   site: string;
   url: string;
   title: string;
@@ -179,16 +179,17 @@ export function ownerOutcome(results: readonly AgentBrowserCommandResult[]): Own
 
 export function ownerHandoff(page: OwnerWaitPage | undefined, at = Date.now()): OwnerHandoff | undefined {
   if (!page) return undefined;
-  let site = page.url;
-  try { site = new URL(page.url).hostname.replace(/^www\./, ""); } catch {}
-  return { kind: ownerWall(page) === "bot_wall" ? "check" : "sign-in", site, url: page.url, title: page.title,
+  return { kind: ownerAsk(page), site: ownerSite(page.url), url: page.url, title: page.title,
     ...(page.since !== undefined ? { waitedMs: Math.max(0, at - page.since) } : {}) };
 }
 
-/** Minutes and seconds, such as 4:05. */
-export function clock(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+/** How long the owner has had the turn, in words: "45 s", "4 min", "9 h 53 min". */
+export function waited(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes / 60} h`;
 }
 
 function openedPage(results: readonly AgentBrowserCommandResult[], page: OwnerPage | undefined, arg: string | undefined): OwnerPage | undefined {
@@ -232,14 +233,15 @@ export function describeStep(facts: StepFacts): StepSummary {
 
   if (outcome === "halted" || outcome === "waiting") {
     const owner = ownerHandoff(facts.owner, facts.at);
-    if (!owner) return done([`Your turn: finish the sign-in or check in ${browser}`]);
-    const ask = owner.kind === "sign-in" ? `Your turn: sign in to ${owner.site} in ${browser}` : `Your turn: clear the check on ${owner.site} in ${browser}`;
-    const waiting = owner.waitedMs !== undefined ? `, waiting ${clock(owner.waitedMs)}` : "";
+    if (!owner) return done([`Your turn: finish the check on the page in ${browser}`]);
+    const ask = `Your turn: ${ownerTask(owner)} in ${browser}`;
+    const waiting = owner.waitedMs !== undefined ? `, waiting ${waited(owner.waitedMs)}` : "";
     const where = owner.title ? ` The page is "${owner.title}" (${owner.url})${waiting}.` : ` The page is ${owner.url}${waiting}.`;
     return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address until the page changes.`, owner };
   }
   if (outcome === "ready") {
-    const back = ownerHandoff(facts.owner)?.kind === "check" ? "Back from the check" : "Back from sign-in";
+    const kind = ownerHandoff(facts.owner)?.kind;
+    const back = kind === "sign-in" ? "Back from sign-in" : kind === "code" ? "Back from the code check" : kind === "confirm" ? "Back from the account check" : "Back from the check";
     return page?.title ? done([`${back}: now on `, { cite: page.title }], page.url ? ` (${page.url}).` : ".")
       : done([back]);
   }

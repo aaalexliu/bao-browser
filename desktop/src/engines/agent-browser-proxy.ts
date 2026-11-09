@@ -16,7 +16,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
-import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
+import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
 import { diffView, findView, snapshotView } from "./snapshot-view";
@@ -93,6 +93,15 @@ type Opened = { pick: BrowserPick } & (
 
 type Session = SessionData & Opened;
 
+function ownerWaitPage(session: Session): OwnerPage | undefined {
+  const wait = session.ownerWait;
+  return wait && wait !== "pending" ? wait.page : session.ownerPage;
+}
+
+function ownerWaitOver(session: Session): boolean {
+  return !!session.ownerWait && !session.removing && Date.now() - (session.ownerSince ?? Date.now()) >= OWNER_WAIT_LIMIT_MS;
+}
+
 export class AgentBrowserProxy {
   private session: Session | undefined;
   private disconnected = false;
@@ -110,8 +119,7 @@ export class AgentBrowserProxy {
   /** The sign-in or check page Bao is waiting on, or the latest one it waited on. URL and title only. */
   get ownerPage(): OwnerWaitPage | undefined {
     const session = this.session;
-    const wait = session?.ownerWait;
-    const page = wait && wait !== "pending" ? wait.page : session?.ownerPage;
+    const page = session && ownerWaitPage(session);
     return page && { ...page, ...(session?.ownerSince !== undefined ? { since: session.ownerSince } : {}) };
   }
   /**
@@ -139,6 +147,11 @@ export class AgentBrowserProxy {
   private imports: SignInImport[] = [];
   /** The last session ended while a Bao profile or copy waited for the owner, so a Running Chrome open is its fallback. */
   private afterWall = false;
+  /** The owner wait Bao ended at its limit, until a result says so. */
+  private staleWait: string | undefined;
+  private endedLine: string | undefined;
+  /** The latest result's line about an owner wait Bao ended at its limit. */
+  get endedWait(): string | undefined { return this.endedLine; }
 
   constructor(private readonly options: {
     home: string; sourceRoot?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean;
@@ -160,6 +173,9 @@ export class AgentBrowserProxy {
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
     snapshot: { find?: unknown; diff?: unknown } = {}): Promise<AgentBrowserCommandResult[]> {
+    if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
+    this.endedLine = this.staleWait;
+    this.staleWait = undefined;
     this.latest = undefined;
     this.workflowOutcome = undefined;
     this.shown = this.session && { session: this.session, command: String(command) };
@@ -490,7 +506,7 @@ export class AgentBrowserProxy {
     const current = session?.kind === "current";
     const instruction = kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication."
       : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
-        : ownerWaitInstruction(current);
+        : ownerWaitInstruction(current, session && ownerWaitPage(session));
     return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${session ? this.fallback(session) : ""}` }), stderr: "", exitCode: 0 }];
   }
 
@@ -561,7 +577,7 @@ export class AgentBrowserProxy {
       const expression = waiting ? `(() => {
         const banner = document.createElement('div');
         banner.id = 'bao-owner-wait'; banner.setAttribute('role', 'status');
-        banner.textContent = 'Bao is waiting for you. Sign in or clear this check. The agent will continue in this window. Only URL and title are read while waiting.';
+        banner.textContent = ${JSON.stringify(`Bao is waiting for you to ${ownerTask(ownerWaitPage(session))}. The agent will continue in this window. Only URL and title are read while waiting.`)};
         banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;padding:16px 20px;background:#fff3dd;color:#492800;border:2px solid #e88600;border-radius:12px;font:600 15px/1.5 system-ui;box-shadow:0 4px 20px #0003;z-index:2147483647;pointer-events:none';
         document.documentElement.append(banner);
       })()` : `document.getElementById('bao-owner-wait')?.remove()`;
@@ -755,9 +771,27 @@ export class AgentBrowserProxy {
     });
   }
 
+  /** Ends a session whose owner wait reached its limit, so no later request inherits it. */
+  private async endOwnerWait(session: Session): Promise<void> {
+    const since = session.ownerSince ?? Date.now();
+    const time = new Intl.DateTimeFormat("en-US", { ...new Date(since).toDateString() === new Date().toDateString() ? {} : { month: "short", day: "numeric" },
+      hour: "numeric", minute: "2-digit" }).format(since);
+    this.staleWait = `Bao ended an earlier owner wait from ${time} (run ${session.recording.id}); owner waits end after ${OWNER_WAIT_LIMIT_MS / 60_000} minutes.`;
+    session.closing = true;
+    await this.remove(session);
+    if (this.session === session) this.session = undefined;
+  }
+
   private armIdle(session: Session): void {
     clearTimeout(session.idleTimer);
-    if (this.session !== session || session.removing || session.ownerWait || this.disconnected) return;
+    if (this.session !== session || session.removing || this.disconnected) return;
+    if (session.ownerWait) {
+      session.idleTimer = setTimeout(() => {
+        void this.endOwnerWait(session).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
+      }, Math.max(0, (session.ownerSince ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
+      session.idleTimer.unref();
+      return;
+    }
     session.idleTimer = setTimeout(() => {
       if (this.options.hasHold?.()) { this.armIdle(session); return; }
       session.outcome = { outcome: "failed", reason: AGENT_IDLE_REASON };

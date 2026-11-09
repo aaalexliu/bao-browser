@@ -551,7 +551,7 @@ test("a host that forwards only content and isError still draws each step's card
   assert.equal(results[0]!.content[0]!.text, 'Clicked "Add blueberries" (button).');
   assert.equal(results[1]!.content[0]!.text, "Could not click the element.");
   assert.deepEqual(results[1]!.content.slice(1, -1).map((block) => block.text), ["✗ Unknown ref: e9\n"], "the native error appears once, after the sentence");
-  assert.match(results[2]!.content[0]!.text, /^Your turn: sign in to shop\.example in Bao's Chrome window\. The page is "Sign in to Shop" \(https:\/\/shop\.example\/signin\), waiting 4:00\./);
+  assert.match(results[2]!.content[0]!.text, /^Your turn: sign in to shop\.example in Bao's Chrome window\. The page is "Sign in to Shop" \(https:\/\/shop\.example\/signin\), waiting 4 min\./);
 
   const page = await browser.newPage({ viewport: { width: 560, height: 900 } });
   await mountViewer(page, { theme: "light" });
@@ -581,7 +581,7 @@ test("a host that forwards only content and isError still draws each step's card
   await forward(results[2]!);
   await answer(2);
   await page.locator(".browser-wait").getByText("Sign in to Shop", { exact: true }).waitFor();
-  assert.match(await page.locator(".browser-wait p.muted").first().textContent() ?? "", / · waiting 4:00$/, "the card counts from the handoff start, not this one call");
+  assert.match(await page.locator(".browser-wait p.muted").first().textContent() ?? "", / · waiting 4 min$/, "the card counts from the handoff start, not this one call");
   assert.equal(await page.locator(".browser-status").textContent(), "Waiting for you");
   assert.equal(await page.locator("img").count(), 0);
   assert.equal(await page.locator("footer").count(), 0);

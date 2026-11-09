@@ -125,6 +125,10 @@ The optional timeout is 1 to 120000 milliseconds, with a default of 60000. It li
 
 During handoff, Bao polls only the pinned tab's URL and title through browser-level CDP. It does not run native page commands, inspect fields, read text, take snapshots, or save screenshots. Other page commands return the handoff without recording their arguments. `close` and `finish_task` stay available to end an abandoned task; ending an unfinished handoff records a failed run with reason `session_closed`. `wait_for_owner` never forwards a native command or saves a page picture.
 
+An owner wait ends 30 minutes after it started (`OWNER_WAIT_LIMIT_MS` in `desktop/src/cdp-live/owner-wait.ts`). Bao then ends the session as if it were closed: its run finishes `failed` with reason `session_closed`, and the window or task tab closes. A timer does this, and every `agent_browser` call first checks the limit too, because timers do not run while the Mac sleeps. Claude Desktop keeps one Bao MCP process across chats, so without the limit a new chat's `open` would land on an older chat's wait. The next result gives one line, such as `Bao ended an earlier owner wait from 10:59 PM (run <run_id>); owner waits end after 30 minutes.`, and an `open` starts a new task.
+
+The wait sentence, banner, and instruction name what the page asks, from its title first, then its address: sign in, enter a code the site sent, confirm the account, or clear a human check. A page Bao does not recognize gets neutral words: finish the check on the site. The wait time reads in words, such as `waiting 4 min` or `waiting 9 h 53 min`.
+
 Readiness means the tab has an HTTP(S) URL and a nonblank title, its URL or title changed, neither matches a sign-in/check marker, and both stayed stable for 750 milliseconds. This is not proof of authentication. An unchanged URL and title keep waiting even if page content changes. An unrecognized check can use `wait_for_owner` to enter the same private wait. Metadata does not identify every sign-in form or embedded challenge.
 
 ## Pick an engine and profile

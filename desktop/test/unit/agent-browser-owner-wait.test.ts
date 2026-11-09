@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { chromium } from "playwright";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
@@ -10,7 +10,7 @@ import * as bao from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
+import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -42,11 +42,8 @@ test("owner wait classifies only URL/title and bounds every call below the MCP t
   for (const value of [0, -1, 120001, Infinity, NaN, "60000", 1.5]) assert.throws(() => ownerWaitTimeout(value));
 });
 
-for (const { browser, check, bare } of [
-  { browser: "copy", check: "signin", bare: false }, { browser: "copy", check: "captcha", bare: false },
-  { browser: "bao", check: "signin", bare: false }, { browser: "bao", check: "captcha", bare: false },
-  { browser: "bao", check: "signin", bare: true },
-] as const) test(`pass-through ${browser} ${check} ${bare ? "bare open" : "URL"} waits privately then continues in the same window and Library run`, { timeout: 30_000 }, async (t) => {
+/** A proxy on a throwaway source profile, headless Chrome, a fake native agent-browser, and the local Experian fixture. */
+async function ownerProxy(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-owner-proxy-"));
   const fixture = await startExperianFixture({ loopbackHttp: true });
   const sourceRoot = path.join(root, "source");
@@ -105,12 +102,45 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   const abort = () => { proxy.disconnect(); void closeBrowser?.().catch(() => undefined); };
   t.signal.addEventListener("abort", abort, { once: true });
+  return {
+    root, fixture, home, proxy, log, importCalls,
+    get startSite() { return startSite; }, get copyDir() { return copyDir; }, get closeBrowser() { return closeBrowser; },
+    async cleanup(browser: string, observer?: { close(): Promise<void> }) {
+      t.signal.removeEventListener("abort", abort);
+      try { await proxy.close(); }
+      finally {
+        try { await observer?.close(); }
+        finally {
+          try { await fixture.close(); }
+          finally {
+            try {
+              if (copyDir) {
+                await launches.closeRetainedChrome(copyDir);
+                assert.deepEqual(pidsForDataDir(copyDir), [], "no process owns this test profile");
+                if (browser === "copy") await assert.rejects(readFile(path.join(copyDir, "Default", "Preferences")), /ENOENT/, "the copy was removed");
+              }
+            } finally { await rm(root, { recursive: true, force: true }); }
+          }
+        }
+      }
+    },
+  };
+}
+
+const outcome = (result: Awaited<ReturnType<AgentBrowserProxy["execute"]>>) => (JSON.parse(result[0]!.stdout) as { outcome: string }).outcome;
+
+for (const { browser, check, bare } of [
+  { browser: "copy", check: "signin", bare: false }, { browser: "copy", check: "captcha", bare: false },
+  { browser: "bao", check: "signin", bare: false }, { browser: "bao", check: "captcha", bare: false },
+  { browser: "bao", check: "signin", bare: true },
+] as const) test(`pass-through ${browser} ${check} ${bare ? "bare open" : "URL"} waits privately then continues in the same window and Library run`, { timeout: 30_000 }, async (t) => {
+  const h = await ownerProxy(t);
+  const { fixture, home, proxy, log, importCalls } = h;
   let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
-  const outcome = (result: Awaited<ReturnType<AgentBrowserProxy["execute"]>>) => (JSON.parse(result[0]!.stdout) as { outcome: string }).outcome;
   try {
     assert.equal(outcome(await proxy.execute("open", [bare ? "fixture.test" : fixture.url(`/owner/start?check=${check}`)], browser)), "halted");
     if (bare) {
-      assert.equal(startSite, "https://fixture.test/");
+      assert.equal(h.startSite, "https://fixture.test/");
       assert.equal(importCalls[0], new URL(fixture.url("/")).origin);
       const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string; args: string[] });
       assert.equal(commands.find((entry) => entry.command === "open")!.args.at(-1), "fixture.test");
@@ -119,7 +149,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     const initial = library.listRuns()[0]!;
     assert.equal(initial.status, "needs_human");
     assert.equal((initial.steps as RecordedAgentBrowserCommand[])[0]!.afterShot, undefined);
-    const endpoint = await readDevToolsActivePort(path.join(copyDir, "DevToolsActivePort"));
+    const endpoint = await readDevToolsActivePort(path.join(h.copyDir, "DevToolsActivePort"));
     observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
     const page = observer.contexts()[0]!.pages().find((page) => page.url().includes("/owner/"))!;
     assert.ok(page);
@@ -168,7 +198,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     await page.goto(fixture.url("/owner/check"));
     await proxy.execute("snapshot");
     const closed = proxy.execute("wait_for_owner", ["5000"]);
-    if (check === "captcha") await closeBrowser!();
+    if (check === "captcha") await h.closeBrowser!();
     else await page.close();
     assert.equal(outcome(await closed), "closed");
     const ended = library.readRun(initial.id);
@@ -178,33 +208,57 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     const cutOff = ended.steps.at(-1) as { status?: string; native?: { command?: string } } | undefined;
     assert.equal(cutOff?.native?.command, "wait_for_owner");
     assert.equal(cutOff?.status, "failed");
-  } finally {
-    t.signal.removeEventListener("abort", abort);
-    try { await proxy.close(); }
-    finally {
-      try { await observer?.close(); }
-      finally {
-        try { await fixture.close(); }
-        finally {
-          try {
-            if (copyDir) {
-              await launches.closeRetainedChrome(copyDir);
-              assert.deepEqual(pidsForDataDir(copyDir), [], "no process owns this test profile");
-              if (browser === "copy") await assert.rejects(readFile(path.join(copyDir, "Default", "Preferences")), /ENOENT/, "the copy was removed");
-            }
-          } finally { await rm(root, { recursive: true, force: true }); }
-        }
-      }
-    }
-  }
+  } finally { await h.cleanup(browser, observer); }
 });
 
-test("the owner-wait instruction sends the owner to the browser the session drives", () => {
-  const current = ownerWaitInstruction(true);
-  assert.match(current, /sign in or clear the check in Bao's task tab in their own Chrome,/);
+test("an owner wait ends by itself at its limit, and a later open starts a new task that names the wait Bao ended", { timeout: 60_000 }, async (t) => {
+  const h = await ownerProxy(t);
+  const { fixture, home, proxy } = h;
+  const library = new Library(home);
+  const ended = (runId: string) => new RegExp(`^Bao ended an earlier owner wait from (?:[A-Z][a-z]{2} \\d+, )?\\d{1,2}:\\d\\d [AP]M \\(run ${runId}\\); owner waits end after 30 minutes\\.$`);
+  let offset = 0;
+  const now = Date.now;
+  t.mock.method(Date, "now", () => now() + offset);
+  try {
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
+    const first = proxy.activeRunId!;
+    // One second before the limit, a wait call re-arms the session's timer, which then ends the wait with no further call.
+    offset = OWNER_WAIT_LIMIT_MS - 1000;
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"])), "waiting");
+    assert.equal(proxy.activeRunId, first);
+    const deadline = now() + 20_000;
+    while (proxy.hasSession() && now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(proxy.hasSession(), false, "the timer ended the wait and closed its window");
+    assert.equal(library.readRun(first).status, "failed");
+    assert.equal(library.readRun(first).envelope?.reason, "session_closed");
+
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted", "a fresh open starts a new task");
+    assert.match(proxy.endedWait ?? "", ended(first));
+    const second = proxy.activeRunId!;
+    assert.notEqual(second, first);
+    await proxy.execute("snapshot");
+    assert.equal(proxy.endedWait, undefined, "only the next result names the ended wait");
+
+    // A Mac that slept past the limit never ran the timer. The next open checks the limit itself.
+    offset += OWNER_WAIT_LIMIT_MS;
+    const opened = await proxy.execute("open", [fixture.url("/")], "copy");
+    assert.equal(opened[0]!.stdout, "Opened\n", "the open ran natively instead of returning the old wait");
+    assert.match(proxy.endedWait ?? "", ended(second));
+    assert.notEqual(proxy.activeRunId, second);
+    assert.equal(library.readRun(second).status, "failed");
+    assert.equal(library.listRuns().length, 3);
+  } finally { await h.cleanup("copy"); }
+});
+
+test("the owner-wait instruction names the page's ask and sends the owner to the browser the session drives", () => {
+  const current = ownerWaitInstruction(true, { url: "https://www.amazon.com/ap/signin", title: "Amazon Sign-In" });
+  assert.match(current, /Ask the owner to sign in to amazon\.com in Bao's task tab in their own Chrome,/);
+  assert.match(current, /Bao ends the wait 30 minutes after it started\./);
   assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
   assert.doesNotMatch(current, /Bao window/);
-  const bao = ownerWaitInstruction(false);
-  assert.match(bao, /sign in or clear the check in this Bao window,/);
+  const bao = ownerWaitInstruction(false, { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });
+  assert.match(bao, /Ask the owner to confirm the account on myaccount\.nytimes\.com in this Bao window,/);
+  assert.doesNotMatch(bao, /sign in/);
   assert.match(bao, /On closed, report that the owner closed the window\.$/);
+  assert.match(ownerWaitInstruction(false), /Ask the owner to finish the check on the page in this Bao window,/);
 });
