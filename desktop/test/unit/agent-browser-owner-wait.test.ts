@@ -144,7 +144,7 @@ for (const { browser, check, bare } of [
     assert.equal(outcome(await proxy.execute("open", [bare ? "fixture.test" : fixture.url(`/owner/start?check=${check}`)], browser)), "halted");
     if (browser === "bao") {
       assert.equal(h.attaches, 1, "a Bao profile at a wall tries the owner's running Chrome first");
-      assert.match(proxy.pickLines.at(-1)!, /^Bao's own browser hit a (sign-in page|human check) on (?:127\.0\.0\.1|fixture\.test)\. Bao could not continue in your running Chrome over remote debugging: Chrome is not open\. Open Google Chrome, then try again\. The owner has to clear it in Bao's window\.$/);
+      assert.match(proxy.pickLines.at(-1)!, /^Bao's own browser hit a (sign-in page|human check) on (?:127\.0\.0\.1|fixture\.test)\. Bao could not continue in your running Chrome over remote debugging: Chrome is not open\. Open Google Chrome, then try again\. The session stays in Bao's window; Bao tries again on the next wait_for_owner\.$/);
     } else assert.equal(h.attaches, 0, "a copy never switches on its own");
     if (bare) {
       assert.equal(h.startSite, "https://fixture.test/");
@@ -185,7 +185,7 @@ for (const { browser, check, bare } of [
       await page.getByRole("button", { name: "Continue" }).click();
     }
     assert.equal(outcome(await waiting), "ready");
-    assert.equal(h.attaches, browser === "bao" ? 1 : 0, "Bao tries the owner's running Chrome once per session");
+    assert.equal(h.attaches, browser === "bao" ? 3 : 0, "every explicit wait_for_owner on a Bao profile tries the owner's running Chrome again");
     assert.equal(observer.contexts()[0]!.pages().filter((p) => !p.isClosed()).length, 1);
     assert.equal((await proxy.execute("snapshot"))[0]!.stdout, "snapshot native output\n");
     assert.equal(library.listRuns()[0]!.id, initial.id);
