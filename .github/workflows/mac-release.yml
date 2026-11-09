@@ -39,7 +39,7 @@ jobs:
         run: |
           npm ci
           npm --prefix web ci
-      - name: Pick the version and download URL
+      - name: Check the tag and pick the download URL
         id: release
         env:
           EVENT: ${{ github.event_name }}
@@ -47,10 +47,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           if [ "$EVENT" = release ]; then
-            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            version="$(node -p 'require("./package.json").version')"
+            if [ "$TAG" != "v$version" ]; then
+              echo "::error::Release tag $TAG does not match package.json version $version. Set version in package.json to ${TAG#v} on main, then publish the release from that commit."
+              exit 1
+            fi
             echo "base=https://github.com/$REPO/releases/download/$TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "version=" >> "$GITHUB_OUTPUT"
             echo "base=" >> "$GITHUB_OUTPUT"
           fi
       - name: Choose the signing identity
@@ -70,7 +73,6 @@ jobs:
         run: npx playwright install chromium
       - name: Build Bao.app
         env:
-          BAO_VERSION: ${{ steps.release.outputs.version }}
           BAO_SKIP_DMG: "1"
         run: bash desktop/packaging/macos/package-app.sh
       - name: Make the release asset

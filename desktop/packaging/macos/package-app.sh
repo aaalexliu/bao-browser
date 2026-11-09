@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build Bao.app and a dmg on a Mac. Signing identity defaults to "bao dev signing".
 # BAO_SIGN_IDENTITY=- signs everything ad-hoc, as a release without a signing secret does.
-# BAO_VERSION sets the app version. No notarization. The OS helper is a separate bundle copied into Resources.
+# The app version is the root package.json version. No notarization. The OS helper is a separate bundle copied into Resources.
 # The product window is native WebKit. Bundled Chromium stays available for tasks.
 # Opening Bao does not launch a browser.
 set -euo pipefail
@@ -18,13 +18,8 @@ node "$ROOT/desktop/packaging/helper-identity.js" "$HELPER"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp desktop/packaging/macos/Info.plist "$APP/Contents/Info.plist"
-if [[ -n "${BAO_VERSION:-}" ]]; then
-  if [[ ! "$BAO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "package-app.sh: BAO_VERSION must look like 1.2.3 (got $BAO_VERSION)" >&2
-    exit 1
-  fi
-  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BAO_VERSION" -c "Set :CFBundleVersion $BAO_VERSION" "$APP/Contents/Info.plist"
-fi
+VERSION="$(bash desktop/packaging/macos/stamp-version.sh "$APP/Contents/Info.plist")"
+echo "VERSION $VERSION"
 bash "$ROOT/desktop/packaging/stage-runtime.sh" "$APP/Contents/Resources"
 cp -a "$HELPER" "$APP/Contents/Resources/BaoOSHelper.app"
 # BAO_BUNDLE_NODE names a nodejs.org node binary (24 or newer). It keeps its own

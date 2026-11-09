@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,14 +9,14 @@ import test from "node:test";
 const dist = path.resolve(__dirname, "../../..");
 const root = path.resolve(dist, "../..");
 
-async function serverInfo(cli: string, scratch: string, env: NodeJS.ProcessEnv = {}): Promise<{ name: string; version: string }> {
+function scratchEnv(scratch: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const home = path.join(scratch, "home");
   mkdirSync(home, { recursive: true });
-  const child = spawn(process.execPath, [cli, "mcp"], {
-    cwd: scratch,
-    env: { ...process.env, ...env, HOME: home, BAO_HOME: path.join(scratch, "library"), BAO_HEAL_CURSOR_ACCOUNT: "0" },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  return { ...process.env, ...env, HOME: home, BAO_HOME: path.join(scratch, "library"), BAO_HEAL_CURSOR_ACCOUNT: "0" };
+}
+
+async function serverInfo(cli: string, scratch: string, env: NodeJS.ProcessEnv = {}): Promise<{ name: string; version: string }> {
+  const child = spawn(process.execPath, [cli, "mcp"], { cwd: scratch, env: scratchEnv(scratch, env), stdio: ["pipe", "pipe", "pipe"] });
   let output = "";
   let errors = "";
   child.stdout.on("data", (bytes: Buffer) => { output += bytes.toString(); });
@@ -25,6 +25,10 @@ async function serverInfo(cli: string, scratch: string, env: NodeJS.ProcessEnv =
   const [code] = await once(child, "exit") as [number | null];
   assert.equal(code, 0, errors);
   return (JSON.parse(output.split("\n")[0]) as { result: { serverInfo: { name: string; version: string } } }).result.serverInfo;
+}
+
+function cliVersion(cli: string, scratch: string, env: NodeJS.ProcessEnv = {}): string {
+  return execFileSync(process.execPath, [cli, "--version"], { cwd: scratch, env: scratchEnv(scratch, env), encoding: "utf8" }).trim();
 }
 
 function stageApp(scratch: string, plist?: string): string {
@@ -42,23 +46,41 @@ function stageApp(scratch: string, plist?: string): string {
 const template = readFileSync(path.join(root, "desktop", "packaging", "macos", "Info.plist"), "utf8");
 const appEnv = { NODE_PATH: path.join(root, "node_modules") };
 
-test("a Bao.app reports the version package-app.sh stamped into its Info.plist", async () => {
+test("a Bao.app stamped by package-app.sh reports the package.json version in Info.plist, bao --version, and MCP initialize", {
+  skip: process.platform !== "darwin" ? "stamp-version.sh uses macOS plutil" : false,
+}, async () => {
   const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
   try {
-    const stamped = template.replace(/<key>CFBundleShortVersionString<\/key><string>[^<]+<\/string>/,
-      "<key>CFBundleShortVersionString</key>\n\t<string>9.8.7</string>");
-    assert.notEqual(stamped, template);
-    const info = await serverInfo(stageApp(scratch, stamped), scratch, appEnv);
-    assert.deepEqual(info, { name: "bao", version: "9.8.7" });
+    const cli = stageApp(scratch, template);
+    const plist = path.join(scratch, "Bao.app", "Contents", "Info.plist");
+    execFileSync("bash", [path.join(root, "desktop", "packaging", "macos", "stamp-version.sh"), plist]);
+    const { version } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string };
+    for (const key of ["CFBundleShortVersionString", "CFBundleVersion"]) {
+      assert.equal(execFileSync("/usr/bin/plutil", ["-extract", key, "raw", "-o", "-", plist], { encoding: "utf8" }).trim(), version);
+    }
+    assert.equal(cliVersion(cli, scratch, appEnv), version);
+    assert.deepEqual(await serverInfo(cli, scratch, appEnv), { name: "bao", version });
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 });
 
-test("a Bao.app whose Info.plist lacks the version still answers initialize with version unknown", async () => {
+test("a Bao.app reports the version in its Info.plist", async () => {
   const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
   try {
-    const unversioned = template.replace(/<key>CFBundleShortVersionString<\/key><string>[^<]+<\/string>/, "");
-    assert.notEqual(unversioned, template);
-    assert.deepEqual(await serverInfo(stageApp(scratch, unversioned), scratch, appEnv), { name: "bao", version: "unknown" });
+    const stamped = template.replace("</dict>", "  <key>CFBundleShortVersionString</key>\n\t<string>9.8.7</string>\n</dict>");
+    assert.notEqual(stamped, template);
+    const cli = stageApp(scratch, stamped);
+    assert.equal(cliVersion(cli, scratch, appEnv), "9.8.7");
+    assert.deepEqual(await serverInfo(cli, scratch, appEnv), { name: "bao", version: "9.8.7" });
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+});
+
+test("a Bao.app whose Info.plist lacks the version still answers with version unknown", async () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
+  try {
+    assert.doesNotMatch(template, /CFBundleShortVersionString/);
+    const cli = stageApp(scratch, template);
+    assert.equal(cliVersion(cli, scratch, appEnv), "unknown");
+    assert.deepEqual(await serverInfo(cli, scratch, appEnv), { name: "bao", version: "unknown" });
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 });
 
@@ -72,6 +94,8 @@ test("a Bao.app with no Info.plist still answers initialize with version unknown
 test("a checkout reports version dev", async () => {
   const scratch = mkdtempSync(path.join(tmpdir(), "bao-mcp-version-"));
   try {
-    assert.deepEqual(await serverInfo(path.join(dist, "desktop", "src", "app", "cli.js"), scratch), { name: "bao", version: "dev" });
+    const cli = path.join(dist, "desktop", "src", "app", "cli.js");
+    assert.equal(cliVersion(cli, scratch), "dev");
+    assert.deepEqual(await serverInfo(cli, scratch), { name: "bao", version: "dev" });
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 });
