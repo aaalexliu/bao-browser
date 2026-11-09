@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -34,6 +34,10 @@ function bundle(root: string, cert: boolean): { bao: string; mcp: string; cli: s
   const server = path.join(root, "Bao.app/Contents/Resources/bao/src/app/cli.js");
   mkdirSync(macos, { recursive: true });
   mkdirSync(path.dirname(server), { recursive: true });
+  // The bundled Node, as a release build carries it.
+  const node = path.join(root, "Bao.app/Contents/Resources/node/bin/node");
+  mkdirSync(path.dirname(node), { recursive: true });
+  symlinkSync(process.execPath, node);
   const stub = path.join(root, "window-stub.c");
   writeFileSync(stub, [
     "#include <stdio.h>",
@@ -113,10 +117,12 @@ function agent(root: string): string {
   return file;
 }
 
-function env(root: string): NodeJS.ProcessEnv {
+function env(root: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...process.env, HOME: root, PATH: "/usr/bin:/bin", BAO_NODE: process.execPath };
   for (const key of Object.keys(out)) if (key.startsWith("BAO_") && key !== "BAO_NODE") delete out[key];
-  return out;
+  delete out.NODE_OPTIONS;
+  delete out.NODE_PATH;
+  return { ...out, ...extra };
 }
 
 /** Runs the launcher under an agent app and returns what the agent and the stand-in server saw. */
@@ -180,6 +186,45 @@ test("in a certificate build, bao-mcp answers as Bao and passes on exit codes an
     const [code] = await exited as [number | null];
     assert.equal(code, 0);
     assert.equal(out.split("\n")[2], "term", "SIGTERM to the launcher reaches the server through both Bao processes");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** Code a caller would like to run under Bao's grant. Each piece touches its own file in root when it runs. */
+function intruders(root: string): { node: string; preload: string; ran: () => string[] } {
+  const node = path.join(root, "not-node");
+  writeFileSync(node, `#!/bin/sh\nif [ "$1" = -v ]; then echo v24.0.0; exit 0; fi\ntouch ${JSON.stringify(path.join(root, "ran-not-node"))}\n`);
+  chmodSync(node, 0o755);
+  const preload = path.join(root, "preload.cjs");
+  writeFileSync(preload, `require("node:fs").writeFileSync(${JSON.stringify(path.join(root, "ran-preload"))}, "");\n`);
+  return { node, preload, ran: () => ["ran-not-node", "ran-preload", "ran-shell"].filter((name) => existsSync(path.join(root, name))) };
+}
+
+test("bao --run-node runs only the bundle's cli.js, with Bao's own Node and no caller's NODE_OPTIONS", { skip: skip() }, () => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "bao-responsible-refuse-")));
+  try {
+    const app = bundle(root, true);
+    const bad = intruders(root);
+    const shell = spawnSync(app.bao, ["--run-node", "--own", "/bin/sh", "-c", `touch ${JSON.stringify(path.join(root, "ran-shell"))}`],
+      { env: env(root), encoding: "utf8", timeout: 20_000 });
+    assert.equal(shell.status, 2);
+    assert.match(shell.stderr, /^bao: --run-node runs only .+\/Bao\.app\/Contents\/Resources\/bao\/src\/app\/cli\.js, not \/bin\/sh\n$/);
+
+    const other = path.join(root, "other.js");
+    writeFileSync(other, `require("node:fs").writeFileSync(${JSON.stringify(path.join(root, "ran-shell"))}, "");\n`);
+    const script = spawnSync(app.bao, ["--run-node", other], { env: env(root), encoding: "utf8", timeout: 20_000 });
+    assert.equal(script.status, 2);
+    assert.match(script.stderr, /runs only .+cli\.js, not .+other\.js/);
+
+    // An agent that names its own Node and preload gets Bao's Node, without the preload.
+    const mcp = spawnSync(app.mcp, [], { env: env(root, { BAO_NODE: bad.node, NODE_OPTIONS: `--require ${bad.preload}` }), input: "ping\n", encoding: "utf8", timeout: 20_000 });
+    assert.equal(mcp.status, 0, mcp.stderr);
+    const [first, echoed] = mcp.stdout.split("\n");
+    const seen = JSON.parse(first!) as Seen;
+    assert.deepEqual(seen.responsible, { pid: seen.ppid, exe: app.bao });
+    assert.equal(echoed, "ping");
+    assert.deepEqual(bad.ran(), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

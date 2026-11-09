@@ -688,7 +688,7 @@ test("several Chrome profiles and no named one open nothing and record no run; a
     assert.deepEqual(new Library(path.join(f.root, "home")).listRuns(), [], "no run recorded");
     assert.equal(f.proxy.hasSession(), false);
     assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 2"))[0]!.exitCode, 0);
-    assert.match(f.proxy.openLines[0]!, /^Browser: Chrome copy, named by the agent\. Chrome app: .+\. User data: .+, a copy of Chrome profile "Profile 2" \(Synthetic\) in .+, named by the agent\.$/);
+    assert.match(f.proxy.pickLines[0]!, /^Browser: Chrome copy, named by the agent\. Chrome app: .+\. User data: .+, a copy of Chrome profile "Profile 2" \(Synthetic\) in .+, named by the agent\.$/);
     await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], undefined, false, "Default"), /close the current session before choosing a different Chrome profile/);
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.deepEqual(run.browser && { route: run.browser.route, why: run.browser.why, profile: run.browser.route === "extension" ? undefined : run.browser.profile?.directory },
@@ -735,8 +735,75 @@ test("a copy that stops for sign-in names the Running Chrome fallback on the sam
       endpoint: { port: 9222, browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
       withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
     assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"))[0]!.exitCode, 0);
-    assert.equal(f.proxy.openLines[0], `Browser: Running Chrome over remote debugging, fallback after a sign-in wall. Chrome app: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. User data: ${f.sourceRoot}. Profile: "Profile 2" (Synthetic) in ${f.sourceRoot}, named by the agent. Bao's task tab opened in the background.`);
+    assert.equal(f.proxy.pickLines[0], `Browser: Running Chrome over remote debugging, fallback after a sign-in wall. Chrome app: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. User data: ${f.sourceRoot}. Profile: "Profile 2" (Synthetic) in ${f.sourceRoot}, named by the agent. Bao's task tab opened in the background.`);
     const runs = new Library(path.join(f.root, "home")).listRuns();
     assert.deepEqual(runs.map((run) => run.browser?.why).sort(), ["fallback after a sign-in wall", "named by the agent"]);
+  } finally { await f.close(); }
+});
+
+/** The owner's running Chrome over remote debugging, with Bao's task tab already open in "Profile 2". */
+function fakeOwnerChrome(t: TestContext, root: string) {
+  fakeTaskTab(t);
+  let detached = false;
+  const owner = {
+    get isOpen() { return !detached; }, disconnected: new Promise<void>(() => {}), close() { detached = true; },
+    async send(method: string) {
+      if (method === "Target.createTarget") return { targetId: "task" };
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
+      if (method === "Target.attachToTarget") return { sessionId: "task" };
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
+      return {};
+    },
+  } as unknown as sockets.CdpSocket;
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root,
+    endpoint: { port: 9222, browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close(),
+    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
+}
+
+test("a wall that clears before finish_task is not a fallback; every wait_for_owner and later result names the fallback or the route", async (t) => {
+  const f = await fixture(t);
+  try {
+    let signedIn = false;
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        const page = signedIn ? { targetId: "ABC123", url: "http://127.0.0.1/home", title: "Home" } : { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Confirm your account" };
+        if (method === "Target.getTargetInfo") return { targetInfo: page };
+        if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+        if (method === "Target.getTargets") return { targetInfos: [page] };
+        return { data: png.toString("base64") };
+      });
+      return cdp;
+    });
+    const [halted] = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    assert.equal((JSON.parse(halted!.stdout) as { outcome: string }).outcome, "halted");
+    signedIn = true;
+    const [ready] = await f.proxy.execute("wait_for_owner", ["5000"]);
+    const reply = JSON.parse(ready!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "ready");
+    assert.ok(reply.instruction.endsWith('then with {"command":"open","args":["http://127.0.0.1/"],"browser":"current","profile":"Profile 2"}. Bao does not switch on its own.'), reply.instruction);
+    assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
+    await f.proxy.execute("snapshot");
+    assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
+    assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "signed in" }));
+    assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
+
+    fakeOwnerChrome(t, f.sourceRoot);
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"))[0]!.exitCode, 0);
+    assert.match(f.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, named by the agent\. /);
+  } finally { await f.close(); }
+});
+
+test("an open that fails names the route, Chrome app, and profile folder Bao tried", async (t) => {
+  const f = await fixture(t);
+  try {
+    t.mock.method(currentChrome, "openCurrentChrome", async () => { throw new Error("Could not open Chrome's debugging port"); });
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"), /Could not open Chrome's debugging port/);
+    assert.equal(f.proxy.pickLines.length, 1);
+    assert.match(f.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, named by the agent, did not open\. Chrome app: .+\. Profile: "Profile 2" in (.+)\.$/);
+    assert.ok(f.proxy.pickLines[0]!.endsWith(`Profile: "Profile 2" in ${f.sourceRoot}.`));
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9"), /Chrome has no profile "Profile 9"/);
+    assert.ok(f.proxy.pickLines[0]!.startsWith("Browser: Chrome copy, named by the agent, did not open. Chrome app: "), f.proxy.pickLines[0]);
+    assert.ok(f.proxy.pickLines[0]!.endsWith(`Profile: "Profile 9" in ${f.sourceRoot}.`));
   } finally { await f.close(); }
 });

@@ -1,7 +1,9 @@
 #include "bao-run-node.h"
+#include "bao-launch.h"
 
 #include <errno.h>
 #include <libproc.h>
+#include <limits.h>
 #include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
@@ -85,6 +87,19 @@ int bao_note_responsible(void) {
   return (int)responsible;
 }
 
+/* Contents/MacOS/bao -> Contents/Resources */
+static int resources_of(const char *self, char *out, size_t n) {
+  char contents[4096];
+  if (snprintf(contents, sizeof contents, "%s", self) >= (int)sizeof contents) return -1;
+  for (int i = 0; i < 2; i++) {
+    char *slash = strrchr(contents, '/');
+    if (!slash || slash == contents) return -1;
+    *slash = '\0';
+  }
+  int wrote = snprintf(out, n, "%s/Resources", contents);
+  return wrote < 0 || (size_t)wrote >= n ? -1 : 0;
+}
+
 int bao_run_node(const char *self, int argc, char *argv[]) {
   int at = 0;
   int own = at < argc && strcmp(argv[at], "--own") == 0;
@@ -94,15 +109,28 @@ int bao_run_node(const char *self, int argc, char *argv[]) {
   own = 1;
 #endif
   if (at >= argc) {
-    fprintf(stderr, "usage: bao --run-node [--own] <node> [args...]\n");
+    fprintf(stderr, "usage: bao --run-node [--own] <Bao.app/Contents/Resources/bao/src/app/cli.js> [args...]\n");
     return 2;
   }
-  const char *node = argv[at];
+  char resources[4096];
+  char want[4096];
+  char cli[PATH_MAX];
+  char got[PATH_MAX];
+  if (resources_of(self, resources, sizeof resources) != 0 ||
+      snprintf(want, sizeof want, "%s/bao/src/app/cli.js", resources) >= (int)sizeof want ||
+      !realpath(want, cli)) {
+    fprintf(stderr, "bao: cannot find Bao's own src/app/cli.js. Install Bao again.\n");
+    return 1;
+  }
+  if (!realpath(argv[at], got) || strcmp(got, cli) != 0) {
+    fprintf(stderr, "bao: --run-node runs only %s, not %s\n", cli, argv[at]);
+    return 2;
+  }
   pid_t me = getpid();
   pid_t responsible = (pid_t)bao_note_responsible();
 
   if (own && !owned && responsible != me) {
-    /* bao --run-node --owned <node> [args...]: --owned stops a second copy. */
+    /* bao --run-node --owned <cli.js> [args...]: --owned stops a second copy. */
     char **args = calloc((size_t)(argc - at) + 4, sizeof *args);
     if (!args) return 1;
     args[0] = "bao";
@@ -112,10 +140,16 @@ int bao_run_node(const char *self, int argc, char *argv[]) {
     return spawn_and_wait(self, args, 1);
   }
 
-  char **args = calloc((size_t)(argc - at) + 1, sizeof *args);
+  char node[4096];
+  if (bao_pick_node(resources, responsible != me, node, sizeof node) != 0) {
+    fprintf(stderr, "bao: Bao needs Node.js 24 or newer. Install it with `brew install node@24`.\n");
+    return 1;
+  }
+  char **args = calloc((size_t)(argc - at) + 2, sizeof *args);
   if (!args) return 1;
   args[0] = "node";
-  for (int i = at + 1; i < argc; i++) args[i - at] = argv[i];
+  args[1] = cli;
+  for (int i = at + 1; i < argc; i++) args[i - at + 1] = argv[i];
   if (responsible == me) return spawn_and_wait(node, args, 0);
   execv(node, args);
   fprintf(stderr, "bao: cannot start %s: %s\n", node, strerror(errno));

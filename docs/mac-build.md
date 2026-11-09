@@ -12,7 +12,7 @@ The native window keeps the title **Bao** but hides the title text and makes the
 
 `bao-main.c` finds Node 24 or newer on its own:
 
-1. `BAO_NODE`, when it is an absolute path to Node 24 or newer. A relative path is ignored. Without `BAO_NODE`, `Contents/Resources/node/bin/node` when the build bundled one.
+1. `BAO_NODE`, when it is an absolute path to Node 24 or newer. A relative path is ignored. Bao ignores `BAO_NODE` when it answers to macOS for itself, as it does from Finder, so a caller cannot run its own Node under Bao's Files & Folders grant. Without `BAO_NODE`, `Contents/Resources/node/bin/node` when the build bundled one.
 2. `/opt/homebrew/bin/node`, then `/usr/local/bin/node`. Then the keg-only prefixes `/opt/homebrew/opt/node@24/bin/node` and `/usr/local/opt/node@24/bin/node`, because `brew install node@24` does not link `node` into `bin`.
 3. The newest Node 24 or newer under `~/.local/share/mise/installs/node/*/bin/node`, then `~/.nvm/versions/node/*/bin/node`, then `~/.volta/tools/image/node/*/bin/node`, then `~/.volta/bin/node`.
 4. One login shell: `$SHELL -lc 'command -v node'`. Finder often leaves `SHELL` unset, so the fallback is `/bin/zsh`, then `/bin/bash`. An alias is ignored. The shell is not asked when an earlier path already works.

@@ -15,7 +15,7 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { chooseChromeProfile, pickLine, signInLine, type BrowserPick, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { ChromeProfileQuestion, chooseChromeProfile, failedPickLine, pickLine, shortPickLine, signInLine, type BrowserPick, type ChosenProfile, type RouteWhy } from "./browser-pick";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
@@ -42,6 +42,11 @@ export function validateAgentBrowserCommand(command: unknown, args: unknown): as
 }
 
 export const AGENT_BROWSERS = BROWSER_CHOICES;
+
+function chromeApp(): string {
+  try { return resolveNormalChrome(); }
+  catch { return "not found"; }
+}
 export type AgentBrowser = typeof AGENT_BROWSERS[number];
 
 function webSite(value: string | undefined): string | undefined {
@@ -114,19 +119,30 @@ export class AgentBrowserProxy {
     const page = wait && wait !== "pending" ? wait.page : session?.ownerPage;
     return page && { ...page, ...(session?.ownerSince !== undefined ? { since: session.ownerSince } : {}) };
   }
-  /** What the latest open runs on and why, and what each sign-in import did, for its result. */
-  get openLines(): string[] {
-    const picked = this.picked;
-    if (!picked) return [];
-    const from = picked.route === "bao" ? picked.profile?.directory : undefined;
-    return [pickLine(picked), ...from ? this.imports.map((report) => signInLine(report, from)) : []];
+  /**
+   * What the latest result runs on. An open names the route, Chrome app, user data, and profile and why, and what each sign-in
+   * import did; later commands name the route and profile in one short line; an open that failed names what Bao tried.
+   */
+  get pickLines(): string[] {
+    if (this.notOpened) return [this.notOpened];
+    if (!this.shown) return [];
+    const { session, command } = this.shown;
+    if (command !== "open") return [shortPickLine(session.pick)];
+    const from = session.pick.route === "bao" ? session.pick.profile?.directory : undefined;
+    if (!from) return [pickLine(session.pick)];
+    const missed = this.imports.some((report) => report.error || !report.found && !report.storage);
+    const fallback = missed && !session.ownerWait ? this.fallback(session, "the site asks for a sign-in that did not carry over").trim() : "";
+    return [pickLine(session.pick), ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : []];
   }
   private currentEnded = false;
   private closedCurrent = false;
-  private picked: BrowserPick | undefined;
+  /** The session and command of the latest result. */
+  private shown: { session: Session; command: string } | undefined;
+  /** What a failed open tried. */
+  private notOpened: string | undefined;
   /** Sign-in imports the current command ran. */
   private imports: SignInImport[] = [];
-  /** The last Bao profile or copy session stopped at a sign-in or check, so a Running Chrome open is its fallback. */
+  /** The last session ended while a Bao profile or copy waited for the owner, so a Running Chrome open is its fallback. */
   private afterWall = false;
 
   constructor(private readonly options: {
@@ -146,7 +162,8 @@ export class AgentBrowserProxy {
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.latest = undefined;
     this.workflowOutcome = undefined;
-    this.picked = undefined;
+    this.shown = this.session && { session: this.session, command: String(command) };
+    this.notOpened = undefined;
     this.imports = [];
     validateAgentBrowserCommand(command, args);
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
@@ -199,7 +216,6 @@ export class AgentBrowserProxy {
         const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? DEFAULT_BROWSER, plan!, webSite(args[0])));
         this.session = session;
         this.currentEnded = false;
-        this.afterWall = false;
         if ("signIn" in session.chrome && session.chrome.signIn) this.imported(session, session.chrome.signIn);
         void session.chrome.closed.then(() => {
           if (session.closing) return;
@@ -207,6 +223,7 @@ export class AgentBrowserProxy {
           return this.remove(session);
         }).catch(() => undefined);
       } catch (error) {
+        this.notOpened = failedPickLine(plan!.route, plan!.why, chromeApp(), plan!.route === "extension" ? undefined : plan!.profile);
         await recording.complete(step!, [], this.options.home, async () => { throw error; }, error);
         recording.finish();
         throw error;
@@ -216,7 +233,7 @@ export class AgentBrowserProxy {
       }
     }
     const session = this.session;
-    if (command === "open") this.picked = session.pick;
+    this.shown = { session, command: command as string };
     if (session.pick.route === "current" && !session.pick.background && command === "tab" && args[0] === "new") {
       throw new Error(`Chrome would open a new tab in the profile you used last, not necessarily "${session.pick.profile.directory}". Stay in Bao's task tab and use open there.`);
     }
@@ -318,7 +335,9 @@ export class AgentBrowserProxy {
   async finishTask(outcome: AgentBrowserTaskOutcome): Promise<string | undefined> {
     this.workflowOutcome = undefined;
     this.currentEnded = false;
+    this.notOpened = undefined;
     const session = this.session;
+    this.shown = session && { session, command: "finish_task" };
     if (!session) return undefined;
     session.outcome = outcome;
     if (outcome.outcome === "failed") session.workflow.unavailable(outcome.reason);
@@ -356,6 +375,7 @@ export class AgentBrowserProxy {
     } catch (error) {
       // Bao's own profile works without Chrome's folder. It opens with no sign-in import and says why.
       if (route === "bao" && error instanceof ChromeFolderDenied) return { route, why, unread: error.message };
+      if (!(error instanceof ChromeProfileQuestion)) this.notOpened = failedPickLine(route, why, chromeApp(), named === undefined ? undefined : { directory: named, root });
       throw error;
     }
   }
@@ -461,21 +481,21 @@ export class AgentBrowserProxy {
     const current = session?.kind === "current";
     const instruction = kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication."
       : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
-        : `${ownerWaitInstruction(current)}${session ? this.fallback(session) : ""}`;
-    return [{ stdout: JSON.stringify({ outcome: kind, instruction }), stderr: "", exitCode: 0 }];
+        : ownerWaitInstruction(current);
+    return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${session ? this.fallback(session) : ""}` }), stderr: "", exitCode: 0 }];
   }
 
   /**
-   * A Bao profile or copy that stops for the owner names its fallback: the owner's running Chrome on the same profile, which
-   * holds his own sign-in and is a device the site already knows. Bao does not switch routes itself; the agent makes the call.
+   * A Bao profile or copy that waits for the owner, or whose sign-in import carried none, names its fallback: the owner's running
+   * Chrome on the same profile, which holds his own sign-in and is a device the site already knows. Bao does not switch routes
+   * itself; the agent makes the call.
    */
-  private fallback(session: Session): string {
+  private fallback(session: Session, when = `the sign-in or check does not clear in ${session.pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}`): string {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
-    this.afterWall = true;
     const site = session.site ?? session.ownerPage?.url;
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
-    return ` If the sign-in or check does not clear in ${session.pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. Bao does not switch on its own.`;
+    return ` If ${when}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. Bao does not switch on its own.`;
   }
 
   private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
@@ -598,7 +618,7 @@ export class AgentBrowserProxy {
             session.ownerWait = undefined;
             session.page = { url: page.url, title: page.title };
             session.recording.ownerWaiting(false);
-            return this.ownerResult("ready");
+            return this.ownerResult("ready", session);
           }
         } catch {
           candidate = "";
@@ -748,6 +768,7 @@ export class AgentBrowserProxy {
 
   private async remove(session: Session, keepOpen = false, closeTaskTabs = true): Promise<void> {
     clearTimeout(session.idleTimer);
+    if (!session.removing) this.afterWall = session.kind === "copy" && !!session.ownerWait;
     try {
       if (session.kind === "current" && !session.closing && !this.disconnected) this.currentEnded = true;
       await (session.removing ??= (async () => {

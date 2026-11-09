@@ -189,13 +189,13 @@ export function textToolResult(results: readonly AgentBrowserCommandResult[], se
   };
 }
 
-/** finish_task: the sentence, the run line, and the workflow outcome in words; the full receipt as structuredContent. */
-export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean) {
+/** finish_task: the sentence, the run line, the workflow outcome in words, and the session's browser line; the full receipt as structuredContent. */
+export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean, notices: readonly string[] = []) {
   const sentence = card?.caption ?? "No browser task was open.";
   const run = typeof receipt.run_id === "string"
     ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {
-    content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...(ui && card ? [cardKey(card)] : [])],
+    content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...notices.map(textBlock), ...(ui && card ? [cardKey(card)] : [])],
     structuredContent: { summary: sentence, ...receipt },
     isError: false,
   };

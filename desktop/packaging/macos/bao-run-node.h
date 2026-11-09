@@ -1,7 +1,7 @@
 #ifndef BAO_RUN_NODE_H
 #define BAO_RUN_NODE_H
 
-/* Bao.app/Contents/MacOS/bao --run-node [--own] <node> [args...]
+/* Bao.app/Contents/MacOS/bao --run-node [--own] <cli.js> [args...]
  *
  * bao-mcp and bao-cli start Node through Bao.app's main executable. Before a
  * process reads another app's data, such as Google Chrome's folder, macOS asks
@@ -15,6 +15,11 @@
  * grant to one build, so a grant to Bao would not survive an update. When this
  * process answers for itself, it stays as Node's parent, because Node in its
  * place would answer as Node. Otherwise it becomes Node.
+ *
+ * Bao's grant covers only Bao's own code. The script must be this bundle's
+ * Contents/Resources/bao/src/app/cli.js; anything else is refused. This
+ * process picks Node itself with bao_pick_node, and a process that answers as
+ * Bao ignores BAO_NODE. bao-main.c clears NODE_OPTIONS and NODE_PATH first.
  *
  * Node gets BAO_RESPONSIBLE_EXE, the executable of the app macOS asks, and
  * BAO_CERT_SIGNED=1 in a certificate build. */

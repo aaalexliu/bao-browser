@@ -11,8 +11,8 @@
  * and the same server copy, as `node src/app/cli.js [args]`. The installer
  * runs `bao-cli setup`, and ~/.local/bin/bao can link to it.
  *
- * Node starts through Contents/MacOS/bao --run-node, which picks the app macOS
- * asks before Bao reads Google Chrome's folder (bao-run-node.h). bao-cli always
+ * Node starts through Contents/MacOS/bao --run-node, which picks Node and the
+ * app macOS asks before Bao reads Google Chrome's folder (bao-run-node.h). bao-cli always
  * answers as Bao, so setup and doctor see Bao's own Files & Folders switch.
  * bao-mcp answers as Bao only in a build signed with a certificate. */
 
@@ -37,11 +37,11 @@ static void dirname_inplace(char *path) {
 #ifdef BAO_CLI
 #define LAUNCHER "bao-cli"
 #define FIXED_ARGS 2
-#define RUN_NODE_FLAGS 3
+#define RUN_NODE_FLAGS 2
 #else
 #define LAUNCHER "bao-mcp"
 #define FIXED_ARGS 3
-#define RUN_NODE_FLAGS 2
+#define RUN_NODE_FLAGS 1
 #endif
 
 static int fail(const char *what) {
@@ -79,20 +79,6 @@ int main(int argc, char *argv[]) {
   if (bao_find_browser(browser, sizeof browser, resources)) setenv("BAO_BROWSER", browser, 1);
   if (access(helper, F_OK) == 0) setenv("BAO_OS_HELPER", helper, 1);
 
-  char user_home[4096];
-  bao_user_home(user_home, sizeof user_home);
-  BaoDiscoverHooks hooks;
-  hooks.is_exec = bao_real_is_exec;
-  hooks.major = bao_real_major;
-  hooks.shell = bao_real_shell;
-  hooks.ctx = NULL;
-  char bundled[4096];
-  const char *hint = bao_node_hint(getenv("BAO_NODE"), resources, bundled, sizeof bundled);
-  char node[4096];
-  if (bao_discover_node(hint, user_home, getenv("SHELL"), &hooks, node, sizeof node) != 0) {
-    return fail("Bao needs Node.js 24 or newer. Install it with `brew install node@24`, or set BAO_NODE to its absolute path.");
-  }
-
   /* The app's server runs from this directory too. The server finds files
    * beside it, such as ../BaoOSHelper.app, from the working directory, and
    * the agent's own directory cannot pick a .bao-mcp library. */
@@ -114,7 +100,7 @@ int main(int argc, char *argv[]) {
   char app[4096];
   snprintf(app, sizeof app, "%s/MacOS/bao", contents);
   if (access(app, X_OK) == 0) {
-    /* bao --run-node [--own] <node> cli.js [mcp] [args...] */
+    /* bao --run-node [--own] cli.js [mcp] [args...]. Bao picks Node itself. */
     char **run = calloc((size_t)argc + FIXED_ARGS + RUN_NODE_FLAGS, sizeof *run);
     if (!run) return fail("out of memory");
     int n = 0;
@@ -123,7 +109,6 @@ int main(int argc, char *argv[]) {
 #ifdef BAO_CLI
     run[n++] = "--own";
 #endif
-    run[n++] = node;
     for (int i = 1; args[i]; i++) run[n++] = args[i];
     run[n] = NULL;
     execv(app, run);
@@ -131,6 +116,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   /* A bundle without its app executable, as in the launcher tests. */
+  char node[4096];
+  if (bao_pick_node(resources, 1, node, sizeof node) != 0) {
+    return fail("Bao needs Node.js 24 or newer. Install it with `brew install node@24`, or set BAO_NODE to its absolute path.");
+  }
   execv(node, args);
   fprintf(stderr, LAUNCHER ": cannot start %s: %s\n", node, strerror(errno));
   return 1;

@@ -19,7 +19,7 @@ export const ROUTE_LABELS = {
   extension: "Running Chrome through the Bao extension",
 } as const;
 
-/** What a session runs on and why. Every open result and the saved run record carry it. */
+/** What a session runs on and why. Every open result and the saved run record carry it; later results carry shortPickLine. */
 export type BrowserPick = { why: RouteWhy } & (
   /** Without a profile, Bao could not read Chrome's profiles (`unread` says why) and imports no sign-ins. */
   | { route: "bao"; chrome: string; userDataDir: string; profile?: ChosenProfile; unread?: string }
@@ -43,6 +43,19 @@ export function pickLine(pick: BrowserPick): string {
     case "current": return `${head} ${chrome} User data: ${pick.userDataDir}. Profile: ${from(pick.profile)}. ${pick.background
       ? "Bao's task tab opened in the background." : "Chrome opened Bao's task tab in front, in a window of that profile."}`;
   }
+}
+
+/** The route and profile of the open session, for every result after its open. */
+export function shortPickLine(pick: BrowserPick): string {
+  if (pick.route === "extension") return `Browser: ${ROUTE_LABELS.extension}.`;
+  return `Browser: ${ROUTE_LABELS[pick.route]}, ${pick.profile ? `Chrome profile "${pick.profile.directory}"` : "no Chrome profile"}.`;
+}
+
+/** An open that did not start a session: what Bao tried. The error beside it says why. */
+export function failedPickLine(route: BrowserPick["route"], why: RouteWhy, chrome: string, profile: { directory: string; root: string } | undefined): string {
+  const head = `Browser: ${ROUTE_LABELS[route]}, ${why}, did not open.`;
+  if (route === "extension") return `${head} It runs in the Chrome profile where the Bao extension is linked.`;
+  return `${head} Chrome app: ${chrome}. Profile: ${profile ? `"${profile.directory}" in ${profile.root}` : "none chosen"}.`;
 }
 
 /** What a sign-in import read from the Chrome profile and wrote into Bao's profile, or why it could not. */
