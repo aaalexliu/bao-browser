@@ -41,24 +41,30 @@ export function runningChromeRefusal(browser: BrowserChoice | undefined, workflo
   return browser === "current" && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
 }
 
-/** The Chrome profile a saved workflow runs with: the one picked in Bao Settings, or the only one. Never a silent "Default". */
-async function workflowProfile(root: string, directory: string | undefined): Promise<ChosenProfile> {
-  try { return await chooseChromeProfile(root, directory ? { directory, by: "settings" } : undefined); }
-  catch (error) {
-    if (error instanceof ChromeProfileQuestion) throw new Error(`${error.message} Pick one in Bao Settings under Technical details, Page engine, Chrome profile, then run the workflow again.`, { cause: error });
+/**
+ * The Chrome profile a saved workflow runs with: the one the agent named, else the one picked in Bao Settings, else the only one.
+ * With several and none named or picked, it throws ChromeProfileQuestion. Never a silent "Default".
+ */
+function workflowProfile(root: string, named: string | undefined, settings: string | undefined): Promise<ChosenProfile> {
+  return chooseChromeProfile(root, named ? { directory: named, by: "agent" } : settings ? { directory: settings, by: "settings" } : undefined, settings);
+}
+
+/** Bao's own profile runs without Chrome's profiles. It then imports no sign-in and says why. A named or picked profile must exist. */
+async function baoSource(root: string, named: string | undefined, settings: string | undefined): Promise<{ sourceRoot: string; directory: string } | { unread: string }> {
+  try {
+    const profile = await workflowProfile(root, named, settings);
+    return { sourceRoot: profile.root, directory: profile.directory };
+  } catch (error) {
+    if (error instanceof ChromeFolderDenied || !named && !settings && !(error instanceof ChromeProfileQuestion)) return { unread: error instanceof Error ? error.message : String(error) };
     throw error;
   }
 }
 
-/** Bao's own profile runs without Chrome's folder. It then imports no sign-in and says why. */
-async function baoSource(root: string, directory: string | undefined): Promise<{ sourceRoot: string; directory: string } | { unread: string }> {
-  try {
-    const profile = await workflowProfile(root, directory);
-    return { sourceRoot: profile.root, directory: profile.directory };
-  } catch (error) {
-    if (error instanceof ChromeFolderDenied) return { unread: error.message };
-    throw error;
-  }
+/** The app's message for a profile question: the owner answers it in Bao Settings. */
+export function settingsProfileQuestion(error: unknown): unknown {
+  return error instanceof ChromeProfileQuestion
+    ? new Error(`${error.message} Pick one in Bao Settings under Technical details, Page engine, Chrome profile, then run the workflow again.`, { cause: error })
+    : error;
 }
 
 export async function openWorkflowBrowser(options: {
@@ -68,6 +74,8 @@ export async function openWorkflowBrowser(options: {
   sourceRoot?: string;
   /** The Chrome profile folder picked in Bao Settings. */
   directory?: string;
+  /** The Chrome profile folder the agent named. It wins over the Settings pick. */
+  profile?: string;
   /** The gate for Running Chrome through the Bao extension. Off means remote debugging. */
   extensionRoute?: boolean;
 }): Promise<WorkflowBrowser> {
@@ -105,7 +113,7 @@ export async function openWorkflowBrowser(options: {
   if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
   const root = sourceRoot ?? chromeProfilesRoot();
   if (options.browser === "current") {
-    const profile = await workflowProfile(root, options.directory);
+    const profile = await workflowProfile(root, options.profile, options.directory);
     const chrome = await openCurrentChrome({ root: profile.root, defaultRoot: chromeProfilesRoot(), axLog: path.join(options.home, "audit", "current-chrome.jsonl") });
     try {
       const { targetId } = await openTaskTab(chrome, profile.directory);
@@ -131,8 +139,8 @@ export async function openWorkflowBrowser(options: {
   }
   const launch = { home: options.home, site: options.site };
   const chrome = options.browser === "copy"
-    ? await workflowProfile(root, options.directory).then((profile) => openCopiedChromeForProxy({ ...launch, sourceRoot: profile.root, directory: profile.directory, restoreTabs: false }))
-    : await openBaoChromeForProxy({ ...launch, ...await baoSource(root, options.directory) });
+    ? await workflowProfile(root, options.profile, options.directory).then((profile) => openCopiedChromeForProxy({ ...launch, sourceRoot: profile.root, directory: profile.directory, restoreTabs: false }))
+    : await openBaoChromeForProxy({ ...launch, ...await baoSource(root, options.profile, options.directory) });
   try {
     const endpoint = await readDevToolsActivePort(chrome.target.portFile);
     const browser = await chromium.connectOverCDP(`ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`, { noDefaults: true });

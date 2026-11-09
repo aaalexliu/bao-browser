@@ -41,7 +41,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: BROWSER_CHOICE_DESCRIPTION + " run_workflow takes no profile: it uses the Chrome profile picked in Bao Settings, or the only one, and with several and none picked it fails with the list. Replay a saved workflow on this device in the selected browser. Omit inputs marked saved. Bao fills those saved values and names them in savedValues. A saved password is listed as saved password, never the value. Author values on an imported workflow stay required until the owner saves his own. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. A run that fails at a sign-in, password, or log-in step also returns needs_signin, with no deadline. Its token starts a fresh run with the same inputs once the owner has signed in. cancel stops it with nothing applied.",
+    description: BROWSER_CHOICE_DESCRIPTION + " Name the Chrome profile folder with profile, such as profile=\"Default\"; without it, run_workflow uses the one picked in Bao Settings, or the only one. With several and none named or picked, it opens nothing and fails with the profiles, their names and emails, and the call to retry. On browser=bao, a Chrome without readable profiles runs with no sign-in import. Replay a saved workflow on this device in the selected browser. Omit inputs marked saved. Bao fills those saved values and names them in savedValues. A saved password is listed as saved password, never the value. Author values on an imported workflow stay required until the owner saves his own. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. A run that fails at a sign-in, password, or log-in step also returns needs_signin, with no deadline. Its token starts a fresh run with the same inputs once the owner has signed in. cancel stops it with nothing applied.",
     inputSchema: {
       type: "object",
       properties: {
@@ -51,6 +51,7 @@ const CATALOG_TOOLS = [
         rerun: { type: "boolean" },
         cancel: { type: "boolean" },
         browser: { type: "string", enum: BROWSER_CHOICES, default: DEFAULT_BROWSER, description: BROWSER_CHOICE_DESCRIPTION },
+        profile: { type: "string", description: "The Chrome profile folder, such as Default or Profile 2. It wins over the one picked in Bao Settings." },
       },
     },
   },
@@ -341,7 +342,11 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
   }
   if (name === "describe_workflow") return withLibrary(await describeWorkflow(library, String(args.id || "")), identity);
   if (name === "run_workflow") {
+    if (args.profile !== undefined && (typeof args.profile !== "string" || !args.profile.trim())) {
+      throw new Error("profile must be a Chrome profile folder, such as Default or Profile 2");
+    }
     const result = await runWorkflow(library, {
+      ...typeof args.profile === "string" ? { profile: args.profile.trim() } : {},
       id: args.id ? String(args.id) : undefined,
       inputs: args.inputs && typeof args.inputs === "object" ? args.inputs as Record<string, string | number> : {},
       resume: args.resume ? String(args.resume) : undefined,

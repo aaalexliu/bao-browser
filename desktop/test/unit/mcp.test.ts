@@ -50,6 +50,26 @@ test("MCP advertises only catalog and pass-through tools, even after saving a wo
   });
 });
 
+test("run_workflow with several Chrome profiles and none named or picked lists them and gives the exact call to retry with one", async () => {
+  await fixture(async (client, library) => {
+    const source = path.join(library.root, "chrome-source");
+    mkdirSync(path.join(source, "Profile 2"), { recursive: true });
+    writeFileSync(path.join(source, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Fixture", user_name: "fixture@example.test" }, "Profile 2": { name: "Work" } } } }));
+    library.save(workflow);
+    await client.handshake();
+    const asked = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy" })).text) as { outcome: string; reason: string };
+    assert.equal(asked.outcome, "failed");
+    assert.equal(asked.reason, `Chrome has 2 profiles in ${source}, so Bao opened nothing. Choose one: "Default" (Fixture, fixture@example.test); "Profile 2" (Work). `
+      + 'To continue, call run_workflow again with the folder of the profile you choose: {"id":"saved","browser":"copy","profile":"Default"} Pass the same inputs.');
+    const missing = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy", profile: "Profile 9" })).text) as { outcome: string; reason: string };
+    assert.equal(missing.outcome, "failed");
+    assert.match(missing.reason, /^Chrome has no profile "Profile 9" in .+\. Choose one of: "Default" \(Fixture, fixture@example\.test\); "Profile 2" \(Work\)\.$/);
+    const blank = await client.call("run_workflow", { id: workflow.id, profile: " " });
+    assert.equal(blank.isError, true);
+    assert.match(blank.text, /profile must be a Chrome profile folder/);
+  });
+});
+
 test("MCP search and describe mark the owner's saved inputs optional", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [

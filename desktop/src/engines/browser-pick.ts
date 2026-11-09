@@ -74,9 +74,9 @@ export class ChromeProfileQuestion extends Error {
   }
 
   /** The exact retry, with the Settings pick or else the first profile filled in. */
-  retry(call: Record<string, unknown>): string {
+  retry(call: Record<string, unknown>, tool = "agent_browser"): string {
     const example = this.settings && this.profiles.some((profile) => profile.directory === this.settings) ? this.settings : this.profiles[0]!.directory;
-    return `To continue, call agent_browser again with the folder of the profile you choose: ${JSON.stringify({ ...call, profile: example })}`;
+    return `To continue, call ${tool} again with the folder of the profile you choose: ${JSON.stringify({ ...call, profile: example })}`;
   }
 }
 

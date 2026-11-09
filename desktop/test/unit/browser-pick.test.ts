@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { ChromeFolderDenied } from "../../src/chrome-access";
 import { chooseChromeProfile, ChromeProfileQuestion, pickLine, signInLine } from "../../src/engines/browser-pick";
 import { pinTestBrowser } from "../../src/launch";
-import { openWorkflowBrowser } from "../../src/engines/workflow-browser";
+import { openWorkflowBrowser, settingsProfileQuestion } from "../../src/engines/workflow-browser";
 import { chromeProfiles, type ProfileNames } from "../support/chrome-profiles";
 
 async function chromeRoot(t: TestContext, profiles: ProfileNames): Promise<string> {
@@ -66,12 +66,17 @@ test("the route line names the route, Chrome app, user-data-dir, profile, and wh
     "Browser: Running Chrome through the Bao extension, named by the agent. It runs in the Chrome profile where the Bao extension is linked.");
 });
 
-test("a saved workflow on a Chrome copy or Running Chrome uses the Settings pick, and with several profiles and none picked opens nothing", async (t) => {
+test("a saved workflow on a Chrome copy or Running Chrome uses the named or Settings profile, and with several and neither asks", async (t) => {
   const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 2": { name: "Work" } });
   for (const browser of ["copy", "current"] as const) {
-    await assert.rejects(openWorkflowBrowser({ browser, home: root, site: "about:blank", sourceRoot: root }),
+    const question = await openWorkflowBrowser({ browser, home: root, site: "about:blank", sourceRoot: root }).then(() => undefined, (error: unknown) => error);
+    assert.ok(question instanceof ChromeProfileQuestion);
+    assert.deepEqual(question.profiles.map((profile) => profile.directory), ["Default", "Profile 2"]);
+    assert.match(String(settingsProfileQuestion(question)),
       new RegExp(`^Error: Chrome has 2 profiles in ${root}, so Bao opened nothing\\. .* Pick one in Bao Settings under Technical details, Page engine, Chrome profile, then run the workflow again\\.$`));
     await assert.rejects(openWorkflowBrowser({ browser, home: root, site: "about:blank", sourceRoot: root, directory: "Profile 9" }), /Pick it again in Bao Settings\.$/);
+    await assert.rejects(openWorkflowBrowser({ browser, home: root, site: "about:blank", sourceRoot: root, directory: "Profile 2", profile: "Profile 9" }),
+      /^Error: Chrome has no profile "Profile 9" in .+\. Choose one of: "Default" \(Alex\); "Profile 2" \(Work\)\.$/);
   }
 });
 

@@ -8,6 +8,7 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
+import { ChromeProfileQuestion } from "../engines/browser-pick";
 import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
@@ -235,7 +236,7 @@ export interface RunControl {
 
 export async function runWorkflow(
   library: Library,
-  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2; browser?: BrowserChoice },
+  request: { id?: string; inputs?: ReplayArgs; resume?: string; rerun?: boolean; cancel?: boolean; leaveOpen?: boolean; startUrl?: string; document?: WorkflowV2; browser?: BrowserChoice; profile?: string },
   auth?: RemoteAuth,
   control?: RunControl,
 ): Promise<WorkflowOutcome> {
@@ -289,13 +290,15 @@ export async function runWorkflow(
   if (missing) return stamp(remember(library, workflow, "needs_human", missing.reason, missing.stepId, given, browser));
   const secrets = secretStrings(workflow, inputs);
   try {
-    const played = await replayInBrowser(library, workflow, inputs, secrets, control, browser);
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control, browser, request.profile);
     if (played.held) return stamp(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
     return stamp(played.outcome);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+    const reason = err instanceof ChromeProfileQuestion
+      ? `${err.message} ${err.retry({ id, ...browser ? { browser } : {} }, "run_workflow")} Pass the same inputs.`
+      : err instanceof Error ? err.message : String(err);
     return stamp(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs, browser));
   }
 }
@@ -516,6 +519,7 @@ async function replayInBrowser(
   secrets: string[],
   control: RunControl | undefined,
   choice?: BrowserChoice,
+  profile?: string,
 ): Promise<{ run: RunResult; outcome: WorkflowOutcome; held: boolean; clip?: { video: string; videoStartedAt: number } }> {
   const runId = `run-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
   const shotDir = path.join(library.root, "shots", "runs", runId);
@@ -525,7 +529,7 @@ async function replayInBrowser(
   if (videoDir) mkdirSync(videoDir, { recursive: true });
   let browser: WorkflowBrowser;
   if (choice) {
-    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile,
+    browser = await openWorkflowBrowser({ browser: choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile, profile,
       extensionRoute: library.settings().runningChromeExtension === true });
   } else {
     const profile = path.join(library.root, "chrome-profile");

@@ -373,8 +373,10 @@ export class AgentBrowserProxy {
     try {
       return { route, why, profile: await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.()) };
     } catch (error) {
-      // Bao's own profile works without Chrome's folder. It opens with no sign-in import and says why.
-      if (route === "bao" && error instanceof ChromeFolderDenied) return { route, why, unread: error.message };
+      // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.
+      if (route === "bao" && (error instanceof ChromeFolderDenied || named === undefined && !(error instanceof ChromeProfileQuestion))) {
+        return { route, why, unread: error instanceof Error ? error.message : String(error) };
+      }
       if (!(error instanceof ChromeProfileQuestion)) this.notOpened = failedPickLine(route, why, chromeApp(), named === undefined ? undefined : { directory: named, root });
       throw error;
     }

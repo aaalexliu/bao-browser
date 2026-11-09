@@ -596,6 +596,32 @@ if (args.includes('--json')) {
   assert.match(run.signInImports![0]!.error!, /^macOS did not let Bao read Google Chrome's folder \(EACCES on /);
 });
 
+test("without Chrome's profiles, the default Bao profile still opens and says why, and a copy or a named profile stops", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-no-chrome-"));
+  const sourceRoot = path.join(root, "no-chrome");
+  const home = path.join(root, "home");
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args.includes('--json')) {
+  const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
+  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+    process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
+  });
+} else process.stdout.write('native success\\n');
+`, { mode: 0o700 });
+  const launch = launches.launchOwnedChromeEndpoint;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
+  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
+  t.after(async () => { await proxy.close(); await rm(root, { recursive: true, force: true }); });
+  assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0);
+  assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, the default\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
+  assert.ok(proxy.pickLines[0]!.includes(`Bao imports no sign-ins: Bao could not read Chrome's profiles in ${sourceRoot}: `), proxy.pickLines[0]);
+  await proxy.close();
+  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy"), /^Error: Bao could not read Chrome's profiles in /);
+  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "bao", false, "Default"), /^Error: Bao could not read Chrome's profiles in /);
+});
+
 test("with Chrome's folder refused, the Bao profile still opens and says why it imported nothing, and a copy stops", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-folder-refused-"));
   const sourceRoot = await chromeProfiles(path.join(root, "source"), { Default: { name: "Owner" }, "Profile 2": { name: "Work" } });
