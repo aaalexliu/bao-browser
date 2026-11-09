@@ -568,7 +568,7 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
     assert.deepEqual(advertised, TOOLS);
     assert.deepEqual((await unsupported.request("tools/list")).result?.tools, TOOLS);
     for (const guidance of [first.result?.instructions, advertised?.find(tool => tool.name === "agent_browser")?.description]) {
-      assert.match(guidance!, /For browser=copy, [^.]+signed-in copied tab with tab <id>/);
+      assert.match(guidance!, /For browser=copy, open loads in Bao's own front tab[^.]*; switch to a signed-in restored tab with tab <id> only when the task needs that tab/);
       assert.match(guidance!, /task tab, which shares the owner's sign-ins; use another tab only when the owner asks/);
       assert.match(guidance!, /native daemon restart returns to the task tab but loses refs; take a fresh snapshot/);
       assert.match(guidance!, /browser=current (only on the first open to drive|drives) the owner's own running Chrome over remote debugging/);
