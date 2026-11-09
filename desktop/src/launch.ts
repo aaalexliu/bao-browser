@@ -88,6 +88,13 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
   return platform !== "darwin";
 }
 
+/** A test outside the live lane stays headless even when the caller asked for a window. */
+export function ownedHeadless(requested: boolean | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
+  const live = env.BAO_LANE === "live" || env.BAO_LIVE_TESTS === "1";
+  if (!live && env.BAO_HEADED === "0") return true;
+  return requested ?? true;
+}
+
 const MOCK_KEYCHAIN_ARGS = ["--use-mock-keychain", "--password-store=basic"];
 
 /**
@@ -446,7 +453,7 @@ export async function launchAccountChrome(opts: {
   userDataDir: string;
   headless?: boolean;
 }): Promise<BrowserContext> {
-  if (opts.headless) return launchOwnedChrome(opts);
+  if (opts.headless || ownedHeadless(false)) return launchOwnedChrome({ ...opts, headless: true });
   assertNotDailyChrome(opts.userDataDir);
   keepSessionCookies(opts.userDataDir);
   discardRestoredTabs(opts.userDataDir);
@@ -549,7 +556,7 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = fal
     discardRestoredTabs(opts.userDataDir);
   }
   const exe = opts.executablePath || resolveNormalChrome();
-  const headless = opts.headless ?? true;
+  const headless = ownedHeadless(opts.headless);
   const args = [
     `--user-data-dir=${opts.userDataDir}`,
     ...ownedLaunchArgs(opts.args, opts.appendArgs, opts.keychain),
@@ -863,7 +870,7 @@ async function launchOwnedChromeForVideo(opts: {
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,
     env: opts.childHome === undefined ? undefined : { ...process.env, HOME: opts.childHome },
-    headless: opts.headless ?? true,
+    headless: ownedHeadless(opts.headless),
     viewport: null,
     deviceScaleFactor: opts.deviceScaleFactor,
     chromiumSandbox: true,

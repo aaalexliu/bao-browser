@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { artifactsRoot, testArtifacts, tryWriteEvidence } from "../artifacts";
 import { chromeProfilesRoot } from "../../src/engines/chrome-profile-copy";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs, resolveNormalChrome } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, formatShutdown, ownedChromeLaunchArgs, ownedHeadless, resolveNormalChrome } from "../../src/launch";
 import { assertNotDailyChrome } from "../../src/profile";
 import { classifyStatus, compiledTestPlan, cookieKeys, laneChildEnv, liveSkip, MAC_MOCK_KEYCHAIN_PASSWORD, ownApiOutage } from "../runtime";
 
@@ -113,6 +113,15 @@ test("the live lane turns public demos on, stays headless, and launches the test
   const installed = (file: string) => file === ACCOUNT_CHROME_MAC || file === LINUX_CHROME;
   assert.equal(resolveNormalChrome(installed, env, "darwin"), pin);
   assert.equal(resolveNormalChrome(installed, env, "linux"), pin);
+});
+
+test("a hermetic lane stays headless when the caller asks for a window", () => {
+  assert.equal(ownedHeadless(false, { BAO_HEADED: "0", BAO_LANE: "hermetic" }), true);
+  assert.equal(ownedHeadless(false, { BAO_HEADED: "0" }), true);
+  assert.equal(ownedHeadless(false, { BAO_HEADED: "0", BAO_LANE: "live" }), false);
+  assert.equal(ownedHeadless(false, { BAO_HEADED: "0", BAO_LIVE_TESTS: "1" }), false);
+  assert.equal(ownedHeadless(false, { BAO_HEADED: "1" }), false);
+  assert.equal(ownedHeadless(undefined, {}), true);
 });
 
 test("the lane points Bao at a fixture Chrome root, not the passwd home", () => {
