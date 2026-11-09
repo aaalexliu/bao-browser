@@ -89,9 +89,10 @@
   },
   "browser": {
     "kind": "desktop",
-    "reason": "Safety: pass-through sessions, browser grants, capture privacy, secret replay, and human handoffs.",
+    "reason": "Safety: pass-through sessions, browser grants, capture privacy, secret replay, human handoffs, and short snapshot find and diff results.",
     "tests": [
       "desktop/test/unit/mcp.test.ts",
+      "desktop/test/unit/snapshot-view.test.ts",
       "desktop/test/unit/mcp-viewer-client.test.ts",
       "desktop/test/unit/mcp-viewer-design.test.ts",
       "desktop/test/unit/agent-browser-proxy.test.ts",
