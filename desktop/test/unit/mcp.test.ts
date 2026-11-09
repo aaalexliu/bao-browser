@@ -70,6 +70,24 @@ test("run_workflow with several Chrome profiles and none named or picked lists t
   });
 });
 
+test("a run_workflow resume keeps the Chrome profile the agent named, not the Settings pick", async () => {
+  await fixture(async (client, library) => {
+    library.updateSettings({ chromeProfile: "Default" });
+    library.save(workflow);
+    await client.handshake();
+    const first = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy", profile: "Profile 9" })).text) as { outcome: string; reason: string; resume_token?: string };
+    assert.equal(first.outcome, "failed");
+    assert.match(first.reason, /^Chrome has no profile "Profile 9" in /);
+    assert.ok(first.resume_token);
+    const resumed = JSON.parse((await client.call("run_workflow", { resume: first.resume_token })).text) as { outcome: string; reason: string; resume_token?: string };
+    assert.equal(resumed.outcome, "failed");
+    assert.match(resumed.reason, /^Chrome has no profile "Profile 9" in /, "the resumed run did not fall back to the Settings pick");
+    assert.ok(resumed.resume_token);
+    const again = JSON.parse((await client.call("run_workflow", { resume: resumed.resume_token, profile: "Profile 8" })).text) as { reason: string };
+    assert.match(again.reason, /^Chrome has no profile "Profile 8" in /, "a profile on the resume call wins");
+  });
+});
+
 test("MCP search and describe mark the owner's saved inputs optional", async () => {
   await fixture(async (client, library) => {
     const inputs: WorkflowV2["inputs"] = [
