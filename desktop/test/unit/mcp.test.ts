@@ -533,6 +533,10 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       assert.match(guidance!, /For browser=copy, [^.]+signed-in copied tab with tab <id>/);
       assert.match(guidance!, /task tab, which shares the owner's sign-ins; use another tab only when the owner asks/);
       assert.match(guidance!, /native daemon restart returns to the task tab but loses refs; take a fresh snapshot/);
+      assert.match(guidance!, /needs the Bao app open and the extension linked/);
+      assert.match(guidance!, /no Mac permission: no Accessibility, Screen Recording, or Automation grant/);
+      assert.match(guidance!, /browser=bao and browser=copy need no running Bao app/);
+      assert.doesNotMatch(guidance!, /BaoOSHelper|Accessibility access|press(es)? Allow|(This route|It) needs no running Bao app/);
     }
     const search = await legacy.tool("search_workflows", { query: "missing" });
     assert.equal(search.isError, false);

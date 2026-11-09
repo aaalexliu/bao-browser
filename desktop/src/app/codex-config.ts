@@ -7,9 +7,8 @@
 // A bao entry in any other TOML form is refused, not rewritten.
 
 /**
- * Codex gives up on a tool call after 60 s unless tool_timeout_sec says otherwise. A live call
- * on the daily Chrome waits for the Allow press, 8 to 50 s (docs/permissions.md), and a live
- * replay presses Allow on its own connection before its steps run.
+ * Codex gives up on a tool call after 60 s unless tool_timeout_sec says otherwise. A profile copy
+ * and Chrome startup can take longer, and wait_for_owner can wait up to 120 s.
  */
 export const CODEX_TOOL_TIMEOUT_SEC = 180;
 
