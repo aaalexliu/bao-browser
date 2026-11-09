@@ -16,7 +16,7 @@ launches.pinTestBrowser();
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 
-test("a copy that restores many tabs opens a timer-heavy page in a new tab in front of them", { skip: !binary, timeout: 90_000 }, async () => {
+test("a copy that restores 20 tabs opens a timer-heavy page in a new tab in front of them and saves the task as a workflow", { skip: !binary, timeout: 120_000 }, async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-restored-start-"));
   const sourceRoot = path.join(root, "source");
   const loads: string[] = [];
@@ -39,20 +39,25 @@ test("a copy that restores many tabs opens a timer-heavy page in a new tab in fr
       let left = 40;
       const step = () => { if (--left) { setTimeout(step, 0); return; } const bundle = document.createElement('script'); bundle.src = '/bundle.js'; document.head.append(bundle); };
       setTimeout(step, 0);
-    </script><img src="/hold" alt="">` : `<!doctype html><title>Restored ${url.pathname}</title>`);
+    </script><img src="/hold" alt=""><button data-testid="go" onclick="this.textContent = 'Done'">Go</button>` : `<!doctype html><title>Restored ${url.pathname}</title>`);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const source = await launches.launchOwnedChrome({ userDataDir: sourceRoot, headless: true });
   await source.pages()[0]!.goto(`${base}/restored/0`);
-  for (let index = 1; index < 12; index++) await (await source.newPage()).goto(`${base}/restored/${index}`);
+  for (let index = 1; index < 20; index++) await (await source.newPage()).goto(`${base}/restored/${index}`);
   await source.close();
   const proxy = new AgentBrowserProxy({ sourceRoot, home: path.join(root, "home"), executable: binary });
   try {
     const result = await proxy.execute("open", [`${base}/app`], "copy");
     assert.equal(result[0]!.exitCode, 0, result[0]!.stdout + result[0]!.stderr);
     assert.deepEqual(loads, ["visible"]);
-    for (let index = 0; index < 12; index++) assert.ok(result[1]!.stdout.includes(`${base}/restored/${index}`), `restored tab ${index} stays open`);
+    for (let index = 0; index < 20; index++) assert.ok(result[1]!.stdout.includes(`${base}/restored/${index}`), `restored tab ${index} stays open`);
+    // The native daemon's start with 20 restored tabs outlasts the workflow recorder's usual 5-second tab read.
+    const clicked = await proxy.execute("click", ['[data-testid="go"]']);
+    assert.equal(clicked[0]!.exitCode, 0, clicked[0]!.stdout + clicked[0]!.stderr);
+    await proxy.finishTask({ outcome: "passed", reason: "Clicked Go." });
+    assert.match(proxy.lastWorkflowOutcome ?? "", /^Saved workflow:/);
   } finally {
     proxy.disconnect();
     await proxy.close();

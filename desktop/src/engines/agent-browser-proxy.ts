@@ -91,6 +91,7 @@ interface SessionData {
   idleTimer?: ReturnType<typeof setTimeout>;
   /** The latest native snapshot output for each args list, the baseline of a snapshot diff. */
   snapshots: Map<string, string>;
+  daemonStarted?: boolean;
 }
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
@@ -915,6 +916,9 @@ export class AgentBrowserProxy {
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number): Promise<AgentBrowserCommandResult> {
     if (this.disconnected) throw new Error("The agent disconnected.");
+    // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
+    if (!session.daemonStarted) readTimeoutMs = undefined;
+    session.daemonStarted = true;
     const execute = (command: string, args: string[], timeoutMs?: number) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
       const childSignal = timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
       execFile(session.executable, [...session.flags, command, ...args], {
