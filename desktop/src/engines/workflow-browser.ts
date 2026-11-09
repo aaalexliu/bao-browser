@@ -12,8 +12,8 @@ import type { PersonPrompts } from "../v1/browser-driver";
 import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
-import { BOUND_REASON, boundSite } from "./bound-sign-in";
+import { baoPick, boundRoute, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { BOUND_REASON } from "./bound-sign-in";
 
 interface BrowserPage {
   context: BrowserContext;
@@ -94,6 +94,8 @@ export interface WorkflowBrowserOptions {
   why?: RouteWhy;
   /** The workflow downloads or uploads a file, which Bao cannot do on running Chrome yet. */
   movesFiles?: boolean;
+  /** Opens the caller's own Bao profile, with no sign-in import, in place of running Chrome. Without it, Bao's agent profile opens. */
+  fallback?: () => Promise<WorkflowBrowser>;
 }
 
 /** The route and Chrome profile for a saved workflow run, settled before Bao opens anything. */
@@ -109,7 +111,7 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
     : { profile: await workflowProfile(root, options.profile, options.directory) };
   if (!source.profile) return fallback ? fallbackPlan(source.unread) : { route: "bao", why, unread: source.unread };
   // A site that ties its sign-in to the owner's Chrome runs there, unless the workflow moves files.
-  if (options.browser !== "current" && !options.movesFiles && boundSite(options.site, path.join(source.profile.root, source.profile.directory))) {
+  if (boundRoute(options.browser, options.site, path.join(source.profile.root, source.profile.directory), options.movesFiles)) {
     return { route: "current", why: BOUND_REASON, profile: source.profile };
   }
   if (options.browser === "bao") return { route: "bao", why, profile: source.profile };
@@ -121,7 +123,8 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
  * profile without a sign-in import, and its pick says why.
  */
 export async function openWorkflowBrowser(options: WorkflowBrowserOptions, plan?: BrowserPlan): Promise<WorkflowBrowser> {
-  return openOrFallBack(plan ?? await planWorkflowBrowser(options), (next) => openPlanned(options, next));
+  return openOrFallBack(plan ?? await planWorkflowBrowser(options),
+    (next) => next.why === RUNNING_CHROME_FALLBACK && options.fallback ? options.fallback() : openPlanned(options, next));
 }
 
 async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): Promise<WorkflowBrowser> {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
@@ -887,4 +887,16 @@ test("a refused DevToolsActivePort read is reported as refused, not as a closed 
     (error: Error) => error.message.startsWith(`macOS did not let Bao read Google Chrome's folder (EPERM on ${file}).`) && !/debugging port/.test(error.message));
     assert.deepEqual(f.state.helperCalls, [], "Bao does not open chrome://inspect when it cannot read the port file");
   } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("Bao starts the owner's closed Chrome in the background as a new instance, and only on his own Chrome folder", async () => {
+  const runs: { file: string; args: string[]; home?: string }[] = [];
+  const run = async (file: string, args: string[], env: NodeJS.ProcessEnv) => { runs.push({ file, args, home: env.HOME }); };
+  const owner = path.join(tmpdir(), "owner-chrome");
+  assert.equal(await currentChrome.startOwnerChrome(owner, owner, run), true);
+  // open(1): -n opens a new instance even when one runs, -g keeps it in the background, -b names the app by bundle id.
+  assert.deepEqual(runs, [{ file: "/usr/bin/open", args: ["-n", "-g", "-b", "com.google.Chrome"], home: userInfo().homedir }]);
+  assert.equal(await currentChrome.startOwnerChrome(path.join(tmpdir(), "bao-profile"), owner, run), false, "a Bao-owned folder never starts Chrome");
+  assert.equal(runs.length, 1);
+  await assert.rejects(currentChrome.startOwnerChrome(owner, owner, async () => { throw new Error("exit 1"); }), { message: "Bao could not start Google Chrome: exit 1" });
 });

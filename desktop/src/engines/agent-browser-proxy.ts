@@ -16,7 +16,7 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { baoPick, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
@@ -494,7 +494,7 @@ export class AgentBrowserProxy {
     const root = this.options.sourceRoot ?? chromeProfilesRoot();
     try {
       const profile = await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.());
-      if (route !== "current" && site && boundSite(site, path.join(profile.root, profile.directory))) return { route: "current", why: BOUND_REASON, profile };
+      if (boundRoute(route, site, path.join(profile.root, profile.directory))) return { route: "current", why: BOUND_REASON, profile };
       return { route, why, profile };
     } catch (error) {
       // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.

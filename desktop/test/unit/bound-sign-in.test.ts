@@ -10,6 +10,8 @@ import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao
 import { BOUND_REASON, boundSessionSites, boundSite, deleteCookieRows, googleSignInCookie } from "../../src/engines/bound-sign-in";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
+import { testWorkflow } from "../support/workflow";
 import { setCookiesOneAtATime } from "../../src/login-import/set-cookies";
 import { planWorkflowBrowser } from "../../src/engines/workflow-browser";
 import * as launches from "../../src/launch";
@@ -209,4 +211,53 @@ test("a Chrome copy is not signed in to Chrome: no Google refresh token and no s
       assert.deepEqual(read(path.join(source, "Web Data"), "SELECT service FROM token_service"), ["AccountId-1234"], "the source profile is unchanged");
     } finally { await copy.close(); }
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the app's own Bao profile also drops the Google sign-in and Times cookies it holds before its Chrome starts", { timeout: 60_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-app-purge-"));
+  const offline = ["--host-resolver-rules=MAP * ~NOTFOUND"];
+  const userDataDir = path.join(root, "home", "chrome-profile");
+  try {
+    const previous = await launches.launchOwnedChrome({ userDataDir, headless: true, appendArgs: offline });
+    try {
+      await previous.addCookies([
+        { name: "SID", value: "copied", url: "https://www.google.com" },
+        { name: "__Secure-1PSIDTS", value: "copied", url: "https://www.google.com" },
+        { name: "NID", value: "visitor", url: "https://www.google.com" },
+        { name: "NYT-S", value: "copied", url: "https://www.nytimes.com" },
+        { name: "session", value: "keep", url: "https://news.example" },
+      ]);
+    } finally { await previous.close(); }
+    const next = await launches.launchOwnedChrome({ userDataDir, headless: true, appendArgs: offline });
+    try {
+      assert.deepEqual((await next.cookies()).map((cookie) => `${cookie.domain} ${cookie.name}`).sort(), ["news.example session", "www.google.com NID"]);
+    } finally { await next.close(); }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("an app run of a Times page on the Bao profile tries running Chrome, then falls back to the app's own profile", { timeout: 90_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-app-bound-"));
+  const home = path.join(root, "home");
+  const baoProfile = path.join(home, "chrome-profile");
+  const sourceRoot = await chromeProfiles(path.join(root, "source"));
+  const tried: string[] = [];
+  t.mock.method(currentChrome, "openCurrentChrome", async (options: { root: string }) => { tried.push(options.root); throw new Error("no running Chrome in tests"); });
+  const launch = launches.launchOwnedChrome;
+  const launched: string[] = [];
+  // No test browser reaches the Times.
+  t.mock.method(launches, "launchOwnedChrome", (options: Parameters<typeof launch>[0]) => {
+    launched.push(options.userDataDir);
+    return launch({ ...options, headless: true, appendArgs: [...options.appendArgs ?? [], "--host-resolver-rules=MAP * ~NOTFOUND"] });
+  });
+  const app = await startApp({ home, baoProfile, chromeProfilesRoot: sourceRoot });
+  try {
+    app.library.save(testWorkflow({ id: "pizza", startUrl: "https://www.nytimes.com/2026/11/09/dining/best-pizza.html", steps: [] }));
+    await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "pizza", browser: "bao", args: {} }) });
+    assert.deepEqual(tried, [sourceRoot], "the Times page goes to running Chrome even with the Bao profile picked");
+    assert.deepEqual(launched, [baoProfile], "the fallback opens the app's own Bao profile, not the agent profile");
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -35,7 +35,8 @@ import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
-import { defaultRoute, type RouteWhy } from "../engines/browser-pick";
+import { boundRoute, defaultRoute, type RouteWhy } from "../engines/browser-pick";
+import { BOUND_REASON, boundSessionSites } from "../engines/bound-sign-in";
 import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
@@ -91,8 +92,11 @@ import { savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 
-/** The app picker's route. `why` is "the default" when the run kept the picker's default. */
-type RunBrowser = { choice: BrowserChoice; why: RouteWhy; sourceRoot?: string };
+/**
+ * The app picker's route. `why` is "the default" when the run kept the picker's default. `appProfile` is the app's own Bao profile,
+ * which opens with no sign-in import when running Chrome cannot be used.
+ */
+type RunBrowser = { choice: BrowserChoice; why: RouteWhy; sourceRoot?: string; appProfile: string };
 
 export interface Notice extends HealNotice {
   id: string;
@@ -571,6 +575,8 @@ export async function startApp(opts: {
         let domain = "";
         try { domain = assertDomain(body.domain || ""); }
         catch (err) { return json(res, { error: safeImportError(err) }, 400); }
+        const bound = boundLoginSite(`https://${domain}/`);
+        if (bound) return json(res, { error: bound }, 400);
         if (pending && (pending.phase === "confirm" || pending.phase === "pick" || pending.phase === "running")) {
           return json(res, publicPending(pending));
         }
@@ -1178,8 +1184,13 @@ export async function startApp(opts: {
         const saved = library.read(body.id);
         const given = body.args || {};
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
-        const route = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : "named by the agent", workflowMovesFiles(workflow));
-        const browser: RunBrowser | undefined = route && { choice: route.browser, why: route.why, sourceRoot: profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT };
+        const movesFiles = workflowMovesFiles(workflow);
+        const sourceRoot = profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+        const settingsProfile = library.settings().chromeProfile;
+        const chosen = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : "named by the agent", movesFiles);
+        const route: { browser: BrowserChoice; why: RouteWhy } | undefined = chosen && boundRoute(chosen.browser, workflow.startUrl, sourceRoot && settingsProfile ? path.join(sourceRoot, settingsProfile) : undefined, movesFiles)
+          ? { browser: "current", why: BOUND_REASON } : chosen;
+        const browser: RunBrowser | undefined = route && { choice: route.browser, why: route.why, sourceRoot, appProfile: baoProfile };
         if (refusesOwnedBrowser(workflow.driver)) {
           return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
@@ -2416,7 +2427,7 @@ export async function startApp(opts: {
       let count = loaded.cookies.length;
       const page = await sitePage();
       try {
-        count = await injectCookies(page, loaded.cookies);
+        count = await injectCookies(page, loaded.cookies, boundSessionSites(path.join(userData, choice.profile.directory)));
       } finally {
         for (const cookie of loaded.cookies) cookie.value = "";
       }
@@ -3006,7 +3017,8 @@ async function openReplay(
   }
   if (browser) {
     const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
-      why: browser.why, movesFiles, extensionRoute: library.settings().runningChromeExtension === true }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
+      why: browser.why, movesFiles, extensionRoute: library.settings().runningChromeExtension === true,
+      fallback: () => openReplay(library, id, replays, browser.appProfile, undefined, site) }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
     replays.set(id, session);
     return session;
   }

@@ -106,6 +106,21 @@ async function closeOpenedInspect(helper: CurrentChromeDeps["helper"], pid: numb
   }
 }
 
+type RunFile = (file: string, args: string[], env: NodeJS.ProcessEnv) => Promise<void>;
+
+const runFile: RunFile = (file, args, env) => new Promise((resolve, reject) => execFile(file, args, { env }, (error) => error ? reject(error) : resolve()));
+
+/**
+ * Starts the owner's Chrome app as he would, in the background, when `root` is his own Chrome user data; false otherwise. `-n`
+ * starts his Chrome even while a Bao-owned Chrome of the same app runs, so LaunchServices never brings that window up instead.
+ */
+export async function startOwnerChrome(root: string, ownerRoot = chromeProfilesRoot(), run: RunFile = runFile): Promise<boolean> {
+  if (path.resolve(root) !== path.resolve(ownerRoot)) return false;
+  try { await run("/usr/bin/open", ["-n", "-g", "-b", CHROME_BUNDLE], { ...process.env, HOME: userInfo().homedir }); }
+  catch (error) { throw new Error(`Bao could not start Google Chrome: ${error instanceof Error ? error.message : String(error)}`); }
+  return true;
+}
+
 export async function openCurrentChrome(options: {
   root: string;
   axLog: string;
@@ -116,12 +131,7 @@ export async function openCurrentChrome(options: {
   const deps: CurrentChromeDeps = {
     helper: overrides.helper ?? chromeHelper(),
     findChrome: (root) => dailyChromePids(root, chromeProfilesRoot()),
-    startChrome: async (root) => {
-      if (path.resolve(root) !== path.resolve(chromeProfilesRoot())) return false;
-      await new Promise<void>((resolve, reject) => execFile("/usr/bin/open", ["-b", CHROME_BUNDLE], { env: { ...process.env, HOME: userInfo().homedir } },
-        (error) => error ? reject(new Error(`Bao could not start Google Chrome: ${error.message}`)) : resolve()));
-      return true;
-    },
+    startChrome: (root) => startOwnerChrome(root),
     executable: (pid) => {
       const exe = processesNaming(CHROME_APP_EXE).find((row) => row.pid === pid)?.command.split(" --")[0]?.trim();
       if (!exe) throw new Error(`Bao could not read the Chrome app path of process ${pid}`);

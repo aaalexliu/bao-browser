@@ -1,7 +1,7 @@
 import { ChromeFolderDenied } from "../chrome-access";
 import { resolveNormalChrome } from "../launch";
 import type { SignInImport } from "./bao-profile";
-import { BOUND_REASON } from "./bound-sign-in";
+import { BOUND_REASON, boundSite } from "./bound-sign-in";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
 
 export type ProfileWhy = "named by the agent" | "the only profile" | "picked in Bao Settings";
@@ -44,6 +44,14 @@ export type BrowserPlan = { why: RouteWhy } & (
  */
 export function defaultRoute<B extends string>(browser: B, why: RouteWhy, movesFiles: boolean): { browser: B | "bao"; why: RouteWhy } {
   return browser === "current" && why === "the default" && movesFiles ? { browser: "bao", why: FILES_IN_BAO } : { browser, why };
+}
+
+/**
+ * A site that ties its sign-in to the owner's Chrome runs there, whatever route was named, unless the run moves files, which
+ * running Chrome cannot do yet. `profileDir` is the Chrome profile whose device-bound sessions count.
+ */
+export function boundRoute(route: string, site: string | undefined, profileDir: string | undefined, movesFiles = false): boolean {
+  return route !== "current" && !movesFiles && !!site && boundSite(site, profileDir);
 }
 
 /**

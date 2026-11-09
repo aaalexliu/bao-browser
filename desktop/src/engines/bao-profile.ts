@@ -279,14 +279,11 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
     };
     const login = options.site ? await snapshot(options.site, profile) : undefined;
     if (!ownsProfile()) throw busy();
-    // Copied Google and Times sessions sign the owner out or count as another device, so they go while Chrome is stopped.
-    try { deleteCookieRows(path.join(profile, "Default"), { sites: boundSites }); }
-    catch (error) { console.error(`Bao could not remove copied Google and Times sign-ins from its profile: ${error instanceof Error ? error.message : String(error)}`); }
     // Read saved timestamps while Chrome is stopped; observe live changes through CDP.
     const updates = cookieUpdates(path.join(profile, "Default"));
     launchAttempted = true;
     chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, keychain: "mock", headless: false,
-      loadExtensions: false, background: "window", detached: options.detached });
+      loadExtensions: false, background: "window", detached: options.detached, boundSites });
     const browser = chrome;
     const observed = new Map<string, { signature: string; updated: bigint }>();
     const liveCookies = async (initial = false) => {

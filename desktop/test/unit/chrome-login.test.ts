@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createCipheriv, createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -306,8 +306,43 @@ test("a rejected cookie does not drop the rest of the import", async () => {
     { name: "good", value: "ok", domain: "experian.com", hostOnly: true, path: "noslash", secure: true, httpOnly: true },
     { name: "bad name", value: "nope", domain: "experian.com", hostOnly: true, path: "/", secure: true, httpOnly: true },
     { name: "bad", value: "nope", domain: "experian.com", hostOnly: true, path: "/", secure: true, httpOnly: true },
-  ]);
+  ], []);
   assert.equal(count, 1);
   assert.deepEqual(sent, ["good:/"]);
   assert.equal(sent.join(" ").includes("nope"), false);
+});
+
+test("bao import-login never writes a Google sign-in, a Times cookie, or a device-bound site's cookie", async () => {
+  const sent: string[] = [];
+  const page = { context() { return { async newCDPSession() { return {
+    async send(_method: string, params: { cookies: { name: string; url: string; domain?: string }[] }) {
+      const cookie = params.cookies[0]!;
+      sent.push(`${cookie.domain ?? new URL(cookie.url).hostname} ${cookie.name}`);
+    },
+    async detach() {},
+  }; } }; } };
+  const cookie = (domain: string, name: string) => ({ name, value: "fixture", domain, hostOnly: false, path: "/", secure: true, httpOnly: true });
+  const count = await injectCookies(page, [cookie("google.com", "SID"), cookie("google.com", "__Secure-1PSIDTS"), cookie("google.com", "NID"),
+    cookie("nytimes.com", "NYT-S"), cookie("app.bound.example", "session"), cookie("news.example", "session")], ["bound.example"]);
+  assert.deepEqual(sent, ["google.com NID", "news.example session"]);
+  assert.equal(count, 2);
+});
+
+test("bao import-login refuses Google, YouTube, and the Times before it asks to import", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-import-bound-"));
+  const app = await startApp({ home });
+  try {
+    for (const domain of ["google.com", "mail.google.com", "youtube.com", "nytimes.com"]) {
+      const res = await fetch(`http://127.0.0.1:${app.port}/api/import-login`, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ from: "chrome", domain }) });
+      assert.equal(res.status, 400, domain);
+      assert.deepEqual(await res.json(), { error: `The site ${domain} ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.` });
+    }
+    const asked = await fetch(`http://127.0.0.1:${app.port}/api/import-login`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from: "chrome", domain: "experian.com" }) });
+    assert.equal((await asked.json() as { phase: string }).phase, "confirm", "other sites still ask first");
+  } finally {
+    await app.close();
+    rmSync(home, { recursive: true, force: true });
+  }
 });

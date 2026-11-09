@@ -11,6 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { ChromeFolderDenied } from "../chrome-access";
+import { boundCookie } from "../engines/bound-sign-in";
 
 export interface ChromeProfile {
   directory: string;
@@ -378,11 +379,17 @@ export interface CdpSession {
   detach(): Promise<void>;
 }
 
+/**
+ * Writes the cookies one at a time. A Google sign-in, a Times cookie, or a cookie of a site in `boundSites`, the source profile's
+ * device-bound sessions, is never written: those sign-ins stay in the owner's Chrome.
+ */
 export async function injectCookies(
   page: { context(): { newCDPSession(page: unknown): Promise<CdpSession> } },
   cookies: readonly SiteCookie[],
+  boundSites: readonly string[],
 ): Promise<number> {
-  const batch = toCdpCookies(cookies).filter((cookie) => cookie.name && cookie.value && !/[\s;]/.test(cookie.name));
+  const kept = cookies.filter((cookie) => !boundCookie(cookie.domain, cookie.name, boundSites));
+  const batch = toCdpCookies(kept).filter((cookie) => cookie.name && cookie.value && !/[\s;]/.test(cookie.name));
   if (batch.length === 0) return 0;
   const client = await page.context().newCDPSession(page);
   let injected = 0;
