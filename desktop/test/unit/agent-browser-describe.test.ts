@@ -165,15 +165,15 @@ test("an owner wait names what the page asks and reads its time in words", () =>
   const wait = (url: string, title: string, ms = 0) =>
     describeStep({ command: "wait_for_owner", args: ["60000"], results: reply("waiting"), owner: { url, title, since }, at: since + ms });
   const confirm = wait("https://myaccount.nytimes.com/auth/login", "Confirm your account", (9 * 60 + 53) * 60_000 + 1000);
-  assert.equal(confirm.text, 'Your turn: confirm the account on myaccount.nytimes.com in Bao\'s Chrome window. The page is "Confirm your account" (https://myaccount.nytimes.com/auth/login), waiting 9 h 53 min. Bao reads only the title and address until the page changes.');
-  assert.equal(confirm.owner?.kind, "confirm", "the title wins over a sign-in address");
-  assert.match(wait("https://shop.example/account", "Enter the code we sent you").text, /^Your turn: enter the code shop\.example sent in /);
-  assert.match(wait("https://shop.example/mfa", "Shop").text, /^Your turn: enter the code shop\.example sent in /);
+  assert.equal(confirm.text, 'Your turn: finish the check on myaccount.nytimes.com in Bao\'s Chrome window. The page is "Confirm your account" (https://myaccount.nytimes.com/auth/login), waiting 9 h 53 min. Bao reads only the title and address until the page changes.');
+  assert.equal(confirm.owner?.kind, "other", "a device check on a sign-in address is never called a sign-in");
+  assert.match(wait("https://github.com/sessions/two-factor", "Two-factor authentication").text, /^Your turn: finish the check on github\.com in /);
+  assert.match(wait("https://shop.example/mfa", "Shop").text, /^Your turn: finish the check on shop\.example in /);
   assert.match(wait("https://www.nytimes.com/article/pizza.html", "The New York Times", 45_000).text,
     /^Your turn: finish the check on nytimes\.com in Bao's Chrome window\. .*, waiting 45 s\. /, "an unrecognized page is never called a sign-in");
   assert.match(wait("https://shop.example/login", "Shop", 2 * 3600_000).text, /^Your turn: sign in to shop\.example in .*, waiting 2 h\. /);
   assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("ready"), page, owner: { url: "https://shop.example/a", title: "Verify your identity" } }).text,
-    'Back from the account check: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
+    'Back from the check: now on "Manage Your Deliveries" (https://shop.example/subscriptions).');
 });
 
 test("a closed session names the browser that ended", () => {

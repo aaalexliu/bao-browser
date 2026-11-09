@@ -175,7 +175,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
     assert.equal(step.afterShot, undefined);
     assert.deepEqual(step.native.screenshots, []);
     const calls = await f.calls();
-    for (const command of ["snapshot", "screenshot", "fill", "click", "tab", "open"]) {
+    for (const command of ["snapshot", "screenshot", "fill", "click", "tab"]) {
       const blocked = await f.proxy.execute(command);
       assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
     }

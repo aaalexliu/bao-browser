@@ -240,8 +240,7 @@ export function describeStep(facts: StepFacts): StepSummary {
     return { parts: [ask], text: `${ask}.${where} Bao reads only the title and address until the page changes.`, owner };
   }
   if (outcome === "ready") {
-    const kind = ownerHandoff(facts.owner)?.kind;
-    const back = kind === "sign-in" ? "Back from sign-in" : kind === "code" ? "Back from the code check" : kind === "confirm" ? "Back from the account check" : "Back from the check";
+    const back = ownerHandoff(facts.owner)?.kind === "sign-in" ? "Back from sign-in" : "Back from the check";
     return page?.title ? done([`${back}: now on `, { cite: page.title }], page.url ? ` (${page.url}).` : ".")
       : done([back]);
   }

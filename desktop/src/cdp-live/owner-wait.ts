@@ -19,17 +19,15 @@ export function ownerWall(page: OwnerPage): OwnerWall | null {
 }
 
 /** What the page asks the owner to do, read from its title first, then its address. */
-export type OwnerAsk = "sign-in" | "code" | "confirm" | "check" | "other";
+export type OwnerAsk = "sign-in" | "check" | "other";
 
 export function ownerAsk(page: OwnerPage): OwnerAsk {
   if (ownerWall(page) === "bot_wall") return "check";
   const { title } = page;
-  if (/\b(?:verification code|security code|one.time (?:code|pass(?:code|word))|enter (?:the|your) code|two.factor|two.step|2.step)\b/i.test(title)) return "code";
-  if (/\b(?:confirm|verify) (?:your|this) (?:account|identity|device|email)\b|\bconfirm it'?s you\b/i.test(title)) return "confirm";
+  if (/\b(?:confirm|verify|verification|code|two.factor|two.step|2.step)\b/i.test(title)) return "other";
   if (/\b(?:sign[ -]?in|log[ -]?in)\b/i.test(title)) return "sign-in";
   let path = "";
   try { path = new URL(page.url).pathname; } catch {}
-  if (/(?:^|\/)(?:2fa|mfa|otp)(?:\/|$)/i.test(path)) return "code";
   if (/(?:^|\/)(?:login|signin|sign-in|log-in)(?:\/|$)/i.test(path)) return "sign-in";
   return "other";
 }
@@ -44,14 +42,12 @@ export function ownerTask(page: OwnerPage | undefined): string {
   const site = ownerSite(page.url);
   switch (ownerAsk(page)) {
     case "sign-in": return `sign in to ${site}`;
-    case "code": return `enter the code ${site} sent`;
-    case "confirm": return `confirm the account on ${site}`;
     case "check": return `clear the check on ${site}`;
     case "other": return `finish the check on ${site}`;
   }
 }
 
-/** An owner wait ends by itself this long after it started, so a later request never inherits it. */
+/** An owner wait nobody continues ends by itself this long after it started. */
 export const OWNER_WAIT_LIMIT_MS = 30 * 60 * 1000;
 
 export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {

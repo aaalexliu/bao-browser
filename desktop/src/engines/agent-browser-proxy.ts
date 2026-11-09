@@ -147,10 +147,10 @@ export class AgentBrowserProxy {
   private imports: SignInImport[] = [];
   /** The last session ended while a Bao profile or copy waited for the owner, so a Running Chrome open is its fallback. */
   private afterWall = false;
-  /** The owner wait Bao ended at its limit, until a result says so. */
+  /** The owner wait Bao ended, until a result says so. */
   private staleWait: string | undefined;
   private endedLine: string | undefined;
-  /** The latest result's line about an owner wait Bao ended at its limit. */
+  /** The latest result's line about an owner wait Bao ended. */
   get endedWait(): string | undefined { return this.endedLine; }
 
   constructor(private readonly options: {
@@ -174,6 +174,7 @@ export class AgentBrowserProxy {
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
     snapshot: { find?: unknown; diff?: unknown } = {}): Promise<AgentBrowserCommandResult[]> {
     if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
+    else if (command === "open" && this.session?.ownerWait && !this.session.removing) await this.endOwnerWait(this.session, "a new open starts a new task");
     this.endedLine = this.staleWait;
     this.staleWait = undefined;
     this.latest = undefined;
@@ -771,12 +772,12 @@ export class AgentBrowserProxy {
     });
   }
 
-  /** Ends a session whose owner wait reached its limit, so no later request inherits it. */
-  private async endOwnerWait(session: Session): Promise<void> {
+  /** Ends a session's owner wait and the session, so no later request inherits it. */
+  private async endOwnerWait(session: Session, why = `owner waits end after ${OWNER_WAIT_LIMIT_MS / 60_000} minutes`): Promise<void> {
     const since = session.ownerSince ?? Date.now();
     const time = new Intl.DateTimeFormat("en-US", { ...new Date(since).toDateString() === new Date().toDateString() ? {} : { month: "short", day: "numeric" },
       hour: "numeric", minute: "2-digit" }).format(since);
-    this.staleWait = `Bao ended an earlier owner wait from ${time} (run ${session.recording.id}); owner waits end after ${OWNER_WAIT_LIMIT_MS / 60_000} minutes.`;
+    this.staleWait = `Bao ended an earlier owner wait from ${time} (run ${session.recording.id}); ${why}.`;
     session.closing = true;
     await this.remove(session);
     if (this.session === session) this.session = undefined;

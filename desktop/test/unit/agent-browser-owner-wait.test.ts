@@ -158,7 +158,7 @@ for (const { browser, check, bare } of [
     assert.equal(importCalls.length, browser === "bao" && check === "signin" ? 1 : 0, "only an explicit open's login wall can apply its source snapshot");
     const importsBefore = importCalls.length;
     const before = await readFile(log, "utf8");
-    for (const command of ["snapshot", "screenshot", "fill", "press", "tab", "open"]) {
+    for (const command of ["snapshot", "screenshot", "fill", "press", "tab"]) {
       assert.equal(outcome(await proxy.execute(command, ["fixture-private-credential"])), "halted");
     }
     assert.equal(await readFile(log, "utf8"), before, "no native commands while the owner types");
@@ -215,18 +215,18 @@ test("an owner wait ends by itself at its limit, and a later open starts a new t
   const h = await ownerProxy(t);
   const { fixture, home, proxy } = h;
   const library = new Library(home);
-  const ended = (runId: string) => new RegExp(`^Bao ended an earlier owner wait from (?:[A-Z][a-z]{2} \\d+, )?\\d{1,2}:\\d\\d [AP]M \\(run ${runId}\\); owner waits end after 30 minutes\\.$`);
+  const ended = (runId: string, why = "owner waits end after 30 minutes") => new RegExp(`^Bao ended an earlier owner wait from (?:[A-Z][a-z]{2} \\d+, )?\\d{1,2}:\\d\\d [AP]M \\(run ${runId}\\); ${why}\\.$`);
   let offset = 0;
   const now = Date.now;
   t.mock.method(Date, "now", () => now() + offset);
   try {
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
     const first = proxy.activeRunId!;
-    // One second before the limit, a wait call re-arms the session's timer, which then ends the wait with no further call.
-    offset = OWNER_WAIT_LIMIT_MS - 1000;
+    // Shortly before the limit, a wait call re-arms the session's timer, which then ends the wait with no further call.
+    offset = proxy.ownerPage!.since! + OWNER_WAIT_LIMIT_MS - 5000 - now();
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"])), "waiting");
     assert.equal(proxy.activeRunId, first);
-    const deadline = now() + 20_000;
+    const deadline = now() + 30_000;
     while (proxy.hasSession() && now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(proxy.hasSession(), false, "the timer ended the wait and closed its window");
     assert.equal(library.readRun(first).status, "failed");
@@ -239,14 +239,21 @@ test("an owner wait ends by itself at its limit, and a later open starts a new t
     await proxy.execute("snapshot");
     assert.equal(proxy.endedWait, undefined, "only the next result names the ended wait");
 
+    // A new chat's open during a fresh wait ends that wait and opens fresh; only wait_for_owner continues a wait.
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
+    assert.match(proxy.endedWait ?? "", ended(second, "a new open starts a new task"));
+    assert.equal(library.readRun(second).envelope?.reason, "session_closed");
+    const third = proxy.activeRunId!;
+    assert.notEqual(third, second);
+
     // A Mac that slept past the limit never ran the timer. The next open checks the limit itself.
     offset += OWNER_WAIT_LIMIT_MS;
     const opened = await proxy.execute("open", [fixture.url("/")], "copy");
     assert.equal(opened[0]!.stdout, "Opened\n", "the open ran natively instead of returning the old wait");
-    assert.match(proxy.endedWait ?? "", ended(second));
-    assert.notEqual(proxy.activeRunId, second);
-    assert.equal(library.readRun(second).status, "failed");
-    assert.equal(library.listRuns().length, 3);
+    assert.match(proxy.endedWait ?? "", ended(third));
+    assert.notEqual(proxy.activeRunId, third);
+    assert.equal(library.readRun(third).status, "failed");
+    assert.equal(library.listRuns().length, 4);
   } finally { await h.cleanup("copy"); }
 });
 
@@ -257,7 +264,7 @@ test("the owner-wait instruction names the page's ask and sends the owner to the
   assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
   assert.doesNotMatch(current, /Bao window/);
   const bao = ownerWaitInstruction(false, { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });
-  assert.match(bao, /Ask the owner to confirm the account on myaccount\.nytimes\.com in this Bao window,/);
+  assert.match(bao, /Ask the owner to finish the check on myaccount\.nytimes\.com in this Bao window,/);
   assert.doesNotMatch(bao, /sign in/);
   assert.match(bao, /On closed, report that the owner closed the window\.$/);
   assert.match(ownerWaitInstruction(false), /Ask the owner to finish the check on the page in this Bao window,/);
