@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Write the root package.json version into an app's Info.plist as CFBundleShortVersionString and CFBundleVersion.
-# package.json is Bao's only version source; mac-release.yml refuses a tag that differs from it.
+# package.json is Bao's only version source; mac-release.yml sets it to the release tag's version when they differ.
 set -euo pipefail
 PLIST="${1:?usage: stamp-version.sh Info.plist}"
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
