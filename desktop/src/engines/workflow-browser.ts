@@ -6,6 +6,7 @@ import { ownerWall } from "../cdp-live/owner-wait";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { openRunningChrome } from "../extension/running-chrome";
 import type { PersonPrompts } from "../v1/browser-driver";
+import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "./bao-profile";
 
@@ -23,6 +24,17 @@ export type WorkflowBrowser = BrowserPage & (
    */
   | { kind: "current"; choice: "current"; show(): Promise<void>; settle(): Promise<void>; bringToFront(): Promise<void> }
 );
+
+export const RUNNING_CHROME_FILE_REFUSAL = "This workflow downloads or uploads a file, which Bao cannot do on your running Chrome yet. Run it on the Bao profile instead.";
+
+const movesFile = (step: WorkflowStep): boolean =>
+  step.action === "download" || step.action === "upload" || step.action === "drop"
+  || (step.action === "for_each" && step.forEach.steps.some(movesFile));
+
+/** Running Chrome cannot download or upload files yet, so a workflow that does either is refused before it opens a tab. */
+export function runningChromeRefusal(browser: BrowserChoice | undefined, workflow: { steps: WorkflowStep[] }): string | undefined {
+  return browser === "current" && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
+}
 
 export async function openWorkflowBrowser(options: {
   browser: BrowserChoice;

@@ -263,8 +263,8 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener(({ sourceTabId, tabId
   void (async () => {
     // A page in a Bao tab opened this one. It joins the group, and the owner keeps the tab he was on.
     const tab = await chrome.tabs.get(tabId);
-    const back = (activated.get(tab.windowId) ?? []).filter((id) => !baoTabs.has(id)).at(-1);
-    if (tab.active && back !== undefined) await chrome.tabs.update(back, { active: true }).catch(() => undefined);
+    const back = (activated.get(tab.windowId) ?? []).filter((id) => id !== tabId).at(-1);
+    if (tab.active && back !== undefined && !baoTabs.has(back)) await chrome.tabs.update(back, { active: true }).catch(() => undefined);
     await adopt(tab);
     emit({ kind: "opened", tabId, openerTabId: sourceTabId, targetId: await targetIdOf(tabId), url: tab.url || tab.pendingUrl || "", title: tab.title || "" });
   })().catch(() => {

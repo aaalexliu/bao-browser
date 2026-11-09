@@ -11,7 +11,10 @@ import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts } from "../.
 import { EXTENSION_NOT_LINKED } from "../../src/extension/cdp-relay";
 import { openRunningChrome, RUNNING_CHROME_NEEDS_APP } from "../../src/extension/running-chrome";
 import { pinTestBrowser } from "../../src/launch";
+import { runWorkflow } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
+import type { WorkflowStep } from "../../src/v1/schema";
+import { targetFor, testWorkflow } from "../support/workflow";
 import { ownerChrome, stripWhen, type Strip } from "../support/owner-chrome";
 
 pinTestBrowser();
@@ -127,6 +130,33 @@ test("Running Chrome explains a missing app or extension", { timeout: 30_000 }, 
   const app = await startApp({ home: root, extensionHost: true, extensionConfigHome: path.join(root, "native-host") });
   t.after(() => app.close());
   await assert.rejects(openRunningChrome({ home: root }), { message: EXTENSION_NOT_LINKED });
+});
+
+test("Running Chrome refuses a workflow that downloads or uploads a file before it opens a tab", { timeout: 30_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-running-files-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const app = await startApp({ home: root, port: 0, extensionHost: true, extensionConfigHome: path.join(root, "native-host") });
+  t.after(() => app.close());
+  const refusal = "This workflow downloads or uploads a file, which Bao cannot do on your running Chrome yet. Run it on the Bao profile instead.";
+  const upload: WorkflowStep = { id: "up", index: 0, action: "upload", caption: { text: "Upload" }, timeoutMs: 1000, file: { input: "statement" },
+    target: targetFor({ surface: "dom", role: "textbox", tag: "input", id: "file", path: [] }) };
+  const statement = { name: "statement", type: "file", label: "statement", supply: "must" } as const;
+  const docs = {
+    download: testWorkflow({ id: "download", steps: [{ id: "dl", index: 0, action: "download", caption: { text: "Download" }, timeoutMs: 1000, download: { output: "statement", name: "statement.pdf", url: "https://example.test/statement.pdf" } }] }),
+    upload: testWorkflow({ id: "upload", inputs: [statement], steps: [upload] }),
+    drop: testWorkflow({ id: "drop", inputs: [statement, { name: "rows", type: "text", label: "rows", supply: "must" }],
+      steps: [{ id: "each", index: 0, action: "for_each", caption: { text: "Each row" }, timeoutMs: 1000, forEach: { over: { kind: "input", name: "rows" }, steps: [{ ...upload, id: "dropped", action: "drop" }] } }] }),
+    plain: testWorkflow({ id: "plain", steps: [{ id: "read", index: 0, action: "verify", caption: { text: "Read" }, timeoutMs: 1000, check: { kind: "text", match: "x", timeoutMs: 1000 } }] }),
+  };
+  for (const doc of Object.values(docs)) app.library.save(doc);
+  for (const id of ["download", "upload", "drop"]) {
+    const outcome = await runWorkflow(app.library, { id, browser: "current" });
+    assert.deepEqual([outcome.outcome, outcome.reason], ["failed", refusal], `run_workflow ${id}`);
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(10_000) });
+    assert.deepEqual([response.status, await response.json()], [409, { error: refusal }], `app Replay ${id}`);
+  }
+  assert.equal((await runWorkflow(app.library, { id: "plain", browser: "current" })).reason, EXTENSION_NOT_LINKED);
 });
 
 for (const ending of ["close", "finish", "disconnect"] as const) test(`the agent route drives a grouped background task tab and closes only Bao's tabs on ${ending}`, { timeout: 60_000 }, async (t) => {

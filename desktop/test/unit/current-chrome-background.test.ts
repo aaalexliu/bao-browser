@@ -101,6 +101,8 @@ test("app Replay on the owner's Chrome works in a folded Bao tab, opens the grou
     const state = await fetch(url("/api/state")).then((response) => response.json() as Promise<{ activeRun?: { id: string } }>);
     if (state.activeRun) await fetch(url("/api/replay/cancel"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId: state.activeRun.id }) });
     await held.catch(() => undefined);
+  }
+});
 
 test("replay on the owner's Chrome starts and finishes while another owner tab never answers, and reaches none of the owner's tabs", { skip: replaySkip, timeout: 60_000 }, async (t) => {
   let blocked!: () => void;
@@ -133,6 +135,4 @@ test("replay on the owner's Chrome starts and finishes while another owner tab n
   assert.deepEqual(attached, [], "replay never attached the owner's tabs");
   assert.ok((await chrome.strip()).tabs.some((tab) => tab.url === stuckUrl), "the stuck tab stays open where it was");
   assert.deepEqual(await chrome.ownerEvents(), [], "the owner's tab never left the front");
-});
-  }
 });

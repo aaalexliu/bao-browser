@@ -119,6 +119,8 @@ Chrome shows '"Bao" started debugging this browser' on every tab while the exten
 
 A page a Bao tab opens in front shows for a moment before the extension gives the owner his tab back. A popup window a Bao page opens joins the lease but not the group, because Chrome groups only tabs in normal windows, and it can take focus.
 
+File steps (downloads, uploads, drops) do not run on Running Chrome yet. App Replay and `run_workflow` refuse such a workflow with `browser: "current"` before it starts, and name the Bao profile as the place to run it.
+
 Pinned agent-browser 0.41.0 sends daemon stdout to null and drops its startup stderr pipe on readiness. Firstmate 017 accepted complete CLI stdout/stderr and exposed startup errors, timings, runner events, and PID/config/version sidecars as the available evidence, not full daemon streams. No product or Rust instrumentation was added. Evidence is under `/Users/alexliu/dev/firstmate/data/bao-current-chrome-attach/`: `route-016/result-review.md`, `route-016/capture-summary.json`, `route-016/proof/receipt.json`, and the original `guarded-six/proof-route/events.jsonl`. See the [pinned CLI connection code](https://raw.githubusercontent.com/vercel-labs/agent-browser/v0.41.0/cli/src/connection.rs).
 
 ## Evidence

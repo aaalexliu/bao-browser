@@ -8,7 +8,7 @@ import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -269,6 +269,8 @@ export async function runWorkflow(
   const savedCopy = placed && !placed.local ? materializeWorkflow(library, placed) : undefined;
   const loaded = request.document ? parseWorkflow(request.document) : (savedCopy ?? placed!.document);
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
+  const fileRefusal = runningChromeRefusal(browser, workflow);
+  if (fileRefusal) return emptyOutcome(id, "failed", fileRefusal);
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
     const source = placed ? originLabel(placed) : "";
@@ -603,6 +605,7 @@ async function continueLive(library: Library, live: LiveRun, extra: ReplayArgs, 
   const browser = live.browser.choice === "owned" ? undefined : live.browser.choice;
   live.inputs = { ...live.inputs, ...extra };
   live.prompts = control?.prompts ?? live.prompts;
+  if (live.browser.kind === "current") await live.browser.settle().catch(() => undefined);
   const run = await replay(live.workflow, live.inputs, new BrowserDriver(live.page, undefined, ownerPrompts(live.browser, live.prompts)), {
     runId: live.runId,
     shotDir: live.shotDir,
