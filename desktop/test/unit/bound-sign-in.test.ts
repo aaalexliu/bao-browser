@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,11 +9,13 @@ import { connectCdp } from "../../src/cdp-live/socket";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao-profile";
 import { BOUND_REASON, boundSessionSites, boundSite, deleteCookieRows, googleSignInCookie } from "../../src/engines/bound-sign-in";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
+import { startApp } from "../../src/app/server";
+import { setCookiesOneAtATime } from "../../src/login-import/set-cookies";
 import { planWorkflowBrowser } from "../../src/engines/workflow-browser";
 import * as launches from "../../src/launch";
 import { withCookieDb } from "../../src/login-import/read";
 import { boundSessions, chromeProfiles } from "../support/chrome-profiles";
-import { chromeExpiry, writeCookieDb } from "./login-import-fixture";
+import { chromeExpiry, writeCookieDb, writeLocalState } from "./login-import-fixture";
 
 launches.pinTestBrowser();
 
@@ -129,5 +131,82 @@ test("a workflow run on a site that ties its sign-in to Chrome plans running Chr
     assert.equal(fallback.route, "bao");
     assert.equal(fallback.why, "fallback when running Chrome could not be used");
     await assert.rejects(planWorkflowBrowser({ ...options, sourceRoot: path.join(root, "no-chrome"), browser: "current" }), /could not read Chrome's profiles/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the shared cookie write never writes a Google sign-in, a Times cookie, or a device-bound site's cookie", async () => {
+  const written: string[] = [];
+  const cookies = JAR.map((row, id) => ({ id, hostKey: row.host, name: row.name, path: "/", secure: true, httpOnly: true, sameSite: 1,
+    expired: false, botVendor: null, value: "fixture" }));
+  const outcomes = await setCookiesOneAtATime({ async setOne(cookie) { written.push(`${cookie.domain ?? new URL(cookie.url).hostname} ${cookie.name}`); return { success: true }; } },
+    cookies, ["bound.example"]);
+  assert.deepEqual(written, [".google.com NID", ".news.example session", ".news.example SID"]);
+  assert.equal(outcomes.length, 3, "a cookie Bao must not hold is skipped, not reported as written");
+});
+
+test("the app's Login sites refuse Google, YouTube, the Times, and a device-bound site before any import or probe", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-login-bound-"));
+  const userData = path.join(root, "chrome");
+  writeLocalState(userData, [{ directory: "Default", name: "Owner", email: "owner@example.test" }]);
+  writeCookieDb(path.join(userData, "Default", "Cookies"), 24, JAR);
+  boundSessions(path.join(userData, "Default"), ["https://bound.example 1"]);
+  const baoProfile = path.join(root, "home", "chrome-profile");
+  const app = await startApp({ home: path.join(root, "home"), chromeUserData: userData, baoProfile, loginPlatform: "darwin",
+    loginKeys: { platform: "darwin", secretError: "prompt-missed" } });
+  const call = async (method: string, route: string, body: Record<string, unknown>) => {
+    const res = await fetch(`http://127.0.0.1:${app.port}${route}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return { status: res.status, error: (await res.json() as { error?: string }).error };
+  };
+  try {
+    for (const site of ["https://www.google.com/maps", "https://www.youtube.com/", "https://www.nytimes.com/"]) {
+      const host = new URL(site).hostname;
+      const line = `The site ${host} ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.`;
+      assert.deepEqual(await call("POST", "/api/login-import/preview", { site, consent: true }), { status: 400, error: line }, site);
+      assert.deepEqual(await call("POST", "/api/login-import", { site, consent: true, profile: "Default" }), { status: 400, error: line }, site);
+      assert.deepEqual(await call("POST", "/api/login-import/sign-in", { site, consent: true }), { status: 400, error: line }, site);
+      assert.deepEqual(await call("PUT", "/api/login-sites", { origin: site }), { status: 400, error: line }, site);
+    }
+    assert.deepEqual(await call("POST", "/api/login-import", { site: "https://app.bound.example/", consent: true, profile: "Default" }), { status: 400,
+      error: "The site app.bound.example ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead." });
+    const listed = await (await fetch(`http://127.0.0.1:${app.port}/api/login-sites`)).json() as { sites: { origin: string }[] };
+    assert.deepEqual(listed.sites, [], "no refused site is saved as a Login site");
+    assert.equal(existsSync(baoProfile), false, "no refused site started Bao's Chrome");
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Chrome copy is not signed in to Chrome: no Google refresh token and no signed-in account, with autofill kept", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-copy-token-"));
+  try {
+    const sourceRoot = await chromeProfiles(path.join(root, "source"));
+    const source = path.join(sourceRoot, "Default");
+    const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (file: string) => { exec(sql: string): void; close(): void } };
+    const web = new DatabaseSync(path.join(source, "Web Data"));
+    web.exec("CREATE TABLE token_service (service VARCHAR PRIMARY KEY NOT NULL, encrypted_token BLOB)");
+    web.exec("INSERT INTO token_service VALUES ('AccountId-1234', x'7631300102')");
+    web.exec("CREATE TABLE autofill (name VARCHAR, value VARCHAR)");
+    web.exec("INSERT INTO autofill VALUES ('email', 'owner@example.test')");
+    web.close();
+    await writeFile(path.join(source, "Preferences"), JSON.stringify({
+      account_info: [{ account_id: "1234", email: "owner@example.test", gaia: "1234" }],
+      google: { services: { account_id: "1234", last_account_id: "1234", last_gaia_id: "1234", last_username: "owner@example.test", signin_scoped_device_id: "d", kept: 1 } },
+      signin: { allowed: true, explicit_browser_signin: true },
+      intl: { accept_languages: "en-US" },
+    }));
+    const copy = await copyChromeProfile({ sourceRoot, directory: "Default", home: path.join(root, "home") });
+    try {
+      const copied = path.join(copy.userDataDir, "Default");
+      const read = (file: string, sql: string) => withCookieDb(file, (db) => db.prepare(sql).all().map((row) => Object.values(row).join(" ")));
+      assert.deepEqual(read(path.join(copied, "Web Data"), "SELECT service FROM token_service"), []);
+      assert.deepEqual(read(path.join(copied, "Web Data"), "SELECT name, value FROM autofill"), ["email owner@example.test"]);
+      const preferences = JSON.parse(await readFile(path.join(copied, "Preferences"), "utf8")) as Record<string, unknown>;
+      assert.equal(preferences.account_info, undefined);
+      assert.deepEqual(preferences.google, { services: { kept: 1 } });
+      assert.deepEqual(preferences.signin, { allowed: true }, "the sign-in policy stays; only the account goes");
+      assert.deepEqual(preferences.intl, { accept_languages: "en-US" });
+      assert.deepEqual(read(path.join(source, "Web Data"), "SELECT service FROM token_service"), ["AccountId-1234"], "the source profile is unchanged");
+    } finally { await copy.close(); }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

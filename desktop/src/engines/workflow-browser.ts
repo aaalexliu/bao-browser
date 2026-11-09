@@ -12,7 +12,7 @@ import type { PersonPrompts } from "../v1/browser-driver";
 import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, chooseChromeProfile, ChromeProfileQuestion, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { baoPick, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
 
 interface BrowserPage {
@@ -90,7 +90,7 @@ export interface WorkflowBrowserOptions {
   profile?: string;
   /** The gate for Running Chrome through the Bao extension. Off means remote debugging. */
   extensionRoute?: boolean;
-  /** Why the run uses this route. Bao app runs leave it out; the app does not show the pick. */
+  /** Why the run uses this route: "the default" when the caller did not name it. */
   why?: RouteWhy;
   /** The workflow downloads or uploads a file, which Bao cannot do on running Chrome yet. */
   movesFiles?: boolean;
@@ -104,10 +104,10 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
   if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
   const root = sourceRoot ?? chromeProfilesRoot();
   // Bao's own profile, and a run that did not name a route, work without Chrome's profiles: Bao's profile opens with no sign-in import.
-  const fallback = options.browser === "current" && why === "the default";
+  const fallback = fallsBack(options.browser, why);
   const source = options.browser === "bao" || fallback ? await baoSource(root, options.profile, options.directory)
     : { profile: await workflowProfile(root, options.profile, options.directory) };
-  if (!source.profile) return { route: "bao", why: fallback ? "fallback when running Chrome could not be used" : why, unread: source.unread };
+  if (!source.profile) return fallback ? fallbackPlan(source.unread) : { route: "bao", why, unread: source.unread };
   // A site that ties its sign-in to the owner's Chrome runs there, unless the workflow moves files.
   if (options.browser !== "current" && !options.movesFiles && boundSite(options.site, path.join(source.profile.root, source.profile.directory))) {
     return { route: "current", why: BOUND_REASON, profile: source.profile };
@@ -121,13 +121,7 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
  * profile without a sign-in import, and its pick says why.
  */
 export async function openWorkflowBrowser(options: WorkflowBrowserOptions, plan?: BrowserPlan): Promise<WorkflowBrowser> {
-  plan ??= await planWorkflowBrowser(options);
-  if (plan.route !== "current" || plan.why !== "the default" && plan.why !== BOUND_REASON) return openPlanned(options, plan);
-  try { return await openPlanned(options, plan); }
-  catch (error) {
-    const reason = `Bao could not use your running Chrome: ${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")}.`;
-    return openPlanned(options, { route: "bao", why: "fallback when running Chrome could not be used", profile: plan.profile, unread: reason });
-  }
+  return openOrFallBack(plan ?? await planWorkflowBrowser(options), (next) => openPlanned(options, next));
 }
 
 async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): Promise<WorkflowBrowser> {

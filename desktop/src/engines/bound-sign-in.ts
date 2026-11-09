@@ -65,16 +65,10 @@ export function boundCookie(hostKey: string, name: string, sites: readonly strin
 export function deleteCookieRows(profileDir: string, drop: { keepHost: string } | { sites: readonly string[] }): number {
   const db = findCookieDb(profileDir);
   if (!db) return 0;
-  const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (file: string) => {
-    prepare(sql: string): { all(): Record<string, unknown>[]; run(...args: unknown[]): unknown };
-    exec(sql: string): void;
-    close(): void;
-  } };
-  const sqlite = new DatabaseSync(db.file);
+  const sqlite = openSqlite(db.file);
   try {
     // A file that is not a cookie database holds no cookie Chrome could load.
-    try { if (!sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cookies'").all().length) return 0; }
-    catch (error) { if ((error as { errcode?: number }).errcode === 26) return 0; throw error; }
+    if (!hasTable(sqlite, "cookies")) return 0;
     const gone = sqlite.prepare("SELECT rowid AS id, host_key, name FROM cookies").all().filter((row) => "keepHost" in drop
       ? !cookieMatchesHost(String(row.host_key), drop.keepHost)
       : boundCookie(String(row.host_key), String(row.name), drop.sites));
@@ -84,4 +78,55 @@ export function deleteCookieRows(profileDir: string, drop: { keepHost: string } 
     sqlite.exec("COMMIT");
     return gone.length;
   } finally { sqlite.close(); }
+}
+
+/**
+ * Deletes the rows of a stopped Chrome profile's token_service table in Web Data, which hold the refresh tokens of the Google
+ * account the profile is signed in to Chrome with. The rest of Web Data, such as autofill, stays. Returns how many rows it deleted.
+ */
+export function deleteChromeTokens(profileDir: string): number {
+  const file = path.join(profileDir, "Web Data");
+  if (!existsSync(file)) return 0;
+  const sqlite = openSqlite(file);
+  try {
+    if (!hasTable(sqlite, "token_service")) return 0;
+    const gone = sqlite.prepare("SELECT COUNT(*) AS count FROM token_service").all()[0]?.count;
+    sqlite.exec("DELETE FROM token_service");
+    return Number(gone ?? 0);
+  } finally { sqlite.close(); }
+}
+
+/** Chrome's own sign-in to a Google account, as a profile's Preferences records it. */
+const ACCOUNT_SERVICES = ["account_id", "last_account_id", "last_gaia_id", "last_username", "last_signed_in_username", "username", "consented_to_sync", "signin_scoped_device_id"];
+const ACCOUNT_SIGNIN = ["explicit_browser_signin", "primary_account", "last_signed_in_account_id"];
+
+/** A copy of Chrome Preferences without the Google account Chrome is signed in to, so Chrome in a copy is signed out. */
+export function signedOutPreferences(preferences: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...preferences };
+  delete rest.account_info;
+  const google = record(rest.google);
+  if (rest.google !== undefined) rest.google = { ...google, services: omit(record(google.services), ACCOUNT_SERVICES) };
+  if (rest.signin !== undefined) rest.signin = omit(record(rest.signin), ACCOUNT_SIGNIN);
+  return rest;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function omit(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+}
+
+type Sqlite = { prepare(sql: string): { all(): Record<string, unknown>[]; run(...args: unknown[]): unknown }; exec(sql: string): void; close(): void };
+
+function openSqlite(file: string): Sqlite {
+  const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (file: string) => Sqlite };
+  return new DatabaseSync(file);
+}
+
+/** False for a missing table and for a file that is not a database. */
+function hasTable(sqlite: Sqlite, name: string): boolean {
+  try { return sqlite.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '${name}'`).all().length > 0; }
+  catch (error) { if ((error as { errcode?: number }).errcode === 26) return false; throw error; }
 }

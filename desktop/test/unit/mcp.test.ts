@@ -61,6 +61,13 @@ test("run_workflow with several Chrome profiles and none named or picked lists t
     assert.equal(asked.outcome, "failed");
     assert.equal(asked.reason, `Chrome has 2 profiles in ${source}, so Bao opened nothing. Choose one: "Default" (Fixture, fixture@example.test); "Profile 2" (Work). `
       + 'To continue, call run_workflow again with the folder of the profile you choose: {"id":"saved","browser":"copy","profile":"Default"} Pass the same inputs.');
+    library.save(testWorkflow({ id: "files", startUrl: "https://example.test/", steps: [
+      { id: "save", index: 0, timeoutMs: 1000, caption: { text: "Save the report" }, action: "download", download: { output: "report", name: "report.txt" } },
+    ] }));
+    const files = JSON.parse((await client.call("run_workflow", { id: "files" })).text) as { outcome: string; reason: string };
+    assert.equal(files.outcome, "failed");
+    assert.ok(files.reason.endsWith('call run_workflow again with the folder of the profile you choose: {"id":"files","profile":"Default"} Pass the same inputs.'),
+      `a run that named no browser retries without one, so it keeps the default route: ${files.reason}`);
     const missing = JSON.parse((await client.call("run_workflow", { id: workflow.id, browser: "copy", profile: "Profile 9" })).text) as { outcome: string; reason: string };
     assert.equal(missing.outcome, "failed");
     assert.match(missing.reason, /^Chrome has no profile "Profile 9" in .+\. Choose one of: "Default" \(Fixture, fixture@example\.test\); "Profile 2" \(Work\)\.$/);

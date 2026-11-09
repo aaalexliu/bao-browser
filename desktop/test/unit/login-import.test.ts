@@ -229,7 +229,7 @@ test("bot-manager names are recognized and one rejection does not drop the next 
       calls.push(cookie.name);
       return { success: true };
     },
-  }, [bad, good]);
+  }, [bad, good], []);
   assert.deepEqual(calls, ["sid"]);
   assert.equal(outcomes[0]?.ok, false);
   assert.equal(outcomes[1]?.ok, true);

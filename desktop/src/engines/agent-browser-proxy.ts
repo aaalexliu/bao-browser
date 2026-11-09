@@ -16,7 +16,7 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, pickLine, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { baoPick, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
 import { BOUND_REASON, boundSite } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
@@ -498,9 +498,10 @@ export class AgentBrowserProxy {
       return { route, why, profile };
     } catch (error) {
       // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.
-      const fallback = browser === undefined && route === "current";
+      const fallback = fallsBack(route, why);
       if ((route === "bao" || fallback) && (error instanceof ChromeFolderDenied || named === undefined && !(error instanceof ChromeProfileQuestion))) {
-        return { route: "bao", why: fallback ? "fallback when running Chrome could not be used" : why, unread: error instanceof Error ? error.message : String(error) };
+        const unread = error instanceof Error ? error.message : String(error);
+        return fallback ? fallbackPlan(unread) : { route: "bao", why, unread };
       }
       if (!(error instanceof ChromeProfileQuestion)) this.notOpened = failedPickLine(route, why, chromeApp(), named === undefined ? undefined : { directory: named, root });
       throw error;
@@ -556,14 +557,7 @@ export class AgentBrowserProxy {
   private async start(recording: AgentBrowserRun, route: AgentBrowser, plan: BrowserPlan, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     const abort = this.startAbort = new AbortController();
-    let browser: Opened;
-    try { browser = await this.open(plan, abort.signal, site); }
-    catch (error) {
-      // When the owner's running Chrome cannot be used, a session that did not name it opens in Bao's own profile, signed out.
-      if (plan.route !== "current" || plan.why !== "the default" && plan.why !== BOUND_REASON || abort.signal.aborted) throw error;
-      const reason = `Bao could not use your running Chrome: ${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")}.`;
-      browser = await this.open({ route: "bao", why: "fallback when running Chrome could not be used", profile: plan.profile, unread: reason }, abort.signal, site);
-    }
+    const browser = await openOrFallBack(plan, (next) => this.open(next, abort.signal, site), () => abort.signal.aborted);
     try {
       const wired = await this.wire(browser);
       recording.pickBrowser(browser.pick);
@@ -666,12 +660,17 @@ export class AgentBrowserProxy {
     let host = site ?? "this site";
     try { host = new URL(host).hostname; } catch {}
     const stopped = bound ? `Bao did not open ${host} in its own browser because ${BOUND_REASON}` : `Bao's own browser hit ${what} on ${host}`;
+    const profile = session.pick.profile;
+    const copy = session.pick.route === "copy";
     const fail = (error: unknown) => {
       session.moveError = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
-      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. The session stays in Bao's window; Bao tries again on the next wait_for_owner.` };
+      const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile: profile.directory } : {} };
+      const next = copy
+        ? `The page opens in the Chrome copy, without this site's sign-in. ${fallbackLine("you need that sign-in", profile?.directory, "agent_browser", [JSON.stringify({ command: "close" }), JSON.stringify(open)])}`
+        : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
+      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}` };
       return undefined;
     };
-    const profile = session.pick.profile;
     if (!profile) return fail("Bao could not read Chrome's profiles, so it does not know which Chrome profile to use");
     if (!site) return fail("Bao does not know which page to open");
     let next: Opened;

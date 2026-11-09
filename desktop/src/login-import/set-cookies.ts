@@ -2,6 +2,7 @@
 // Network.setCookie is one cookie per call, so a bad __Host- row does not drop
 // the session cookie that follows it.
 
+import { boundCookie } from "../engines/bound-sign-in";
 import type { DecryptedCookie } from "./read";
 
 export interface SetCookieCall {
@@ -57,9 +58,14 @@ export function toSetCookie(cookie: DecryptedCookie): { ok: true; call: SetCooki
   return { ok: true, call };
 }
 
-export async function setCookiesOneAtATime(setter: CookieSetter, cookies: DecryptedCookie[]): Promise<SetOutcome[]> {
+/**
+ * Writes each cookie on its own. A Google sign-in, a Times cookie, or a cookie of a site in `boundSites`, the source profile's
+ * device-bound sessions, is never written: those sign-ins stay in the owner's Chrome.
+ */
+export async function setCookiesOneAtATime(setter: CookieSetter, cookies: DecryptedCookie[], boundSites: readonly string[]): Promise<SetOutcome[]> {
   const outcomes: SetOutcome[] = [];
   for (const cookie of cookies) {
+    if (boundCookie(cookie.hostKey, cookie.name, boundSites)) continue;
     const prepared = toSetCookie(cookie);
     if (!prepared.ok) {
       outcomes.push({ name: cookie.name, host: cookie.hostKey, ok: false, reason: prepared.reason });

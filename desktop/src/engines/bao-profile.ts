@@ -95,7 +95,7 @@ async function connect(portFile: string): Promise<CdpSocket> {
 }
 
 /** The import's Chrome reaches no host, so it cannot use the copied sign-ins with any site. */
-export const OFFLINE_IMPORT_ARGS = ["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND"];
+export const OFFLINE_IMPORT_ARGS = ["--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND"];
 
 async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string): Promise<SourceLoginState> {
   try { return await readSourceLogin(options, site, destination); }
@@ -150,7 +150,7 @@ async function readSourceLogin(options: { sourceRoot: string; directory: string 
   }
 }
 
-async function seedLogin(portFile: string, login: LoginState): Promise<{ cookies: number; storage: number }> {
+async function seedLogin(portFile: string, login: LoginState, boundSites: readonly string[]): Promise<{ cookies: number; storage: number }> {
   const cdp = await connect(portFile);
   let targetId: string | undefined;
   try {
@@ -174,7 +174,7 @@ async function seedLogin(portFile: string, login: LoginState): Promise<{ cookies
       ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }));
     }
     const send = (method: string, params: Record<string, unknown> = {}) => cdp.send(method, params, sessionId);
-    const outcomes = await setCookiesOneAtATime({ setOne: (cookie) => cdp.send("Network.setCookie", { ...cookie }, sessionId) }, login.cookies);
+    const outcomes = await setCookiesOneAtATime({ setOne: (cookie) => cdp.send("Network.setCookie", { ...cookie }, sessionId) }, login.cookies, boundSites);
     let stored = 0;
     if (login.storage.length) {
       cdp.on("Fetch.requestPaused", sessionId, (request) => {
@@ -319,7 +319,7 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
           return !current || (preferSource ? cookie.signature !== cookieSignature(current) : cookie.updated > observed.get(key)!.updated);
         });
         if (!cookies.length && !login.storage.length) return report;
-        const written = await seedLogin(browser.portFile, { cookies, storage: login.storage });
+        const written = await seedLogin(browser.portFile, { cookies, storage: login.storage }, boundSites);
         await liveCookies();
         return { ...report, ...written };
       } catch {

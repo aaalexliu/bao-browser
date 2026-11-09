@@ -133,7 +133,8 @@ test("copy is private, fresh, selected-profile-only, and leaves source bytes unc
     assert.deepEqual(prefs.ntp.custom_background_dict2, {});
     assert.equal(prefs.ntp.num_personal_suggestions, 3);
     const originalPrefs = JSON.parse(before["Default/Preferences"].toString()) as TestPreferences;
-    for (const key of ["session", "signin", "account_info"] as const) assert.deepEqual(prefs[key], originalPrefs[key]);
+    for (const key of ["session", "signin"] as const) assert.deepEqual(prefs[key], originalPrefs[key]);
+    assert.equal((prefs as Partial<TestPreferences>).account_info, undefined, "the copy is not signed in to Chrome");
     assert.deepEqual(prefs.extensions.settings, originalPrefs.extensions.settings);
     assert.deepEqual(await readFile(path.join(first.userDataDir, "Default", "Secure Preferences")), before["Default/Secure Preferences"]);
     assert.deepEqual(await sourceBytes(f.sourceRoot), before);

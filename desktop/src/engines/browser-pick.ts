@@ -5,8 +5,10 @@ import { BOUND_REASON } from "./bound-sign-in";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
 
 export type ProfileWhy = "named by the agent" | "the only profile" | "picked in Bao Settings";
+export const RUNNING_CHROME_FALLBACK = "fallback when running Chrome could not be used";
+export const FILES_IN_BAO = "the workflow moves files, which running Chrome cannot do yet";
 export type RouteWhy = "the default" | "named by the agent" | "fallback after a sign-in wall" | typeof BOUND_REASON
-  | "fallback when running Chrome could not be used" | "the workflow moves files, which running Chrome cannot do yet";
+  | typeof RUNNING_CHROME_FALLBACK | typeof FILES_IN_BAO;
 
 /** One of the owner's Chrome profiles, and why Bao uses it. */
 export interface ChosenProfile extends ChromeProfileChoice {
@@ -35,6 +37,37 @@ export type BrowserPlan = { why: RouteWhy } & (
   /** With `unread`, Bao imports no sign-ins and says why. */
   | { route: "bao"; profile: ChosenProfile; unread?: string } | { route: "bao"; profile?: undefined; unread: string }
   | { route: "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
+
+/**
+ * The route a run takes. A run that named no browser uses running Chrome, except a workflow that moves files, which running
+ * Chrome cannot do yet: that run uses Bao's profile.
+ */
+export function defaultRoute<B extends string>(browser: B, why: RouteWhy, movesFiles: boolean): { browser: B | "bao"; why: RouteWhy } {
+  return browser === "current" && why === "the default" && movesFiles ? { browser: "bao", why: FILES_IN_BAO } : { browser, why };
+}
+
+/**
+ * Running Chrome that the agent did not name gives way to Bao's own profile when Bao cannot use it: the default route, and a site
+ * sent there because it ties its sign-in to the owner's Chrome.
+ */
+export function fallsBack(route: string, why: RouteWhy): boolean {
+  return route === "current" && (why === "the default" || why === BOUND_REASON);
+}
+
+/** The Bao-profile plan that replaces running Chrome. It imports no sign-ins, and `unread` says why. */
+export function fallbackPlan(unread: string, profile?: ChosenProfile): Extract<BrowserPlan, { route: "bao" }> {
+  return profile ? { route: "bao", why: RUNNING_CHROME_FALLBACK, profile, unread } : { route: "bao", why: RUNNING_CHROME_FALLBACK, unread };
+}
+
+/** Opens the plan. When it is running Chrome that gives way and Bao cannot use it, opens Bao's own profile instead. */
+export async function openOrFallBack<T>(plan: BrowserPlan, open: (plan: BrowserPlan) => Promise<T>, aborted: () => boolean = () => false): Promise<T> {
+  if (plan.route !== "current" || !fallsBack(plan.route, plan.why)) return open(plan);
+  try { return await open(plan); }
+  catch (error) {
+    if (aborted()) throw error;
+    return open(fallbackPlan(`Bao could not use your running Chrome: ${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")}.`, plan.profile));
+  }
+}
 
 /** Where a Bao-profile plan reads sign-ins from, or why it reads none. */
 export function signInSource(plan: Extract<BrowserPlan, { route: "bao" }>): { sourceRoot: string; directory: string } | { unread: string } {

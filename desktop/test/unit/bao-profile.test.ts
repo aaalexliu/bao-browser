@@ -80,7 +80,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
     assert.equal(launchOptions.length, 2);
     assert.equal(launchOptions[0]!.headless, false, "source Chrome keeps OS-keychain access");
     assert.equal(launchOptions[0]!.background, "none", "sign-in extraction creates no window");
-    assert.deepEqual(launchOptions[0]!.appendArgs, ["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND"],
+    assert.deepEqual(launchOptions[0]!.appendArgs, ["--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND"],
       "sign-in extraction reaches no host");
     assert.equal(launchOptions[0]!.keychain, undefined);
     assert.equal(launchOptions[1]!.headless, false, "the lasting Bao browser still opens its window");
@@ -102,7 +102,7 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.deepEqual(await chrome.importLogin("https://storage.test/another-path"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 0 });
       assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
       assert.equal(launchOptions.at(-1)!.background, "none", "later sign-in refreshes also create no window");
-      assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND"],
+      assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND"],
         "later sign-in refreshes also reach no host");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
