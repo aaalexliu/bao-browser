@@ -399,8 +399,7 @@ export class AgentBrowserProxy {
         }
       }
       case "current": {
-        const chrome = await openCurrentChrome({ root: plan.profile.root, defaultRoot: chromeProfilesRoot(),
-          axLog: path.join(this.options.home, "audit", "current-chrome.jsonl"), signal });
+        const chrome = await openCurrentChrome({ root: plan.profile.root, axLog: path.join(this.options.home, "audit", "current-chrome.jsonl"), signal });
         const taskTabs = new Set<string>();
         try {
           const tab = await openTaskTab(chrome, plan.profile.directory, signal);

@@ -114,7 +114,7 @@ export async function openWorkflowBrowser(options: {
   const root = sourceRoot ?? chromeProfilesRoot();
   if (options.browser === "current") {
     const profile = await workflowProfile(root, options.profile, options.directory);
-    const chrome = await openCurrentChrome({ root: profile.root, defaultRoot: chromeProfilesRoot(), axLog: path.join(options.home, "audit", "current-chrome.jsonl") });
+    const chrome = await openCurrentChrome({ root: profile.root, axLog: path.join(options.home, "audit", "current-chrome.jsonl") });
     try {
       const { targetId } = await openTaskTab(chrome, profile.directory);
       const closeTab = () => chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).then(() => undefined, () => undefined);

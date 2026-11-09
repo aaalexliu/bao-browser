@@ -96,7 +96,7 @@ async function fixture(on = false) {
       return { ok: true };
     },
   };
-  const options = { root, defaultRoot: root, axLog: path.join(root, "ax.jsonl") };
+  const options = { root, axLog: path.join(root, "ax.jsonl") };
   const deps: NonNullable<Parameters<typeof currentChrome.openCurrentChrome>[1]> = {
     helper, findChrome: async () => state.pids, executable: () => "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     readPort: async () => ({ port: 9222, browserPath: "/devtools/browser/fixture" }),

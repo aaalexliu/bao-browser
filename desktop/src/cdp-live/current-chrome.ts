@@ -7,6 +7,7 @@ import { realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
+import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { processesNaming } from "../launch";
 import { chromeHelper, CHROME_BUNDLE, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
@@ -107,14 +108,13 @@ async function closeOpenedInspect(helper: CurrentChromeDeps["helper"], pid: numb
 
 export async function openCurrentChrome(options: {
   root: string;
-  defaultRoot: string;
   axLog: string;
   signal?: AbortSignal;
 }, overrides: Partial<CurrentChromeDeps> = {}): Promise<CurrentChrome> {
   if (process.platform !== "darwin" && !overrides.helper) throw new Error("Current Chrome control needs BaoOSHelper on a Mac");
   const deps: CurrentChromeDeps = {
     helper: overrides.helper ?? chromeHelper(),
-    findChrome: (root) => dailyChromePids(root, options.defaultRoot),
+    findChrome: (root) => dailyChromePids(root, chromeProfilesRoot()),
     executable: (pid) => {
       const exe = processesNaming(CHROME_APP_EXE).find((row) => row.pid === pid)?.command.split(" --")[0]?.trim();
       if (!exe) throw new Error(`Bao could not read the Chrome app path of process ${pid}`);
