@@ -51,7 +51,7 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
   let copyDir = "";
   t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
     copyDir = options.userDataDir;
-    return launch(options);
+    return launch({ ...options, headless: true });
   });
   const proxy = new AgentBrowserProxy({ sourceRoot, home: path.join(root, "home"), executable: binary });
   try {
