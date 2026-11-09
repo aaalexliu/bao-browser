@@ -274,15 +274,15 @@ export class AgentBrowserProxy {
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
         const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site) : undefined;
-        if (session.ownerWait) {
-          results.push(...this.ownerResult("halted", session));
-          return results;
-        }
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
-        if (opened && command !== "snapshot" && command !== "open") {
+        if (opened && (session.ownerWait || command !== "snapshot" && command !== "open")) {
           step = recording.begin("open", [this.moved!.site!]);
           this.latest = { runId: recording.id, step, steps: recording.steps };
-          results.push(opened);
+          results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
+          return results;
+        }
+        if (session.ownerWait) {
+          results.push(...this.ownerResult("halted", session));
           return results;
         }
       }
@@ -295,7 +295,8 @@ export class AgentBrowserProxy {
         if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
       if (command === "wait_for_owner") {
-        const deadline = Date.now() + ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
+        const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
+        const deadline = Date.now() + timeout;
         const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
         const page = wall ?? (this.movable(session, true) ? (await this.activePage(session).catch(() => undefined))?.page : undefined);
         const opened = page && await this.moveAway(session, wall ? this.wallWords(session) : "a step that needs the owner",
@@ -304,7 +305,7 @@ export class AgentBrowserProxy {
           results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
           return results;
         }
-        results.push(...await this.waitForOwner(session, deadline));
+        results.push(...await this.waitForOwner(session, page ? Math.max(deadline, Date.now() + Math.min(timeout, 5000)) : deadline));
         return results;
       }
       if ((command === "click" || command === "fill") && args[0]) {

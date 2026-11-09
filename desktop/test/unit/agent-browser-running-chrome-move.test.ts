@@ -97,10 +97,11 @@ test("an in-page wall is a sign-in dialog or main heading beside a password fiel
  */
 async function harness(t: TestContext, initial: "works" | "refused") {
   let attach = initial;
+  let delay = 0;
   const root = await mkdtemp(path.join(tmpdir(), "bao-move-"));
   const server = createServer((request, response) => {
     const known = request.headers.cookie?.includes("device=known") ?? false;
-    if (request.url === "/gate" && !known) { response.writeHead(302, { location: "/login" }).end(); return; }
+    if (request.url === "/gate" && !known || request.url === "/trap" && known) { response.writeHead(302, { location: "/login" }).end(); return; }
     const [title, snapshot] = request.url === "/times" ? ["The Best Pizza in New York City - The New York Times", known ? TIMES_ARTICLE : TIMES_CHECK]
       : request.url === "/account" ? ["Example", known ? ACCOUNT : SIGN_IN_FORM]
         : request.url === "/login" ? ["Sign in", SIGN_IN_FORM]
@@ -133,6 +134,7 @@ async function harness(t: TestContext, initial: "works" | "refused") {
   let attaches = 0;
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     attaches++;
+    await new Promise((resolve) => setTimeout(resolve, delay));
     if (attach === "refused") throw new Error("Chrome is not open. Open Google Chrome, then try again.");
     const cdp: CdpSocket = await connectCdp(endpoint.port, endpoint.browserPath);
     return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: sourceRoot, endpoint, cdp, closed: cdp.disconnected,
@@ -186,12 +188,27 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
   const pages = async () => (await probe.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos.filter((target) => target.type === "page");
   const ownerTabs = (await pages()).map((target) => target.targetId).sort();
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches,
-    allow: () => { attach = "works"; } };
+    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; } };
 }
 
 const MOVED = `Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
 const REFUSED = "Bao's own browser hit a sign-in or verification prompt on 127.0.0.1. Bao could not continue in your running Chrome over remote debugging: Chrome is not open. Open Google Chrome, then try again. The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
 const savedSteps = (home: string) => new Library(home).listRuns()[0]!.steps as RecordedAgentBrowserCommand[];
+
+/** Moves Bao's own tab from one page to another, the way a delayed redirect or the owner would. */
+async function navigateBao(baoDir: string, from: string, to: string): Promise<void> {
+  const endpoint = await readDevToolsActivePort(path.join(baoDir, "DevToolsActivePort"));
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  try {
+    const tab = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
+      .find((target) => target.type === "page" && target.url.endsWith(from))!;
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true });
+    await cdp.send("Page.enable", {}, sessionId);
+    const loaded = new Promise<void>((resolve) => cdp.on("Page.loadEventFired", sessionId, () => resolve()));
+    await cdp.send("Page.navigate", { url: to }, sessionId);
+    await loaded;
+  } finally { cdp.close(); }
+}
 
 const baoClosed = async (dir: string) => {
   for (const deadline = Date.now() + 5000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
@@ -320,17 +337,7 @@ test("a command that meets a sign-in page between commands does not run; Bao rec
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`]))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, NO_WALL);
-  const endpoint = await readDevToolsActivePort(path.join(h.baoDir, "DevToolsActivePort"));
-  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-  try {
-    const tab = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
-      .find((target) => target.type === "page" && target.url.endsWith("/article"))!;
-    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true });
-    await cdp.send("Page.enable", {}, sessionId);
-    const loaded = new Promise<void>((resolve) => cdp.on("Page.loadEventFired", sessionId, () => resolve()));
-    await cdp.send("Page.navigate", { url: `${h.site}/login` }, sessionId);
-    await loaded;
-  } finally { cdp.close(); }
+  await navigateBao(h.baoDir, "/article", `${h.site}/login`);
 
   const [result] = await h.proxy.execute("click", ["@e5"]);
   assert.equal(result!.stdout, `✓ Article\n  ${h.site}/article\n`, "the open in the owner's Chrome, not a click");
@@ -340,4 +347,34 @@ test("a command that meets a sign-in page between commands does not run; Bao rec
   assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome"), step.summary!.text);
   assert.doesNotMatch(step.summary!.text, /Clicked/);
   assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a command whose move lands on a sign-in page in the owner's Chrome halts there, and the run keeps the move on its step", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/trap`]))[0]!.exitCode, 0);
+  assert.equal(h.attaches(), 0, "the page has no wall in Bao's own browser");
+  await navigateBao(h.baoDir, "/trap", `${h.site}/login`);
+
+  const [result] = await h.proxy.execute("click", ["@e5"]);
+  assert.equal((JSON.parse(result!.stdout) as { outcome: string }).outcome, "halted");
+  assert.equal(h.attaches(), 1);
+  assert.ok(!(await h.calls()).some((call) => call.command === "click"), "the click never ran");
+  const step = savedSteps(h.home).at(-1)!;
+  assert.deepEqual({ command: step.native.command, args: step.native.args }, { command: "open", args: [`${h.site}/trap`] });
+  assert.ok(step.summary!.text.startsWith(`Bao's own browser hit a sign-in page on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting. Your turn: sign in`), step.summary!.text);
+  assert.ok(!savedSteps(h.home)[0]!.summary!.text.includes("running Chrome"), "the first open ran in Bao's own browser");
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a slow failed move on wait_for_owner still leaves time to see the owner clear the wall in Bao's window", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/times`]))[0]!.exitCode, 0);
+  assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, TIMES_CHECK);
+  assert.equal((JSON.parse((await h.proxy.execute("wait_for_owner", ["300"]))[0]!.stdout) as { outcome: string }).outcome, "waiting");
+  await navigateBao(h.baoDir, "/times", `${h.site}/article`);
+  h.slow(2500);
+  const [ready] = await h.proxy.execute("wait_for_owner", ["2000"]);
+  assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready", "the retry took longer than the timeout, yet Bao still read the page");
+  assert.equal(h.attaches(), 3);
 });
