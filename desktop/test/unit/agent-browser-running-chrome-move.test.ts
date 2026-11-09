@@ -320,7 +320,7 @@ test("when the owner's running Chrome does not attach, the wait stays in Bao's w
   assert.equal(pidsForDataDir(h.baoDir).length > 0, true, "Bao's window stays open for the owner");
 
   const [halted] = await h.proxy.execute("click", ["@e1"]);
-  assert.equal(JSON.parse(halted!.stdout).outcome, "halted");
+  assert.equal((JSON.parse(halted!.stdout) as { outcome: string }).outcome, "halted");
   assert.ok((JSON.parse(halted!.stdout) as { instruction: string }).instruction.includes(fallback));
   assert.equal(h.attaches(), 2, "only an explicit wait_for_owner tries again");
 
