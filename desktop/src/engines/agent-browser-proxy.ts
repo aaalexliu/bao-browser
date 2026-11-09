@@ -192,7 +192,7 @@ export class AgentBrowserProxy {
       }
     }
     if (this.session?.removing) await this.session.removing;
-    if (this.disconnected) throw new Error("agent-browser client disconnected");
+    if (this.disconnected) throw new Error("The agent disconnected.");
     if (!this.session && command === "close") return [{ stdout: "", stderr: "", exitCode: 0 }];
     if (!this.session && this.currentEnded && (command !== "open" || browser === undefined)) throw new Error(CURRENT_CHROME_ENDED);
     if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");
@@ -244,7 +244,7 @@ export class AgentBrowserProxy {
     const context: StepContext = {};
     let failure: unknown;
     try {
-      if (this.disconnected) throw new Error("agent-browser client disconnected");
+      if (this.disconnected) throw new Error("The agent disconnected.");
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
         if (session.ownerWait) {
@@ -720,7 +720,7 @@ export class AgentBrowserProxy {
   }
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number): Promise<AgentBrowserCommandResult> {
-    if (this.disconnected) throw new Error("agent-browser client disconnected");
+    if (this.disconnected) throw new Error("The agent disconnected.");
     const execute = (command: string, args: string[], timeoutMs?: number) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
       const childSignal = timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
       execFile(session.executable, [...session.flags, command, ...args], {
@@ -759,7 +759,7 @@ export class AgentBrowserProxy {
     if (this.session !== session || session.removing || session.ownerWait || this.disconnected) return;
     session.idleTimer = setTimeout(() => {
       if (this.options.hasHold?.()) { this.armIdle(session); return; }
-      session.outcome = { outcome: "failed", reason: "Session ended without finish_task after 10 minutes of inactivity." };
+      session.outcome = { outcome: "failed", reason: "The agent sent nothing for 10 minutes and never finished the task, so Bao ended the session." };
       session.workflow.unavailable(session.outcome.reason);
       void this.remove(session, this.options.keepOpen?.() === true, false)
         .then(() => {

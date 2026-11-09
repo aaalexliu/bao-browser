@@ -300,7 +300,7 @@ test("session end during startup waits for ownership and removes the new window 
   });
   try {
     const opening = f.proxy.execute("open", [], "copy");
-    const rejected = assert.rejects(opening, /client disconnected/);
+    const rejected = assert.rejects(opening, /The agent disconnected/);
     await entered;
     const ending = f.proxy.end();
     resume();
@@ -326,7 +326,7 @@ test("queued close during startup overrides an end already keeping the window", 
   });
   let releaseClose = () => {};
   try {
-    const rejected = assert.rejects(f.proxy.execute("open", [], "copy"), /client disconnected/);
+    const rejected = assert.rejects(f.proxy.execute("open", [], "copy"), /The agent disconnected/);
     await entered;
     const ending = f.proxy.end();
     releaseClose = f.proxy.queueClose();

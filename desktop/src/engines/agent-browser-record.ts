@@ -131,7 +131,7 @@ export class AgentBrowserRun {
       step.native.error = error instanceof Error ? error.message : String(error);
       step.reason = step.native.error;
     } else if (step.native.isError) {
-      step.reason = "Native agent-browser command failed.";
+      step.reason = "The browser could not do this step.";
     }
     step.summary = describeStep({
       command: step.native.command, args: step.native.args, results, error: step.native.error,
@@ -209,7 +209,7 @@ export class AgentBrowserRun {
     if (this.run.status !== "recording" && this.run.status !== "needs_human"
       && (typeof result !== "object" || this.run.envelope)) return;
     if (result === "session_closed" || this.run.status === "needs_human") {
-      this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The Bao session ended before the owner wait completed. This session cannot continue." };
+      this.run.envelope = { status: "failed", run_id: this.run.id, reason: "session_closed", ask: "The session ended while Bao was waiting for you, so the agent could not go on." };
       this.run.status = "failed";
     } else if (result) {
       this.run.status = result.outcome;

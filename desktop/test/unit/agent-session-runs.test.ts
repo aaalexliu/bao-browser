@@ -7,12 +7,14 @@ import test from "node:test";
 import { startApp } from "../../src/app/server";
 import { runAttention, runReceipt, runsList, runWorkflowName, type RunSummary } from "../../src/app/views";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
+import { inspectRunView } from "../../src/mcp/run-view";
 import { TOOLS } from "../../src/mcp/server";
 import { testChromium } from "../../src/test-browser";
 import type { WorkflowV2 } from "../../src/v1/schema";
 import { Library } from "../../src/v1/store";
 
-const closed = "The Bao session ended before the owner wait completed. This session cannot continue.";
+const closed = "The session ended while Bao was waiting for you, so the agent could not go on.";
+const idle = "The agent sent nothing for 10 minutes and never finished the task, so Bao ended the session.";
 
 function session(partial: Partial<RunSummary> & Pick<RunSummary, "id" | "status">): RunSummary {
   return {
@@ -70,7 +72,7 @@ test("ended agent sessions show their reason and stay out of Needs you", () => {
     }),
     session({
       id: "idle", status: "failed", at: now - 3000,
-      envelope: { status: "failed", reason: "Session ended without finish_task after 10 minutes of inactivity." },
+      envelope: { status: "failed", reason: idle },
     }),
     session({
       id: "signin", status: "needs_human", at: now,
@@ -89,7 +91,8 @@ test("ended agent sessions show their reason and stay out of Needs you", () => {
   assert.match(html, /data-open-run="github"[\s\S]*?>github.com</);
   assert.match(html, new RegExp(`data-open-run="github"[\\s\\S]*?${closed.replace(/[.]/g, "\\.")}`));
   assert.doesNotMatch(html, /session_closed|Bao stopped\. Open Chrome/);
-  assert.match(html, /Session ended without finish_task after 10 minutes of inactivity\./);
+  assert.match(html, new RegExp(idle.replace(/[.]/g, "\\.")));
+  assert.doesNotMatch(html, /finish_task|wait_for_owner/);
   const receipt = runReceipt({
     view: "receipt",
     run: { id: "github", workflowId: "agent-browser", name: "Browser capture", status: "failed", at: now, kind: "capture", stepCount: 1, modelCalls: null, healCount: 0 },
@@ -103,6 +106,46 @@ test("ended agent sessions show their reason and stay out of Needs you", () => {
   assert.match(receipt, /<h2>github.com<\/h2>/);
   assert.match(receipt, new RegExp(closed.replace(/[.]/g, "\\.")));
   assert.doesNotMatch(receipt, /session_closed|Needs you|Bao stopped/);
+});
+
+test("an ended agent session receipt names its steps in words and marks the cut-off and unreached ones", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-agent-receipt-"));
+  try {
+    const library = new Library(root);
+    const recorded = new AgentBrowserRun(root);
+    const open = recorded.begin("open", ["https://github.com/login"]);
+    await recorded.complete(open, [{ stdout: "", stderr: "", exitCode: 0 }], root, async () => { throw new Error("no page"); });
+    recorded.begin("wait_for_owner", ["60000"]);
+    recorded.ownerWaiting(true);
+    recorded.finish("session_closed");
+    library.saveRun({
+      id: "old", workflowId: "agent-browser", kind: "capture", pageEngine: "agent-browser", status: "failed", at: 1, heals: [],
+      steps: [
+        { id: "command-1", status: "passed", startedAt: 1, endedAt: 2, native: { command: "open", args: ["https://www.instacart.com/store"] } },
+        { id: "command-2", status: "pending", startedAt: 3, native: { command: "wait_for_owner", args: ["60000"] } },
+        { id: "command-3", status: "pending", native: { command: "snapshot", args: [] } },
+      ],
+      envelope: { status: "failed", reason: "The item was sold out." },
+    });
+    const receiptFor = (id: string) => {
+      const run = library.readRun(id) as unknown as RunSummary;
+      return runReceipt(inspectRunView(library, { run_id: id }), "Browser session", run);
+    };
+    const waited = receiptFor(recorded.id);
+    assert.match(waited, new RegExp(closed.replace(/[.]/g, "\\.")));
+    assert.match(waited, /<strong>Open github\.com\/login<\/strong><span class="run-state">passed</);
+    assert.match(waited, /<strong>Wait for you to sign in<\/strong><span class="run-state">did not finish</);
+    const old = receiptFor("old");
+    assert.match(old, /<strong>Open www\.instacart\.com\/store<\/strong>/);
+    assert.match(old, /<strong>Wait for you to sign in<\/strong><span class="run-state">did not finish</);
+    assert.match(old, /<strong>Read the page<\/strong><span class="run-state">not reached</);
+    for (const html of [waited, old]) assert.doesNotMatch(html, /wait_for_owner|finish_task|>open<|>pending</);
+    const live = new AgentBrowserRun(root);
+    live.begin("snapshot", []);
+    assert.match(receiptFor(live.id), /<strong>Read the page<\/strong><span class="run-state">pending</);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("saved-workflow replays keep Needs you when the page engine is agent-browser", () => {

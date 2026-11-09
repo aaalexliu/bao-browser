@@ -711,7 +711,7 @@ for (const keepOpen of [false, true]) test(`idle backstop releases an owned sess
   assert.equal(f.state.closes, keepOpen ? 0 : 1);
   assert.equal(f.state.kept, keepOpen ? 1 : 0);
   assert.equal(f.library.listRuns()[0]!.status, "failed");
-  assert.match(f.library.listRuns()[0]!.envelope!.reason!, /ended without finish_task/);
+  assert.match(f.library.listRuns()[0]!.envelope!.reason!, /never finished the task, so Bao ended the session/);
 });
 
 for (const reset of ["finish", "close"] as const) test(`current idle expiry preserves browser choice until explicit ${reset}`, async (t) => {

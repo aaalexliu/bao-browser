@@ -422,7 +422,7 @@ test("recording captures do not present recovered failures as current stops", as
     assert.equal(view.run.status, "recording");
     assert.equal(view.reason, undefined);
     assert.equal(view.handoff, null);
-    assert.equal(view.steps[0]?.reason, "Native agent-browser command failed.");
+    assert.equal(view.steps[0]?.reason, "The browser could not do this step.");
     f.recording.ownerWaiting(true);
     assert.equal(getRun(library, f.recording.id).reason, "owner_signin");
     assert.equal(inspectRunView(library, { run_id: f.recording.id }).reason, "owner_signin");
@@ -431,7 +431,7 @@ test("recording captures do not present recovered failures as current stops", as
     assert.equal(inspectRunView(library, { run_id: f.recording.id }).reason, undefined);
     f.recording.finish();
     assert.equal(getRun(library, f.recording.id).outcome, "failed");
-    assert.equal(inspectRunView(library, { run_id: f.recording.id }).reason, "Native agent-browser command failed.");
+    assert.equal(inspectRunView(library, { run_id: f.recording.id }).reason, "The browser could not do this step.");
   } finally { await f.close(); }
 });
 

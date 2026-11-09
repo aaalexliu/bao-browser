@@ -1,6 +1,7 @@
 import { findNodeAtLocation, parseTree } from "jsonc-parser";
 import { STRIPPED_SECRET } from "../../../shared/saved-secrets";
 import { readLibraryFile, readLibraryPrefix } from "../v1/library-read";
+import { commandSentence } from "../v1/caption";
 import { stepTitle } from "../v1/schema";
 import type { WorkflowV2 } from "../v1/schema";
 import { BROWSER_PICTURE_BYTES, shotFile, shotFormat } from "../v1/shots";
@@ -43,6 +44,13 @@ function text(value: unknown, limit = 500): string | undefined {
 
 function count(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function commandLabel(native: Record<string, unknown>): string {
+  const command = text(native.command, 40);
+  if (!command) return "Captured command";
+  const arg = Array.isArray(native.args) ? text(native.args[0]) : undefined;
+  return commandSentence(command, arg, undefined).text.slice(0, 160);
 }
 
 function workflowFor(library: Library, run: StoredRun): WorkflowV2 | undefined {
@@ -106,7 +114,7 @@ function runView(
       `Read back ${text(receipt.source, 60) || "value"}: expected ${readBackText(receipt.expected) || ""}, saw ${readBackText(receipt.actual) || ""}. ${receipt.pass ? "matches" : "does not match"}.`);
     return {
       id: text(step.id, 128), index: stepOffset + index + 1,
-      label: text(definition ? stepTitle(definition) : undefined, 160) || text(record(step.caption).text, 160) || text(step.label, 160) || (run.kind === "capture" ? text(native.command, 40) || "Captured command" : text(step.id, 128)),
+      label: text(definition ? stepTitle(definition) : undefined, 160) || text(record(step.caption).text, 160) || text(step.label, 160) || (run.kind === "capture" ? commandLabel(native) : text(step.id, 128)),
       action: text(definition?.action, 40), status: text(step.status, 60) || "unknown",
       reason: text(step.reason),
       result: readBacks.length ? readBacks.join("\n") : readBackText(step.readBack),
