@@ -11,6 +11,7 @@ import * as launches from "../../src/launch";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
+import { connectCdp } from "../../src/cdp-live/socket";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
@@ -59,8 +60,12 @@ async function ownerProxy(t: TestContext) {
     copyDir = copy.userDataDir;
     const browser = await launchOwnedChromeEndpoint({ userDataDir: copy.userDataDir, childHome: path.join(root, "user"), headless: true });
     closeBrowser = browser.close;
+    const endpoint = await readDevToolsActivePort(browser.portFile);
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" });
+    cdp.close();
     return {
-      target: { kind: "bao" as const, portFile: browser.portFile }, closed: browser.closed,
+      target: { kind: "bao" as const, portFile: browser.portFile }, targetId, closed: browser.closed,
       bytes: copy.bytes, copyMs: copy.copyMs, isClosed: browser.isClosed,
       keepOpen: async () => { await copy.keepOpen(); browser.keepOpen(); },
       close: async () => { await browser.close(); await copy.close(); },
@@ -95,7 +100,8 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 (async()=>{
  if(command==='close'){console.log('close native output');return;}
  const tabs=await listTargets(endpoint.href);
- const tab=tabs.find(t=>t.type==='page');
+ const bound=fs.existsSync(process.env.AGENT_BROWSER_SOCKET_DIR+'/bao.target') ? JSON.parse(fs.readFileSync(process.env.AGENT_BROWSER_SOCKET_DIR+'/bao.target','utf8')).targetId : undefined;
+ const tab=tabs.find(t=>t.id===bound)??tabs.find(t=>t.type==='page');
  if(command==='tab') console.log(JSON.stringify({data:{tabs:tabs.filter(t=>t.type==='page').map(t=>({targetId:t.id,url:t.url,title:t.url,active:t.id===tab.id}))}}));
  else if(command==='open'){
   const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
@@ -162,6 +168,7 @@ for (const { browser, check, bare } of [
     observer = await chromium.connectOverCDP(`http://127.0.0.1:${endpoint.port}`);
     const page = observer.contexts()[0]!.pages().find((page) => page.url().includes("/owner/"))!;
     assert.ok(page);
+    const pages = observer.contexts()[0]!.pages().length;
     page.setDefaultTimeout(5000);
     assert.match(await page.locator("#bao-owner-wait").innerText(), /waiting for you/);
     assert.equal(importCalls.length, browser === "bao" && check === "signin" ? 1 : 0, "only an explicit open's login wall can apply its source snapshot");
@@ -188,7 +195,7 @@ for (const { browser, check, bare } of [
     }
     assert.equal(outcome(await waiting), "ready");
     assert.equal(h.attaches, browser === "bao" ? 3 : 0, "every explicit wait_for_owner on a Bao profile tries the owner's running Chrome again");
-    assert.equal(observer.contexts()[0]!.pages().filter((p) => !p.isClosed()).length, 1);
+    assert.equal(observer.contexts()[0]!.pages().filter((p) => !p.isClosed()).length, pages);
     assert.equal((await proxy.execute("snapshot"))[0]!.stdout, "snapshot native output\n");
     assert.equal(library.listRuns()[0]!.id, initial.id);
     assert.equal(library.listRuns()[0]!.status, "recording");

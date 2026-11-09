@@ -32,8 +32,9 @@
   },
   "experian": {
     "kind": "desktop",
-    "reason": "Safety: pass-through workflow recording, sign-in and bot-wall handoffs, Experian redirects, an explicit Chrome profile and route for every session, open, close, and finish_task with a process list over 1 MiB, the owner's Chrome keeping its active tab while the agent works in a background task tab, and the gated extension route closing only its own tabs.",
+    "reason": "Safety: pass-through workflow recording, sign-in and bot-wall handoffs, Experian redirects, an explicit Chrome profile and route for every session, open, close, and finish_task with a process list over 1 MiB, the owner's Chrome keeping its active tab while the agent works in a background task tab, a Chrome copy that restores many tabs opening the agent's page in a new tab in front of them, and the gated extension route closing only its own tabs.",
     "tests": [
+      "desktop/test/unit/agent-browser-startup.test.ts",
       "desktop/test/unit/agent-browser-workflow.test.ts",
       "desktop/test/unit/browser-pick.test.ts",
       "desktop/test/unit/chrome-access.test.ts",

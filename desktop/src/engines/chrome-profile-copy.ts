@@ -4,6 +4,8 @@ import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { assertChromeReadable, chromeDenied } from "../chrome-access";
+import { readDevToolsActivePort } from "../cdp-live/endpoint";
+import { connectCdp } from "../cdp-live/socket";
 import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION } from "../launch";
 
 export interface ChromeProfileChoice {
@@ -198,10 +200,21 @@ export async function copyChromeProfile(options: {
   }
 }
 
-/** Pass-through startup owns Chrome without attaching Playwright to restored tabs. */
+async function openFrontTab(portFile: string): Promise<string> {
+  const endpoint = await readDevToolsActivePort(portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 15_000 });
+  try { return (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" }, undefined, 15_000)).targetId; }
+  finally { cdp.close(); }
+}
+
+/**
+ * Pass-through startup owns Chrome without attaching Playwright to restored tabs. With restored tabs, the agent's page opens in
+ * `targetId`, a new tab in front of them: the native daemon would otherwise pick a hidden restored tab, where Chrome throttles
+ * timers and a page that loads its scripts through timers misses the native load deadline.
+ */
 export async function openCopiedChromeForProxy(options: {
   sourceRoot: string; directory: string; home: string; detached?: boolean; restoreTabs?: boolean;
-}): Promise<{ target: { kind: "bao"; portFile: string }; close(): Promise<void>; keepOpen(): Promise<void>; isClosed(): boolean; closed: Promise<void>; bytes: number; copyMs: number }> {
+}): Promise<{ target: { kind: "bao"; portFile: string }; targetId?: string; close(): Promise<void>; keepOpen(): Promise<void>; isClosed(): boolean; closed: Promise<void>; bytes: number; copyMs: number }> {
   const copy = await copyChromeProfile(options);
   let chrome: Awaited<ReturnType<typeof launchOwnedChromeEndpoint>> | undefined;
   let closing: Promise<void> | undefined;
@@ -214,8 +227,9 @@ export async function openCopiedChromeForProxy(options: {
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir, loadExtensions: false, preserveRestoredTabs: true,
       background: sessions.some((name) => name.startsWith("Session_")) ? "restore" : "window", args: copy.launchArgs, detached: options.detached,
     });
+    const targetId = options.restoreTabs === false ? undefined : await openFrontTab(chrome.portFile);
     return {
-      target: { kind: "bao", portFile: chrome.portFile }, closed: chrome.closed, close,
+      target: { kind: "bao", portFile: chrome.portFile }, targetId, closed: chrome.closed, close,
       isClosed: chrome.isClosed,
       async keepOpen() { await copy.keepOpen(); chrome!.keepOpen(); },
       bytes: copy.bytes, copyMs: copy.copyMs,

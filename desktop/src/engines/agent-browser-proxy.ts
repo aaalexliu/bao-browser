@@ -95,8 +95,11 @@ interface SessionData {
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
 type Opened = { pick: BrowserPick } & (
-  /** Bao's own agent Chrome. The native agent reaches it through `background`, which keeps it behind the owner's apps. */
-  | { kind: "copy"; chrome: OwnedChrome; background: BackgroundCdp }
+  /**
+   * Bao's own agent Chrome. The native agent reaches it through `background`, which keeps it behind the owner's apps. On a
+   * Chrome copy, `targetId` is the tab Bao opened in front of the restored tabs.
+   */
+  | { kind: "copy"; chrome: OwnedChrome; background: BackgroundCdp; targetId?: string }
   /** The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. */
   | { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string }
   /** The owner's running Chrome through the gated Bao extension relay. */
@@ -519,9 +522,9 @@ export class AgentBrowserProxy {
           ...plan.profile ? { profile: plan.profile } : { unread: plan.unread } } };
       }
       case "copy": {
-        const opened = await behind(await openCopiedChromeForProxy({ sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home,
-          detached: this.options.keepOpen?.() === true }));
-        return { kind: "copy", ...opened, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(opened.chrome.target.portFile) } };
+        const chrome = await openCopiedChromeForProxy({ sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home,
+          detached: this.options.keepOpen?.() === true });
+        return { kind: "copy", ...await behind(chrome), targetId: chrome.targetId, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(chrome.target.portFile) } };
       }
     }
   }
@@ -556,7 +559,7 @@ export class AgentBrowserProxy {
       const config = path.join(stateDir, "config.json");
       await writeFile(config, "{}", { mode: 0o600 });
       // agent-browser selects this session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
-      if (browser.kind === "current") await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
+      if (browser.targetId) await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
       const endpoint = browser.kind === "current" ? browser.chrome.endpoint : browser.background.endpoint;
       return {
         stateDir,
