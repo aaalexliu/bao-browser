@@ -279,6 +279,9 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
     signal?.addEventListener("abort", onAbort, { once: true });
 
     socket.on("error", (err) => fail(err instanceof Error ? err : new Error(String(err))));
+    socket.on("close", () => {
+      if (!upgraded) fail(Object.assign(new Error("cdp connection closed"), { code: "ECONNRESET" }));
+    });
     socket.on("data", (chunk) => {
       try {
         if (!upgraded) {

@@ -45,25 +45,24 @@ test("owned Chrome publishes its own nonzero debugging endpoint, replacing a sta
   }
 });
 
-test("a debugging connection refused while the port opens is retried", async () => {
-  const server = net.createServer();
-  let attempts = 0;
-  server.on("connection", (socket) => {
-    attempts += 1;
-    if (attempts === 1) {
-      socket.destroy();
-      return;
-    }
+test("a debugging connection refused while the port opens is retried", { timeout: 5_000 }, async () => {
+  const server = net.createServer((socket) => {
     socket.once("data", () => {
       socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  const opened = connectCdp(port, "/devtools/browser/retry", { timeoutMs: 4_000 });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => { server.off("error", reject); resolve(); });
+  });
   try {
-    const cdp = await connectCdp(port, "/devtools/browser/retry", { timeoutMs: 2000 });
+    const cdp = await opened;
     cdp.close();
-    assert.equal(attempts, 2);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
