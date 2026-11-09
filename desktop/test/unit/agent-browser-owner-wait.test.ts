@@ -8,6 +8,7 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as bao from "../../src/engines/bao-profile";
 import * as launches from "../../src/launch";
+import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../../src/launch";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
@@ -64,6 +65,8 @@ async function ownerProxy(t: TestContext) {
       close: async () => { await browser.close(); await copy.close(); },
     };
   });
+  let attaches = 0;
+  t.mock.method(currentChrome, "openCurrentChrome", async () => { attaches++; throw new Error("Chrome is not open. Open Google Chrome, then try again."); });
   const importCalls: string[] = [];
   let startSite: string | undefined;
   const openBao = bao.openBaoChromeForProxy;
@@ -104,7 +107,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
   t.signal.addEventListener("abort", abort, { once: true });
   return {
     root, fixture, home, proxy, log, importCalls,
-    get startSite() { return startSite; }, get copyDir() { return copyDir; }, get closeBrowser() { return closeBrowser; },
+    get startSite() { return startSite; }, get attaches() { return attaches; }, get copyDir() { return copyDir; }, get closeBrowser() { return closeBrowser; },
     async cleanup(browser: string, observer?: { close(): Promise<void> }) {
       t.signal.removeEventListener("abort", abort);
       try { await proxy.close(); }
@@ -139,6 +142,10 @@ for (const { browser, check, bare } of [
   let observer: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
   try {
     assert.equal(outcome(await proxy.execute("open", [bare ? "fixture.test" : fixture.url(`/owner/start?check=${check}`)], browser)), "halted");
+    if (browser === "bao") {
+      assert.equal(h.attaches, 1, "a Bao profile at a wall tries the owner's running Chrome first");
+      assert.match(proxy.pickLines.at(-1)!, /^Bao's own browser hit a (sign-in page|human check) on (?:127\.0\.0\.1|fixture\.test)\. Bao could not continue in your running Chrome over remote debugging: Chrome is not open\. Open Google Chrome, then try again\. The owner has to clear it in Bao's window\.$/);
+    } else assert.equal(h.attaches, 0, "a copy never switches on its own");
     if (bare) {
       assert.equal(h.startSite, "https://fixture.test/");
       assert.equal(importCalls[0], new URL(fixture.url("/")).origin);
@@ -178,6 +185,7 @@ for (const { browser, check, bare } of [
       await page.getByRole("button", { name: "Continue" }).click();
     }
     assert.equal(outcome(await waiting), "ready");
+    assert.equal(h.attaches, browser === "bao" ? 1 : 0, "Bao tries the owner's running Chrome once per session");
     assert.equal(observer.contexts()[0]!.pages().filter((p) => !p.isClosed()).length, 1);
     assert.equal((await proxy.execute("snapshot"))[0]!.stdout, "snapshot native output\n");
     assert.equal(library.listRuns()[0]!.id, initial.id);
