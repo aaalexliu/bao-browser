@@ -106,7 +106,7 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   const helper = path.join(app, "Contents", "Resources", "BaoOSHelper.app");
   if (existsSync(helper)) {
     const check = signatureCheck("helper", helper);
-    checks.push({ ...check, detail: `${check.detail}. Optional: only running-Chrome mode uses it, with an Accessibility grant` });
+    checks.push({ ...check, detail: `${check.detail}. Optional: the native Mac app driver (bao mcp-ax) and bao remote-debugging use it, with an Accessibility grant. Running Chrome goes through the Bao extension and needs no Mac permission` });
   } else {
     checks.push({ level: "ok", name: "helper", detail: "not installed. The default copied-profile mode does not need it" });
   }

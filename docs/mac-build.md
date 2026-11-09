@@ -214,7 +214,7 @@ open /Applications/Bao.app
 
 Do not delete `~/Library/Application Support/bao`. Do not run `codesign --deep` on `Bao.app`. A local build has no `com.apple.quarantine` attribute, so Finder Open does not show the Gatekeeper sheets. A downloaded copy does. Those sheets are macOS.
 
-Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. Check helper presence in Settings against [Which grant each job needs](permissions.md#which-grant-each-job-needs). The default copied-profile Chrome route needs no Mac privacy grant. Explicit current-Chrome control uses BaoOSHelper's existing Accessibility grant, without Automation or Screen Recording.
+Quit Bao from the Dock and open `/Applications/Bao.app` again. A second open focuses the window. It does not start a second server. Check helper presence in Settings against [Which grant each job needs](permissions.md#which-grant-each-job-needs). The default copied-profile Chrome route needs no Mac privacy grant. Explicit current-Chrome control goes through the Bao extension. It needs the Bao app open with the extension linked, and no Mac permission.
 
 ## Logs
 

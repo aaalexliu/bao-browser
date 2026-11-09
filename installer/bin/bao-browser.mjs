@@ -210,7 +210,7 @@ function running(app) {
 /** True when the owner says to replace a certificate-signed app with one signed another way. Keep is the default. */
 async function replaceSigned(target, old, signer, yes) {
   const how = signer === "ad-hoc" ? "signed ad-hoc" : `signed by ${signer} with a different certificate`;
-  const loss = `${target} is signed by ${old}. This release is ${how}, so replacing it drops the Accessibility grant that running-Chrome mode uses.`;
+  const loss = `${target} is signed by ${old}. This release is ${how}, so replacing it drops the helper's Accessibility grant, which the native Mac app driver and bao remote-debugging use.`;
   if (!yes && process.stdin.isTTY && process.stdout.isTTY) {
     const ask = createInterface({ input: process.stdin, output: process.stdout });
     try {
