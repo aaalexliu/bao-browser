@@ -13,6 +13,7 @@ import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as launch from "../../src/launch";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 launch.pinTestBrowser();
 
@@ -73,6 +74,7 @@ for (const { mode, force, deny } of [
   const executable = path.join(root, "native");
   const stateMarker = path.join(root, "state");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
     const fs = require('node:fs');
     fs.writeFileSync('bao.pid', ${JSON.stringify(String(daemon.pid))});
     fs.writeFileSync(${JSON.stringify(stateMarker)}, process.env.AGENT_BROWSER_SOCKET_DIR);
@@ -153,11 +155,12 @@ test("window close awaits owned cleanup before browser choice and reopening", { 
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), "{}");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 const command = args[args.indexOf('--idle-timeout') + 2];
 if (command === 'tab' && args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(targets => {
+  listTargets(endpoint.href).then(targets => {
     console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map((t, index) => ({ targetId: t.id, active: index === 0 })) } }));
   }).catch(error => { console.error(error); process.exitCode = 1; });
 } else { process.stdout.write('native success\\n'); }
@@ -259,12 +262,13 @@ test("a stalled copied browser exits before the proxy deletes its profile and re
   await writeFile(path.join(sourceRoot, "Default", "Preferences"), "{}");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 const command = args[args.indexOf('--idle-timeout') + 2];
 if (command === 'open') require('node:fs').appendFileSync(${JSON.stringify(statesFile)}, process.cwd() + '\\n');
 if (command === 'tab' && args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(targets => {
+  listTargets(endpoint.href).then(targets => {
     console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map((t, index) => ({ targetId: t.id, active: index === 0 })) } }));
   }).catch(() => { process.exitCode = 1; });
 } else { process.stdout.write('native success\\n'); }

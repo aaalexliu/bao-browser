@@ -18,6 +18,7 @@ import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { browserToolResult } from "../../src/mcp/tool-card";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 launches.pinTestBrowser();
 
@@ -137,6 +138,7 @@ test("Bao open skips error frames for storage and survives seed failures", { tim
   const log = path.join(root, "native.jsonl");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const fs=require('node:fs');
 const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
 const args=process.argv.slice(2),command=args[args.indexOf('--idle-timeout')+2];
@@ -401,6 +403,7 @@ for (const scenario of ["stale SSO", "signed-out home", "signed-out wall", "newe
   const activeTarget = path.join(root, "active-target");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const fs=require('node:fs');
 const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
 const args=process.argv.slice(2),command=args[args.indexOf('--idle-timeout')+2];
@@ -409,7 +412,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 (async()=>{
  if(command==='close'){console.log('Closed');return;}
  if(${scenario === "failed wall retry"} && command==='open' && fs.readFileSync(${JSON.stringify(log)},'utf8').trim().split('\\n').filter(line=>JSON.parse(line).command==='open').length===2){console.error('synthetic daemon retry failure');process.exitCode=1;return;}
- const tabs=(await (await fetch('http://'+endpoint.host+'/json/list')).json()).filter(t=>t.type==='page');
+ const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
  const active=fs.readFileSync(${JSON.stringify(activeTarget)},'utf8');
  if(command==='tab'){console.log(JSON.stringify({data:{tabs:tabs.map(t=>({targetId:t.id,active:t.id===active}))}}));return;}
  const cdp=await connectCdp(Number(endpoint.port),endpoint.pathname);
@@ -573,10 +576,11 @@ test("a sign-in import that cannot read the Chrome profile says why in the open 
   const home = path.join(root, "home");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');
@@ -602,10 +606,11 @@ test("without Chrome's profiles, the default Bao profile still opens and says wh
   const home = path.join(root, "home");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');
@@ -629,10 +634,11 @@ test("with Chrome's folder refused, the Bao profile still opens and says why it 
   const home = path.join(root, "home");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');

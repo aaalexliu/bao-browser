@@ -12,6 +12,7 @@ import * as cdpSocket from "../../src/cdp-live/socket";
 import { Library } from "../../src/v1/store";
 import { loadState, saveState } from "../../src/v1/sync";
 import { laneChildEnv } from "../runtime";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 const cli = path.resolve(__dirname, "../../src/app/cli.js");
 /** The fixture opens browser=copy and its Chrome has only the Default profile. */
@@ -34,6 +35,7 @@ async function fixture(blockCommand?: "snapshot" | "close") {
   const executable = path.join(root, "native");
   const teardown = path.join(root, "teardown");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringify(blockCommand)})) {
@@ -43,7 +45,7 @@ if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringif
   console.error('fixture field missing'); process.exitCode = 7;
 } else if (args.includes('--json')) {
   const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+  listTargets(endpoint.href).then(tabs => {
     process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
   });
 } else process.stdout.write('native success\\n');

@@ -19,6 +19,7 @@ import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import { consolePane, runConsoleLines, type RunSummary } from "../../src/app/views";
 import { chromeProfiles } from "../support/chrome-profiles";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=", "base64");
 const native = [{ stdout: '- button "Add blueberries" [ref=e280]\n', stderr: "", exitCode: 0 }];
@@ -257,11 +258,12 @@ test("live proxy keeps run identity across validation and owner-wall returns and
   }));
   const executable = path.join(home, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args=process.argv.slice(2), command=args[args.indexOf('--idle-timeout')+2];
 const endpoint=new URL(args[args.indexOf('--cdp')+1]);
 (async()=>{
  if(command==='tab') {
-  const tabs=(await (await fetch('http://'+endpoint.host+'/json/list')).json()).filter(t=>t.type==='page');
+  const tabs=(await listTargets(endpoint.href)).filter(t=>t.type==='page');
   console.log(JSON.stringify({data:{tabs:tabs.map((t,i)=>({targetId:t.id,url:t.url,title:t.title,active:i===0}))}}));
  } else if(command==='get') console.log(JSON.stringify({data:{x:200,y:200,width:40,height:20}}));
  else console.log(command+' native output');

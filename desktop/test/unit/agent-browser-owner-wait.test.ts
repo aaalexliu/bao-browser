@@ -15,6 +15,7 @@ import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, o
 import { Library } from "../../src/v1/store";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 pinTestBrowser();
 
@@ -85,6 +86,7 @@ async function ownerProxy(t: TestContext) {
   const log = path.join(root, "native.jsonl");
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const fs=require('node:fs');
 const {connectCdp}=require(${JSON.stringify(path.resolve(__dirname, "../../src/cdp-live/socket.js"))});
 const args=process.argv.slice(2), command=args[args.indexOf('--idle-timeout')+2];
@@ -92,7 +94,7 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
 fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 (async()=>{
  if(command==='close'){console.log('close native output');return;}
- const tabs=await (await fetch('http://'+endpoint.host+'/json/list')).json();
+ const tabs=await listTargets(endpoint.href);
  const tab=tabs.find(t=>t.type==='page');
  if(command==='tab') console.log(JSON.stringify({data:{tabs:tabs.filter(t=>t.type==='page').map(t=>({targetId:t.id,url:t.url,title:t.url,active:t.id===tab.id}))}}));
  else if(command==='open'){
@@ -272,15 +274,16 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
 });
 
 test("the owner-wait instruction names the page's ask and sends the owner to the browser the session drives", () => {
-  const current = ownerWaitInstruction(true, { url: "https://www.amazon.com/ap/signin", title: "Amazon Sign-In" });
+  const current = ownerWaitInstruction(true, false, { url: "https://www.amazon.com/ap/signin", title: "Amazon Sign-In" });
   assert.match(current, /Ask the owner to sign in to amazon\.com in Bao's task tab in their own Chrome,/);
   assert.match(current, /Bao ends the wait if no wait_for_owner call continues it for 30 minutes\./);
   assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
   assert.doesNotMatch(current, /Bao window|brought/);
-  const bao = ownerWaitInstruction(false, { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });
+  const bao = ownerWaitInstruction(false, true, { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });
   assert.match(bao, /^Keep this session open\. Bao brought this window to the front for the owner\. /);
+  assert.match(ownerWaitInstruction(false, false), /^Keep this session open\. Ask the owner /, "Bao claims the raise only when it ran");
   assert.match(bao, /Ask the owner to finish the check on myaccount\.nytimes\.com in this Bao window,/);
   assert.doesNotMatch(bao, /sign in/);
   assert.match(bao, /On closed, report that the owner closed the window\.$/);
-  assert.match(ownerWaitInstruction(false), /Ask the owner to finish the check on the page in this Bao window,/);
+  assert.match(ownerWaitInstruction(false, false), /Ask the owner to finish the check on the page in this Bao window,/);
 });

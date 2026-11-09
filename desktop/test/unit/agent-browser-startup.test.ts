@@ -10,6 +10,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import * as launches from "../../src/launch";
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 
 launches.pinTestBrowser();
 
@@ -46,11 +47,12 @@ test("pass-through open lists every restored tab even when an unrelated renderer
   // The real Chrome process and its stuck renderer are not mocked.
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}
+${LIST_TARGETS}
 const args = process.argv.slice(2);
 const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
 const command = args[args.indexOf('--idle-timeout') + 2];
 if (command === 'tab') {
-  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(targets => {
+  listTargets(endpoint.href).then(targets => {
     console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, url: t.url, active: t.url.endsWith('/ready') })) } }));
   }).catch(error => { console.error(error); process.exitCode = 1; });
 } else { console.log('native ' + command); }

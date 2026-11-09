@@ -3,7 +3,7 @@
 // Chrome's window over the owner's other apps, and can make Chrome the front app with the owner's keyboard.
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { createServer, request as httpRequest } from "node:http";
+import { createServer } from "node:http";
 import { createConnection, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import type { DevToolsEndpoint } from "../cdp-live/endpoint";
@@ -126,15 +126,8 @@ async function join(chrome: DevToolsEndpoint, client: Duplex, head: Buffer, key:
 export async function openBackgroundCdp(chrome: DevToolsEndpoint): Promise<BackgroundCdp> {
   const browserPath = `/devtools/browser/${randomUUID()}`;
   const sockets = new Set<Duplex>();
-  // Plain HTTP, such as the /json/list target listing, goes to Chrome unchanged.
-  const server = createServer((request, response) => {
-    const forward = httpRequest({ host: "127.0.0.1", port: chrome.port, path: request.url, method: request.method, headers: request.headers }, (answer) => {
-      response.writeHead(answer.statusCode ?? 502, answer.headers);
-      answer.pipe(response);
-    });
-    forward.on("error", () => response.writeHead(502).end());
-    request.pipe(forward);
-  });
+  // Plain HTTP gets nothing. Chrome's /json routes would raise its windows or hand out its own port.
+  const server = createServer((_request, response) => response.writeHead(404).end());
   server.on("upgrade", (request, client: Duplex, head: Buffer) => {
     const key = request.headers["sec-websocket-key"];
     if (new URL(request.url ?? "/", "http://127.0.0.1").pathname !== browserPath || typeof key !== "string") {
@@ -158,6 +151,7 @@ export async function openBackgroundCdp(chrome: DevToolsEndpoint): Promise<Backg
     endpoint: { port: address.port, browserPath },
     close() {
       server.close();
+      server.closeAllConnections();
       for (const socket of sockets) socket.destroy();
     },
   };

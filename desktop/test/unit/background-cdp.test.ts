@@ -56,6 +56,9 @@ test("the agent's endpoint keeps Chrome behind, gives each page focus, and hides
     const { targetId: second } = await send("Target.createTarget", { url: "about:blank" }) as { targetId: string };
     const windowOf = async (targetId: string) => (await direct.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId })).windowId;
     assert.notEqual(await windowOf(second), await windowOf(first), "a new tab gets its own window, so it stays visible");
+    for (const route of ["/json/list", "/json/version", `/json/activate/${first}`]) {
+      assert.equal((await fetch(`http://127.0.0.1:${background.endpoint.port}${route}`)).status, 404, `${route} would raise a tab or hand out Chrome's own port`);
+    }
     assert.ok(received.every((message) => message.id === undefined || message.id <= id), "Bao's own replies never reach the agent");
   } finally {
     socket.close();

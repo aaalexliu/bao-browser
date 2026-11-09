@@ -82,6 +82,8 @@ interface SessionData {
   ownerTouched?: number;
   /** Why a Bao-profile session could not move to the owner's running Chrome. Only an explicit wait_for_owner tries again. */
   moveError?: string;
+  /** Whether Bao brought the waiting window on top of the owner's apps for the latest handoff. */
+  raised?: boolean;
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -107,15 +109,18 @@ type OwnedChrome = Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaite
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
  * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
- * owner's app keeps the keyboard until he clicks the window.
+ * owner's app keeps the keyboard until he clicks the window. A zoomed window comes back zoomed. A full-screen window has its
+ * own Space, so Bao leaves it. Returns whether the window came back on top.
  */
-async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<void> {
+async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<boolean> {
   const { windowId } = await cdp.send<{ windowId: number }>("Browser.getWindowForTarget", { targetId }, undefined, 2000);
-  const { bounds } = await cdp.send<{ bounds: { windowState: string } }>("Browser.getWindowBounds", { windowId }, undefined, 2000);
-  if (bounds.windowState === "normal") await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "minimized" } }, undefined, 2000);
-  if (bounds.windowState === "normal" || bounds.windowState === "minimized") {
-    await cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }, undefined, 2000);
-  }
+  const { bounds: { windowState } } = await cdp.send<{ bounds: { windowState: string } }>("Browser.getWindowBounds", { windowId }, undefined, 2000);
+  if (windowState === "fullscreen") return false;
+  const set = (state: string) => cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: state } }, undefined, 2000);
+  if (windowState !== "minimized") await set("minimized");
+  await set("normal");
+  if (windowState === "maximized") await set("maximized");
+  return true;
 }
 
 async function behind(chrome: OwnedChrome): Promise<{ chrome: OwnedChrome; background: BackgroundCdp }> {
@@ -666,7 +671,7 @@ export class AgentBrowserProxy {
     const current = session?.kind === "current";
     const instruction = kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication."
       : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
-        : ownerWaitInstruction(current, session && ownerWaitPage(session));
+        : ownerWaitInstruction(current, session?.raised === true, session && ownerWaitPage(session));
     return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${session ? this.fallback(session) : ""}` }), stderr: "", exitCode: 0 }];
   }
 
@@ -732,13 +737,14 @@ export class AgentBrowserProxy {
   private async ownerBanner(session: Session, targetId: string, waiting: boolean): Promise<void> {
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
+    if (waiting) session.raised = false;
     try {
       // The extension keeps the task tab folded in Bao's group and opens the group while the owner has to act in it.
       // Otherwise the tab and its window come to the front when the owner has to act in it. Bao's own Chrome stays behind until then.
       if (session.kind === "current" && session.relay) await cdp.send(waiting ? "Bao.showTab" : "Bao.settleTab", { targetId }, undefined, 2000);
       else if (waiting) {
         await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
-        if (session.kind === "copy" && process.platform === "darwin") await windowOnTop(cdp, targetId).catch(() => undefined);
+        if (session.kind === "copy" && process.platform === "darwin") session.raised = await windowOnTop(cdp, targetId).catch(() => false);
       }
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
