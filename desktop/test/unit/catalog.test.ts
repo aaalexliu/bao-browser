@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
+import { runAttention, type RunSummary } from "../../src/app/views";
 import { EXTENSION_NOT_CONNECTED } from "../../src/cdp-live/launch-guard";
 import { compareSearchHits, describeWorkflow, getRun, greenLabel, originLabel, runWorkflow, searchWorkflows, withHeldPage, workflowReplayRefusal, type SearchHit } from "../../src/mcp/catalog";
 import { Library } from "../../src/v1/store";
@@ -660,3 +661,40 @@ function workflow(id: string, name: string): WorkflowV2 {
     })],
   });
 }
+
+test("a run that stops on a password or Log in step asks the agent to send the owner to sign in", { timeout: 60_000 }, async (t) => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-cat-signin-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "text/html");
+    res.end("<!doctype html><p>Reports</p>");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const library = new Library(home);
+  const startUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  try {
+    const steps = {
+      password: fixtureStep({ id: "password", index: 0, action: "type", label: "Type the password", surface: "dom", timeoutMs: 800, heal: "never", input: "pass", value: "{{pass}}", sensitive: true,
+        identity: { surface: "dom", role: "textbox", inputType: "password", id: "password", path: [] } }),
+      login: fixtureStep({ id: "login", index: 0, action: "click", label: "Click Log in", surface: "dom", timeoutMs: 800, heal: "never",
+        identity: { surface: "dom", role: "button", name: "Log in", path: [] } }),
+      other: fixtureStep({ id: "other", index: 0, action: "click", label: "Click Export", surface: "dom", timeoutMs: 800, heal: "never",
+        identity: { surface: "dom", role: "button", name: "Export", path: [] } }),
+    };
+    for (const [id, step] of Object.entries(steps)) {
+      library.save(fixtureDoc({
+        schema: "bao.workflow/v4", version: 2, id: `signin-${id}`, name: `Sign in ${id}`, createdAt: 1, startUrl,
+        inputs: id === "password" ? [fixtureInput({ name: "pass", type: "secret", label: "Password", default: "hunter2" })] : [],
+        steps: [step],
+      }));
+      const outcome = await runWorkflow(library, { id: `signin-${id}` });
+      if (outcome.resume_token) await runWorkflow(library, { resume: outcome.resume_token, cancel: true });
+      assert.equal(outcome.outcome, id === "other" ? "failed" : "needs_signin", `${id}: ${outcome.reason}`);
+      const stored = library.listRuns().find((run) => run.workflowId === `signin-${id}`);
+      assert.equal(stored?.status, "failed", id);
+      assert.deepEqual(runAttention([stored as RunSummary]).map((item) => item.label), ["Failed"], id);
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

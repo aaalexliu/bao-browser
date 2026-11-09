@@ -828,7 +828,7 @@ function duration(step: StepView): string {
 function frameFace(runId: string, step: StepView, failure: FailureView | undefined): { src: string; body: string } {
   const before = frameUrl(runId, step, failure, "before");
   const after = frameUrl(runId, step, failure, "after");
-  const src = after || before;
+  const src = step.target && before ? before : after || before;
   const hold = placeholder(step.action, step.label || step.id);
   if (!src) return { src: "", body: hold };
   return {
@@ -1322,8 +1322,8 @@ export function runKind(run: RunSummary, promotion?: PromotionView): string {
   if (run.status === "waiting-for-sign-in" || run.status === "needs-sign-in" || run.status === "needs_signin") return "waiting-for-sign-in";
   if (run.kind === "capture") return run.status === "needs_human" ? "paused" : run.status;
   if (promotion?.status === "provisional" || run.promotion?.status === "provisional") return "provisional";
-  if (run.status === "needs_human" || run.status === "paused" || run.status === "waiting") return "paused";
-  if (run.status === "failed" || run.status === "refused") return "failed";
+  if (run.status === "needs_human" || run.status === "paused") return "paused";
+  if (run.status === "failed") return "failed";
   if ((run.heals || []).length > 0) return "healed";
   return "passed";
 }
@@ -1533,8 +1533,9 @@ function cardInputName(step: StepCard): string {
 }
 
 function cardTargetName(step: StepCard): string {
-  const locator = step.target?.locators?.find((item) => item.name || item.value);
-  return locator?.name || locator?.value || step.target?.hint?.label || step.target?.hint?.nameAttr || step.identity?.name || step.identity?.text || step.identity?.testId || step.identity?.id || "";
+  const locators = step.target?.locators || [];
+  return locators.find((item) => item.kind === "role" && item.name)?.name || locators.find((item) => item.kind === "text" && item.value)?.value
+    || step.target?.hint?.label || step.caption?.citation?.text || step.identity?.name || step.identity?.text || "";
 }
 
 function cardTargetKind(step: StepCard): string {
@@ -1574,13 +1575,14 @@ function workflowCheckText(text: string, inputs: TokenInput[]): string {
 }
 
 function workflowStatusGlyph(kind: string): string {
-  const mark = kind === "passed" ? "m4 7.2 2 2 4-4.4" : kind === "failed" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" ? "M5.2 4v6M8.8 4v6" : "M7 3.8V7l2.2 1.4";
+  const mark = kind === "passed" ? "m4 7.2 2 2 4-4.4" : kind === "failed" ? "m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4" : kind === "healed" ? "M7 3.9v6.2M3.9 7h6.2" : kind === "paused" || kind === "waiting-for-sign-in" ? "M5.2 4v6M8.8 4v6" : "M7 3.8V7l2.2 1.4";
   return `<svg class="workflow-status-icon" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path d="${mark}" fill="none" stroke="var(--bg)" stroke-width="${kind === "failed" ? "1.7" : kind === "healed" ? "1.8" : "1.6"}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 function workflowRunStatus(run: RunSummary): string {
   const kind = runKind(run);
-  return `<span class="wf-run-status ${esc(kind)}">${workflowStatusGlyph(kind)}${esc(statusLabel(kind))}</span>`;
+  const word = statusLabel(kind);
+  return `<span class="wf-run-status ${esc(kind)}">${workflowStatusGlyph(kind)}${esc(word.charAt(0).toUpperCase() + word.slice(1))}</span>`;
 }
 
 export function workflowSidebarToggle(): string {
@@ -1920,7 +1922,7 @@ export function runAttention(runs: RunSummary[], ask?: HumanAsk | null, activeRu
     const waiting = run.id === activeRun?.id ? activeRun.phase === "waiting" : agent ? agentOwnerWait(run) : runWaiting(run);
     if (waiting) {
       const signIn = runKind(run) === "waiting-for-sign-in";
-      items.push({ run, label: signIn ? statusLabel("waiting-for-sign-in") : "Needs you", kind: "paused" });
+      items.push({ run, label: signIn ? "Waiting for sign-in" : "Needs you", kind: "paused" });
     }
     if (agent) return items;
     const decided = new Set((run.decisions || []).map((decision) => decision.healId));
@@ -1946,7 +1948,7 @@ function runListKind(run: RunSummary): string {
 }
 
 export function runStatusGlyph(kind: string): string {
-  const mark = kind === "paused" ? '<path d="M5.4 4.4v5.2M8.6 4.4v5.2"/>'
+  const mark = kind === "paused" || kind === "waiting-for-sign-in" ? '<path d="M5.4 4.4v5.2M8.6 4.4v5.2"/>'
     : kind === "healed" ? '<path d="M7 3.9v6.2M3.9 7h6.2"/>'
     : ["failed", "timed-out"].includes(kind) ? '<path d="m4.6 4.6 4.8 4.8M9.4 4.6 4.6 9.4"/>'
     : kind === "passed" ? '<path d="m4 7.2 2 2 4-4.4"/>'

@@ -599,20 +599,19 @@ function absorb(previous: Draft, current: Draft): void {
     previous.card.values = current.card.values.map((value) => ({ ...value }));
     previous.card.human = current.card.human;
     previous.card.verify = current.card.verify;
-    if (!previous.card.outcome) previous.card.outcome = current.card.outcome;
+    previous.card.outcome = current.card.outcome;
     previous.card.intent = intent || current.card.intent;
     previous.step.caption = { ...previous.step.caption, text: previous.card.intent };
-  } else if (current.card.outcome) {
-    setTextCheck(previous.step, current.card.outcome);
+  } else if (current.card.outcome && setTextCheck(previous.step, current.card.outcome)) {
     previous.card.outcome = current.card.outcome;
   }
   previous.events = [...previous.events, ...current.events];
   previous.card.eventIds = previous.events.map((event) => event.id);
 }
 
-function setTextCheck(step: WorkflowStep, match: string): void {
+function setTextCheck(step: WorkflowStep, match: string): boolean {
   const current = stepCheck(step);
-  if (current && current.kind !== "element" && current.kind !== "settled") return;
+  if (current && current.kind !== "element" && current.kind !== "settled") return false;
   switch (step.action) {
     case "click":
     case "type":
@@ -628,12 +627,12 @@ function setTextCheck(step: WorkflowStep, match: string): void {
     case "pickDate":
     case "verify":
       step.check = { kind: "text", match, timeoutMs: 4000 };
-      return;
+      return true;
     case "extract":
     case "for_each":
     case "navigate":
     case "note":
-      return;
+      return false;
   }
 }
 
@@ -746,8 +745,9 @@ function citedSentence(text: string, citation: string | undefined): string {
 function heuristicIntent(step: WorkflowStep, event: TrailEvent | undefined): string {
   if (step.action === "type") return typeIntent(step, event);
   const spoken = citedSentence(step.caption?.text || "", step.caption?.citation?.text);
-  if (spoken && spoken !== "Click" && spoken !== "Step") return spoken;
   const target = targetName(event);
+  const unnamedClick = step.action === "click" && !step.caption?.citation;
+  if (spoken && spoken !== "Click" && spoken !== "Step" && !(unnamedClick && target)) return spoken;
   if (target) return `Click ${target}`;
   if (spoken) return spoken;
   if (step.action === "verify") return "Check";

@@ -298,3 +298,57 @@ test("step facts reflect replay checks, destinations, and action-specific input 
     await browser.close();
   }
 });
+
+test("Finds names the control in words and never shows a css or xpath selector", () => {
+  const finds = (step: StepCard) => workflowDetail({ id: "finds", name: "Finds", steps: [step] }).match(/<dt>Finds<\/dt><dd>([^<]*)<\/dd>/)?.[1];
+  assert.equal(finds({ id: "css", action: "click", target: { locators: [{ kind: "css", value: "header > button:nth-of-type(2)" }, { kind: "role", role: "button", name: "Save" }] } }), "The “Save” button");
+  assert.equal(finds({ id: "xpath", action: "click", target: { locators: [{ kind: "xpath", value: "//*[@id=\"x\"]" }, { kind: "text", value: "Continue" }] } }), "The “Continue” control");
+  assert.equal(finds({ id: "cite", action: "type", caption: { text: "Type into Email", citation: { text: "Email" } }, target: { locators: [{ kind: "css", value: "#username" }], hint: { role: "textbox" } } }), "The “Email” box");
+  assert.equal(finds({ id: "bare", action: "click", target: { locators: [{ kind: "css", value: "#username" }, { kind: "testid", value: "login-btn" }] } }), "No saved target");
+});
+
+test("the Inspector zooms a boxed step picture around its target and keeps the mark on it", { timeout: 60_000 }, async () => {
+  const dirs = applyHermeticApp("workflow-zoom");
+  const app = await startApp({ home: dirs.home, extensionHost: false, chromeProfilesRoot: path.join(dirs.home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const fixture = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+    await fixture.goto(`http://127.0.0.1:${app.port}/fixture`);
+    const field = (await fixture.locator("#username").boundingBox())!;
+    const shots = path.join(dirs.home, "shots", "workflows", "zoom");
+    mkdirSync(shots, { recursive: true });
+    const png = await fixture.screenshot();
+    writeFileSync(path.join(shots, "name.png"), png);
+    writeFileSync(path.join(shots, "name.viewport.png"), png);
+    await fixture.close();
+    const targetBox = { x: field.x, y: field.y, width: field.width, height: field.height, viewport: { width: 1280, height: 820 } };
+    app.library.save(fixtureDoc({
+      schema: "bao.workflow/v4", version: 2, id: "zoom", name: "Zoom", createdAt: 1, startUrl: "/fixture", inputs: [],
+      steps: [fixtureStep({ id: "name", index: 0, action: "click", surface: "dom", timeoutMs: 100, label: "Click Username", identity: { surface: "dom", path: [], role: "textbox", name: "Username" }, targetBox })],
+    }));
+    for (const theme of ["light", "dark"]) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+      await page.addInitScript((theme) => localStorage.setItem("bao-theme", theme), theme);
+      await page.goto(`http://127.0.0.1:${app.port}/`);
+      await page.locator("#rail [data-place=workflows]").click();
+      await page.locator('[data-open-workflow="zoom"]').click();
+      const picture = page.locator('[data-step-panel="name"] .wf-picture');
+      await picture.locator(".shot-box").waitFor();
+      const frame = (await picture.boundingBox())!;
+      const image = (await picture.locator("img").boundingBox())!;
+      const mark = (await picture.locator(".shot-box").boundingBox())!;
+      assert.ok(image.width > frame.width * 1.5, `the picture is not zoomed: ${image.width} in ${frame.width}`);
+      assert.ok(Math.abs(frame.width / frame.height - 1280 / 820) < 0.02);
+      const scale = image.width / 1280;
+      assert.ok(Math.abs((mark.x - image.x) / scale - field.x) < 3, theme);
+      assert.ok(Math.abs((mark.y - image.y) / scale - field.y) < 3, theme);
+      assert.ok(Math.abs(mark.width / scale - field.width) < 3, theme);
+      assert.ok(mark.x >= frame.x && mark.x + mark.width <= frame.x + frame.width, theme);
+      assert.ok(mark.y >= frame.y && mark.y + mark.height <= frame.y + frame.height, theme);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    await app.close();
+  }
+});

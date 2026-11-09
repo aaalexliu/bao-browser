@@ -1,6 +1,8 @@
 // Sentences and citations captured with a step. The citation is the element's own string.
 
-import type { CitationSource, Identity, StepCaption, TargetBox } from "./schema";
+import type { AnchorLocator, CitationSource, Identity, StepCaption, TargetBox } from "./schema";
+
+type LocatorRelation = AnchorLocator["relation"];
 
 export interface CiteFields {
   text?: string;
@@ -89,9 +91,41 @@ export function caption(text: string, citation?: StepCaption["citation"], box?: 
   };
 }
 
-export function clickSentence(name: string | undefined): string {
+const CONTROL_WORDS: Record<string, string> = {
+  button: "button",
+  link: "link",
+  checkbox: "checkbox",
+  radio: "radio button",
+  radiobutton: "radio button",
+  switch: "switch",
+  tab: "tab",
+  menuitem: "menu item",
+  option: "option",
+  combobox: "menu",
+  popupbutton: "menu",
+  textbox: "box",
+  textfield: "box",
+  searchbox: "search box",
+  img: "image",
+  image: "image",
+  row: "row",
+  cell: "cell",
+};
+
+const NEAR_WORDS: Record<LocatorRelation, string> = { right: "after", left: "before", below: "below", above: "above" };
+
+export function controlWord(role: string | undefined): string {
+  const key = (role || "").toLowerCase().replace(/^ax/, "");
+  return CONTROL_WORDS[key] || "control";
+}
+
+/** A click names the control. An unnamed one reads as its role, placed by a nearby string when one is known. */
+export function clickSentence(name: string | undefined, role?: string, near?: { relation: LocatorRelation; text?: string }): string {
   const shown = name?.replace(/\s+/g, " ").trim();
-  return shown ? `Click ${shown}` : "Click";
+  if (shown) return `Click ${shown}`;
+  const what = `the ${controlWord(role)}`;
+  const anchor = near?.text?.replace(/\s+/g, " ").trim();
+  return anchor && near ? `Click ${what} ${NEAR_WORDS[near.relation]} "${anchor}"` : `Click ${what}`;
 }
 
 export function typeSentence(field: string | undefined, secret = false): string {
@@ -126,27 +160,30 @@ export function commandSentence(command: string, arg: string | undefined, snapsh
   if (command === "scroll") return { text: "Scroll the page" };
   if (command === "screenshot") return { text: "Capture the page" };
   if (command === "tab") return { text: "Switch tab" };
-  const named = refName(arg, snapshot);
+  const line = refLine(arg, snapshot);
+  const named = refName(line);
   if (command === "fill") return named
     ? { text: `Type into ${named}`, citation: { text: named, source: "text" } }
     : { text: "Type" };
   if (command === "click") return named
     ? { text: `Click ${named}`, citation: { text: named, source: "text" } }
-    : { text: "Click" };
+    : { text: clickSentence(undefined, line?.match(/^\s*-\s*([A-Za-z]+)/)?.[1]) };
   return { text: command };
 }
 
-function refName(arg: string | undefined, snapshot: string | undefined): string | undefined {
+function refLine(arg: string | undefined, snapshot: string | undefined): string | undefined {
   const ref = arg?.trim();
   if (!ref || !snapshot || !isElementRef(ref)) return undefined;
-  const id = ref.slice(1);
-  const needle = `ref=${id}`;
-  const line = snapshot.split("\n").find((row) => {
+  const needle = `ref=${ref.slice(1)}`;
+  return snapshot.split("\n").find((row) => {
     const at = row.indexOf(needle);
     if (at < 0) return false;
     const after = row[at + needle.length];
     return !after || !/\d/.test(after);
   });
+}
+
+function refName(line: string | undefined): string | undefined {
   const quoted = line?.match(/"([^\"]+)"/)?.[1]?.trim();
   if (!quoted || isElementRef(quoted) || quoted.startsWith("@e")) return undefined;
   return quoted;

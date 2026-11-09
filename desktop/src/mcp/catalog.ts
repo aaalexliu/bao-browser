@@ -22,7 +22,7 @@ import { TIMED_OUT, TIMED_OUT_STATUS } from "../v1/pending-prompt";
 import { expectedText, holds, replay, withInputDefaults, type RunResult } from "../v1/replay";
 import { openReplayVideo } from "../v1/replay-video";
 import { formatClock, when } from "../v1/time";
-import { stepTitle, stepValueTemplate, stepCheck, stepForEach, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
+import { stepTitle, stepValueTemplate, stepCheck, stepForEach, stepInputName, stepQuery, stepSensitive, parseWorkflow, toJson, type ReplayArgs, type WorkflowReceipt, type WorkflowStep, type WorkflowV2 } from "../v1/schema";
 import { shotFile } from "../v1/shots";
 import { Library, secretInputNames } from "../v1/store";
 
@@ -809,6 +809,7 @@ function saveWorkflowRun(
 ): void {
   const paused = outcome.status === "needs_signin" || outcome.status === "needs_human";
   const needsHuman = run.pausedKind === "wall" || run.pausedKind === "confirm";
+  const finished = run.status === "failed" && outcome.status === "needs_signin";
   library.saveRun({
     schema: "bao.run/v4",
     id: run.runId,
@@ -816,7 +817,7 @@ function saveWorkflowRun(
     traceUnavailable: run.traceUnavailable,
     videoTruncated: run.videoTruncated,
     workflowId: workflow.id,
-    status: run.pausedKind === "signin" || outcome.status === "needs_signin" ? "waiting-for-sign-in" : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status === "failed" ? "failed" : run.status,
+    status: run.pausedKind === "signin" ? "waiting-for-sign-in" : finished ? "failed" : needsHuman ? "needs_human" : paused ? "paused" : outcome.status === "completed" ? "passed" : run.status,
     at: Date.now(),
     heals: run.heals,
     failure: run.failure,
@@ -830,7 +831,7 @@ function saveWorkflowRun(
     ...(run.outputs ? { outputs: run.outputs } : {}),
     ...(run.pageLeftOpen ? { pageLeftOpen: true } : {}),
     envelope: outcome.status && outcome.status !== "ok" ? {
-      status: outcome.status,
+      status: finished ? "failed" : outcome.status,
       run_id: outcome.run_id || run.runId,
       step: outcome.step,
       reason: outcome.reason,
@@ -942,9 +943,14 @@ function usableSaved(value: unknown): boolean {
   return typeof value === "string" && value !== "" && !hasStrippedSecret(value);
 }
 
+const SIGN_IN = /\blog[\s-]?in\b|\bsign[\s-]?in\b|password/i;
+
 function signInStep(step: WorkflowStep | undefined): boolean {
   if (!step) return false;
-  return step.action === "handoff" && step.reason === "sign-in";
+  if (step.action === "handoff") return step.reason === "sign-in";
+  if (stepSensitive(step)) return true;
+  const target = stepQuery(step);
+  return SIGN_IN.test([step.caption.text, stepInputName(step), target?.name, target?.text, target?.label].filter(Boolean).join(" "));
 }
 
 function inputSchema(doc: WorkflowV2, defaults: ReplayArgs): InputField[] {

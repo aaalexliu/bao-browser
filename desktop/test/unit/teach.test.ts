@@ -443,3 +443,25 @@ function branchDriver(doc: WorkflowV2, clicks: string[]): Driver {
     sleep: async () => {},
   };
 }
+
+test("merging keeps the card outcome on the check the step still runs", () => {
+  const typed = { id: "type-name", ts: 1, kind: "act" as const, op: "type", value: "alpha", identity: ident({ name: "Name" }) };
+  const saved = { id: "click-save", ts: 2, kind: "act" as const, op: "click", afterText: "Saved", identity: ident({ role: "button", name: "Save" }) };
+  const before = projectTeach([typed, saved], [], meta);
+  assert.equal(stepCheck(before.workflow.steps[0]!)?.kind, "value");
+  const merged = projectTeach([typed, saved], decide([], { kind: "merge", cardId: "click-save" }, 1), meta);
+  assert.equal(merged.workflow.steps.length, 1);
+  assert.deepEqual(stepCheck(merged.workflow.steps[0]!), stepCheck(before.workflow.steps[0]!));
+  assert.equal(merged.cards[0]?.outcome, before.cards[0]?.outcome);
+});
+
+test("a richer card merged into a click takes that card's outcome with its check", () => {
+  const edit = { id: "click-edit", ts: 1, kind: "act" as const, op: "click", afterText: "Display name", identity: ident({ role: "button", name: "Edit" }) };
+  const typed = { id: "type-name", ts: 2, kind: "act" as const, op: "type", value: "alpha", identity: ident({ name: "Name" }) };
+  const before = projectTeach([edit, typed], [], meta);
+  const merged = projectTeach([edit, typed], decide([], { kind: "merge", cardId: "type-name" }, 1), meta);
+  assert.equal(merged.workflow.steps.length, 1);
+  assert.deepEqual(stepCheck(merged.workflow.steps[0]!), stepCheck(before.workflow.steps[1]!));
+  assert.equal(merged.cards[0]?.outcome, before.cards[1]?.outcome);
+  assert.notEqual(merged.cards[0]?.outcome, "Display name");
+});
