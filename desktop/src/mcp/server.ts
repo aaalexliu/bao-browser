@@ -41,7 +41,7 @@ const CATALOG_TOOLS = [
   },
   {
     name: "run_workflow",
-    description: BROWSER_CHOICE_DESCRIPTION + " Name the Chrome profile folder with profile, such as profile=\"Default\"; without it, run_workflow uses the one picked in Bao Settings, or the only one. With several and none named or picked, it opens nothing and fails with the profiles, their names and emails, and the call to retry. On browser=bao, a Chrome without readable profiles runs with no sign-in import. Replay a saved workflow on this device in the selected browser. Omit inputs marked saved. Bao fills those saved values and names them in savedValues. A saved password is listed as saved password, never the value. Author values on an imported workflow stay required until the owner saves his own. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. A run that fails at a sign-in, password, or log-in step also returns needs_signin, with no deadline. Its token starts a fresh run with the same inputs once the owner has signed in. cancel stops it with nothing applied.",
+    description: BROWSER_CHOICE_DESCRIPTION + " Name the Chrome profile folder with profile, such as profile=\"Default\"; without it, run_workflow uses the one picked in Bao Settings, or the only one. With several and none named or picked, it opens nothing and fails with the profiles, their names and emails, and the call to retry. On browser=bao, a Chrome without readable profiles runs with no sign-in import. Replay a saved workflow on this device in the selected browser. Omit inputs marked saved. Bao fills those saved values and names them in savedValues. A saved password is listed as saved password, never the value. Author values on an imported workflow stay required until the owner saves his own. Workflows from the retired cdp-live driver fail with a clear reason and do not open Chrome. A workflow on another device or a marketplace listing is installed here first. Requested workflows run without a separate Bao site or listing approval. A passed run stamps the last green time and returns declared outputs. A human step returns needs_human or needs_signin with ask, deadline, and resume_token. Pass that token to continue the same run. A run that fails at a sign-in, password, or log-in step also returns needs_signin, with no deadline. Its token starts a fresh run with the same inputs once the owner has signed in. cancel stops it with nothing applied. A result that opened a browser lists in browser the route, the Chrome app path, the user-data-dir, and the Chrome profile, and why Bao chose them, and each sign-in import; a failed open names what Bao tried, and a resumed held run names the route and profile in one line. When a Bao profile or copy stops at a sign-in or check, browser also gives the exact run_workflow calls to fall back to browser=current on the same Chrome profile. Bao never switches routes on its own.",
     inputSchema: {
       type: "object",
       properties: {
@@ -345,6 +345,9 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
     if (args.profile !== undefined && (typeof args.profile !== "string" || !args.profile.trim())) {
       throw new Error("profile must be a Chrome profile folder, such as Default or Profile 2");
     }
+    const browser = args.browser === undefined
+      ? (args.resume ? peekResume(library, String(args.resume))?.browser : undefined) ?? DEFAULT_BROWSER
+      : browserChoice(args.browser);
     const result = await runWorkflow(library, {
       ...typeof args.profile === "string" ? { profile: args.profile.trim() } : {},
       id: args.id ? String(args.id) : undefined,
@@ -352,9 +355,8 @@ async function callTool(library: Library, identity: LibraryIdentity, name: strin
       resume: args.resume ? String(args.resume) : undefined,
       rerun: args.rerun === true,
       cancel: args.cancel === true,
-      browser: args.browser === undefined
-        ? (args.resume ? peekResume(library, String(args.resume))?.browser : undefined) ?? DEFAULT_BROWSER
-        : browserChoice(args.browser),
+      browser,
+      why: args.browser === undefined && browser === DEFAULT_BROWSER ? "the default" : "named by the agent",
     });
     return withLibrary(result, identity);
   }
