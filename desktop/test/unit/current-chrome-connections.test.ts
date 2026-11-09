@@ -19,9 +19,13 @@ import { chromeProfiles } from "../support/chrome-profiles";
 
 pinTestBrowser();
 
-/** Passes connections through to Chrome and counts the browser-level WebSocket upgrades, the ones Chrome asks about. */
-async function countingEndpoint(t: TestContext, chrome: DevToolsEndpoint): Promise<{ endpoint: DevToolsEndpoint; upgrades: () => number }> {
+/**
+ * Passes connections through to Chrome and counts the browser-level WebSocket upgrades, the ones Chrome asks about.
+ * `hold` keeps Chrome's bytes back until it is called again with false.
+ */
+async function countingEndpoint(t: TestContext, chrome: DevToolsEndpoint) {
   let upgrades = 0;
+  let held: (() => void)[] | undefined;
   const sockets = new Set<Socket>();
   const server = createServer((client) => {
     const upstream = createConnection({ host: "127.0.0.1", port: chrome.port });
@@ -34,14 +38,21 @@ async function countingEndpoint(t: TestContext, chrome: DevToolsEndpoint): Promi
       upstream.write(head);
       client.pipe(upstream);
     });
-    upstream.pipe(client);
+    upstream.on("data", (bytes: Buffer) => {
+      if (held) held.push(() => client.write(bytes));
+      else client.write(bytes);
+    });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => {
     server.close();
     for (const socket of sockets) socket.destroy();
   });
-  return { endpoint: { port: (server.address() as AddressInfo).port, browserPath: chrome.browserPath }, upgrades: () => upgrades };
+  const hold = (on: boolean) => {
+    if (on) held ??= [];
+    else if (held) { const writes = held; held = undefined; for (const write of writes) write(); }
+  };
+  return { endpoint: { port: (server.address() as AddressInfo).port, browserPath: chrome.browserPath } as DevToolsEndpoint, upgrades: () => upgrades, hold };
 }
 
 async function testChrome(t: TestContext) {
@@ -96,6 +107,55 @@ test("clients of the shared endpoint ride Bao's one connection, each in its own 
     bao.close();
     await clients[1]!.disconnected;
   } finally {
+    shared.close();
+    bao.close();
+  }
+});
+
+test("a reply without a session reaches the one who asked, though Bao and a client use the same ids", { timeout: 60_000 }, async (t) => {
+  const f = await testChrome(t);
+  const bao = await connectCdp(f.endpoint.port, f.endpoint.browserPath);
+  const shared = await shareConnection(bao);
+  const client = new WebSocket(`ws://127.0.0.1:${shared.endpoint.port}${shared.endpoint.browserPath}`);
+  try {
+    const replies = new Map<number, { result?: { sessionId?: string }; error?: { code: number; message: string }; sessionId?: string }>();
+    let replied = () => {};
+    client.onmessage = (event) => {
+      const message = JSON.parse(String(event.data));
+      if (typeof message.id === "number") { replies.set(message.id, message); replied(); }
+    };
+    await new Promise((resolve, reject) => { client.onopen = resolve; client.onerror = reject; });
+    const ask = (id: number, method: string, params: Record<string, unknown>, sessionId?: string) => {
+      client.send(JSON.stringify({ id, method, params, ...sessionId ? { sessionId } : {} }));
+      return new Promise<void>((resolve) => { replied = () => { if (replies.has(id)) resolve(); }; replied(); });
+    };
+    const { targetId } = await bao.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true });
+    await ask(1, "Target.attachToTarget", { targetId, flatten: true });
+    const gone = replies.get(1)!.result!.sessionId!;
+    await ask(2, "Target.detachFromTarget", { sessionId: gone });
+    replies.clear();
+
+    // Chrome answers a command on a detached session with an error that names no session.
+    const own = await bao.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+    await bao.send("Target.detachFromTarget", { sessionId: own.sessionId });
+    await assert.rejects(bao.send("Runtime.evaluate", { expression: "1" }, own.sessionId, 5000), /Session with given id not found/);
+
+    // With Chrome's replies held, Bao's request and the client's commands are all in flight; one of the client's ids is Bao's.
+    f.hold(true);
+    const ids = Array.from({ length: 100 }, (_, index) => index + 1);
+    for (const id of ids) client.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression: "1" }, sessionId: gone }));
+    const baoReply = bao.send<{ targetInfos: unknown[] }>("Target.getTargets");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const all = new Promise<void>((resolve) => { replied = () => { if (replies.size === ids.length) resolve(); }; });
+    f.hold(false);
+    assert.ok(Array.isArray((await baoReply).targetInfos));
+    await all;
+    for (const id of ids) {
+      assert.equal(replies.get(id)?.error?.code, -32001, `client reply ${id}`);
+      assert.equal(replies.get(id)?.sessionId, undefined);
+    }
+  } finally {
+    client.close();
     shared.close();
     bao.close();
   }

@@ -19,7 +19,7 @@ export interface SharedConnection {
 /**
  * Joins one client to Bao's connection. The client gets its own browser session (Target.attachToBrowserTarget), so the
  * targets it discovers, the sessions it attaches, and their events stay its own. Its browser-level messages travel on that
- * session; messages of the sessions it attaches pass through unchanged.
+ * session; messages of the sessions it attaches pass through unchanged. Its commands travel under ids of Bao's connection.
  */
 async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): Promise<void> {
   let browser: string;
@@ -30,12 +30,14 @@ async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): 
     return;
   }
   const sessions = new Set<string>();
+  let released = false;
   const own = (sessionId: unknown) => {
     if (typeof sessionId !== "string" || sessions.has(sessionId)) return;
     sessions.add(sessionId);
     cdp.route(sessionId, deliver);
   };
   const deliver = (text: string, message: CdpMessage) => {
+    if (released) return;
     if (message.method === "Target.attachedToTarget") own(message.params?.sessionId);
     else own(message.result?.sessionId);
     let out = text;
@@ -50,7 +52,6 @@ async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): 
       cdp.route(detached, undefined);
     }
   };
-  let released = false;
   const release = () => {
     if (released) return;
     released = true;
@@ -68,7 +69,7 @@ async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): 
       for (const frame of frames.push(chunk)) {
         if (frame.opcode === 1 && frame.text !== undefined) {
           const message = JSON.parse(frame.text) as CdpMessage;
-          cdp.write(message.sessionId === undefined ? JSON.stringify({ ...message, sessionId: browser }) : frame.text);
+          cdp.write(message.sessionId === undefined ? { ...message, sessionId: browser } : message, deliver);
         } else if (frame.opcode === 8) {
           // Answer the close, as the WebSocket closing handshake asks, before letting the client go.
           client.end(serverFrame(8, frame.payload ?? Buffer.alloc(0)));
@@ -77,7 +78,7 @@ async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): 
       }
     } catch { end(); }
   };
-  client.on("data", take).once("close", release).on("error", end);
+  client.on("data", take).once("end", end).once("close", release).on("error", end);
   if (head.length) take(head);
 }
 
