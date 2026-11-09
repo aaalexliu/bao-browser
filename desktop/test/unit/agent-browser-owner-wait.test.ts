@@ -211,20 +211,26 @@ for (const { browser, check, bare } of [
   } finally { await h.cleanup(browser, observer); }
 });
 
-test("an owner wait ends by itself at its limit, and a later open starts a new task that names the wait Bao ended", { timeout: 60_000 }, async (t) => {
+test("an owner wait nobody continues ends by itself at its limit, and a later open starts a new task that names the wait Bao ended", { timeout: 60_000 }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, home, proxy } = h;
   const library = new Library(home);
-  const ended = (runId: string, why = "owner waits end after 30 minutes") => new RegExp(`^Bao ended an earlier owner wait from (?:[A-Z][a-z]{2} \\d+, )?\\d{1,2}:\\d\\d [AP]M \\(run ${runId}\\); ${why}\\.$`);
+  const ended = (runId: string, why = "nobody continued it for 30 minutes") => new RegExp(`^Bao ended an earlier owner wait from (?:[A-Z][a-z]{2} \\d+, )?\\d{1,2}:\\d\\d [AP]M \\(run ${runId}\\); ${why}\\.$`);
   let offset = 0;
   const now = Date.now;
   t.mock.method(Date, "now", () => now() + offset);
   try {
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
     const first = proxy.activeRunId!;
-    // Shortly before the limit, a wait call re-arms the session's timer, which then ends the wait with no further call.
+    // An agent that keeps calling wait_for_owner keeps the wait past 30 minutes from its start, as while the owner types an emailed code.
     offset = proxy.ownerPage!.since! + OWNER_WAIT_LIMIT_MS - 5000 - now();
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"])), "waiting");
+    offset += 10_000;
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"])), "waiting", "a continued wait outlives the limit counted from its start");
+    assert.equal(proxy.activeRunId, first);
+    // Shortly before the limit after the latest wait call, any other call re-arms the session's timer, which then ends the wait with no further call.
+    offset += OWNER_WAIT_LIMIT_MS - 5000;
+    assert.equal(outcome(await proxy.execute("snapshot")), "halted");
     assert.equal(proxy.activeRunId, first);
     const deadline = now() + 30_000;
     while (proxy.hasSession() && now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -260,7 +266,7 @@ test("an owner wait ends by itself at its limit, and a later open starts a new t
 test("the owner-wait instruction names the page's ask and sends the owner to the browser the session drives", () => {
   const current = ownerWaitInstruction(true, { url: "https://www.amazon.com/ap/signin", title: "Amazon Sign-In" });
   assert.match(current, /Ask the owner to sign in to amazon\.com in Bao's task tab in their own Chrome,/);
-  assert.match(current, /Bao ends the wait 30 minutes after it started\./);
+  assert.match(current, /Bao ends the wait if no wait_for_owner call continues it for 30 minutes\./);
   assert.match(current, /On closed, report that the owner's Chrome session ended\.$/);
   assert.doesNotMatch(current, /Bao window/);
   const bao = ownerWaitInstruction(false, { url: "https://myaccount.nytimes.com/auth/login", title: "Confirm your account" });

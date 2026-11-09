@@ -47,7 +47,7 @@ export function ownerTask(page: OwnerPage | undefined): string {
   }
 }
 
-/** An owner wait nobody continues ends by itself this long after it started. */
+/** An owner wait ends by itself this long after it started or the latest wait_for_owner call returned. */
 export const OWNER_WAIT_LIMIT_MS = 30 * 60 * 1000;
 
 export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {
@@ -55,7 +55,7 @@ export function ownerCanResume(before: OwnerPage, now: OwnerPage): boolean {
   return before.url !== now.url || before.title !== now.title;
 }
 
-export const ownerWaitInstruction = (current: boolean, page?: OwnerPage) => `Keep this session open. Ask the owner to ${ownerTask(page)} in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner and args=[\"60000\"]. Repeat it while the result is waiting; do not end your turn or start another session. Bao ends the wait ${OWNER_WAIT_LIMIT_MS / 60_000} minutes after it started. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
+export const ownerWaitInstruction = (current: boolean, page?: OwnerPage) => `Keep this session open. Ask the owner to ${ownerTask(page)} in ${current ? "Bao's task tab in their own Chrome" : "this Bao window"}, then call agent_browser with command=wait_for_owner and args=[\"60000\"]. Repeat it while the result is waiting; do not end your turn or start another session. Bao ends the wait if no wait_for_owner call continues it for ${OWNER_WAIT_LIMIT_MS / 60_000} minutes. On ready, take a fresh snapshot and continue in this same agent_browser session. Bao reads only URL and title while waiting. If those do not change, it keeps waiting. On closed, report that ${current ? "the owner's Chrome session ended" : "the owner closed the window"}.`;
 
 export function ownerWaitTimeout(value: unknown): number {
   if (value === undefined) return 60_000;

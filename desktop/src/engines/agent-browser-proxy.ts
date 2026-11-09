@@ -73,6 +73,8 @@ interface SessionData {
   ownerPage?: OwnerPage;
   /** When Bao first stopped for the current or latest owner handoff. */
   ownerSince?: number;
+  /** When Bao stopped for the owner, or the latest wait_for_owner call returned; the wait limit counts from here. */
+  ownerTouched?: number;
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -99,7 +101,7 @@ function ownerWaitPage(session: Session): OwnerPage | undefined {
 }
 
 function ownerWaitOver(session: Session): boolean {
-  return !!session.ownerWait && !session.removing && Date.now() - (session.ownerSince ?? Date.now()) >= OWNER_WAIT_LIMIT_MS;
+  return !!session.ownerWait && !session.removing && Date.now() - (session.ownerTouched ?? Date.now()) >= OWNER_WAIT_LIMIT_MS;
 }
 
 export class AgentBrowserProxy {
@@ -553,7 +555,7 @@ export class AgentBrowserProxy {
     }
     session.ownerWait = active;
     session.ownerPage = active.page;
-    session.ownerSince = Date.now();
+    session.ownerSince = session.ownerTouched = Date.now();
     session.recording.ownerWaiting(true);
     await this.ownerBanner(session, active.targetId, true);
   }
@@ -604,7 +606,7 @@ export class AgentBrowserProxy {
     if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (!session.ownerWait) {
       session.ownerWait = "pending";
-      session.ownerSince = Date.now();
+      session.ownerSince = session.ownerTouched = Date.now();
     }
     session.recording.ownerWaiting(true);
     let cdp: CdpSocket | undefined;
@@ -650,6 +652,7 @@ export class AgentBrowserProxy {
       }
       return session.abort.signal.aborted || cdp && !cdp.isOpen ? this.ownerClosed(session) : this.ownerResult("waiting", session);
     } finally {
+      session.ownerTouched = Date.now();
       session.abort.signal.removeEventListener("abort", onAbort);
       if (session.kind === "copy") cdp?.close();
     }
@@ -773,7 +776,7 @@ export class AgentBrowserProxy {
   }
 
   /** Ends a session's owner wait and the session, so no later request inherits it. */
-  private async endOwnerWait(session: Session, why = `owner waits end after ${OWNER_WAIT_LIMIT_MS / 60_000} minutes`): Promise<void> {
+  private async endOwnerWait(session: Session, why = `nobody continued it for ${OWNER_WAIT_LIMIT_MS / 60_000} minutes`): Promise<void> {
     const since = session.ownerSince ?? Date.now();
     const time = new Intl.DateTimeFormat("en-US", { ...new Date(since).toDateString() === new Date().toDateString() ? {} : { month: "short", day: "numeric" },
       hour: "numeric", minute: "2-digit" }).format(since);
@@ -789,7 +792,7 @@ export class AgentBrowserProxy {
     if (session.ownerWait) {
       session.idleTimer = setTimeout(() => {
         void this.endOwnerWait(session).catch((error: unknown) => process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`));
-      }, Math.max(0, (session.ownerSince ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
+      }, Math.max(0, (session.ownerTouched ?? Date.now()) + OWNER_WAIT_LIMIT_MS - Date.now()));
       session.idleTimer.unref();
       return;
     }
