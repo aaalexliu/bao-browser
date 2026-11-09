@@ -1,13 +1,16 @@
 // Preloaded with --require into every test process by laneChildEnv in runtime.ts.
 // The owner's Chrome listens for remote debugging on 127.0.0.1:9222, and every connection
 // there raises Chrome's "Allow remote debugging?" sheet on his screen. A test that reaches
-// it, or reads the daily Chrome's DevToolsActivePort to find it, fails here instead.
+// it, reads the daily Chrome's DevToolsActivePort to find it, or hands its address to a
+// child such as the native agent-browser, fails here instead.
+const { ChildProcess } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 
 const OWNER_CHROME_PORT = 9222;
+const OWNER_CHROME_URL = /(?:localhost|127\.\d+\.\d+\.\d+|\[::1\]):9222(?!\d)/;
 
 const home = os.userInfo().homedir;
 const chromeRoots = [
@@ -76,4 +79,11 @@ const readFilePromise = fs.promises.readFile;
 fs.promises.readFile = function guardedReadFilePromise(file, ...rest) {
   if (ownerChromeFile(file)) return Promise.reject(refuse(`read ${file}`));
   return readFilePromise.call(this, file, ...rest);
+};
+
+const spawn = ChildProcess.prototype.spawn;
+ChildProcess.prototype.spawn = function guardedSpawn(options) {
+  const arg = options?.args?.find((value) => OWNER_CHROME_URL.test(String(value)));
+  if (arg) throw refuse(`start ${options.file} with ${arg}`);
+  return spawn.call(this, options);
 };

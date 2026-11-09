@@ -59,6 +59,7 @@ const linux = path.join(home, ".config", "google-chrome", "DevToolsActivePort");
     readPromise: await settle(fs.promises.readFile(daily, "utf8")),
     readCallback: await settle(new Promise((resolve, reject) => fs.readFile(linux, (error) => error ? reject(error) : resolve()))),
     readSync: await settle(Promise.resolve().then(() => fs.readFileSync(daily))),
+    spawn: await settle(Promise.resolve().then(() => require("node:child_process").execFile(process.execPath, ["-e", "", "--cdp", "ws://127.0.0.1:9222/devtools/browser/x"]))),
     own: await settle(fetch("http://127.0.0.1:" + port + "/").then((response) => response.text())),
   };
   own.close();
@@ -87,10 +88,12 @@ test("the guard refuses every route to the owner's Chrome port and its DevToolsA
     readPromise: "EOWNERCHROME",
     readCallback: "EOWNERCHROME",
     readSync: "EOWNERCHROME",
+    spawn: "EOWNERCHROME",
     own: "ok",
   });
   assert.match(result.stderr, /connection-guard: a test tried to connect to 127\.0\.0\.1:9222/);
   assert.match(result.stderr, /connection-guard: a test tried to read .*DevToolsActivePort/);
+  assert.match(result.stderr, /connection-guard: a test tried to start .* with ws:\/\/127\.0\.0\.1:9222\/devtools\/browser\/x/);
   assert.equal(result.status, 1, "a refusal fails the test process even when the caller swallows the error");
 });
 
