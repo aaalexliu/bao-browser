@@ -98,7 +98,7 @@ interface SessionData {
 type Opened = { pick: BrowserPick } & (
   /**
    * Bao's own agent Chrome. The native agent reaches it through `background`, which keeps it behind the owner's apps. On a
-   * Chrome copy, `targetId` is the tab Bao opened in front of the restored tabs, or the startup tab when Chrome restored none.
+   * Chrome copy, `targetId` is the background tab Bao opened beside the restored tabs, or the startup tab when Chrome restored none.
    */
   | { kind: "copy"; chrome: OwnedChrome; background: BackgroundCdp; targetId?: string }
   /** The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. */

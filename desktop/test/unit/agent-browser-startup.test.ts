@@ -16,13 +16,13 @@ launches.pinTestBrowser();
 
 const binary = process.env.AGENT_BROWSER_PROXY_BINARY;
 
-test("a copy that restores 20 tabs opens a timer-heavy page in a new tab in front of them and saves the task as a workflow", { skip: !binary, timeout: 120_000 }, async () => {
+test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keeps every restored tab, and saves the task as a workflow", { skip: !binary, timeout: 120_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-restored-start-"));
   const sourceRoot = path.join(root, "source");
   const loads: string[] = [];
   const held: import("node:http").ServerResponse[] = [];
   // The page requests its late bundle after a chain of timers, and an image that answers only once that bundle is requested
-  // holds its load event. Chrome throttles timers in a hidden tab, so there the load misses the native deadline.
+  // holds its load event, so the load needs the agent's tab to keep its timers running behind the owner's apps.
   const server = createServer((request, response) => {
     const url = new URL(request.url!, "http://fixture");
     if (url.pathname === "/hold") { held.push(response); return; }
@@ -47,12 +47,25 @@ test("a copy that restores 20 tabs opens a timer-heavy page in a new tab in fron
   await source.pages()[0]!.goto(`${base}/restored/0`);
   for (let index = 1; index < 20; index++) await (await source.newPage()).goto(`${base}/restored/${index}`);
   await source.close();
+  const launch = launches.launchOwnedChromeEndpoint;
+  let copyDir = "";
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => {
+    copyDir = options.userDataDir;
+    return launch(options);
+  });
   const proxy = new AgentBrowserProxy({ sourceRoot, home: path.join(root, "home"), executable: binary });
   try {
     const result = await proxy.execute("open", [`${base}/app`], "copy");
     assert.equal(result[0]!.exitCode, 0, result[0]!.stdout + result[0]!.stderr);
     assert.deepEqual(loads, ["visible"]);
-    for (let index = 0; index < 20; index++) assert.ok(result[1]!.stdout.includes(`${base}/restored/${index}`), `restored tab ${index} stays open`);
+    const endpoint = await readDevToolsActivePort(path.join(copyDir, "DevToolsActivePort"));
+    const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+    try {
+      const { targetInfos } = await cdp.send<{ targetInfos: { type: string; url: string }[] }>("Target.getTargets");
+      const restored = Array.from({ length: 20 }, (_, index) => `${base}/restored/${index}`);
+      assert.deepEqual(targetInfos.filter(target => target.type === "page").map(target => target.url).sort(),
+        [...restored, `${base}/app`].sort(), "every restored tab stays on its own URL beside the agent's tab");
+    } finally { cdp.close(); }
     // The native daemon's start with 20 restored tabs outlasts the workflow recorder's usual 5-second tab read.
     const clicked = await proxy.execute("click", ['[data-testid="go"]']);
     assert.equal(clicked[0]!.exitCode, 0, clicked[0]!.stdout + clicked[0]!.stderr);

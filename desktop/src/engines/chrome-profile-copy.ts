@@ -200,7 +200,7 @@ export async function copyChromeProfile(options: {
   }
 }
 
-export async function frontTab(portFile: string): Promise<string> {
+export async function agentTab(portFile: string): Promise<string> {
   const endpoint = await readDevToolsActivePort(portFile);
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath, { timeoutMs: 15_000 });
   try {
@@ -212,15 +212,15 @@ export async function frontTab(portFile: string): Promise<string> {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     if (pages.every((page) => startupUrl(page.url))) return pages[0]!.targetId;
-    return (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" }, undefined, 15_000)).targetId;
+    return (await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 15_000)).targetId;
   } finally { cdp.close(); }
 }
 
 /**
  * Pass-through startup owns Chrome without attaching Playwright to restored tabs. With restored tabs, the agent's page opens in
- * `targetId`, a new tab in front of them: the native daemon would otherwise pick a hidden restored tab, where Chrome throttles
- * timers and a page that loads its scripts through timers misses the native load deadline. With only startup pages, `targetId`
- * is the visible startup tab.
+ * `targetId`, a new background tab beside them, so the native daemon leaves every restored tab untouched and Bao knows the
+ * bound target. Focus emulation on the native endpoint keeps that tab running behind the owner's apps. With only startup
+ * pages, `targetId` is the startup tab.
  */
 export async function openCopiedChromeForProxy(options: {
   sourceRoot: string; directory: string; home: string; detached?: boolean; restoreTabs?: boolean;
@@ -237,7 +237,7 @@ export async function openCopiedChromeForProxy(options: {
       userDataDir: copy.userDataDir, headless: false, childHome: userInfo().homedir, loadExtensions: false, preserveRestoredTabs: true,
       background: sessions.some((name) => name.startsWith("Session_")) ? "restore" : "window", args: copy.launchArgs, detached: options.detached,
     });
-    const targetId = options.restoreTabs === false ? undefined : await frontTab(chrome.portFile);
+    const targetId = options.restoreTabs === false ? undefined : await agentTab(chrome.portFile);
     return {
       target: { kind: "bao", portFile: chrome.portFile }, targetId, closed: chrome.closed, close,
       isClosed: chrome.isClosed,
