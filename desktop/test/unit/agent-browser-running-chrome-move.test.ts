@@ -378,3 +378,16 @@ test("a slow failed move on wait_for_owner still leaves time to see the owner cl
   assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready", "the retry took longer than the timeout, yet Bao still read the page");
   assert.equal(h.attaches(), 3);
 });
+
+test("a sign-in the owner finishes during a slow failed move still ends the wait_for_owner that started before it", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`]))[0]!.exitCode, 0);
+  assert.equal(h.attaches(), 0);
+  h.slow(3000);
+  const waiting = h.proxy.execute("wait_for_owner", ["2000"]);
+  for (const deadline = Date.now() + 30_000; h.attaches() === 0 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(h.attaches(), 1, "the move began");
+  await navigateBao(h.baoDir, "/article", `${h.site}/account`);
+  const [ready] = await waiting;
+  assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready", "the page changed after the wait began, during the move");
+});

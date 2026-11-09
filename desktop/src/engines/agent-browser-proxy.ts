@@ -298,12 +298,19 @@ export class AgentBrowserProxy {
         const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
         const deadline = Date.now() + timeout;
         const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
-        const page = wall ?? (this.movable(session, true) ? (await this.activePage(session).catch(() => undefined))?.page : undefined);
+        const read = !wall && this.movable(session, true) ? await this.activePage(session).catch(() => undefined) : undefined;
+        const page = wall ?? read?.page;
         const opened = page && await this.moveAway(session, wall ? this.wallWords(session) : "a step that needs the owner",
           wall ? session.site ?? page.url : page.url, true);
         if (opened) {
           results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
           return results;
+        }
+        if (read && (!session.ownerWait || session.ownerWait === "pending")) {
+          if (!session.ownerWait) session.ownerSince = Date.now();
+          session.ownerWait = read;
+          session.ownerPage = read.page;
+          await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
         }
         results.push(...await this.waitForOwner(session, page ? Math.max(deadline, Date.now() + Math.min(timeout, 5000)) : deadline));
         return results;
