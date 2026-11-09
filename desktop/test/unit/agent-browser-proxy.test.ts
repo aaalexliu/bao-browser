@@ -691,7 +691,7 @@ test("several Chrome profiles and no named one open nothing and record no run; a
     assert.match(f.proxy.openLines[0]!, /^Browser: Chrome copy, named by the agent\. Chrome app: .+\. User data: .+, a copy of Chrome profile "Profile 2" \(Synthetic\) in .+, named by the agent\.$/);
     await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], undefined, false, "Default"), /close the current session before choosing a different Chrome profile/);
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
-    assert.deepEqual(run.browser && { route: run.browser.route, why: run.browser.why, profile: run.browser.route === "extension" ? undefined : run.browser.profile.directory },
+    assert.deepEqual(run.browser && { route: run.browser.route, why: run.browser.why, profile: run.browser.route === "extension" ? undefined : run.browser.profile?.directory },
       { route: "copy", why: "named by the agent", profile: "Profile 2" });
   } finally { await f.close(); }
 });

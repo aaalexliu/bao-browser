@@ -6,6 +6,7 @@
 // DevToolsActivePort.
 
 import path from "node:path";
+import { chromeDenied } from "../chrome-access";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { processesNaming } from "../launch";
 import { closeInspectTab, logAx, openInspect, type ChromeAx, INSPECT_URL } from "./ax";
@@ -190,7 +191,11 @@ export async function setRemoteDebugging(on: boolean, deps: RemoteDebuggingDeps)
   const listener = deps.listener || listenPid;
   const readPort = deps.readPort || readDevToolsActivePort;
   const listening = async (): Promise<number | null> => {
-    const endpoint = await readPort(deps.portFile).catch(() => null);
+    const endpoint = await readPort(deps.portFile).catch((error: unknown) => {
+      const denied = chromeDenied(error, userDataDir);
+      if (denied) throw denied;
+      return null;
+    });
     return endpoint && (await listener(endpoint.port)) === pid ? endpoint.port : null;
   };
 

@@ -3,6 +3,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
+import { assertChromeReadable, chromeDenied } from "../chrome-access";
 import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION } from "../launch";
 
 export interface ChromeProfileChoice {
@@ -22,10 +23,11 @@ function object(value: unknown): Record<string, unknown> {
 
 async function readChromeState(sourceRoot: string): Promise<Record<string, unknown>> {
   try { return object(JSON.parse(await readFile(path.join(sourceRoot, "Local State"), "utf8"))); }
-  catch { throw new Error("could not read Chrome profile metadata"); }
+  catch (error) { throw chromeDenied(error, sourceRoot) ?? new Error("could not read Chrome profile metadata"); }
 }
 
 export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProfileChoice[]> {
+  assertChromeReadable(sourceRoot);
   const state = await readChromeState(sourceRoot);
   const cache = object(object(state.profile).info_cache);
   const folders = await readdir(sourceRoot, { withFileTypes: true });
@@ -192,7 +194,7 @@ export async function copyChromeProfile(options: {
     };
   } catch (error) {
     await close();
-    throw error;
+    throw chromeDenied(error, options.sourceRoot) ?? error;
   }
 }
 

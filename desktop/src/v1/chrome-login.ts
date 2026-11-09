@@ -10,6 +10,7 @@ import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { ChromeFolderDenied } from "../chrome-access";
 
 export interface ChromeProfile {
   directory: string;
@@ -404,6 +405,7 @@ export async function injectCookies(
 
 /** A sentence the window can show. It names the cause and the next press, never a cookie value. */
 export function explainImportError(err: unknown, profileDir?: string): string {
+  if (err instanceof ChromeFolderDenied) return err.message;
   const msg = err instanceof Error ? err.message : "";
   const dir = profileDir && !/[\\/]/.test(profileDir) && !profileDir.includes("..") ? profileDir : "that profile";
   switch (msg) {

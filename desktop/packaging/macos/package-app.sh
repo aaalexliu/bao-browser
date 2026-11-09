@@ -103,10 +103,14 @@ while IFS= read -r -d '' strings; do
 done < <(find "$CHROME" -name InfoPlist.strings -print0)
 codesign --force --sign "$IDENTITY" "$CHROME"
 
-/usr/bin/clang -fobjc-arc -O2 \
+# A certificate keeps a Files & Folders grant across updates, so agents answer to macOS as Bao.
+# An ad-hoc grant lasts one build, so an ad-hoc build leaves agents with their own app. See bao-run-node.h.
+CERT_FLAG=""
+[[ "$IDENTITY" == "-" ]] || CERT_FLAG="-DBAO_CERT_SIGNED"
+/usr/bin/clang -fobjc-arc -O2 $CERT_FLAG \
   -framework Foundation -framework AppKit -framework WebKit -framework UserNotifications \
   -o "$APP/Contents/MacOS/bao" \
-  desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c \
+  desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c desktop/packaging/macos/bao-run-node.c \
   desktop/packaging/macos/bao-window.m desktop/packaging/macos/bao-notify.m
 # The agents' MCP entry. Built and run once, with a temp HOME that holds only a test
 # library, before it and Bao.app are signed.

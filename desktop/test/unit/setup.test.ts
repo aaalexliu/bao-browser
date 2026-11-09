@@ -202,3 +202,58 @@ test("doctor tells the owner what Claude Code is missing instead of a setup comm
   mkdirSync(path.join(probe.home, ".codex"));
   assert.equal((await doctorChecks(app, probe)).find((check) => check.name === "codex")?.detail, `found (~/.codex) but not set up. Run ${cli} setup --agents codex`);
 });
+
+test("setup asks for Files & Folders > Bao > Google Chrome only when Bao cannot read Chrome's folder, and the owner can skip it", async (t) => {
+  const { probe, app } = lab(t);
+  const chromeRoot = path.join(probe.home, "Library", "Application Support", "Google", "Chrome");
+  mkdirSync(path.join(chromeRoot, "Default"), { recursive: true });
+  const opened: string[] = [];
+  const env = { ...probe.env, BAO_RESPONSIBLE_EXE: "/Applications/Bao.app/Contents/MacOS/bao", BAO_CERT_SIGNED: "1" };
+  const withChrome: Probe = { ...probe, env, chromeRoot, openUrl: (url) => opened.push(url) };
+  const run = async (keys: string[], tty = true): Promise<string> => {
+    const out: string[] = [];
+    const stdin = Object.assign(new PassThrough(), { isTTY: tty, setRawMode: () => stdin });
+    const io = { env, out: (text: string) => out.push(text), err: (text: string) => out.push(text), stdin, stdout: { isTTY: tty, columns: 80, write: () => true } } as unknown as SetupIo;
+    const done = setupMain(["--app", app, "--none"], io, withChrome);
+    for (const key of keys) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (key === "allow") chmodSync(chromeRoot, 0o700);
+      else stdin.write(key);
+    }
+    assert.equal(await done, 0);
+    return out.join("");
+  };
+  const intro = `No app was changed. Run \`${path.join(app, "Contents", "MacOS", "bao-cli")} setup\` any time to add Bao to an agent.\n\n== Google Chrome's folder (optional)\n`;
+  assert.equal(await run([]), `${intro}Bao can read your Chrome profiles in ${chromeRoot}. Nothing to do. Agents that start Bao use this switch too.\n`);
+
+  chmodSync(chromeRoot, 0o000);
+  try {
+    const why = `${intro}Bao reads your Chrome profiles to import a site's sign-in and to use Running Chrome. macOS 27 and later ask before an app reads them.\n`
+      + `Now: Bao cannot read them. Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again. Agents that start Bao use this switch too.\n`
+      + "Skip this and Bao still opens its own profile. It tells the agent what to turn on when a step needs Chrome's folder.\n";
+    const prompt = "o opens System Settings, c checks again, enter skips: ";
+    assert.equal(await run(["\r"]), `${why}${prompt}\nSkipped.\n`);
+    assert.equal(await run(["o", "c", "allow", "c"]), `${why}${prompt}\n${prompt}\nNow: Bao still cannot read them.\n${prompt}\nNow: Bao can read your Chrome profiles.\n`);
+    assert.deepEqual(opened, ["x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"]);
+    chmodSync(chromeRoot, 0o000);
+    assert.equal(await run([], false), why, "with no terminal, setup says what to turn on and asks nothing");
+  } finally { chmodSync(chromeRoot, 0o700); }
+});
+
+test("doctor says whether Bao can read Chrome's folder and names the switch when it cannot", async (t) => {
+  const { probe, app, launcher } = lab(t);
+  writeFileSync(launcher, `#!/bin/sh\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'\nread line\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}'\n`);
+  const chromeRoot = path.join(probe.home, "Chrome");
+  mkdirSync(chromeRoot);
+  const env = { ...probe.env, BAO_RESPONSIBLE_EXE: "/Applications/Bao.app/Contents/MacOS/bao" };
+  const check = async () => (await doctorChecks(app, { ...probe, env, chromeRoot })).find((row) => row.name === "chrome folder");
+  assert.deepEqual(await check(), { level: "ok", name: "chrome folder",
+    detail: `Bao can read ${chromeRoot}. Agents use the switch of the app that starts them, such as ChatGPT for Codex.` });
+  chmodSync(chromeRoot, 0o000);
+  try {
+    const refused = await check();
+    assert.equal(refused?.level, "warn");
+    assert.match(refused?.detail ?? "", /^macOS did not let Bao read Google Chrome's folder \(EACCES on .+\/Chrome\)\. Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again\. If it is already on, turn it off and on again/);
+  } finally { chmodSync(chromeRoot, 0o700); }
+  assert.equal(await doctorChecks(app, { ...probe, env, chromeRoot: path.join(probe.home, "absent") }).then((rows) => rows.find((row) => row.name === "chrome folder")), undefined);
+});

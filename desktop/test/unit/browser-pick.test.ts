@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
+import { ChromeFolderDenied } from "../../src/chrome-access";
 import { chooseChromeProfile, ChromeProfileQuestion, pickLine, signInLine } from "../../src/engines/browser-pick";
+import { pinTestBrowser } from "../../src/launch";
 import { openWorkflowBrowser } from "../../src/engines/workflow-browser";
 import { chromeProfiles, type ProfileNames } from "../support/chrome-profiles";
 
@@ -83,4 +85,25 @@ test("the sign-in import line says what Bao read and wrote, a wall retry, or why
     'Sign-in import for https://www.nytimes.com from Chrome profile "Profile 2": the profile has no cookies for this site.');
   assert.equal(signInLine({ origin, found: 0, cookies: 0, storage: 0, error: "EPERM: operation not permitted, scandir '/Chrome/Default/Local Storage/leveldb'" }, "Default"),
     'Sign-in import for https://www.nytimes.com from Chrome profile "Default" failed: EPERM: operation not permitted, scandir \'/Chrome/Default/Local Storage/leveldb\'. Bao\'s profile kept its saved sign-ins.');
+});
+
+test("a saved workflow runs in Bao's profile with Chrome's folder refused, and a Chrome copy or Running Chrome stops", { timeout: 60_000 }, async (t) => {
+  const root = await chromeRoot(t, { Default: { name: "Alex" }, "Profile 2": { name: "Work" } });
+  const home = await mkdtemp(path.join(tmpdir(), "bao-pick-home-"));
+  pinTestBrowser();
+  await chmod(root, 0o000);
+  try {
+    for (const browser of ["copy", "current"] as const) {
+      await assert.rejects(openWorkflowBrowser({ browser, home, site: "about:blank", sourceRoot: root }), ChromeFolderDenied);
+    }
+    const session = await openWorkflowBrowser({ browser: "bao", home, site: "about:blank", sourceRoot: root });
+    try {
+      assert.equal(session.kind, "owned");
+      const report = session.kind === "owned" ? await session.importLogin?.("https://example.test/", true) : undefined;
+      assert.match(report?.error ?? "", new RegExp(`^macOS did not let Bao read Google Chrome's folder \\(EACCES on ${root}\\)\\.`));
+    } finally { await session.close(); }
+  } finally {
+    await chmod(root, 0o700);
+    await rm(home, { recursive: true, force: true });
+  }
 });

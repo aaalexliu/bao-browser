@@ -1,6 +1,20 @@
 # What Bao asks permission for
 
-The default [agent-browser pass-through](agent-browser-engine.md#pick-an-engine-and-profile) uses a marked profile copy and page screenshots through CDP. That route needs no Accessibility, Automation, or Screen Recording grant. Explicit [`browser: "current"`](agent-browser-engine.md#use-the-owners-running-chrome) controls the owner's running Chrome with BaoOSHelper's existing Accessibility grant. It needs neither Automation nor Screen Recording. The older daily-Chrome driver remains retired. Bao no longer shows its permission card, footer warnings, or Automation Allow button. The helper's optional native-app and remote-debugging CLI features remain below. A grant for one feature does not grant another.
+The default [agent-browser pass-through](agent-browser-engine.md#pick-an-engine-and-profile) uses Bao's own lasting profile and page screenshots through CDP. That route, and a marked profile copy, need no Accessibility, Automation, or Screen Recording grant. On macOS 27 and later, reading Chrome's profiles needs the [Files & Folders switch](#files--folders--google-chrome). Explicit [`browser: "current"`](agent-browser-engine.md#use-the-owners-running-chrome) controls the owner's running Chrome with BaoOSHelper's existing Accessibility grant. It needs neither Automation nor Screen Recording. The older daily-Chrome driver remains retired. Bao no longer shows its permission card, footer warnings, or Automation Allow button. The helper's optional native-app and remote-debugging CLI features remain below. A grant for one feature does not grant another.
+
+## Files & Folders > Google Chrome
+
+macOS 27 and later let a process read `~/Library/Application Support/Google/Chrome` only when System Settings > Privacy & Security > Files & Folders turns on Google Chrome for the app responsible for that process. There is no prompt: `stat` works, and opening or listing fails with `EPERM`. macOS 26 and earlier have no such rule. Bao reads that folder to list Chrome profiles, to import a site's sign-in into its own profile, to copy a profile for `browser: "copy"`, to read `DevToolsActivePort` for Running Chrome, and for **Import a login**.
+
+Which app needs the switch:
+
+- **The Bao app** opened from Finder: Bao.
+- **`bao-cli`** (`bao setup`, `bao doctor`, and `bao` on `PATH`): Bao. The launcher runs Node through `Contents/MacOS/bao --run-node --own`, which starts a copy of Bao's main executable that answers for itself, the way Claude Desktop's `disclaimer` helper starts its servers, and stays as Node's parent ([`bao-run-node.h`](../desktop/packaging/macos/bao-run-node.h)).
+- **`bao-mcp`**, which agents start: Bao in a build signed with a certificate, so one switch covers Codex, Claude, and any other host. An ad-hoc build leaves agents with the app that started them, such as ChatGPT for Codex or the terminal that runs Claude Code. macOS keys an ad-hoc grant to one build (its designated requirement is the cdhash), so a grant to Bao would not survive an update. Claude Desktop starts `bao-mcp` through its own `disclaimer`, so Bao answers there in either build.
+
+When a read is refused, Bao says `macOS did not let Bao read Google Chrome's folder (EPERM on <file>).`, names the switch and the app, and for an ad-hoc Bao adds that a switch already on must be turned off and on again after an update. Bao's own profile still opens and imports no sign-ins; a Chrome copy and Running Chrome stop. [agent-browser pass-through](agent-browser-engine.md#choose-the-chrome-profile) shows the results.
+
+The step is optional. Settings → Mac permissions → **Google Chrome's folder** shows whether Bao can read the folder and has **Open System Settings**. `bao setup` ends with the same step: `o` opens Files & Folders, `c` checks again, Enter skips. `bao doctor` reports it as `chrome folder`.
 
 ## The Chrome remote-debugging toggle
 

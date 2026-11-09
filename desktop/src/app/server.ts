@@ -10,6 +10,7 @@ import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { BrowserContext, Page } from "playwright";
+import { askedApp, assertChromeReadable, chromeFolderAccess } from "../chrome-access";
 import { launchOwnedChrome, navigateOwned, pidsForDataDir, productHeadless } from "../launch";
 import { Capture, actNotice } from "./capture";
 import { occupy, snapshot, type RunSeat, type SeatEvent } from "./run-seat";
@@ -496,6 +497,7 @@ export async function startApp(opts: {
           trails: library.listTrails(),
           runs: library.listRuns().map(slimRun),
           helper: helperStatus(await readHelperReport()),
+          chromeAccess: profileSourceRoot ? { ...chromeFolderAccess(profileSourceRoot), app: askedApp(), certSigned: process.env.BAO_CERT_SIGNED === "1" } : undefined,
           helperApp: bundledHelperApp() || null,
           model: modelStatus(),
           pendingImport: pending ? publicPending(pending) : null,
@@ -2386,6 +2388,7 @@ export async function startApp(opts: {
     try {
       const userData = chromeUserDataDir();
       if (!existsSync(path.join(userData, "Local State"))) throw new Error("Chrome was not found");
+      assertChromeReadable(userData);
       const profiles = readProfileNames(path.join(userData, "Local State"));
       const choice = chooseProfile(profiles, pending.profile);
       if (!choice.ok) {

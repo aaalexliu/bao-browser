@@ -36,6 +36,7 @@
     "tests": [
       "desktop/test/unit/agent-browser-workflow.test.ts",
       "desktop/test/unit/browser-pick.test.ts",
+      "desktop/test/unit/chrome-access.test.ts",
       "desktop/test/unit/current-chrome-background.test.ts",
       "desktop/test/unit/experian-proxy.test.ts",
       "desktop/test/unit/process-list.test.ts",

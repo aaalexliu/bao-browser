@@ -1,6 +1,7 @@
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import type { BrowserChoice } from "../browser-choice";
+import { ChromeFolderDenied } from "../chrome-access";
 import { navigateOwned } from "../launch";
 import { ownerWall } from "../cdp-live/owner-wait";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
@@ -49,6 +50,17 @@ async function workflowProfile(root: string, directory: string | undefined): Pro
   }
 }
 
+/** Bao's own profile runs without Chrome's folder. It then imports no sign-in and says why. */
+async function baoSource(root: string, directory: string | undefined): Promise<{ sourceRoot: string; directory: string } | { unread: string }> {
+  try {
+    const profile = await workflowProfile(root, directory);
+    return { sourceRoot: profile.root, directory: profile.directory };
+  } catch (error) {
+    if (error instanceof ChromeFolderDenied) return { unread: error.message };
+    throw error;
+  }
+}
+
 export async function openWorkflowBrowser(options: {
   browser: BrowserChoice;
   home: string;
@@ -91,8 +103,9 @@ export async function openWorkflowBrowser(options: {
   }
   const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
-  const profile = await workflowProfile(sourceRoot ?? chromeProfilesRoot(), options.directory);
+  const root = sourceRoot ?? chromeProfilesRoot();
   if (options.browser === "current") {
+    const profile = await workflowProfile(root, options.directory);
     const chrome = await openCurrentChrome({ root: profile.root, defaultRoot: chromeProfilesRoot(), axLog: path.join(options.home, "audit", "current-chrome.jsonl") });
     try {
       const { targetId } = await openTaskTab(chrome, profile.directory);
@@ -116,8 +129,10 @@ export async function openWorkflowBrowser(options: {
       } catch (error) { await closeTab(); throw error; }
     } catch (error) { chrome.detach(); throw error; }
   }
-  const launch = { sourceRoot: profile.root, directory: profile.directory, home: options.home, site: options.site };
-  const chrome = options.browser === "copy" ? await openCopiedChromeForProxy({ ...launch, restoreTabs: false }) : await openBaoChromeForProxy(launch);
+  const launch = { home: options.home, site: options.site };
+  const chrome = options.browser === "copy"
+    ? await workflowProfile(root, options.directory).then((profile) => openCopiedChromeForProxy({ ...launch, sourceRoot: profile.root, directory: profile.directory, restoreTabs: false }))
+    : await openBaoChromeForProxy({ ...launch, ...await baoSource(root, options.directory) });
   try {
     const endpoint = await readDevToolsActivePort(chrome.target.portFile);
     const browser = await chromium.connectOverCDP(`ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`, { noDefaults: true });

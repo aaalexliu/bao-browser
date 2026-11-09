@@ -2,10 +2,12 @@
 // start Bao, and write each pick through the writers `bao agent config` and Settings already use.
 // The one-command installer runs it through Contents/MacOS/bao-cli right after it places Bao.app.
 
+import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { emitKeypressEvents } from "node:readline";
 import { getStaticTOMLValue, parseTOML } from "toml-eslint-parser";
+import { agentsNote, chromeAccessFix, chromeFolderAccess, FILES_AND_FOLDERS_PANE } from "../chrome-access";
 import { baoUserHome } from "../home";
 import { agentMain, codexConfigFile, writeConfig, type AgentIo } from "./agent-config";
 import { appBundleOf, DEFAULT_APP, mcpLauncher } from "./bundle";
@@ -46,6 +48,10 @@ export interface Probe {
   pathDirs: string[];
   /** Directories searched for an app bundle, normally /Applications and ~/Applications. */
   appDirs: string[];
+  /** Google Chrome's folder, for the optional Files & Folders step. Unset skips the step. */
+  chromeRoot?: string;
+  /** Opens a System Settings pane. */
+  openUrl?: (url: string) => void;
 }
 
 export function defaultProbe(env: NodeJS.ProcessEnv = process.env): Probe {
@@ -55,6 +61,8 @@ export function defaultProbe(env: NodeJS.ProcessEnv = process.env): Probe {
     env,
     pathDirs: (env.PATH || "").split(path.delimiter).filter(Boolean),
     appDirs: ["/Applications", path.join(home, "Applications")],
+    chromeRoot: process.platform === "darwin" ? path.join(home, "Library", "Application Support", "Google", "Chrome") : undefined,
+    openUrl: (url) => { spawnSync("/usr/bin/open", [url], { stdio: "ignore", timeout: 10_000 }); },
   };
 }
 
@@ -315,6 +323,58 @@ export function pickInTerminal(targets: readonly Target[], launcher: string, io:
   });
 }
 
+/** One key from the terminal, by name. */
+function readKey(io: SetupIo): Promise<string> {
+  return new Promise((resolve) => {
+    emitKeypressEvents(io.stdin);
+    io.stdin.setRawMode(true);
+    io.stdin.resume();
+    io.stdin.once("keypress", (_text: string | undefined, key: { name?: string; ctrl?: boolean } | undefined) => {
+      io.stdin.setRawMode(false);
+      io.stdin.pause();
+      resolve(key?.ctrl && key.name === "c" ? "escape" : key?.name ?? "");
+    });
+  });
+}
+
+/**
+ * The optional step that asks for Files & Folders > Bao > Google Chrome. It says why, shows whether Bao
+ * can read Chrome's folder now, opens System Settings on o, checks again on c, and skips on enter.
+ */
+export async function chromeAccessStep(io: SetupIo, probe: Probe, ask: boolean): Promise<void> {
+  const root = probe.chromeRoot;
+  if (!root) return;
+  let access = chromeFolderAccess(root, probe.env);
+  if (access.state === "missing") return;
+  io.out("\n== Google Chrome's folder (optional)\n");
+  const note = agentsNote(probe.env);
+  if (access.state === "allowed") {
+    io.out(`Bao can read your Chrome profiles in ${root}. Nothing to do.${note ? ` ${note}` : ""}\n`);
+    return;
+  }
+  io.out(`Bao reads your Chrome profiles to import a site's sign-in and to use Running Chrome. macOS 27 and later ask before an app reads them.\n`);
+  io.out(`Now: Bao cannot read them. ${chromeAccessFix(probe.env)}${note ? ` ${note}` : ""}\n`);
+  io.out("Skip this and Bao still opens its own profile. It tells the agent what to turn on when a step needs Chrome's folder.\n");
+  if (!ask || !io.stdin.isTTY || !io.stdout.isTTY) return;
+  for (;;) {
+    io.out("o opens System Settings, c checks again, enter skips: ");
+    const key = await readKey(io);
+    io.out("\n");
+    if (key === "o") probe.openUrl?.(FILES_AND_FOLDERS_PANE);
+    else if (key === "c") {
+      access = chromeFolderAccess(root, probe.env);
+      if (access.state === "allowed") {
+        io.out("Now: Bao can read your Chrome profiles.\n");
+        return;
+      }
+      io.out("Now: Bao still cannot read them.\n");
+    } else if (key === "return" || key === "enter" || key === "escape") {
+      io.out("Skipped.\n");
+      return;
+    }
+  }
+}
+
 /** Cursor reads the same mcpServers shape as Claude Desktop, so the Claude Desktop edit writes it. */
 function writeCursor(file: string, launcher: string, io: AgentIo): boolean {
   let before = "";
@@ -419,6 +479,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   if (chosen === undefined) {
     if (!io.stdin.isTTY || !io.stdout.isTTY) {
       io.out(`No terminal to ask in, so Bao changed no agent config. Run one of these:\n${targets.filter((target) => !target.blocked).map((target) => `  ${bao} setup --agents ${target.id}`).join("\n")}\n`);
+      await chromeAccessStep(io, probe, false);
       return 0;
     }
     chosen = await pickInTerminal(targets, launcher, io);
@@ -428,6 +489,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
   }
   if (!chosen || chosen.length === 0) {
     io.out(`No app was changed. Run \`${bao} setup\` any time to add Bao to an agent.\n`);
+    await chromeAccessStep(io, probe, !options.yes);
     return 0;
   }
   let failed = 0;
@@ -444,6 +506,7 @@ export async function setupMain(argv: readonly string[], io: SetupIo = defaultIo
     io.out(`\nBao is ready in ${ready.map((target) => target.label).join("; ")}.\n`);
     io.out(`Next: ${[...new Set(ready.map((target) => RESTART[target.id]))].join(", ")}. Then ask: "Use Bao to open example.com and tell me the page title."\n`);
   }
+  await chromeAccessStep(io, probe, !options.yes);
   return failed ? 1 : 0;
 }
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -92,6 +92,55 @@ test("app status and UI never ask for retired Chrome helper permissions", { time
     else process.env.BAO_OS_HELPER = previousHelper;
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("Settings shows whether Bao can read Google Chrome's folder and opens Files & Folders", { timeout: 60_000, skip: process.platform !== "darwin" && "Files & Folders is a macOS setting" }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-chrome-folder-"));
+  const profiles = path.join(home, "profiles");
+  await mkdir(path.join(profiles, "Default"), { recursive: true });
+  await writeFile(path.join(profiles, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Owner" } } } }));
+  const previous = { HOME: process.env.HOME, BAO_RESPONSIBLE_EXE: process.env.BAO_RESPONSIBLE_EXE, BAO_CERT_SIGNED: process.env.BAO_CERT_SIGNED };
+  Object.assign(process.env, { HOME: home, BAO_RESPONSIBLE_EXE: "/Applications/Bao.app/Contents/MacOS/bao" });
+  delete process.env.BAO_CERT_SIGNED;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: true, accessibility: false }));
+  const app = await startApp({ home: path.join(home, "library"), port: 0, extensionHost: false, chromeProfilesRoot: profiles });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await page.locator('#rail [data-place="settings"]').click();
+    const row = page.locator(".settings-row", { hasText: "Google Chrome's folder" });
+    await row.waitFor();
+    assert.match(await row.innerText(), /Lets Bao import a site's sign-in from Chrome and use Running Chrome\./);
+    assert.match(await row.innerText(), /✓ Allowed/);
+    assert.match(await row.innerText(), /Agents use their own app's switch, such as ChatGPT for Codex\./);
+    assert.doesNotMatch(await row.innerText(), /Turn on/);
+    assert.equal(await row.locator("#chrome-folder-settings").getAttribute("href"), "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders");
+
+    await chmod(profiles, 0o000);
+    await page.reload();
+    await page.locator('#rail [data-place="settings"]').click();
+    await row.waitFor();
+    assert.match(await row.innerText(), /Not allowed/);
+    assert.match(await row.innerText(), /Turn on Bao > Google Chrome in Files & Folders\. If it is on, turn it off and on again: macOS ties it to one build of Bao\./);
+    assert.match(await page.locator(".settings-index").innerText(), /Chrome's folder not allowed/);
+
+    process.env.BAO_CERT_SIGNED = "1";
+    await page.reload();
+    await page.locator('#rail [data-place="settings"]').click();
+    await row.waitFor();
+    assert.match(await row.innerText(), /Agents that start Bao use this switch too\./);
+    assert.doesNotMatch(await row.innerText(), /turn it off and on again/);
+  } finally {
+    await chmod(profiles, 0o700);
+    await browser.close();
+    await app.close();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     await rm(home, { recursive: true, force: true });
   }
 });

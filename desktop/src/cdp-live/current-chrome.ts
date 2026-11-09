@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import path from "node:path";
+import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
 import { processesNaming } from "../launch";
 import { chromeHelper, CHROME_BUNDLE, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
@@ -124,6 +125,9 @@ export async function openCurrentChrome(options: {
     connect: connectCdp,
     ...overrides,
   };
+  // Before the helper touches Chrome: without Files & Folders > Google Chrome, Bao turns remote debugging on and still cannot read its port.
+  try { assertChromeReadable(options.root); }
+  catch (error) { if (error instanceof ChromeFolderDenied) throw error; }
   const blocked = remoteDebuggingBlock(await deps.helper.permissions(false));
   if (blocked) throw new Error(blocked);
   if (await deps.helper.screenLocked()) throw new Error("The screen is locked. Unlock it, then try again.");
@@ -136,8 +140,15 @@ export async function openCurrentChrome(options: {
   try {
     const portFile = path.join(options.root, "DevToolsActivePort");
     const endpointForChrome = async () => {
-      const endpoint = await deps.readPort(portFile).catch(() => undefined);
-      return endpoint && await deps.listener(endpoint.port) === pid ? endpoint : undefined;
+      let endpoint: DevToolsEndpoint;
+      try { endpoint = await deps.readPort(portFile); }
+      catch (error) {
+        // Missing or half written means remote debugging is not on yet. A refused read is not that.
+        const denied = chromeDenied(error, options.root);
+        if (denied) throw denied;
+        return undefined;
+      }
+      return await deps.listener(endpoint.port) === pid ? endpoint : undefined;
     };
     let endpoint = await endpointForChrome();
     if (!endpoint) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, access, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, access, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -587,9 +587,38 @@ if (args.includes('--json')) {
   t.after(async () => { await proxy.close(); await rm(root, { recursive: true, force: true }); });
   assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0);
   const [, imported] = proxy.openLines;
-  assert.match(imported!, /^Sign-in import for https:\/\/news\.example\.test from Chrome profile "Default" failed: EACCES: permission denied, copyfile '.+\/Cookies' -> '.+'\. Bao's profile kept its saved sign-ins\.$/);
+  assert.match(imported!, /^Sign-in import for https:\/\/news\.example\.test from Chrome profile "Default" failed: macOS did not let Bao read Google Chrome's folder \(EACCES on .+\/Default\/Cookies\)\. Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again\. Bao's profile kept its saved sign-ins\.$/);
   const run = new Library(home).readRun(proxy.activeRunId!);
   assert.deepEqual(run.signInImports?.map(({ origin, found, cookies, storage }) => ({ origin, found, cookies, storage })),
     [{ origin: "https://news.example.test", found: 0, cookies: 0, storage: 0 }]);
-  assert.match(run.signInImports![0]!.error!, /^EACCES: permission denied/);
+  assert.match(run.signInImports![0]!.error!, /^macOS did not let Bao read Google Chrome's folder \(EACCES on /);
+});
+
+test("with Chrome's folder refused, the Bao profile still opens and says why it imported nothing, and a copy stops", { timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-folder-refused-"));
+  const sourceRoot = await chromeProfiles(path.join(root, "source"), { Default: { name: "Owner" }, "Profile 2": { name: "Work" } });
+  await chmod(sourceRoot, 0o000);
+  const home = path.join(root, "home");
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args.includes('--json')) {
+  const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
+  fetch('http://' + endpoint.host + '/json/list').then(r => r.json()).then(tabs => {
+    process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter(t => t.type === 'page').map(t => ({ active: true, targetId: t.id })) } }));
+  });
+} else process.stdout.write('native success\\n');
+`, { mode: 0o700 });
+  const launch = launches.launchOwnedChromeEndpoint;
+  t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
+  const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
+  t.after(async () => { await proxy.close(); await chmod(sourceRoot, 0o700); await rm(root, { recursive: true, force: true }); });
+  const refused = `macOS did not let Bao read Google Chrome's folder (EACCES on ${sourceRoot}). Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again.`;
+  assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0, "Bao's own profile needs no grant");
+  assert.match(proxy.openLines[0]!, /^Browser: Bao profile, the default\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
+  assert.ok(proxy.openLines[0]!.endsWith(refused), proxy.openLines[0]);
+  const run = new Library(home).readRun(proxy.activeRunId!);
+  assert.equal(run.browser?.route === "bao" ? run.browser.unread : undefined, refused);
+  await proxy.close();
+  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy"), { message: refused });
 });

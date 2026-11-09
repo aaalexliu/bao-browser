@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include "bao-launch.h"
 #include "bao-notify.h"
+#include "bao-run-node.h"
 #include "bao-window.h"
 
 static const char kNeedNodeTitle[] = "Bao needs Node.js";
@@ -144,12 +145,14 @@ static int run_print_home(const char *node, const char *script, char *home, size
   return failed == 0 ? 0 : -1;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
   char exe[4096];
   uint32_t size = sizeof exe;
   if (_NSGetExecutablePath(exe, &size) != 0) return 1;
   char resolved[4096];
   if (!realpath(exe, resolved)) return 1;
+  /* bao-mcp and bao-cli start Node here, before any window code runs. */
+  if (argc > 1 && strcmp(argv[1], "--run-node") == 0) return bao_run_node(resolved, argc - 2, argv + 2);
   /* Contents/MacOS/bao -> Contents */
   dirname_inplace(resolved);
   dirname_inplace(resolved);
@@ -265,6 +268,7 @@ int main(void) {
   }
 
   if (node == 0) {
+    bao_note_responsible();
     setenv("BAO_HOME", bao_home, 1);
     setenv("BAO_PUBLIC", public_dir, 1);
     if (chdir(root) != 0) _exit(127);

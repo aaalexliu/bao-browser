@@ -1,3 +1,4 @@
+import { ChromeFolderDenied } from "../chrome-access";
 import type { SignInImport } from "./bao-profile";
 import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-copy";
 
@@ -20,7 +21,9 @@ export const ROUTE_LABELS = {
 
 /** What a session runs on and why. Every open result and the saved run record carry it. */
 export type BrowserPick = { why: RouteWhy } & (
-  | { route: "bao" | "copy" | "current"; chrome: string; userDataDir: string; profile: ChosenProfile; background?: boolean }
+  /** Without a profile, Bao could not read Chrome's profiles (`unread` says why) and imports no sign-ins. */
+  | { route: "bao"; chrome: string; userDataDir: string; profile?: ChosenProfile; unread?: string }
+  | { route: "copy" | "current"; chrome: string; userDataDir: string; profile: ChosenProfile; background?: boolean }
   | { route: "extension" }
 );
 
@@ -31,12 +34,13 @@ function profileName(profile: ChromeProfileChoice): string {
 export function pickLine(pick: BrowserPick): string {
   const head = `Browser: ${ROUTE_LABELS[pick.route]}, ${pick.why}.`;
   if (pick.route === "extension") return `${head} It runs in the Chrome profile where the Bao extension is linked.`;
-  const profile = `${profileName(pick.profile)} in ${pick.profile.root}, ${pick.profile.why}`;
+  const from = (profile: ChosenProfile) => `${profileName(profile)} in ${profile.root}, ${profile.why}`;
   const chrome = `Chrome app: ${pick.chrome}.`;
   switch (pick.route) {
-    case "bao": return `${head} ${chrome} User data: ${pick.userDataDir}. Sign-ins come from Chrome profile ${profile}.`;
-    case "copy": return `${head} ${chrome} User data: ${pick.userDataDir}, a copy of Chrome profile ${profile}.`;
-    case "current": return `${head} ${chrome} User data: ${pick.userDataDir}. Profile: ${profile}. ${pick.background
+    case "bao": return `${head} ${chrome} User data: ${pick.userDataDir}. ${pick.profile ? `Sign-ins come from Chrome profile ${from(pick.profile)}.`
+      : `Bao imports no sign-ins: ${pick.unread ?? "it could not read Chrome's profiles."}`}`;
+    case "copy": return `${head} ${chrome} User data: ${pick.userDataDir}, a copy of Chrome profile ${from(pick.profile)}.`;
+    case "current": return `${head} ${chrome} User data: ${pick.userDataDir}. Profile: ${from(pick.profile)}. ${pick.background
       ? "Bao's task tab opened in the background." : "Chrome opened Bao's task tab in front, in a window of that profile."}`;
   }
 }
@@ -44,7 +48,7 @@ export function pickLine(pick: BrowserPick): string {
 /** What a sign-in import read from the Chrome profile and wrote into Bao's profile, or why it could not. */
 export function signInLine(report: SignInImport, profile: string): string {
   const head = `Sign-in import for ${report.origin} from Chrome profile "${profile}"${report.retry ? ", again at the sign-in wall" : ""}`;
-  if (report.error) return `${head} failed: ${report.error}. Bao's profile kept its saved sign-ins.`;
+  if (report.error) return `${head} failed: ${report.error.replace(/\.$/, "")}. Bao's profile kept its saved sign-ins.`;
   if (!report.found && !report.storage) return `${head}: the profile has no cookies for this site.`;
   return `${head}: read ${report.found} site ${report.found === 1 ? "cookie" : "cookies"}, wrote ${report.cookies} new or changed ${report.cookies === 1 ? "cookie" : "cookies"} and ${report.storage} storage ${report.storage === 1 ? "item" : "items"} into Bao's profile.`;
 }
@@ -70,7 +74,10 @@ export class ChromeProfileQuestion extends Error {
 export async function chooseChromeProfile(root: string, named: { directory: string; by: "agent" | "settings" } | undefined, settings?: string): Promise<ChosenProfile> {
   let profiles: ChromeProfileChoice[];
   try { profiles = await listChromeProfiles(root); }
-  catch (error) { throw new Error(`Bao could not read Chrome's profiles in ${root}: ${error instanceof Error ? error.message : String(error)}`, { cause: error }); }
+  catch (error) {
+    if (error instanceof ChromeFolderDenied) throw error;
+    throw new Error(`Bao could not read Chrome's profiles in ${root}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
   if (!profiles.length) throw new Error(`Chrome has no profile in ${root}.`);
   if (named) {
     const hit = profiles.find((profile) => profile.directory === named.directory);

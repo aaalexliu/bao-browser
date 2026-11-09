@@ -13,6 +13,7 @@ import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
+import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { chooseChromeProfile, pickLine, signInLine, type BrowserPick, type ChosenProfile, type RouteWhy } from "./browser-pick";
 import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
@@ -52,7 +53,9 @@ function webSite(value: string | undefined): string | undefined {
 }
 
 /** The route and Chrome profile for a new session, settled before Bao opens anything. */
-type SessionPlan = { why: RouteWhy } & ({ route: "bao" | "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
+type SessionPlan = { why: RouteWhy } & (
+  | { route: "bao"; profile: ChosenProfile } | { route: "bao"; profile?: undefined; unread: string }
+  | { route: "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
 
 interface SessionData {
   browser: AgentBrowser;
@@ -115,7 +118,8 @@ export class AgentBrowserProxy {
   get openLines(): string[] {
     const picked = this.picked;
     if (!picked) return [];
-    return [pickLine(picked), ...picked.route === "bao" ? this.imports.map((report) => signInLine(report, picked.profile.directory)) : []];
+    const from = picked.route === "bao" ? picked.profile?.directory : undefined;
+    return [pickLine(picked), ...from ? this.imports.map((report) => signInLine(report, from)) : []];
   }
   private currentEnded = false;
   private closedCurrent = false;
@@ -152,7 +156,7 @@ export class AgentBrowserProxy {
       throw new Error("profile is only accepted on open and must be a Chrome profile folder, such as Default or Profile 2");
     }
     const named = typeof profile === "string" ? profile.trim() : undefined;
-    if (this.session && named !== undefined && this.session.pick.route !== "extension" && named !== this.session.pick.profile.directory) {
+    if (this.session && named !== undefined && this.session.pick.route !== "extension" && named !== this.session.pick.profile?.directory) {
       throw new Error("close the current session before choosing a different Chrome profile");
     }
     if (browser !== undefined && this.session?.removing) await this.session.removing;
@@ -347,8 +351,13 @@ export class AgentBrowserProxy {
     if (route === "current" && this.options.extensionRoute?.() === true) return { route: "extension", why };
     if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
     const root = this.options.sourceRoot ?? chromeProfilesRoot();
-    const profile = await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.());
-    return { route, why, profile };
+    try {
+      return { route, why, profile: await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.()) };
+    } catch (error) {
+      // Bao's own profile works without Chrome's folder. It opens with no sign-in import and says why.
+      if (route === "bao" && error instanceof ChromeFolderDenied) return { route, why, unread: error.message };
+      throw error;
+    }
   }
 
   /** Opens the planned browser. On the owner's Chrome this also opens Bao's task tab, which the native daemon binds to. */
@@ -385,12 +394,17 @@ export class AgentBrowserProxy {
           throw error;
         }
       }
-      case "bao":
+      case "bao": {
+        const detached = this.options.keepOpen?.() === true;
+        const source = plan.profile ? { sourceRoot: plan.profile.root, directory: plan.profile.directory } : { unread: plan.unread };
+        const chrome = await openBaoChromeForProxy({ ...source, home: this.options.home, detached, site });
+        return { kind: "copy", chrome, pick: { route: "bao", why, chrome: resolveNormalChrome(), userDataDir: baoAgentProfileDir(this.options.home),
+          ...plan.profile ? { profile: plan.profile } : { unread: plan.unread } } };
+      }
       case "copy": {
-        const options = { sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home, detached: this.options.keepOpen?.() === true };
-        const chrome = plan.route === "bao" ? await openBaoChromeForProxy({ ...options, site }) : await openCopiedChromeForProxy(options);
-        return { kind: "copy", chrome, pick: { route: plan.route, why, chrome: resolveNormalChrome(), profile: plan.profile,
-          userDataDir: plan.route === "bao" ? baoAgentProfileDir(this.options.home) : path.dirname(chrome.target.portFile) } };
+        const chrome = await openCopiedChromeForProxy({ sourceRoot: plan.profile.root, directory: plan.profile.directory, home: this.options.home,
+          detached: this.options.keepOpen?.() === true });
+        return { kind: "copy", chrome, pick: { route: "copy", why, chrome: resolveNormalChrome(), profile: plan.profile, userDataDir: path.dirname(chrome.target.portFile) } };
       }
     }
   }
@@ -459,8 +473,9 @@ export class AgentBrowserProxy {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
     this.afterWall = true;
     const site = session.site ?? session.ownerPage?.url;
-    const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", profile: session.pick.profile.directory };
-    return ` If the sign-in or check does not clear in ${session.pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging on the same Chrome profile "${session.pick.profile.directory}". To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. Bao does not switch on its own.`;
+    const profile = session.pick.profile?.directory;
+    const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
+    return ` If the sign-in or check does not clear in ${session.pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. Bao does not switch on its own.`;
   }
 
   private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {

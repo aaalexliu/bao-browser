@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
+import { assertChromeReadable, chromeDenied } from "../chrome-access";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { closeRetainedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir } from "../launch";
 import { assertNotDailyChrome } from "../profile";
@@ -89,7 +90,8 @@ async function connect(portFile: string): Promise<CdpSocket> {
 
 async function readChromeLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cookies?: LoginCookie[]): Promise<SourceLoginState> {
   try { return await readSourceLogin(options, site, destination, cookies); }
-  catch (error) {
+  catch (failure) {
+    const error = chromeDenied(failure, options.sourceRoot) ?? failure;
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`Bao source sign-in import unavailable; keeping saved Bao state: ${reason}`);
     return { cookies: [], storage: [], error: reason };
@@ -98,6 +100,8 @@ async function readChromeLogin(options: { sourceRoot: string; directory: string 
 
 async function readSourceLogin(options: { sourceRoot: string; directory: string }, site: string, destination?: string, cachedCookies?: LoginCookie[]): Promise<SourceLoginState> {
   const profile = path.join(options.sourceRoot, options.directory);
+  // The storage readers skip a folder they cannot read, so a refused profile must stop here.
+  assertChromeReadable(profile, options.sourceRoot);
   const origins = [new URL(site).origin];
   const storage = await readLocalStorage(profile, origins);
   if (destination && !matchingIndexedDbOrigins(path.join(destination, "Default"), origins).length) copyIndexedDb(profile, destination, origins);
@@ -197,7 +201,11 @@ async function seedLogin(portFile: string, login: LoginState): Promise<{ cookies
   }
 }
 
-export async function openBaoChromeForProxy(options: { sourceRoot: string; directory: string; home: string; site?: string; detached?: boolean }) {
+/**
+ * Opens Bao's lasting profile. Sign-ins come from Chrome profile `directory` in `sourceRoot`. With `unread` instead, Bao could not
+ * read Chrome's profiles, so it imports nothing and every import reports that reason.
+ */
+export async function openBaoChromeForProxy(options: ({ sourceRoot: string; directory: string } | { unread: string }) & { home: string; site?: string; detached?: boolean }) {
   const profile = baoAgentProfileDir(options.home);
   assertNotDailyChrome(profile);
   const keptWindow = path.join(profile, "bao-kept-window");
@@ -248,7 +256,9 @@ export async function openBaoChromeForProxy(options: { sourceRoot: string; direc
       const url = new URL(site);
       let login = snapshots.get(url.origin);
       if (!login) {
-        login = readChromeLogin(options, site, destination, sourceCookies).then((source) => {
+        const read = "unread" in options ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], error: options.unread })
+          : readChromeLogin(options, site, destination, sourceCookies);
+        login = read.then((source) => {
           sourceCookies ??= source.cookies;
           return { cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)), storage: source.storage,
             ...(source.error ? { error: source.error } : {}) };

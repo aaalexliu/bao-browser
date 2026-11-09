@@ -200,6 +200,8 @@ export interface ShellState {
     capabilities?: { id: string; status: string; optional?: boolean }[];
   };
   model?: { label: string };
+  /** Whether the app can read Google Chrome's folder, the app macOS asks, and whether this build is signed with a certificate. */
+  chromeAccess?: import("../chrome-access").ChromeAccess & { app?: string; certSigned?: boolean };
   workflows?: WorkflowSummary[];
   damagedWorkflows?: import("../v1/store").DamagedWorkflow[];
   runs?: RunSummary[];

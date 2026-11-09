@@ -987,3 +987,26 @@ test("Bao's task tab opens in a window of the chosen Chrome profile and never in
   assert.equal(work.background, false, "another profile's tab comes from Chrome's own command line");
   assert.equal(await tabProfile(cdp, work.targetId), path.join(root, "Profile 1"));
 });
+
+test("a refused Chrome folder stops Running Chrome before the helper touches Chrome", async () => {
+  const f = await fixture();
+  const { chmod } = await import("node:fs/promises");
+  await chmod(f.root, 0o000);
+  try {
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps),
+      (error: Error) => error.name === "ChromeFolderDenied" && error.message.startsWith(`macOS did not let Bao read Google Chrome's folder (EACCES on ${f.root}).`));
+    assert.deepEqual(f.state.helperCalls, []);
+    assert.equal(f.state.on, false, "remote debugging stays off");
+  } finally { await chmod(f.root, 0o700); await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a refused DevToolsActivePort read is reported as refused, not as a closed debugging port", async () => {
+  const f = await fixture(true);
+  const file = path.join(f.root, "DevToolsActivePort");
+  try {
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, { ...f.deps,
+      readPort: async () => { throw Object.assign(new Error(`EPERM: operation not permitted, open '${file}'`), { code: "EPERM", path: file }); } }),
+    (error: Error) => error.message.startsWith(`macOS did not let Bao read Google Chrome's folder (EPERM on ${file}).`) && !/debugging port/.test(error.message));
+    assert.deepEqual(f.state.helperCalls, [], "Bao does not open chrome://inspect when it cannot read the port file");
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});

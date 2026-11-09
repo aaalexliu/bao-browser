@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { startApp } from "../../src/app/server";
+import { ChromeFolderDenied } from "../../src/chrome-access";
 import {
   auditLine,
   chooseProfile,
@@ -193,6 +194,8 @@ test("confirm copy, audit line, and errors omit cookie material", () => {
   assert.equal(safeImportError(new Error("cookie=site-token")), "Import failed. Press Import again.");
   assert.equal(explainImportError(new Error("cookie=site-token")).includes("site-token"), false);
   assert.equal(safeImportError(new Error("keychain prompt was not approved")), "The keychain prompt was not approved. Press Import and choose Allow.");
+  const refused = new ChromeFolderDenied("EPERM", "/Users/owner/Library/Application Support/Google/Chrome", { BAO_RESPONSIBLE_EXE: "/Applications/Bao.app/Contents/MacOS/bao", BAO_CERT_SIGNED: "1" });
+  assert.equal(safeImportError(refused), "macOS did not let Bao read Google Chrome's folder (EPERM on /Users/owner/Library/Application Support/Google/Chrome). Turn on System Settings > Privacy & Security > Files & Folders > Bao > Google Chrome, then try again.");
   assert.equal(
     explainImportError(new Error("zero matching cookies"), "Profile 1"),
     "Profile Profile 1 has no cookies for this site. Press Import and pick the Chrome profile that is signed in.",
