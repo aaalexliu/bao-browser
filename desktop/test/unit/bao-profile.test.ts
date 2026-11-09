@@ -587,8 +587,8 @@ if (args.includes('--json')) {
   t.after(async () => { await proxy.close(); await rm(root, { recursive: true, force: true }); });
   assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0);
   const [, imported, fallback] = proxy.pickLines;
-  assert.equal(fallback, 'If the site asks for a sign-in that did not carry over, the fallback is the owner\'s running Chrome over remote debugging on the same Chrome profile "Default". '
-    + 'To take it, call agent_browser with {"command":"close"}, then with {"command":"open","args":["https://news.example.test/article"],"browser":"current","profile":"Default"}. Bao does not switch on its own.');
+  assert.equal(fallback, 'If the site still asks for a sign-in, Bao moves this session to the owner\'s running Chrome over remote debugging on the same Chrome profile "Default" '
+    + 'by itself when it sees the wall or when you call wait_for_owner.');
   assert.match(imported!, /^Sign-in import for https:\/\/news\.example\.test from Chrome profile "Default" failed: macOS did not let Bao read Google Chrome's folder \(EACCES on .+\/Default\/Cookies\)\. Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again\. Bao's profile kept its saved sign-ins\.$/);
   const run = new Library(home).readRun(proxy.activeRunId!);
   assert.deepEqual(run.signInImports?.map(({ origin, found, cookies, storage }) => ({ origin, found, cookies, storage })),

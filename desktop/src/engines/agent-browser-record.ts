@@ -22,6 +22,8 @@ export interface StepContext {
   owner?: OwnerWaitPage;
   current?: boolean;
   mark?: ShotBox;
+  /** The line that says Bao moved the session to the owner's running Chrome during this step. */
+  moved?: string;
 }
 
 export interface RecordedAgentBrowserCommand {
@@ -137,10 +139,11 @@ export class AgentBrowserRun {
       step.status = "failed";
       step.reason = "The session ended before you finished.";
     }
-    step.summary = describeStep({
+    const summary = describeStep({
       command: step.native.command, args: step.native.args, results, error: step.native.error,
       snapshot: this.snapshot, seen: this.seenOn(context.page?.url), page: context.page, previousPage: context.previousPage, owner: context.owner, current: context.current, at: step.endedAt,
     });
+    step.summary = context.moved ? { ...summary, parts: [`${context.moved} `, ...summary.parts], text: `${context.moved} ${summary.text}` } : summary;
     if (step.native.command === "open" && !step.native.isError) this.landmarks.clear();
     const read = step.native.command === "snapshot" && !step.native.isError ? results.find((result) => result.exitCode === 0)?.stdout : undefined;
     if (read) {

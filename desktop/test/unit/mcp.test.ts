@@ -575,6 +575,8 @@ test("non-UI clients retain the catalog and identify their active Library, inclu
       assert.match(guidance!, /(BaoOSHelper uses its|Bao's helper enables debugging and presses Allow through) existing Accessibility access/);
       assert.match(guidance!, /with profile on the first open/);
       assert.match(guidance!, /exact calls to fall back to browser=current on the same Chrome profile/);
+      assert.match(guidance!, /browser=bao session stops at a sign-in or check[^.]+Bao first moves the session by itself to the owner's running Chrome over remote debugging on the same Chrome profile/);
+      assert.match(guidance!, /Do not ask the owner to [^.]+before Bao has tried Running Chrome\./);
       assert.match(guidance!, /No browser choice needs a running Bao app/);
       assert.doesNotMatch(guidance!, /extension|Default when unset/);
     }

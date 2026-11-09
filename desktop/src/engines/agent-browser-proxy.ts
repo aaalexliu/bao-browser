@@ -15,8 +15,9 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, pickLine, shortPickLine, signInLine, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
+import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
 import { diffView, findView, snapshotView } from "./snapshot-view";
@@ -55,6 +56,9 @@ function webSite(value: string | undefined): string | undefined {
   } catch { return undefined; }
 }
 
+/** A command's move to the owner's running Chrome: the line that says so, and the new pick and opened page when it worked. */
+type Moved = { line: string; pick?: BrowserPick; site?: string };
+
 interface SessionData {
   browser: AgentBrowser;
   /** The site the latest open asked for. A sign-in wall's fallback reopens it. */
@@ -75,6 +79,8 @@ interface SessionData {
   ownerSince?: number;
   /** When Bao stopped for the owner, or the latest wait_for_owner call returned; the wait limit counts from here. */
   ownerTouched?: number;
+  /** Why a Bao-profile session could not move to the owner's running Chrome. Only an explicit wait_for_owner tries again. */
+  moveError?: string;
   commandDone?: Promise<void>;
   closing?: boolean;
   removing?: Promise<void>;
@@ -131,13 +137,15 @@ export class AgentBrowserProxy {
   get pickLines(): string[] {
     if (this.notOpened) return [this.notOpened];
     if (!this.shown) return [];
+    if (this.moved?.pick) return [pickLine(this.moved.pick)];
     const { session, command } = this.shown;
-    if (command !== "open") return [shortPickLine(session.pick)];
+    const failed = this.moved ? [this.moved.line] : [];
+    if (command !== "open") return [shortPickLine(session.pick), ...failed];
     const from = session.pick.route === "bao" ? session.pick.profile?.directory : undefined;
-    if (!from) return [pickLine(session.pick)];
+    if (!from) return [pickLine(session.pick), ...failed];
     const missed = this.imports.some((report) => report.error || !report.found && !report.storage);
-    const fallback = missed && !session.ownerWait ? this.fallback(session, "the site asks for a sign-in that did not carry over").trim() : "";
-    return [pickLine(session.pick), ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : []];
+    const fallback = missed && !session.ownerWait && !session.moveError ? `If the site still asks for a sign-in, Bao moves this session to the owner's running Chrome over remote debugging on the same Chrome profile "${from}" by itself when it sees the wall or when you call wait_for_owner.` : "";
+    return [pickLine(session.pick), ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : [], ...failed];
   }
   private currentEnded = false;
   private closedCurrent = false;
@@ -154,6 +162,7 @@ export class AgentBrowserProxy {
   private endedLine: string | undefined;
   /** The latest result's line about an owner wait Bao ended. */
   get endedWait(): string | undefined { return this.endedLine; }
+  private moved: Moved | undefined;
 
   constructor(private readonly options: {
     home: string; sourceRoot?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean;
@@ -184,6 +193,7 @@ export class AgentBrowserProxy {
     this.shown = this.session && { session: this.session, command: String(command) };
     this.notOpened = undefined;
     this.imports = [];
+    this.moved = undefined as Moved | undefined;
     validateAgentBrowserCommand(command, args);
     const view = snapshotView(command, snapshot.find, snapshot.diff);
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
@@ -237,11 +247,7 @@ export class AgentBrowserProxy {
         this.session = session;
         this.currentEnded = false;
         if ("signIn" in session.chrome && session.chrome.signIn) this.imported(session, session.chrome.signIn);
-        void session.chrome.closed.then(() => {
-          if (session.closing) return;
-          if (!this.disconnected && !session.removing) session.workflow.unavailable("the owner closed the window before the task finished");
-          return this.remove(session);
-        }).catch(() => undefined);
+        this.watch(session);
       } catch (error) {
         this.notOpened = failedPickLine(plan!.route, plan!.why, chromeApp(), plan!.route === "extension" ? undefined : plan!.profile);
         await recording.complete(step!, [], this.options.home, async () => { throw error; }, error);
@@ -267,6 +273,14 @@ export class AgentBrowserProxy {
       if (this.disconnected) throw new Error("The agent disconnected.");
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
+        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site) : undefined;
+        // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
+        if (opened && (session.ownerWait || command !== "snapshot" && command !== "open")) {
+          step = recording.begin("open", [this.moved!.site!]);
+          this.latest = { runId: recording.id, step, steps: recording.steps };
+          results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
+          return results;
+        }
         if (session.ownerWait) {
           results.push(...this.ownerResult("halted", session));
           return results;
@@ -281,7 +295,24 @@ export class AgentBrowserProxy {
         if (continuing && site && "importLogin" in session.chrome) this.imported(session, await session.chrome.importLogin(site));
       }
       if (command === "wait_for_owner") {
-        results.push(...await this.waitForOwner(session, args));
+        const timeout = ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
+        const deadline = Date.now() + timeout;
+        const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
+        const read = !wall && this.movable(session, true) ? await this.activePage(session).catch(() => undefined) : undefined;
+        const page = wall ?? read?.page;
+        const opened = page && await this.moveAway(session, wall ? this.wallWords(session) : "a step that needs the owner",
+          wall ? session.site ?? page.url : page.url, true);
+        if (opened) {
+          results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
+          return results;
+        }
+        if (read && (!session.ownerWait || session.ownerWait === "pending")) {
+          if (!session.ownerWait) session.ownerSince = session.ownerTouched = Date.now();
+          session.ownerWait = read;
+          session.ownerPage = read.page;
+          await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
+        }
+        results.push(...await this.waitForOwner(session, page ? Math.max(deadline, Date.now() + Math.min(timeout, 5000)) : deadline));
         return results;
       }
       if ((command === "click" || command === "fill") && args[0]) {
@@ -296,6 +327,12 @@ export class AgentBrowserProxy {
         if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => !!session.ownerWait);
+      if (command !== "close" && results[0]?.exitCode === 0) {
+        const inPage = !session.ownerWait && command === "snapshot" && this.movable(session) && pageWall(results[0].stdout);
+        const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site)
+          : inPage && session.page ? await this.moveAway(session, "a sign-in or verification prompt", session.page.url) : undefined;
+        if (opened) results.splice(0, results.length, command === "snapshot" && !session.ownerWait ? await this.run(session, "snapshot", args) : opened);
+      }
       // A close during an owner wait ends the session; it reports the close, not the wait.
       if (session.ownerWait && command !== "close") {
         results.splice(0, results.length, ...this.ownerResult("halted", session));
@@ -322,8 +359,9 @@ export class AgentBrowserProxy {
       try {
         if (step) {
           try {
-            await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, command as string, visual), failure,
-              !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current" });
+            await session.recording.complete(step, results, session.stateDir, () => this.screenshot(session, step!.native.command, visual), failure,
+              !!session.ownerWait || command === "wait_for_owner", { ...context, page: session.page, owner: this.ownerPage, current: session.kind === "current",
+                ...this.moved?.pick ? { moved: this.moved.line } : {} });
           } catch (completeError) {
             // A hung command already failed with AbortError. The completion
             // screenshot throws page closed after disconnect and must not replace it.
@@ -461,42 +499,132 @@ export class AgentBrowserProxy {
     const executable = agentBrowserExecutable(this.options.executable);
     const abort = this.startAbort = new AbortController();
     const browser = await this.open(plan, abort.signal, site);
-    let stateDir: string | undefined;
     try {
-      stateDir = await mkdtemp(path.join(tmpdir(), "bao-proxy-"));
-      const config = path.join(stateDir, "config.json");
-      await writeFile(config, "{}", { mode: 0o600 });
-      // agent-browser selects this session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
-      if (browser.kind === "current") await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
+      const wired = await this.wire(browser);
       recording.pickBrowser(browser.pick);
-      const endpoint = browser.kind === "current" ? browser.chrome.endpoint : await readDevToolsActivePort(browser.chrome.target.portFile);
       const session: Session = {
-        ...browser, browser: route, stateDir, executable, abort, recording, snapshots: new Map(),
+        ...browser, ...wired, browser: route, executable, abort, recording, snapshots: new Map(),
         workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
           const active = await this.activePage(session);
           if (!active) throw new Error("no active Bao page metadata");
           const endpoint = session.kind === "current" ? session.chrome.endpoint : await readDevToolsActivePort(session.chrome.target.portFile);
           return { ...endpoint, targetId: active.targetId, targetIds: active.targetIds };
         }),
-        flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`,
-          "--idle-timeout", "0"],
+      };
+      return session;
+    } catch (error) {
+      await this.discard(browser);
+      throw error;
+    }
+  }
+
+  /** The agent-browser state folder, flags, and environment that drive an opened browser. */
+  private async wire(browser: Opened): Promise<Pick<SessionData, "stateDir" | "flags" | "env">> {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "bao-proxy-"));
+    try {
+      const config = path.join(stateDir, "config.json");
+      await writeFile(config, "{}", { mode: 0o600 });
+      // agent-browser selects this session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
+      if (browser.kind === "current") await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId: browser.targetId, url: "about:blank" }), { mode: 0o600 });
+      const endpoint = browser.kind === "current" ? browser.chrome.endpoint : await readDevToolsActivePort(browser.chrome.target.portFile);
+      return {
+        stateDir,
+        flags: ["--session", "bao", "--config", config, "--cdp", `ws://127.0.0.1:${endpoint.port}${endpoint.browserPath}`, "--idle-timeout", "0"],
         env: {
           HOME: stateDir, TMPDIR: stateDir, PATH: "/usr/bin:/bin", LANG: "en_US.UTF-8",
           AGENT_BROWSER_SOCKET_DIR: stateDir, AGENT_BROWSER_AUTOSAVE_INTERVAL_MS: "0", BAO_HEAL_CURSOR_ACCOUNT: "0",
           ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
         },
       };
-      return session;
     } catch (error) {
-      if (stateDir) await rm(stateDir, { recursive: true, force: true });
-      if (browser.kind === "current") {
-        if (browser.relay) await browser.chrome.cdp.send("Bao.closeTabs", {}, undefined, 5000).catch(() => undefined);
-        else for (const targetId of browser.taskTabs) await browser.chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
-        browser.chrome.detach();
-      }
-      else await browser.chrome.close();
+      await rm(stateDir, { recursive: true, force: true });
       throw error;
     }
+  }
+
+  /** Closes a browser no session took: only Bao's task tabs in the owner's Chrome, or the whole Bao window. */
+  private async discard(browser: Opened): Promise<void> {
+    if (browser.kind === "current") {
+      if (browser.relay) await browser.chrome.cdp.send("Bao.closeTabs", {}, undefined, 5000).catch(() => undefined);
+      else for (const targetId of browser.taskTabs) await browser.chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
+      browser.chrome.detach();
+    }
+    else await browser.chrome.close();
+  }
+
+  /** Ends the session when its browser closes under it, unless Bao closed that browser itself. */
+  private watch(session: Session): void {
+    const chrome = session.chrome;
+    void chrome.closed.then(() => {
+      if (session.closing || session.chrome !== chrome) return;
+      if (!this.disconnected && !session.removing) session.workflow.unavailable("the owner closed the window before the task finished");
+      return this.remove(session);
+    }).catch(() => undefined);
+  }
+
+  /** A Bao-profile session whose move to the owner's running Chrome has not failed, or any Bao-profile session on a retry. */
+  private movable(session: Session, retry = false): boolean {
+    return session.kind === "copy" && session.pick.route === "bao" && (retry || session.moveError === undefined) && !session.closing && !this.disconnected;
+  }
+
+  private wallWords(session: Session): string {
+    const page = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : session.page;
+    return page && ownerWall(page) === "bot_wall" ? "a human check" : "a sign-in page";
+  }
+
+  /**
+   * A Bao-profile session that stopped at a wall continues in the owner's running Chrome over remote debugging, on the Chrome
+   * profile its sign-in import read, in the same session and run. Bao opens the page there, then closes its own window. When
+   * that does not work, the session stays in Bao's window and the line says why. Returns the open result in the new tab.
+   */
+  private async moveAway(session: Session, what: string, url: string | undefined, retry = false): Promise<AgentBrowserCommandResult | undefined> {
+    if (!this.movable(session, retry) || session.kind !== "copy" || session.pick.route !== "bao") return undefined;
+    const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
+    const site = url ?? wall?.url ?? session.page?.url;
+    let host = site ?? "this site";
+    try { host = new URL(host).hostname; } catch {}
+    const stopped = `Bao's own browser hit ${what} on ${host}`;
+    const fail = (error: unknown) => {
+      session.moveError = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
+      this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. The session stays in Bao's window; Bao tries again on the next wait_for_owner.` };
+      return undefined;
+    };
+    const profile = session.pick.profile;
+    if (!profile) return fail("Bao could not read Chrome's profiles, so it does not know which Chrome profile to use");
+    if (!site) return fail("Bao does not know which page to open");
+    let next: Opened;
+    try { next = await this.open({ route: "current", why: "fallback after a sign-in wall", profile }, session.abort.signal); }
+    catch (error) { return fail(error); }
+    let wired: Awaited<ReturnType<AgentBrowserProxy["wire"]>> | undefined;
+    let opened: AgentBrowserCommandResult;
+    try {
+      wired = await this.wire(next);
+      opened = await this.run({ ...session, ...next, ...wired }, "open", [site]);
+      if (opened.exitCode !== 0) throw new Error(`the open in Bao's task tab failed: ${opened.stderr || opened.stdout || `exit ${opened.exitCode}`}`);
+    } catch (error) {
+      try { if (wired) await this.stopDaemon(wired.stateDir); }
+      finally {
+        if (wired) await rm(wired.stateDir, { recursive: true, force: true });
+        await this.discard(next);
+      }
+      return fail(error);
+    }
+    const old = { chrome: session.chrome, stateDir: session.stateDir };
+    const waiting = !!session.ownerWait;
+    Object.assign(session, next, wired, { ownerWait: undefined, page: undefined });
+    session.recording.pickBrowser(next.pick);
+    if (waiting) session.recording.ownerWaiting(false);
+    this.watch(session);
+    session.moveError = undefined;
+    this.moved = { line: `${stopped}; continued in your running Chrome (Chrome profile "${profile.directory}", ${profile.name}) over remote debugging. Take a fresh snapshot before acting.`, pick: next.pick, site };
+    try { await this.stopDaemon(old.stateDir); }
+    catch (error) { process.stderr.write(`Bao could not stop the agent-browser daemon of its own window: ${error instanceof Error ? error.message : String(error)}\n`); }
+    finally {
+      await old.chrome.close().catch((error: unknown) => process.stderr.write(`Bao could not close its own window: ${error instanceof Error ? error.message : String(error)}\n`));
+      await rm(old.stateDir, { recursive: true, force: true });
+    }
+    await this.detectOwnerWall(session);
+    return opened;
   }
 
   private async connectSession(session: Session, options: { timeoutMs: number; signal?: AbortSignal }): Promise<CdpSocket> {
@@ -513,13 +641,18 @@ export class AgentBrowserProxy {
     return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${session ? this.fallback(session) : ""}` }), stderr: "", exitCode: 0 }];
   }
 
-  /** A Bao profile or copy that waits for the owner, or whose sign-in import carried none, names its fallback. */
-  private fallback(session: Session, when = `the sign-in or check does not clear in ${session.pick.route === "bao" ? "Bao's profile" : "the Chrome copy"}`): string {
+  /**
+   * A copy that waits for the owner, or a Bao profile whose move failed, names its fallback: the owner's running Chrome on the
+   * same profile, which holds his own sign-in and is a device the site already knows. A copy never switches on its own.
+   */
+  private fallback(session: Session): string {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
+    if (session.pick.route === "bao" && session.moveError === undefined) return "";
     const site = session.site ?? session.ownerPage?.url;
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
-    return ` ${fallbackLine(when, profile, "agent_browser", [JSON.stringify({ command: "close" }), JSON.stringify(open)])}`;
+    const bao = session.pick.route === "bao";
+    return ` If the sign-in or check does not clear in ${bao ? "Bao's window" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. ${bao ? "Bao also tries it again on the next wait_for_owner." : "Bao does not switch on its own."}`;
   }
 
   private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
@@ -601,8 +734,7 @@ export class AgentBrowserProxy {
     return this.ownerResult("closed", session);
   }
 
-  private async waitForOwner(session: Session, args: string[]): Promise<AgentBrowserCommandResult[]> {
-    const deadline = Date.now() + ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
+  private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
     if (session.abort.signal.aborted) return this.ownerClosed(session);
     if (!session.ownerWait) {
       session.ownerWait = "pending";
@@ -809,6 +941,30 @@ export class AgentBrowserProxy {
     session.idleTimer.unref();
   }
 
+  /** Stops the agent-browser daemon of one state folder, if it runs. */
+  private async stopDaemon(stateDir: string): Promise<void> {
+    try {
+      const pid = Number((await readFile(path.join(stateDir, "bao.pid"), "utf8")).trim());
+      if (!Number.isSafeInteger(pid) || pid <= 1 || pid === process.pid) return;
+      const running = () => {
+        try { process.kill(pid, 0); return true; }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+          throw error;
+        }
+      };
+      for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
+        process.kill(pid, signal);
+        const deadline = performance.now() + 1000;
+        while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
+        if (!running()) break;
+      }
+      if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
+    } catch (error) {
+      if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    }
+  }
+
   private async remove(session: Session, keepOpen = false, closeTaskTabs = true): Promise<void> {
     clearTimeout(session.idleTimer);
     if (!session.removing) this.afterWall = session.kind === "copy" && !!session.ownerWait;
@@ -820,27 +976,8 @@ export class AgentBrowserProxy {
         session.recording.finish(session.outcome);
         if (session.ownerWait) session.workflow.unavailable("the owner wait did not finish");
         try {
-          try {
-            const pid = Number((await readFile(path.join(session.stateDir, "bao.pid"), "utf8")).trim());
-            if (Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid) {
-              const running = () => {
-                try { process.kill(pid, 0); return true; }
-                catch (error) {
-                  if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-                  throw error;
-                }
-              };
-              for (const signal of ["SIGTERM", "SIGTERM", "SIGKILL"] as const) {
-                process.kill(pid, signal);
-                const deadline = performance.now() + 1000;
-                while (running() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-                if (!running()) break;
-              }
-              if (running()) throw new Error(`agent-browser daemon ${pid} did not exit during bounded shutdown`);
-            }
-          } catch (error) {
-            if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
-          } finally {
+          try { await this.stopDaemon(session.stateDir); }
+          finally {
             if (session.kind === "current" && session.relay) {
               // The lease holds every tab Bao opened in the owner's Chrome, including the agent's tab new and popups.
               // Detaching without closing hands them to the owner.
