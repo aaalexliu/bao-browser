@@ -19,6 +19,7 @@ import { ChromeProfileQuestion, chooseChromeProfile, failedPickLine, pickLine, s
 import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
+import { diffView, findView, snapshotView } from "./snapshot-view";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -85,6 +86,8 @@ interface SessionData {
   removing?: Promise<void>;
   outcome?: AgentBrowserTaskOutcome;
   idleTimer?: ReturnType<typeof setTimeout>;
+  /** The latest native snapshot output for each args list, the baseline of a snapshot diff. */
+  snapshots: Map<string, string>;
 }
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
@@ -159,13 +162,19 @@ export class AgentBrowserProxy {
     return () => { this.pendingCloses--; };
   }
 
-  async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown): Promise<AgentBrowserCommandResult[]> {
+  /**
+   * Runs one command. `snapshot` asks a snapshot for only the lines a find matches or only what changed since the last snapshot
+   * with the same args; the run still records the full native output.
+   */
+  async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
+    snapshot: { find?: unknown; diff?: unknown } = {}): Promise<AgentBrowserCommandResult[]> {
     this.latest = undefined;
     this.workflowOutcome = undefined;
     this.shown = this.session && { session: this.session, command: String(command) };
     this.notOpened = undefined;
     this.imports = [];
     validateAgentBrowserCommand(command, args);
+    const view = snapshotView(command, snapshot.find, snapshot.diff);
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
       throw new Error("browser is only accepted on open and must be copy, bao, or current");
     }
@@ -281,7 +290,14 @@ export class AgentBrowserProxy {
         results.splice(0, results.length, ...this.ownerResult("halted", session));
         return results;
       }
-      if (visual && command === "snapshot" && results[0]?.exitCode === 0) context.mark = await this.readMark(session, recording.seenOn(session.page?.url), results[0].stdout);
+      if (command === "snapshot" && results[0]?.exitCode === 0) {
+        const native = results[0].stdout;
+        if (visual) context.mark = await this.readMark(session, recording.seenOn(session.page?.url), native);
+        const key = args.join("\0");
+        const before = session.snapshots.get(key);
+        session.snapshots.set(key, native);
+        if (view) return [{ ...results[0], stdout: view.kind === "find" ? findView(native, view.find) : diffView(before, native) }];
+      }
       if (command === "open" && results[0]!.exitCode === 0) {
         // Keep the native list intact, including stable tab ids and every restored tab on the site's host.
         results.push(await this.run(session, "tab", ["list"]));
@@ -444,7 +460,7 @@ export class AgentBrowserProxy {
       recording.pickBrowser(browser.pick);
       const endpoint = browser.kind === "current" ? browser.chrome.endpoint : await readDevToolsActivePort(browser.chrome.target.portFile);
       const session: Session = {
-        ...browser, browser: route, stateDir, executable, abort, recording,
+        ...browser, browser: route, stateDir, executable, abort, recording, snapshots: new Map(),
         workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
           const active = await this.activePage(session);
           if (!active) throw new Error("no active Bao page metadata");
