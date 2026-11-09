@@ -307,7 +307,7 @@ export class AgentBrowserProxy {
           return results;
         }
         if (read && (!session.ownerWait || session.ownerWait === "pending")) {
-          if (!session.ownerWait) session.ownerSince = Date.now();
+          if (!session.ownerWait) session.ownerSince = session.ownerTouched = Date.now();
           session.ownerWait = read;
           session.ownerPage = read.page;
           await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
