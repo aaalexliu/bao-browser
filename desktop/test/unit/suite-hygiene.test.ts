@@ -262,7 +262,8 @@ test("inherited BAO names and CI do not reach the launched Chrome", { timeout: 2
     while (Date.now() - started < 2000) {
       try {
         raw = readFileSync(`/proc/${pid}/environ`).toString("utf8");
-        break;
+        if (raw) break;
+        last = "empty";
       } catch (err) {
         last = err instanceof Error ? err.message : String(err);
       }
