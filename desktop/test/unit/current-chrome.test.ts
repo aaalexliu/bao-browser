@@ -1,623 +1,16 @@
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import * as currentChrome from "../../src/cdp-live/current-chrome";
-import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
-import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
-import { INSPECT_URL } from "../../src/cdp-live/ax";
+import type { CdpSocket } from "../../src/cdp-live/socket";
+import * as runningChrome from "../../src/extension/running-chrome";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
-import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
-import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { Library } from "../../src/v1/store";
-
-pinTestBrowser();
-
-function axNode(partial: Pick<AxNode, "role"> & Partial<AxNode>): AxNode {
-  return {
-    subrole: "", title: "", description: "", identifier: "", name: "", value: "",
-    actions: [], frame: null, path: [], pid: 7, app: "com.google.Chrome", useful: true,
-    ...partial,
-  };
-}
-
-test("inspect tab close presses that tab's Close button, not the window or another tab", () => {
-  const nodes = [
-    axNode({ role: "AXButton", subrole: "AXCloseButton", path: [{ role: "AXWindow", name: "Inspect with Chrome Developer Tools" }] }),
-    axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Owner tab", title: "Owner tab", description: "Owner tab", value: "true" }),
-    axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Owner tab" }] }),
-    axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools", description: "Inspect with Chrome Developer Tools", value: "false" }),
-    axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Inspect with Chrome Developer Tools" }] }),
-  ];
-  const args = currentChrome.inspectTabCloseArgs(nodes, 7);
-  assert.ok(args);
-  const encoded = args[args.indexOf("--path") + 1] || "";
-  assert.match(encoded, /Inspect with Chrome Developer Tools/);
-  assert.doesNotMatch(encoded, /Owner tab/);
-  assert.equal(args[0], "press");
-  assert.equal(args.includes("close-window"), false);
-  const second = axNode({
-    role: "AXRadioButton", subrole: "AXTabButton",
-    name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools",
-    description: "Inspect with Chrome Developer Tools", value: "true",
-  });
-  assert.equal(currentChrome.inspectTabCloseArgs([...nodes, second], 7), undefined);
-});
-
-async function fixture(on = false) {
-  const root = await mkdtemp(path.join(tmpdir(), "bao-current-chrome-"));
-  const state = { on, accessibility: true, locked: false, pids: [7], pending: false, connected: false, closed: false,
-    checkboxFound: true, checkboxPressed: true,
-    helperCalls: [] as string[][], cdpCalls: [] as { method: string; params: Record<string, unknown> }[] };
-  let approved!: () => void;
-  let rejected: ((error: Error) => void) | undefined;
-  let disconnected!: () => void;
-  const socket = {
-    get isOpen() { return !state.closed; },
-    disconnected: new Promise<void>((resolve) => { disconnected = resolve; }),
-    close() { state.closed = true; disconnected(); rejected?.(new Error("cdp disconnected")); },
-    async send(method: string, params: Record<string, unknown> = {}) {
-      state.cdpCalls.push({ method, params });
-      if (method === "Browser.getVersion") {
-        state.pending = true;
-        await new Promise<void>((resolve, reject) => { approved = resolve; rejected = reject; });
-      }
-      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "inspect", url: INSPECT_URL }, { targetId: "owner", url: "https://fixture.invalid/" }] };
-      return {};
-    },
-  } as unknown as CdpSocket;
-  const helper = {
-    async permissions(prompt: boolean): Promise<AxHit> { assert.equal(prompt, false); return { ok: true, accessibility: state.accessibility }; },
-    async screenLocked() { return state.locked; },
-    async exec(args: string[]): Promise<AxHit> {
-      state.helperCalls.push(args);
-      assert.ok(!args[0]!.startsWith("ae-") && !["shot", "windows", "permissions"].includes(args[0]!), "no Automation, Screen Recording, or grant prompt");
-      assert.equal(args[args.indexOf("--pid") + 1], "7");
-      if (args[0] === "checkbox-read") return { ok: true, found: true, value: state.on ? "1" : "0" };
-      if (args[0] === "checkbox-set") {
-        if (state.checkboxFound) state.on = true;
-        return { ok: true, found: state.checkboxFound, pressed: state.checkboxFound && state.checkboxPressed };
-      }
-      if (args[0] === "debug-allow") {
-        if (args.includes("--press") && state.pending) {
-          state.pending = false;
-          approved();
-          return { ok: true, found: true, pressed: true };
-        }
-        return { ok: true, found: state.pending, pressed: false };
-      }
-      return { ok: true };
-    },
-  };
-  const options = { root, defaultRoot: root, axLog: path.join(root, "ax.jsonl") };
-  const deps: NonNullable<Parameters<typeof currentChrome.openCurrentChrome>[1]> = {
-    helper, findChrome: async () => state.pids,
-    readPort: async () => ({ port: 9222, browserPath: "/devtools/browser/fixture" }),
-    listener: async () => state.on ? 7 : undefined,
-    connect: async () => { state.connected = true; return socket; },
-  };
-  return { root, state, options, deps, socket };
-}
-
-test("current Chrome enables debugging with the helper and approves the connection it keeps", async () => {
-  const f = await fixture();
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    assert.equal(f.state.on, true);
-    assert.equal(f.state.connected, true);
-    assert.ok(f.state.helperCalls.some(call => call[0] === "checkbox-set"));
-    assert.ok(f.state.helperCalls.some(call => call[0] === "debug-allow" && call.includes("--press")));
-    assert.deepEqual(f.state.cdpCalls.filter(call => call.method === "Target.closeTarget"), [{ method: "Target.closeTarget", params: { targetId: "inspect" } }]);
-    chrome.detach();
-    await chrome.closed;
-    assert.equal(chrome.isClosed(), true);
-    assert.ok(!f.state.cdpCalls.some(call => call.method === "Browser.close"));
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("current Chrome leaves an enabled switch and the owner's tabs alone", async () => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    assert.ok(f.state.helperCalls.every(call => call[0] === "debug-allow"));
-    assert.ok(!f.state.cdpCalls.some(call => call.method === "Target.closeTarget"));
-    const output = await chrome.withConsent(async () => "native output");
-    assert.equal(output, "native output");
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("current Chrome stops without input when Accessibility is absent, the screen is locked, or Chrome is ambiguous", async () => {
-  for (const mode of ["accessibility", "locked", "missing", "ambiguous"] as const) {
-    const f = await fixture();
-    try {
-      if (mode === "accessibility") f.state.accessibility = false;
-      if (mode === "locked") f.state.locked = true;
-      if (mode === "missing") f.state.pids = [];
-      if (mode === "ambiguous") f.state.pids = [7, 8];
-      await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps));
-      assert.deepEqual(f.state.helperCalls, []);
-      assert.equal(f.state.connected, false);
-    } finally { await rm(f.root, { recursive: true, force: true }); }
-  }
-});
-
-test("current Chrome approves native connection prompts already present when polling starts", async () => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    f.state.pending = true;
-    assert.equal(await chrome.withConsent(async () => "reconnected"), "reconnected");
-    assert.equal(f.state.pending, false);
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("a port wait failure closes the inspect tab Bao opened", async () => {
-  const f = await fixture();
-  f.deps.listener = async () => undefined;
-  const exec = f.deps.helper!.exec;
-  f.deps.helper!.exec = async (args, timeout) => {
-    if (args[0] === "nodes") {
-      return {
-        ok: true,
-        nodes: [
-          axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Owner tab", title: "Owner tab", description: "Owner tab", value: "true" }),
-          axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Owner tab" }] }),
-          axNode({ role: "AXRadioButton", subrole: "AXTabButton", name: "Inspect with Chrome Developer Tools", title: "Inspect with Chrome Developer Tools", description: "Inspect with Chrome Developer Tools", value: "false" }),
-          axNode({ role: "AXButton", name: "Close", title: "Close", description: "Close", path: [{ role: "AXRadioButton", name: "Inspect with Chrome Developer Tools" }] }),
-        ],
-      };
-    }
-    return exec(args, timeout);
-  };
-  try {
-    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /Chrome did not open its debugging port/);
-    const presses = f.state.helperCalls.filter((call) => call[0] === "press");
-    assert.equal(presses.length, 1);
-    assert.match(presses[0]!.join(" "), /Inspect with Chrome Developer Tools/);
-    assert.doesNotMatch(presses[0]!.join(" "), /Owner tab/);
-    assert.equal(f.state.helperCalls.some((call) => call[0] === "close-window" || call[0] === "cg-key" || call[0]?.startsWith("ae-")), false);
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("current Chrome reports a missing checkbox and audits only actual presses", async () => {
-  for (const mode of ["missing", "unchanged", "pressed"] as const) {
-    const f = await fixture();
-    try {
-      f.state.checkboxFound = mode !== "missing";
-      f.state.checkboxPressed = mode === "pressed";
-      if (mode === "missing") {
-        await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /checkbox was not found/);
-        assert.equal(f.state.connected, false);
-        await assert.rejects(access(f.options.axLog), /ENOENT/);
-      } else {
-        const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-        const audit = (await readFile(f.options.axLog, "utf8")).trim().split("\n").map(line => JSON.parse(line) as { role?: string });
-        assert.equal(audit.filter(hit => hit.role === "AXCheckBox").length, mode === "pressed" ? 1 : 0);
-        chrome.detach();
-      }
-    } finally { await rm(f.root, { recursive: true, force: true }); }
-  }
-});
-
-test("native commands outlive the former consent deadline", async (t) => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-    t.mock.method(AbortSignal, "timeout", (ms: number) => {
-      const abort = new AbortController();
-      setTimeout(() => abort.abort(new DOMException("Timed out", "TimeoutError")), ms);
-      return abort.signal;
-    });
-    const oldDeadline = AbortSignal.timeout(25_000);
-    const pending = chrome.withConsent(async (signal) => {
-      await new Promise(resolve => setTimeout(resolve, 26_000));
-      signal.throwIfAborted();
-      return "slow native output";
-    });
-    await Promise.resolve();
-    t.mock.timers.tick(26_000);
-    await new Promise<void>(resolve => setImmediate(resolve));
-    t.mock.timers.tick(250);
-    assert.equal(oldDeadline.aborted, true);
-    assert.equal(await pending, "slow native output");
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("consent retries transient errors and approves connections that start after 25 seconds", async (t) => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
-    for (const delay of [0, 27_000]) {
-      const started = Date.now();
-      let pendingSheet = false;
-      let attempts = 0;
-      let approvals = 0;
-      let approved!: () => void;
-      const result = { stdout: "connected native output", stderr: "native warning", exitCode: 0 };
-      f.deps.helper!.exec = async () => {
-        attempts++;
-        if (attempts === 1) throw new Error("transient AX failure");
-        if (!pendingSheet) return { ok: true, found: false, pressed: false };
-        pendingSheet = false;
-        approvals++;
-        assert.ok(Date.now() - started >= delay);
-        approved();
-        return { ok: true, found: true, pressed: true };
-      };
-      const pending = chrome.withConsent(async (signal) => {
-        await new Promise<void>(resolve => {
-          approved = resolve;
-          setTimeout(() => { pendingSheet = true; }, delay);
-        });
-        signal.throwIfAborted();
-        return result;
-      });
-      for (let elapsed = 0; elapsed < delay + 1000; elapsed += 250) {
-        t.mock.timers.tick(250);
-        await new Promise<void>(resolve => setImmediate(resolve));
-      }
-      assert.equal(approvals, 1);
-      assert.ok(attempts >= 2);
-      assert.deepEqual(await pending, result);
-    }
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("consent poll errors preserve effects and native results on either side of completion", async () => {
-  for (const settlesFirst of [true, false]) {
-    const f = await fixture(true);
-    try {
-      const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-      let rejectPoll!: (error: Error) => void;
-      let finish!: () => void;
-      let effects = 0;
-      f.deps.helper!.exec = async () => new Promise<AxHit>((_resolve, reject) => { rejectPoll = reject; });
-      const result = { stdout: "submitted", stderr: "native warning", exitCode: 0 };
-      const pending = chrome.withConsent(async (signal) => {
-        effects++;
-        await new Promise<void>(resolve => { finish = resolve; });
-        signal.throwIfAborted();
-        return result;
-      });
-      if (settlesFirst) { finish(); await Promise.resolve(); await Promise.resolve(); }
-      rejectPoll(new Error("helper poll failed"));
-      await Promise.resolve();
-      if (!settlesFirst) finish();
-      assert.deepEqual(await pending, result);
-      assert.equal(effects, 1);
-      chrome.detach();
-    } finally { await rm(f.root, { recursive: true, force: true }); }
-  }
-});
-
-test("startup reports a missing checkbox without launching a read after the deadline", async (t) => {
-  const f = await fixture();
-  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
-  const budgets: (number | undefined)[] = [];
-  const exec = f.deps.helper!.exec;
-  f.deps.helper!.exec = async (args, timeout) => {
-    if (args[0] !== "checkbox-read") return exec(args, timeout);
-    budgets.push(timeout);
-    const duration = [30_000, 29_650][budgets.length - 1];
-    if (duration === undefined) throw new Error("os helper produced no result for checkbox-read");
-    t.mock.timers.tick(duration);
-    return { ok: true, found: false };
-  };
-  try {
-    const checking = assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), {
-      message: "Chrome's remote-debugging checkbox did not appear",
-    });
-    await new Promise<void>(resolve => setImmediate(resolve));
-    t.mock.timers.tick(250);
-    await new Promise<void>(resolve => setImmediate(resolve));
-    t.mock.timers.tick(250);
-    await checking;
-    assert.deepEqual(budgets, [30_000, 30_000]);
-    assert.equal(f.state.connected, false);
-    await assert.rejects(access(f.options.axLog), /ENOENT/);
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("startup waits for loading controls and delayed LaunchServices result files", async (t) => {
-  const f = await fixture();
-  let now = Date.now();
-  t.mock.method(Date, "now", () => now);
-  let reads = 0;
-  const writes: Promise<void>[] = [];
-  t.mock.method(childProcess, "spawn", (_command: string, args: string[]) => {
-    const child = new EventEmitter();
-    const result = args[args.indexOf("--result") + 1]!;
-    const command = args[args.indexOf("--args") + 1];
-    if (command === "checkbox-read") reads++;
-    const hit = command === "checkbox-set" ? { ok: true, found: true, pressed: true }
-      : { ok: true, found: reads > 1, value: "0" };
-    writes.push(new Promise<void>((resolve, reject) => {
-      setTimeout(() => {
-        now += 6000;
-        writeFile(result, JSON.stringify(hit)).then(resolve, reject);
-      }, 100);
-    }));
-    queueMicrotask(() => child.emit("close", 0));
-    return child;
-  });
-  const helper = new MacOsHelper(path.join(f.root, "FixtureHelper.app"));
-  const exec = f.deps.helper!.exec;
-  f.deps.helper!.exec = async (args, timeout) => {
-    if (args[0] !== "checkbox-read" && args[0] !== "checkbox-set") return exec(args, timeout);
-    const hit = await helper.exec(args, timeout);
-    if (args[0] === "checkbox-set") f.state.on = true;
-    return hit;
-  };
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    assert.equal(reads, 2);
-    assert.equal(f.state.on, true);
-    assert.equal(f.state.connected, true);
-    chrome.detach();
-  } finally {
-    await Promise.all(writes);
-    await rm(f.root, { recursive: true, force: true });
-  }
-});
-
-test("a failed handshake exposes the helper reason in the public error and run record", async (t) => {
-  const f = await fixture(true);
-  try {
-    const exec = f.deps.helper!.exec;
-    f.deps.helper!.exec = async (args, timeout) => {
-      if (args.includes("--press") && f.state.pending) {
-        f.socket.close();
-        throw new Error("Allow failed");
-      }
-      return exec(args, timeout);
-    };
-    const realOpen = currentChrome.openCurrentChrome;
-    t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(f.root, "default-chrome"));
-    t.mock.method(currentChrome, "openCurrentChrome", () => realOpen(f.options, f.deps));
-    const executable = path.join(f.root, "native");
-    await writeFile(executable, `#!${process.execPath}\nprocess.exitCode = 99;\n`, { mode: 0o700 });
-    const home = path.join(f.root, "library");
-    const proxy = new AgentBrowserProxy({ home, sourceRoot: f.root, executable });
-    try {
-      await assert.rejects(proxy.execute("open", [], "current"), (error: Error) => {
-        assert.match(error.message, /cdp disconnected.*BaoOSHelper: Allow failed/);
-        assert.equal((error.cause as Error).message, "cdp disconnected");
-        return true;
-      });
-      const library = new Library(home);
-      const runs = library.listRuns();
-      assert.equal(runs.length, 1);
-      assert.equal(runs[0]!.status, "failed");
-      const step = library.readRun(runs[0]!.id).steps[0] as unknown as RecordedAgentBrowserCommand;
-      assert.match(step.reason!, /cdp disconnected.*BaoOSHelper: Allow failed/);
-      assert.equal(step.native.error, step.reason);
-    } finally { await proxy.end(); }
-    assert.equal(f.state.closed, true);
-    assert.ok(!f.state.cdpCalls.some(call => call.method === "Browser.close"));
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("a recovered consent poll does not taint a later operation failure", async () => {
-  const f = await fixture(true);
-  try {
-    const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
-    let recovered!: () => void;
-    const recovery = new Promise<void>(resolve => { recovered = resolve; });
-    let polls = 0;
-    f.deps.helper!.exec = async () => {
-      if (++polls === 1) throw new Error("transient helper error");
-      recovered();
-      return { ok: true, found: false, pressed: false };
-    };
-    const failure = new Error("unrelated operation failure");
-    await assert.rejects(chrome.withConsent(async () => {
-      await recovery;
-      throw failure;
-    }), (error: Error) => {
-      assert.equal(error, failure);
-      assert.equal(error.message, "unrelated operation failure");
-      assert.equal(error.cause, undefined);
-      return true;
-    });
-    assert.ok(polls >= 2);
-    chrome.detach();
-  } finally { await rm(f.root, { recursive: true, force: true }); }
-});
-
-test("native failures expose helper context without changing success or native outcome fields", async (t) => {
-  const realOpen = currentChrome.openCurrentChrome;
-  let borrowed!: Awaited<ReturnType<typeof realOpen>>;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => borrowed);
-  const stdout = "native partial output";
-  const stderr = "outcome_unknown: verify the action before retrying";
-  const helperReason = "BaoOSHelper is older than this Bao; rebuild it";
-  for (const exitCode of [0, 9]) {
-    const f = await fixture(true);
-    t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(f.root, "default-chrome"));
-    const home = path.join(f.root, "library");
-    const effect = path.join(f.root, "effect");
-    const executable = path.join(f.root, "native");
-    await writeFile(executable, `#!${process.execPath}
-const fs = require('node:fs');
-const args = process.argv.slice(2);
-const command = args[args.indexOf('--idle-timeout') + 2];
-if (command === 'tab' && args.includes('new')) {
-  fs.writeFileSync('bao.pid', ${JSON.stringify(String(process.pid))});
-} else if (command === 'open') {
-  fs.appendFileSync(${JSON.stringify(effect)}, '1');
-  setTimeout(() => {
-    process.stdout.write(${JSON.stringify(stdout)});
-    process.stderr.write(${JSON.stringify(stderr)});
-    process.exitCode = ${exitCode};
-  }, 300);
-} else {
-  console.log(JSON.stringify({ data: { tabs: [{ active: true, targetId: 'task' }] } }));
-}
-`, { mode: 0o700 });
-    borrowed = await realOpen(f.options, f.deps);
-    t.mock.method(f.socket, "send", async (method: string) => {
-      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
-      if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/task", title: "Task" } };
-      if (method === "Target.attachToTarget") return { sessionId: "shot" };
-      if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB/kAAAAASUVORK5CYII=" };
-      return {};
-    });
-    let polls = 0;
-    f.deps.helper!.exec = async () => { polls++; throw new Error(helperReason); };
-    const proxy = new AgentBrowserProxy({ home, sourceRoot: f.root, executable });
-    try {
-      const [result] = await proxy.execute("open", [], "current");
-      const expected = { stdout, stderr: exitCode ? `${stderr}\nBaoOSHelper: ${helperReason}` : stderr, exitCode };
-      assert.deepEqual(result, expected);
-      assert.ok(polls >= 2);
-      assert.equal(await readFile(effect, "utf8"), "1");
-      await proxy.execute("close");
-      const library = new Library(home);
-      const runs = library.listRuns();
-      assert.equal(runs.length, 1);
-      assert.equal(runs[0]!.status, exitCode ? "failed" : "passed");
-      const step = library.readRun(runs[0]!.id).steps[0] as unknown as RecordedAgentBrowserCommand;
-      assert.equal(step.status, exitCode ? "failed" : "passed");
-      assert.deepEqual(step.native.results[0], expected);
-      assert.equal(step.native.isError, exitCode !== 0);
-    } finally {
-      await proxy.end();
-      borrowed.detach();
-      await rm(f.root, { recursive: true, force: true });
-    }
-  }
-});
-
-for (const ending of ["close", "finish", "disconnect"] as const) test(`current proxy drives a background task tab and closes only task tabs on ${ending}`, { timeout: 30_000 }, async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "bao-current-proxy-"));
-  const home = path.join(root, "home");
-  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
-  const endpoint = await readDevToolsActivePort(chrome.portFile);
-  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-  await cdp.send("Target.createTarget", { url: "about:blank" });
-  const before = await cdp.send<{ targetInfos: { targetId: string; type: string; url: string; attached?: boolean }[] }>("Target.getTargets");
-  const marker = path.join(root, "native-close-called");
-  const stateMarker = path.join(root, "native-state");
-  const executable = path.join(root, "native");
-  await writeFile(executable, `#!${process.execPath}
-const fs = require('node:fs');
-const args = process.argv.slice(2);
-const command = args[args.indexOf('--idle-timeout') + 2];
-const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
-(async () => {
-  fs.writeFileSync(${JSON.stringify(stateMarker)}, process.cwd());
-  const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
-  if (command === 'close') fs.writeFileSync(${JSON.stringify(marker)}, 'closed');
-  if (command === 'open') {
-    const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    const target = targets.find(t => t.id === bound);
-    await new Promise((resolve, reject) => {
-      const socket = new WebSocket(target.webSocketDebuggerUrl);
-      socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Page.navigate', params: { url: 'data:text/html,<h1>Task</h1>' } }));
-      socket.onmessage = event => { if (JSON.parse(event.data).id === 1) { socket.close(); resolve(); } };
-      socket.onerror = reject;
-    });
-  }
-  if (command === 'tab' && args.includes('--json')) {
-    const targets = await (await fetch('http://' + endpoint.host + '/json/list')).json();
-    console.log(JSON.stringify({ data: { tabs: targets.filter(t => t.type === 'page').map(t => ({ targetId: t.id, active: t.id === bound })) } }));
-  } else console.log('native output');
-})().catch(e => { console.error(e); process.exitCode = 1; });
-`, { mode: 0o700 });
-  t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
-  const sent: { method: string; params?: Record<string, unknown> }[] = [];
-  const send = cdp.send.bind(cdp);
-  t.mock.method(cdp, "send", (method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => {
-    sent.push({ method, params });
-    return send(method, params, sessionId, timeoutMs);
-  });
-  let throwConsent = false;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, endpoint, cdp, closed: cdp.disconnected,
-    isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => {
-      if (throwConsent) { throwConsent = false; throw new Error("injected consent failure"); }
-      return operation(signal ?? new AbortController().signal);
-    } }));
-  const proxy = new AgentBrowserProxy({ home, sourceRoot: path.join(root, "chrome"), executable, keepOpen: () => true });
-  try {
-    await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
-    await assert.rejects(proxy.execute("snapshot", [], "current"), /only accepted on open/);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 0);
-    await assert.rejects(proxy.execute("open", [], "copy"), /first open/);
-    assert.deepEqual(sent.filter(call => call.method === "Target.createTarget").map(call => call.params), [{ url: "about:blank", background: true }]);
-    assert.ok(sent.some(call => call.method === "Emulation.setFocusEmulationEnabled" && call.params?.enabled === true));
-    const binding = JSON.parse(await readFile(path.join(await readFile(stateMarker, "utf8"), "bao.target"), "utf8")) as { targetId: string };
-    const afterOpen = await cdp.send<typeof before>("Target.getTargets");
-    const pages = (targets: typeof before) => targets.targetInfos.filter(target => target.type === "page");
-    const pageIds = (targets: typeof before) => pages(targets).map(target => target.targetId).sort();
-    assert.deepEqual(pageIds(afterOpen), [...pageIds(before), binding.targetId].sort());
-    assert.equal(pages(afterOpen).find(target => target.targetId === binding.targetId)?.url, "data:text/html,<h1>Task</h1>");
-    assert.ok(pages(afterOpen).every(target => target.attached === (target.targetId === binding.targetId)),
-      "only Bao's focus-emulation session stays attached; recording detaches its per-page sessions");
-    throwConsent = true;
-    await assert.rejects(proxy.execute("snapshot"), /injected consent failure/);
-    assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
-    const probe = await connectCdp(endpoint.port, endpoint.browserPath);
-    let destroyed!: () => void;
-    const taskDestroyed = new Promise<void>(resolve => { destroyed = resolve; });
-    probe.on("Target.targetDestroyed", undefined, params => { if (params.targetId === binding.targetId) destroyed(); });
-    await probe.send("Target.setDiscoverTargets", { discover: true });
-    let deadline: ReturnType<typeof setTimeout> | undefined;
-    try {
-      if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." });
-      else if (ending === "disconnect") await proxy.end();
-      else await proxy.execute("close");
-      assert.equal(chrome.isClosed(), false);
-      await assert.rejects(access(marker), /ENOENT/);
-      // Target.closeTarget acknowledges the request before Chromium destroys the tab.
-      await Promise.race([taskDestroyed, new Promise<never>((_resolve, reject) => {
-        deadline = setTimeout(() => reject(new Error("the task tab did not close")), 1000);
-      })]);
-      const afterClose = await probe.send<typeof before>("Target.getTargets");
-      assert.deepEqual(pageIds(afterClose), pageIds(before), "the task tab closes; every pre-existing owner tab survives");
-      for (const owner of pages(before)) assert.equal(pages(afterClose).find(target => target.targetId === owner.targetId)?.url, owner.url);
-    } finally { clearTimeout(deadline); probe.close(); }
-    const library = new Library(home);
-    const runs = library.listRuns();
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0]!.status, "passed");
-    const steps = library.readRun(runs[0]!.id).steps as unknown as RecordedAgentBrowserCommand[];
-    // Consent failures leave no command receipt.
-    assert.deepEqual(steps.map(step => step.native.command), ["open", "snapshot", ...(ending === "close" ? ["close"] : [])]);
-    assert.deepEqual(steps[0]!.native.results, [
-      { stdout: "native output\n", stderr: "", exitCode: 0 },
-      { stdout: "native output\n", stderr: "", exitCode: 0 },
-    ]);
-    for (const step of steps.slice(0, 2)) {
-      assert.equal(step.status, "passed");
-      // The current route runs only on a Mac, where Chrome captures a background tab. Linux Chromium often
-      // never answers Page.captureScreenshot for a hidden tab, so there the step must record the missing picture.
-      if (process.platform !== "darwin" && !step.afterShot) {
-        assert.equal(step.afterShotError, "Page screenshot unavailable.");
-        continue;
-      }
-      assert.ok(step.afterShot);
-      await access(path.join(home, "shots", "runs", runs[0]!.id, step.afterShot));
-    }
-  } finally {
-    await proxy.end();
-    cdp.close();
-    await chrome.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
 async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-lifecycle-"));
@@ -625,8 +18,8 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const executable = path.join(root, "native");
   await writeFile(executable, "", { mode: 0o700 });
   const stateDirs = new Set<string>();
-  const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
-    closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
+  const state = { closed: false, tabs: 0, commands: [] as string[], cleanupFails: false, setupFails: false, activations: [] as unknown[],
+    hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
     onClose: undefined as (() => Promise<void>) | undefined };
   let disconnected!: () => void;
@@ -636,19 +29,16 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     close() { state.closed = true; disconnected(); },
     async send(method: string, params: Record<string, unknown> = {}) {
       if (method === "Target.createTarget") {
-        assert.deepEqual(params, { url: "about:blank", background: true });
+        assert.deepEqual(params, { url: "about:blank" });
         state.tabs++;
+        if (state.setupFails) throw new Error("setup failed");
         return { targetId: "task" };
       }
-      if (method === "Emulation.setFocusEmulationEnabled" && state.setupFails) throw new Error("setup failed");
-      if (method === "Target.activateTarget") state.activations.push(params);
-      if (method === "Target.getTargets") {
-        if (state.cleanupFails) throw new Error("cleanup failed");
-        return { targetInfos: state.taskGone ? [] : [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
-      }
-      if (method === "Target.closeTarget") {
+      if (method === "Bao.showTab" || method === "Bao.settleTab") state.activations.push({ method, ...params });
+      if (method === "Target.getTargets") return { targetInfos: state.taskGone ? [] : [{ targetId: "task", url: "https://fixture.invalid/", title: "Task" }] };
+      if (method === "Bao.closeTabs") {
         state.closes++;
-        if (state.closeTargetFails) throw new Error("target already gone");
+        if (state.cleanupFails) throw new Error("cleanup failed");
       }
       if (method === "Target.getTargetInfo") return { targetInfo: { url: "https://fixture.invalid/", title: "Task" } };
       if (method === "Target.attachToTarget") return { sessionId: "page" };
@@ -656,11 +46,10 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       return {};
     },
   } as unknown as CdpSocket;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+  t.mock.method(runningChrome, "openRunningChrome", async () => {
     if (state.closed) throw new Error("reconnect startup reached");
-    return { endpoint: { port: 9222, browserPath: "/browser" },
-      cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-      withConsent: <T>(operation: () => Promise<T>) => operation() };
+    return { endpoint: { port: 9222, browserPath: "/devtools/browser/lease" },
+      cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() };
   });
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => ({ target: { portFile: "unused" },
     closed: cdp.disconnected, isClosed: () => !cdp.isOpen,
@@ -668,14 +57,10 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   t.mock.method(childProcess, "execFile", (_file: string, args: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
     callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
     const command = args[args.indexOf("--idle-timeout") + 2]!;
-    const tracking = state.commands.at(-1) === "tab new" && args.includes("--json");
     state.commands.push(command === "tab" && args.includes("new") ? "tab new" : command);
     stateDirs.add(String(options.cwd));
     void writeFile(path.join(String(options.cwd), "bao.pid"), String(process.pid)).then(() => {
-      if (state.trackingFails && tracking) {
-        state.trackingFails = false;
-        callback(Object.assign(new Error("tracking failed"), { code: 1 }), "", "tracking failed");
-      } else if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
+      if (command === "snapshot" && state.onSnapshot) state.onSnapshot(() => callback(null, "snapshot result", ""));
       else callback(null, args.includes("--json") ? JSON.stringify({ data: { tabs: state.noActivePage ? [] : [{ active: true, targetId: "task" }] } }) : "native output", "");
     });
     return new EventEmitter();
@@ -746,7 +131,7 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
   assert.equal(receipt.outcome, "closed");
   assert.equal(f.proxy.hasSession(), false);
   assert.equal(f.state.closed, true);
-  assert.equal(f.state.closes, missing === "task" ? 0 : 1);
+  assert.equal(f.state.closes, 1, "the lease closes whatever Bao tabs are left");
   assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
   await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
   await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
@@ -829,7 +214,7 @@ test("disconnect during an owner wait closes task tabs before detaching", async 
   await f.proxy.execute("open", [], "current");
   // A 1 ms wait can expire before the first poll reaches the banner, so give that poll room to run.
   await f.proxy.execute("wait_for_owner", ["200"]);
-  assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner wait brings the background task tab forward");
+  assert.deepEqual(f.state.activations, [{ method: "Bao.showTab", targetId: "task" }], "the owner wait opens Bao's group and shows the task tab");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.timers.tick(1_800_000);
   assert.equal(f.proxy.hasSession(), true, "an owner handoff never expires");
@@ -866,7 +251,7 @@ test("finish_task after a lost current session clears the browser-choice restric
   await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
 });
 
-test("failed task-tab setup closes its tab and detaches before any native command", async (t) => {
+test("failed task-tab setup closes the lease's tabs and detaches before any native command", async (t) => {
   const f = await lifecycleFixture(t);
   f.state.setupFails = true;
   await assert.rejects(f.proxy.execute("open", [], "current"), /setup failed/);
@@ -877,38 +262,28 @@ test("failed task-tab setup closes its tab and detaches before any native comman
   assert.equal(f.proxy.hasSession(), false);
 });
 
-test("failed tracking of an agent-opened tab forwards commands without repeating setup and tolerates a vanished target", async (t) => {
-  const f = await lifecycleFixture(t);
-  assert.equal((await f.proxy.execute("open", [], "current"))[0]!.exitCode, 0);
-  await f.proxy.execute("snapshot");
-  assert.ok(f.state.commands.includes("open"));
-  f.state.trackingFails = true;
-  assert.equal((await f.proxy.execute("tab", ["new"]))[0]!.exitCode, 0);
-  assert.equal(f.state.tabs, 1);
-  f.state.closeTargetFails = true;
-  await f.proxy.finishTask({ outcome: "passed", reason: "Checked result" });
-  assert.equal(f.state.closes, 1);
-  assert.equal(f.proxy.hasSession(), false);
-  assert.equal(f.library.listRuns()[0]!.status, "passed");
-});
-
 test("unexpected current disconnect requires a browser choice, unlike fresh or explicitly closed sessions", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-ended-"));
   const executable = path.join(root, "native");
   await writeFile(executable, `#!${process.execPath}\nconsole.error('tab setup failed'); process.exitCode = 1;\n`, { mode: 0o700 });
-  const fixtures: Awaited<ReturnType<typeof fixture>>[] = [];
+  const sockets: CdpSocket[] = [];
   let copies = 0;
   let lasting = 0;
   t.mock.method(profileCopy, "chromeProfilesRoot", () => path.join(root, "default-chrome"));
   t.mock.method(profileCopy, "openCopiedChromeForProxy", async () => { copies++; throw new Error("copy startup reached"); });
   t.mock.method(baoProfile, "openBaoChromeForProxy", async () => { lasting++; throw new Error("Bao startup reached"); });
-  t.mock.method(currentChrome, "openCurrentChrome", async () => {
-    const f = await fixture(true);
-    fixtures.push(f);
-    return { pid: 7, endpoint: { port: 9222, browserPath: "/devtools/browser/fixture" },
-      cdp: f.socket, closed: f.socket.disconnected, isClosed: () => !f.socket.isOpen,
-      detach: () => f.socket.close(),
-      withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) };
+  t.mock.method(runningChrome, "openRunningChrome", async () => {
+    let open = true;
+    let ended!: () => void;
+    const socket = {
+      get isOpen() { return open; },
+      disconnected: new Promise<void>((resolve) => { ended = resolve; }),
+      close() { open = false; ended(); },
+      async send(method: string) { return method === "Target.createTarget" ? { targetId: "task" } : {}; },
+    } as unknown as CdpSocket;
+    sockets.push(socket);
+    return { endpoint: { port: 9222, browserPath: "/devtools/browser/lease" },
+      cdp: socket, closed: socket.disconnected, isClosed: () => !socket.isOpen, detach: () => socket.close() };
   });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: root, executable });
   const fresh = new AgentBrowserProxy({ home: path.join(root, "fresh"), sourceRoot: root, executable });
@@ -917,14 +292,14 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
     assert.equal(lasting, 1);
     assert.equal(copies, 0);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
-    fixtures[0]!.socket.close();
+    sockets[0]!.close();
     await assert.rejects(proxy.execute("snapshot"), /owner's Chrome session ended.*browser=current.*browser=bao/);
     await assert.rejects(proxy.execute("open"), /owner's Chrome session ended/);
     assert.equal(copies, 0);
     assert.equal(lasting, 1);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
-    assert.equal(fixtures.length, 2);
-    fixtures[1]!.socket.close();
+    assert.equal(sockets.length, 2);
+    sockets[1]!.close();
     await assert.rejects(proxy.execute("open", [], "copy"), /copy startup reached/);
     assert.equal(copies, 1);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
@@ -935,10 +310,7 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
   } finally {
     await proxy.end();
     await fresh.end();
-    for (const f of fixtures) {
-      f.socket.close();
-      await rm(f.root, { recursive: true, force: true });
-    }
+    for (const socket of sockets) socket.close();
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -12,6 +12,7 @@ import {
   specificHost,
   type HostAccess,
 } from "./host-grant";
+import { performRelay, releaseAll, startAgentTabs } from "./agent-tabs";
 
 const HOST = "com.bao.desktop";
 
@@ -1408,13 +1409,22 @@ function connect(resumed: boolean): void {
     if (body?.type === "cmd" && body.id && body.op) {
       void handleCommand(body as { id: string; op: string } & Record<string, unknown>);
     }
+    // Relay calls drive Bao's own tabs for a CDP client. They are not stored: a lost call fails with its client.
+    if (body?.type === "relay" && body.id) {
+      const id = body.id;
+      performRelay(body as Record<string, unknown>).then(
+        (value) => post({ type: "result", id, ok: true, value }),
+        (err: unknown) => post({ type: "result", id, ok: false, error: err instanceof Error ? err.message : String(err) }),
+      );
+    }
   });
   port.onDisconnect.addListener(() => {
     const message = chrome.runtime.lastError?.message || "";
     void chrome.storage.local.set({ baoLinkError: message });
     port = null;
+    void releaseAll();
   });
-  post({ type: "hello", extensionId: chrome.runtime.id, version: chrome.runtime.getManifest().version, resumed });
+  post({ type: "hello", extensionId: chrome.runtime.id, version: chrome.runtime.getManifest().version, resumed, agentTabs: true });
 }
 
 let booting = false;
@@ -1423,6 +1433,7 @@ async function boot(resumed: boolean): Promise<void> {
   if (booting || port) return;
   booting = true;
   try {
+    await agentTabs;
     await syncNetwork();
     await loadPersist();
     const previous = await chrome.storage.local.get("bao-cmd");
@@ -1440,6 +1451,8 @@ async function boot(resumed: boolean): Promise<void> {
     booting = false;
   }
 }
+
+const agentTabs = startAgentTabs((event) => post({ type: "relay-event", ...event }));
 
 chrome.runtime.onInstalled.addListener(() => { void boot(false); });
 chrome.runtime.onStartup.addListener(() => { void boot(true); });

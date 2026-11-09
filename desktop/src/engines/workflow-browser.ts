@@ -3,9 +3,10 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import type { BrowserChoice } from "../browser-choice";
 import { navigateOwned } from "../launch";
 import { ownerWall } from "../cdp-live/owner-wait";
-import { openCurrentChrome } from "../cdp-live/current-chrome";
-import { relayTab } from "../cdp-live/tab-relay";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
+import { openRunningChrome } from "../extension/running-chrome";
+import type { PersonPrompts } from "../v1/browser-driver";
+import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "./bao-profile";
 
@@ -17,8 +18,23 @@ interface BrowserPage {
 
 export type WorkflowBrowser = BrowserPage & (
   | { kind: "owned"; choice: "bao" | "copy" | "owned"; profile: string; persistent: boolean; keepOpen?: () => Promise<void>; importLogin?: (site: string, preferSource?: boolean) => Promise<boolean> }
-  | { kind: "current"; choice: "current" }
+  /**
+   * `show` opens Bao's group for a handoff without switching the owner's tab; `settle` lets it fold again.
+   * `bringToFront` is for the owner's own request to see the run.
+   */
+  | { kind: "current"; choice: "current"; show(): Promise<void>; settle(): Promise<void>; bringToFront(): Promise<void> }
 );
+
+export const RUNNING_CHROME_FILE_REFUSAL = "This workflow downloads or uploads a file, which Bao cannot do on your running Chrome yet. Run it on the Bao profile instead.";
+
+const movesFile = (step: WorkflowStep): boolean =>
+  step.action === "download" || step.action === "upload" || step.action === "drop"
+  || (step.action === "for_each" && step.forEach.steps.some(movesFile));
+
+/** Running Chrome cannot download or upload files yet, so a workflow that does either is refused before it opens a tab. */
+export function runningChromeRefusal(browser: BrowserChoice | undefined, workflow: { steps: WorkflowStep[] }): string | undefined {
+  return browser === "current" && workflow.steps.some(movesFile) ? RUNNING_CHROME_FILE_REFUSAL : undefined;
+}
 
 export async function openWorkflowBrowser(options: {
   browser: BrowserChoice;
@@ -27,34 +43,39 @@ export async function openWorkflowBrowser(options: {
   sourceRoot?: string;
   directory?: string;
 }): Promise<WorkflowBrowser> {
+  if (options.browser === "current") {
+    const chrome = await openRunningChrome({ home: options.home });
+    try {
+      const browser = await chromium.connectOverCDP(`ws://127.0.0.1:${chrome.endpoint.port}${chrome.endpoint.browserPath}`, { noDefaults: true });
+      try {
+        const context = browser.contexts()[0];
+        if (!context) throw new Error("Chrome opened without a profile context");
+        // The extension opens the page in the background, in the window's collapsed Bao group.
+        const page = await context.newPage();
+        const { targetInfos: [target] } = await chrome.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 5000);
+        if (!target) throw new Error("Bao's tab in Chrome closed before the run started");
+        const tab = (method: string, extra: Record<string, unknown> = {}) =>
+          chrome.cdp.send(method, { targetId: target.targetId, ...extra }, undefined, 5000).then(() => undefined);
+        let closing: Promise<void> | undefined;
+        // The run's tabs close with the run. The owner's tabs and windows stay as they were.
+        const close = () => closing ??= (async () => {
+          try {
+            await chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000).catch(() => undefined);
+            await browser.close();
+          } finally { chrome.detach(); }
+        })();
+        return { kind: "current", choice: "current", context, page, close,
+          show: () => tab("Bao.showTab"), settle: () => tab("Bao.settleTab"), bringToFront: () => tab("Bao.showTab", { front: true }) };
+      } catch (error) { await browser.close(); throw error; }
+    } catch (error) {
+      await chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000).catch(() => undefined);
+      chrome.detach();
+      throw error;
+    }
+  }
   const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
   const root = sourceRoot ?? chromeProfilesRoot();
-  if (options.browser === "current") {
-    const chrome = await openCurrentChrome({ root, defaultRoot: chromeProfilesRoot(), axLog: path.join(options.home, "audit", "current-chrome.jsonl") });
-    try {
-      // A background target leaves the owner's active tab and window focus alone; Playwright's newPage() would take the front.
-      const { targetId } = await chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 5000);
-      try {
-        const relay = await relayTab(chrome.endpoint, targetId);
-        void chrome.closed.then(relay.close);
-        const browser = await chrome.withConsent(() => chromium.connectOverCDP(relay.url, { noDefaults: true }));
-        try {
-          const context = browser.contexts()[0];
-          const page = context?.pages()[0];
-          if (!context || !page) throw new Error("Chrome opened without the replay tab");
-          // Focus emulation keeps the background tab painting, running timers, and taking input while Playwright stays attached.
-          await (await context.newCDPSession(page)).send("Emulation.setFocusEmulationEnabled", { enabled: true });
-          let closing: Promise<void> | undefined;
-          const close = () => closing ??= (async () => { try { await browser.close(); } finally { chrome.detach(); } })();
-          return { kind: "current", choice: "current", context, page, close };
-        } catch (error) { await browser.close(); throw error; }
-      } catch (error) {
-        await chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
-        throw error;
-      }
-    } catch (error) { chrome.detach(); throw error; }
-  }
   const launch = { sourceRoot: root, directory: options.directory || "Default", home: options.home, site: options.site };
   const chrome = options.browser === "copy" ? await openCopiedChromeForProxy({ ...launch, restoreTabs: false }) : await openBaoChromeForProxy(launch);
   try {
@@ -74,6 +95,32 @@ export async function openWorkflowBrowser(options: {
         keepOpen: async () => { if (!closing && !page.isClosed()) await chrome.keepOpen(); }, close };
     } catch (error) { await browser.close(); throw error; }
   } catch (error) { await chrome.close(); throw error; }
+}
+
+/** The owner asked to see the run's page. */
+export function showWorkflowPage(browser: WorkflowBrowser): Promise<void> {
+  return browser.kind === "current" ? browser.bringToFront() : browser.page.bringToFront();
+}
+
+/** On Running Chrome, a step that needs the owner opens Bao's group so he can see the held tab. */
+export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts): PersonPrompts | undefined {
+  if (browser.kind !== "current") return prompts;
+  const settle = () => { void browser.settle().catch(() => undefined); };
+  return {
+    ...prompts,
+    showAsk(ask) {
+      prompts?.showAsk?.(ask);
+      void browser.show().catch(() => undefined);
+    },
+    clearConfirm(runId) {
+      prompts?.clearConfirm?.(runId);
+      settle();
+    },
+    clearLoginWait(runId) {
+      prompts?.clearLoginWait?.(runId);
+      settle();
+    },
+  };
 }
 
 export async function navigateWorkflowBrowser(browser: WorkflowBrowser, site: string): Promise<void> {

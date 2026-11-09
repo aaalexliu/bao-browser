@@ -65,6 +65,18 @@ Steps, locators, the confirm gate, and the page classifier are the ones the Play
 - Clicks and typing are real input events (`isTrusted: true`) from the debugger session above. The extension does not spoof `isTrusted` from the page. The toolbar badge stays visible. Chrome may show its debugging infobar while the debugger is attached.
 - Nothing leaves the machine except the local Bao server.
 
+## Running Chrome
+
+The **Running Chrome** route (`browser: "current"` in `agent_browser` and `run_workflow`, and the app's Run picker) drives the owner's Chrome through this extension. It needs no macOS permission and no remote-debugging port. The extension needs the `tabGroups` permission for it. After an update adds that permission, rebuild the extension and click Reload on the Bao card at `chrome://extensions`; Chrome lists it as "View and manage your tab groups". Keep the Bao app open: the route reaches the extension through the app. The route needs no site grant; `chrome.debugger` reaches a tab without host permissions.
+
+The app serves a CDP relay on its own port, at `/devtools/browser/<lease>`. A lease is one run. agent-browser, Playwright, and Bao's own calls connect to it as they would to Chrome's debugging port. The extension turns the relay's calls into `chrome.tabs`, `chrome.tabGroups`, and `chrome.debugger` calls, and sends `chrome.debugger` events back. A lease reaches only the tabs it opened and the pages those tabs opened. `desktop/src/extension/cdp-relay.ts` is the relay and `extension/src/agent-tabs.ts` is the extension side.
+
+- New tabs open with `active: false` in the window the owner last focused, in one gray group titled Bao per window, first in the strip after pinned tabs. The group stays collapsed unless the owner is on one of its tabs or a handoff holds it open.
+- Each new Bao tab navigates once before any client command, gets `autoDiscardable: false`, and gets focus emulation once a page commits, so it answers page commands, Memory Saver keeps it, and the page paints while folded.
+- A handoff opens the group so the owner can see the tab that needs him, and holds it open. It never switches his tab or focuses his window; he clicks the tab when he is ready. When the handoff ends and he is on his own tab, the group folds again.
+- The run's end closes its tabs. The group's last tab leaves the group before it closes, so Chrome does not keep a saved group.
+- A tab the owner pins or drags out of the group is his: the debugger lets go and the run loses it. Cancel on Chrome's debugging bar ends the run and hands its tabs to the owner. If the app's link drops, the extension hands every Bao tab to the owner.
+
 ## Select the driver
 
 `driver` on a workflow is `playwright` or `extension`. Any other string, including `cdp-live`, fails validation in `validateWorkflow` (`desktop/src/v1/schema.ts`). See [Workflow schema](workflow-schema.md). With the current engine selected, omitting `driver` uses Playwright. The [agent-browser trial](agent-browser-engine.md#pick-an-engine-and-profile) has separate workflow limits; it is a Settings choice, not a workflow `driver` value.

@@ -34,7 +34,7 @@ import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, type BrowserChoice } from "../browser-choice";
-import { navigateWorkflowBrowser, openWorkflowBrowser, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, showWorkflowPage, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -73,6 +73,7 @@ import { hostAccessMode, hostGrantMessage } from "../../../extension/src/host-gr
 import { ExtensionDriver, HostGrantNeeded, isHostGrantMessage } from "../extension/driver";
 import { gestureQueue, readGestures, writeGestures } from "../extension/gestures";
 import { hostScriptPath, startExtensionLink, type ExtensionLink } from "../extension/link";
+import { createCdpRelay } from "../extension/cdp-relay";
 import { workflowDriver, type Gesture } from "../extension/protocol";
 import { CDP_LIVE_SERVER_REFUSAL, EXTENSION_NOT_CONNECTED, refusesOwnedBrowser, replayRefusal } from "../cdp-live/launch-guard";
 import { defaultConfigHome } from "../extension/install-host";
@@ -192,6 +193,7 @@ export async function startApp(opts: {
       extraDirs: opts.extensionHostDirs,
     })
     : undefined;
+  const relay = extensionLink ? createCdpRelay(extensionLink) : undefined;
   const bar = new CaptureBar();
   watchOsNotify((report) => {
     if (!bar.running) return;
@@ -1176,6 +1178,8 @@ export async function startApp(opts: {
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
+        const fileRefusal = runningChromeRefusal(browser?.choice, workflow);
+        if (fileRefusal) return json(res, { error: fileRefusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         const started = body.guide
@@ -1321,7 +1325,7 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/replay/show") {
         const session = [...replays.values()].find((item) => !item.page.isClosed());
-        if (session) await session.page.bringToFront().catch(() => undefined);
+        if (session) await showWorkflowPage(session).catch(() => undefined);
         return json(res, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/sessions/pause") {
@@ -1713,6 +1717,10 @@ export async function startApp(opts: {
     }
   }
 
+  // Running Chrome: CDP for Bao's own grouped tabs, through the extension.
+  server.on("upgrade", (req, socket, head) => {
+    if (foreignOrigin(req) || !relay?.upgrade(req, socket, head)) socket.destroy();
+  });
   syncPending();
   await new Promise<void>((resolve) => server.listen(opts.port ?? 0, "127.0.0.1", resolve));
   remote.start();
@@ -2088,7 +2096,7 @@ export async function startApp(opts: {
         console.log("bao show window missed");
         return;
       }
-      void session.page.bringToFront().then(() => {
+      void showWorkflowPage(session).then(() => {
         console.log("bao show window");
       }, () => {
         console.log("bao show window missed");
@@ -2519,6 +2527,7 @@ export async function startApp(opts: {
       }
       replays.clear();
       await remote.stop();
+      relay?.close();
       await extensionLink?.close();
       await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
     },
@@ -2877,13 +2886,14 @@ async function runRecorded(
     return result;
   }
   const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl);
+  let paused = false;
   try {
     const page = session.page;
     const shotDir = path.join(library.root, "shots", "runs", runId);
     const onNotify = (notice: HealNotice) => {
       notices.unshift({ ...notice, id: `n-${notices.length + 1}`, at: Date.now() });
     };
-    const driver = new BrowserDriver(page, onNotify, prompts);
+    const driver = new BrowserDriver(page, onNotify, ownerPrompts(session, prompts));
     driver.markStep("open");
     if (workflow.startUrl.startsWith("http")) await navigateWorkflowBrowser(session, workflow.startUrl);
     const secretList = workflow.inputs.flatMap((input) => {
@@ -2922,7 +2932,6 @@ async function runRecorded(
             videoStartedAt,
             secretList,
           }));
-          if (session.kind === "current") void page.bringToFront().catch(() => undefined);
         },
       } satisfies ReplayOptions);
     } finally {
@@ -2939,7 +2948,8 @@ async function runRecorded(
     result.pageEngine = engineName;
     const saved = persistedRun(result, workflow, args, { promotion, recorded, videoStartedAt, secretList });
     library.saveRun(saved);
-    if (result.status !== "paused") clearPendingPrompt(library.root);
+    paused = result.status === "paused";
+    if (!paused) clearPendingPrompt(library.root);
     const hold = Number(process.env.BAO_REPLAY_HOLD_MS || 0);
     if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
     const bounds = await readOwnedWindow(page).catch(() => null);
@@ -2947,6 +2957,11 @@ async function runRecorded(
     return { ...result, promotion, mode: effectiveMode(workflow, library.settings()), fileProof: driver.proofs, bounds, pageEngine: engineName };
   } finally {
     if (session.kind === "owned") await session.keepOpen?.();
+    else if (!paused) {
+      // Running Chrome: the run's tabs close when it ends. A paused run keeps its tab for the owner.
+      if (replays.get(workflow.id) === session) replays.delete(workflow.id);
+      await session.close().catch(() => undefined);
+    }
   }
 }
 

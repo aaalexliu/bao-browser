@@ -4,8 +4,9 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
-import { FrameDecoder, encodeFrame } from "./frames";
+import { FrameDecoder, MAX_FROM_CHROME_BYTES, encodeFrame } from "./frames";
 import { appHostScript, installNativeHost } from "./install-host";
+import type { RelayEvent } from "../../../shared/agent-tabs";
 import type { Gesture, HelloMessage } from "./protocol";
 import { EXTENSION_ID } from "./protocol";
 
@@ -25,6 +26,13 @@ export interface ExtensionLink {
   socketPath: string;
   helloSerial: number;
   connected(): boolean;
+  /** The linked extension can open and drive Bao's grouped tabs. An older build cannot. */
+  agentTabs(): boolean;
+  /** Calls the extension's tab relay. `done` runs before any frame that arrived after the reply. */
+  relay(op: string, params: Record<string, unknown>, done: (error: Error | undefined, value?: unknown) => void, timeoutMs?: number): void;
+  onRelayEvent(handler: (event: RelayEvent) => void): void;
+  /** Runs when the extension's native port drops or the link closes. */
+  onDrop(handler: () => void): void;
   onTrail(handler: TrailHandler): void;
   onRecord(handler: RecordHandler): void;
   onHostAccess(handler: HostAccessHandler): void;
@@ -36,7 +44,7 @@ export interface ExtensionLink {
 interface Pending {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
-  timer: NodeJS.Timeout;
+  timer?: NodeJS.Timeout;
 }
 
 export async function startExtensionLink(opts: {
@@ -86,6 +94,8 @@ export async function startExtensionLink(opts: {
   let trail: TrailHandler = () => {};
   let record: RecordHandler = () => {};
   let hostAccess: HostAccessHandler = () => {};
+  let relayEvent: (event: RelayEvent) => void = () => {};
+  let dropped: () => void = () => {};
   let closed = false;
 
   const failPending = (message: string) => {
@@ -94,6 +104,7 @@ export async function startExtensionLink(opts: {
       item.reject(new Error(message));
       pending.delete(id);
     }
+    dropped();
   };
 
   const noteHello = (message: HelloMessage) => {
@@ -111,14 +122,19 @@ export async function startExtensionLink(opts: {
 
   const onFrame = (message: unknown) => {
     if (!message || typeof message !== "object") return;
-    const body = message as { type?: string; id?: string; ok?: boolean; value?: unknown; error?: string; event?: Record<string, unknown>; gesture?: Gesture; url?: string; access?: string; resumed?: boolean; extensionId?: string; version?: string };
+    const body = message as { type?: string; id?: string; ok?: boolean; value?: unknown; error?: string; event?: Record<string, unknown>; gesture?: Gesture; url?: string; access?: string; resumed?: boolean; extensionId?: string; version?: string; agentTabs?: boolean };
     if (body.type === "hello") {
       noteHello({
         type: "hello",
         extensionId: String(body.extensionId || ""),
         version: String(body.version || ""),
         resumed: body.resumed === true,
+        agentTabs: body.agentTabs === true,
       });
+      return;
+    }
+    if (body.type === "relay-event") {
+      relayEvent(body as unknown as RelayEvent);
       return;
     }
     if (body.type === "result" && body.id) {
@@ -150,7 +166,7 @@ export async function startExtensionLink(opts: {
 
   await new Promise<void>((resolve, reject) => {
     server = createServer((socket) => {
-      const decoder = new FrameDecoder();
+      const decoder = new FrameDecoder(MAX_FROM_CHROME_BYTES);
       let authed = false;
       let mine = 0;
       const drop = () => {
@@ -210,6 +226,33 @@ export async function startExtensionLink(opts: {
       return helloSerial;
     },
     connected: () => active !== null && !active.destroyed,
+    agentTabs: () => active !== null && !active.destroyed && hello?.agentTabs === true,
+    relay(op, params, done, timeoutMs = 30000) {
+      if (!active || active.destroyed) {
+        done(new Error("extension is not connected"));
+        return;
+      }
+      const id = `r${Date.now().toString(36)}-${++commandSeq}`;
+      const item: Pending = { resolve: (value) => done(undefined, value), reject: (err) => done(err) };
+      item.timer = setTimeout(() => {
+        pending.delete(id);
+        done(new Error(`extension timed out on ${op}`));
+      }, timeoutMs);
+      pending.set(id, item);
+      try {
+        active.write(encodeFrame({ type: "relay", id, op, ...params }));
+      } catch (err) {
+        clearTimeout(item.timer);
+        pending.delete(id);
+        done(err instanceof Error ? err : new Error(String(err)));
+      }
+    },
+    onRelayEvent(handler) {
+      relayEvent = handler;
+    },
+    onDrop(handler) {
+      dropped = handler;
+    },
     onTrail(handler) {
       trail = handler;
     },

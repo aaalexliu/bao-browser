@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { hostAccessPanel, runDriverField, runHealField } from "../../src/app/views";
-import { FrameDecoder, encodeFrame } from "../../src/extension/frames";
+import { FrameDecoder, MAX_FROM_CHROME_BYTES, encodeFrame } from "../../src/extension/frames";
 import { clampGesture, fillPlan, gestureQueue } from "../../src/extension/gestures";
 import { acceptAuth, originArg } from "../../src/extension/native-host";
 import { hostScriptPath, startExtensionLink } from "../../src/extension/link";
@@ -41,14 +41,17 @@ test("workflow validation accepts the extension driver and rejects a third one",
   assert.ok(validateWorkflow({ ...doc, driver: "cdp" as "extension" }).includes("driver"));
 });
 
-test("native frames round-trip and refuse a message over 1MB", () => {
+test("native frames round-trip, refuse a message to Chrome over 1MB, and take a larger one from Chrome", () => {
   const decoder = new FrameDecoder();
   const encoded = Buffer.concat([encodeFrame({ type: "hello", n: 1 }), encodeFrame({ type: "ping" })]);
   const split = decoder.push(encoded.subarray(0, 3));
   assert.equal(split.length, 0);
   const frames = decoder.push(encoded.subarray(3));
   assert.deepEqual(frames, [{ type: "hello", n: 1 }, { type: "ping" }]);
-  assert.throws(() => encodeFrame({ blob: "x".repeat(1024 * 1024) }), /1MB/);
+  const picture = { blob: "x".repeat(1024 * 1024) };
+  assert.throws(() => encodeFrame(picture), /exceeds 1048576 bytes/);
+  assert.throws(() => new FrameDecoder().push(encodeFrame(picture, MAX_FROM_CHROME_BYTES)), /exceeds 1048576 bytes/);
+  assert.deepEqual(new FrameDecoder(MAX_FROM_CHROME_BYTES).push(encodeFrame(picture, MAX_FROM_CHROME_BYTES)), [picture]);
 });
 
 test("gesture queue follows consuming steps and keeps the recording's gaps", () => {

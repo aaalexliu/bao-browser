@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { connect, type Socket } from "node:net";
 import { EXTENSION_ID, extensionOrigin } from "./protocol";
-import { FrameDecoder, encodeFrame } from "./frames";
+import { FrameDecoder, MAX_FROM_CHROME_BYTES, encodeFrame } from "./frames";
 
 export function originArg(argv: readonly string[], extensionId = EXTENSION_ID): { ok: true } | { ok: false; reason: string } {
   const want = extensionOrigin(extensionId);
@@ -70,7 +70,7 @@ export function runHost(argv: readonly string[], stdin = process.stdin, stdout =
     return;
   }
   const socket: Socket = connect(args.socketPath);
-  const fromChrome = new FrameDecoder();
+  const fromChrome = new FrameDecoder(MAX_FROM_CHROME_BYTES);
   const fromBao = new FrameDecoder();
   let authed = false;
   const pending: unknown[] = [];
@@ -99,7 +99,7 @@ export function runHost(argv: readonly string[], stdin = process.stdin, stdout =
           return;
         }
         authed = true;
-        for (const message of pending) socket.write(encodeFrame(message));
+        for (const message of pending) socket.write(encodeFrame(message, MAX_FROM_CHROME_BYTES));
         pending.length = 0;
         continue;
       }
@@ -117,7 +117,7 @@ export function runHost(argv: readonly string[], stdin = process.stdin, stdout =
     }
     for (const frame of frames) {
       if (!authed) pending.push(frame);
-      else socket.write(encodeFrame(frame));
+      else socket.write(encodeFrame(frame, MAX_FROM_CHROME_BYTES));
     }
   });
   stdin.on("end", () => {

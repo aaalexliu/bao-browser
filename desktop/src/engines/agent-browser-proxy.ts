@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "../cdp-live/socket";
-import { openCurrentChrome, type CurrentChrome } from "../cdp-live/current-chrome";
+import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
 import { CURRENT_CHROME_ENDED, newInRead, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
@@ -73,7 +73,7 @@ interface SessionData {
 
 type Session = SessionData & (
   | { kind: "copy"; chrome: Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaited<ReturnType<typeof openBaoChromeForProxy>> }
-  | { kind: "current"; chrome: CurrentChrome; taskTabs: Set<string> }
+  | { kind: "current"; chrome: RunningChrome }
 );
 
 export class AgentBrowserProxy {
@@ -292,29 +292,25 @@ export class AgentBrowserProxy {
 
   private async start(recording: AgentBrowserRun, route: AgentBrowser, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
-    if (process.env.BAO_TEST_BROWSER && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
+    if (process.env.BAO_TEST_BROWSER && route !== "current" && !this.options.sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
     const abort = this.startAbort = new AbortController();
-    const options = {
+    // Running Chrome reads no profile source; the copied and Bao profiles do.
+    const owned = () => ({
       sourceRoot: this.options.sourceRoot ?? chromeProfilesRoot(), directory: this.options.directory || "Default", home: this.options.home,
       detached: this.options.keepOpen?.() === true,
-    };
+    });
     const browser = route === "current"
-      ? { kind: "current" as const, taskTabs: new Set<string>(), chrome: await openCurrentChrome({ root: options.sourceRoot, defaultRoot: chromeProfilesRoot(),
-        axLog: path.join(this.options.home, "audit", "current-chrome.jsonl"), signal: abort.signal }) }
-      : { kind: "copy" as const, chrome: route === "bao" ? await openBaoChromeForProxy({ ...options, site }) : await openCopiedChromeForProxy(options) };
+      ? { kind: "current" as const, chrome: await openRunningChrome({ home: this.options.home, signal: abort.signal }) }
+      : { kind: "copy" as const, chrome: route === "bao" ? await openBaoChromeForProxy({ ...owned(), site }) : await openCopiedChromeForProxy(owned()) };
     let stateDir: string | undefined;
     try {
       stateDir = await mkdtemp(path.join(tmpdir(), "bao-proxy-"));
       const config = path.join(stateDir, "config.json");
       await writeFile(config, "{}", { mode: 0o600 });
       if (browser.kind === "current") {
-        // A background target leaves the owner's active tab and window focus alone. agent-browser selects this
-        // session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
-        const { targetId } = await browser.chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", background: true }, undefined, 5000);
-        browser.taskTabs.add(targetId);
-        // Focus emulation keeps the background tab painting, running timers, and taking input. It lasts while this session stays attached.
-        const { sessionId } = await browser.chrome.cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 5000);
-        await browser.chrome.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, 5000);
+        // The extension opens the task tab in the background, in the window's collapsed Bao group. agent-browser
+        // selects this session's bound target (`<session>.target` in its socket directory) when its daemon attaches.
+        const { targetId } = await browser.chrome.cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank" }, undefined, 15_000);
         await writeFile(path.join(stateDir, "bao.target"), JSON.stringify({ targetId, url: "about:blank" }), { mode: 0o600 });
       }
       const endpoint = browser.kind === "current" ? browser.chrome.endpoint : await readDevToolsActivePort(browser.chrome.target.portFile);
@@ -338,7 +334,7 @@ export class AgentBrowserProxy {
     } catch (error) {
       if (stateDir) await rm(stateDir, { recursive: true, force: true });
       if (browser.kind === "current") {
-        for (const targetId of browser.taskTabs) await browser.chrome.cdp.send("Target.closeTarget", { targetId }, undefined, 5000).catch(() => undefined);
+        await browser.chrome.cdp.send("Bao.closeTabs", {}, undefined, 5000).catch(() => undefined);
         browser.chrome.detach();
       }
       else await browser.chrome.close();
@@ -398,8 +394,9 @@ export class AgentBrowserProxy {
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {
-      // The owner's own Chrome keeps the task tab in the background. Show it when the owner has to act in it.
-      if (waiting && session.kind === "current") await cdp.send("Target.activateTarget", { targetId }, undefined, 2000);
+      // The owner's own Chrome keeps the task tab folded in Bao's group. While the owner has to act in it, the group stays
+      // open so he can see the tab; his own tab stays active and his window stays where it is.
+      if (session.kind === "current") await cdp.send(waiting ? "Bao.showTab" : "Bao.settleTab", { targetId }, undefined, 2000);
       const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, 2000);
       attached = sessionId;
       const expression = waiting ? `(() => {
@@ -566,34 +563,14 @@ export class AgentBrowserProxy {
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number): Promise<AgentBrowserCommandResult> {
     if (this.disconnected) throw new Error("agent-browser client disconnected");
-    const execute = (command: string, args: string[], timeoutMs?: number) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
-      const childSignal = timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
+    return new Promise<AgentBrowserCommandResult>((resolve, reject) => {
+      const childSignal = readTimeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(readTimeoutMs)]);
       execFile(session.executable, [...session.flags, command, ...args], {
         cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: childSignal,
       }, (error, stdout, stderr) => {
         if (error && typeof error.code !== "number") { reject(error); return; }
         resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
       });
-    });
-    if (session.kind === "copy") return execute(command, args, readTimeoutMs);
-    return session.chrome.withConsent(async () => {
-      const rememberTaskTab = async () => {
-        try {
-          const tabs = await execute("tab", ["list", "--json"], 5000);
-          if (tabs.exitCode !== 0) throw new Error(`Native task tab list failed: ${tabs.stderr || tabs.stdout}`);
-          const parsed = JSON.parse(tabs.stdout) as { data?: { tabs?: { active?: boolean; targetId?: string }[] } };
-          const targetId = parsed.data?.tabs?.find((tab) => tab.active)?.targetId;
-          if (!targetId) throw new Error("Native task tab has no target id");
-          session.taskTabs.add(targetId);
-        } catch (error) {
-          process.stderr.write(`Bao task tab tracking unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
-        }
-      };
-      const result = await execute(command, args, readTimeoutMs);
-      if (command === "tab" && args[0] === "new" && result.exitCode === 0) await rememberTaskTab();
-      return result;
-    }, session.abort.signal, (result, context) => result.exitCode === 0 ? result : {
-      ...result, stderr: `${result.stderr}${result.stderr && !result.stderr.endsWith("\n") ? "\n" : ""}${context}`,
     });
   }
 
@@ -645,13 +622,10 @@ export class AgentBrowserProxy {
             if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
           } finally {
             if (session.kind === "current") {
+              // The lease holds every tab Bao opened in the owner's Chrome, including the agent's tab new and popups.
+              // Detaching without closing hands them to the owner.
               try {
-                if (closeTaskTabs && session.taskTabs.size && session.chrome.cdp.isOpen) {
-                  const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId: string }[] }>("Target.getTargets", {}, undefined, 5000);
-                  for (const target of targetInfos.filter((target) => session.taskTabs.has(target.targetId))) {
-                    await session.chrome.cdp.send("Target.closeTarget", { targetId: target.targetId }, undefined, 5000).catch(() => undefined);
-                  }
-                }
+                if (closeTaskTabs && session.chrome.cdp.isOpen) await session.chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000);
               } finally { session.chrome.detach(); }
             } else if (keepOpen && !session.closing && this.pendingCloses === 0 && !session.chrome.isClosed()) await session.chrome.keepOpen();
             else await session.chrome.close();
