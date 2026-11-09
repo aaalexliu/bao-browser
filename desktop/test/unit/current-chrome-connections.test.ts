@@ -118,10 +118,11 @@ test("a reply without a session reaches the one who asked, though Bao and a clie
   const shared = await shareConnection(bao);
   const client = new WebSocket(`ws://127.0.0.1:${shared.endpoint.port}${shared.endpoint.browserPath}`);
   try {
-    const replies = new Map<number, { result?: { sessionId?: string }; error?: { code: number; message: string }; sessionId?: string }>();
+    type Reply = { id?: unknown; result?: { sessionId?: string }; error?: { code: number; message: string }; sessionId?: string };
+    const replies = new Map<number, Reply>();
     let replied = () => {};
     client.onmessage = (event) => {
-      const message = JSON.parse(String(event.data));
+      const message = JSON.parse(String(event.data)) as Reply;
       if (typeof message.id === "number") { replies.set(message.id, message); replied(); }
     };
     await new Promise((resolve, reject) => { client.onopen = resolve; client.onerror = reject; });
