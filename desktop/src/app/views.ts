@@ -21,7 +21,7 @@ import { tokenFields, type TokenInput } from "../v1/input-token";
 import { hasStrippedSecret } from "../../../shared/saved-secrets";
 import { hostAccessLabel, hostAccessMode } from "../../../extension/src/host-grant";
 import { visibleCopy } from "../v1/visible-copy";
-import { ownerStopMessage, ownerStopText } from "../v1/stop-copy";
+import { agentRunText, ownerStopMessage, ownerStopText } from "../v1/stop-copy";
 import type { ConsoleLine, IdentityView, NetworkLine, SnapshotNode, StepView } from "./view-types";
 
 /** Chromium app mode uses the document title as the window title. */
@@ -1883,7 +1883,8 @@ function plainAgentReason(run: RunSummary): string | undefined {
   const ask = run.envelope?.ask?.trim();
   const failure = run.failure?.reason?.trim();
   const step = (run.steps || []).find((item) => item.status === "failed" && item.reason)?.reason?.trim();
-  return sentence(reason) || sentence(ask) || sentence(failure) || sentence(step)
+  const spoken = sentence(reason) || sentence(ask) || sentence(failure) || sentence(step);
+  return (spoken ? agentRunText(spoken) : undefined)
     || (reason ? ownerStopText(reason) : undefined)
     || (failure ? ownerStopText(failure) : undefined);
 }

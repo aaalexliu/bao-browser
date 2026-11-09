@@ -1,8 +1,24 @@
 export const LIVE_LOGIN_INSTRUCTION = "Sign in again in Chrome, then start a new live session.";
 export const EXPERIAN_COMMIT_MESSAGE = "The final unfreeze button is on screen. Bao stopped before clicking it.";
 
+export const AGENT_IDLE_REASON = "The agent sent nothing for 10 minutes and never finished the task, so Bao ended the session.";
+export const AGENT_CLOSED_ASK = "The session ended while Bao was waiting for you, so the agent could not go on.";
+export const AGENT_STEP_FAILED = "The browser could not do this step.";
+
+const AGENT_COPY: Record<string, string> = {
+  session_closed: AGENT_CLOSED_ASK,
+  "Session ended without finish_task after 10 minutes of inactivity.": AGENT_IDLE_REASON,
+  "The Bao session ended before the owner wait completed. This session cannot continue.": AGENT_CLOSED_ASK,
+  "Native agent-browser command failed.": AGENT_STEP_FAILED,
+};
+
+export function agentRunText(value: string): string {
+  return Object.hasOwn(AGENT_COPY, value) ? AGENT_COPY[value]! : value;
+}
+
 const UNKNOWN_STOP = "Bao stopped. Open Chrome to check the page before continuing.";
 const STOP_MESSAGES: Record<string, string> = {
+  ...AGENT_COPY,
   login_wall: LIVE_LOGIN_INSTRUCTION,
   experian_commit: EXPERIAN_COMMIT_MESSAGE,
   stop_before_confirm: "Waiting for you to confirm the final step.",

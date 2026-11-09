@@ -219,7 +219,7 @@ test("capture runs open recorded pictures without a saved workflow", (t) => {
   const detail = inspectRunView(library, { run_id: run.id });
   assert.equal(detail.run.name, "Browser capture");
   assert.equal(detail.run.modelCalls, null);
-  assert.equal(detail.steps[0]?.label, "Type");
+  assert.equal(detail.steps[0]?.label, "fill");
   assert.equal(detail.steps[0]?.reason, "Filled the field");
   assert.equal(detail.steps[0]?.picturesAllowed, true);
   assert.equal(detail.workflow, null);

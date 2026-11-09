@@ -20,6 +20,7 @@ import { ownerWall, ownerCanResume, ownerWaitTimeout, ownerWaitInstruction, type
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
 import { diffView, findView, snapshotView } from "./snapshot-view";
+import { AGENT_IDLE_REASON } from "../v1/stop-copy";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
 export type AgentBrowserCommand = typeof AGENT_BROWSER_COMMANDS[number];
@@ -759,7 +760,7 @@ export class AgentBrowserProxy {
     if (this.session !== session || session.removing || session.ownerWait || this.disconnected) return;
     session.idleTimer = setTimeout(() => {
       if (this.options.hasHold?.()) { this.armIdle(session); return; }
-      session.outcome = { outcome: "failed", reason: "The agent sent nothing for 10 minutes and never finished the task, so Bao ended the session." };
+      session.outcome = { outcome: "failed", reason: AGENT_IDLE_REASON };
       session.workflow.unavailable(session.outcome.reason);
       void this.remove(session, this.options.keepOpen?.() === true, false)
         .then(() => {
