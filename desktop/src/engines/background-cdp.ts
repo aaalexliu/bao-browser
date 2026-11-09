@@ -40,16 +40,36 @@ function upgrade(chrome: DevToolsEndpoint): Promise<{ socket: Socket; rest: Buff
   return new Promise((resolve, reject) => {
     const socket = createConnection({ host: "127.0.0.1", port: chrome.port });
     let header = Buffer.alloc(0);
-    const fail = (error: Error) => { socket.destroy(); reject(error); };
+    let settled = false;
+    const finish = () => {
+      clearTimeout(timer);
+      socket.off("data", onData).off("error", onError).off("close", onClose).setTimeout(0);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      finish();
+      socket.destroy();
+      reject(error);
+    };
+    const timer = setTimeout(() => fail(Object.assign(new Error("Chrome did not answer the debugging connection"), { code: "ETIMEDOUT" })), 10_000);
+    const onError = (error: Error) => fail(error);
+    const onClose = () => fail(Object.assign(new Error("Chrome closed the debugging connection"), { code: "ECONNRESET" }));
     const onData = (chunk: Buffer) => {
       header = Buffer.concat([header, chunk]);
       const split = header.indexOf("\r\n\r\n");
       if (split < 0) return;
-      socket.off("data", onData).off("error", fail).setTimeout(0).pause();
-      if (!/^HTTP\/1\.[01] 101 /.test(header.subarray(0, split).toString("utf8"))) fail(new Error("Chrome refused the debugging connection"));
-      else resolve({ socket, rest: header.subarray(split + 4) });
+      if (!/^HTTP\/1\.[01] 101 /.test(header.subarray(0, split).toString("utf8"))) {
+        fail(new Error("Chrome refused the debugging connection"));
+        return;
+      }
+      if (settled) return;
+      settled = true;
+      finish();
+      socket.pause();
+      resolve({ socket, rest: header.subarray(split + 4) });
     };
-    socket.on("data", onData).once("error", fail).setTimeout(10_000, () => fail(new Error("Chrome did not answer the debugging connection")));
+    socket.on("data", onData).once("error", onError).once("close", onClose);
     socket.once("connect", () => socket.write(handshakeRequest(chrome.browserPath, `127.0.0.1:${chrome.port}`, randomBytes(16).toString("base64"))));
   });
 }

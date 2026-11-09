@@ -20,7 +20,7 @@ test("agent commands that would bring Bao's Chrome forward are answered in place
   assert.deepEqual(keepBehind(navigate), { forward: navigate });
 });
 
-test("a refused Chrome debugging connection is retried before the agent gets a gateway error", async () => {
+test("a refused Chrome debugging connection is retried before the agent gets a gateway error", { timeout: 5_000 }, async () => {
   const chrome = net.createServer();
   let attempts = 0;
   chrome.on("connection", (socket) => {
