@@ -278,7 +278,7 @@ async function ownedDebugPort(): Promise<number> {
   return address.port === 9222 ? ownedDebugPort() : address.port;
 }
 
-/** open(1) prints this and exits 0 while the app stays stopped, after LaunchServices runs out of application serial numbers. */
+/** Bao's message when LaunchServices cannot start the app. `open -W` prints `Unable to block on application` and exits 0; Bao does not show that line. */
 export const LAUNCH_SERVICES_RESTART = "macOS LaunchServices cannot start Google Chrome. Restart the Mac, then try again.";
 
 export function launchServicesStalled(text: string): boolean {
