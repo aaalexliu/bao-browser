@@ -105,7 +105,7 @@ export interface WorkflowBrowserOptions {
 }
 
 /** The Chrome folder a workflow run reads: the caller's root, then the fixture root, then Chrome's own folder. A pinned test browser with none of those is refused, so that run never reads the owner's Chrome. */
-function workflowChromeRoot(options: WorkflowBrowserOptions): string {
+export function workflowChromeRoot(options: WorkflowBrowserOptions): string {
   const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
   return sourceRoot ?? chromeProfilesRoot();
