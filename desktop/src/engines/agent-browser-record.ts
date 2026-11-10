@@ -42,6 +42,8 @@ export interface RecordedAgentBrowserCommand {
   afterShotError?: string;
   /** Why the kept picture is not of the active tab, when Bao fell back to its task tab. */
   shotNote?: string;
+  /** The session failed to start, so this step has no separate page picture. */
+  failedToStart?: true;
   /** The plain sentence for this step, with the element's own text cited. */
   summary?: StepSummary;
   native: {

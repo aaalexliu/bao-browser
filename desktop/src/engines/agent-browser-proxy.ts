@@ -322,6 +322,7 @@ export class AgentBrowserProxy {
         this.watch(session);
       } catch (error) {
         this.notOpened = failedPickLine(plan!.route, plan!.why, chromeApp(), plan!.route === "extension" ? undefined : plan!.profile);
+        step!.failedToStart = true;
         await recording.complete(step!, [], this.options.home, async () => { throw error; }, error);
         recording.finish();
         throw error;

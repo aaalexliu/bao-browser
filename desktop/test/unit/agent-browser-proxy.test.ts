@@ -560,6 +560,7 @@ test("startup persists a pending open before copying and keeps its failure in on
     assert.ok(step!.endedAt! >= step!.startedAt);
     assert.equal(step!.afterShot, undefined);
     assert.equal(step!.afterShotError, "Page screenshot unavailable: Chrome launch failed before attachment.");
+    assert.equal(step!.failedToStart, true);
     assert.equal(pageShotLine(step), undefined);
     await assert.rejects(access(path.join(library.root, "shots", "runs", saved.id)), /ENOENT/);
     await assert.rejects(access(path.join(f.root, "calls.jsonl")), /ENOENT/);
@@ -583,6 +584,8 @@ test("a missing native executable is recorded before Chrome startup", async (t) 
     const [step] = run!.steps as RecordedAgentBrowserCommand[];
     assert.match(step!.reason!, /pinned native agent-browser is missing/);
     assert.equal(step!.status, "failed");
+    assert.equal(step!.failedToStart, true);
+    assert.equal(pageShotLine(step), undefined);
     assert.equal(f.copy(), "", "no Chrome copy starts");
   } finally { await f.close(); }
 });
