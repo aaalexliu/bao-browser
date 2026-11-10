@@ -76,6 +76,9 @@ async function fixture(on = false) {
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "inspect", url: INSPECT_URL }, { targetId: "owner", url: "https://fixture.invalid/" }] };
       return {};
     },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}) {
+      return this.send(method, params);
+    },
   } as unknown as CdpSocket;
   const helper = {
     async permissions(prompt: boolean): Promise<AxHit> { assert.equal(prompt, false); return { ok: true, accessibility: state.accessibility }; },
@@ -410,6 +413,11 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
   t.mock.method(cdp, "send", (method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs?: number) => {
     sent.push({ method, params });
     return send(method, params, sessionId, timeoutMs);
+  });
+  const sendUntilProgress = cdp.sendUntilProgress.bind(cdp);
+  t.mock.method(cdp, "sendUntilProgress", (method: string, params?: Record<string, unknown>, sessionId?: string, opts?: { silenceMs?: number; signal?: AbortSignal }) => {
+    sent.push({ method, params });
+    return sendUntilProgress(method, params, sessionId, opts);
   });
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const shared = await shareConnection(cdp);
