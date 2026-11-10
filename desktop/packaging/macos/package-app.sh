@@ -107,6 +107,7 @@ CERT_FLAG=""
   -o "$APP/Contents/MacOS/bao" \
   desktop/packaging/macos/bao-main.c desktop/packaging/macos/bao-launch.c desktop/packaging/macos/bao-run-node.c \
   desktop/packaging/macos/bao-window.m desktop/packaging/macos/bao-notify.m
+/usr/bin/clang -O2 -o "$APP/Contents/MacOS/bao-spawn" desktop/packaging/macos/bao-spawn.c
 # The agents' MCP entry. Built and run once, with a temp HOME that holds only a test
 # library, before it and Bao.app are signed.
 bash desktop/packaging/macos/build-mcp-launcher.sh "$APP"
@@ -114,6 +115,7 @@ node "$ROOT/desktop/packaging/build-mcpb.mjs" "$DIST/bao.mcpb"
 # codesign on Bao.app signs only the main executable, so the launcher is signed on its own.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.mcp "$APP/Contents/MacOS/bao-mcp"
 codesign --force --sign "$IDENTITY" --identifier dev.bao.cli "$APP/Contents/MacOS/bao-cli"
+codesign --force --sign "$IDENTITY" --identifier dev.bao.spawn "$APP/Contents/MacOS/bao-spawn"
 # Nested BaoOSHelper.app is already signed. --deep would change its cdhash.
 codesign --force --sign "$IDENTITY" --identifier dev.bao.desktop "$APP"
 node "$ROOT/desktop/packaging/macos/prove-apple-events.mjs" "$APP"

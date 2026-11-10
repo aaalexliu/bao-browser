@@ -9,7 +9,7 @@ import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
-import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
+import { killCommandToken, killUntilGone, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
@@ -124,13 +124,10 @@ export async function assertLaunchServicesReady(openProbe?: ProbeRun): Promise<v
     const result = await (openProbe ?? openHelperProbe)(args);
     if (await helperProbeStalled(result.stderr, token)) throw new Error(LAUNCH_SERVICES_RESTART);
   } finally {
-    for (let i = 0; i < 10; i++) {
-      killCommandToken(token);
-      let left = false;
-      try { left = processesNaming(token).some((row) => row.command.includes(token)); } catch { left = false; }
-      if (!left) break;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    await killUntilGone(
+      () => killCommandToken(token),
+      () => processesNaming(token).some((row) => row.command.includes(token)),
+    );
     rmSync(dir, { recursive: true, force: true });
   }
 }

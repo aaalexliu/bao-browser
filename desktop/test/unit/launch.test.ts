@@ -5,7 +5,7 @@ import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LAUNCH_SERVICES_RESTART, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, ownedChromeStalled, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, ownedChromeStalled, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -13,23 +13,25 @@ const owned = "/tmp/bao-owned-profile";
 /** No BAO_TEST_BROWSER: the product launch. The test lane sets it in process.env. */
 const product: NodeJS.ProcessEnv = {};
 
-test("installed Mac Chrome launches as a new GUI app and waits for that instance", () => {
-  const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--profile-directory=Profile 2"];
-  const stderr = `${owned}/.bao-chrome-startup.stderr`;
-  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", false, {}, "darwin"), [
-    "-W", "-n", "-a", "/Applications/Google Chrome.app",
-    "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
-  ]);
-  assert.equal(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", false, { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), undefined);
-  assert.equal(guiChromeLaunchArgs("/pinned/chromium", args, stderr, "/Users/owner", false, {}, "darwin"), undefined);
-  assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", false, {}, "linux"), undefined);
+test("installed Mac Chrome is a disclaimed spawn, not LaunchServices", () => {
+  assert.equal(disclaimedChrome(ACCOUNT_CHROME_MAC, product, "darwin"), true);
+  assert.equal(disclaimedChrome(ACCOUNT_CHROME_MAC, { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), false);
+  assert.equal(disclaimedChrome("/pinned/chromium", product, "darwin"), false);
+  assert.equal(disclaimedChrome(LINUX_CHROME, product, "linux"), false);
 });
 
-test("a stalled LaunchServices open fails with a restart message", () => {
+test("the background lock names the spawned pid and not a bundle id", () => {
+  assert.deepEqual(behindFrontArgs(4242), ["setinfo", "-app", "4242", "kLSAllowedToBecomeFrontmostKey=false"]);
+  assert.deepEqual(frontmostInfoArgs(4242), ["info", "-only", "allowedtobecomefrontmost", "4242"]);
+  assert.equal([...behindFrontArgs(4242), ...frontmostInfoArgs(4242)].some((arg) => arg.includes("com.google.Chrome") || arg.includes("Google Chrome.app")), false);
+  assert.throws(() => behindFrontArgs(1), /pid/);
+  assert.throws(() => frontmostInfoArgs(1), /pid/);
+});
+
+test("a LaunchServices marker is still recognized for the owner's Chrome", () => {
   const stalled = "Unable to block on application (GetProcessPID() returned 18446744073709551016)\n";
   assert.equal(launchServicesStalled(stalled), true);
   assert.equal(launchServicesStalled(""), false);
-  assert.equal(LAUNCH_SERVICES_RESTART, "macOS LaunchServices cannot start Google Chrome. Restart the Mac, then try again.");
 });
 
 test("a LaunchServices marker is a stall only when that profile's Chrome is stopped", async () => {
@@ -102,13 +104,157 @@ test("killCommandToken kills only the process that carries the token", async () 
   }
 });
 
-test("background Mac Chrome launches without activating the app", () => {
-  const args = [`--user-data-dir=${owned}`, "--remote-debugging-port=9333", "--no-startup-window"];
-  const stderr = `${owned}/.bao-chrome-startup.stderr`;
-  assert.deepEqual(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", true, {}, "darwin"), [
-    "-W", "-n", "-g", "-a", "/Applications/Google Chrome.app",
-    "--stdout", "/dev/null", "--stderr", stderr, "--env", "HOME=/Users/owner", "--args", ...args,
-  ]);
+function writeFakeSpawner(dir: string, mode: "ready" | "exit"): string {
+  const file = path.join(dir, "fake-spawn");
+  const lines = [
+    "#!/usr/bin/env node",
+    "const { spawn } = require('node:child_process');",
+    "const fs = require('node:fs');",
+  ];
+  if (mode === "exit") {
+    lines.push(
+      "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', detached: true });",
+      "child.unref();",
+      "fs.writeFileSync(__filename + '.pid', String(child.pid));",
+      "process.stdout.write(String(child.pid) + String.fromCharCode(10), () => process.exit(0));",
+    );
+  } else {
+    lines.push(
+      "const portArg = process.argv.find((arg) => arg.startsWith('--remote-debugging-port='));",
+      "const announced = portArg ? portArg.slice('--remote-debugging-port='.length) : '';",
+      "const child = spawn(process.execPath, ['-e', \"process.stderr.write('DevTools listening on ws://127.0.0.1:' + process.env.BAO_FAKE_PORT + '/devtools/browser/abc' + String.fromCharCode(10)); setInterval(() => {}, 1000);\"], { stdio: ['ignore', 'ignore', 'inherit'], env: { ...process.env, BAO_FAKE_PORT: announced } });",
+      "process.stdout.write(String(child.pid) + String.fromCharCode(10));",
+      "child.on('exit', (code) => process.exit(code ?? 0));",
+    );
+  }
+  writeFileSync(file, lines.join("\n") + "\n", { mode: 0o755 });
+  return file;
+}
+
+function processGone(pid: number): boolean {
+  try { process.kill(pid, 0); return false; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH"; }
+}
+
+test("a disclaimed launch returns the spawned pid and locks only that pid", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-disclaim-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeSpawner(dir, "ready");
+  const locked: number[] = [];
+  let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
+  try {
+    const started = await startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "--no-startup-window"],
+      profile,
+      undefined,
+      false,
+      true,
+      { env: { BAO_CHROME_SPAWN: fake }, lockBehind: (pid) => { locked.push(pid); return true; } },
+    );
+    owner = started.owner;
+    assert.equal(owner.kind, "gui");
+    if (owner.kind !== "gui") return;
+    const spawned = owner.pid;
+    assert.ok(locked.length >= 1);
+    assert.ok(locked.every((pid) => pid === spawned));
+    assert.ok(started.port !== 9222);
+    assert.equal(readFileSync(path.join(profile, "DevToolsActivePort"), "utf8").split("\n")[0], String(started.port));
+  } finally {
+    if (owner?.kind === "gui") {
+      try { process.kill(owner.pid, "SIGKILL"); } catch { /* already gone */ }
+      try { owner.launcher.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a foreground disclaimed launch does not lock the pid", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-disclaim-front-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeSpawner(dir, "ready");
+  const locked: number[] = [];
+  let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
+  try {
+    const started = await startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`],
+      profile,
+      undefined,
+      false,
+      false,
+      { env: { BAO_CHROME_SPAWN: fake }, lockBehind: (pid) => { locked.push(pid); return true; } },
+    );
+    owner = started.owner;
+    assert.equal(locked.length, 0);
+    assert.equal(owner.kind, "gui");
+  } finally {
+    if (owner?.kind === "gui") {
+      try { process.kill(owner.pid, "SIGKILL"); } catch { /* already gone */ }
+      try { owner.launcher.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a disclaimed launch that exits before DevTools kills the spawned pid", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-disclaim-exit-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeSpawner(dir, "exit");
+  const pidFile = `${fake}.pid`;
+  try {
+    await assert.rejects(() => startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`],
+      profile,
+      undefined,
+      false,
+      true,
+      { env: { BAO_CHROME_SPAWN: fake }, lockBehind: () => true },
+    ), /exited before it opened a debugging port|launcher exited before/);
+    const sleeper = Number(readFileSync(pidFile, "utf8"));
+    let dead = false;
+    for (let i = 0; i < 20 && !dead; i++) {
+      dead = processGone(sleeper);
+      if (!dead) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(dead, "the spawned pid was killed");
+  } finally {
+    if (existsSync(pidFile)) {
+      const sleeper = Number(readFileSync(pidFile, "utf8"));
+      if (sleeper) { try { process.kill(sleeper, "SIGKILL"); } catch { /* already gone */ } }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("bao-spawn disclaims the child so it is responsible for itself", { skip: process.platform !== "darwin" }, async () => {
+  const binary = chromeSpawnerPath({});
+  const child = spawn(binary, ["/bin/sleep", "30"], { stdio: ["ignore", "pipe", "pipe"] });
+  let pid = 0;
+  try {
+    const line = await new Promise<string>((resolve, reject) => {
+      let buf = "";
+      const timer = setTimeout(() => reject(new Error("bao-spawn did not report a pid")), 5000);
+      child.stdout?.on("data", (chunk: Buffer) => {
+        buf += chunk.toString("utf8");
+        const nl = buf.indexOf("\n");
+        if (nl < 0) return;
+        clearTimeout(timer);
+        resolve(buf.slice(0, nl));
+      });
+      child.once("exit", () => { clearTimeout(timer); reject(new Error("bao-spawn exited before a pid")); });
+    });
+    const fields = line.trim().split(/\s+/);
+    pid = Number(fields[0]);
+    assert.equal(fields[1], String(pid));
+  } finally {
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  }
 });
 
 async function reap(child: ChildProcess): Promise<void> {

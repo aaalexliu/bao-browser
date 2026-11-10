@@ -1,14 +1,14 @@
 // Launch an owned browser. Never port 9222, never the daily profile.
-// Capture, replay, login import, and computer-use start the installed Google
-// Chrome and attach over a private debugging port. Playwright's launcher is
-// only used when a caller asks for page.video(). Both test lanes and the
-// browser evals set BAO_TEST_BROWSER, and then every launch starts that
-// browser with a mock keychain and camera and microphone denied in Chrome.
+// Installed Mac Chrome is started by bao-spawn with the disclaim attribute,
+// then marked as not allowed to become frontmost. The owner's Chrome stays
+// on LaunchServices. Playwright's launcher is only used when a caller asks
+// for page.video(). Both test lanes and the browser evals set BAO_TEST_BROWSER,
+// and then every launch starts that browser with a mock keychain and camera
+// and microphone denied in Chrome.
 
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { userInfo } from "node:os";
 import { createServer } from "node:net";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { parseDevToolsActivePort, readDevToolsActivePort } from "./cdp-live/endpoint";
@@ -318,14 +318,79 @@ export function killCommandToken(token: string): void {
   }
 }
 
-/** LaunchServices gives Chrome the GUI login session, its Dock tile, and -g so it stays in the background. -W tracks the new instance. A direct spawn loses those. */
-export function guiChromeLaunchArgs(
-  exe: string, args: string[], stderrFile: string, childHome: string, background: boolean,
-  env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform,
-): string[] | undefined {
-  if (platform !== "darwin" || testLaneBrowser(env) || exe !== ACCOUNT_CHROME_MAC) return undefined;
-  return ["-W", "-n", ...(background ? ["-g"] : []), "-a", path.resolve(exe, "../../.."),
-    "--stdout", "/dev/null", "--stderr", stderrFile, "--env", `HOME=${childHome}`, "--args", ...args];
+/** Installed Google Chrome on macOS, outside the test lane. That launch is a disclaimed spawn, not LaunchServices. */
+export function disclaimedChrome(
+  exe: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === "darwin" && !testLaneBrowser(env) && exe === ACCOUNT_CHROME_MAC;
+}
+
+/** `lsappinfo setinfo` for one pid. Never a bundle id: that would hit the owner's Chrome. */
+export function behindFrontArgs(pid: number): string[] {
+  if (!Number.isInteger(pid) || pid < 2) throw new Error("Chrome pid was not available from the launcher.");
+  return ["setinfo", "-app", String(pid), "kLSAllowedToBecomeFrontmostKey=false"];
+}
+
+/** `lsappinfo info` for one pid. Never a bundle id: that would read the owner's Chrome. */
+export function frontmostInfoArgs(pid: number): string[] {
+  if (!Number.isInteger(pid) || pid < 2) throw new Error("Chrome pid was not available from the launcher.");
+  return ["info", "-only", "allowedtobecomefrontmost", String(pid)];
+}
+
+function frontmostLocked(pid: number): boolean {
+  const info = spawnSync("lsappinfo", frontmostInfoArgs(pid), { encoding: "utf8", timeout: 2000 });
+  return info.status === 0 && /"CanBecomeFrontmost"=false/.test(info.stdout);
+}
+
+function lockChromeBehind(pid: number): boolean {
+  const result = spawnSync("lsappinfo", behindFrontArgs(pid), { encoding: "utf8", timeout: 2000 });
+  if (result.status !== 0) return false;
+  return frontmostLocked(pid);
+}
+
+const SPAWN_SOURCE = path.resolve(__dirname, "../../../packaging/macos/bao-spawn.c");
+const SPAWN_BINARY = path.resolve(__dirname, "../../bao-spawn");
+
+/** The disclaim waiter. Tests pin it with BAO_CHROME_SPAWN. A packaged app has Contents/MacOS/bao-spawn. A checkout builds it. */
+export function chromeSpawnerPath(env: NodeJS.ProcessEnv = process.env): string {
+  const pinned = env.BAO_CHROME_SPAWN?.trim();
+  if (pinned) return pinned;
+  const packaged = packagedSpawner();
+  if (packaged) return packaged;
+  return ensureBuiltSpawner();
+}
+
+function packagedSpawner(): string | undefined {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    const macos = path.join(dir, "MacOS", "bao-spawn");
+    if (existsSync(macos)) return macos;
+    const contents = path.join(dir, "Contents", "MacOS", "bao-spawn");
+    if (existsSync(contents)) return contents;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+}
+
+function ensureBuiltSpawner(): string {
+  if (!existsSync(SPAWN_SOURCE)) throw new Error("Bao could not find its Chrome launcher.");
+  try {
+    if (existsSync(SPAWN_BINARY) && statSync(SPAWN_BINARY).mtimeMs >= statSync(SPAWN_SOURCE).mtimeMs) return SPAWN_BINARY;
+  } catch { /* rebuild */ }
+  mkdirSync(path.dirname(SPAWN_BINARY), { recursive: true });
+  const tmp = `${SPAWN_BINARY}.${process.pid}.tmp`;
+  const built = spawnSync("/usr/bin/clang", ["-O2", "-o", tmp, SPAWN_SOURCE], { encoding: "utf8" });
+  if (built.status !== 0) {
+    try { rmSync(tmp, { force: true }); } catch { /* no partial binary */ }
+    const detail = (built.stderr || built.error?.message || "clang failed").trim().slice(0, 400);
+    throw new Error(`Bao could not build its Chrome launcher: ${detail}`);
+  }
+  renameSync(tmp, SPAWN_BINARY);
+  return SPAWN_BINARY;
 }
 
 function ownedChromeBrowserCommand(exe: string, userDataDir: string, pid: number): string | undefined {
@@ -361,14 +426,14 @@ export function stopOwnedChrome(owner: OwnedChromeProcess): void {
 
 /**
  * A direct Chrome that exits, or that does not bind 127.0.0.1, is started again
- * on a new port. The macOS open launcher is not: a retry there can leave a second window.
+ * on a new port. The disclaimed Mac spawn is not: a retry there can leave a second window.
  */
 function retryDirectStartup(message: string): boolean {
   return /Chrome exited before it opened a debugging port|Chrome could not start its debugging server|Chrome did not bind 127\.0\.0\.1:/.test(message);
 }
 
 async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
-  const direct = guiChromeLaunchArgs(exe, [], "", childHome ?? userInfo().homedir, background) === undefined;
+  const direct = !disclaimedChrome(exe);
   const attempts = direct ? 3 : 1;
   let last: Error | undefined;
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -383,22 +448,30 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
   throw last!;
 }
 
+export type OwnedChromeStartHooks = {
+  env?: NodeJS.ProcessEnv;
+  /** Returns whether the background lock stuck. The product calls lsappinfo on the spawned pid only. */
+  lockBehind?: (pid: number) => boolean;
+};
+
 /** Trust this launch's stderr endpoint, not whichever listener won the port. */
-async function startOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
+export async function startOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false, hooks?: OwnedChromeStartHooks): Promise<{ owner: OwnedChromeProcess; port: number }> {
+  const env = hooks?.env ?? process.env;
+  const disclaim = disclaimedChrome(exe, env);
   const port = await ownedDebugPort();
-  const stderrFile = path.join(userDataDir, ".bao-chrome-startup.stderr");
   const chromeArgs = args(port);
-  const guiArgs = guiChromeLaunchArgs(exe, chromeArgs, stderrFile, childHome ?? userInfo().homedir, background);
-  if (guiArgs) {
-    assertChromeProfileAvailable(userDataDir);
-    rmSync(stderrFile, { force: true });
-  }
-  const child = spawn(guiArgs ? "/usr/bin/open" : exe, guiArgs ?? chromeArgs, {
-    stdio: ["ignore", "ignore", "pipe"], detached, env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
+  if (disclaim) assertChromeProfileAvailable(userDataDir);
+  const spawner = disclaim ? chromeSpawnerPath(env) : undefined;
+  const child = spawn(spawner ?? exe, spawner ? [exe, ...chromeArgs] : chromeArgs, {
+    stdio: ["ignore", spawner ? "pipe" : "ignore", "pipe"],
+    detached,
+    env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
   });
   let output = "";
   let browserPath = "";
   let spawnError: Error | undefined;
+  let chromePid: number | undefined = disclaim ? undefined : child.pid;
+  let pidLine = "";
   child.on("error", (error) => { spawnError = error; });
   const readEndpoint = (text: string) => {
     // Chromium tries 127.0.0.1, then [::1]. A taken IPv4 port still prints a listening line, on ::1, and the process stays up.
@@ -418,71 +491,88 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
   };
   child.stderr?.on("data", (chunk: Buffer) => {
     output = (output + chunk.toString("utf8")).slice(-8192);
-    if (!guiArgs && !browserPath) readEndpoint(output);
+    if (!browserPath) readEndpoint(output);
   });
-  let drained = !guiArgs;
-  if (guiArgs) child.on("close", () => { drained = true; });
-  let exitSeen = 0;
+  if (disclaim) {
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (chromePid) return;
+      pidLine += chunk.toString("utf8");
+      const nl = pidLine.indexOf("\n");
+      if (nl < 0) return;
+      const pid = Number(pidLine.slice(0, nl).trim().split(/\s+/)[0]);
+      if (!Number.isInteger(pid) || pid < 2) spawnError = new Error("Bao's Chrome launcher reported no process id.");
+      else chromePid = pid;
+    });
+  }
+  const lock = hooks?.lockBehind ?? lockChromeBehind;
+  let locked = !background;
   try {
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
-      if (guiArgs && !browserPath && existsSync(stderrFile)) readEndpoint(readFileSync(stderrFile, "utf8"));
       if (spawnError) throw spawnError;
-      if (guiArgs && ownedChromeStalled(output, userDataDir)) throw new Error(LAUNCH_SERVICES_RESTART);
+      if (background && chromePid && !locked) locked = lock(chromePid);
       if (child.exitCode != null || child.signalCode != null) {
-        if (guiArgs && !drained) {
-          if (!exitSeen) exitSeen = Date.now();
-          if (Date.now() - exitSeen < 1_000) {
-            await delay(50);
-            continue;
-          }
+        if (disclaim && chromePid == null) {
+          await delay(50);
+          if (chromePid == null) throw new Error("Bao's Chrome launcher exited before it reported a process id.");
         }
-        if (guiArgs && ownedChromeStalled(output, userDataDir)) throw new Error(LAUNCH_SERVICES_RESTART);
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
-      const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir)) : child.pid;
-      if (browserPath && pid) {
+      if (browserPath && chromePid && locked) {
+        if (background && !lock(chromePid)) {
+          locked = false;
+          await delay(50);
+          continue;
+        }
         const text = `${port}\n${browserPath}\n`;
         parseDevToolsActivePort(text);
         writeFileSync(path.join(userDataDir, "DevToolsActivePort"), text, { mode: 0o600 });
-        const owner: OwnedChromeProcess = guiArgs
-          ? { kind: "gui", launcher: child, pid, executable: exe, userDataDir }
+        const owner: OwnedChromeProcess = disclaim
+          ? { kind: "gui", launcher: child, pid: chromePid, executable: exe, userDataDir }
           : { kind: "direct", child, userDataDir };
         return { owner, port };
       }
       await delay(50);
     }
+    if (browserPath && chromePid && !locked) throw new Error("Bao could not keep its Chrome in the background.");
+    if (disclaim && chromePid == null) throw new Error("Bao's Chrome launcher did not report a process id.");
     const detail = output.trim().slice(-400);
     throw new Error(detail ? `Chrome debugging port did not open: ${detail}` : "Chrome debugging port did not open");
   } catch (error) {
-    const stalled = error instanceof Error && error.message === LAUNCH_SERVICES_RESTART;
     try {
-      if (stalled) {
-        for (let i = 0; i < 10; i++) {
-          killStalledProfile(userDataDir);
-          let left = false;
-          try { left = pidsForDataDir(userDataDir).length > 0; } catch { break; }
-          if (!left) break;
-          await delay(50);
-        }
-      } else if (guiArgs) {
-        const pid = guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir));
-        if (pid) await releaseProfileProcesses({ kind: "gui", launcher: child, pid, executable: exe, userDataDir }, false);
+      if (chromePid) {
+        try { process.kill(chromePid, "SIGKILL"); } catch { /* already gone */ }
+      }
+      if (disclaim) {
+        await killUntilGone(
+          () => {
+            if (chromePid) { try { process.kill(chromePid, "SIGKILL"); } catch { /* already gone */ } }
+            killStalledProfile(userDataDir);
+          },
+          () => (chromePid != null && alive(chromePid)) || pidsForDataDir(userDataDir).length > 0,
+        );
       } else await releaseProfileProcesses({ kind: "direct", child, userDataDir }, false);
-    } catch {}
+    } catch { /* cleanup must not hide the launch error */ }
     try {
-      if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
-    } catch {}
+      if (child.exitCode == null && child.signalCode == null) child.kill("SIGKILL");
+    } catch { /* already gone */ }
     throw error;
-  } finally {
-    if (guiArgs) {
-      try { rmSync(stderrFile, { force: true }); } catch {}
-    }
   }
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Kill, then look again, for a process that may not die on the first signal. A list error stops the loop. */
+export async function killUntilGone(kill: () => void, left: () => boolean): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    kill();
+    let still = false;
+    try { still = left(); } catch { return; }
+    if (!still) return;
+    await delay(50);
+  }
 }
 
 /** Startup page Chrome opens when it has no tabs to restore. */
@@ -647,7 +737,7 @@ interface OwnedChromeProcessOptions {
   executablePath?: string;
   /**
    * Chrome starts behind the owner's apps. "none" opens no window, "window" one blank window, and "restore" the saved windows.
-   * A window Chrome opens for itself at launch takes the front even under -g; restored windows do not. So for "window" Bao
+   * A window Chrome opens for itself at launch takes the front even when it cannot become the front app; restored windows do not. So for "window" Bao
    * opens the window itself, in the background.
    */
   background?: "none" | "window" | "restore";
