@@ -285,6 +285,19 @@ export function launchServicesStalled(text: string): boolean {
   return text.includes("Unable to block on application");
 }
 
+export function processStopped(pid: number): boolean {
+  if (!pid) return false;
+  const listed = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+  if (listed.error) return false;
+  return (listed.stdout.trim().split(/\s+/)[0] ?? "").startsWith("T");
+}
+
+export function ownedChromeStalled(output: string, userDataDir: string): boolean {
+  if (!launchServicesStalled(output)) return false;
+  try { return pidsForDataDir(userDataDir).some((pid) => processStopped(pid)); }
+  catch { return false; }
+}
+
 /** SIGKILL a stopped launch. SIGTERM stays queued until something continues the process. */
 export function killStalledProfile(userDataDir: string): void {
   let pids: number[] = [];
@@ -407,13 +420,22 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
     output = (output + chunk.toString("utf8")).slice(-8192);
     if (!guiArgs && !browserPath) readEndpoint(output);
   });
+  let drained = false;
+  child.on("close", () => { drained = true; });
+  let exitSeen = 0;
   try {
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
       if (guiArgs && !browserPath && existsSync(stderrFile)) readEndpoint(readFileSync(stderrFile, "utf8"));
       if (spawnError) throw spawnError;
-      if (guiArgs && launchServicesStalled(output)) throw new Error(LAUNCH_SERVICES_RESTART);
+      if (guiArgs && ownedChromeStalled(output, userDataDir)) throw new Error(LAUNCH_SERVICES_RESTART);
       if (child.exitCode != null || child.signalCode != null) {
+        if (!exitSeen) exitSeen = Date.now();
+        if (!drained && Date.now() - exitSeen < 1_000) {
+          await delay(50);
+          continue;
+        }
+        if (guiArgs && ownedChromeStalled(output, userDataDir)) throw new Error(LAUNCH_SERVICES_RESTART);
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
       const pid = guiArgs && browserPath ? guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir)) : child.pid;

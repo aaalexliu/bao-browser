@@ -5,7 +5,7 @@ import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LAUNCH_SERVICES_RESTART, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LAUNCH_SERVICES_RESTART, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, ownedChromeStalled, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -30,6 +30,34 @@ test("a stalled LaunchServices open fails with a restart message", () => {
   assert.equal(launchServicesStalled(stalled), true);
   assert.equal(launchServicesStalled(""), false);
   assert.equal(LAUNCH_SERVICES_RESTART, "macOS LaunchServices cannot start Google Chrome. Restart the Mac, then try again.");
+});
+
+test("a LaunchServices marker is a stall only when that profile's Chrome is stopped", async () => {
+  const profile = mkdtempSync(path.join(tmpdir(), "bao-ls-confirm-"));
+  const marker = "Unable to block on application (GetProcessPID() returned 18446744073709551016)\n";
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "chrome", `--user-data-dir=${profile}`], { stdio: "ignore" });
+  try {
+    await once(child, "spawn");
+    let listed = false;
+    for (let i = 0; i < 40 && !listed; i++) {
+      listed = pidsForDataDir(profile).includes(child.pid!);
+      if (!listed) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(listed, "the running process is listed by its profile");
+    assert.equal(ownedChromeStalled(marker, profile), false, "a running Chrome keeps the exit detail");
+    process.kill(child.pid!, "SIGSTOP");
+    let stat = "";
+    for (let i = 0; i < 40 && !stat.startsWith("T"); i++) {
+      stat = spawnSync("ps", ["-o", "stat=", "-p", String(child.pid)], { encoding: "utf8" }).stdout.trim();
+      if (!stat.startsWith("T")) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(stat.startsWith("T"), "ps reports the process stopped");
+    assert.equal(ownedChromeStalled(marker, profile), true);
+    assert.equal(ownedChromeStalled("", profile), false, "a stopped Chrome without the marker is not this stall");
+  } finally {
+    try { process.kill(child.pid!, "SIGKILL"); } catch { /* already gone */ }
+    rmSync(profile, { recursive: true, force: true });
+  }
 });
 
 test("a stopped Chrome for the owned profile is killed", async () => {
