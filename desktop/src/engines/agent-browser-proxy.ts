@@ -302,7 +302,7 @@ export class AgentBrowserProxy {
     if (this.session && browser !== undefined && browser !== this.session.browser) {
       throw new Error("close the current session before choosing a different browser");
     }
-    this.closedCurrent = command === "close" && this.currentEnded;
+    this.closedCurrent = command === "close" && (this.currentEnded || this.taskTabEnded);
     if (command === "close") {
       this.currentEnded = false;
       this.taskTabEnded = false;
