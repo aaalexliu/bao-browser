@@ -192,7 +192,17 @@ test("pictures and snapshots retain password controls and native pixels without 
   try {
     const page = await browser.newPage();
     await page.setContent(`<!doctype html><label>Password<input type="password" id="password" name="password" value="fixture-secret"></label><input id="pin" autocomplete="one-time-code" value="482731"><input id="name" value="ada">`);
-    const original = page.screenshot.bind(page);
+    const shot = page.screenshot.bind(page);
+    // Headless Chromium can refuse Page.captureScreenshot. Retry that call once.
+    const original = async (opts?: Parameters<typeof page.screenshot>[0]) => {
+      try {
+        return await shot(opts);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("Unable to capture screenshot")) throw error;
+        return await shot(opts);
+      }
+    };
     page.screenshot = async (opts?: Parameters<typeof page.screenshot>[0]) => {
       assert.equal(await page.locator("#password").evaluate((el) => getComputedStyle(el).filter), "none");
       assert.equal(await page.locator("#pin").evaluate((el) => getComputedStyle(el).filter), "none");
