@@ -53,7 +53,7 @@ These belong to the Bao extension in Chrome, not to the remote-debugging connect
 
 ## Agent Chrome control
 
-The [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) attaches to the owner's running Chrome by default and starts navigation in a new tab. Naming `browser: "bao"` or `browser: "copy"` on the first `open` uses Bao's own profile or a marked profile copy instead. Ending that session disconnects without quitting Chrome or closing its tabs. Neither route uses a host allowlist. Bao does not block final clicks. The older live driver and its policy modes are retired. A saved file that is not [schema v4](workflow-schema.md) is not loaded.
+The [`agent_browser` pass-through](agent-browser-engine.md#direct-mcp-commands) attaches to the owner's running Chrome by default and starts navigation in a new tab. Naming `browser: "bao"` or `browser: "copy"` on the first `open` uses Bao's own profile or a marked profile copy instead, except the sites that stay in running Chrome ([Sites that stay in running Chrome](agent-browser-engine.md#sites-that-stay-in-running-chrome)). Ending that session disconnects without quitting Chrome or closing its tabs. Neither route uses a host allowlist. Bao does not block final clicks. The older live driver and its policy modes are retired. A saved file that is not [schema v4](workflow-schema.md) is not loaded.
 
 ## What stays on this Mac
 

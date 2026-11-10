@@ -1191,7 +1191,7 @@ export async function startApp(opts: {
         const settingsProfile = settingsDirectory();
         const chosen = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : "named by the agent", movesFiles);
         const boundDirs = ownerProfileDirs(sourceRoot ?? chromeUserData, settingsProfile);
-        // A named copy keeps its route, so a running-Chrome failure opens the copy. Only a named Bao profile becomes running Chrome, so that failure still opens the app's own profile.
+        // A named copy is not rewritten here. The planner still sends a bound site to running Chrome, and a remote-debugging failure opens the copy. Only a named Bao profile becomes running Chrome here, so that failure opens the app's own profile.
         const route: { browser: BrowserChoice; why: RouteWhy } | undefined = chosen?.browser === "bao" && !movesFiles && boundInProfiles(workflow.startUrl, boundDirs)
           ? { browser: "current", why: BOUND_REASON } : chosen;
         const closeSignIn = async () => {

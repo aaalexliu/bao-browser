@@ -55,7 +55,7 @@ Use isolated saved workflows in light and dark at the default window size, 720 p
 
 ## Check the helper only when its feature needs it
 
-The default copied-profile pass-through does not use the helper. For current-Chrome control, the optional `bao mcp-ax` driver, and the separate remote-debugging CLI, see [Which grant each job needs](permissions.md#which-grant-each-job-needs). Check only the relevant permission bits without changing grants. Screen Recording affects native window capture, not page screenshots.
+A Bao profile or a marked copy does not use the helper. Running Chrome, the default, does. For that route, the optional `bao mcp-ax` driver, and the separate remote-debugging CLI, see [Which grant each job needs](permissions.md#which-grant-each-job-needs). Check only the relevant permission bits without changing grants. Screen Recording affects native window capture, not page screenshots.
 
 ```sh
 codesign --verify --strict /Applications/Bao.app/Contents/Resources/BaoOSHelper.app
