@@ -911,7 +911,7 @@ test("a wait_for_owner that names the run whose Chrome ended returns the reconne
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Your Chrome session ended. This session cannot continue.");
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
-  assert.equal(JSON.parse(other[0]!.stdout).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
   await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
 });
 
@@ -922,7 +922,7 @@ test("a wait_for_owner that names the run whose task tab closed returns that clo
   await f.proxy.execute("wait_for_owner", ["1"]);
   f.state.taskGone = true;
   const [closed] = await f.proxy.execute("wait_for_owner", ["60000"]);
-  assert.equal(JSON.parse(closed!.stdout).instruction, TASK_TAB_CLOSED);
+  assert.equal((JSON.parse(closed!.stdout) as { instruction: string }).instruction, TASK_TAB_CLOSED);
   assert.equal(f.proxy.hasSession(), false);
   const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
   const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runId);
@@ -932,7 +932,7 @@ test("a wait_for_owner that names the run whose task tab closed returns that clo
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Bao's task tab was closed. This session cannot continue.");
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
-  assert.equal(JSON.parse(other[0]!.stdout).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
   await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
 });
 
