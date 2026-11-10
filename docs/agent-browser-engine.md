@@ -24,7 +24,7 @@ Use `finish_task`, not `close`, to end a task. It returns a sentence of the resu
 {"command":"tab","args":["t2"]}
 {"command":"fill","args":["@e1","hello"]}
 {"command":"click","args":["@e2"]}
-{"command":"close","args":[]}
+{"command":"close","args":[],"run_id":"run-..."}
 ```
 
 A plain `snapshot` returns the whole native tree, often 5,000 to 20,000 characters on a real site. Two snapshot options keep the result short. Bao still runs the full native snapshot and records it in the run; only the text the agent gets changes.
@@ -118,7 +118,7 @@ Set `browser` on the first `open` to choose the route. `"current"` (**Running Ch
 ```json
 {"command":"open","args":["https://example.com/"],"browser":"current","profile":"Default"}
 {"command":"snapshot","args":["-i"]}
-{"command":"close","args":[]}
+{"command":"close","args":[],"run_id":"run-..."}
 ```
 
 This Mac-only route uses BaoOSHelper's existing Accessibility grant. The helper opens a new inspect tab, enables Chrome's debugging checkbox if needed, and presses Chrome's native debugging Allow sheet while Bao connects. Chrome asks before every new debugging connection and keeps a sheet on screen after the program that asked has gone, so Bao makes one connection per session. The native agent-browser, workflow capture, and replay connect to a local Bao endpoint that shares it, each in its own browser session (`Target.attachToBrowserTarget`), so a session raises the sheet once; native commands and daemon restarts raise none. Sheets already present when polling starts may also be approved; Bao does not attribute each sheet to a particular connection. It does not request Automation or Screen Recording. A locked screen, missing Accessibility access, or ambiguous browser process stops startup without asking for a new grant.
