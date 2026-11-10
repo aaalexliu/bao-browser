@@ -3,6 +3,8 @@ export const EXPERIAN_COMMIT_MESSAGE = "The final unfreeze button is on screen. 
 
 export const AGENT_IDLE_REASON = "The agent sent nothing for 10 minutes and never finished the task, so Bao ended the session.";
 export const AGENT_CLOSED_ASK = "The session ended while Bao was waiting for you, so the agent could not go on.";
+export const AGENT_DISCONNECTED = "The agent disconnected.";
+export const AGENT_WAIT_ENDED = "The session ended before you finished.";
 export const NEWER_TASK_REASON = "A newer task opened, so Bao ended this session.";
 export const AGENT_STEP_FAILED = "The browser could not do this step.";
 
@@ -11,6 +13,7 @@ const AGENT_COPY: Record<string, string> = {
   "Session ended without finish_task after 10 minutes of inactivity.": AGENT_IDLE_REASON,
   "The Bao session ended before the owner wait completed. This session cannot continue.": AGENT_CLOSED_ASK,
   "Native agent-browser command failed.": AGENT_STEP_FAILED,
+  "agent-browser client disconnected": AGENT_DISCONNECTED,
 };
 
 export function agentRunText(value: string): string {

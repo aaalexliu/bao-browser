@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startApp } from "../../src/app/server";
-import { runAttention, runReceipt, runsList, runWorkflowName, type RunSummary } from "../../src/app/views";
+import { runAttention, runReceipt, runsList, runViewer, runWorkflowName, type RunSummary } from "../../src/app/views";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 import { inspectRunView } from "../../src/mcp/run-view";
 import { TOOLS } from "../../src/mcp/server";
@@ -150,6 +150,24 @@ test("an ended agent session receipt names its steps in words and marks the cut-
     for (const html of [waited, oldIdle, oldClosed, rows]) {
       assert.doesNotMatch(html, /wait_for_owner|finish_task|agent-browser command|owner wait completed|>open<|>pending</);
     }
+    const legacy = session({
+      id: "dropped", status: "failed", at: 4, pageEngine: "agent-browser",
+      steps: [{ id: "command-1", label: "Open example.com", status: "failed", reason: "agent-browser client disconnected", native: { command: "open", args: ["https://example.com"] } }],
+    });
+    const legacySteps = [
+      { id: "command-1", label: "Click Add to cart", status: "failed" as const, reason: "Native agent-browser command failed.", native: { command: "click", args: ["@e3"] } },
+    ];
+    const evidence = runViewer({
+      ...session({ id: "old-click", status: "failed", pageEngine: "agent-browser", steps: legacySteps }),
+    }, { name: "agent-browser", recordedOnly: true, steps: legacySteps });
+    assert.match(evidence, /Step 1 Click Add to cart failed: The browser could not do this step\./);
+    assert.doesNotMatch(evidence, /Native agent-browser command failed/);
+    const dropped = runsList([legacy], [], "", 5);
+    assert.match(dropped, /The agent disconnected\./);
+    assert.doesNotMatch(dropped, /agent-browser client disconnected/);
+    const droppedEvidence = runViewer(legacy, { name: "agent-browser", recordedOnly: true, steps: legacy.steps! });
+    assert.match(droppedEvidence, /Step 1 Open example.com failed: The agent disconnected\./);
+    assert.doesNotMatch(droppedEvidence, /agent-browser client disconnected/);
     const live = new AgentBrowserRun(root);
     live.begin("snapshot", []);
     assert.match(receiptFor(live.id), /<strong>Read the page<\/strong><span class="run-state">pending</);

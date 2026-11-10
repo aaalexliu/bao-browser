@@ -23,7 +23,7 @@ import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
 import { targetBox } from "../v1/caption";
 import { diffView, findView, snapshotView } from "./snapshot-view";
-import { AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
+import { AGENT_DISCONNECTED, AGENT_IDLE_REASON, NEWER_TASK_REASON } from "../v1/stop-copy";
 import { openBackgroundCdp, type BackgroundCdp } from "./background-cdp";
 
 export const AGENT_BROWSER_COMMANDS = ["open", "snapshot", "click", "fill", "press", "scroll", "tab", "screenshot", "wait_for_owner", "close"] as const;
@@ -377,7 +377,7 @@ export class AgentBrowserProxy {
       }
     }
     if (this.session?.removing) await this.session.removing;
-    if (this.disconnected) throw new Error("The agent disconnected.");
+    if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
     if (!this.session && command === "close") return endedClose;
     if (!this.session && this.taskTabEnded && (command !== "open" || browser === undefined)) throw new Error(TASK_TAB_CLOSED);
     if (!this.session && this.currentEnded && (command !== "open" || browser === undefined)) throw new Error(CURRENT_CHROME_ENDED);
@@ -425,7 +425,7 @@ export class AgentBrowserProxy {
     const context: StepContext = {};
     let failure: unknown;
     try {
-      if (this.disconnected) throw new Error("The agent disconnected.");
+      if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
       if (continuing && command !== "close" && command !== "wait_for_owner") {
         await this.detectOwnerWall(session);
         const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site) : undefined;
@@ -1289,7 +1289,7 @@ export class AgentBrowserProxy {
   }
 
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
-    if (this.disconnected) throw new Error("The agent disconnected.");
+    if (this.disconnected) throw new Error(AGENT_DISCONNECTED);
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
     if (!session.daemonStarted) {
       readTimeoutMs = undefined;
