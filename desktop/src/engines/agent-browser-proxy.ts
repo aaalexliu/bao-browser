@@ -328,9 +328,18 @@ export class AgentBrowserProxy {
       return [{ stdout: JSON.stringify({ outcome: "closed", instruction: otherTaskClosed(claimed) }), stderr: "", exitCode: 0 }];
     }
     if (foreign && command === "open") {
-      if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
-      else if (this.session && !this.session.removing) await this.endForNewerTask(this.session);
-      else if (this.session?.removing) await this.session.removing;
+      try {
+        if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
+        else if (this.session && !this.session.removing) await this.endForNewerTask(this.session);
+        else if (this.session?.removing) await this.session.removing;
+      } catch (error) {
+        if (this.session) {
+          const cause = error instanceof Error && error.cause !== undefined ? error.cause : error;
+          const message = cause instanceof Error ? cause.message : String(cause);
+          throw new Error(`Bao could not clean up the earlier browser session: ${message}`, { cause });
+        }
+        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      }
       this.refusal = undefined;
     } else if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
     this.endedLine = this.staleWait;
@@ -1441,7 +1450,7 @@ export class AgentBrowserProxy {
       }
       if (this.session === session && session.chrome.isClosed()) this.session = undefined;
     } catch (error) {
-      // The call that ran the cleanup reports its failure. The session and its run end here, so later calls start fresh.
+      // The call that owns the run throws this named error. A newer open writes it to stderr and starts. The session and its run end here, so later calls start fresh.
       const message = error instanceof Error ? error.message : String(error);
       session.removing = Promise.resolve();
       session.recording.cleanupFailed(message);

@@ -368,31 +368,109 @@ test("a first wait_for_owner on a check Bao did not recognize sends back the ope
   } finally { await h.cleanup("copy"); }
 });
 
-test("a cleanup failure while an open ends a wait reports no earlier call's card or lines", { timeout: 60_000 }, async (t) => {
+function traceStderr(t: TestContext): string[] {
+  const traced: string[] = [];
+  const write = process.stderr.write.bind(process.stderr);
+  t.mock.method(process.stderr, "write", ((chunk: string | Uint8Array, ...args: unknown[]) => {
+    traced.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
+    return write(chunk, ...(args as [BufferEncoding?]));
+  }) as typeof process.stderr.write);
+  return traced;
+}
+
+test("a cleanup failure while a newer open ends a wait names no ended run and still starts", { timeout: 60_000 }, async (t) => {
   let fail = true;
   const failed: string[] = [];
   const remove = fsp.rm;
+  const traced = traceStderr(t);
   t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
     if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
     return remove(file, options);
   });
   const h = await ownerProxy(t);
-  const { fixture, proxy } = h;
+  const { fixture, home, proxy } = h;
+  const library = new Library(home);
   try {
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
     const chatA = proxy.activeRunId!;
-    await assert.rejects(proxy.execute("open", [fixture.url("/")]), (error: Error) => error.message === `Bao could not clean up the browser session of run ${chatA}: fixture rm failed`);
-    assert.equal(proxy.lastCommand, undefined, "the error card is not chat A's halted step");
-    assert.deepEqual(proxy.pickLines, []);
-    assert.equal(proxy.ownerPage, undefined);
-    fail = false;
     const opened = await proxy.execute("open", [fixture.url("/")], "copy");
     assert.equal(opened[0]!.stdout, "Opened\n");
-    assert.match(proxy.endedWait ?? "", /; a new open starts a new task\.$/, "the next result names the wait Bao ended");
+    assert.equal(JSON.stringify(opened).includes(chatA), false, "chat B's open does not name the ended run");
+    assert.equal(JSON.stringify(opened).includes("fixture rm failed"), false, "chat B's open does not carry the cleanup error");
+    assert.equal(traced.includes(`Bao could not clean up the browser session of run ${chatA}: fixture rm failed\n`), true);
+    assert.notEqual(proxy.activeRunId, chatA);
+    assert.equal(proxy.hasSession(), true);
+    assert.equal(proxy.ownerPage, undefined);
+    assert.match(proxy.endedWait ?? "", /; a new open starts a new task\.$/);
+    assert.equal((proxy.endedWait ?? "").includes(chatA), false);
+    assert.equal(library.readRun(chatA).cleanupError, "fixture rm failed");
+    assert.equal(library.readRun(chatA).envelope?.reason, "A newer task opened, so Bao ended this session.");
+    fail = false;
+    assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "snapshot native output\n");
   } finally {
+    fail = false;
     for (const dir of failed) await remove(dir, { recursive: true, force: true });
     await h.cleanup("copy");
   }
+});
+
+test("a cleanup failure while a newer open ends a wait past its limit still starts and names no ended run", { timeout: 60_000 }, async (t) => {
+  let fail = true;
+  const failed: string[] = [];
+  const remove = fsp.rm;
+  const traced = traceStderr(t);
+  t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
+    if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
+    return remove(file, options);
+  });
+  let offset = 0;
+  const now = Date.now;
+  t.mock.method(Date, "now", () => now() + offset);
+  const h = await ownerProxy(t);
+  const { fixture, home, proxy } = h;
+  const library = new Library(home);
+  try {
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
+    const chatA = proxy.activeRunId!;
+    offset = OWNER_WAIT_LIMIT_MS + 1000;
+    const opened = await proxy.execute("open", [fixture.url("/")], "copy");
+    assert.equal(opened[0]!.stdout, "Opened\n");
+    assert.equal(JSON.stringify(opened).includes(chatA), false);
+    assert.equal(JSON.stringify(opened).includes("fixture rm failed"), false);
+    assert.equal(traced.includes(`Bao could not clean up the browser session of run ${chatA}: fixture rm failed\n`), true);
+    assert.notEqual(proxy.activeRunId, chatA);
+    assert.match(proxy.endedWait ?? "", /; nobody continued it for 30 minutes\.$/);
+    assert.equal((proxy.endedWait ?? "").includes(chatA), false);
+    assert.equal(library.readRun(chatA).cleanupError, "fixture rm failed");
+    assert.equal(library.readRun(chatA).envelope?.reason, "session_closed");
+    fail = false;
+  } finally {
+    fail = false;
+    for (const dir of failed) await remove(dir, { recursive: true, force: true });
+    await h.cleanup("copy");
+  }
+});
+
+test("a same-chat open during an owner wait continues that task and keeps the wait", { timeout: 60_000 }, async (t) => {
+  const h = await ownerProxy(t);
+  const { fixture, home, proxy } = h;
+  const library = new Library(home);
+  try {
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
+    const run = proxy.activeRunId!;
+    const owner = proxy.ownerPage;
+    const steps = library.readRun(run).steps.length;
+    const runs = library.listRuns().length;
+    const continued = await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy", false, undefined, {}, run);
+    assert.equal(outcome(continued), "halted");
+    assert.equal(proxy.activeRunId, run);
+    assert.deepEqual(proxy.ownerPage, owner);
+    assert.equal(library.readRun(run).status, "needs_human");
+    assert.equal(library.readRun(run).steps.length, steps);
+    assert.equal(proxy.endedWait, undefined);
+    assert.equal(library.listRuns().length, runs);
+    assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, run)), "waiting");
+  } finally { await h.cleanup("copy"); }
 });
 
 test("the owner-wait instruction names the page's ask and sends the owner to the browser the session drives", () => {
