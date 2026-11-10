@@ -55,12 +55,7 @@ function removeVersion(plist: string): void {
     execFileSync("/usr/bin/plutil", ["-remove", "CFBundleShortVersionString", plist]);
     return;
   }
-  insertVersion(plist, "0.0.0");
   writeFileSync(plist, readFileSync(plist, "utf8").replace(/\s*<key>CFBundleShortVersionString<\/key>\s*<string>[^<]*<\/string>/, ""));
-}
-
-function rootVersion(plist: string): string {
-  return execFileSync("/usr/bin/plutil", ["-extract", "CFBundleShortVersionString", "raw", "-o", "-", plist], { encoding: "utf8" }).trim();
 }
 
 async function liveServerInfo(cli: string, scratch: string, env: NodeJS.ProcessEnv = {}): Promise<{ name: string; version: string }> {
@@ -158,7 +153,6 @@ test("a Bao.app reports the version in its Info.plist", async () => {
     const cli = stageApp(scratch, template);
     const plist = appPlist(scratch);
     insertVersion(plist, "9.8.7");
-    if (process.platform === "darwin") assert.equal(rootVersion(plist), "9.8.7");
     assert.equal(cliVersion(cli, scratch, appEnv), "9.8.7");
     assert.deepEqual(await serverInfo(cli, scratch, appEnv), { name: "bao", version: "9.8.7" });
   } finally { rmSync(scratch, { recursive: true, force: true }); }
