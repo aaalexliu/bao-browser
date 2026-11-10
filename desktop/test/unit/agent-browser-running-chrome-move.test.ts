@@ -410,6 +410,20 @@ test("a sign-in title on the same host reopens its own URL", { timeout: 60_000 }
   assert.ok(await baoClosed(h.baoDir));
 });
 
+test("an open that lands on a same-host sign-in title reopens that open, not the page before it", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  const story = `http://localhost:${new URL(h.site).port}/story`;
+  const [opened] = await h.proxy.execute("open", [story], undefined, false, undefined, {}, h.proxy.activeRunId);
+  const reply = JSON.parse(opened!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "halted", "the sign-in title is still a wall on the page the open asked for");
+  assert.match(reply.instruction, /sign in to localhost/);
+  const step = savedSteps(h.home).at(-1)!;
+  assert.deepEqual(step.native.args, [story], "Running Chrome opens the page this open asked for, not the earlier site");
+  assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in page on localhost"), step.summary!.text);
+  assert.ok(await baoClosed(h.baoDir));
+});
+
 const AUTHORIZE = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=fixture&state=fixture&nonce=fixture";
 
 async function landOnAuthorize(baoDir: string, from: string): Promise<void> {

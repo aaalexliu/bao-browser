@@ -794,16 +794,15 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * The http(s) page Running Chrome should open. An address wall, or a sign-in title on another host, reopens the page an
-   * open asked for, or the page before the wall. A check title, or a sign-in title on the same host, reopens its own URL.
+   * The http(s) page Running Chrome should open. An open reopens the URL it asked for, except a check title, which keeps
+   * its own URL. A click or later navigation reopens the page before an address wall or a sign-in title on another host.
    */
   private pageToReopen(session: Session, page: OwnerPage | undefined, openedSite?: string): string | undefined {
     const before = session.beforeWall?.url;
-    if (page && ownerWallOnAddress(page)) return openedSite ?? before ?? httpPage(page.url);
+    if (openedSite && !(page && ownerWall(page) === "bot_wall" && !ownerWallOnAddress(page))) return openedSite;
+    if (page && ownerWallOnAddress(page)) return before ?? httpPage(page.url);
     if (page && ownerWall(page) === "login_wall") {
       const wallHost = hostName(page.url);
-      const openHost = hostName(openedSite);
-      if (openedSite && openHost && wallHost && openHost !== wallHost) return openedSite;
       const beforeHost = hostName(before);
       if (before && beforeHost && wallHost && beforeHost !== wallHost) return before;
     }
