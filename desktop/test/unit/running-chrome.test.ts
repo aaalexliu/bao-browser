@@ -230,7 +230,7 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
     assert.equal(step.status, "passed");
     // Linux Chromium often never answers Page.captureScreenshot for a hidden tab, so there the step records the missing picture.
     if (process.platform !== "darwin" && !step.afterShot) {
-      assert.equal(step.afterShotError, "Page screenshot unavailable.");
+      assert.match(step.afterShotError ?? "", /^Page screenshot unavailable/);
       continue;
     }
     assert.ok(step.afterShot);

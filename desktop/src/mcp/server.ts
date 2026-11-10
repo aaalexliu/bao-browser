@@ -7,7 +7,7 @@ import { BROWSER_CHOICES, BROWSER_CHOICE_DESCRIPTION, DEFAULT_BROWSER, PROFILE_D
 import { supportsViewer, UI_EXTENSION, VIEWER_MIME, VIEWER_RESOURCE, VIEWER_URI, viewerResource } from "./viewer";
 import { callViewerTool, isViewerTool, LIST_RUNS_TOOL, VIEWER_TOOLS } from "./viewer-tools";
 import { finishCardFor, inspectMcpRunView, listRunViews } from "./run-view";
-import { BROWSER_RESULT_SCHEMA, browserToolResult, finishToolResult, profileQuestionResult, stepSentence, textToolResult } from "./tool-card";
+import { BROWSER_RESULT_SCHEMA, browserToolResult, finishToolResult, pageShotLine, profileQuestionResult, stepSentence, textToolResult } from "./tool-card";
 import { ChromeProfileQuestion } from "../engines/browser-pick";
 import { createMcpVersionCheck, McpVersionError, MCP_UPDATE_POLL_MS } from "./version";
 import { baoVersion } from "../app/bundle";
@@ -313,7 +313,8 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
       return ended ? { ...asked, content: [...asked.content, { type: "text" as const, text: ended }] } : asked;
     }
     if (!ctx.ui) {
-      const notice = [...ctx.proxy.endedWait ? [ctx.proxy.endedWait] : [], ...ctx.proxy.pickLines, ...ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : []];
+      const shot = pageShotLine(ctx.proxy.lastCommand?.step);
+      const notice = [...shot ? [shot] : [], ...ctx.proxy.endedWait ? [ctx.proxy.endedWait] : [], ...ctx.proxy.pickLines, ...ctx.proxy.lastWorkflowOutcome ? [ctx.proxy.lastWorkflowOutcome] : []];
       if (notice.length) throw new Error([cause instanceof Error ? cause.message : String(cause), ...notice].join("\n"));
       throw cause;
     }
@@ -326,7 +327,8 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
   const facts = { args: Array.isArray(args.args) ? args.args.filter((arg): arg is string => typeof arg === "string") : [], owner: ctx.proxy.ownerPage, current: ctx.proxy.currentChrome };
   if (!ctx.ui) {
     const current = args.browser === "current" ? ["Current Chrome: this drives the owner's own Chrome, not a profile copy. finish_task and close end only Bao-created task tabs and disconnect; the owner's Chrome and pre-existing tabs stay open."] : [];
-    return textToolResult(results, stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts), [...current, ...notice], picked,
+    const shot = pageShotLine(ctx.proxy.lastCommand?.step);
+    return textToolResult(results, stepSentence(command, results, ctx.proxy.lastCommand, undefined, facts), [...shot ? [shot] : [], ...current, ...notice], picked,
       ctx.proxy.lastCommand?.runId ?? ctx.proxy.activeRunId ?? activeRunId);
   }
   const result = browserToolResult(command, results, ctx.proxy.lastCommand, ctx.proxy.activeRunId ?? activeRunId, error, facts);

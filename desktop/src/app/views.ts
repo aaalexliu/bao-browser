@@ -586,7 +586,8 @@ export function runViewer(
       action: step.action || workflow.steps.find((item) => item.id === step.id)?.action,
     };
   });
-  const failed = steps.find((step) => step.status === "failed" || step.status === "paused");
+  const finishedPass = run.status === "passed" || run.status === "ok" || run.status === "completed";
+  const failed = finishedPass ? undefined : steps.find((step) => step.status === "failed" || step.status === "paused");
   const selected = steps.find((step) => step.id === selectedId) || failed || steps[steps.length - 1];
   const selectedIndex = Math.max(0, selected ? steps.indexOf(selected) : 0);
   const modelCalls = countedModelCalls(run);

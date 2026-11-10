@@ -93,26 +93,33 @@ export class AgentBrowserWorkflow {
   private targetId: string | undefined;
   private reason: string | undefined;
   private finished: string | undefined;
-  private failedAction = false;
+  private failedStep: { id: string; command: string } | undefined;
+  private blocked: { id: string; command: string } | undefined;
   private pending: { event: TrailEvent; before: Observation } | undefined;
 
   constructor(private readonly home: string, runId: string, private readonly activePage: () => Promise<BrowserPage>) {
     this.workflowId = `wf-${runId.replace(/^run-/, "")}`;
   }
 
-  unavailable(reason: string): void { this.reason ??= reason; }
+  unavailable(reason: string, step?: { id: string; command: string }): void {
+    if (this.reason) return;
+    this.reason = reason;
+    if (step) this.blocked = step;
+  }
 
   async record(command: string, args: string[], id: string, perform: () => Promise<AgentBrowserCommandResult>, ownerWaiting: () => boolean): Promise<AgentBrowserCommandResult> {
+    const named = { id, command };
+    const block = (reason: string) => this.unavailable(reason, named);
     if (command === "close") {
       const result = await perform();
-      if (result.exitCode !== 0) this.unavailable("the closing command failed");
+      if (result.exitCode !== 0) block("the closing command failed");
       return result;
     }
-    if (command === "scroll") this.unavailable("it scrolled the page, which Bao cannot replay yet");
-    if (command === "tab" && ["new", "close"].includes(args[0] ?? "")) this.unavailable("it used a second tab");
+    if (command === "scroll") block("it scrolled the page, which Bao cannot replay yet");
+    if (command === "tab" && ["new", "close"].includes(args[0] ?? "")) block("it used a second tab");
     const action = ["open", "click", "fill", "press"].includes(command);
     const expectedArgs = command === "fill" ? 2 : 1;
-    if (action && args.length !== expectedArgs) this.unavailable(`${command} options cannot be replayed`);
+    if (action && args.length !== expectedArgs) block(`${command} options cannot be replayed`);
     if (this.reason) return perform();
 
     let cdp: CdpSocket | undefined;
@@ -124,7 +131,7 @@ export class AgentBrowserWorkflow {
     try {
       try {
         page = await this.activePage();
-        if (this.targetId && page.targetId !== this.targetId) this.unavailable("it used a second tab");
+        if (this.targetId && page.targetId !== this.targetId) block("it used a second tab");
         if (action) {
           cdp = await connectCdp(page.port, page.browserPath, { timeoutMs: 3000 });
           ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }, undefined, 3000));
@@ -141,16 +148,16 @@ export class AgentBrowserWorkflow {
           if (command === "press") captured = before.target;
           this.updatePending(before.before);
         }
-      } catch { this.unavailable("its replay target could not be recorded"); }
+      } catch { block("its replay target could not be recorded"); }
 
       const result = await perform();
-      if (action) this.failedAction = result.exitCode !== 0;
+      if (action) this.failedStep = result.exitCode !== 0 ? named : undefined;
       if (result.exitCode !== 0 && (command === "snapshot" || command === "screenshot" || command === "tab" && args[0] === "list")) return result;
       if (this.reason || !page) return result;
       try {
         const afterPage = await this.activePage();
         if (afterPage.targetId !== page.targetId || afterPage.targetIds.some((target) => !page!.targetIds.includes(target))) {
-          this.unavailable("it opened a second tab or popup");
+          block("it opened a second tab or popup");
           return result;
         }
         this.targetId = afterPage.targetId;
@@ -168,7 +175,7 @@ export class AgentBrowserWorkflow {
           if (!after) throw new Error("page observation unavailable");
         }
         if (result.exitCode !== 0) {
-          if (action && (!before || !after || effectState(before.before) !== effectState(after))) this.unavailable("a failed action changed the page");
+          if (action && (!before || !after || effectState(before.before) !== effectState(after))) block("a failed action changed the page");
           return result;
         }
         if (command === "open") {
@@ -180,8 +187,8 @@ export class AgentBrowserWorkflow {
           }
         } else if (action && before) {
           const target = captured && durableTarget(captured, before.before.page);
-          if (!target && command !== "press") this.unavailable("an action had no durable target");
-          else if (command === "press" && !target && !before.pageLevel) this.unavailable("a key action had no durable target");
+          if (!target && command !== "press") block("an action had no durable target");
+          else if (command === "press" && !target && !before.pageLevel) block("a key action had no durable target");
           else {
             const box = captured?.bbox;
             const viewport = before.before.page.viewport;
@@ -203,8 +210,8 @@ export class AgentBrowserWorkflow {
             if (after) this.updatePending(after);
           }
         } else if (after) this.updatePending(after);
-        this.persist();
-      } catch { this.unavailable("its replay outcome could not be recorded"); }
+        this.persist(named);
+      } catch { block("its replay outcome could not be recorded"); }
       return result;
     } finally {
       if (cdp && sessionId && action) {
@@ -217,7 +224,7 @@ export class AgentBrowserWorkflow {
 
   finish(): string {
     if (this.finished) return this.finished;
-    if (this.failedAction) this.unavailable("the task ended with a failed action");
+    if (this.failedStep) this.unavailable("the task ended with a failed action", this.failedStep);
     if (!this.startUrl || !this.events.length) this.unavailable("it contained no replayable actions");
     if (!this.reason) {
       try {
@@ -231,7 +238,8 @@ export class AgentBrowserWorkflow {
         return this.finished = `Saved workflow: ${workflow.name} (${workflow.id}; bao://workflow/${workflow.id}).`;
       } catch { this.unavailable("its workflow could not be saved"); }
     }
-    return this.finished = `Not saved as a workflow: ${this.reason}.`;
+    const where = this.blocked ? `${this.blocked.id} (${this.blocked.command}): ` : "";
+    return this.finished = `Not saved as a workflow: ${where}${this.reason}.`;
   }
 
   private updatePending(after: Observation): void {
@@ -246,8 +254,8 @@ export class AgentBrowserWorkflow {
     event.checked = node?.checked;
   }
 
-  private persist(): void {
+  private persist(step?: { id: string; command: string }): void {
     try { new Library(this.home).saveTrail(this.workflowId, this.events); }
-    catch { this.unavailable("its replay evidence could not be saved"); }
+    catch { this.unavailable("its replay evidence could not be saved", step); }
   }
 }

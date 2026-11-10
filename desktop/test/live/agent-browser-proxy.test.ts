@@ -141,7 +141,7 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       const output = [expected.stdout, expected.stderr].filter(Boolean);
       const [sentence, ...content] = actual.content.map((item) => item.text);
       assert.match(sentence!, leads[command]!, `${command} starts with its step sentence`);
-      if (command === "close") assert.equal(content.pop(), "Not saved as a workflow: it scrolled the page, which Bao cannot replay yet.");
+      if (command === "close") assert.equal(content.pop(), "Not saved as a workflow: command-8 (scroll): it scrolled the page, which Bao cannot replay yet.");
       assert.deepEqual(command === "open" ? content.slice(0, -1) : content, output, command);
       if (command === "open") {
         assert.ok(content.at(-1)!.includes(url), "open returns the site's tabs");

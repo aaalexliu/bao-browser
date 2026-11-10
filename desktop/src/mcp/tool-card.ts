@@ -158,14 +158,25 @@ export function stepSentence(command: string, results: readonly AgentBrowserComm
   return evidence?.step.summary?.text ?? describeStep({ command, args: options.args ?? [], results, error, owner: options.owner, current: options.current }).text;
 }
 
+/** The line a calling agent reads when this step has no page picture, or kept one of a different tab. */
+export function pageShotLine(step: { afterShotError?: string; shotNote?: string; native?: { command?: string } } | undefined): string | undefined {
+  const command = step?.native?.command;
+  if (!step || command === "close" || command === "wait_for_owner") return undefined;
+  const line = step.shotNote || step.afterShotError;
+  if (!line || /owner input is private/i.test(line)) return undefined;
+  return line;
+}
+
 export function browserToolResult(command: string, results: AgentBrowserCommandResult[],
   evidence?: StepEvidence, activeRunId?: string, error?: string, options: { args?: readonly string[]; owner?: OwnerWaitPage; current?: boolean } = {}) {
   const runId = evidence?.runId ?? activeRunId ?? null;
   const card = stepCard(runId, evidence?.step, { command, args: options.args, results, error, owner: options.owner, current: options.current, steps: evidence?.steps, lastPicture: evidence?.lastPicture });
+  const shot = pageShotLine(evidence?.step);
   return {
     content: [
       { type: "text", text: card.caption },
       ...nativeBlocks(results),
+      ...(shot === undefined ? [] : [{ type: "text", text: shot }]),
       ...(error === undefined ? [] : [{ type: "text", text: error }]),
       cardKey(card),
     ],
