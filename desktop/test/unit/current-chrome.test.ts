@@ -778,8 +778,20 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
   assert.equal(f.proxy.hasSession(), false);
   assert.equal(f.state.closed, true);
   assert.equal(f.state.closes, missing === "task" ? 0 : 1);
-  assert.equal(f.library.listRuns()[0]!.envelope?.reason, "session_closed");
-  await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
+  const run = f.library.listRuns()[0]!;
+  const waited = (run.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  if (missing === "task") {
+    assert.equal(run.status, "failed");
+    assert.equal(run.envelope?.reason, "Bao's task tab was closed");
+    assert.equal(waited.summary?.text, "Bao's task tab was closed. This session cannot continue.");
+    assert.notEqual(waited.reason, "The session ended before you finished.");
+    await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
+  } else {
+    assert.equal(run.envelope?.reason, "session_closed");
+    assert.equal(waited.status, "failed");
+    assert.equal(waited.reason, "The session ended before you finished.");
+    await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
+  }
   await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
 });
 

@@ -875,6 +875,17 @@ export class AgentBrowserProxy {
     return ![...session.taskTabs].some((id) => listed.has(id));
   }
 
+  /** Chrome's own target list no longer has the agent's tab or any Bao task tab. A failed read is not that proof. */
+  private async taskTabClosedInChrome(session: Session): Promise<boolean> {
+    if (session.kind !== "current" || session.relay || !session.chrome.cdp.isOpen) return false;
+    try {
+      const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: { targetId?: string }[] }>("Target.getTargets", {}, undefined, 5000);
+      return this.noTaskTabLeft(session, targetInfos);
+    } catch {
+      return false;
+    }
+  }
+
   /** Ends this session because Bao's task tab was closed. The caller returns the closed result; cleanup runs after the command. */
   private endTaskTab(session: Session): AgentBrowserCommandResult[] {
     this.taskTabEnded = true;
@@ -893,7 +904,7 @@ export class AgentBrowserProxy {
     let tabs = await this.nativeTabs(session);
     if (session.kind === "current" && !session.relay) {
       tabs = await this.keepTab(session, tabs);
-      if (this.noTaskTabLeft(session, tabs)) throw new TaskTabClosed();
+      if (this.noTaskTabLeft(session, tabs) && await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
     }
     const active = tabs.find((tab) => tab.active);
     if (!active?.targetId) return undefined;
@@ -911,8 +922,11 @@ export class AgentBrowserProxy {
   }
 
   private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
+    if (session.ownerWait) {
+      if (await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
+      return;
+    }
     let active = await this.activePage(session);
-    if (session.ownerWait) return;
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
     // A wall on a site that ties its sign-in to the owner's Chrome, such as Google's account page, imports nothing; it moves there.
