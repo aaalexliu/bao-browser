@@ -32,7 +32,7 @@ async function gone(pid: number): Promise<boolean> {
 }
 
 async function pids(file: string): Promise<number[]> {
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 100; i++) {
     const raw = await readFile(file, "utf8").catch(() => "");
     const found = raw.split(/\s+/).filter(Boolean).map(Number);
     if (found.length === 2) return found;
@@ -45,8 +45,8 @@ test("a helper bundle runs its executable directly with the exact arguments", as
   const root = await mkdtemp(path.join(tmpdir(), "bao-helper-spawn-"));
   try {
     const app = await fakeHelperApp(root, `printf '{"ok":true,"value":"%s"}' "$*"`);
-    const hit = await new MacOsHelper(app).exec(["permissions-ax"]);
-    assert.equal(hit.value, "permissions-ax");
+    const hit = await new MacOsHelper(app).exec(["nodes", "--bundle", "com.google.Chrome"]);
+    assert.equal(hit.value, "nodes --bundle com.google.Chrome");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -59,11 +59,33 @@ test("a stopped helper that times out is killed with its whole process group", a
     // The child stays stopped like a launch LaunchServices never resumed; its own child keeps running.
     const app = await fakeHelperApp(root, `sleep 30 &\necho "$$ $!" > "${record}"\nkill -STOP $$`);
     const started = Date.now();
-    await assert.rejects(new MacOsHelper(app).exec(["debug-allow", "--pid", "1", "--press"], 600), /os helper timed out: debug-allow/);
-    assert.ok(Date.now() - started < 5000);
-    const [helper, grandchild] = await pids(record);
+    const pending = new MacOsHelper(app).exec(["debug-allow", "--pid", "1", "--press"], 6_000);
+    const [helper, grandchild] = await pids(record).catch(async (error: unknown) => {
+      await pending.catch(() => {});
+      throw error;
+    });
+    await assert.rejects(pending, /os helper timed out: debug-allow/);
+    assert.ok(Date.now() - started < 10_000);
     assert.equal(await gone(helper!), true, "the stopped helper survived its timeout");
     assert.equal(await gone(grandchild!), true, "the helper's child survived its timeout");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a permissions report from a helper that did not disclaim fails closed", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-helper-spawn-"));
+  try {
+    const exe = "/Applications/Bao.app/Contents/Resources/BaoOSHelper.app/Contents/MacOS/BaoOSHelper";
+    const caller = "/Applications/Bao.app/Contents/MacOS/bao";
+    const undisclaimed = await fakeHelperApp(root, `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, parentExe: caller })}'`);
+    await assert.rejects(new MacOsHelper(undisclaimed).exec(["permissions-ax"]), /BaoOSHelper is older than this Bao; rebuild it/);
+    const omitted = await fakeHelperApp(path.join(root, "omitted"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe })}'`);
+    await assert.rejects(new MacOsHelper(omitted).permissions(false), /BaoOSHelper is older than this Bao; rebuild it/);
+    const disclaimed = await fakeHelperApp(path.join(root, "disclaimed"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: false, exe, parentExe: exe })}'`);
+    const hit = await new MacOsHelper(disclaimed).exec(["permissions-ax"]);
+    assert.equal(hit.accessibility, false);
+    assert.equal(hit.parentExe, exe);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

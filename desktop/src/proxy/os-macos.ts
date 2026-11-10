@@ -89,9 +89,18 @@ function parseHit(out: string, err: string, code: number | null): AxHit {
   return parsed;
 }
 
+const HELPER_TOO_OLD = "BaoOSHelper is older than this Bao; rebuild it";
+
 function helperError(message: string): Error {
-  if (/unknown command/.test(message)) return new Error("BaoOSHelper is older than this Bao; rebuild it");
+  if (/unknown command/.test(message)) return new Error(HELPER_TOO_OLD);
   return new Error(message);
+}
+
+function accepted(command: string | undefined, hit: AxHit): AxHit {
+  if ((command === "permissions" || command === "permissions-ax") && !(hit.exe && hit.parentExe === hit.exe)) {
+    throw new Error(HELPER_TOO_OLD);
+  }
+  return hit;
 }
 
 /** The executable inside a helper bundle. */
@@ -128,7 +137,7 @@ function run(bin: string, args: string[], timeoutMs = bin.endsWith(".app") ? 45_
       reject(new Error(`os helper timed out: ${args[0]}`));
     }), timeoutMs);
     child.on("close", (code) => settle(() => {
-      try { resolve(parseHit(out, err, code)); } catch (e) { reject(e); }
+      try { resolve(accepted(args[0], parseHit(out, err, code))); } catch (e) { reject(e); }
     }));
   });
 }
