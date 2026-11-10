@@ -180,6 +180,34 @@ test("a tab Bao's task tab opens becomes the agent's tab, once", async (t) => {
   assert.equal(f.daemon.commands.at(-1)!.on, "task", "a tab the owner opens never takes the agent");
 });
 
+test("a popup the agent follows from its task tab is a Bao task tab, and finish_task closes it", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", openerId: "task", inWindow: true });
+  assert.equal((await f.proxy.execute("click", ["@e2"]))[0]!.stdout, "✓ Done on task\n");
+  const listed = (await f.proxy.execute("tab", []))[0]!.stdout;
+  assert.equal(listed, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Vault - ${VAULT}\n→ [t7] (Bao task tab) Ceres - https://www.google.com/maps/place/Ceres\n`);
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup2", type: "page", url: "https://www.google.com/maps/place/Vesta", title: "Vesta", openerId: "popup", inWindow: true });
+  await f.proxy.execute("click", ["@e3"]);
+  assert.match((await f.proxy.execute("tab", []))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
+});
+
+test("a popup opened from an owner tab the agent switched to stays open and unmarked", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  assert.equal((await f.proxy.execute("tab", ["t2"]))[0]!.exitCode, 0);
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/from-owner", title: "From owner", openerId: "owner", inWindow: true });
+  await f.proxy.execute("click", ["@e2"]);
+  const listed = (await f.proxy.execute("tab", []))[0]!.stdout;
+  assert.match(listed, /\[t7\] From owner - https:\/\/example\.com\/from-owner/);
+  assert.doesNotMatch(listed, /\[t7\] \(Bao task tab\)/);
+  assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent still follows a popup its current tab opened");
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.deepEqual(f.closed, ["task"], "Bao does not close a popup the owner's tab opened");
+});
+
 test("a tab the agent's click opens with --new-tab becomes the agent's tab, and finish_task closes it with the task tab", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");

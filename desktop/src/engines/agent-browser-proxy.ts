@@ -128,7 +128,8 @@ const opensTab = (command: string, args: readonly string[]) => (command === "tab
 
 /**
  * The owner's running Chrome over remote debugging. Bao closes only the tabs it opened. `targetId` is the tab the agent works in:
- * Bao's task tab, until the agent switches tabs or its tab opens one. `seen` holds every target the native tab list has shown.
+ * Bao's task tab, until the agent switches tabs or its tab opens one. A popup followed from a task tab joins `taskTabs`.
+ * `seen` holds every target the native tab list has shown.
  */
 type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string> };
 
@@ -771,6 +772,7 @@ export class AgentBrowserProxy {
   /**
    * Keeps the agent in its tab of the owner's Chrome. The pinned native daemon never makes a tab the owner opens, or Chrome's Gemini
    * panel, current. A tab the agent's tab opened, such as a sign-in popup, becomes the agent's tab, as it does in Bao's own Chrome.
+   * When that opener is a Bao task tab, the popup is a task tab too, so tab lists mark it and finish closes it.
    * When the daemon is anywhere else, Bao switches it back to the agent's tab, or to Bao's newest task tab when that tab is gone.
    */
   private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[]): Promise<NativeTab[]> {
@@ -780,7 +782,10 @@ export class AgentBrowserProxy {
     if (fresh.size) {
       const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, 5000);
       for (const info of targetInfos) {
-        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info)) want = info.targetId;
+        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info)) {
+          if (session.taskTabs.has(want)) session.taskTabs.add(info.targetId);
+          want = info.targetId;
+        }
       }
       for (const targetId of fresh) session.seen.add(targetId);
     }
