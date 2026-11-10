@@ -12,6 +12,7 @@ import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 import { trapPort } from "../support/trap-port";
 import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
+import { pageShotLine } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 
@@ -559,6 +560,7 @@ test("startup persists a pending open before copying and keeps its failure in on
     assert.ok(step!.endedAt! >= step!.startedAt);
     assert.equal(step!.afterShot, undefined);
     assert.equal(step!.afterShotError, "Page screenshot unavailable: Chrome launch failed before attachment.");
+    assert.equal(pageShotLine(step), undefined);
     await assert.rejects(access(path.join(library.root, "shots", "runs", saved.id)), /ENOENT/);
     await assert.rejects(access(path.join(f.root, "calls.jsonl")), /ENOENT/);
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);

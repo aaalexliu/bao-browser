@@ -186,6 +186,34 @@ test("a missing page picture names the cause in the tool result", async () => {
   }
 });
 
+test("a step that failed to start shows its cause once", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-polish-start-"));
+  try {
+    const recording = new AgentBrowserRun(home);
+    const failed = recording.begin("open", ["http://127.0.0.1/"]);
+    const cause = new Error("Chrome launch failed before attachment");
+    await recording.complete(failed, [], home, async () => { throw cause; }, cause);
+    assert.equal(failed.native.results.length, 0);
+    assert.equal(failed.native.error, cause.message);
+    assert.equal(failed.afterShotError, "Page screenshot unavailable: Chrome launch failed before attachment.");
+    assert.equal(pageShotLine(failed), undefined);
+    const reply = browserToolResult("open", [], { runId: recording.id, step: failed }, undefined, cause.message);
+    const texts = reply.content.map((item) => item.text);
+    assert.equal(texts.filter((text) => text.includes(cause.message)).length, 1);
+    assert.equal(texts.some((text) => text.startsWith("Page screenshot unavailable")), false);
+
+    const ran = recording.begin("click", ["@e1"]);
+    await recording.complete(ran, [{ stdout: "", stderr: "missing ref\n", exitCode: 1 }], home, async () => {
+      throw new Error("cdp timeout Page.captureScreenshot");
+    }, new Error("missing ref"));
+    assert.equal(pageShotLine(ran), "Page screenshot unavailable: cdp timeout Page.captureScreenshot.");
+    const ranReply = browserToolResult("click", ran.native.results, { runId: recording.id, step: ran }, undefined, "missing ref");
+    assert.ok(ranReply.content.some((item) => item.text === pageShotLine(ran)));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("a side panel or non-page target is not a capturable page", () => {
   assert.equal(uncapturablePage("https://gemini.google.com/glic?hl=en-US", "page"), true);
   assert.equal(uncapturablePage("https://gemini.google.com/glic/panel", "page"), true);
