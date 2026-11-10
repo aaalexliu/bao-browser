@@ -553,7 +553,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       return this.send(method, params, sessionId);
     },
   } as unknown as CdpSocket;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+  const openCurrentChrome = t.mock.method(currentChrome, "openCurrentChrome", async () => {
     if (state.closed) throw new Error("reconnect startup reached");
     return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: await trapPort(), browserPath: "/browser" },
       cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() };
@@ -584,7 +584,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     for (const dir of stateDirs) await rm(dir, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   });
-  return { proxy, state, cdp, library: new Library(home) };
+  return { proxy, state, cdp, library: new Library(home), openCurrentChrome };
 }
 
 const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
@@ -850,7 +850,8 @@ test("a first wait after finish_task still waits on the new run when run_id is l
   f.state.closed = false;
   let endChrome!: () => void;
   const closed = new Promise<void>((resolve) => { endChrome = resolve; });
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+  // Replace the fixture mock in place. A second t.mock.method restores underneath the first and leaves it installed after the test.
+  f.openCurrentChrome.mock.mockImplementation(async () => ({
     pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: "/chrome",
     endpoint: { port: await trapPort(), browserPath: "/browser" },
     cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
@@ -876,7 +877,7 @@ test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a 
   f.state.closed = false;
   let endChrome!: () => void;
   const closed = new Promise<void>((resolve) => { endChrome = resolve; });
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+  f.openCurrentChrome.mock.mockImplementation(async () => ({
     pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: "/chrome",
     endpoint: { port: await trapPort(), browserPath: "/browser" },
     cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
