@@ -107,14 +107,14 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   const helper = path.join(app, "Contents", "Resources", "BaoOSHelper.app");
   if (existsSync(helper)) {
     const check = signatureCheck("helper", helper);
-    checks.push({ ...check, detail: `${check.detail}. Optional: Running Chrome (browser=current, over remote debugging), the native Mac app driver (bao mcp-ax), and bao remote-debugging use it, with an Accessibility grant` });
+    checks.push({ ...check, detail: `${check.detail}. Running Chrome (browser=current) is the default and uses it to press the Allow sheet, with an Accessibility grant. Optional: the native Mac app driver (bao mcp-ax) and bao remote-debugging` });
   } else {
-    checks.push({ level: "ok", name: "helper", detail: "not installed. The default copied-profile mode does not need it" });
+    checks.push({ level: "warn", name: "helper", detail: "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper." });
   }
-  const chrome = ["/Applications/Google Chrome.app", path.join(probe.home, "Applications", "Google Chrome.app")].find((dir) => existsSync(dir));
+  const chrome = probe.appDirs.map((dir) => path.join(dir, "Google Chrome.app")).find((dir) => existsSync(dir));
   checks.push(chrome
     ? { level: "ok", name: "chrome", detail: chrome }
-    : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. agent_browser copies a Chrome profile by default" });
+    : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome." });
   if (probe.chromeRoot) {
     // The sign-in import, Chrome copies, and Running Chrome all read this folder. macOS 27 asks first.
     const access = chromeFolderAccess(probe.chromeRoot, probe.env);

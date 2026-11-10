@@ -626,6 +626,8 @@ export async function launchOwnedChrome(opts: {
   loadExtensions?: boolean;
   /** Restore a prepared profile's saved tabs; park on blank only if all pages are startup pages. */
   preserveRestoredTabs?: boolean;
+  /** Sites the owner's Chrome profile holds device-bound sessions for. Their cookies go before Chrome starts. */
+  boundSites?: readonly string[];
   /** Accepted so older callers compile. The binary is resolveNormalChrome, not a channel lookup. */
   channel?: "chrome";
 }): Promise<BrowserContext> {
@@ -977,8 +979,9 @@ async function launchOwnedChromeForVideo(opts: {
   appendArgs?: string[];
   executablePath?: string;
   deviceScaleFactor?: number;
+  boundSites?: readonly string[];
 }): Promise<BrowserContext> {
-  prepareOwnedProfile(opts.userDataDir);
+  prepareOwnedProfile(opts.userDataDir, false, opts.boundSites);
   const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,

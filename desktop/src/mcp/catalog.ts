@@ -9,7 +9,9 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
 import type { SignInImport } from "../engines/bao-profile";
-import { chromeApp, ChromeProfileQuestion, defaultRoute, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
+import { chromeApp, ChromeProfileQuestion, defaultRoute, failedPickLine, fallbackLine, pickLine, RoutesFailed, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
+import { ownerBoundSites } from "../engines/bound-sign-in";
+import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
 import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, releaseWorkflowBrowser, runningChromeRefusal, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
@@ -558,6 +560,13 @@ export function hasHeldRuns(): boolean {
   return liveRuns.size > 0;
 }
 
+function catalogBoundSites(library: Library): string[] {
+  const root = process.env.BAO_AGENT_BROWSER_PROFILE_ROOT
+    ?? process.env.BAO_CHROME_USER_DATA
+    ?? (process.platform === "darwin" && !process.env.BAO_TEST_BROWSER ? chromeProfilesRoot() : undefined);
+  return ownerBoundSites(root, library.settings().chromeProfile);
+}
+
 async function replayInBrowser(
   library: Library,
   workflow: WorkflowV2,
@@ -582,15 +591,17 @@ async function replayInBrowser(
       movesFiles: workflowMovesFiles(workflow), extensionRoute: library.settings().runningChromeExtension === true };
     const plan = await planWorkflowBrowser(options);
     browser = await openWorkflowBrowser(options, plan).catch((error: unknown) => {
-      lines.push(failedPickLine(plan.route, plan.why, chromeApp(), plan.route === "extension" ? undefined : plan.profile));
+      lines.push(error instanceof RoutesFailed ? error.line
+        : failedPickLine(plan.route, plan.why, chromeApp(), plan.route === "extension" ? undefined : plan.profile));
       throw error;
     });
     if (browser.pick) lines.push(pickLine(browser.pick));
+    if (browser.missed) lines.push(browser.missed);
     if (browser.kind === "owned" && browser.signIn) lines.push(...importLine(browser, browser.signIn));
   } else {
     const profile = path.join(library.root, "chrome-profile");
     mkdirSync(profile, { recursive: true });
-    const context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless(), videoDir });
+    const context = await launchOwnedChrome({ userDataDir: profile, headless: productHeadless(), videoDir, boundSites: catalogBoundSites(library) });
     const page = context.pages()[0] || await context.newPage();
     browser = { kind: "owned", choice: "owned", context, page, profile, persistent: true, close: () => context.close() };
   }

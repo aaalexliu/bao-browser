@@ -257,3 +257,23 @@ test("doctor says whether Bao can read Chrome's folder and names the switch when
   } finally { chmodSync(chromeRoot, 0o700); }
   assert.equal(await doctorChecks(app, { ...probe, env, chromeRoot: path.join(probe.home, "absent") }).then((rows) => rows.find((row) => row.name === "chrome folder")), undefined);
 });
+
+test("doctor warns that Running Chrome, the default, needs the helper when it is missing", async (t) => {
+  const { probe, app, launcher } = lab(t);
+  writeFileSync(launcher, `#!/bin/sh\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'\nread line\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}'\n`);
+  const checks = await doctorChecks(app, probe);
+  const helper = checks.find((row) => row.name === "helper");
+  assert.equal(helper?.level, "warn");
+  assert.equal(helper?.detail, "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper.");
+  mkdirSync(path.join(app, "Contents", "Resources", "BaoOSHelper.app"), { recursive: true });
+  const present = (await doctorChecks(app, probe)).find((row) => row.name === "helper");
+  assert.match(present?.detail ?? "", /Running Chrome \(browser=current\) is the default and uses it to press the Allow sheet, with an Accessibility grant\. Optional: the native Mac app driver \(bao mcp-ax\) and bao remote-debugging$/);
+  assert.doesNotMatch(present?.detail ?? "", /Optional: Running Chrome/);
+  const chrome = checks.find((row) => row.name === "chrome");
+  assert.equal(chrome?.level, "warn");
+  assert.equal(chrome?.detail, "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome.");
+  const installed = path.join(probe.appDirs[0], "Google Chrome.app");
+  mkdirSync(installed);
+  const found = (await doctorChecks(app, probe)).find((row) => row.name === "chrome");
+  assert.deepEqual(found, { level: "ok", name: "chrome", detail: installed });
+});

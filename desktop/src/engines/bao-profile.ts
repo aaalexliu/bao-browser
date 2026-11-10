@@ -11,7 +11,7 @@ import { assertNotDailyChrome } from "../profile";
 import { cookieMatchesHost, findCookieDb, summarizeDb, summarySql, withCookieDb, type DecryptedCookie } from "../login-import/read";
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
 import { copyIndexedDb, matchingIndexedDbOrigins, readLocalStorage, setLocalStorageItems, type StorageItem } from "../login-import/storage";
-import { boundCookie, boundSessionSites, boundSite, deleteCookieRows } from "./bound-sign-in";
+import { boundCookie, boundSessionSites, boundSite, deleteCookieRows, listedBoundSite } from "./bound-sign-in";
 
 interface LoginCookie extends DecryptedCookie { updated: bigint; signature: string }
 
@@ -215,7 +215,11 @@ async function seedLogin(portFile: string, login: LoginState, boundSites: readon
  * Opens Bao's lasting profile. Sign-ins come from Chrome profile `directory` in `sourceRoot`. With `unread` instead, Bao could not
  * read Chrome's profiles, so it imports nothing and every import reports that reason.
  */
-export async function openBaoChromeForProxy(options: ({ sourceRoot: string; directory: string } | { unread: string }) & { home: string; site?: string; detached?: boolean }) {
+export async function openBaoChromeForProxy(options: ({ sourceRoot: string; directory: string } | { unread: string }) & {
+  home: string; site?: string; detached?: boolean;
+  /** Device-bound sites to purge even when the open imports nothing. */
+  boundSites?: readonly string[];
+}) {
   const profile = baoAgentProfileDir(options.home);
   assertNotDailyChrome(profile);
   const keptWindow = path.join(profile, "bao-kept-window");
@@ -261,14 +265,14 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
     if (reclaim) await closeRetainedChrome(profile);
     if (!ownsProfile() || pidsForDataDir(profile).length) throw busy();
     const sourceProfile = "unread" in options ? undefined : path.join(options.sourceRoot, options.directory);
-    const boundSites = sourceProfile ? boundSessionSites(sourceProfile) : [];
+    const boundSites = options.boundSites ?? (sourceProfile ? boundSessionSites(sourceProfile) : []);
     const snapshots = new Map<string, Promise<LoginState>>();
     const snapshot = (site: string, destination?: string) => {
       const url = new URL(site);
       let login = snapshots.get(url.origin);
       if (!login) {
         const read = "unread" in options ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], error: options.unread })
-          : boundSite(site, sourceProfile) ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], bound: true })
+          : boundSite(site, sourceProfile) || listedBoundSite(site, boundSites) ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], bound: true })
             : readChromeLogin(options, site, destination);
         login = read.then((source) => ({ cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)
             && !boundCookie(cookie.hostKey, cookie.name, boundSites)), storage: source.storage,

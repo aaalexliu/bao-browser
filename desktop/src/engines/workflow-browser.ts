@@ -12,8 +12,8 @@ import type { PersonPrompts } from "../v1/browser-driver";
 import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, boundRoute, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
-import { BOUND_REASON } from "./bound-sign-in";
+import { baoPick, boundOpenPlan, boundRoute, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { purgeBoundSites } from "./bound-sign-in";
 
 interface BrowserPage {
   context: BrowserContext;
@@ -21,6 +21,7 @@ interface BrowserPage {
   close(): Promise<void>;
   /** The route, Chrome app, user data, and profile, and why. The Bao app's own profile, which has no browser choice, has none. */
   pick?: BrowserPick;
+  missed?: string;
 }
 
 export type WorkflowBrowser = BrowserPage & (
@@ -117,7 +118,7 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
   if (!source.profile) return fallback ? fallbackPlan(source.unread) : { route: "bao", why, unread: source.unread };
   // A site that ties its sign-in to the owner's Chrome runs there, unless the workflow moves files.
   if (boundRoute(options.browser, options.site, path.join(source.profile.root, source.profile.directory), options.movesFiles)) {
-    return { route: "current", why: BOUND_REASON, profile: source.profile };
+    return boundOpenPlan(options.browser, source.profile, options.extensionRoute === true);
   }
   if (options.browser === "bao") return { route: "bao", why, profile: source.profile };
   return { route: options.browser, why, profile: source.profile };
@@ -125,11 +126,13 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
 
 /**
  * Opens the planned browser. When the owner's running Chrome cannot be used, a run that did not name it opens in Bao's own
- * profile without a sign-in import, and its pick says why.
+ * profile without a sign-in import. A named Bao profile or copy opens that route, and the pick says why.
  */
 export async function openWorkflowBrowser(options: WorkflowBrowserOptions, plan?: BrowserPlan): Promise<WorkflowBrowser> {
-  return openOrFallBack(plan ?? await planWorkflowBrowser(options),
-    (next) => next.why === RUNNING_CHROME_FALLBACK && options.fallback ? options.fallback() : openPlanned(options, next));
+  return openOrFallBack(plan ?? await planWorkflowBrowser(options), (next) => {
+    const unreadFallback = next.why === RUNNING_CHROME_FALLBACK && "unread" in next && next.unread;
+    return unreadFallback && options.fallback ? options.fallback() : openPlanned(options, next);
+  });
 }
 
 async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): Promise<WorkflowBrowser> {
@@ -195,7 +198,10 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
     } catch (error) { chrome.detach(); throw error; }
   }
   const launch = { home: options.home, site: options.site };
-  const chrome = plan.route === "bao" ? await openBaoChromeForProxy({ ...launch, ...signInSource(plan) })
+  const chrome = plan.route === "bao"
+    ? await openBaoChromeForProxy({ ...launch, ...signInSource(plan), boundSites: purgeBoundSites(
+        options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT ?? chromeProfilesRoot(), options.directory,
+        plan.profile ? path.join(plan.profile.root, plan.profile.directory) : undefined) })
     : await openCopiedChromeForProxy({ ...launch, sourceRoot: plan.profile.root, directory: plan.profile.directory, restoreTabs: false });
   try {
     const endpoint = await readDevToolsActivePort(chrome.target.portFile);
@@ -210,7 +216,8 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
       browser.on("disconnected", () => { void close().catch(() => undefined); });
       const pick: BrowserPick = plan.route === "bao" ? baoPick(plan, baoAgentProfileDir(options.home))
         : { route: "copy", why, chrome: resolveNormalChrome(), userDataDir: path.dirname(chrome.target.portFile), profile: plan.profile };
-      return { kind: "owned", choice: plan.route, context, page, pick,
+      const missed = "missed" in plan ? plan.missed : undefined;
+      return { kind: "owned", choice: plan.route, context, page, pick, ...missed ? { missed } : {},
         profile: plan.route === "bao" ? baoAgentProfileDir(options.home) : path.dirname(chrome.target.portFile), persistent: plan.route === "bao",
         importLogin: "importLogin" in chrome ? chrome.importLogin : undefined, signIn: "signIn" in chrome ? chrome.signIn : undefined,
         keepOpen: async () => { if (!closing && !page.isClosed()) await chrome.keepOpen(); }, close };
