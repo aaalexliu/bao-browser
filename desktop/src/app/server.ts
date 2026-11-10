@@ -34,8 +34,10 @@ import { boundsApplied, moveOwnedWindow, readOwnedWindow, type WindowBounds } fr
 import { openReplayVideo } from "../v1/replay-video";
 import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
-import { browserChoice, type BrowserChoice } from "../browser-choice";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, settingsProfileQuestion, showWorkflowPage, type WorkflowBrowser } from "../engines/workflow-browser";
+import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
+import { boundRoute, defaultRoute, type RouteWhy } from "../engines/browser-pick";
+import { BOUND_REASON, boundSessionSites } from "../engines/bound-sign-in";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -56,7 +58,7 @@ import { noteDrift, noteReplay, openProvisional, promotionEvent, type Promotion 
 import { circuitOpen, stepsNeedingReview } from "../v1/triage";
 import { ReceiptLog } from "../v1/receipt";
 import { defaultChromeUserData } from "../login-import/chrome-path";
-import { importInOwnedChrome, openOwnedSignIn, previewChromeProfiles, probeOwnedProfile, type ClickInput } from "../login-import/import-login";
+import { boundLoginSite, importInOwnedChrome, openOwnedSignIn, previewChromeProfiles, probeOwnedProfile, type ClickInput } from "../login-import/import-login";
 import { readPlatformKeys, type KeySources } from "../login-import/keys";
 import { isNeedsSignIn, runIfSignedIn } from "../login-import/session-gate";
 import { SiteStore, siteOrigin } from "../login-import/sites";
@@ -90,7 +92,11 @@ import { savedValueLine } from "../v1/saved-inputs";
 import { reusableInputs } from "../../../shared/saved-secrets";
 import { decideOpen, parseBaoLink, receiptLink, type OpenedView } from "./deeplink";
 
-type RunBrowser = { choice: BrowserChoice; sourceRoot?: string };
+/**
+ * The app picker's route. `why` is "the default" when the run kept the picker's default. `appProfile` is the app's own Bao profile,
+ * which opens with no sign-in import when running Chrome cannot be used.
+ */
+type RunBrowser = { choice: BrowserChoice; why: RouteWhy; sourceRoot?: string; appProfile: string; closeSignIn: () => Promise<void> };
 
 export interface Notice extends HealNotice {
   id: string;
@@ -569,6 +575,8 @@ export async function startApp(opts: {
         let domain = "";
         try { domain = assertDomain(body.domain || ""); }
         catch (err) { return json(res, { error: safeImportError(err) }, 400); }
+        const bound = boundLoginSite(`https://${domain}/`);
+        if (bound) return json(res, { error: bound }, 400);
         if (pending && (pending.phase === "confirm" || pending.phase === "pick" || pending.phase === "running")) {
           return json(res, publicPending(pending));
         }
@@ -1172,17 +1180,26 @@ export async function startApp(opts: {
       }
       if (req.method === "POST" && url.pathname === "/api/replay") {
         const body = await readBody(req) as { id: string; args: ReplayArgs; heal?: HealMode; fromStep?: string; guide?: boolean; fresh?: boolean; leaveOpen?: boolean; browser?: unknown };
-        const browser: RunBrowser | undefined = body.browser === undefined ? undefined : { choice: browserChoice(body.browser), sourceRoot: profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT };
+        const picked = body.browser === undefined ? undefined : browserChoice(body.browser);
         const saved = library.read(body.id);
         const given = body.args || {};
         const workflow: WorkflowV2 = body.heal ? { ...saved, heal: body.heal } : saved;
+        const movesFiles = workflowMovesFiles(workflow);
+        const sourceRoot = profileSourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+        const settingsProfile = library.settings().chromeProfile;
+        const chosen = picked && defaultRoute(picked, picked === DEFAULT_BROWSER ? "the default" : "named by the agent", movesFiles);
+        const route: { browser: BrowserChoice; why: RouteWhy } | undefined = chosen && boundRoute(chosen.browser, workflow.startUrl, sourceRoot && settingsProfile ? path.join(sourceRoot, settingsProfile) : undefined, movesFiles)
+          ? { browser: "current", why: BOUND_REASON } : chosen;
+        const closeSignIn = async () => {
+          await signIn?.close();
+          signIn = undefined;
+        };
+        const browser: RunBrowser | undefined = route && { choice: route.browser, why: route.why, sourceRoot, appProfile: baoProfile, closeSignIn };
         if (refusesOwnedBrowser(workflow.driver)) {
           return json(res, { error: CDP_LIVE_SERVER_REFUSAL, modelCalls: 0 }, 409);
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
-        const fileRefusal = runningChromeRefusal(browser?.choice, workflow);
-        if (fileRefusal) return json(res, { error: fileRefusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         const started = body.guide
@@ -1220,10 +1237,7 @@ export async function startApp(opts: {
           const run = await runWorkflow(library, workflow, args, notices, replays, runId, prompts, {
             baoProfile,
             sites,
-            closeSignIn: async () => {
-              await signIn?.close();
-              signIn = undefined;
-            },
+            closeSignIn,
           }, fromStep, browser);
           library.savePublicInputs(workflow.id, keptInputs(workflow, args));
           return json(res, run);
@@ -1594,6 +1608,7 @@ export async function startApp(opts: {
       if (req.method === "PUT" && url.pathname === "/api/login-sites") {
         const body = await readBody(req) as Partial<SiteLoginConfig> & LoginBody;
         const origin = siteOrigin(body.origin || body.site || "");
+        refuseBoundLoginSite(origin);
         const prior = sites.has(origin) ? sites.get(origin) : undefined;
         return json(res, sites.save(siteConfig(body, prior)));
       }
@@ -1606,6 +1621,7 @@ export async function startApp(opts: {
         const body = await readBody(req) as { origin?: string };
         const origin = siteOrigin(body.origin || "");
         if (!sites.has(origin)) return json(res, { error: "That site is not saved." }, 404);
+        refuseBoundLoginSite(origin);
         await signIn?.close();
         signIn = undefined;
         const config = sites.get(origin);
@@ -1631,6 +1647,7 @@ export async function startApp(opts: {
       if (req.method === "POST" && url.pathname === "/api/login-import") {
         const body = await readBody(req) as LoginBody;
         const click = clickFrom(body);
+        refuseBoundLoginSite(body.site || "", chromeUserData, body.profile);
         const config = rememberSite(sites, body);
         if (!body.profile) return json(res, { error: "Choose a Chrome profile." }, 400);
         await signIn?.close();
@@ -2409,7 +2426,7 @@ export async function startApp(opts: {
       let count = loaded.cookies.length;
       const page = await sitePage();
       try {
-        count = await injectCookies(page, loaded.cookies);
+        count = await injectCookies(page, loaded.cookies, boundSessionSites(path.join(userData, choice.profile.directory)));
       } finally {
         for (const cookie of loaded.cookies) cookie.value = "";
       }
@@ -2629,7 +2646,7 @@ async function gateSavedLogin(
 ) {
   await gate.closeSignIn();
   const origin = httpOrigin(workflow.startUrl);
-  if (!origin || !gate.sites.has(origin)) return null;
+  if (!origin || !gate.sites.has(origin) || boundLoginSite(origin)) return null;
   const config = gate.sites.get(origin);
   const headless = process.env.BAO_HEADED !== "1";
   await releaseProfile(replays, gate.baoProfile);
@@ -2891,7 +2908,7 @@ async function runRecorded(
     if (result.status === "passed" || result.status === "failed") clearPendingPrompt(library.root);
     return result;
   }
-  const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl);
+  const session = await openReplay(library, workflow.id, replays, profileDir, browser, workflow.startUrl, workflowMovesFiles(workflow));
   let paused = false;
   try {
     const page = session.page;
@@ -2978,6 +2995,7 @@ async function openReplay(
   fixedDir?: string,
   browser?: RunBrowser,
   site = "about:blank",
+  movesFiles = false,
 ): Promise<WorkflowBrowser> {
   for (const [key, session] of replays) {
     if (session.kind !== "owned") continue;
@@ -2998,7 +3016,8 @@ async function openReplay(
   }
   if (browser) {
     const session = await openWorkflowBrowser({ browser: browser.choice, home: library.root, site, sourceRoot: browser.sourceRoot, directory: library.settings().chromeProfile,
-      extensionRoute: library.settings().runningChromeExtension === true }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
+      why: browser.why, movesFiles, extensionRoute: library.settings().runningChromeExtension === true,
+      fallback: async () => { await browser.closeSignIn(); return openReplay(library, id, replays, browser.appProfile, undefined, site); } }).catch((error: unknown) => { throw settingsProfileQuestion(error); });
     replays.set(id, session);
     return session;
   }
@@ -3628,8 +3647,15 @@ function siteConfig(body: Partial<SiteLoginConfig> & LoginBody, prior?: SiteLogi
   };
 }
 
+/** A site that ties its sign-in to the owner's Chrome is not a Login site; the error starts with "The site", so it is a 400. */
+function refuseBoundLoginSite(site: string, chromeUserData?: string, directory?: string): void {
+  const bound = boundLoginSite(site, chromeUserData, directory);
+  if (bound) throw new Error(bound);
+}
+
 function rememberSite(store: SiteStore, body: LoginBody): SiteLoginConfig {
   const origin = siteOrigin(body.site || "");
+  refuseBoundLoginSite(origin);
   const prior = store.get(origin);
   return store.save({
     origin,

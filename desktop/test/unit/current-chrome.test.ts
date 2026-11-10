@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
@@ -148,6 +148,31 @@ test("current Chrome stops without input when Accessibility is absent, the scree
       assert.equal(f.state.connected, false);
     } finally { await rm(f.root, { recursive: true, force: true }); }
   }
+});
+
+test("when the owner's Chrome is not running, Bao starts it plainly and attaches with no owner click", async () => {
+  const f = await fixture(true);
+  try {
+    f.state.pids = [];
+    const started: string[] = [];
+    const chrome = await currentChrome.openCurrentChrome(f.options, { ...f.deps, startChrome: async (root) => {
+      started.push(root);
+      setTimeout(() => { f.state.pids = [7]; }, 300);
+      return true;
+    } });
+    assert.deepEqual(started, [f.root]);
+    assert.equal(f.state.connected, true);
+    assert.ok(f.state.helperCalls.every(call => call[0] === "debug-allow"), "only the Allow press, which the helper does itself");
+    chrome.detach();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("Bao starts Chrome only for the owner's own Chrome folder", async () => {
+  const f = await fixture(true);
+  try {
+    f.state.pids = [];
+    await assert.rejects(currentChrome.openCurrentChrome(f.options, f.deps), /Chrome is not open/, "a fixture folder is never started");
+  } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
 test("a port wait failure closes the inspect tab Bao opened", async () => {
@@ -766,7 +791,7 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: root, executable });
   const fresh = new AgentBrowserProxy({ home: path.join(root, "fresh"), sourceRoot: root, executable });
   try {
-    await assert.rejects(fresh.execute("open"), /Bao startup reached/);
+    await assert.rejects(fresh.execute("open", [], "bao"), /Bao startup reached/);
     assert.equal(lasting, 1);
     assert.equal(copies, 0);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
@@ -782,8 +807,9 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
     assert.equal(copies, 1);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
     await proxy.execute("close");
-    await assert.rejects(proxy.execute("open"), /Bao startup reached/);
-    assert.equal(lasting, 2);
+    assert.equal((await proxy.execute("open"))[0]!.exitCode, 1, "after an explicit close, an open with no browser takes the default, running Chrome");
+    assert.equal(fixtures.length, 4);
+    assert.equal(lasting, 1);
     assert.equal(copies, 1);
   } finally {
     await proxy.end();
@@ -861,4 +887,16 @@ test("a refused DevToolsActivePort read is reported as refused, not as a closed 
     (error: Error) => error.message.startsWith(`macOS did not let Bao read Google Chrome's folder (EPERM on ${file}).`) && !/debugging port/.test(error.message));
     assert.deepEqual(f.state.helperCalls, [], "Bao does not open chrome://inspect when it cannot read the port file");
   } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test("Bao starts the owner's closed Chrome in the background as a new instance, and only on his own Chrome folder", async () => {
+  const runs: { file: string; args: string[]; home?: string }[] = [];
+  const run = async (file: string, args: string[], env: NodeJS.ProcessEnv) => { runs.push({ file, args, home: env.HOME }); };
+  const owner = path.join(tmpdir(), "owner-chrome");
+  assert.equal(await currentChrome.startOwnerChrome(owner, owner, run), true);
+  // open(1): -n opens a new instance even when one runs, -g keeps it in the background, -b names the app by bundle id.
+  assert.deepEqual(runs, [{ file: "/usr/bin/open", args: ["-n", "-g", "-b", "com.google.Chrome"], home: userInfo().homedir }]);
+  assert.equal(await currentChrome.startOwnerChrome(path.join(tmpdir(), "bao-profile"), owner, run), false, "a Bao-owned folder never starts Chrome");
+  assert.equal(runs.length, 1);
+  await assert.rejects(currentChrome.startOwnerChrome(owner, owner, async () => { throw new Error("exit 1"); }), { message: "Bao could not start Google Chrome: exit 1" });
 });

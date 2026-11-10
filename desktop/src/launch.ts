@@ -14,6 +14,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import { parseDevToolsActivePort, readDevToolsActivePort } from "./cdp-live/endpoint";
 import { connectCdp, type CdpSocket } from "./cdp-live/socket";
 import { assertNotDailyChrome } from "./profile";
+import { deleteCookieRows } from "./engines/bound-sign-in";
 import { TEST_MEDIA_ARGS } from "./test-browser.js";
 
 export const ACCOUNT_CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -587,15 +588,27 @@ interface OwnedChromeProcessOptions {
    * opens the window itself, in the background.
    */
   background?: "none" | "window" | "restore";
+  /** Sites the source Chrome profile holds device-bound sessions for. Their cookies go before Chrome starts. */
+  boundSites?: readonly string[];
+}
+
+/**
+ * Readies a Bao-owned profile while its Chrome is stopped. It is never the daily profile, and it holds no Google sign-in, no Times
+ * cookie, and no cookie of a site in `boundSites`: a copied Google session signs the owner out, and the Times counts another device.
+ */
+function prepareOwnedProfile(userDataDir: string, preserveRestoredTabs = false, boundSites: readonly string[] = []): void {
+  assertNotDailyChrome(userDataDir);
+  mkdirSync(userDataDir, { recursive: true });
+  if (!preserveRestoredTabs) {
+    keepSessionCookies(userDataDir);
+    discardRestoredTabs(userDataDir);
+  }
+  try { deleteCookieRows(path.join(userDataDir, "Default"), { sites: boundSites }); }
+  catch (error) { console.error(`Bao could not remove Google and Times sign-ins from its profile: ${error instanceof Error ? error.message : String(error)}`); }
 }
 
 async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
-  assertNotDailyChrome(opts.userDataDir);
-  mkdirSync(opts.userDataDir, { recursive: true });
-  if (!opts.preserveRestoredTabs) {
-    keepSessionCookies(opts.userDataDir);
-    discardRestoredTabs(opts.userDataDir);
-  }
+  prepareOwnedProfile(opts.userDataDir, opts.preserveRestoredTabs, opts.boundSites);
   const exe = opts.executablePath || resolveNormalChrome();
   const headless = ownedHeadless(opts.headless);
   const args = [
@@ -904,9 +917,7 @@ async function launchOwnedChromeForVideo(opts: {
   executablePath?: string;
   deviceScaleFactor?: number;
 }): Promise<BrowserContext> {
-  assertNotDailyChrome(opts.userDataDir);
-  keepSessionCookies(opts.userDataDir);
-  discardRestoredTabs(opts.userDataDir);
+  prepareOwnedProfile(opts.userDataDir);
   const exe = opts.executablePath || resolveNormalChrome();
   const ctx = await chromium.launchPersistentContext(opts.userDataDir, {
     executablePath: exe,

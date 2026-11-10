@@ -72,7 +72,7 @@ function client(env: NodeJS.ProcessEnv) {
   return {
     stderr: () => stderr,
     request,
-    browser: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } }),
+    browser: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args, ...command === "open" ? { browser: "bao" } : {} } }),
     finish: () => request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Fixture task done." } }),
     async close() { child.stdin.end(); await Promise.race([exited, delay(20_000)]); if (child.exitCode === null) child.kill("SIGKILL"); },
   };
@@ -105,7 +105,7 @@ if (args.includes('--json')) {
   const profile = baoAgentProfileDir(home);
   const env: NodeJS.ProcessEnv = {
     PATH: `${dir}${path.delimiter}${process.env.PATH}`, TMPDIR: process.env.TMPDIR, HOME: root, BAO_HOME: home,
-    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
+    BAO_HEAL_CURSOR_ACCOUNT: "0", BAO_LANE: "hermetic", BAO_TEST_BROWSER: pinTestBrowser(), PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
     BAO_AGENT_BROWSER: executable, BAO_AGENT_BROWSER_PROFILE_ROOT: sourceRoot,
     ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
     ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
@@ -121,7 +121,7 @@ if (args.includes('--json')) {
 
   const opened = await mcp.browser("open", ["about:blank"]);
   assert.equal(opened.isError, false, mcp.stderr());
-  assert.match(opened.content!.map((block) => block.text).join("\n"), /Browser: Bao profile, the default\./);
+  assert.match(opened.content!.map((block) => block.text).join("\n"), /Browser: Bao profile, named by the agent\./);
   const closed = await mcp.browser("close");
   assert.equal(closed.isError, false, mcp.stderr());
   await gone(profile);

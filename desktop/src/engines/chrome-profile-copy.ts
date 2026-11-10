@@ -6,6 +6,7 @@ import type { BrowserContext, Page } from "playwright";
 import { assertChromeReadable, chromeDenied } from "../chrome-access";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { connectCdp } from "../cdp-live/socket";
+import { boundSessionSites, deleteChromeTokens, deleteCookieRows, signedOutPreferences } from "./bound-sign-in";
 import { closeRetainedChrome, launchOwnedChrome, launchOwnedChromeEndpoint, listedPids, pidsForDataDir, RESTORE_LAST_SESSION, startupUrl } from "../launch";
 
 export interface ChromeProfileChoice {
@@ -46,6 +47,8 @@ export async function listChromeProfiles(sourceRoot: string): Promise<ChromeProf
 const SKIPPED_ENTRIES = new Set([
   "Cache", "Code Cache", "GPUCache", "Media Cache", "CacheStorage", "ShaderCache", "GrShaderCache",
   "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad", "Crash Reports", "BrowserMetrics",
+  // A copied device-bound session cannot prove the Mac's key, and Google ends it for the owner too.
+  "Device Bound Sessions", "Device Bound Sessions-journal",
 ]);
 const MAGIC = "bao-profile-copy-v1";
 const SAVED_TABS = new Set(["Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs"]);
@@ -130,6 +133,10 @@ export async function copyChromeProfile(options: {
         return true;
       },
     });
+    // The copy never holds a Google sign-in, the Times' session, or a device-bound site's cookies; those sites open in running Chrome.
+    deleteCookieRows(path.join(userDataDir, choice.directory), { sites: boundSessionSites(source) });
+    // Nor is it signed in to Chrome: no Google refresh token, no signed-in account.
+    deleteChromeTokens(path.join(userDataDir, choice.directory));
     const extensionsDir = path.join(userDataDir, choice.directory, "Extensions");
     const copiedExtensions = await readdir(extensionsDir, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return [];
@@ -163,7 +170,7 @@ export async function copyChromeProfile(options: {
       });
       const parsed: unknown = originalPreferences === undefined ? {} : JSON.parse(originalPreferences);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-      preferences = object(parsed);
+      preferences = signedOutPreferences(object(parsed));
     } catch { throw new Error("could not read copied Chrome preferences"); }
     if (options.restoreTabs === false) preferences.session = { ...object(preferences.session), restore_on_startup: RESTORE_LAST_SESSION };
     const browser = object(preferences.browser);

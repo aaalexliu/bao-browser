@@ -80,6 +80,8 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
     assert.equal(launchOptions.length, 2);
     assert.equal(launchOptions[0]!.headless, false, "source Chrome keeps OS-keychain access");
     assert.equal(launchOptions[0]!.background, "none", "sign-in extraction creates no window");
+    assert.deepEqual(launchOptions[0]!.appendArgs, ["--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND"],
+      "sign-in extraction reaches no host");
     assert.equal(launchOptions[0]!.keychain, undefined);
     assert.equal(launchOptions[1]!.headless, false, "the lasting Bao browser still opens its window");
     assert.equal(launchOptions[1]!.background, "window", "behind the owner's apps");
@@ -100,6 +102,8 @@ test("Bao imports one site's cookies and localStorage and keeps its renewed logi
       assert.deepEqual(await chrome.importLogin("https://storage.test/another-path"), { origin: "https://storage.test", found: 0, cookies: 0, storage: 0 });
       assert.equal(launchCount, before + 1, "later opens refresh cookies while empty and storage-only sites skip extraction Chrome");
       assert.equal(launchOptions.at(-1)!.background, "none", "later sign-in refreshes also create no window");
+      assert.deepEqual(launchOptions.at(-1)!.appendArgs, ["--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND"],
+        "later sign-in refreshes also reach no host");
     } finally { page.cdp.close(); }
     await chrome.keepOpen();
     assert.notDeepEqual(launches.pidsForDataDir(baoAgentProfileDir(home)), []);
@@ -499,7 +503,8 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
     assert.equal(results[0]!.exitCode, 0, results[0]!.stderr);
     const commands = () => readFile(log, "utf8").then((text) => text.trim().split("\n").map((line) => JSON.parse(line) as { command: string }));
     if (!native) assert.equal((await commands()).filter((entry) => entry.command === "open").length, scenario === "stale SSO" || scenario === "newer anonymous wall" ? 2 : 1, JSON.stringify(results));
-    assert.equal(launchCount, 2, "each open extracts source cookies only once for each needed origin");
+    // The import's Chrome holds only one site's cookies, so the SSO wall's own host needs a second, offline read.
+    assert.equal(launchCount, scenario === "stale SSO" ? 3 : 2, "each open extracts source cookies only once for each needed origin");
     if (scenario === "signed-out wall" || scenario === "unavailable SSO source") {
       assert.equal((JSON.parse(results[0]!.stdout) as { outcome: string }).outcome, "halted");
     } else {
@@ -555,7 +560,7 @@ test("browser choice is explicit on open and rejects unknown values", async () =
   const tool = TOOLS.find((item) => item.name === "agent_browser")!;
   assert.ok("browser" in tool.inputSchema.properties);
   assert.deepEqual(tool.inputSchema.properties.browser.enum, ["bao", "copy", "current"]);
-  assert.equal(tool.inputSchema.properties.browser.default, "bao");
+  assert.equal(tool.inputSchema.properties.browser.default, "current");
 });
 
 test("only an explicit mock-keychain launch permits mock flags outside a test lane", () => {
@@ -589,7 +594,7 @@ if (args.includes('--json')) {
   t.mock.method(launches, "launchOwnedChromeEndpoint", (options: Parameters<typeof launch>[0]) => launch({ ...options, headless: true }));
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   t.after(async () => { await proxy.close(); await rm(root, { recursive: true, force: true }); });
-  assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0);
+  assert.equal((await proxy.execute("open", ["https://news.example.test/article"], "bao"))[0]!.exitCode, 0);
   const [, imported, fallback] = proxy.pickLines;
   assert.equal(fallback, 'If the site still asks for a sign-in, Bao moves this session to the owner\'s running Chrome over remote debugging on the same Chrome profile "Default" '
     + 'by itself when it sees the wall or when you call wait_for_owner.');
@@ -600,7 +605,7 @@ if (args.includes('--json')) {
   assert.match(run.signInImports![0]!.error!, /^macOS did not let Bao read Google Chrome's folder \(EACCES on /);
 });
 
-test("without Chrome's profiles, the default Bao profile still opens and says why, and a copy or a named profile stops", { timeout: 60_000 }, async (t) => {
+test("without Chrome's profiles, an open that names no browser opens the Bao profile and says why, and a copy or a named profile stops", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-no-chrome-"));
   const sourceRoot = path.join(root, "no-chrome");
   const home = path.join(root, "home");
@@ -620,7 +625,7 @@ if (args.includes('--json')) {
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   t.after(async () => { await proxy.close(); await rm(root, { recursive: true, force: true }); });
   assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0);
-  assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, the default\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
+  assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, fallback when running Chrome could not be used\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
   assert.ok(proxy.pickLines[0]!.includes(`Bao imports no sign-ins: Bao could not read Chrome's profiles in ${sourceRoot}: `), proxy.pickLines[0]);
   await proxy.close();
   await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy"), /^Error: Bao could not read Chrome's profiles in /);
@@ -649,7 +654,7 @@ if (args.includes('--json')) {
   t.after(async () => { await proxy.close(); await chmod(sourceRoot, 0o700); await rm(root, { recursive: true, force: true }); });
   const refused = `macOS did not let Bao read Google Chrome's folder (EACCES on ${sourceRoot}). Turn on Google Chrome for the app that started Bao, such as your terminal or agent app, under System Settings > Privacy & Security > Files & Folders, then try again.`;
   assert.equal((await proxy.execute("open", ["https://news.example.test/article"]))[0]!.exitCode, 0, "Bao's own profile needs no grant");
-  assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, the default\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
+  assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, fallback when running Chrome could not be used\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
   assert.ok(proxy.pickLines[0]!.endsWith(refused), proxy.pickLines[0]);
   const run = new Library(home).readRun(proxy.activeRunId!);
   assert.equal(run.browser?.route === "bao" ? run.browser.unread : undefined, refused);

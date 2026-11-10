@@ -9,8 +9,8 @@ import type { BrowserContext, Page } from "playwright";
 import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-record";
 import type { BrowserChoice } from "../browser-choice";
 import type { SignInImport } from "../engines/bao-profile";
-import { chromeApp, ChromeProfileQuestion, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, runningChromeRefusal, type WorkflowBrowser } from "../engines/workflow-browser";
+import { chromeApp, ChromeProfileQuestion, defaultRoute, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, runningChromeRefusal, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -283,7 +283,8 @@ export async function runWorkflow(
   const savedCopy = placed && !placed.local ? materializeWorkflow(library, placed) : undefined;
   const loaded = request.document ? parseWorkflow(request.document) : (savedCopy ?? placed!.document);
   const workflow = request.startUrl ? { ...loaded, startUrl: request.startUrl } : loaded;
-  const fileRefusal = runningChromeRefusal(browser, workflow);
+  const route = browser && defaultRoute(browser, request.why ?? "named by the agent", workflowMovesFiles(workflow));
+  const fileRefusal = runningChromeRefusal(route?.browser, workflow);
   if (fileRefusal) return emptyOutcome(id, "failed", fileRefusal);
   const stamp = (outcome: WorkflowOutcome): WorkflowOutcome => {
     const workflowId = outcome.workflowId || placed?.document.id || "";
@@ -305,14 +306,14 @@ export async function runWorkflow(
   const lines: string[] = [];
   const shown = (outcome: WorkflowOutcome): WorkflowOutcome => stamp(lines.length ? { ...outcome, browser: lines } : outcome);
   try {
-    const played = await replayInBrowser(library, workflow, inputs, secrets, control, lines, browser && { choice: browser, profile, why: request.why });
+    const played = await replayInBrowser(library, workflow, inputs, secrets, control, lines, route && { choice: route.browser, profile, why: route.why });
     if (played.held) return shown(played.outcome);
     library.savePublicInputs(id, publicInputs(workflow, inputs));
     saveWorkflowRun(library, workflow, played.run, inputs, played.outcome, played.clip);
     return shown(played.outcome);
   } catch (err) {
     const reason = err instanceof ChromeProfileQuestion
-      ? `${err.message} ${err.retry({ id, ...browser ? { browser } : {} }, "run_workflow")} Pass the same inputs.`
+      ? `${err.message} ${err.retry({ id, ...browser && request.why !== "the default" ? { browser } : {} }, "run_workflow")} Pass the same inputs.`
       : err instanceof Error ? err.message : String(err);
     return shown(remember(library, workflow, "failed", reason, workflow.steps[0]?.id || id, inputs, browser, profile));
   }
@@ -320,7 +321,7 @@ export async function runWorkflow(
 
 /** A sign-in import, named by the Chrome profile it read. */
 function importLine(browser: WorkflowBrowser, report: SignInImport): string[] {
-  const from = browser.pick?.route === "bao" ? browser.pick.profile?.directory : undefined;
+  const from = browser.pick?.route === "bao" && browser.pick.unread === undefined ? browser.pick.profile?.directory : undefined;
   return from ? [signInLine(report, from)] : [];
 }
 
@@ -572,7 +573,7 @@ async function replayInBrowser(
   let browser: WorkflowBrowser;
   if (chosen) {
     const options = { browser: chosen.choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile, profile, why: chosen.why,
-      extensionRoute: library.settings().runningChromeExtension === true };
+      movesFiles: workflowMovesFiles(workflow), extensionRoute: library.settings().runningChromeExtension === true };
     const plan = await planWorkflowBrowser(options);
     browser = await openWorkflowBrowser(options, plan).catch((error: unknown) => {
       lines.push(failedPickLine(plan.route, plan.why, chromeApp(), plan.route === "extension" ? undefined : plan.profile));

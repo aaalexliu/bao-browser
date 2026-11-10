@@ -155,18 +155,12 @@ test("Running Chrome refuses a workflow that downloads or uploads a file before 
   for (const id of ["download", "upload", "drop"]) {
     const outcome = await runWorkflow(app.library, { id, browser: "current" });
     assert.deepEqual([outcome.outcome, outcome.reason], ["failed", refusal], `run_workflow ${id}`);
-    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(10_000) });
-    assert.deepEqual([response.status, await response.json()], [409, { error: refusal }], `app Replay ${id}`);
   }
   assert.equal((await runWorkflow(app.library, { id: "plain", browser: "current" })).reason, EXTENSION_NOT_LINKED);
   app.library.updateSettings({ runningChromeExtension: false });
   for (const id of ["download", "upload", "drop"]) {
     const outcome = await runWorkflow(app.library, { id, browser: "current" });
     assert.deepEqual([outcome.outcome, outcome.reason], ["failed", refusal], `run_workflow ${id} over remote debugging`);
-    const response = await fetch(`http://127.0.0.1:${app.port}/api/replay`, { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(10_000) });
-    assert.deepEqual([response.status, await response.json()], [409, { error: refusal }], `app Replay ${id} over remote debugging`);
   }
 });
 

@@ -21,6 +21,7 @@ import {
   type DecryptedCookie,
   type ProfileInfo,
 } from "./read";
+import { boundSessionSites, boundSite } from "../engines/bound-sign-in";
 import { setCookiesOneAtATime, type CookieSetter } from "./set-cookies";
 import { siteHost, siteOrigin } from "./sites";
 import { clearIndexedDbLocks, copyIndexedDb, matchingIndexedDbOrigins, originsForSite, readLocalStorage, setLocalStorageItems, type StorageItem } from "./storage";
@@ -62,6 +63,16 @@ export function assertClick(click: ClickInput | undefined): asserts click is Imp
   if ((url.protocol !== "http:" && url.protocol !== "https:") || !url.hostname || url.hostname === "*") {
     throw new ConsentRequired();
   }
+}
+
+/**
+ * Google, YouTube, nytimes.com, and a site the Chrome profile `directory` holds a device-bound session for tie their sign-in to the
+ * owner's Chrome, so they are not Login sites. Returns the plain line that says so, or undefined for any other site.
+ */
+export function boundLoginSite(site: string, chromeUserData?: string, directory?: string): string | undefined {
+  const profileDir = chromeUserData && directory && safeDirectory(directory) ? path.join(chromeUserData, directory) : undefined;
+  if (!boundSite(siteOrigin(site), profileDir)) return undefined;
+  return `The site ${siteHost(site)} ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.`;
 }
 
 export async function previewChromeProfiles(opts: {
@@ -144,7 +155,7 @@ export async function importChromeLogin(opts: {
     throw new Error("Import needs Bao's Chrome.");
   }
   const setter: CookieSetter = { setOne: opts.setOne };
-  const outcomes = await setCookiesOneAtATime(setter, loaded.cookies);
+  const outcomes = await setCookiesOneAtATime(setter, loaded.cookies, boundSessionSites(resolveProfileDir(opts.chromeUserData, opts.profileDirectory)));
   let localStorageItems = 0;
   let localStorageNames: string[] = [];
   let indexedDbNames: string[] = [];
