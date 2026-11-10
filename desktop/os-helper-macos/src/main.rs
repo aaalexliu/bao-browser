@@ -5,6 +5,7 @@
 mod act;
 mod ae;
 mod apps;
+mod disclaim;
 mod drag;
 mod element;
 mod fixture;
@@ -247,6 +248,15 @@ fn emit(args: &[String], value: &Value) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(outcome) = disclaim::respawn() {
+        match outcome {
+            Ok(code) => std::process::exit(code),
+            Err(err) => {
+                emit(&args, &json!({"ok": false, "error": err}));
+                std::process::exit(1);
+            }
+        }
+    }
     match run(&args) {
         Ok(value) => emit(&args, &value),
         Err(err) => {

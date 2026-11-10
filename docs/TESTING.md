@@ -94,6 +94,6 @@ JavaScript errors. Native-host connectivity needs its own temp config and is
 not proven just by an unpacked load.
 
 `npm run package:mac` must also pass for packaging changes. Follow
-[Mac build](mac-build.md), reuse the signed helper, and inspect the bundled
+[Rebuild with an existing grant](mac-build.md#rebuild-with-an-existing-grant) and inspect the bundled
 `Bao.app/Contents/Resources/extension/dist/manifest.json`. Do not install the
 test build over `/Applications/Bao.app` or change system permissions.

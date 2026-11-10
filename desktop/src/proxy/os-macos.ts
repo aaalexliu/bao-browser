@@ -1,10 +1,8 @@
 // Client for desktop/os-helper-macos. Press and set-value take role and name.
 // They do not take a coordinate.
 
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { OsTarget } from "../../../shared/types";
 
@@ -91,71 +89,65 @@ function parseHit(out: string, err: string, code: number | null): AxHit {
   return parsed;
 }
 
+const HELPER_TOO_OLD = "BaoOSHelper is older than this Bao; rebuild it";
+
 function helperError(message: string): Error {
-  if (/unknown command/.test(message)) return new Error("BaoOSHelper is older than this Bao; rebuild it");
+  if (/unknown command/.test(message)) return new Error(HELPER_TOO_OLD);
   return new Error(message);
 }
 
-function runBin(bin: string, args: string[]): Promise<AxHit> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    let err = "";
-    child.stdout.on("data", (chunk: Buffer) => { out += chunk.toString(); });
-    child.stderr.on("data", (chunk: Buffer) => { err += chunk.toString(); });
-    child.on("error", reject);
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error(`os helper timed out: ${args[0]}`));
-    }, 20000);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      try { resolve(parseHit(out, err, code)); } catch (e) { reject(e); }
-    });
-  });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** LaunchServices launch so TCC attributes the prompt to the app bundle.
- * `open -W` can return before the helper finishes, so the result file is polled. */
-async function runApp(app: string, args: string[], timeoutMs = 45000): Promise<AxHit> {
-  const dir = await mkdtemp(path.join(tmpdir(), "bao-os-"));
-  const stdout = path.join(dir, "out.json");
-  const stderr = path.join(dir, "err.txt");
-  const result = path.join(dir, "result.json");
-  const started = Date.now();
+function canonical(file: string): string {
   try {
-    const child = spawn("/usr/bin/open", [
-      "-n", "-W", "-g", "-a", app,
-      "--stdout", stdout, "--stderr", stderr,
-      "--args", ...args, "--result", result,
-    ], { stdio: "ignore" });
-    let closed: number | null | undefined;
-    child.on("error", () => { closed = -1; });
-    child.on("close", (code) => { closed = code ?? -1; });
-    let out = "";
-    while (Date.now() - started < timeoutMs) {
-      out = await readFile(result, "utf8").catch(() => "");
-      if (!out.trim()) out = await readFile(stdout, "utf8").catch(() => "");
-      if (out.trim()) {
-        try { JSON.parse(out); break; } catch { /* the helper is still writing the result */ }
-      }
-      if (typeof closed === "number" && closed !== 0) break;
-      await sleep(80);
-    }
-    const err = await readFile(stderr, "utf8").catch(() => "");
-    if (!out.trim()) throw helperError(err.trim() || `os helper produced no result for ${args[0]}`);
-    return parseHit(out, err, 0);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+    return realpathSync(file);
+  } catch {
+    return file;
   }
 }
 
-function run(bin: string, args: string[], timeoutMs?: number): Promise<AxHit> {
-  return bin.endsWith(".app") ? runApp(bin, args, timeoutMs) : runBin(bin, args);
+function accepted(command: string | undefined, hit: AxHit): AxHit {
+  if ((command === "permissions" || command === "permissions-ax") && !(hit.exe && hit.parentExe && canonical(hit.exe) === canonical(hit.parentExe))) {
+    throw new Error(HELPER_TOO_OLD);
+  }
+  return hit;
+}
+
+/** The executable inside a helper bundle. */
+export function helperExecutable(bin: string): string {
+  return bin.endsWith(".app") ? path.join(bin, "Contents", "MacOS", path.basename(bin, ".app")) : bin;
+}
+
+function killGroup(child: ChildProcess): void {
+  if (!child.pid) return;
+  try { process.kill(-child.pid, "SIGKILL"); } catch { /* the group already exited */ }
+}
+
+/** Spawns the helper directly, not through LaunchServices. BaoOSHelper respawns itself as its own
+ * responsible process, so TCC still checks the helper's grant. The helper leads its own process
+ * group, and a timeout kills that group, so no helper outlives the call. */
+function run(bin: string, args: string[], timeoutMs = bin.endsWith(".app") ? 45_000 : 20_000): Promise<AxHit> {
+  const exe = helperExecutable(bin);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      finish();
+    };
+    const child = spawn(exe, args, { stdio: ["ignore", "pipe", "pipe"], detached: true });
+    let out = "";
+    let err = "";
+    child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString(); });
+    child.stderr?.on("data", (chunk: Buffer) => { err += chunk.toString(); });
+    child.on("error", (error) => settle(() => reject(new Error(`could not start ${path.basename(exe)}: ${error.message}`))));
+    const timer = setTimeout(() => settle(() => {
+      killGroup(child);
+      reject(new Error(`os helper timed out: ${args[0]}`));
+    }), timeoutMs);
+    child.on("close", (code) => settle(() => {
+      try { resolve(accepted(args[0], parseHit(out, err, code))); } catch (e) { reject(e); }
+    }));
+  });
 }
 
 function identity(target: OsTarget): string[] {
