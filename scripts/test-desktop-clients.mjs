@@ -477,6 +477,7 @@ function startInstalledMcp() {
     });
   }
   return {
+    runId: undefined,
     async handshake() {
       await request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bao-desktop-clients', version: '0' } }, 20000);
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
@@ -493,17 +494,30 @@ function startInstalledMcp() {
   };
 }
 
-async function browserCall(mcp, command, args, browserName, timeoutMs) {
-  const params = { command, args };
-  if (browserName) params.browser = browserName;
-  const result = await mcp.call('agent_browser', params, timeoutMs || (command === 'open' ? 120000 : 45000));
+function namedRun(text) {
+  return String(text || '').split('\n').map(line => /^Run (\S+)(?: · \w+)?$/.exec(line)?.[1]).find(Boolean);
+}
+
+async function agentCall(mcp, command, args, options = {}) {
+  const params = { command, args: args || [] };
+  if (options.browser) params.browser = options.browser;
+  if (mcp.runId && !(command === 'open' && options.newTask)) params.run_id = mcp.runId;
+  const result = await mcp.call('agent_browser', params, options.timeoutMs || (command === 'open' ? 120000 : 45000));
+  const named = namedRun(result.text);
+  if (named) mcp.runId = named;
+  if (command === 'close' && !result.isError) mcp.runId = undefined;
+  return result;
+}
+
+async function browserCall(mcp, command, args, browserName, timeoutMs, newTask = false) {
+  const result = await agentCall(mcp, command, args, { browser: browserName, timeoutMs, newTask });
   if (result.isError) throw new Error(`agent_browser ${command} failed`);
   return result;
 }
 
 async function pageSnapshot(mcp) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const result = await mcp.call('agent_browser', { command: 'snapshot', args: [] }, 45000);
+    const result = await agentCall(mcp, 'snapshot', [], { timeoutMs: 45000 });
     if (!result.isError) return result.text;
     await sleep(500);
   }
@@ -519,7 +533,7 @@ async function saveShot(mcp, file) {
 
 async function clickRef(mcp, ref) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const result = await mcp.call('agent_browser', { command: 'click', args: [`@${ref}`] }, 30000);
+    const result = await agentCall(mcp, 'click', [`@${ref}`], { timeoutMs: 30000 });
     if (!result.isError && !/stale|ambiguous|not found|covered by/i.test(result.text)) return;
     await sleep(400);
   }
@@ -556,8 +570,8 @@ function controlRef(snapshot, role, name) {
 }
 
 async function dismissMenus(mcp) {
-  await mcp.call('agent_browser', { command: 'press', args: ['Escape'] }, 10000).catch(() => undefined);
-  await mcp.call('agent_browser', { command: 'press', args: ['Escape'] }, 10000).catch(() => undefined);
+  await agentCall(mcp, 'press', ['Escape'], { timeoutMs: 10000 }).catch(() => undefined);
+  await agentCall(mcp, 'press', ['Escape'], { timeoutMs: 10000 }).catch(() => undefined);
 }
 
 const headerSkip = /Allow|Decline|Stop|Send|sidebar|Project|Model|Manual|Dictate|Microphone|voice|incognito|Add files|Upload|Share|Copy|Retry|Edit|Like|Dislike|Reply|Manage devices|Manage computers/i;
@@ -619,19 +633,19 @@ async function sendPrompt(mcp, prompt, shotFile) {
   const before = await pageSnapshot(mcp);
   const ref = composerRef(before);
   if (!ref) throw new Error('claude.ai composer is missing');
-  const filled = await mcp.call('agent_browser', { command: 'fill', args: [`@${ref}`, prompt] }, 30000);
+  const filled = await agentCall(mcp, 'fill', [`@${ref}`, prompt], { timeoutMs: 30000 });
   if (filled.isError) throw new Error('Could not fill the claude.ai composer');
   const readBack = await pageSnapshot(mcp);
   if (!readBack.includes(prompt) || !composerHolds(readBack, prompt)) {
     const current = composerRef(readBack) || ref;
-    await mcp.call('agent_browser', { command: 'fill', args: [`@${current}`, ''] }, 15000).catch(() => undefined);
+    await agentCall(mcp, 'fill', [`@${current}`, ''], { timeoutMs: 15000 }).catch(() => undefined);
     throw new Error('Composer text differs from the exact prompt; cleared it without sending');
   }
   if (shotFile) await saveShot(mcp, shotFile);
   const send = sendRef(readBack);
   if (send) await clickRef(mcp, send);
   else {
-    const pressed = await mcp.call('agent_browser', { command: 'press', args: ['Enter'] }, 15000);
+    const pressed = await agentCall(mcp, 'press', ['Enter'], { timeoutMs: 15000 });
     if (pressed.isError) throw new Error('Could not send the prompt');
   }
   await sleep(1000);
@@ -639,7 +653,7 @@ async function sendPrompt(mcp, prompt, shotFile) {
   if (composerHolds(after, prompt)) {
     const retry = sendRef(after);
     if (retry) await clickRef(mcp, retry);
-    else await mcp.call('agent_browser', { command: 'press', args: ['Enter'] }, 15000);
+    else await agentCall(mcp, 'press', ['Enter'], { timeoutMs: 15000 });
   }
 }
 
@@ -806,7 +820,7 @@ async function runClaude(options) {
     await capture(ui, options.output, 'bao-before');
     mcp = startInstalledMcp();
     await mcp.handshake();
-    const opened = await browserCall(mcp, 'open', [claudeChat], 'current', 120000);
+    const opened = await browserCall(mcp, 'open', [claudeChat], 'current', 120000, true);
     const tabId = await taskTabId(mcp, opened.text);
     lifecycle.taskTab = tabId || null;
     if (!tabId) throw new Error('Could not identify the Bao task tab on claude.ai. Stopped without closing another tab.');

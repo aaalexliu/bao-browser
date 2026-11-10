@@ -831,7 +831,7 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
     assert.equal(waited.reason, "The session ended before you finished.");
     await assert.rejects(f.proxy.execute("open", [], undefined, false, undefined, {}, f.proxy.activeRunId), /owner's Chrome session ended/);
   }
-  await assert.rejects(f.proxy.execute("open", [], "current", false, undefined, {}, f.proxy.activeRunId), /reconnect startup reached/);
+  await assert.rejects(f.proxy.execute("open", [], "current", false, undefined, {}, run.id), /reconnect startup reached/);
 });
 
 async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
@@ -918,6 +918,7 @@ test("a wait_for_owner that names the run whose Chrome ended returns the reconne
   assert.equal(reply.outcome, "closed");
   assert.equal(reply.instruction, CURRENT_CHROME_ENDED);
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Your Chrome session ended. This session cannot continue.");
+  await assert.rejects(f.proxy.execute("open", [], "current", false, undefined, {}, runId), /reconnect startup reached/, "an open with browser=current still reconnects the run whose Chrome quit");
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
   assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);

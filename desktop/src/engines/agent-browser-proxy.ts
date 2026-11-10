@@ -41,6 +41,10 @@ const FIXED_OPTIONS = new Set([
 const runIdNeeded = (command: string) => `run_id is required on ${command} while a browser session is open. Send back the run id from this chat's latest agent_browser result; a chat whose results named no run has no session here.`;
 const OTHER_TASK = "The browser now belongs to another task, so stop here.";
 
+export function otherTaskClosed(runId: string): string {
+  return `${RUN_ENDED} Run ${runId} is not Bao's open browser session. ${OTHER_TASK}`;
+}
+
 /** One row of the native `tab list --json`. */
 type NativeTab = { tabId?: string; targetId?: string; label?: string | null; active?: boolean };
 
@@ -258,6 +262,7 @@ export class AgentBrowserProxy {
   get endedWait(): string | undefined { return this.endedLine; }
   /** The reconnect instruction for a run whose owner's Chrome ended or whose task tab closed. */
   private endedRuns = new Map<string, string>();
+  private endedByNewer = new Set<string>();
   private refusal: { runId?: string } | undefined;
   /** A command Bao refused because it named no run, or a run that is not the open session. */
   get refused(): { runId?: string } | undefined { return this.refusal; }
@@ -315,8 +320,7 @@ export class AgentBrowserProxy {
     // Snapshot, click, and the rest change nothing unless they name the open run. A new open is the exception: the newest task wins.
     if (foreign && command !== "open") {
       if (claimed === undefined) throw new Error(runIdNeeded(String(command)));
-      const instruction = `${RUN_ENDED} Run ${claimed} is not Bao's open browser session. ${OTHER_TASK}`;
-      return [{ stdout: JSON.stringify({ outcome: "closed", instruction }), stderr: "", exitCode: 0 }];
+      return [{ stdout: JSON.stringify({ outcome: "closed", instruction: otherTaskClosed(claimed) }), stderr: "", exitCode: 0 }];
     }
     if (foreign && command === "open") {
       if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
@@ -324,6 +328,10 @@ export class AgentBrowserProxy {
       else if (this.session?.removing) await this.session.removing;
       this.refusal = undefined;
     } else if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
+    if (openRun === undefined && claimed !== undefined && this.endedByNewer.has(claimed)) {
+      this.refusal = { runId: claimed };
+      return [{ stdout: JSON.stringify({ outcome: "closed", instruction: otherTaskClosed(claimed) }), stderr: "", exitCode: 0 }];
+    }
     this.endedLine = this.staleWait;
     this.staleWait = undefined;
     this.workflowOutcome = undefined;
@@ -559,6 +567,10 @@ export class AgentBrowserProxy {
     this.refusal = undefined;
     this.shown = undefined;
     const session = this.session;
+    if (!session && runId !== undefined && this.endedByNewer.has(runId)) {
+      this.refusal = { runId };
+      return undefined;
+    }
     if (session && runId !== session.recording.id) {
       this.refusal = runId === undefined ? {} : { runId };
       if (runId === undefined) throw new Error(runIdNeeded("finish_task"));
@@ -1317,8 +1329,13 @@ export class AgentBrowserProxy {
     if (this.session === session) this.session = undefined;
   }
 
+  endedByNewerTask(runId: string | undefined): boolean {
+    return runId !== undefined && this.endedByNewer.has(runId);
+  }
+
   /** Ends the open run because a newer open started, and closes its task tab. */
   private async endForNewerTask(session: Session): Promise<void> {
+    this.endedByNewer.add(session.recording.id);
     if (session.ownerWait) {
       this.staleWait = this.waitEndedLine(session, "a new open starts a new task");
       session.recording.ownerWaiting(false);

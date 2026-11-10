@@ -445,6 +445,61 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
   });
 }
 
+test("a failed open from another chat does not name the run it ended", { timeout: 60_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const ended = c.run!;
+  const failed = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: ["http://127.0.0.1/"], browser: "copy", profile: "Profile 9" } });
+  assert.equal(failed.isError, true);
+  const text = failed.content!.map((block) => block.text).join("\n");
+  assert.match(text, /Chrome has no profile "Profile 9"/);
+  assert.equal(text.includes(ended), false, text);
+  assert.equal(f.library.listRuns().some((run) => run.status === "recording"), false);
+});
+
+test("after the newer task finishes, the older chat's named commands stay closed", { timeout: 90_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const older = c.run!;
+  const opened = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", browser: "copy", args: ["http://127.0.0.1/"] } });
+  assert.equal(opened.isError, false, JSON.stringify(opened));
+  const newer = opened.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean)!;
+  assert.notEqual(newer, older);
+  assert.equal((await c.request("tools/call", { name: "finish_task", arguments: { run_id: newer, outcome: "passed", reason: "Chat B finished." } })).isError, false);
+  const closed = `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
+  const runs = f.library.listRuns().length;
+  for (const arguments_ of [
+    { command: "snapshot", args: [], run_id: older },
+    { command: "click", args: ["@e1"], run_id: older },
+    { command: "open", args: ["http://127.0.0.1/again"], browser: "copy", run_id: older },
+    { command: "wait_for_owner", args: ["40"], run_id: older },
+    { command: "close", run_id: older },
+  ]) {
+    const result = await c.request("tools/call", { name: "agent_browser", arguments: arguments_ });
+    assert.equal(result.isError, false, JSON.stringify(result));
+    const reply = result.structuredContent as { outcome?: string; instruction?: string; run_id?: string };
+    assert.equal(reply.outcome, "closed", arguments_.command);
+    assert.equal(reply.instruction, closed, arguments_.command);
+    assert.equal(reply.run_id, older);
+    assert.equal(result.content!.some((block) => block.text.includes(newer)), false);
+  }
+  const late = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: "older chat", run_id: older } });
+  assert.equal(late.isError, false);
+  assert.deepEqual(late.content!.map((block) => block.text), [closed]);
+  assert.equal((late.structuredContent as { outcome: string }).outcome, "no_session");
+  assert.equal(f.library.listRuns().length, runs);
+  const fresh = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", browser: "copy" } });
+  assert.equal(fresh.isError, false, JSON.stringify(fresh));
+  const started = fresh.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean);
+  assert.ok(started && started !== older);
+});
+
 test("a wait_for_owner, close, or finish_task whose run_id is not the open session names that run and leaves the open session alone", { timeout: 60_000 }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());

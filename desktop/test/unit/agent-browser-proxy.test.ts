@@ -884,3 +884,45 @@ test("an open with no run id ends the open run and starts its own, and the older
     assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, newer))[0]!.stdout, "snapshot unchanged\n");
   } finally { await f.close(); }
 });
+
+test("after the newer task finishes, a command that names the ended run stays closed and changes nothing", async (t) => {
+  const f = await fixture(t);
+  const library = new Library(path.join(f.root, "home"));
+  const closedFor = (runId: string) => `This run's browser session ended and cannot continue. Report that to the owner. Run ${runId} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const older = f.proxy.activeRunId!;
+    await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    const newer = f.proxy.activeRunId!;
+    assert.notEqual(newer, older);
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "chat B finished" }, newer), newer);
+    assert.equal(f.proxy.hasSession(), false);
+    const runs = library.listRuns().length;
+    const sent = (await f.calls()).length;
+    const closed = closedFor(older);
+    for (const [command, args] of [["snapshot", []], ["click", ["@e1"]], ["open", ["http://127.0.0.1/again"]], ["wait_for_owner", ["40"]], ["close", []]] as const) {
+      const result = await f.proxy.execute(command, [...args], undefined, false, undefined, {}, older);
+      const reply = JSON.parse(result[0]!.stdout) as { outcome: string; instruction: string };
+      assert.equal(reply.outcome, "closed", command);
+      assert.equal(reply.instruction, closed, command);
+      assert.equal(f.proxy.hasSession(), false, command);
+      assert.equal(f.proxy.refused?.runId, older, command);
+    }
+    assert.equal(await f.proxy.finishTask({ outcome: "failed", reason: "older chat" }, older), undefined);
+    assert.equal(f.proxy.refused?.runId, older);
+    assert.equal(f.proxy.hasSession(), false);
+    assert.equal((await f.calls()).length, sent, "naming the ended run sends no native command");
+    assert.equal(library.listRuns().length, runs, "naming the ended run records no new run");
+    assert.equal(library.readRun(newer).envelope?.reason, "chat B finished");
+    const started = await f.proxy.execute("open", ["http://127.0.0.1/fresh"], "copy");
+    assert.equal(started[0]!.exitCode, 0);
+    const fresh = f.proxy.activeRunId!;
+    assert.notEqual(fresh, older);
+    assert.equal(f.proxy.hasSession(), true);
+    await f.proxy.finishTask({ outcome: "passed", reason: "fresh task" }, fresh);
+    const other = await f.proxy.execute("open", ["http://127.0.0.1/other"], "copy", false, undefined, {}, "run-not-ended-by-newer");
+    assert.equal(other[0]!.exitCode, 0);
+    assert.notEqual(f.proxy.activeRunId, older);
+    assert.notEqual(f.proxy.activeRunId, "run-not-ended-by-newer");
+  } finally { await f.close(); }
+});
