@@ -133,7 +133,7 @@ interface SessionData {
   ownerWait?: { targetId: string; page: OwnerPage; reopen?: string } | "pending";
   /** Chrome's own URL and title for the active tab, from the latest metadata read. */
   page?: OwnerPage;
-  /** The latest http(s) page whose URL and title are not a sign-in or check. An address wall, or a sign-in title on another host, reopens this. */
+  /** The latest http(s) page whose URL and title are not a sign-in or check. A click or later navigation reopens this at an address wall or a cross-host sign-in title. */
   beforeWall?: OwnerPage;
   /** The latest sign-in or check page, kept for the owner-wait card. */
   ownerPage?: OwnerPage;
@@ -809,7 +809,7 @@ export class AgentBrowserProxy {
     return httpPage(page?.url) ?? before;
   }
 
-  /** The page Running Chrome should open, remembered with the wall so a later retry does not fall back to the latest open. */
+  /** The page Running Chrome should open, stored on the wall so a later retry opens that page. */
   private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): { targetId: string; page: OwnerPage; reopen?: string } {
     return { targetId: active.targetId, page: active.page, reopen: this.pageToReopen(session, active.page, openedSite) };
   }
@@ -823,11 +823,10 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * A Bao-profile session that stopped at a wall continues in the owner's running Chrome over remote debugging, on the Chrome
-   * profile its sign-in import read, in the same session and run. Bao opens the page before a sign-in or check address, the
-   * page before a sign-in title on another host, the wall's own URL for a check title or a same-host sign-in title, or the page
-   * that holds an in-page dialog, then closes its own window. The line names the wall's host. When that does not work, the
-   * session stays in Bao's window and the line says why. Returns the open result in the new tab.
+   * Continues a Bao-profile session in the owner's running Chrome over remote debugging, on the Chrome profile its sign-in
+   * import read, in the same session and run. Opens the http(s) page it is given, or the wall or active page when it is given
+   * none, then closes Bao's window. When the move does not work, the session stays and the line says why. Returns the open
+   * result in the new tab.
    */
   private async moveAway(session: Session, what: string, url: string | undefined, retry = false): Promise<AgentBrowserCommandResult | undefined> {
     const bound = what === BOUND_REASON;
