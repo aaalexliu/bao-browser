@@ -47,7 +47,11 @@ test("get_run on a passed capture points at the last step, not an earlier failur
     assert.equal(getRun(library, "run-failed").step, "command-4");
 
     library.saveRun(capture("run-open", "recording", steps));
-    assert.equal(getRun(library, "run-open").step, undefined);
+    const open = getRun(library, "run-open");
+    assert.equal(open.outcome, "recording");
+    assert.equal(open.step, "command-4");
+    assert.equal(open.reason, undefined);
+    assert.equal(open.stops.length, 0);
 
     library.saveRun(capture("run-empty", "passed", []));
     assert.equal(getRun(library, "run-empty").step, undefined);

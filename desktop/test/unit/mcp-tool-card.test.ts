@@ -417,7 +417,7 @@ test("recording captures do not present recovered failures as current stops", as
     const outcome = getRun(library, f.recording.id);
     assert.equal(outcome.outcome, "recording");
     assert.equal(outcome.reason, undefined);
-    assert.equal(outcome.step, undefined);
+    assert.equal(outcome.step, f.step.id);
     assert.equal(outcome.ask, undefined);
     assert.deepEqual(outcome.stops, []);
     const view = inspectRunView(library, { run_id: f.recording.id });

@@ -463,11 +463,11 @@ export function getRun(library: Library, runId: string): Omit<WorkflowOutcome, "
   const failure = recording ? undefined : stored.failure as RunResult["failure"];
   const steps = stored.steps as { id?: string; status?: string; reason?: string }[];
   const passed = outcome === "ok";
-  const stoppedStep = recording || passed ? undefined : steps
+  const stoppedStep = passed ? undefined : steps
     .find((item) => item?.status === "paused" || item?.status === "failed" || item?.status === "timeout");
   const lastStep = passed ? [...steps].reverse().find((item) => item?.id) : undefined;
   const reason = recording ? undefined : envelope?.reason || failure?.reason || stoppedStep?.reason;
-  const step = recording ? undefined : envelope?.step || failure?.stepId || stoppedStep?.id || lastStep?.id;
+  const step = recording ? stoppedStep?.id : envelope?.step || failure?.stepId || stoppedStep?.id || lastStep?.id;
   const lastClass = stored.pageClasses?.[stored.pageClasses.length - 1];
   const receipts = stored.steps.flatMap((item) => {
     const receipt = item as Partial<RecordedAgentBrowserCommand>;
