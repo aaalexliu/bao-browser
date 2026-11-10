@@ -158,10 +158,10 @@ export function stepSentence(command: string, results: readonly AgentBrowserComm
   return evidence?.step.summary?.text ?? describeStep({ command, args: options.args ?? [], results, error, owner: options.owner, current: options.current }).text;
 }
 
-/** The line a calling agent reads when this step has no page picture, or kept one of a different tab. */
-export function pageShotLine(step: { afterShotError?: string; shotNote?: string; native?: { command?: string } } | undefined): string | undefined {
+/** The line a calling agent reads when this step has no page picture, or kept one of a different tab. A step that failed to start omits the line; the thrown error already names the cause. */
+export function pageShotLine(step: { failedToStart?: boolean; afterShotError?: string; shotNote?: string; native?: { command?: string } } | undefined): string | undefined {
   const command = step?.native?.command;
-  if (!step || command === "close" || command === "wait_for_owner") return undefined;
+  if (!step || step.failedToStart || command === "close" || command === "wait_for_owner") return undefined;
   const line = step.shotNote || step.afterShotError;
   if (!line || /owner input is private/i.test(line)) return undefined;
   return line;

@@ -186,6 +186,68 @@ test("a missing page picture names the cause in the tool result", async () => {
   }
 });
 
+test("a step that failed to start shows its cause once", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-polish-start-"));
+  try {
+    const recording = new AgentBrowserRun(home);
+    const failed = recording.begin("open", ["http://127.0.0.1/"]);
+    failed.failedToStart = true;
+    const cause = new Error("Chrome launch failed before attachment");
+    await recording.complete(failed, [], home, async () => { throw cause; }, cause);
+    assert.equal(failed.native.results.length, 0);
+    assert.equal(failed.native.error, cause.message);
+    assert.equal(failed.afterShotError, "Page screenshot unavailable: Chrome launch failed before attachment.");
+    assert.equal(pageShotLine(failed), undefined);
+    const reply = browserToolResult("open", [], { runId: recording.id, step: failed }, undefined, cause.message);
+    const texts = reply.content.map((item) => item.text);
+    assert.equal(texts.filter((text) => text.includes(cause.message)).length, 1);
+    assert.equal(texts.some((text) => text.startsWith("Page screenshot unavailable")), false);
+
+    const ran = recording.begin("click", ["@e1"]);
+    await recording.complete(ran, [{ stdout: "", stderr: "missing ref\n", exitCode: 1 }], home, async () => {
+      throw new Error("cdp timeout Page.captureScreenshot");
+    }, new Error("missing ref"));
+    assert.equal(pageShotLine(ran), "Page screenshot unavailable: cdp timeout Page.captureScreenshot.");
+    const ranReply = browserToolResult("click", ran.native.results, { runId: recording.id, step: ran }, undefined, "missing ref");
+    assert.ok(ranReply.content.some((item) => item.text === pageShotLine(ran)));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a mid-session throw keeps its picture line", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "bao-polish-mid-"));
+  try {
+    const recording = new AgentBrowserRun(home);
+    const thrown = recording.begin("tab", []);
+    const commandError = new Error("Native tab list failed");
+    await recording.complete(thrown, [], home, async () => {
+      throw new Error("cdp timeout Target.getTargets");
+    }, commandError);
+    assert.equal(thrown.native.results.length, 0);
+    assert.equal(thrown.native.error, commandError.message);
+    assert.equal(thrown.failedToStart, undefined);
+    const captureLine = "Page screenshot unavailable: cdp timeout Target.getTargets.";
+    assert.equal(pageShotLine(thrown), captureLine);
+    const reply = browserToolResult("tab", [], { runId: recording.id, step: thrown }, undefined, commandError.message);
+    const texts = reply.content.map((item) => item.text);
+    assert.equal(texts.filter((text) => text === captureLine).length, 1);
+    assert.equal(texts.filter((text) => text === commandError.message).length, 1);
+
+    const noted = recording.begin("open", ["https://fixture.invalid/"]);
+    const note = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
+    await recording.complete(noted, [], home, async () => ({ bytes: png, note }), new Error("import failed"));
+    assert.equal(noted.failedToStart, undefined);
+    assert.equal(noted.afterShotError, undefined);
+    assert.equal(pageShotLine(noted), note);
+    const notedReply = browserToolResult("open", [], { runId: recording.id, step: noted }, undefined, "import failed");
+    assert.equal(notedReply.content.filter((item) => item.text === note).length, 1);
+    assert.equal(notedReply.content.filter((item) => item.text === "import failed").length, 1);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("a side panel or non-page target is not a capturable page", () => {
   assert.equal(uncapturablePage("https://gemini.google.com/glic?hl=en-US", "page"), true);
   assert.equal(uncapturablePage("https://gemini.google.com/glic/panel", "page"), true);
