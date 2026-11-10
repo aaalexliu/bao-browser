@@ -87,7 +87,14 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     writeFileSync(chatgpt, before);
     await page.getByRole('button', { name: 'Add to ChatGPT', exact: true }).click();
     await page.waitForSelector('#desktop-mcp-confirm[open]');
+    assert.match(await page.locator('#desktop-mcp-settings').innerText(), /pre-approves only its own tools/);
+    assert.doesNotMatch(await page.locator('#desktop-mcp-settings').innerText(), /blanket tool approval/);
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /Update Bao in ChatGPT\?/);
+    assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /pre-approves only its own tools/);
+    assert.doesNotMatch(await page.locator('#desktop-mcp-confirm').innerText(), /No blanket approval/);
+    const chatgptDiff = await page.locator('pre[aria-label="Exact config diff"]').innerText();
+    assert.doesNotMatch(chatgptDiff, /-default_tools_approval_mode="approve"/);
+    assert.doesNotMatch(chatgptDiff, /\+default_tools_approval_mode="prompt"/);
     assert.match(await page.locator('#desktop-mcp-confirm').innerText(), /shared Codex config/);
     assert.ok((await page.locator('pre[aria-label="Exact config diff"]').innerText()).includes('http://127.0.0.1:3845/mcp'));
     await page.getByRole('button', { name: 'Leave unchanged' }).click();
@@ -96,10 +103,17 @@ test("Settings previews and confirms desktop config changes on an isolated HOME"
     await page.getByRole('button', { name: 'Add to ChatGPT', exact: true }).click();
     await page.locator('#desktop-mcp-write').click();
     await page.waitForSelector('#desktop-mcp-confirm', { state: 'detached' });
-    assert.match(readFileSync(chatgpt, 'utf8'), /default_tools_approval_mode="prompt"/);
+    assert.match(readFileSync(chatgpt, 'utf8'), /default_tools_approval_mode="approve"/);
+    assert.doesNotMatch(readFileSync(chatgpt, 'utf8'), /default_tools_approval_mode="prompt"/);
     const backup = readdirSync(path.dirname(chatgpt)).find((file) => file.includes('.bao-backup-'));
     assert.ok(backup);
     assert.equal(readFileSync(path.join(path.dirname(chatgpt), backup), 'utf8'), before);
+    writeFileSync(chatgpt, before.replace('default_tools_approval_mode="approve"', 'default_tools_approval_mode="prompt"'));
+    await page.getByRole('button', { name: 'Add to ChatGPT', exact: true }).click();
+    await page.locator('#desktop-mcp-write').click();
+    await page.waitForSelector('#desktop-mcp-confirm', { state: 'detached' });
+    assert.match(readFileSync(chatgpt, 'utf8'), /default_tools_approval_mode="approve"/);
+    assert.doesNotMatch(readFileSync(chatgpt, 'utf8'), /default_tools_approval_mode="prompt"/);
 
     writeFileSync(chatgpt, before);
     await page.getByRole('button', { name: 'Add to ChatGPT', exact: true }).click();

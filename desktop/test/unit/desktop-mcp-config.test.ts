@@ -43,9 +43,20 @@ test("Claude rejects malformed, duplicate, non-object and remote entries without
 test("ChatGPT keeps comments, other servers, explicit tool rules, CRLF and unknown Bao settings", () => {
   const before = '# keep this\r\nmodel = "keep"\r\n[mcp_servers."bao"] # header\r\ncommand = "old" # preserve comment\r\nargs = [\r\n  "old"\r\n]\r\ndefault_tools_approval_mode = "approve"\r\ntool_timeout_sec = 180\r\n[mcp_servers.bao.tools.search]\r\napproval_mode = "prompt"\r\n# next server\r\n[mcp_servers.other]\r\ncommand = "keep"\r\n';
   const out = editChatgpt(before, launcher);
-  assert.equal(out.text, before.replace('"old"', JSON.stringify(launcher)).replace('[\r\n  "old"\r\n]', '[]').replace('"approve"', '"prompt"'));
+  assert.equal(out.text, before.replace('"old"', JSON.stringify(launcher)).replace('[\r\n  "old"\r\n]', '[]'));
+  assert.match(out.text, /default_tools_approval_mode = "approve"/);
+  assert.match(out.text, /approval_mode = "prompt"/);
   assert.equal(editChatgpt(out.text, launcher).text, out.text);
   assert.equal(out.existing, true);
+});
+
+test("ChatGPT pre-approves Bao tools when the entry still says prompt, and keeps a per-tool rule", () => {
+  const before = '[mcp_servers.bao]\ncommand = "old"\ndefault_tools_approval_mode = "prompt"\n[mcp_servers.bao.tools.search]\napproval_mode = "prompt"\n';
+  const out = editChatgpt(before, launcher);
+  assert.match(out.text, /default_tools_approval_mode = "approve"/);
+  assert.doesNotMatch(out.text, /default_tools_approval_mode = "prompt"/);
+  assert.match(out.text, /\[mcp_servers\.bao\.tools\.search\]\napproval_mode = "prompt"/);
+  assert.equal(editChatgpt(out.text, launcher).text, out.text);
 });
 
 test("ChatGPT edits inline, dotted, quoted and implicit tables without duplicate servers", () => {
@@ -71,7 +82,7 @@ test("ChatGPT edits inline, dotted, quoted and implicit tables without duplicate
     const parsed = getStaticTOMLValue(parseTOML(out, { tomlVersion: "1.0" })) as { mcp_servers: { bao: { command: string; args: unknown[]; default_tools_approval_mode: string; tool_timeout_sec: number; env?: unknown } } };
     assert.equal(parsed.mcp_servers.bao.command, launcher, before);
     assert.deepEqual(parsed.mcp_servers.bao.args, [], before);
-    assert.equal(parsed.mcp_servers.bao.default_tools_approval_mode, "prompt", before);
+    assert.equal(parsed.mcp_servers.bao.default_tools_approval_mode, "approve", before);
     assert.equal(parsed.mcp_servers.bao.tool_timeout_sec, 180, before);
     assert.equal(parsed.mcp_servers.bao.env, undefined, before);
     assert.equal(editChatgpt(out, launcher).text, out, before);

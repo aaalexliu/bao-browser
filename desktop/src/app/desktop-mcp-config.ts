@@ -305,14 +305,14 @@ export function editChatgpt(text: string, launcher: string): { text: string; exi
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   if (bao === undefined && containers.get(pathKey(["mcp_servers"]))?.type !== "TOMLInlineTable") {
     const gap = !text || text.endsWith(eol + eol) ? "" : text.endsWith(eol) ? eol : eol + eol;
-    const block = `[mcp_servers.bao]${eol}${Object.entries(codexOwnedSettings(launcher, "prompt")).filter(([, value]) => value !== undefined).map(([key, value]) => `${key} = ${JSON.stringify(value)}`).join(eol)}${eol}`;
+    const block = `[mcp_servers.bao]${eol}${Object.entries(codexOwnedSettings(launcher)).filter(([, value]) => value !== undefined).map(([key, value]) => `${key} = ${JSON.stringify(value)}`).join(eol)}${eol}`;
     const out = text + gap + block;
     parseTOML(out, { tomlVersion: "1.0" });
     return { text: out, existing };
   }
   const edits: TextEdit[] = [];
   const inserts = new Map<string, { container?: AST.TOMLInlineTable | AST.TOMLTable; entries: string[] }>();
-  const settings = codexOwnedSettings(launcher, "prompt");
+  const settings = codexOwnedSettings(launcher);
   for (const [key, value] of Object.entries(settings)) {
     if (value === undefined) continue;
     const keys = ["mcp_servers", "bao", key];

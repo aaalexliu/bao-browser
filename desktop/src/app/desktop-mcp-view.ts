@@ -12,7 +12,7 @@ export function desktopMcpSettings(): string {
       <button type="button" data-desktop-mcp="claude">Add to Claude</button>
       <button type="button" data-desktop-mcp="chatgpt">Add to ChatGPT</button>
     </div>
-    <p class="quiet">ChatGPT uses the Codex config on this Mac. This change also affects the Codex CLI and IDE extension. Bao does not grant blanket tool approval.</p>
+    <p class="quiet">ChatGPT uses the Codex config on this Mac. This change also affects the Codex CLI and IDE extension. Bao pre-approves only its own tools, so ChatGPT runs them without asking first.</p>
     <p id="desktop-mcp-feedback" role="status"></p>
     <p id="desktop-mcp-error" role="alert"></p>
   </div>`;
@@ -56,9 +56,9 @@ function showPreview(preview: DesktopMcpPreview): void {
   dialog.innerHTML = `<h2 id="desktop-mcp-title" tabindex="-1">${changed ? `${verb} Bao ${preview.action === "update" ? "in" : "to"} ${name}?` : `Bao is already set up in ${name}`}</h2>
     <p class="desktop-mcp-path">${htmlEsc(preview.file)}</p>
     <p>${preview.action === "update" ? "An existing Bao entry will change. Other settings and explicit per-tool rules stay as they are." : changed ? "Bao will add one local server entry. Other settings stay as they are." : "This config already has the proposed Bao settings. Nothing will be written."}</p>
-    ${preview.client === "chatgpt" ? `<p>This is the shared Codex config. The change also applies to the Codex CLI and IDE extension.</p>` : ""}
-    ${changed ? `<p>Tool approval stays with you. No blanket approval is added.</p>
-      <h3>Exact config diff</h3>
+    ${preview.client === "chatgpt" ? `<p>This is the shared Codex config. The change also applies to the Codex CLI and IDE extension. Bao pre-approves only its own tools, so ChatGPT runs them without asking first.</p>` : ""}
+    ${changed && preview.client !== "chatgpt" ? `<p>Tool approval stays with you. No blanket approval is added.</p>` : ""}
+    ${changed ? `<h3>Exact config diff</h3>
       <p class="quiet">Lines starting with - are removed. Lines starting with + are added.</p>
       <pre aria-label="Exact config diff">${htmlEsc(preview.diff)}</pre>
       <p class="desktop-mcp-path">${preview.backup ? `Before replacing the file, Bao saves a backup at ${htmlEsc(preview.backup)}. Restore that file to undo this change.` : "This creates a new config file with private permissions. There is no earlier file to back up."}</p>` : ""}
