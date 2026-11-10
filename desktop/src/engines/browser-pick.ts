@@ -7,8 +7,10 @@ import { listChromeProfiles, type ChromeProfileChoice } from "./chrome-profile-c
 export type ProfileWhy = "named by the agent" | "the only profile" | "picked in Bao Settings";
 export const RUNNING_CHROME_FALLBACK = "fallback when running Chrome could not be used";
 export const FILES_IN_BAO = "the workflow moves files, which running Chrome cannot do yet";
+/** The owner picked this route in the Bao app's Run picker. Not an agent call. */
+export const PICKED_IN_APP = "picked in the Bao app";
 export type RouteWhy = "the default" | "named by the agent" | "fallback after a sign-in wall" | typeof BOUND_REASON
-  | typeof RUNNING_CHROME_FALLBACK | typeof FILES_IN_BAO;
+  | typeof RUNNING_CHROME_FALLBACK | typeof FILES_IN_BAO | typeof PICKED_IN_APP;
 
 /** One of the owner's Chrome profiles, and why Bao uses it. */
 export interface ChosenProfile extends ChromeProfileChoice {

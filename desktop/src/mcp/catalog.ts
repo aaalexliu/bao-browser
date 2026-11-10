@@ -12,7 +12,7 @@ import type { SignInImport } from "../engines/bao-profile";
 import { chromeApp, ChromeProfileQuestion, defaultRoute, failedPickLine, fallbackLine, pickLine, RoutesFailed, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
 import { ownerBoundSites } from "../engines/bound-sign-in";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, releaseWorkflowBrowser, runningChromeRefusal, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, releaseWorkflowBrowser, runningChromeRefusal, triedPickLine, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -589,7 +589,10 @@ async function replayInBrowser(
   if (chosen) {
     const options = { browser: chosen.choice, home: library.root, site: workflow.startUrl, directory: library.settings().chromeProfile, profile, why: chosen.why,
       movesFiles: workflowMovesFiles(workflow), extensionRoute: library.settings().runningChromeExtension === true };
-    const plan = await planWorkflowBrowser(options);
+    const plan = await planWorkflowBrowser(options).catch((error: unknown) => {
+      if (!(error instanceof ChromeProfileQuestion)) lines.push(triedPickLine(options));
+      throw error;
+    });
     browser = await openWorkflowBrowser(options, plan).catch((error: unknown) => {
       lines.push(error instanceof RoutesFailed ? error.line
         : failedPickLine(plan.route, plan.why, chromeApp(), plan.route === "extension" ? undefined : plan.profile));

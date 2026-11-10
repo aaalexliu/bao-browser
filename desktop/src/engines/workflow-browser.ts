@@ -12,7 +12,7 @@ import type { PersonPrompts } from "../v1/browser-driver";
 import type { WorkflowStep } from "../v1/schema";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, boundOpenPlan, boundRoute, chooseChromeProfile, ChromeProfileQuestion, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
+import { baoPick, boundOpenPlan, boundRoute, chromeApp, chooseChromeProfile, ChromeProfileQuestion, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, RUNNING_CHROME_FALLBACK, signInSource, type BrowserPick, type BrowserPlan, type ChosenProfile, type RouteWhy } from "./browser-pick";
 import { purgeBoundSites } from "./bound-sign-in";
 
 interface BrowserPage {
@@ -122,6 +122,19 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
   }
   if (options.browser === "bao") return { route: "bao", why, profile: source.profile };
   return { route: options.browser, why, profile: source.profile };
+}
+
+/**
+ * What Bao tried when choosing the profile failed before a plan existed. The folder is the one the agent named, or the Settings
+ * pick. A missing root is not filled from the owner's Chrome.
+ */
+export function triedPickLine(options: WorkflowBrowserOptions): string {
+  const why = options.why ?? "named by the agent";
+  const extension = options.browser === "current" && options.extensionRoute === true;
+  const route = extension ? "extension" : options.browser;
+  const root = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+  const directory = options.profile ?? options.directory;
+  return failedPickLine(route, why, chromeApp(), !extension && directory && root ? { directory, root } : undefined);
 }
 
 /**
