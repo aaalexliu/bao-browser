@@ -55,8 +55,8 @@ test("an owner handoff calls the prompt first, then focus work, in call order", 
       showConfirm() { order.push("confirm"); },
       clearConfirm() { order.push("clear"); },
     }, focus);
-    prompts!.showConfirm!("Apply");
-    prompts!.clearConfirm!("run");
+    await prompts!.showConfirm!("Apply");
+    await prompts!.clearConfirm!("run");
     assert.deepEqual(order, ["confirm", "clear"]);
     await flush();
     assert.deepEqual(order, ["confirm", "clear", "present-start"]);
@@ -221,7 +221,7 @@ test("a kept window stays free after keepOpen and a queued lock cannot land afte
         await gate;
       },
     };
-    ownerPrompts(owned(profile), { clearConfirm() {} }, focus)!.clearConfirm!("run-1");
+    await ownerPrompts(owned(profile), { clearConfirm() {} }, focus)!.clearConfirm!("run-1");
     await flush();
     assert.deepEqual(order, ["lock"]);
     const kept = chrome.keepOpen();
@@ -232,7 +232,7 @@ test("a kept window stays free after keepOpen and a queued lock cannot land afte
     await kept;
     assert.deepEqual(order, ["lock", "allow"]);
     const later = recorder();
-    ownerPrompts(owned(profile), { clearConfirm() {} }, later.focus)!.clearConfirm!("run-2");
+    await ownerPrompts(owned(profile), { clearConfirm() {} }, later.focus)!.clearConfirm!("run-2");
     await flush();
     assert.deepEqual(later.order, []);
   } finally {
