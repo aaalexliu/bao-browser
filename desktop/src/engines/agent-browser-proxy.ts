@@ -9,7 +9,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { CURRENT_CHROME_ENDED, newInRead, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -302,6 +302,8 @@ export class AgentBrowserProxy {
     if (this.session && browser !== undefined && browser !== this.session.browser) {
       throw new Error("close the current session before choosing a different browser");
     }
+    const leftOpen = command === "close" && this.currentEnded && !this.taskTabEnded;
+    const endedClose: AgentBrowserCommandResult[] = [{ stdout: leftOpen ? `${CURRENT_CHROME_LEFT_OPEN}\n` : "", stderr: "", exitCode: 0 }];
     this.closedCurrent = command === "close" && (this.currentEnded || this.taskTabEnded);
     if (command === "close") {
       this.currentEnded = false;
@@ -309,12 +311,12 @@ export class AgentBrowserProxy {
       if (this.session) this.session.closing = true;
       if (this.disconnected) {
         await this.end(true);
-        return [{ stdout: "", stderr: "", exitCode: 0 }];
+        return endedClose;
       }
     }
     if (this.session?.removing) await this.session.removing;
     if (this.disconnected) throw new Error("The agent disconnected.");
-    if (!this.session && command === "close") return [{ stdout: "", stderr: "", exitCode: 0 }];
+    if (!this.session && command === "close") return endedClose;
     if (!this.session && this.taskTabEnded && (command !== "open" || browser === undefined)) throw new Error(TASK_TAB_CLOSED);
     if (!this.session && this.currentEnded && (command !== "open" || browser === undefined)) throw new Error(CURRENT_CHROME_ENDED);
     if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");

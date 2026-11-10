@@ -193,6 +193,7 @@ test("steps in the owner's own Chrome name that Chrome, not a Bao window", () =>
   assert.match(say("open", reply("halted"), { owner: { url: "https://shop.example/", title: "Just a moment..." } }), /^Your turn: clear the check on shop\.example in your Chrome\. /);
   assert.equal(say("wait_for_owner", reply("waiting")), "Your turn: finish the check on the page in your Chrome.");
   assert.equal(say("close", ok("Disconnected from the owner's own Chrome.\n")), "Closed Bao's task tab in your Chrome.");
+  assert.equal(say("close", ok("Disconnected from your Chrome. Bao's task tab may still be open.\n")), "Disconnected from your Chrome. Bao's task tab may still be open.");
   assert.equal(say("close", [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }]), "Could not close Bao's task tab.");
   assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("waiting") }).text, "Your turn: finish the check on the page in Bao's Chrome window.");
   assert.equal(describeStep({ command: "close", args: [], results: [{ stdout: "", stderr: "✗ failed\n", exitCode: 1 }] }).text, "Could not close the window.");
