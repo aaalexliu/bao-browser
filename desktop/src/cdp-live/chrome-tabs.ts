@@ -9,7 +9,10 @@ export interface ChromeTarget { targetId: string; type: string; url: string; ope
  * Whether a target is a page target in one of Chrome's windows. Chrome answers Browser.getWindowForTarget only for a page in a window's
  * tab strip, so the Gemini panel, side panels, webviews, and hidden pages fail it.
  */
-export async function isChromeTab(cdp: CdpSocket, target: ChromeTarget): Promise<boolean> {
+export async function isChromeTab(cdp: CdpSocket, target: ChromeTarget, signal?: AbortSignal): Promise<boolean> {
   if (target.type !== "page") return false;
-  return cdp.send("Browser.getWindowForTarget", { targetId: target.targetId }, undefined, 2000).then(() => true, () => false);
+  const check = signal
+    ? cdp.sendUntilProgress("Browser.getWindowForTarget", { targetId: target.targetId }, undefined, { signal })
+    : cdp.send("Browser.getWindowForTarget", { targetId: target.targetId }, undefined, 2000);
+  return check.then(() => true, () => false);
 }

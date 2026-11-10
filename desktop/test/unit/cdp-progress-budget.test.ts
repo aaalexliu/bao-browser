@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -278,6 +278,59 @@ else process.stdout.write('ok');
     assert.ok(elapsed < 5_000, `quit waited ${elapsed}ms`);
     await click.catch(() => undefined);
   } finally {
+    cdp.close();
+    await fake.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the session's first native call is not killed at the capture ceiling", { timeout: 50_000 }, async (t: TestContext) => {
+  const fake = await fakeCdp({
+    answerPings: true,
+    result: (method) => {
+      if (method === "Target.createTarget") return { targetId: "tab-1" };
+      if (method === "Target.attachToTarget") return { sessionId: "s1" };
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://fixture.test/", title: "Fixture" } };
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "tab-1", type: "page" }] };
+      return {};
+    },
+  });
+  const root = await mkdtemp(path.join(tmpdir(), "bao-progress-daemon-"));
+  const marker = path.join(root, "first-call");
+  const userDataDir = await chromeProfiles(path.join(root, "chrome"));
+  const home = path.join(root, "home");
+  await mkdir(home, { recursive: true });
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+const command = args[args.indexOf('--idle-timeout') + 2];
+const marker = ${JSON.stringify(marker)};
+if (!fs.existsSync(marker)) {
+  fs.writeFileSync(marker, 'started');
+  spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 31000)']);
+  fs.writeFileSync(marker, 'done');
+}
+if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({ data: { tabs: [{ active: true, targetId: 'tab-1', tabId: 't1' }] } }));
+else process.stdout.write('ok');
+`, { mode: 0o700 });
+  const cdp = await connectCdp(fake.port, fake.browserPath);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, executable: "/usr/bin/false", root: userDataDir, endpoint: { port: fake.port, browserPath: fake.browserPath },
+    cdp, closed: new Promise<void>(() => undefined), isClosed: () => false, detach() { cdp.close(); },
+  }) as unknown as currentChrome.CurrentChrome);
+  fakeTaskTab(t);
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: userDataDir, executable });
+  const started = Date.now();
+  try {
+    const [opened] = await proxy.execute("open", ["http://fixture.test/"], "current", false, "Default");
+    const elapsed = Date.now() - started;
+    assert.equal(opened!.exitCode, 0, opened!.stderr.slice(0, 200));
+    assert.equal(await readFile(marker, "utf8"), "done");
+    assert.ok(elapsed > 30_000, `first native call ended at ${elapsed}ms`);
+  } finally {
+    await proxy.end().catch(() => undefined);
     cdp.close();
     await fake.close();
     await rm(root, { recursive: true, force: true });

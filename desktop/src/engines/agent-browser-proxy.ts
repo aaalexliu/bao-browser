@@ -816,16 +816,14 @@ export class AgentBrowserProxy {
    * When the daemon is anywhere else, Bao switches it back to the agent's tab, or to Bao's newest task tab when that tab is gone.
    * When neither remains, the caller ends the session instead of acting on an owner tab.
    */
-  private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[], ceiling?: AbortSignal): Promise<NativeTab[]> {
+  private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[], ceiling: AbortSignal): Promise<NativeTab[]> {
     const listed = (targetId: string | undefined) => tabs.find((tab) => tab.targetId === targetId);
     const fresh = new Set(tabs.flatMap((tab) => tab.targetId && !session.seen.has(tab.targetId) ? [tab.targetId] : []));
     let want = session.targetId;
     if (fresh.size) {
-      const { targetInfos } = ceiling
-        ? await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: ceiling })
-        : await session.chrome.cdp.send<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, 5000);
+      const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: ceiling });
       for (const info of targetInfos) {
-        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info)) {
+        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info, ceiling)) {
           if (session.taskTabs.has(want)) session.taskTabs.add(info.targetId);
           want = info.targetId;
         }
@@ -837,7 +835,7 @@ export class AgentBrowserProxy {
     if (!tab?.tabId) return tabs;
     session.targetId = want;
     if (tab.active) return tabs;
-    const back = await this.run(session, "tab", [tab.tabId], ceiling ? undefined : 5000, ceiling);
+    const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
     if (back.exitCode !== 0) throw new Error(`Bao could not keep the agent in its tab ${tab.tabId}: ${back.stderr || back.stdout || `exit ${back.exitCode}`}`);
     return this.nativeTabs(session, ceiling);
   }
@@ -928,13 +926,20 @@ export class AgentBrowserProxy {
   }
 
   private async activePage(session: Session, bound?: AbortSignal): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
+    const starting = !session.daemonStarted;
     const own = bound ? undefined : new AbortController();
-    const timer = own ? setTimeout(() => own.abort(), CDP_PROGRESS_CEILING_MS) : undefined;
-    timer?.unref();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      if (bound || timer || !own) return;
+      timer = setTimeout(() => own.abort(), CDP_PROGRESS_CEILING_MS);
+      timer.unref();
+    };
+    if (!starting) arm();
     const signal = bound ?? AbortSignal.any([session.abort.signal, own!.signal]);
     let cdp: CdpSocket | undefined;
     try {
-      let tabs = await this.nativeTabs(session, signal);
+      let tabs = await this.nativeTabs(session, starting ? undefined : signal);
+      arm();
       if (session.kind === "current" && !session.relay) {
         tabs = await this.keepTab(session, tabs, signal);
         if (this.noTaskTabLeft(session, tabs) && await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
@@ -1209,7 +1214,10 @@ export class AgentBrowserProxy {
   private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
     if (this.disconnected) throw new Error("The agent disconnected.");
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
-    if (!session.daemonStarted) readTimeoutMs = undefined;
+    if (!session.daemonStarted) {
+      readTimeoutMs = undefined;
+      bound = undefined;
+    }
     session.daemonStarted = true;
     const execute = (command: string, args: string[], timeoutMs?: number, ceiling?: AbortSignal) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
       const childSignal = ceiling

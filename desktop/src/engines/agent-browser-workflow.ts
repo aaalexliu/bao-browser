@@ -109,6 +109,12 @@ export class AgentBrowserWorkflow {
     return { signal, stop: () => clearTimeout(timer) };
   }
 
+  private async bounded<T>(body: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const capture = this.beginCapture();
+    try { return await body(capture.signal); }
+    finally { capture.stop(); }
+  }
+
   unavailable(reason: string, step?: { id: string; command: string }): void {
     if (this.reason) return;
     this.reason = reason;
@@ -140,21 +146,20 @@ export class AgentBrowserWorkflow {
       if (this.abort?.aborted) throw error;
     };
     try {
-      const opening = this.beginCapture();
       try {
-        page = await this.activePage(opening.signal);
+        page = await this.activePage();
         if (this.targetId && page.targetId !== this.targetId) block("it used a second tab");
         if (action) {
-          cdp = await connectCdp(page.port, page.browserPath, { signal: opening.signal });
-          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }, undefined, { signal: opening.signal }));
-          await cdp.sendUntilProgress("Runtime.enable", {}, sessionId, { signal: opening.signal });
+          cdp = await this.bounded((signal) => connectCdp(page!.port, page!.browserPath, { signal }));
+          ({ sessionId } = await this.bounded((signal) => cdp!.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: page!.targetId, flatten: true }, undefined, { signal })));
+          await this.bounded((signal) => cdp!.sendUntilProgress("Runtime.enable", {}, sessionId, { signal }));
           cdp.on("Runtime.bindingCalled", sessionId, (params) => {
             if (params.name === binding && typeof params.payload === "string") captured ??= JSON.parse(params.payload) as DomDump;
           });
-          await cdp.sendUntilProgress("Runtime.addBinding", { name: binding }, sessionId, { signal: opening.signal });
-          const armed = await cdp.sendUntilProgress<{ result: { value?: ActionCapture } }>("Runtime.evaluate", {
+          await this.bounded((signal) => cdp!.sendUntilProgress("Runtime.addBinding", { name: binding }, sessionId, { signal }));
+          const armed = await this.bounded((signal) => cdp!.sendUntilProgress<{ result: { value?: ActionCapture } }>("Runtime.evaluate", {
             expression: `(() => { ${PAGE_FUNCTIONS} return (${armCommand.toString()})(${JSON.stringify(command)}, ${JSON.stringify(binding)}, dumpPage, leafTexts); })()`, returnByValue: true,
-          }, sessionId, { signal: opening.signal });
+          }, sessionId, { signal }));
           before = armed.result.value;
           if (!before) throw new Error("page observation unavailable");
           if (command === "press") captured = before.target;
@@ -163,30 +168,29 @@ export class AgentBrowserWorkflow {
       } catch (error) {
         skipped(error);
         block("its replay target could not be recorded");
-      } finally { opening.stop(); }
+      }
 
       const result = await perform();
       if (action) this.failedStep = result.exitCode !== 0 ? named : undefined;
       if (result.exitCode !== 0 && (command === "snapshot" || command === "screenshot" || command === "tab" && args[0] === "list")) return result;
       if (this.reason || !page) return result;
-      const closing = this.beginCapture();
       try {
-        const afterPage = await this.activePage(closing.signal);
+        const afterPage = await this.activePage();
         if (afterPage.targetId !== page.targetId || afterPage.targetIds.some((target) => !page!.targetIds.includes(target))) {
           block("it opened a second tab or popup");
           return result;
         }
         this.targetId = afterPage.targetId;
         if (!cdp) {
-          cdp = await connectCdp(afterPage.port, afterPage.browserPath, { signal: closing.signal });
-          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }, undefined, { signal: closing.signal }));
+          cdp = await this.bounded((signal) => connectCdp(afterPage.port, afterPage.browserPath, { signal }));
+          ({ sessionId } = await this.bounded((signal) => cdp!.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }, undefined, { signal })));
         }
         if (!cdp || !sessionId) throw new Error("page observation unavailable");
         let after: Observation | undefined;
         if (!ownerWaiting()) {
-          const observed = await cdp.sendUntilProgress<{ result: { value?: Observation } }>("Runtime.evaluate", {
+          const observed = await this.bounded((signal) => cdp!.sendUntilProgress<{ result: { value?: Observation } }>("Runtime.evaluate", {
             expression: `(() => { ${PAGE_FUNCTIONS} return (${readObservation.toString()})(dumpPage, leafTexts); })()`, returnByValue: true,
-          }, sessionId, { signal: closing.signal });
+          }, sessionId, { signal }));
           after = observed.result.value;
           if (!after) throw new Error("page observation unavailable");
         }
@@ -230,7 +234,7 @@ export class AgentBrowserWorkflow {
       } catch (error) {
         skipped(error);
         block("its replay outcome could not be recorded");
-      } finally { closing.stop(); }
+      }
       return result;
     } finally {
       if (cdp && sessionId && action) {
