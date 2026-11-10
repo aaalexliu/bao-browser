@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CURRENT_CHROME_ENDED, describeStep, elementFor, shortName } from "../../src/engines/agent-browser-describe";
+import { CURRENT_CHROME_ENDED, describeStep, elementFor, shortName, TASK_TAB_CLOSED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserRun } from "../../src/engines/agent-browser-record";
 
 const ok = (stdout: string) => [{ stdout, stderr: "", exitCode: 0 }];
@@ -181,6 +181,8 @@ test("a closed session names the browser that ended", () => {
     "The Bao window closed. This session cannot continue.");
   assert.equal(describeStep({ command: "wait_for_owner", args: [], results: reply("closed", CURRENT_CHROME_ENDED) }).text,
     "Your Chrome session ended. This session cannot continue.");
+  assert.equal(describeStep({ command: "snapshot", args: ["-i"], results: reply("closed", TASK_TAB_CLOSED), current: true }).text,
+    "Bao's task tab was closed. This session cannot continue.");
 });
 
 test("steps in the owner's own Chrome name that Chrome, not a Bao window", () => {

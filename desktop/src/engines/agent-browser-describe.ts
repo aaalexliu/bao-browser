@@ -161,6 +161,7 @@ export function failureText(results: readonly AgentBrowserCommandResult[], error
 }
 
 export const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
+export const TASK_TAB_CLOSED = "Bao's task tab was closed. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 
 export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed"; instruction: string }
 
@@ -245,7 +246,9 @@ export function describeStep(facts: StepFacts): StepSummary {
       : done([back]);
   }
   if (outcome === "closed") {
-    const ended = reply?.instruction === CURRENT_CHROME_ENDED ? "Your Chrome session ended" : "The Bao window closed";
+    const ended = reply?.instruction === CURRENT_CHROME_ENDED ? "Your Chrome session ended"
+      : reply?.instruction === TASK_TAB_CLOSED ? "Bao's task tab was closed"
+        : "The Bao window closed";
     return { parts: [`${ended}. This session cannot continue`], text: `${ended}. This session cannot continue.` };
   }
 

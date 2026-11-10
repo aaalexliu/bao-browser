@@ -9,7 +9,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { CURRENT_CHROME_ENDED, newInRead, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, newInRead, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -71,6 +71,14 @@ class ActiveTargetMiss extends Error {
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause), { cause });
     this.name = "ActiveTargetMiss";
+  }
+}
+
+/** The pinned task tab is gone and no Bao task tab remains to take its place. */
+class TaskTabClosed extends Error {
+  constructor() {
+    super(TASK_TAB_CLOSED);
+    this.name = "TaskTabClosed";
   }
 }
 
@@ -221,6 +229,8 @@ export class AgentBrowserProxy {
     return [pickLine(session.pick), ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : [], ...failed];
   }
   private currentEnded = false;
+  /** The last session ended because Bao's task tab was closed, so the next open must name a browser. */
+  private taskTabEnded = false;
   private closedCurrent = false;
   /** The session and command of the latest result. */
   private shown: { session: Session; command: string } | undefined;
@@ -288,6 +298,7 @@ export class AgentBrowserProxy {
     this.closedCurrent = command === "close" && this.currentEnded;
     if (command === "close") {
       this.currentEnded = false;
+      this.taskTabEnded = false;
       if (this.session) this.session.closing = true;
       if (this.disconnected) {
         await this.end(true);
@@ -297,6 +308,7 @@ export class AgentBrowserProxy {
     if (this.session?.removing) await this.session.removing;
     if (this.disconnected) throw new Error("The agent disconnected.");
     if (!this.session && command === "close") return [{ stdout: "", stderr: "", exitCode: 0 }];
+    if (!this.session && this.taskTabEnded && (command !== "open" || browser === undefined)) throw new Error(TASK_TAB_CLOSED);
     if (!this.session && this.currentEnded && (command !== "open" || browser === undefined)) throw new Error(CURRENT_CHROME_ENDED);
     if (!this.session && command !== "open") throw new Error("start agent-browser with open before sending commands");
     if (this.session?.abort.signal.aborted) {
@@ -319,6 +331,7 @@ export class AgentBrowserProxy {
         const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? DEFAULT_BROWSER, plan!, webSite(args[0])));
         this.session = session;
         this.currentEnded = false;
+        this.taskTabEnded = false;
         if ("signIn" in session.chrome && session.chrome.signIn) this.imported(session, session.chrome.signIn);
         this.watch(session);
       } catch (error) {
@@ -432,6 +445,12 @@ export class AgentBrowserProxy {
       }
       return results;
     } catch (error) {
+      if (error instanceof TaskTabClosed) {
+        results.splice(0, results.length, ...this.endTaskTab(session));
+        step ??= recording.begin(command as string, args);
+        this.latest = { runId: recording.id, step, steps: recording.steps };
+        return results;
+      }
       failure = error;
       session.workflow.unavailable("a browser command was interrupted", step ? { id: step.id, command: step.native.command } : undefined);
       throw error;
@@ -480,6 +499,7 @@ export class AgentBrowserProxy {
   async finishTask(outcome: AgentBrowserTaskOutcome): Promise<string | undefined> {
     this.workflowOutcome = undefined;
     this.currentEnded = false;
+    this.taskTabEnded = false;
     this.notOpened = undefined;
     const session = this.session;
     this.shown = session && { session, command: "finish_task" };
@@ -494,6 +514,7 @@ export class AgentBrowserProxy {
       return runId;
     } finally {
       this.currentEnded = false;
+      this.taskTabEnded = false;
     }
   }
 
@@ -774,6 +795,7 @@ export class AgentBrowserProxy {
    * panel, current. A tab the agent's tab opened, such as a sign-in popup, becomes the agent's tab, as it does in Bao's own Chrome.
    * When that opener is a Bao task tab, the popup is a task tab too, so tab lists mark it and finish closes it.
    * When the daemon is anywhere else, Bao switches it back to the agent's tab, or to Bao's newest task tab when that tab is gone.
+   * When neither remains, the caller ends the session instead of acting on an owner tab.
    */
   private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[]): Promise<NativeTab[]> {
     const listed = (targetId: string | undefined) => tabs.find((tab) => tab.targetId === targetId);
@@ -845,9 +867,34 @@ export class AgentBrowserProxy {
     return { ...result, stdout };
   }
 
+  /** The agent's tab is gone and no Bao task tab is left to switch to. Owner tabs do not count. */
+  private noTaskTabLeft(session: Session, tabs: readonly { targetId?: string }[]): boolean {
+    if (session.kind !== "current" || session.relay) return false;
+    const listed = new Set(tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []));
+    if (listed.has(session.targetId)) return false;
+    return ![...session.taskTabs].some((id) => listed.has(id));
+  }
+
+  /** Ends this session because Bao's task tab was closed. The caller returns the closed result; cleanup runs after the command. */
+  private endTaskTab(session: Session): AgentBrowserCommandResult[] {
+    this.taskTabEnded = true;
+    session.closing = true;
+    session.outcome = { outcome: "failed", reason: "Bao's task tab was closed" };
+    session.workflow.unavailable("Bao's task tab was closed before the task finished");
+    if (session.ownerWait) {
+      session.ownerWait = undefined;
+      session.recording.ownerWaiting(false);
+    }
+    session.abort.abort();
+    return [{ stdout: JSON.stringify({ outcome: "closed", instruction: TASK_TAB_CLOSED }), stderr: "", exitCode: 0 }];
+  }
+
   private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
     let tabs = await this.nativeTabs(session);
-    if (session.kind === "current" && !session.relay) tabs = await this.keepTab(session, tabs);
+    if (session.kind === "current" && !session.relay) {
+      tabs = await this.keepTab(session, tabs);
+      if (this.noTaskTabLeft(session, tabs)) throw new TaskTabClosed();
+    }
     const active = tabs.find((tab) => tab.active);
     if (!active?.targetId) return undefined;
     // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
@@ -864,8 +911,8 @@ export class AgentBrowserProxy {
   }
 
   private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
-    if (session.ownerWait) return;
     let active = await this.activePage(session);
+    if (session.ownerWait) return;
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;
     // A wall on a site that ties its sign-in to the owner's Chrome, such as Google's account page, imports nothing; it moves there.
@@ -962,6 +1009,7 @@ export class AgentBrowserProxy {
           if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           const { targetInfos } = await cdp.send<{ targetInfos: { targetId: string; url: string; title: string }[] }>("Target.getTargets", {}, undefined, 2000);
           const page = targetInfos.find((tab) => tab.targetId === waiting.targetId);
+          if (!page && cdp.isOpen && this.noTaskTabLeft(session, targetInfos)) return this.endTaskTab(session);
           if (!page || session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
           const ready = ownerCanResume(waiting.page, page);
           const signature = ready ? JSON.stringify([page.url, page.title]) : "";
@@ -974,7 +1022,8 @@ export class AgentBrowserProxy {
             session.recording.ownerWaiting(false);
             return this.ownerResult("ready", session);
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof TaskTabClosed) throw error;
           candidate = "";
           if (session.abort.signal.aborted || cdp && !cdp.isOpen) return this.ownerClosed(session);
         }
