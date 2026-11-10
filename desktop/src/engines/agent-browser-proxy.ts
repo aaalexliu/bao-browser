@@ -591,7 +591,7 @@ export class AgentBrowserProxy {
           const tab = await openTaskTab(chrome, plan.profile.directory, signal);
           taskTabs.add(tab.targetId);
           // Focus emulation keeps a background tab painting, running timers, and taking input. It lasts while this session stays attached.
-          const { sessionId } = await chrome.cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, 5000);
+          const { sessionId } = await chrome.cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, { signal });
           await chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal });
           return { kind: "current", chrome, taskTabs, targetId: tab.targetId, seen: new Set(),
             pick: { route: "current", why, chrome: chrome.executable, userDataDir: chrome.root, profile: plan.profile, background: tab.background } };

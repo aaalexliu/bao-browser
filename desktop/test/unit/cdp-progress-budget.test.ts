@@ -110,12 +110,12 @@ test("a progress wait ends when the peer goes quiet, not after a long hang", { t
 });
 
 test("a progress wait keeps going past its silence budget while pongs arrive", { timeout: 30_000 }, async () => {
-  const fake = await fakeCdp({ answerPings: true, delay: () => 1_200 });
+  const fake = await fakeCdp({ answerPings: true, delay: () => 5_000 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const started = Date.now();
   try {
-    await cdp.sendUntilProgress("Runtime.evaluate", { expression: "1" }, "s", { silenceMs: 400 });
-    assert.ok(Date.now() - started > 400, "pongs are progress, so silence is not a deadline from the start");
+    await cdp.sendUntilProgress("Runtime.evaluate", { expression: "1" }, "s", { silenceMs: 2_000 });
+    assert.ok(Date.now() - started > 2_000, "pongs are progress, so silence is not a deadline from the start");
   } finally {
     cdp.close();
     await fake.close();
@@ -164,6 +164,39 @@ test("workflow capture still records when attach takes longer than 3s", { timeou
   } finally {
     await fake.close();
     await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("opening the owner's Chrome waits out a slow attach reply", { timeout: 20_000 }, async (t: TestContext) => {
+  const fake = await fakeCdp({
+    answerPings: true,
+    delay: (method) => method === "Target.attachToTarget" ? 5_500 : 0,
+    result: (method) => method === "Target.attachToTarget" || method === "Target.createTarget" ? { targetId: "tab-1", sessionId: "s1" } : {},
+  });
+  const root = await mkdtemp(path.join(tmpdir(), "bao-progress-attach-"));
+  const userDataDir = await chromeProfiles(path.join(root, "chrome"));
+  const home = path.join(root, "home");
+  await mkdir(home, { recursive: true });
+  const cdp = await connectCdp(fake.port, fake.browserPath);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    cdp, executable: "/usr/bin/false", root: userDataDir, detach() { cdp.close(); },
+  }) as unknown as currentChrome.CurrentChrome);
+  fakeTaskTab(t);
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: userDataDir, executable: "/usr/bin/false" });
+  const started = Date.now();
+  try {
+    await assert.rejects(
+      proxy.execute("open", ["http://fixture.test/"], "current", false, "Default"),
+      (error: Error) => {
+        assert.doesNotMatch(error.message, /cdp timeout Target.attachToTarget/);
+        return true;
+      },
+    );
+    assert.ok(Date.now() - started > 5_000, "attach was slower than the old 5s budget");
+  } finally {
+    cdp.close();
+    await fake.close();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

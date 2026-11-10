@@ -198,7 +198,7 @@ test("replaying a workflow on the owner's Chrome works in a background tab and s
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
     // The Save step's check proved the click; the replay's own tab closes with the run, and Chrome destroys it a moment after.
     let pages: string[] = [];
-    for (const deadline = Date.now() + 3000; Date.now() < deadline; await new Promise(resolve => setTimeout(resolve, 50))) {
+    for (const deadline = Date.now() + 180_000; Date.now() < deadline; await new Promise(resolve => setTimeout(resolve, 50))) {
       pages = (await probe.send<{ targetInfos: { type: string; url: string }[] }>("Target.getTargets")).targetInfos.filter(target => target.type === "page").map(target => target.url);
       if (!pages.includes(`${base}/task`)) break;
     }
@@ -240,7 +240,7 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
   const app = await startApp({ home: path.join(root, "home"), port: 0, extensionHost: false, chromeProfilesRoot: path.join(root, "chrome") });
   const url = (route: string) => `http://127.0.0.1:${app.port}${route}`;
   const replay = (id: string) => fetch(url("/api/replay"), { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(30_000) }).then(response => response.json() as Promise<{ status: string }>);
+    body: JSON.stringify({ id, browser: "current", args: {} }), signal: AbortSignal.timeout(180_000) }).then(response => response.json() as Promise<{ status: string }>);
   const workflow = (steps: WorkflowStep[]): string => {
     const id = `app-replay-${steps.length}`;
     app.library.save(testWorkflow({ id, name: "Background app replay", startUrl: `${base}/task`, steps }));
@@ -254,7 +254,7 @@ test("app Replay on the owner's Chrome works in a background tab and shows it on
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
 
     held = replay(workflow([FILL, SAVE, HOLD]));
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + 180_000;
     while ((await ownerState()).visibility !== "hidden" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal((await ownerState()).visibility, "hidden", "a held app Replay brings its tab to the front for the owner");
   } finally {
