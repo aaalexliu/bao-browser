@@ -460,7 +460,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
   const stateDirs = new Set<string>();
   const state = { closed: false, tabs: 0, commands: [] as string[], trackingFails: false, cleanupFails: false, setupFails: false, activations: [] as unknown[],
     windowState: undefined as string | undefined, windowStates: [] as unknown[], closeTargetFails: false, hold: false, closes: 0, kept: 0, taskGone: false, noActivePage: false,
-    activeTarget: "task", captures: [] as string[], failCapture: "", missActive: false,
+    activeTarget: "task", captures: [] as string[], failCapture: "", missActive: false, infoReads: 0, failInfoAfter: 0,
     taskUrl: "https://fixture.invalid/", taskTitle: "Task",
     onSnapshot: undefined as ((resume: () => void) => void) | undefined,
     onClose: undefined as (() => Promise<void>) | undefined };
@@ -491,6 +491,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       if (method === "Target.getTargetInfo") {
         const id = String(params.targetId || "");
         if (state.missActive && id === state.activeTarget) throw new Error("cdp timeout Target.getTargetInfo");
+        if (state.failInfoAfter && id === state.activeTarget && ++state.infoReads > state.failInfoAfter) throw new Error("cdp timeout Target.getTargetInfo");
         if (id === "glic") return { targetInfo: { url: "https://gemini.google.com/glic?hl=en-US", type: "page", title: "Gemini" } };
         if (id === "login") return { targetInfo: { url: "https://fixture.invalid/login", type: "page", title: "Sign in" } };
         if (id === "task") return { targetInfo: { url: state.taskUrl, type: "page", title: state.taskTitle } };
@@ -601,11 +602,12 @@ test("a capture failure does not fall back to a sign-in task tab", async (t) => 
 test("an active target that does not answer is pictured from a safe task tab", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
-  f.state.missActive = true;
   f.state.activeTarget = "silent";
+  f.state.failInfoAfter = 1;
   f.state.captures.length = 0;
-  assert.equal((await f.proxy.execute("snapshot"))[0]!.exitCode, 0);
+  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
   const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.equal(step.native.command, "snapshot");
   assert.ok(step.afterShot);
   assert.equal(step.shotNote, TASK_TAB_PICTURE);
   assert.equal(step.afterShotError, undefined);
@@ -616,10 +618,35 @@ test("an active target that does not answer is pictured from a safe task tab", a
 test("an active target that does not answer does not picture a sign-in task tab", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
-  Object.assign(f.state, { missActive: true, activeTarget: "silent", captures: [], ...LOGIN_TASK });
-  assert.equal((await f.proxy.execute("snapshot"))[0]!.exitCode, 0);
+  Object.assign(f.state, { activeTarget: "silent", failInfoAfter: 1, captures: [], ...LOGIN_TASK });
+  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
   const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
   assertPrivatePicture(step, f.state.captures);
+});
+
+test("a failed active-tab lookup stops the command", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
+  f.state.missActive = true;
+  f.state.activeTarget = "silent";
+  const before = f.state.commands.length;
+  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
+  assert.equal(f.state.commands.slice(before).includes("snapshot"), false);
+  assert.equal((f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!.native.command, "open");
+});
+
+test("a failed active-tab lookup stops a copy command", async (t) => {
+  const f = await lifecycleFixture(t);
+  const endpoint = await import("../../src/cdp-live/endpoint");
+  t.mock.method(endpoint, "readDevToolsActivePort", async () => ({ port: await trapPort(), browserPath: "/browser" }));
+  const socket = await import("../../src/cdp-live/socket");
+  t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
+  await f.proxy.execute("open", [], "copy");
+  f.state.missActive = true;
+  f.state.activeTarget = "task";
+  const before = f.state.commands.length;
+  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
+  assert.equal(f.state.commands.slice(before).includes("snapshot"), false);
 });
 
 test("a task-tab fallback picture does not keep the active tab's box", async (t) => {

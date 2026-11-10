@@ -343,8 +343,7 @@ export class AgentBrowserProxy {
     try {
       if (this.disconnected) throw new Error("The agent disconnected.");
       if (continuing && command !== "close" && command !== "wait_for_owner") {
-        try { await this.detectOwnerWall(session); }
-        catch (error) { if (!(error instanceof ActiveTargetMiss)) throw error; }
+        await this.detectOwnerWall(session);
         const opened = session.ownerWait ? await this.moveAway(session, this.wallWords(session), session.site) : undefined;
         // Refs from Bao's browser do not hold in the new tab, so an action waits for a fresh snapshot.
         if (opened && (session.ownerWait || command !== "snapshot" && command !== "open")) {
@@ -396,10 +395,7 @@ export class AgentBrowserProxy {
           ? { stdout: session.kind === "current" ? "Disconnected from the owner's own Chrome. Only Bao's task tabs close; the owner's tabs and windows stay open." : "", stderr: "", exitCode: 0 }
           : await this.forward(session, command as string, args);
         results.push(result);
-        if (command !== "close" && result.exitCode === 0) {
-          try { await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined); }
-          catch (error) { if (!(error instanceof ActiveTargetMiss)) throw error; }
-        }
+        if (command !== "close" && result.exitCode === 0) await this.detectOwnerWall(session, command === "open" ? webSite(args[0]) : undefined);
         return result;
       }, () => !!session.ownerWait);
       if (command !== "close" && results[0]?.exitCode === 0) {
