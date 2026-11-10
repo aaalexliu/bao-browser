@@ -7,7 +7,7 @@ import { CDP_PROGRESS_CEILING_MS, connectCdp, type CdpSocket } from "../cdp-live
 import { openCurrentChrome, openTaskTab, type CurrentChrome } from "../cdp-live/current-chrome";
 import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
-import { resolveNormalChrome } from "../launch";
+import { focusOwnedHandoff, resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
 import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, RUN_ENDED, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
@@ -1040,6 +1040,7 @@ export class AgentBrowserProxy {
   /** Writes only Bao's status banner. Never reads the form, page text, or field values. */
   private async ownerBanner(session: Session, targetId: string, waiting: boolean): Promise<void> {
     if (waiting) session.raised = false;
+    if (session.kind === "copy" && "userDataDir" in session.pick) await focusOwnedHandoff(session.pick.userDataDir, waiting).catch(() => undefined);
     const cdp = await this.connectSession(session, { timeoutMs: 2000, signal: session.abort.signal });
     let attached: string | undefined;
     try {

@@ -2,7 +2,7 @@ import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import type { BrowserChoice } from "../browser-choice";
 import { ChromeFolderDenied } from "../chrome-access";
-import { navigateOwned, resolveNormalChrome } from "../launch";
+import { focusOwnedHandoff, navigateOwned, resolveNormalChrome, type OwnedChromeFocus } from "../launch";
 import { ownerWall } from "../cdp-live/owner-wait";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { openCurrentChrome, openTaskTab } from "../cdp-live/current-chrome";
@@ -230,23 +230,57 @@ export function showWorkflowPage(browser: WorkflowBrowser): Promise<void> {
   return browser.kind === "current" ? browser.bringToFront() : browser.page.bringToFront();
 }
 
-/** On Running Chrome, a step that needs the owner shows him the held tab. */
-export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts): PersonPrompts | undefined {
-  if (browser.kind !== "current") return prompts;
-  const settle = () => { void browser.settle().catch(() => undefined); };
+/** On Running Chrome, a step that needs the owner shows him the held tab. A Bao-owned Chrome may come forward, then the lock goes back on. */
+export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts, focus?: OwnedChromeFocus): PersonPrompts | undefined {
+  if (browser.kind === "current") {
+    const settle = () => { void browser.settle().catch(() => undefined); };
+    return {
+      ...prompts,
+      showAsk(ask) {
+        prompts?.showAsk?.(ask);
+        void browser.show().catch(() => undefined);
+      },
+      clearConfirm(runId) {
+        prompts?.clearConfirm?.(runId);
+        settle();
+      },
+      clearLoginWait(runId) {
+        prompts?.clearLoginWait?.(runId);
+        settle();
+      },
+    };
+  }
+  const profile = browser.profile;
+  const handoff = (waiting: boolean) => focusOwnedHandoff(profile, waiting, focus).catch(() => undefined);
   return {
     ...prompts,
-    showAsk(ask) {
-      prompts?.showAsk?.(ask);
-      void browser.show().catch(() => undefined);
+    async showConfirm(label) {
+      await handoff(true);
+      await prompts?.showConfirm?.(label);
     },
-    clearConfirm(runId) {
-      prompts?.clearConfirm?.(runId);
-      settle();
+    async showLoginWait(label) {
+      await handoff(true);
+      await prompts?.showLoginWait?.(label);
     },
-    clearLoginWait(runId) {
-      prompts?.clearLoginWait?.(runId);
-      settle();
+    async showAsk(ask) {
+      await handoff(true);
+      await prompts?.showAsk?.(ask);
+    },
+    async pauseCapture() {
+      await handoff(true);
+      await prompts?.pauseCapture?.();
+    },
+    async clearConfirm(runId) {
+      await handoff(false);
+      await prompts?.clearConfirm?.(runId);
+    },
+    async clearLoginWait(runId) {
+      await handoff(false);
+      await prompts?.clearLoginWait?.(runId);
+    },
+    async resumeCapture() {
+      await handoff(false);
+      await prompts?.resumeCapture?.();
     },
   };
 }

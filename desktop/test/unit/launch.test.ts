@@ -5,7 +5,8 @@ import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, ownedChromeStalled, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { connect, createServer } from "node:net";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, allowFrontArgs, askForwardArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, setOwnedFrontmost, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -22,9 +23,14 @@ test("installed Mac Chrome is a disclaimed spawn, not LaunchServices", () => {
 
 test("the background lock names the spawned pid and not a bundle id", () => {
   assert.deepEqual(behindFrontArgs(4242), ["setinfo", "-app", "4242", "kLSAllowedToBecomeFrontmostKey=false"]);
+  assert.deepEqual(allowFrontArgs(4242), ["setinfo", "-app", "4242", "kLSAllowedToBecomeFrontmostKey=true"]);
+  assert.deepEqual(askForwardArgs(4242), ["setfront", "-app", "4242"]);
   assert.deepEqual(frontmostInfoArgs(4242), ["info", "-only", "allowedtobecomefrontmost", "4242"]);
-  assert.equal([...behindFrontArgs(4242), ...frontmostInfoArgs(4242)].some((arg) => arg.includes("com.google.Chrome") || arg.includes("Google Chrome.app")), false);
+  const named = [...behindFrontArgs(4242), ...allowFrontArgs(4242), ...askForwardArgs(4242), ...frontmostInfoArgs(4242)];
+  assert.equal(named.some((arg) => arg.includes("com.google.Chrome") || arg.includes("Google Chrome.app")), false);
   assert.throws(() => behindFrontArgs(1), /pid/);
+  assert.throws(() => allowFrontArgs(1), /pid/);
+  assert.throws(() => askForwardArgs(1), /pid/);
   assert.throws(() => frontmostInfoArgs(1), /pid/);
 });
 
@@ -32,34 +38,6 @@ test("a LaunchServices marker is still recognized for the owner's Chrome", () =>
   const stalled = "Unable to block on application (GetProcessPID() returned 18446744073709551016)\n";
   assert.equal(launchServicesStalled(stalled), true);
   assert.equal(launchServicesStalled(""), false);
-});
-
-test("a LaunchServices marker is a stall only when that profile's Chrome is stopped", async () => {
-  const profile = mkdtempSync(path.join(tmpdir(), "bao-ls-confirm-"));
-  const marker = "Unable to block on application (GetProcessPID() returned 18446744073709551016)\n";
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "chrome", `--user-data-dir=${profile}`], { stdio: "ignore" });
-  try {
-    await once(child, "spawn");
-    let listed = false;
-    for (let i = 0; i < 40 && !listed; i++) {
-      listed = pidsForDataDir(profile).includes(child.pid!);
-      if (!listed) await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    assert.ok(listed, "the running process is listed by its profile");
-    assert.equal(ownedChromeStalled(marker, profile), false, "a running Chrome keeps the exit detail");
-    process.kill(child.pid!, "SIGSTOP");
-    let stat = "";
-    for (let i = 0; i < 40 && !stat.startsWith("T"); i++) {
-      stat = spawnSync("ps", ["-o", "stat=", "-p", String(child.pid)], { encoding: "utf8" }).stdout.trim();
-      if (!stat.startsWith("T")) await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    assert.ok(stat.startsWith("T"), "ps reports the process stopped");
-    assert.equal(ownedChromeStalled(marker, profile), true);
-    assert.equal(ownedChromeStalled("", profile), false, "a stopped Chrome without the marker is not this stall");
-  } finally {
-    try { process.kill(child.pid!, "SIGKILL"); } catch { /* already gone */ }
-    rmSync(profile, { recursive: true, force: true });
-  }
 });
 
 test("a stopped Chrome for the owned profile is killed", async () => {
@@ -104,7 +82,7 @@ test("killCommandToken kills only the process that carries the token", async () 
   }
 });
 
-function writeFakeSpawner(dir: string, mode: "ready" | "exit"): string {
+function writeFakeSpawner(dir: string, mode: "ready" | "exit" | "fail"): string {
   const file = path.join(dir, "fake-spawn");
   const lines = [
     "#!/usr/bin/env node",
@@ -118,11 +96,16 @@ function writeFakeSpawner(dir: string, mode: "ready" | "exit"): string {
       "fs.writeFileSync(__filename + '.pid', String(child.pid));",
       "process.stdout.write(String(child.pid) + String.fromCharCode(10), () => process.exit(0));",
     );
+  } else if (mode === "fail") {
+    lines.push(
+      "process.stderr.write('bao-spawn: spawn failed disclaim=1 spawn=1: Operation not permitted' + String.fromCharCode(10), () => process.exit(127));",
+    );
   } else {
     lines.push(
       "const portArg = process.argv.find((arg) => arg.startsWith('--remote-debugging-port='));",
       "const announced = portArg ? portArg.slice('--remote-debugging-port='.length) : '';",
       "const child = spawn(process.execPath, ['-e', \"process.stderr.write('DevTools listening on ws://127.0.0.1:' + process.env.BAO_FAKE_PORT + '/devtools/browser/abc' + String.fromCharCode(10)); setInterval(() => {}, 1000);\"], { stdio: ['ignore', 'ignore', 'inherit'], env: { ...process.env, BAO_FAKE_PORT: announced } });",
+      "fs.writeFileSync(__filename + '.pid', String(child.pid));",
       "process.stdout.write(String(child.pid) + String.fromCharCode(10));",
       "child.on('exit', (code) => process.exit(code ?? 0));",
     );
@@ -151,14 +134,15 @@ test("a disclaimed launch returns the spawned pid and locks only that pid", { sk
       undefined,
       false,
       true,
-      { env: { BAO_CHROME_SPAWN: fake }, lockBehind: (pid) => { locked.push(pid); return true; } },
+      { env: {}, spawner: fake, lockBehind: (pid) => { locked.push(pid); return true; }, present: () => { throw new Error("a background launch must not ask to come forward"); } },
     );
     owner = started.owner;
     assert.equal(owner.kind, "gui");
     if (owner.kind !== "gui") return;
-    const spawned = owner.pid;
+    const recorded = Number(readFileSync(`${fake}.pid`, "utf8"));
+    assert.equal(owner.pid, recorded);
     assert.ok(locked.length >= 1);
-    assert.ok(locked.every((pid) => pid === spawned));
+    assert.ok(locked.every((pid) => pid === recorded));
     assert.ok(started.port !== 9222);
     assert.equal(readFileSync(path.join(profile, "DevToolsActivePort"), "utf8").split("\n")[0], String(started.port));
   } finally {
@@ -176,6 +160,8 @@ test("a foreground disclaimed launch does not lock the pid", { skip: process.pla
   mkdirSync(profile);
   const fake = writeFakeSpawner(dir, "ready");
   const locked: number[] = [];
+  const presented: number[] = [];
+  const lines: string[] = [];
   let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
   try {
     const started = await startOwnedChrome(
@@ -185,11 +171,22 @@ test("a foreground disclaimed launch does not lock the pid", { skip: process.pla
       undefined,
       false,
       false,
-      { env: { BAO_CHROME_SPAWN: fake }, lockBehind: (pid) => { locked.push(pid); return true; } },
+      {
+        env: {},
+        spawner: fake,
+        lockBehind: (pid) => { locked.push(pid); return true; },
+        present: (pid) => { presented.push(pid); return false; },
+        log: (line) => lines.push(line),
+      },
     );
     owner = started.owner;
-    assert.equal(locked.length, 0);
+    const recorded = Number(readFileSync(`${fake}.pid`, "utf8"));
+    assert.deepEqual(locked, []);
+    assert.ok(presented.length >= 1);
+    assert.ok(presented.every((pid) => pid === recorded));
+    assert.match(lines.join("\n"), new RegExp(`bao chrome was not asked forward pid=${recorded}`));
     assert.equal(owner.kind, "gui");
+    if (owner.kind === "gui") assert.equal(owner.pid, recorded);
   } finally {
     if (owner?.kind === "gui") {
       try { process.kill(owner.pid, "SIGKILL"); } catch { /* already gone */ }
@@ -213,7 +210,7 @@ test("a disclaimed launch that exits before DevTools kills the spawned pid", { s
       undefined,
       false,
       true,
-      { env: { BAO_CHROME_SPAWN: fake }, lockBehind: () => true },
+      { env: {}, spawner: fake, lockBehind: () => true },
     ), /exited before it opened a debugging port|launcher exited before/);
     const sleeper = Number(readFileSync(pidFile, "utf8"));
     let dead = false;
@@ -231,8 +228,166 @@ test("a disclaimed launch that exits before DevTools kills the spawned pid", { s
   }
 });
 
+function writeFakeChrome(dir: string): string {
+  const file = path.join(dir, "fake-chrome");
+  writeFileSync(file, [
+    "#!/usr/bin/env node",
+    "const portArg = process.argv.find((arg) => arg.startsWith('--remote-debugging-port='));",
+    "const announced = portArg ? portArg.slice('--remote-debugging-port='.length) : '';",
+    "process.stderr.write('DevTools listening on ws://127.0.0.1:' + announced + '/devtools/browser/abc' + String.fromCharCode(10));",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+  return file;
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close((error) => {
+        if (error) reject(error);
+        else if (!address || typeof address === "string") reject(new Error("no port"));
+        else if (address.port === 9222) resolve(freePort());
+        else resolve(address.port);
+      });
+    });
+  });
+}
+
+test("a direct background launch never locks and still starts", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-direct-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeChrome(dir);
+  const locked: number[] = [];
+  const presented: number[] = [];
+  let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
+  try {
+    const started = await startOwnedChrome(
+      fake,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`],
+      profile,
+      undefined,
+      false,
+      true,
+      {
+        env: {},
+        lockBehind: (pid) => { locked.push(pid); return false; },
+        present: (pid) => { presented.push(pid); return false; },
+      },
+    );
+    owner = started.owner;
+    assert.equal(locked.length, 0);
+    assert.equal(presented.length, 0);
+    assert.equal(owner.kind, "direct");
+    assert.notEqual(started.port, 9222);
+  } finally {
+    if (owner?.kind === "direct") owner.child.kill("SIGKILL");
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a disclaimed launch stays up when the background lock is not confirmed", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-unlocked-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeSpawner(dir, "ready");
+  const lines: string[] = [];
+  let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
+  try {
+    const started = await startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "--no-startup-window"],
+      profile,
+      undefined,
+      false,
+      true,
+      { env: {}, spawner: fake, lockBehind: () => false, log: (line) => lines.push(line) },
+    );
+    owner = started.owner;
+    assert.equal(owner.kind, "gui");
+    if (owner.kind !== "gui") return;
+    assert.equal(processGone(owner.pid), false);
+    assert.match(lines.join("\n"), new RegExp(`bao chrome stayed unlocked pid=${owner.pid} profile=${profile}`));
+    assert.notEqual(started.port, 9222);
+  } finally {
+    if (owner?.kind === "gui") {
+      try { process.kill(owner.pid, "SIGKILL"); } catch { /* already gone */ }
+      try { owner.launcher.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a launcher that exits before a pid keeps its own error text", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-spawn-fail-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeSpawner(dir, "fail");
+  try {
+    await assert.rejects(() => startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`],
+      profile,
+      undefined,
+      false,
+      true,
+      { env: {}, spawner: fake, lockBehind: () => true },
+    ), /Bao's Chrome launcher exited before it reported a process id: bao-spawn: spawn failed disclaim=1 spawn=1: Operation not permitted/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("lsappinfo reads the frontmost flag back from a spawned Chrome", { skip: process.platform !== "darwin" || !existsSync(ACCOUNT_CHROME_MAC), timeout: 20000 }, async () => {
+  const profile = mkdtempSync(path.join(tmpdir(), "bao-frontmost-"));
+  const port = await freePort();
+  const child = spawn(ACCOUNT_CHROME_MAC, [
+    `--user-data-dir=${profile}`,
+    `--remote-debugging-port=${port}`,
+    "--no-startup-window",
+    "--no-first-run",
+    "--no-default-browser-check",
+  ], { stdio: "ignore" });
+  const killAll = () => {
+    for (const pid of [child.pid, ...pidsForDataDir(profile)]) {
+      if (!pid || pid === 35699) continue;
+      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    }
+  };
+  try {
+    await once(child, "spawn");
+    const pid = child.pid!;
+    assert.notEqual(pid, 35699);
+    let listening = false;
+    for (let i = 0; i < 50 && !listening; i++) {
+      listening = await new Promise((resolve) => {
+        const socket = connect({ host: "127.0.0.1", port });
+        const done = (open: boolean) => { socket.destroy(); resolve(open); };
+        socket.once("connect", () => done(true));
+        socket.once("error", () => done(false));
+        socket.setTimeout(200, () => done(false));
+      });
+      if (!listening) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(listening, "the spawned Chrome opened its debugging port");
+    assert.equal(await setOwnedFrontmost(pid, false), true);
+    const locked = spawnSync("lsappinfo", ["info", "-only", "allowedtobecomefrontmost", String(pid)], { encoding: "utf8", timeout: 2000 });
+    assert.match(locked.stdout, /"CanBecomeFrontmost"=false/);
+    assert.equal(await setOwnedFrontmost(pid, true), true);
+    const allowed = spawnSync("lsappinfo", ["info", "-only", "allowedtobecomefrontmost", String(pid)], { encoding: "utf8", timeout: 2000 });
+    assert.match(allowed.stdout, /"CanBecomeFrontmost"=true/);
+  } finally {
+    killAll();
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
 test("bao-spawn disclaims the child so it is responsible for itself", { skip: process.platform !== "darwin" }, async () => {
-  const binary = chromeSpawnerPath({});
+  const binary = chromeSpawnerPath();
   const child = spawn(binary, ["/bin/sleep", "30"], { stdio: ["ignore", "pipe", "pipe"] });
   let pid = 0;
   try {
