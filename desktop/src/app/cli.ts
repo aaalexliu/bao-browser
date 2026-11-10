@@ -206,9 +206,12 @@ async function importLogin(args: string[]): Promise<void> {
       body: JSON.stringify({ from, domain, profile }),
     });
     created = await res.json() as typeof created;
-    if (!res.ok || !created.id) throw new Error(created.error || "start Bao first");
   } catch {
     console.error("start Bao first, then run import-login");
+    process.exit(1);
+  }
+  if (!created.id) {
+    console.error(created.error || "start Bao first, then run import-login");
     process.exit(1);
   }
   console.log(created.message || "confirm in the Bao window");
