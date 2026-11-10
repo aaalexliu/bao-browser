@@ -10,7 +10,7 @@ import type { RecordedAgentBrowserCommand } from "../engines/agent-browser-recor
 import type { BrowserChoice } from "../browser-choice";
 import type { SignInImport } from "../engines/bao-profile";
 import { chromeApp, ChromeProfileQuestion, defaultRoute, failedPickLine, fallbackLine, pickLine, shortPickLine, signInLine, type RouteWhy } from "../engines/browser-pick";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, runningChromeRefusal, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, planWorkflowBrowser, releaseWorkflowBrowser, runningChromeRefusal, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { receiptLink } from "../app/deeplink";
 import { replayRefusal, workflowSearchEligible, type WorkflowSearchContext } from "../cdp-live/launch-guard";
 import { hasStrippedSecret, oneTimeCodeInput, reusableInputs, STRIPPED_SECRET } from "../../../shared/saved-secrets";
@@ -791,7 +791,7 @@ async function releaseBrowser(
   library: Library,
   open: { browser: WorkflowBrowser; video: { path(): Promise<string> } | null; runId: string },
 ): Promise<void> {
-  await open.browser.close().catch(() => undefined);
+  await releaseWorkflowBrowser(open.browser, library.settings().keepAgentBrowserOpen === true).catch(() => undefined);
   if (open.video) {
     const src = await open.video.path().catch(() => "");
     if (src && existsSync(src)) {

@@ -37,7 +37,7 @@ import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } fr
 import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
 import { boundRoute, defaultRoute, type RouteWhy } from "../engines/browser-pick";
 import { BOUND_REASON, boundSessionSites } from "../engines/bound-sign-in";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, releaseWorkflowBrowser, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -2984,9 +2984,9 @@ async function runRecorded(
   } finally {
     if (session.kind === "owned") await session.keepOpen?.();
     else if (!paused) {
-      // Running Chrome: the run's tabs close when it ends. A paused run keeps its tab for the owner.
+      // Running Chrome: the run's tab closes when it ends, unless Keep window open is on. A paused run keeps its tab for the owner.
       if (replays.get(workflow.id) === session) replays.delete(workflow.id);
-      await session.close().catch(() => undefined);
+      await releaseWorkflowBrowser(session, library.settings().keepAgentBrowserOpen === true).catch(() => undefined);
     }
   }
 }

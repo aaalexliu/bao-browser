@@ -41,7 +41,7 @@ export interface Settings extends HealSettings {
   chromeProfile?: string;
   /** Local extension choice by Chrome profile directory. Off unless explicitly enabled. */
   chromeProfileExtensions?: Record<string, boolean>;
-  /** Keep the pass-through window after agent exit. Local, off by default. */
+  /** Keep the pass-through window, and a Running Chrome workflow tab, after the agent or run finishes. Local, off by default. */
   keepAgentBrowserOpen?: boolean;
   /**
    * Running Chrome (browser=current) through the Bao extension and the app's relay, instead of Chrome remote debugging.

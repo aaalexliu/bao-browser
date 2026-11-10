@@ -28,7 +28,7 @@ export const APP_BROWSER_OPTIONS = {
   },
   current: {
     label: BROWSER_OPTIONS.current.label,
-    description: "Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new tab in a window of the Chrome profile picked in Settings, or of the only one. If Chrome is not open, Bao starts it. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording. The run's tab closes when the run ends; Bao leaves Chrome open.",
+    description: "Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new tab in a window of the Chrome profile picked in Settings, or of the only one. If Chrome is not open, Bao starts it. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording. The run's tab closes when the run ends unless Keep window open is on; Bao leaves Chrome open.",
   },
 } as const;
 

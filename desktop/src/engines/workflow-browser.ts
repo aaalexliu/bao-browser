@@ -35,8 +35,13 @@ export type WorkflowBrowser = BrowserPage & (
    * remote debugging brings the tab to the front. `settle` lets the group fold again. `bringToFront` is for the owner's own
    * request to see the run.
    */
-  | { kind: "current"; choice: "current"; show(): Promise<void>; settle(): Promise<void>; bringToFront(): Promise<void> }
+  | { kind: "current"; choice: "current"; show(): Promise<void>; settle(): Promise<void>; bringToFront(): Promise<void>; keepOpen(): Promise<void> }
 );
+
+/** Ends the run's attachment. A current-Chrome tab stays when Keep window open is on; otherwise that tab closes. An owned browser always closes. */
+export function releaseWorkflowBrowser(browser: WorkflowBrowser, keepTab: boolean): Promise<void> {
+  return keepTab && browser.kind === "current" ? browser.keepOpen() : browser.close();
+}
 
 export const RUNNING_CHROME_FILE_REFUSAL = "This workflow downloads or uploads a file, which Bao cannot do on your running Chrome yet. Run it on the Bao profile instead.";
 
@@ -143,14 +148,15 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
         const tab = (method: string, extra: Record<string, unknown> = {}) =>
           chrome.cdp.send(method, { targetId: target.targetId, ...extra }, undefined, 5000).then(() => undefined);
         let closing: Promise<void> | undefined;
-        // The run's tabs close with the run. The owner's tabs and windows stay as they were.
-        const close = () => closing ??= (async () => {
+        // The run's tabs close with the run, unless the caller keeps them. The owner's tabs and windows stay as they were.
+        const release = (keep: boolean) => closing ??= (async () => {
           try {
-            await chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000).catch(() => undefined);
+            if (!keep) await chrome.cdp.send("Bao.closeTabs", {}, undefined, 10_000).catch(() => undefined);
             await browser.close();
           } finally { chrome.detach(); }
         })();
-        return { kind: "current", choice: "current", context, page, close, pick: { route: "extension", why },
+        return { kind: "current", choice: "current", context, page, close: () => release(false), keepOpen: () => release(true),
+          pick: { route: "extension", why },
           show: () => tab("Bao.showTab"), settle: () => tab("Bao.settleTab"), bringToFront: () => tab("Bao.showTab", { front: true }) };
       } catch (error) { await browser.close(); throw error; }
     } catch (error) {
@@ -177,9 +183,12 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
           await (await context.newCDPSession(page)).send("Emulation.setFocusEmulationEnabled", { enabled: true });
           const front = () => chrome.cdp.send("Target.activateTarget", { targetId }, undefined, 5000).then(() => undefined);
           let closing: Promise<void> | undefined;
-          // The run's tab closes with the run. The owner's tabs and windows stay as they were.
-          const close = () => closing ??= (async () => { try { await closeTab(); await browser.close(); } finally { chrome.detach(); } })();
-          return { kind: "current", choice: "current", context, page, close, show: front, settle: async () => undefined, bringToFront: front,
+          // The run's tab closes with the run, unless the caller keeps it. The owner's tabs and windows stay as they were.
+          const release = (keep: boolean) => closing ??= (async () => {
+            try { if (!keep) await closeTab(); await browser.close(); } finally { chrome.detach(); }
+          })();
+          return { kind: "current", choice: "current", context, page, close: () => release(false), keepOpen: () => release(true),
+            show: front, settle: async () => undefined, bringToFront: front,
             pick: { route: "current", why, chrome: chrome.executable, userDataDir: chrome.root, profile, background } };
         } catch (error) { await browser.close(); throw error; }
       } catch (error) { await closeTab(); throw error; }
