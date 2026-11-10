@@ -96,8 +96,6 @@ async function liveServerInfo(cli: string, scratch: string, env: NodeJS.ProcessE
 }
 
 function firstLine(child: ChildProcess, output: () => string, errors: () => string): Promise<string> {
-  const ready = output().split("\n")[0];
-  if (ready) return Promise.resolve(ready);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`live MCP initialize timed out\n${errors()}`)), 45_000);
     const onData = (): void => {
