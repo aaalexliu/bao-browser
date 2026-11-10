@@ -361,10 +361,11 @@ export class CdpSocket {
 /** How long a progress wait stays open after the last frame from the peer. */
 export const CDP_SILENCE_MS = 120_000;
 
+/** A capture or active-page read stops here even when the peer keeps answering pings. */
+export const CDP_PROGRESS_CEILING_MS = 30_000;
+
 export interface ConnectOptions {
   timeoutMs?: number;
-  /** Fail after this long with no handshake bytes, instead of timeoutMs from the start. */
-  silenceMs?: number;
   signal?: AbortSignal;
 }
 
@@ -383,7 +384,6 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
   if (!browserPath.startsWith("/devtools/browser")) {
     return Promise.reject(new Error("refusing a non-browser debugging path"));
   }
-  if (opts.silenceMs !== undefined) return connectUntilProgress(port, browserPath, opts.silenceMs, opts.signal);
   const deadline = Date.now() + (opts.timeoutMs ?? CDP_SILENCE_MS);
   const retryUntil = Math.min(deadline, Date.now() + 2000);
   return (async () => {
@@ -402,23 +402,7 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
   })();
 }
 
-/** A refused connection is still retried for two seconds. Bytes, not a deadline from the start, keep the handshake open. */
-function connectUntilProgress(port: number, browserPath: string, silenceMs: number, signal?: AbortSignal): Promise<CdpSocket> {
-  const retryUntil = Date.now() + 2000;
-  return (async () => {
-    for (;;) {
-      if (signal?.aborted) throw new Error("cdp handshake aborted");
-      try {
-        return await connectCdpOnce(port, browserPath, silenceMs, signal, true);
-      } catch (error) {
-        if (!refusedConnection(error) || Date.now() >= retryUntil || signal?.aborted) throw error;
-        await new Promise((resolve) => setTimeout(resolve, Math.min(50, Math.max(1, retryUntil - Date.now()))));
-      }
-    }
-  })();
-}
-
-function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, signal?: AbortSignal, progress = false): Promise<CdpSocket> {
+function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, signal?: AbortSignal): Promise<CdpSocket> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -430,16 +414,12 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
       socket.destroy();
       reject(err);
     };
-    const arm = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
-    };
     const socket = createConnection({ host: "127.0.0.1", port });
     const decoder = new ServerFrameDecoder();
     const client = new CdpSocket(socket);
     let header = Buffer.alloc(0);
     let upgraded = false;
-    arm();
+    timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
     const onAbort = () => fail(new Error("cdp handshake aborted"));
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -449,7 +429,6 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
     });
     socket.on("data", (chunk) => {
       try {
-        if (progress && !upgraded) arm();
         if (!upgraded) {
           header = Buffer.concat([header, chunk]);
           const split = header.indexOf("\r\n\r\n");
@@ -489,7 +468,6 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
     }
 
     socket.once("connect", () => {
-      if (progress) arm();
       const key = randomBytes(16).toString("base64");
       socket.write(handshakeRequest(browserPath, `127.0.0.1:${port}`, key));
     });

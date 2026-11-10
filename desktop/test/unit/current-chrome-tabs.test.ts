@@ -79,6 +79,9 @@ async function fixture(t: TestContext) {
       if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
       return {};
     },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}, sessionId?: string) {
+      return this.send(method, params, sessionId);
+    },
   } as unknown as CdpSocket & { isOpen: boolean };
   // Bao's workflow recorder opens its own connection to the endpoint. A local port that drops every connection keeps it off any
   // real Chrome, such as one on the default debugging port 9222.

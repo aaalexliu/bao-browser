@@ -1,4 +1,4 @@
-import { CDP_SILENCE_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
+import { CDP_PROGRESS_CEILING_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { dumpPage, type DomDump, type PageDump } from "../v1/dom-page";
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { buildLocators, matchLocator } from "../v1/locators";
@@ -97,8 +97,16 @@ export class AgentBrowserWorkflow {
   private blocked: { id: string; command: string } | undefined;
   private pending: { event: TrailEvent; before: Observation } | undefined;
 
-  constructor(private readonly home: string, runId: string, private readonly activePage: () => Promise<BrowserPage>) {
+  constructor(private readonly home: string, runId: string, private readonly activePage: (signal?: AbortSignal) => Promise<BrowserPage>, private readonly abort?: AbortSignal) {
     this.workflowId = `wf-${runId.replace(/^run-/, "")}`;
+  }
+
+  private beginCapture(): { signal: AbortSignal; stop: () => void } {
+    const ceiling = new AbortController();
+    const timer = setTimeout(() => ceiling.abort(), CDP_PROGRESS_CEILING_MS);
+    timer.unref();
+    const signal = this.abort ? AbortSignal.any([this.abort, ceiling.signal]) : ceiling.signal;
+    return { signal, stop: () => clearTimeout(timer) };
   }
 
   unavailable(reason: string, step?: { id: string; command: string }): void {
@@ -128,49 +136,57 @@ export class AgentBrowserWorkflow {
     let captured: DomDump | undefined;
     let page: BrowserPage | undefined;
     const binding = "__baoWorkflowTarget";
+    const skipped = (error: unknown) => {
+      if (this.abort?.aborted) throw error;
+    };
     try {
+      const opening = this.beginCapture();
       try {
-        page = await this.activePage();
+        page = await this.activePage(opening.signal);
         if (this.targetId && page.targetId !== this.targetId) block("it used a second tab");
         if (action) {
-          cdp = await connectCdp(page.port, page.browserPath, { silenceMs: CDP_SILENCE_MS });
-          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }));
-          await cdp.sendUntilProgress("Runtime.enable", {}, sessionId);
+          cdp = await connectCdp(page.port, page.browserPath, { signal: opening.signal });
+          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }, undefined, { signal: opening.signal }));
+          await cdp.sendUntilProgress("Runtime.enable", {}, sessionId, { signal: opening.signal });
           cdp.on("Runtime.bindingCalled", sessionId, (params) => {
             if (params.name === binding && typeof params.payload === "string") captured ??= JSON.parse(params.payload) as DomDump;
           });
-          await cdp.sendUntilProgress("Runtime.addBinding", { name: binding }, sessionId);
+          await cdp.sendUntilProgress("Runtime.addBinding", { name: binding }, sessionId, { signal: opening.signal });
           const armed = await cdp.sendUntilProgress<{ result: { value?: ActionCapture } }>("Runtime.evaluate", {
             expression: `(() => { ${PAGE_FUNCTIONS} return (${armCommand.toString()})(${JSON.stringify(command)}, ${JSON.stringify(binding)}, dumpPage, leafTexts); })()`, returnByValue: true,
-          }, sessionId);
+          }, sessionId, { signal: opening.signal });
           before = armed.result.value;
           if (!before) throw new Error("page observation unavailable");
           if (command === "press") captured = before.target;
           this.updatePending(before.before);
         }
-      } catch { block("its replay target could not be recorded"); }
+      } catch (error) {
+        skipped(error);
+        block("its replay target could not be recorded");
+      } finally { opening.stop(); }
 
       const result = await perform();
       if (action) this.failedStep = result.exitCode !== 0 ? named : undefined;
       if (result.exitCode !== 0 && (command === "snapshot" || command === "screenshot" || command === "tab" && args[0] === "list")) return result;
       if (this.reason || !page) return result;
+      const closing = this.beginCapture();
       try {
-        const afterPage = await this.activePage();
+        const afterPage = await this.activePage(closing.signal);
         if (afterPage.targetId !== page.targetId || afterPage.targetIds.some((target) => !page!.targetIds.includes(target))) {
           block("it opened a second tab or popup");
           return result;
         }
         this.targetId = afterPage.targetId;
         if (!cdp) {
-          cdp = await connectCdp(afterPage.port, afterPage.browserPath, { silenceMs: CDP_SILENCE_MS });
-          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }));
+          cdp = await connectCdp(afterPage.port, afterPage.browserPath, { signal: closing.signal });
+          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }, undefined, { signal: closing.signal }));
         }
         if (!cdp || !sessionId) throw new Error("page observation unavailable");
         let after: Observation | undefined;
         if (!ownerWaiting()) {
           const observed = await cdp.sendUntilProgress<{ result: { value?: Observation } }>("Runtime.evaluate", {
             expression: `(() => { ${PAGE_FUNCTIONS} return (${readObservation.toString()})(dumpPage, leafTexts); })()`, returnByValue: true,
-          }, sessionId);
+          }, sessionId, { signal: closing.signal });
           after = observed.result.value;
           if (!after) throw new Error("page observation unavailable");
         }
@@ -211,7 +227,10 @@ export class AgentBrowserWorkflow {
           }
         } else if (after) this.updatePending(after);
         this.persist(named);
-      } catch { block("its replay outcome could not be recorded"); }
+      } catch (error) {
+        skipped(error);
+        block("its replay outcome could not be recorded");
+      } finally { closing.stop(); }
       return result;
     } finally {
       if (cdp && sessionId && action) {

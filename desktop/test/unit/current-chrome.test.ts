@@ -539,6 +539,9 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       }
       return {};
     },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}, sessionId?: string) {
+      return this.send(method, params, sessionId);
+    },
   } as unknown as CdpSocket;
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     if (state.closed) throw new Error("reconnect startup reached");

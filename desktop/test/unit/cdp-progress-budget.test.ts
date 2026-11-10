@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,6 +22,7 @@ function fakeCdp(opts: {
   answerPings?: boolean;
   delay?: (method: string) => number;
   result?: (method: string) => Record<string, unknown>;
+  onCommand?: (method: string) => void;
 } = {}): Promise<FakeCdp> {
   const peers: Socket[] = [];
   const server = createServer((socket) => {
@@ -37,11 +38,13 @@ function fakeCdp(opts: {
         }
         if (frame.opcode !== 1 || !frame.text) continue;
         const message = JSON.parse(frame.text) as { id: number; method: string };
+        opts.onCommand?.(message.method);
         const wait = opts.delay?.(message.method) ?? 0;
         const result = opts.result?.(message.method) ?? {};
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           if (!socket.destroyed) socket.write(serverFrame(1, Buffer.from(JSON.stringify({ id: message.id, result }))));
         }, wait);
+        timer.unref();
       }
     };
     socket.on("data", (chunk) => {
@@ -126,48 +129,6 @@ test("an aborted progress wait stops without waiting out the silence", { timeout
   }
 });
 
-test("a handshake that drips past 3s still connects while bytes arrive", { timeout: 10_000 }, async () => {
-  const server = createServer((socket) => {
-    socket.once("data", () => {
-      const head = Buffer.from(SWITCH);
-      let offset = 0;
-      const drip = () => {
-        const next = Math.min(head.length, offset + 16);
-        socket.write(head.subarray(offset, next));
-        offset = next;
-        if (offset < head.length) setTimeout(drip, 800);
-      };
-      drip();
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
-  const started = Date.now();
-  try {
-    const cdp = await connectCdp(port, "/devtools/browser/drip", { silenceMs: 1_500 });
-    assert.ok(Date.now() - started > 3_000, "the handshake is not a 3s wall clock");
-    cdp.close();
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});
-
-test("a handshake that stops sending bytes fails on that silence", { timeout: 3_000 }, async () => {
-  const server = createServer((socket) => {
-    socket.once("data", () => socket.write("HTTP/1.1 101"));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
-  const started = Date.now();
-  try {
-    await assert.rejects(connectCdp(port, "/devtools/browser/quiet", { silenceMs: 400 }), /cdp handshake timed out/);
-    const elapsed = Date.now() - started;
-    assert.ok(elapsed >= 400 && elapsed < 2_000, `quiet handshake took ${elapsed}ms`);
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});
-
 test("workflow capture still records when attach takes longer than 3s", { timeout: 15_000 }, async () => {
   const observation = { page: { url: "http://fixture.test/", title: "Fixture", nodes: [], texts: [], values: [] }, leaves: {} };
   let evaluates = 0;
@@ -227,6 +188,95 @@ test("opening the owner's Chrome waits out a slow focus-emulation reply", { time
       },
     );
     assert.ok(Date.now() - started > 5_000, "focus emulation was slower than the old 5s budget");
+  } finally {
+    cdp.close();
+    await fake.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a stuck page that keeps answering pings skips capture at the ceiling and the next command still runs", { timeout: 90_000 }, async () => {
+  let released = false;
+  const fake = await fakeCdp({
+    answerPings: true,
+    delay: () => released ? 0 : 120_000,
+    result: (method) => method === "Target.attachToTarget" ? { sessionId: "s1" } : {},
+  });
+  const home = await mkdtemp(path.join(tmpdir(), "bao-progress-ceiling-"));
+  await mkdir(path.join(home, "trails"), { recursive: true });
+  let commands = 0;
+  try {
+    const workflow = new AgentBrowserWorkflow(home, "run-stuck", async () => ({
+      port: fake.port, browserPath: fake.browserPath, targetId: "tab-1", targetIds: ["tab-1"],
+    }));
+    const started = Date.now();
+    const result = await workflow.record("click", ["#go"], "command-1", async () => {
+      commands += 1;
+      released = true;
+      return { stdout: "clicked", stderr: "", exitCode: 0 };
+    }, () => false);
+    const elapsed = Date.now() - started;
+    assert.equal(result.stdout, "clicked");
+    assert.equal(commands, 1);
+    assert.ok(elapsed > 20_000 && elapsed < 60_000, `stuck capture took ${elapsed}ms`);
+    assert.match(workflow.finish(), /could not be recorded/);
+    const again = await workflow.record("click", ["#next"], "command-2", async () => {
+      commands += 1;
+      return { stdout: "next", stderr: "", exitCode: 0 };
+    }, () => false);
+    assert.equal(again.stdout, "next");
+    assert.equal(commands, 2);
+  } finally {
+    await fake.close();
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("quit during a stuck capture returns without waiting out the ceiling", { timeout: 20_000 }, async (t: TestContext) => {
+  let hang = false;
+  let sawStuck!: () => void;
+  const stuck = new Promise<void>((resolve) => { sawStuck = resolve; });
+  const fake = await fakeCdp({
+    answerPings: true,
+    delay: (method) => hang && method === "Target.attachToTarget" ? 120_000 : 0,
+    onCommand: (method) => { if (hang && method === "Target.attachToTarget") sawStuck(); },
+    result: (method) => {
+      if (method === "Target.createTarget") return { targetId: "tab-1" };
+      if (method === "Target.attachToTarget") return { sessionId: "s1" };
+      if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://fixture.test/", title: "Fixture" } };
+      if (method === "Target.getTargets") return { targetInfos: [{ targetId: "tab-1", type: "page" }] };
+      return {};
+    },
+  });
+  const root = await mkdtemp(path.join(tmpdir(), "bao-progress-quit-"));
+  const userDataDir = await chromeProfiles(path.join(root, "chrome"));
+  const home = path.join(root, "home");
+  await mkdir(home, { recursive: true });
+  const executable = path.join(root, "native");
+  await writeFile(executable, `#!${process.execPath}
+const args = process.argv.slice(2);
+const command = args[args.indexOf('--idle-timeout') + 2];
+if (command === 'tab' && args.includes('--json')) process.stdout.write(JSON.stringify({ data: { tabs: [{ active: true, targetId: 'tab-1', tabId: 't1' }] } }));
+else process.stdout.write('ok');
+`, { mode: 0o700 });
+  const cdp = await connectCdp(fake.port, fake.browserPath);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, executable: "/usr/bin/false", root: userDataDir, endpoint: { port: fake.port, browserPath: fake.browserPath },
+    cdp, closed: new Promise<void>(() => undefined), isClosed: () => false, detach() { cdp.close(); },
+  }) as unknown as currentChrome.CurrentChrome);
+  fakeTaskTab(t);
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: userDataDir, executable });
+  try {
+    const [opened] = await proxy.execute("open", ["http://fixture.test/"], "current", false, "Default");
+    assert.equal(opened!.exitCode, 0, opened!.stderr.slice(0, 200));
+    hang = true;
+    const click = proxy.execute("click", ["#go"]);
+    await stuck;
+    const started = Date.now();
+    await proxy.end();
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 5_000, `quit waited ${elapsed}ms`);
+    await click.catch(() => undefined);
   } finally {
     cdp.close();
     await fake.close();
