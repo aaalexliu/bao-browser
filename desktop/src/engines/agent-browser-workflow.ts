@@ -1,4 +1,4 @@
-import { connectCdp, type CdpSocket } from "../cdp-live/socket";
+import { CDP_SILENCE_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { dumpPage, type DomDump, type PageDump } from "../v1/dom-page";
 import { interpret, type TrailEvent } from "../v1/interpret";
 import { buildLocators, matchLocator } from "../v1/locators";
@@ -133,16 +133,16 @@ export class AgentBrowserWorkflow {
         page = await this.activePage();
         if (this.targetId && page.targetId !== this.targetId) block("it used a second tab");
         if (action) {
-          cdp = await connectCdp(page.port, page.browserPath, { timeoutMs: 3000 });
-          ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }, undefined, 3000));
-          await cdp.send("Runtime.enable", {}, sessionId, 3000);
+          cdp = await connectCdp(page.port, page.browserPath, { silenceMs: CDP_SILENCE_MS });
+          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: page.targetId, flatten: true }));
+          await cdp.sendUntilProgress("Runtime.enable", {}, sessionId);
           cdp.on("Runtime.bindingCalled", sessionId, (params) => {
             if (params.name === binding && typeof params.payload === "string") captured ??= JSON.parse(params.payload) as DomDump;
           });
-          await cdp.send("Runtime.addBinding", { name: binding }, sessionId, 3000);
-          const armed = await cdp.send<{ result: { value?: ActionCapture } }>("Runtime.evaluate", {
+          await cdp.sendUntilProgress("Runtime.addBinding", { name: binding }, sessionId);
+          const armed = await cdp.sendUntilProgress<{ result: { value?: ActionCapture } }>("Runtime.evaluate", {
             expression: `(() => { ${PAGE_FUNCTIONS} return (${armCommand.toString()})(${JSON.stringify(command)}, ${JSON.stringify(binding)}, dumpPage, leafTexts); })()`, returnByValue: true,
-          }, sessionId, 3000);
+          }, sessionId);
           before = armed.result.value;
           if (!before) throw new Error("page observation unavailable");
           if (command === "press") captured = before.target;
@@ -162,15 +162,15 @@ export class AgentBrowserWorkflow {
         }
         this.targetId = afterPage.targetId;
         if (!cdp) {
-          cdp = await connectCdp(afterPage.port, afterPage.browserPath, { timeoutMs: 3000 });
-          ({ sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }, undefined, 3000));
+          cdp = await connectCdp(afterPage.port, afterPage.browserPath, { silenceMs: CDP_SILENCE_MS });
+          ({ sessionId } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: afterPage.targetId, flatten: true }));
         }
         if (!cdp || !sessionId) throw new Error("page observation unavailable");
         let after: Observation | undefined;
         if (!ownerWaiting()) {
-          const observed = await cdp.send<{ result: { value?: Observation } }>("Runtime.evaluate", {
+          const observed = await cdp.sendUntilProgress<{ result: { value?: Observation } }>("Runtime.evaluate", {
             expression: `(() => { ${PAGE_FUNCTIONS} return (${readObservation.toString()})(dumpPage, leafTexts); })()`, returnByValue: true,
-          }, sessionId, 3000);
+          }, sessionId);
           after = observed.result.value;
           if (!after) throw new Error("page observation unavailable");
         }
