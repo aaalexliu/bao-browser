@@ -128,9 +128,17 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     pending.set(id, (result) => { clearTimeout(timer); resolve(result); });
     send(method, params, id);
   });
+  // Like an agent, the client sends back the run id from its latest agent_browser result.
+  let run: string | undefined;
   return {
-    request, send, pid: child.pid, diagnostics: () => stderr,
-    call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}) } }),
+    request, send, pid: child.pid, diagnostics: () => stderr, get run() { return run; },
+    async call(command: string, args: string[] = []) {
+      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}),
+        ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
+      const named = result.content?.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean);
+      if (named) run = named;
+      return result;
+    },
     async close() { if (child.exitCode === null && child.signalCode === null) child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
     async interruptGroup(signal: "SIGINT" | "SIGTERM" | "SIGHUP", repeat: boolean) {
@@ -340,11 +348,14 @@ for (const keepOpen of [false, true]) {
     const c = f.start();
     const initialized = await c.request("initialize") as Result & { instructions: string };
     assert.match(initialized.instructions, /finish_task.*before your final answer/);
-    assert.equal((await c.call("open")).isError, false);
+    const opened = await c.call("open");
+    assert.equal(opened.isError, false);
     const copy = await f.copy();
     const runId = f.library.listRuns()[0]!.id;
+    assert.equal(opened.content![1]!.text, `Run ${runId}`, "every text result names its run after the sentence");
+    assert.equal(c.run, runId);
     assert.equal(f.library.readRun(runId).status, "recording");
-    const result = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Verified the task result." } });
+    const result = await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run, outcome: "passed", reason: "Verified the task result." } });
     assert.equal(result.isError, false);
     assert.match(result.content![0]!.text, /^Passed: Verified the task result\. \d+ steps? in \d+ s\.$/);
     const receipt = result.structuredContent as { summary: string; workflow: string; run_id: string; status: string; browser: string[] };
@@ -360,7 +371,7 @@ for (const keepOpen of [false, true]) {
       assert.equal(pidsForDataDir(copy).length, 0);
       await assert.rejects(access(copy), /ENOENT/);
     }
-    assert.equal((await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Already finished." } })).isError, false);
+    assert.equal((await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run, outcome: "passed", reason: "Already finished." } })).isError, false);
     assert.equal(f.library.listRuns().length, 1, "finishing again creates no empty run");
     assert.equal((await c.call("open")).isError, false, "the same MCP process accepts a new task");
     assert.notEqual(await f.copy(), copy);
@@ -380,17 +391,17 @@ test("finish_task after a completed close leaves the prior task unchanged", { ti
   const saved = f.library.readRun(runId);
   assert.equal(saved.status, "passed");
   assert.equal(saved.envelope, undefined);
-  const result = await c.request("tools/call", { name: "finish_task", arguments: {
+  const result = await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run,
     outcome: "failed", reason: "The requested item was unavailable.",
   } });
   assert.equal(result.isError, false);
-  assert.equal(result.content![0]!.text, "No browser task was open.");
+  assert.equal(result.content![0]!.text, "No browser task is open.");
   assert.equal(result.content!.length, 1);
   const receipt = result.structuredContent as { outcome: string; run_id?: string };
   assert.equal(receipt.outcome, "no_session");
   assert.equal(receipt.run_id, undefined);
   assert.deepEqual(f.library.readRun(runId), saved, "a later task cannot relabel a fully removed session");
-  await c.request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "A later claim" } });
+  await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run, outcome: "passed", reason: "A later claim" } });
   assert.deepEqual(f.library.readRun(runId), saved, "repeated finishes leave the prior task unchanged");
   assert.equal(f.library.listRuns().length, 1);
 });
@@ -414,10 +425,10 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
       assert.equal(f.library.listRuns()[0]!.status, "needs_human", "waiting does not complete a task");
     }
     const copy = await f.copy();
-    const invalid = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: " " } });
+    const invalid = await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run, outcome: "failed", reason: " " } });
     assert.equal(invalid.isError, true);
     assert.ok(pidsForDataDir(copy).length, "invalid finish leaves the session available");
-    const result = await c.request("tools/call", { name: "finish_task", arguments: {
+    const result = await c.request("tools/call", { name: "finish_task", arguments: { run_id: c.run,
       outcome: outcome === "failed-task" ? "failed" : "passed", reason: "The requested item was unavailable.",
     } });
     assert.equal(result.isError, false);
@@ -434,7 +445,7 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
   });
 }
 
-test("a wait_for_owner whose run_id is not the open session names that run and leaves the open session alone", { timeout: 60_000 }, async (t) => {
+test("a wait_for_owner, close, or finish_task whose run_id is not the open session names that run and leaves the open session alone", { timeout: 60_000 }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
   const c = f.start();
@@ -443,12 +454,27 @@ test("a wait_for_owner whose run_id is not the open session names that run and l
   const open = f.library.listRuns()[0]!;
   const late = await c.request("tools/call", { name: "agent_browser", arguments: { command: "wait_for_owner", args: ["1"], run_id: "run-ended-chat" } });
   assert.equal(late.isError, false);
-  const reply = late.structuredContent as { summary: string; outcome: string; instruction: string; browser?: string[] };
+  const reply = late.structuredContent as { summary: string; outcome: string; instruction: string; browser?: string[]; run_id?: string };
   assert.equal(reply.outcome, "closed");
   assert.equal(reply.summary, "This wait ended. This session cannot continue.");
-  assert.equal(reply.instruction, "This wait's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it. Report the ended wait to the owner and stop.");
+  const ended = "This run's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.";
+  assert.equal(reply.instruction, ended);
   assert.equal(reply.browser, undefined, "the result does not name the open session's browser");
+  assert.equal(reply.run_id, "run-ended-chat");
   assert.deepEqual(late.content!.map((block) => block.text), [reply.summary, "Run run-ended-chat · closed", reply.instruction]);
+  const close = await c.request("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: "run-ended-chat" } });
+  assert.deepEqual(close.content!.map((block) => block.text), ["This run ended. This session cannot continue.", "Run run-ended-chat · closed", ended]);
+  const finish = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: "Gave up.", run_id: "run-ended-chat" } });
+  assert.equal(finish.isError, false);
+  assert.deepEqual(finish.content!.map((block) => block.text), ["Run run-ended-chat is not Bao's open browser session, so finish_task changed nothing."]);
+  assert.equal((finish.structuredContent as { outcome: string }).outcome, "no_session");
+  for (const [name, args] of [["agent_browser", { command: "wait_for_owner", args: ["1"] }], ["agent_browser", { command: "close" }], ["finish_task", { outcome: "failed", reason: "Gave up." }]] as const) {
+    const missing = await c.request("tools/call", { name, arguments: args });
+    assert.equal(missing.isError, true);
+    const text = missing.content!.map((block) => block.text).join("\n");
+    assert.match(text, /^run_id is required on (wait_for_owner|close|finish_task) while a browser session is open\./);
+    assert.doesNotMatch(text, new RegExp(open.id), "the refusal does not name the open session's run");
+  }
   assert.deepEqual(f.library.readRun(open.id), open, "the open session's run records nothing");
   assert.equal((await c.call("snapshot")).isError, false, "the open session continues");
   await c.close();
@@ -474,10 +500,10 @@ for (const ending of ["queued-eof", "active-signal"] as const) {
     const openedText = opened.content?.map((block) => block.text).join("\n") ?? "";
     assert.equal(opened.isError, false, [openedText, c.diagnostics()].filter(Boolean).join("\n"));
     const copy = await f.copy();
-    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close" } });
+    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close", ...ending === "active-signal" ? { run_id: c.run } : {} } });
     await f.pending();
     if (ending === "queued-eof") {
-      c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
+      c.send("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: c.run } });
       await c.close();
     } else {
       await c.stop();
@@ -603,7 +629,7 @@ test("close near the stop deadline closes a retained window before a queued cata
       }
     });
     await delay(11_500);
-    c.send("tools/call", { name: "agent_browser", arguments: { command: "close" } });
+    c.send("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: c.run } });
     await until(() => access(copy).then(() => false, () => true));
     assert.equal(pidsForDataDir(copy).length, 0);
     reply?.();

@@ -163,8 +163,8 @@ export function failureText(results: readonly AgentBrowserCommandResult[], error
 export const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 export const CURRENT_CHROME_LEFT_OPEN = "Disconnected from your Chrome. Bao's task tab may still be open.";
 export const TASK_TAB_CLOSED = "Bao's task tab was closed. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
-/** A wait_for_owner that names a run other than Bao's open session, which serves every chat on this MCP process. */
-export const WAIT_RUN_ENDED = "This wait's browser session ended and cannot continue. Report that to the owner.";
+/** A wait_for_owner or close that names a run other than Bao's open session, which serves every chat on this MCP process. */
+export const RUN_ENDED = "This run's browser session ended and cannot continue. Report that to the owner.";
 
 export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed"; instruction: string }
 
@@ -251,7 +251,7 @@ export function describeStep(facts: StepFacts): StepSummary {
   if (outcome === "closed") {
     const ended = reply?.instruction === CURRENT_CHROME_ENDED ? "Your Chrome session ended"
       : reply?.instruction === TASK_TAB_CLOSED ? "Bao's task tab was closed"
-        : reply?.instruction.startsWith(WAIT_RUN_ENDED) ? "This wait ended"
+        : reply?.instruction.startsWith(RUN_ENDED) ? command === "wait_for_owner" ? "This wait ended" : "This run ended"
         : "The Bao window closed";
     return { parts: [`${ended}. This session cannot continue`], text: `${ended}. This session cannot continue.` };
   }

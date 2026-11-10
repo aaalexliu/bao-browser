@@ -210,14 +210,14 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
   assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
 
   // A handoff opens the group so the owner can see the task tab, and leaves his own tab active.
-  await proxy.execute("wait_for_owner", ["200"]);
+  await proxy.execute("wait_for_owner", ["200"], undefined, false, undefined, {}, proxy.activeRunId);
   strip = await stripWhen(chrome, (s) => group(s)?.collapsed === false);
   assert.equal(group(strip)?.collapsed, false);
   assert.equal(active(strip)?.id, chrome.ownerTabId, "a handoff never switches the owner's tab");
 
-  if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+  if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." }, proxy.activeRunId);
   else if (ending === "disconnect") await proxy.end();
-  else await proxy.execute("close");
+  else await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
   strip = await stripWhen(chrome, (s) => s.tabs.length === 1);
   assert.deepEqual(strip.tabs.map((tab) => tab.id), [chrome.ownerTabId], "only the task tab closes");
   assert.deepEqual(strip.groups, []);

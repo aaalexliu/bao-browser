@@ -69,11 +69,17 @@ function client(env: NodeJS.ProcessEnv) {
     pending.set(id, (result) => { clearTimeout(timer); resolve(result); });
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
   });
+  // Like an agent, the client sends back the run id from its latest agent_browser result.
+  let run: string | undefined;
   return {
     stderr: () => stderr,
     request,
-    browser: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args, ...command === "open" ? { browser: "bao" } : {} } }),
-    finish: () => request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Fixture task done." } }),
+    async browser(command: string, args: string[] = []) {
+      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...command === "open" ? { browser: "bao" } : {}, ...command === "close" ? { run_id: run } : {} } });
+      run = result.content?.map((block) => /^Run (\S+)$/.exec(block.text)?.[1]).find(Boolean) ?? run;
+      return result;
+    },
+    finish: () => request("tools/call", { name: "finish_task", arguments: { outcome: "passed", reason: "Fixture task done.", run_id: run } }),
     async close() { child.stdin.end(); await Promise.race([exited, delay(20_000)]); if (child.exitCode === null) child.kill("SIGKILL"); },
   };
 }

@@ -186,24 +186,27 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
   };
 }
 
+/** The line that names the run a text result acted on, which a later wait_for_owner, close, or finish_task sends back as run_id. */
+export const runLine = (runId: string, outcome?: string) => outcome ? `Run ${runId} · ${outcome}` : `Run ${runId}`;
+
 /**
- * The result for a client without MCP Apps: words only. An owner wait gives its outcome, instruction, and browser lines as
+ * The result for a client without MCP Apps: words only. An owner wait gives its outcome, instruction, run id, and browser lines as
  * structuredContent, which Codex and Claude Code hand the model in place of the text blocks, and the same in words for clients that read text.
  */
 export function textToolResult(results: readonly AgentBrowserCommandResult[], sentence: string, notices: readonly string[], browser: readonly string[], runId?: string) {
   const reply = ownerReply(results);
   return {
-    content: [textBlock(sentence),
-      ...(reply ? [...(runId ? [textBlock(`Run ${runId} · ${reply.outcome}`)] : []), textBlock(reply.instruction)] : nativeBlocks(results)),
+    content: [textBlock(sentence), ...(runId ? [textBlock(runLine(runId, reply?.outcome))] : []),
+      ...(reply ? [textBlock(reply.instruction)] : nativeBlocks(results)),
       ...notices.map(textBlock)],
-    ...(reply ? { structuredContent: { summary: sentence, ...reply, ...browser.length ? { browser } : {} } } : {}),
+    ...(reply ? { structuredContent: { summary: sentence, ...reply, ...runId ? { run_id: runId } : {}, ...browser.length ? { browser } : {} } } : {}),
     isError: results.some((result) => result.exitCode !== 0),
   };
 }
 
 /** finish_task: the sentence, the run line, the workflow outcome in words, and the session's browser line; the full receipt and that line as structuredContent. */
 export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean, browser: readonly string[] = []) {
-  const sentence = card?.caption ?? "No browser task was open.";
+  const sentence = card?.caption ?? (receipt.outcome === "no_session" && typeof receipt.reason === "string" ? receipt.reason : "No browser task was open.");
   const run = typeof receipt.run_id === "string"
     ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {

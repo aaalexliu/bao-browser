@@ -9,7 +9,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, TASK_TAB_CLOSED, WAIT_RUN_ENDED, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, RUN_ENDED, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -36,6 +36,10 @@ const FIXED_OPTIONS = new Set([
   "--session", "--namespace", "--profile", "--executable-path", "--headed", "--cdp", "--auto-connect",
   "--provider", "-p", "--engine", "--config", "--args", "--idle-timeout", "--all", "--pin-tab", "--no-pin-tab",
 ]);
+
+/** One MCP process serves every chat, so a call that ends or waits on a session names the run it belongs to. */
+const runIdNeeded = (command: string) => `run_id is required on ${command} while a browser session is open. Send back the run id from this chat's latest agent_browser result; a chat whose results named no run has no session here.`;
+const OTHER_TASK = "The open browser session belongs to another task, so do not call close or finish_task for it; stop here.";
 
 /** One row of the native `tab list --json`. */
 type NativeTab = { tabId?: string; targetId?: string; label?: string | null; active?: boolean };
@@ -252,13 +256,11 @@ export class AgentBrowserProxy {
   private endedLine: string | undefined;
   /** The latest result's line about an owner wait Bao ended. */
   get endedWait(): string | undefined { return this.endedLine; }
-  /** The line about each owner wait Bao ended, by run, for a wait_for_owner that still names that run. */
-  private endedWaits = new Map<string, string>();
   /** The reconnect instruction for a run whose owner's Chrome ended or whose task tab closed. */
   private endedRuns = new Map<string, string>();
-  private waitRun: string | undefined;
-  /** The run a refused wait_for_owner named, when that run is not Bao's open session. */
-  get otherRun(): string | undefined { return this.waitRun; }
+  private refusal: { runId?: string } | undefined;
+  /** A wait_for_owner, close, or finish_task Bao refused because it named no run or a run that is not the open session. */
+  get refused(): { runId?: string } | undefined { return this.refusal; }
   private moved: Moved | undefined;
 
   constructor(private readonly options: {
@@ -269,8 +271,9 @@ export class AgentBrowserProxy {
     extensionRoute?: () => boolean;
   }) {}
 
-  queueClose(args: unknown = []): () => void {
+  queueClose(args: unknown = [], runId?: unknown): () => void {
     validateAgentBrowserCommand("close", args);
+    if (this.session && (typeof runId === "string" ? runId.trim() : runId) !== this.session.recording.id) return () => undefined;
     this.pendingCloses++;
     return () => { this.pendingCloses--; };
   }
@@ -282,7 +285,7 @@ export class AgentBrowserProxy {
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
     snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
-    this.waitRun = undefined;
+    this.refusal = undefined;
     this.latest = undefined;
     this.shown = undefined;
     this.notOpened = undefined;
@@ -302,26 +305,26 @@ export class AgentBrowserProxy {
     if (profile !== undefined && (command !== "open" || typeof profile !== "string" || !profile.trim())) {
       throw new Error("profile is only accepted on open and must be a Chrome profile folder, such as Default or Profile 2");
     }
-    if (runId !== undefined && (command !== "wait_for_owner" || typeof runId !== "string" || !runId.trim())) {
-      throw new Error("run_id is only accepted on wait_for_owner and must be the run id this session's halted or waiting result names");
+    const scoped = command === "wait_for_owner" || command === "close";
+    if (runId !== undefined && (!scoped || typeof runId !== "string" || !runId.trim())) {
+      throw new Error("run_id is only accepted on wait_for_owner and close and must be the run id this chat's latest agent_browser result names");
     }
     if (command === "wait_for_owner") {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
     }
-    // One MCP process serves every chat, so a wait for a run that is no longer the open session belongs to a chat whose task ended.
-    const waitFor = typeof runId === "string" ? runId.trim() : undefined;
-    if (waitFor !== undefined && waitFor !== this.session?.recording.id) {
-      this.waitRun = waitFor;
+    // A wait or close for a run that is not the open session belongs to a chat whose task ended; it touches nothing.
+    const run = typeof runId === "string" ? runId.trim() : undefined;
+    if (scoped && this.session && run === undefined) {
+      this.refusal = {};
       this.shown = undefined;
-      const ended = this.endedWaits.get(this.waitRun);
-      if (ended === this.endedLine) this.endedLine = undefined;
-      const reconnect = this.session ? undefined : this.endedRuns.get(this.waitRun);
-      const detail = ended ?? `Run ${this.waitRun} is not Bao's open browser session.`;
-      const otherTask = this.session
-        ? " The open browser session belongs to another task, so do not call close or finish_task for it. Report the ended wait to the owner and stop."
-        : "";
-      const instruction = reconnect ?? `${WAIT_RUN_ENDED} ${detail}${otherTask}`;
+      throw new Error(runIdNeeded(command));
+    }
+    if (run !== undefined && run !== this.session?.recording.id && (this.session || command === "wait_for_owner")) {
+      this.refusal = { runId: run };
+      this.shown = undefined;
+      const reconnect = this.session ? undefined : this.endedRuns.get(run);
+      const instruction = reconnect ?? `${RUN_ENDED} Run ${run} is not Bao's open browser session.${this.session ? ` ${OTHER_TASK}` : ""}`;
       return [{ stdout: JSON.stringify({ outcome: "closed", instruction }), stderr: "", exitCode: 0 }];
     }
     const named = typeof profile === "string" ? profile.trim() : undefined;
@@ -537,24 +540,34 @@ export class AgentBrowserProxy {
     }
   }
 
-  async finishTask(outcome: AgentBrowserTaskOutcome): Promise<string | undefined> {
+  /**
+   * Ends the open session when `runId` names it. Another run's id changes nothing and returns undefined with `refused` set; no
+   * run_id while a session is open is an error.
+   */
+  async finishTask(outcome: AgentBrowserTaskOutcome, runId?: string): Promise<string | undefined> {
     this.workflowOutcome = undefined;
+    this.notOpened = undefined;
+    this.refusal = undefined;
+    this.shown = undefined;
+    const session = this.session;
+    if (session && runId !== session.recording.id) {
+      this.refusal = runId === undefined ? {} : { runId };
+      if (runId === undefined) throw new Error(runIdNeeded("finish_task"));
+      return undefined;
+    }
     this.currentEnded = false;
     this.taskTabEnded = false;
-    this.notOpened = undefined;
-    const session = this.session;
     this.shown = session && { session, command: "finish_task" };
     if (!session) return undefined;
     session.outcome = outcome;
     if (outcome.outcome === "failed") session.workflow.unavailable(outcome.reason);
-    const runId = session.recording.id;
     try {
       await this.remove(session, this.options.keepOpen?.() === true);
       session.recording.finish(outcome);
       if (this.session === session) this.session = undefined;
-      return runId;
+      return session.recording.id;
     } finally {
-      this.endedRuns.delete(runId);
+      this.endedRuns.delete(session.recording.id);
       this.currentEnded = false;
       this.taskTabEnded = false;
     }
@@ -567,7 +580,7 @@ export class AgentBrowserProxy {
       await this.remove(this.session);
       return;
     }
-    const [result] = await this.execute("close");
+    const [result] = await this.execute("close", [], undefined, false, undefined, {}, this.session.recording.id);
     if (result!.exitCode !== 0) throw new Error("agent-browser close failed");
   }
 
@@ -763,7 +776,7 @@ export class AgentBrowserProxy {
       session.moveError = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
       const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile: profile.directory } : {} };
       const next = copy
-        ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}.`
+        ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close", run_id: session.recording.id })}, then with ${JSON.stringify(open)}.`
         : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
       this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}` };
       return undefined;
@@ -831,7 +844,7 @@ export class AgentBrowserProxy {
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
     const bao = session.pick.route === "bao";
-    return ` If the sign-in or check does not clear in ${bao ? "Bao's window" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. ${bao ? "Bao also tries it again on the next wait_for_owner." : "Bao does not switch on its own."}`;
+    return ` If the sign-in or check does not clear in ${bao ? "Bao's window" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close", run_id: session.recording.id })}, then with ${JSON.stringify(open)}. ${bao ? "Bao also tries it again on the next wait_for_owner." : "Bao does not switch on its own."}`;
   }
 
   private async nativeTabs(session: Session, ceiling?: AbortSignal): Promise<NativeTab[]> {
@@ -1285,8 +1298,7 @@ export class AgentBrowserProxy {
     const since = session.ownerSince ?? Date.now();
     const time = new Intl.DateTimeFormat("en-US", { ...new Date(since).toDateString() === new Date().toDateString() ? {} : { month: "short", day: "numeric" },
       hour: "numeric", minute: "2-digit" }).format(since);
-    this.staleWait = `Bao ended an earlier owner wait from ${time} (run ${session.recording.id}); ${why}.`;
-    this.endedWaits.set(session.recording.id, this.staleWait);
+    this.staleWait = `Bao ended an earlier owner wait from ${time}; ${why}.`;
     session.closing = true;
     await this.remove(session);
     if (this.session === session) this.session = undefined;

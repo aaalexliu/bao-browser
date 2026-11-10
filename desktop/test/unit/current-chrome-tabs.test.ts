@@ -210,7 +210,7 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   f.daemon.clicked = () => f.targets.push({ targetId: "popup2", type: "page", url: "https://www.google.com/maps/place/Vesta", title: "Vesta", openerId: "popup", inWindow: true });
   await f.proxy.execute("click", ["@e3"]);
   assert.match((await f.proxy.execute("tab", []))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
-  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
 });
 
@@ -224,7 +224,7 @@ test("a popup opened from an owner tab the agent switched to stays open and unma
   assert.match(listed, /\[t7\] From owner - https:\/\/example\.com\/from-owner/);
   assert.doesNotMatch(listed, /\[t7\] \(Bao task tab\)/);
   assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent still follows a popup its current tab opened");
-  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual(f.closed, ["task"], "Bao does not close a popup the owner's tab opened");
 });
 
@@ -254,7 +254,7 @@ test("a tab the agent's click opens with --new-tab becomes the agent's tab, and 
   };
   assert.equal((await f.proxy.execute("click", ["@e5", "--new-tab"]))[0]!.exitCode, 0);
   assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.stdout, "✓ Done on opened\n", "the agent stays in the tab it just opened");
-  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["opened", "task"], "Bao closes both tabs it opened and none of the owner's");
 });
 
@@ -285,7 +285,7 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   assert.ok(f.targets.some(item => item.targetId === "owner"));
   await assert.rejects(f.proxy.execute("click", ["@e1"]), /Bao's task tab was closed/);
   await assert.rejects(f.proxy.execute("open", [MAPS]), /Bao's task tab was closed/);
-  const closed = await f.proxy.execute("close");
+  const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(stepSentence("close", closed, undefined, undefined, { current: f.proxy.currentChrome }), "Closed Bao's task tab in your Chrome.");
   assert.equal((await f.proxy.execute("open", [MAPS]))[0]!.exitCode, 0, "an explicit close clears the ended session, so the next open takes the default");
 });

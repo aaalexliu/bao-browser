@@ -619,10 +619,11 @@ test("an owner wait and finish_task carry the browser lines in structuredContent
   const browser = ['Browser: Bao profile, Chrome profile "Default".', 'If the site asks for a sign-in that did not carry over, the fallback is the owner\'s running Chrome.'];
   const wait = textToolResult([{ stdout: JSON.stringify({ outcome: "waiting", instruction: "Keep waiting." }), stderr: "", exitCode: 0 }],
     "Waited for the owner.", ["Current Chrome: note.", ...browser], browser, "run-1");
-  assert.deepEqual(wait.structuredContent, { summary: "Waited for the owner.", outcome: "waiting", instruction: "Keep waiting.", browser });
-  assert.deepEqual(wait.content.slice(-3).map((block) => block.text), ["Current Chrome: note.", ...browser]);
-  const plain = textToolResult([{ stdout: "snapshot\n", stderr: "", exitCode: 0 }], "Read the page.", browser, browser);
+  assert.deepEqual(wait.structuredContent, { summary: "Waited for the owner.", outcome: "waiting", instruction: "Keep waiting.", run_id: "run-1", browser });
+  assert.deepEqual(wait.content.map((block) => block.text), ["Waited for the owner.", "Run run-1 · waiting", "Keep waiting.", "Current Chrome: note.", ...browser]);
+  const plain = textToolResult([{ stdout: "snapshot\n", stderr: "", exitCode: 0 }], "Read the page.", browser, browser, "run-1");
   assert.equal("structuredContent" in plain, false, "an ordinary result keeps its words in text blocks");
+  assert.deepEqual(plain.content.map((block) => block.text), ["Read the page.", "Run run-1", "snapshot\n", ...browser], "an ordinary result names its run after the sentence");
   const finished = finishToolResult(undefined, { run_id: "run-1", status: "passed" }, false, browser.slice(0, 1));
   assert.deepEqual(finished.structuredContent, { summary: "No browser task was open.", run_id: "run-1", status: "passed", browser: browser.slice(0, 1) });
   assert.equal(finished.content.at(-1)!.text, browser[0]);

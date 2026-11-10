@@ -48,7 +48,7 @@ test("agent-browser drives a folded Bao tab in the owner's Chrome while he keeps
   { text: "clicked, typed: Ada", visibility: "visible", painting: true }, "focus emulation keeps the folded tab live");
   assert.deepEqual(await chrome.ownerEvents(), [], "the owner's tab never left the front");
 
-  assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
+  assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
   const after = await stripWhen(chrome, (s) => s.tabs.length === 1);
   assert.deepEqual(after.tabs.map((tab) => tab.id), [chrome.ownerTabId], "only Bao's tabs close");
   assert.deepEqual(after.groups, []);

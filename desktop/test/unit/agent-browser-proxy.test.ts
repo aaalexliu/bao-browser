@@ -133,7 +133,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
       });
       await f.proxy.execute("snapshot");
     }
-    const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"]);
+    const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, ending === "explicit-close" ? "waiting" : "closed");
     if (ending === "explicit-close") await f.proxy.close();
     const library = new Library(path.join(f.root, "home"));
@@ -144,12 +144,12 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
     if (["no-active", "missing-target", "dead-socket"].includes(ending)) {
       const calls = await f.calls();
       for (const command of ["snapshot", "screenshot", "fill", "press", "scroll", "click", "tab", "open", "wait_for_owner"]) {
-        const next = await f.proxy.execute(command);
+        const next = await f.proxy.execute(command, [], undefined, false, undefined, {}, command === "wait_for_owner" ? saved.id : undefined);
         assert.equal((JSON.parse(next[0]!.stdout) as { outcome: string }).outcome, "closed");
       }
       assert.deepEqual(await f.calls(), calls);
       assert.deepEqual(library.readRun(saved.id), saved);
-      await f.proxy.execute("close");
+      await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
       assert.deepEqual(library.readRun(saved.id), saved);
     }
   } finally { await f.close(); }
@@ -173,7 +173,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
       followSend(t, cdp);
       return cdp;
     });
-    const result = await f.proxy.execute("wait_for_owner", ["350"]);
+    const result = await f.proxy.execute("wait_for_owner", ["350"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "waiting");
     assert.match((JSON.parse(result[0]!.stdout) as { instruction: string }).instruction, /wait_for_owner/);
     const saved = new Library(path.join(f.root, "home")).listRuns()[0]!;
@@ -222,7 +222,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes 
     });
     const library = new Library(path.join(f.root, "home"));
     const id = library.listRuns()[0]!.id;
-    const result = await f.proxy.execute("wait_for_owner", ["2500"]);
+    const result = await f.proxy.execute("wait_for_owner", ["2500"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, "ready");
     assert.equal(failed, true);
     assert.ok(polls > 1);
@@ -263,7 +263,7 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     assert.equal(records[0]!.env.AGENT_BROWSER_SOCKET_DIR, filled.env.AGENT_BROWSER_SOCKET_DIR);
     assert.equal(records[0]!.env.HOME, records[0]!.env.AGENT_BROWSER_SOCKET_DIR);
     assert.equal(records[0]!.env.OPENAI_API_KEY, undefined);
-    assert.deepEqual(await f.proxy.execute("close"), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
+    assert.deepEqual(await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
     await assert.rejects(access(copy), /ENOENT/);
     await assert.rejects(access(records[0]!.env.AGENT_BROWSER_SOCKET_DIR!), /ENOENT/);
     await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
@@ -347,7 +347,7 @@ test("queued close during startup overrides an end already keeping the window", 
     await ending;
     assert.equal(f.closeCount(), 1, "close intent must reach the session created during shutdown");
     await assert.rejects(access(f.copy()), /ENOENT/);
-    assert.equal((await f.proxy.execute("close"))[0]!.exitCode, 0);
+    assert.equal((await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
   } finally { releaseClose(); resume(); await f.close(); }
 });
 
@@ -381,7 +381,7 @@ for (const timing of ["stop", "release", "retained"] as const) {
       }
       resume();
       await ending;
-      assert.equal((await f.proxy.execute("close"))[0]!.exitCode, 0);
+      assert.equal((await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
       assert.equal(f.closeCount(), 1, "a late close must still own and close the kept window");
       await assert.rejects(access(copy), /ENOENT/);
     } finally { releaseClose(); resume(); await f.close(); }
@@ -409,7 +409,7 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
         await rm(path.join(f.root, "native"));
         await assert.rejects(f.proxy.close(), /ENOENT/);
       } else {
-        assert.deepEqual(await f.proxy.execute("close", [mode === "daemon-error" ? "daemon-fail" : "fail"]), [{ stdout: "native failure output\n", stderr: "native error\n", exitCode: 1 }]);
+        assert.deepEqual(await f.proxy.execute("close", [mode === "daemon-error" ? "daemon-fail" : "fail"], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "native failure output\n", stderr: "native error\n", exitCode: 1 }]);
         if (mode === "daemon-error") await waitFor(async () => !alive(Number(await readFile(path.join(f.root, "daemon.pid"), "utf8"))));
       }
       await assert.rejects(access(copy), /ENOENT/);
@@ -438,7 +438,7 @@ for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle
     const runId = f.proxy.activeRunId!;
     const reported = { message: `Bao could not clean up the browser session of run ${runId}: copy deletion failed` };
     if (ending === "close") await assert.rejects(f.proxy.close(), reported);
-    else if (ending === "finish_task") await assert.rejects(f.proxy.finishTask({ outcome: "passed", reason: "task complete" }), reported);
+    else if (ending === "finish_task") await assert.rejects(f.proxy.finishTask({ outcome: "passed", reason: "task complete" }, f.proxy.activeRunId), reported);
     else if (ending === "disconnect") await assert.rejects(f.proxy.end(), reported);
     else if (ending === "owner-close") f.closeWindow();
     else t.mock.timers.tick(600_000);
@@ -476,7 +476,7 @@ for (const command of ["open", "click", "close"]) {
     const f = await fixture(t);
     try {
       if (command !== "open") await f.proxy.execute("open", [], "copy");
-      const outcome = f.proxy.execute(command, ["hang"], command === "open" ? "copy" : undefined).then(() => undefined, (error: unknown) => error);
+      const outcome = f.proxy.execute(command, ["hang"], command === "open" ? "copy" : undefined, false, undefined, {}, command === "close" ? f.proxy.activeRunId : undefined).then(() => undefined, (error: unknown) => error);
       await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
       const copy = f.copy();
       const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
@@ -500,7 +500,7 @@ test("Chrome closing during native close preserves its result and cleans up once
   try {
     await f.proxy.execute("open", [], "copy");
     const copy = f.copy();
-    const outcome = f.proxy.execute("close", ["wait"]);
+    const outcome = f.proxy.execute("close", ["wait"], undefined, false, undefined, {}, f.proxy.activeRunId);
     await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
     f.closeWindow();
     await writeFile(path.join(f.root, "continue"), "");
@@ -625,7 +625,7 @@ test("proxy saves raw commands, native errors, timing, screenshots, partial runs
     const text = "ghp_syntheticsecretvalue";
     const filled = await f.proxy.execute("fill", ["@e2", text]);
     const failed = await f.proxy.execute("click", ["fail"]);
-    const closed = await f.proxy.execute("close");
+    const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
     const saved = library.readRun(partial.id);
     assert.equal(saved.status, "failed");
     const steps = saved.steps as RecordedAgentBrowserCommand[];
@@ -667,7 +667,7 @@ test("recording write and screenshot failures do not change native command resul
       { stdout: "t1 Synthetic - http://127.0.0.1/\n", stderr: "", exitCode: 0 },
     ]);
     assert.deepEqual(await f.proxy.execute("fill", ["#password", "synthetic-password"]), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
-    assert.deepEqual(await f.proxy.execute("close"), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
+    assert.deepEqual(await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
     assert.ok(warnings.some((text) => text.includes("run write")));
     assert.ok(warnings.some((text) => text.includes("page screenshot")));
     assert.ok(warnings.every((text) => !text.includes("synthetic-password")));
@@ -702,7 +702,7 @@ test("a stalled recording CDP connection times out without failing the forwarded
     assert.equal((await f.proxy.execute("open", [], "copy"))[0]!.stdout, "open unchanged\n");
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.match((run.steps as RecordedAgentBrowserCommand[])[0]!.afterShotError ?? "", /^Page screenshot unavailable: /);
-    assert.equal((await f.proxy.execute("close"))[0]!.stdout, "close unchanged\n");
+    assert.equal((await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "close unchanged\n");
   } finally { await f.close(); }
 });
 
@@ -760,10 +760,10 @@ test("a copy that stops for sign-in names the Running Chrome fallback on the sam
     const reply = JSON.parse(halted!.stdout) as { outcome: string; instruction: string };
     assert.equal(reply.outcome, "halted");
     assert.ok(reply.instruction.endsWith(" If the sign-in or check does not clear in the Chrome copy, the fallback is the owner's running Chrome over remote debugging on the same Chrome profile \"Profile 2\". "
-      + 'To take it, call agent_browser with {"command":"close"}, then with {"command":"open","args":["http://127.0.0.1/"],"browser":"current","profile":"Profile 2"}. Bao does not switch on its own.'), reply.instruction);
-    const [waiting] = await f.proxy.execute("wait_for_owner", ["1"]);
+      + `To take it, call agent_browser with {"command":"close","run_id":"${f.proxy.activeRunId}"}, then with {"command":"open","args":["http://127.0.0.1/"],"browser":"current","profile":"Profile 2"}. Bao does not switch on its own.`), reply.instruction);
+    const [waiting] = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.match((JSON.parse(waiting!.stdout) as { instruction: string }).instruction, /the fallback is the owner's running Chrome/);
-    await f.proxy.execute("close");
+    await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
 
     fakeTaskTab(t);
     let detached = false;
@@ -829,14 +829,14 @@ test("a wall that clears before finish_task is not a fallback; every wait_for_ow
     const [halted] = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     assert.equal((JSON.parse(halted!.stdout) as { outcome: string }).outcome, "halted");
     signedIn = true;
-    const [ready] = await f.proxy.execute("wait_for_owner", ["5000"]);
+    const [ready] = await f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, f.proxy.activeRunId);
     const reply = JSON.parse(ready!.stdout) as { outcome: string; instruction: string };
     assert.equal(reply.outcome, "ready");
     assert.ok(reply.instruction.endsWith('then with {"command":"open","args":["http://127.0.0.1/"],"browser":"current","profile":"Profile 2"}. Bao does not switch on its own.'), reply.instruction);
     assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
     await f.proxy.execute("snapshot");
     assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
-    assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "signed in" }));
+    assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "signed in" }, f.proxy.activeRunId));
     assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
 
     fakeOwnerChrome(t, f.sourceRoot);
