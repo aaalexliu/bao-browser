@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { focusOwnedHandoff, type OwnedChromeFocus } from "../../src/launch";
+import { focusOwnedHandoff, releaseKeptWindow, type OwnedChromeFocus } from "../../src/launch";
 import { ownerPrompts, type WorkflowBrowser } from "../../src/engines/workflow-browser";
 
 function recorder(): { focus: OwnedChromeFocus; order: string[] } {
@@ -81,4 +81,16 @@ test("focusOwnedHandoff presents while waiting and locks when the wait ends", as
   await focusOwnedHandoff("/tmp/bao-owned-focus", true, focus);
   await focusOwnedHandoff("/tmp/bao-owned-focus", false, focus);
   assert.deepEqual(order, ["present", "lock"]);
+});
+
+test("letting a kept window go allows that pid and does not present it", async () => {
+  const { order } = recorder();
+  const allowed: number[] = [];
+  await releaseKeptWindow({ kind: "gui", pid: 5150, userDataDir: "/tmp/bao-kept" }, async (pid) => {
+    allowed.push(pid);
+    order.push("allow");
+    return true;
+  });
+  assert.deepEqual(allowed, [5150]);
+  assert.deepEqual(order, ["allow"]);
 });

@@ -391,10 +391,20 @@ function focusPid(userDataDir: string): number | undefined {
   }
 }
 
-function focusMiss(pid: number, userDataDir: string, what: "unlocked" | "forward"): string {
-  return what === "unlocked"
-    ? `bao chrome stayed unlocked pid=${pid} profile=${userDataDir}: background lock was not confirmed`
-    : `bao chrome was not asked forward pid=${pid} profile=${userDataDir}`;
+function focusMiss(pid: number, userDataDir: string, what: "unlocked" | "forward" | "kept"): string {
+  if (what === "unlocked") return `bao chrome stayed unlocked pid=${pid} profile=${userDataDir}: background lock was not confirmed`;
+  if (what === "forward") return `bao chrome was not asked forward pid=${pid} profile=${userDataDir}`;
+  return `bao chrome stayed locked pid=${pid} profile=${userDataDir}: frontmost was not restored`;
+}
+
+/** Lets a kept Chrome become frontmost. It does not ask the window to come forward. A direct launch was never locked. */
+export async function releaseKeptWindow(
+  owner: { kind: "direct" } | { kind: "gui"; pid: number; userDataDir: string },
+  allow: (pid: number) => Promise<boolean> = (pid) => setOwnedFrontmost(pid, true),
+  log: (line: string) => void = (line) => { console.error(line); },
+): Promise<void> {
+  if (owner.kind !== "gui") return;
+  if (!await allow(owner.pid).catch(() => false)) log(focusMiss(owner.pid, owner.userDataDir, "kept"));
 }
 
 /** The installed Chrome for this profile, or nothing for a direct launch and the test lane. */
@@ -436,17 +446,8 @@ export function chromeSpawnerPath(pinned?: string): string {
 }
 
 function packagedSpawner(): string | undefined {
-  let dir = __dirname;
-  for (let i = 0; i < 8; i++) {
-    const macos = path.join(dir, "MacOS", "bao-spawn");
-    if (existsSync(macos)) return macos;
-    const contents = path.join(dir, "Contents", "MacOS", "bao-spawn");
-    if (existsSync(contents)) return contents;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return undefined;
+  const macos = path.resolve(__dirname, "../../../MacOS/bao-spawn");
+  return existsSync(macos) ? macos : undefined;
 }
 
 function ensureBuiltSpawner(): string {
@@ -882,7 +883,7 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
   portFile: string;
   closed: Promise<void>;
   isClosed(): boolean;
-  keepOpen(): void;
+  keepOpen(): Promise<void>;
   close(): Promise<void>;
 }> {
   const { owner } = await spawnNormalChrome(opts, opts.detached === true);
@@ -959,11 +960,19 @@ export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions 
     state = { phase: "running" };
     return {
       portFile, closed, close, keepOpen() {
-        if (state.phase !== "running") return;
-        state = { phase: "retained" };
-        cdp?.close();
-        if (owner.kind === "direct") owner.child.unref();
-        else owner.launcher.unref();
+        if (state.phase !== "running") return Promise.resolve();
+        const letGo = () => {
+          if (state.phase !== "running") return;
+          state = { phase: "retained" };
+          cdp?.close();
+          if (owner.kind === "direct") owner.child.unref();
+          else owner.launcher.unref();
+        };
+        if (owner.kind !== "gui") {
+          letGo();
+          return Promise.resolve();
+        }
+        return releaseKeptWindow(owner).then(letGo);
       },
       isClosed() {
         switch (state.phase) {

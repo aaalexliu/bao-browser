@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { connect, createServer } from "node:net";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, allowFrontArgs, askForwardArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, setOwnedFrontmost, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, allowFrontArgs, askForwardArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, releaseKeptWindow, resolveAccountChrome, resolveNormalChrome, setOwnedFrontmost, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -342,26 +342,33 @@ test("a launcher that exits before a pid keeps its own error text", { skip: proc
   }
 });
 
-test("lsappinfo reads the frontmost flag back from a spawned Chrome", { skip: process.platform !== "darwin" || !existsSync(ACCOUNT_CHROME_MAC), timeout: 20000 }, async () => {
+test("lsappinfo reads the frontmost flag back from the pinned test browser", { skip: process.platform !== "darwin", timeout: 20000 }, async (t) => {
+  let exe = "";
+  try { exe = pinTestBrowser(); }
+  catch {
+    t.skip();
+    return;
+  }
   const profile = mkdtempSync(path.join(tmpdir(), "bao-frontmost-"));
   const port = await freePort();
-  const child = spawn(ACCOUNT_CHROME_MAC, [
+  assert.notEqual(port, 9222);
+  const child = spawn(exe, [
     `--user-data-dir=${profile}`,
     `--remote-debugging-port=${port}`,
     "--no-startup-window",
     "--no-first-run",
     "--no-default-browser-check",
+    ...testLaneKeychainArgs(),
   ], { stdio: "ignore" });
   const killAll = () => {
     for (const pid of [child.pid, ...pidsForDataDir(profile)]) {
-      if (!pid || pid === 35699) continue;
+      if (!pid) continue;
       try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
     }
   };
   try {
     await once(child, "spawn");
     const pid = child.pid!;
-    assert.notEqual(pid, 35699);
     let listening = false;
     for (let i = 0; i < 50 && !listening; i++) {
       listening = await new Promise((resolve) => {
@@ -373,16 +380,53 @@ test("lsappinfo reads the frontmost flag back from a spawned Chrome", { skip: pr
       });
       if (!listening) await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    assert.ok(listening, "the spawned Chrome opened its debugging port");
+    assert.ok(listening, "the pinned test browser opened its debugging port");
     assert.equal(await setOwnedFrontmost(pid, false), true);
     const locked = spawnSync("lsappinfo", ["info", "-only", "allowedtobecomefrontmost", String(pid)], { encoding: "utf8", timeout: 2000 });
     assert.match(locked.stdout, /"CanBecomeFrontmost"=false/);
     assert.equal(await setOwnedFrontmost(pid, true), true);
     const allowed = spawnSync("lsappinfo", ["info", "-only", "allowedtobecomefrontmost", String(pid)], { encoding: "utf8", timeout: 2000 });
     assert.match(allowed.stdout, /"CanBecomeFrontmost"=true/);
+    assert.equal(allowed.stdout.includes("com.google.Chrome"), false);
   } finally {
     killAll();
     rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("a kept window is allowed to become frontmost and is not asked forward", async () => {
+  const allowed: number[] = [];
+  const lines: string[] = [];
+  await releaseKeptWindow(
+    { kind: "gui", pid: 4242, userDataDir: "/tmp/bao-kept" },
+    async (pid) => { allowed.push(pid); return true; },
+    (line) => lines.push(line),
+  );
+  assert.deepEqual(allowed, [4242]);
+  assert.equal(lines.length, 0);
+  await releaseKeptWindow({ kind: "direct" }, async () => { allowed.push(7); return true; });
+  assert.deepEqual(allowed, [4242]);
+  await releaseKeptWindow(
+    { kind: "gui", pid: 4242, userDataDir: "/tmp/bao-kept" },
+    async () => false,
+    (line) => lines.push(line),
+  );
+  assert.match(lines.join("\n"), /bao chrome stayed locked pid=4242 profile=\/tmp\/bao-kept: frontmost was not restored/);
+});
+
+test("the packaged launcher is the one MacOS path, not a parent directory", () => {
+  const decoyDir = path.resolve("desktop/dist/desktop/MacOS");
+  const decoy = path.join(decoyDir, "bao-spawn");
+  mkdirSync(decoyDir, { recursive: true });
+  writeFileSync(decoy, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  try {
+    let chosen = "";
+    try { chosen = chromeSpawnerPath(); }
+    catch (error) { chosen = error instanceof Error ? error.message : String(error); }
+    assert.notEqual(chosen, decoy);
+    assert.equal(chosen.includes(`${path.sep}desktop${path.sep}dist${path.sep}desktop${path.sep}MacOS`), false);
+  } finally {
+    rmSync(decoyDir, { recursive: true, force: true });
   }
 });
 
