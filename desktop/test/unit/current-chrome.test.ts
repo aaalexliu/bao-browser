@@ -12,8 +12,10 @@ import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
+import { CURRENT_CHROME_ENDED, TASK_TAB_CLOSED, WAIT_RUN_ENDED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import { browserToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
+import { getRun } from "../../src/mcp/catalog";
+import { browserToolResult, finishToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
 import { LAUNCH_SERVICES_RESTART, launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -551,7 +553,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
       return this.send(method, params, sessionId);
     },
   } as unknown as CdpSocket;
-  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+  const openCurrentChrome = t.mock.method(currentChrome, "openCurrentChrome", async () => {
     if (state.closed) throw new Error("reconnect startup reached");
     return { pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root, endpoint: { port: await trapPort(), browserPath: "/browser" },
       cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() };
@@ -582,7 +584,7 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
     for (const dir of stateDirs) await rm(dir, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   });
-  return { proxy, state, cdp, library: new Library(home) };
+  return { proxy, state, cdp, library: new Library(home), openCurrentChrome };
 }
 
 const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a picture of its task tab.";
@@ -830,6 +832,109 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
     await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
   }
   await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
+});
+
+async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (proxy.hasSession() && Date.now() < deadline) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(proxy.hasSession(), false);
+}
+
+test("a first wait after finish_task still waits on the new run when run_id is left out", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runX = await f.proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+  assert.ok(runX);
+  const finished = finishToolResult(undefined, getRun(f.library, runX), false);
+  assert.match(finished.content.map((block) => block.text).join("\n"), new RegExp(`Run ${runX} · passed`));
+  f.state.closed = false;
+  let endChrome!: () => void;
+  const closed = new Promise<void>((resolve) => { endChrome = resolve; });
+  // Replace the fixture mock in place. A second t.mock.method restores underneath the first and leaves it installed after the test.
+  f.openCurrentChrome.mock.mockImplementation(async () => ({
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: "/chrome",
+    endpoint: { port: await trapPort(), browserPath: "/browser" },
+    cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
+  }));
+  await f.proxy.execute("open", [], "current");
+  const runY = f.library.listRuns().find((run) => run.id !== runX)!.id;
+  assert.notEqual(runY, runX);
+  const [waiting] = await f.proxy.execute("wait_for_owner", ["40"]);
+  const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "waiting", "a check Bao did not recognize still waits on the open session");
+  assert.equal(reply.instruction.includes(`run_id="${runY}"`), true);
+  assert.equal(reply.instruction.includes(`run_id="${runX}"`), false);
+  assert.equal(f.proxy.hasSession(), true);
+  assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "needs_human");
+});
+
+test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a newer session", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runA = f.library.listRuns()[0]!.id;
+  f.cdp.close();
+  await untilSessionEnds(f.proxy);
+  f.state.closed = false;
+  let endChrome!: () => void;
+  const closed = new Promise<void>((resolve) => { endChrome = resolve; });
+  f.openCurrentChrome.mock.mockImplementation(async () => ({
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: "/chrome",
+    endpoint: { port: await trapPort(), browserPath: "/browser" },
+    cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
+  }));
+  await f.proxy.execute("open", ["https://fixture.invalid/other"], "current");
+  const runB = f.library.listRuns().find((run) => run.id !== runA)!.id;
+  const saved = f.library.readRun(runB);
+  const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runA);
+  const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.instruction, `${WAIT_RUN_ENDED} Run ${runA} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it. Report the ended wait to the owner and stop.`);
+  assert.notEqual(reply.instruction, CURRENT_CHROME_ENDED);
+  assert.equal(browserToolResult("wait_for_owner", late, undefined, runA).content[0]!.text, "This wait ended. This session cannot continue.");
+  assert.equal(f.proxy.hasSession(), true);
+  assert.deepEqual(f.library.readRun(runB), saved, "the newer session's run is unchanged");
+});
+
+test("a wait_for_owner that names the run whose Chrome ended returns the reconnect instruction", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runId = f.library.listRuns()[0]!.id;
+  const before = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  await f.proxy.execute("wait_for_owner", ["1"]);
+  const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  assert.ok(steps > before);
+  f.cdp.close();
+  await untilSessionEnds(f.proxy);
+  const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runId);
+  const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.instruction, CURRENT_CHROME_ENDED);
+  assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Your Chrome session ended. This session cannot continue.");
+  assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
+  const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
+  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
+});
+
+test("a wait_for_owner that names the run whose task tab closed returns that closed-tab instruction", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runId = f.library.listRuns()[0]!.id;
+  await f.proxy.execute("wait_for_owner", ["1"]);
+  f.state.taskGone = true;
+  const [closed] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  assert.equal((JSON.parse(closed!.stdout) as { instruction: string }).instruction, TASK_TAB_CLOSED);
+  assert.equal(f.proxy.hasSession(), false);
+  const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runId);
+  const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.instruction, TASK_TAB_CLOSED);
+  assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Bao's task tab was closed. This session cannot continue.");
+  assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
+  const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
+  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
 });
 
 test("a command during a handoff records none of its arguments after the task tab closes", async (t) => {
