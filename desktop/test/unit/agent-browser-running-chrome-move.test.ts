@@ -265,7 +265,7 @@ for (const { wall, page, before, after } of [
   assert.equal(runs[0]!.status, "recording");
   assert.deepEqual(runs[0]!.browser && { route: runs[0]!.browser.route, why: runs[0]!.browser.why }, { route: "current", why: "fallback after a sign-in wall" });
 
-  assert.ok(await h.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
+  assert.ok(await h.proxy.finishTask({ outcome: "passed", reason: "fixture" }, h.proxy.activeRunId));
   // Target.closeTarget answers before Chrome destroys the tab.
   let left: string[] = [];
   for (const deadline = Date.now() + 3000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 50))) {
@@ -298,14 +298,14 @@ test("a page with no wall stays in Bao's profile", { timeout: 60_000 }, async (t
 test("wait_for_owner on a Bao profile moves to the owner's running Chrome before it waits", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
-  const [moved] = await h.proxy.execute("wait_for_owner", ["1000"]);
+  const [moved] = await h.proxy.execute("wait_for_owner", ["1000"], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.equal(moved!.stdout, `✓ The Best Pizza in New York City - The New York Times\n  ${h.site}/times\n`);
   assert.ok(h.proxy.lastCommand!.step.summary!.text.startsWith(`Bao's own browser hit a step that needs the owner on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`));
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, TIMES_ARTICLE);
   assert.ok(await baoClosed(h.baoDir));
   const begin = Date.now();
-  const [waiting] = await h.proxy.execute("wait_for_owner", ["300"]);
+  const [waiting] = await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.ok(Date.now() - begin >= 250, "a wait in Running Chrome is a real wait");
   const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "waiting");
@@ -318,8 +318,8 @@ test("when the owner's running Chrome does not attach, the wait stays in Bao's w
   assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, TIMES_CHECK, "the snapshot of Bao's window stands");
   assert.deepEqual(h.proxy.pickLines, ['Browser: Bao profile, Chrome profile "Default".', REFUSED]);
-  const fallback = `To take it, call agent_browser with {"command":"close"}, then with {"command":"open","args":["${h.site}/times"],"browser":"current","profile":"Default"}.`;
-  const [waiting] = await h.proxy.execute("wait_for_owner", ["300"]);
+  const fallback = `To take it, call agent_browser with {"command":"close","run_id":"${h.proxy.activeRunId}"}, then with {"command":"open","args":["${h.site}/times"],"browser":"current","profile":"Default"}.`;
+  const [waiting] = await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId);
   const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "waiting");
   assert.match(reply.instruction, /in this Bao window/);
@@ -334,7 +334,7 @@ test("when the owner's running Chrome does not attach, the wait stays in Bao's w
   assert.equal(h.attaches(), 2, "only an explicit wait_for_owner tries again");
 
   h.allow();
-  const [moved] = await h.proxy.execute("wait_for_owner", ["300"]);
+  const [moved] = await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.equal(moved!.stdout, `✓ The Best Pizza in New York City - The New York Times\n  ${h.site}/times\n`);
   assert.equal(h.attaches(), 3);
   assert.match(h.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, fallback after a sign-in wall\./);
@@ -380,10 +380,10 @@ test("a slow failed move on wait_for_owner still leaves time to see the owner cl
   const h = await harness(t, "refused");
   assert.equal((await h.proxy.execute("open", [`${h.site}/times`], "bao"))[0]!.exitCode, 0);
   assert.equal((await h.proxy.execute("snapshot"))[0]!.stdout, TIMES_CHECK);
-  assert.equal((JSON.parse((await h.proxy.execute("wait_for_owner", ["300"]))[0]!.stdout) as { outcome: string }).outcome, "waiting");
+  assert.equal((JSON.parse((await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout) as { outcome: string }).outcome, "waiting");
   await navigateBao(h.baoDir, "/times", `${h.site}/article`);
   h.slow(2500);
-  const [ready] = await h.proxy.execute("wait_for_owner", ["2000"]);
+  const [ready] = await h.proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.equal((JSON.parse(ready!.stdout) as { outcome: string }).outcome, "ready", "the retry took longer than the timeout, yet Bao still read the page");
   assert.equal(h.attaches(), 3);
 });
@@ -393,7 +393,7 @@ test("a sign-in the owner finishes during a slow failed move still ends the wait
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   assert.equal(h.attaches(), 0);
   h.slow(3000);
-  const waiting = h.proxy.execute("wait_for_owner", ["2000"]);
+  const waiting = h.proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, h.proxy.activeRunId);
   for (const deadline = Date.now() + 30_000; h.attaches() === 0 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(h.attaches(), 1, "the move began");
   await navigateBao(h.baoDir, "/article", `${h.site}/account`);

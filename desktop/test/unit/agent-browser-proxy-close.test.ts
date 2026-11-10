@@ -95,7 +95,7 @@ ${LIST_TARGETS}
       if (pid === daemon!.pid && signal !== 0) throw Object.assign(new Error("fixture signal denied"), { code: "EPERM" });
       return kill(pid, signal);
     });
-    await assert.rejects(proxy.execute("close"), (error: Error) => /^Bao could not clean up the browser session of run .+: fixture signal denied$/.test(error.message)
+    await assert.rejects(proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId), (error: Error) => /^Bao could not clean up the browser session of run .+: fixture signal denied$/.test(error.message)
       && (error.cause as NodeJS.ErrnoException).code === "EPERM");
     await access(stateDir);
     assert.equal(daemon.exitCode, null);
@@ -103,7 +103,7 @@ ${LIST_TARGETS}
     assert.equal(detached, true);
     return;
   }
-  if (mode === "close") await proxy.execute("close");
+  if (mode === "close") await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
   else {
     proxy.disconnect();
     await proxy.end(mode === "stop");
@@ -141,9 +141,9 @@ test("a close after the owner's Chrome ended still names the owner's Chrome", { 
   detached = true;
   while (proxy.activeRunId) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(proxy.currentChrome, false, "no session and no close yet");
-  assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
+  assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
   assert.equal(proxy.currentChrome, true, "the close after the owner's Chrome ended belongs to that route");
-  await proxy.execute("close");
+  await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
   assert.equal(proxy.currentChrome, false, "a later close has no ended route left");
 });
 
@@ -227,8 +227,8 @@ if (command === 'tab' && args.includes('--json')) {
     assert.ok(startupError instanceof Error);
     assert.equal(startupError.message, "current startup reached");
     assert.equal(currentStarts, 1);
-    assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "close after manual window close succeeds");
-    assert.equal((await proxy.execute("close"))[0]!.exitCode, 0, "repeated close succeeds");
+    assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0, "close after manual window close succeeds");
+    assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0, "repeated close succeeds");
     const reopened = await proxy.execute("open", [], "copy");
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
@@ -293,7 +293,7 @@ if (command === 'tab' && args.includes('--json')) {
     assert.ok(stoppedPid, "the synthetic browser PID must be known before stopping it");
     const stateDir = (await readFile(statesFile, "utf8")).trim();
     process.kill(stoppedPid, "SIGSTOP");
-    assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
+    assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
     assert.equal(chromes[0]!.isClosed(), true);
     assert.equal(launch.pidsForDataDir(copy).length, 0, "close must await every exact-profile process, including a stopped browser");
     await assert.rejects(access(copy), /ENOENT/, "the stopped browser's copy is removed only after its processes exit");

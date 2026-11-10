@@ -12,7 +12,7 @@ import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
-import { CURRENT_CHROME_ENDED, TASK_TAB_CLOSED, WAIT_RUN_ENDED } from "../../src/engines/agent-browser-describe";
+import { CURRENT_CHROME_ENDED, TASK_TAB_CLOSED, RUN_ENDED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { getRun } from "../../src/mcp/catalog";
 import { browserToolResult, finishToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
@@ -451,9 +451,9 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
     await probe.send("Target.setDiscoverTargets", { discover: true });
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+      if (ending === "finish") await proxy.finishTask({ outcome: "passed", reason: "Task finished." }, proxy.activeRunId);
       else if (ending === "disconnect") await proxy.end();
-      else await proxy.execute("close");
+      else await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
       assert.equal(chrome.isClosed(), false);
       await assert.rejects(access(marker), /ENOENT/);
       // Target.closeTarget acknowledges the request before Chromium destroys the tab.
@@ -781,9 +781,9 @@ for (const reset of ["finish", "close"] as const) test(`current idle expiry pres
   assert.equal(f.library.listRuns()[0]!.status, "failed");
   await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
   await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
-  if (reset === "finish") await f.proxy.finishTask({ outcome: "failed", reason: "Task expired" });
+  if (reset === "finish") await f.proxy.finishTask({ outcome: "failed", reason: "Task expired" }, f.proxy.activeRunId);
   else {
-    const closed = await f.proxy.execute("close");
+    const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal(f.state.closes, 0, "idle left the task tab open, and a later close does not close it");
     assertLeftOpen("close", closed, f.proxy);
   }
@@ -797,7 +797,7 @@ for (const after of ["drop", "disconnect"] as const) test(`a later close after c
   await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
   assert.equal(f.state.closes, 0, "a dropped connection does not close the task tab");
   if (after === "disconnect") f.proxy.disconnect();
-  const closed = await f.proxy.execute("close");
+  const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.state.closes, 0);
   assertLeftOpen("close", closed, f.proxy);
   if (after === "drop") await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
@@ -807,10 +807,10 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   if (missing === "task") {
-    await f.proxy.execute("wait_for_owner", ["1"]);
+    await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, f.proxy.activeRunId);
     f.state.taskGone = true;
   } else f.state.noActivePage = true;
-  const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  const [result] = await f.proxy.execute("wait_for_owner", ["60000"], undefined, false, undefined, {}, f.proxy.activeRunId);
   const receipt = JSON.parse(result!.stdout) as { outcome: string };
   assert.equal(receipt.outcome, "closed");
   assert.equal(f.proxy.hasSession(), false);
@@ -840,10 +840,10 @@ async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
   assert.equal(proxy.hasSession(), false);
 }
 
-test("a first wait after finish_task still waits on the new run when run_id is left out", async (t) => {
+test("a first wait after finish_task waits on the new run only with the new run's id", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
-  const runX = await f.proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+  const runX = await f.proxy.finishTask({ outcome: "passed", reason: "Task finished." }, f.proxy.activeRunId);
   assert.ok(runX);
   const finished = finishToolResult(undefined, getRun(f.library, runX), false);
   assert.match(finished.content.map((block) => block.text).join("\n"), new RegExp(`Run ${runX} · passed`));
@@ -859,7 +859,10 @@ test("a first wait after finish_task still waits on the new run when run_id is l
   await f.proxy.execute("open", [], "current");
   const runY = f.library.listRuns().find((run) => run.id !== runX)!.id;
   assert.notEqual(runY, runX);
-  const [waiting] = await f.proxy.execute("wait_for_owner", ["40"]);
+  const [stale] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runX);
+  assert.equal((JSON.parse(stale!.stdout) as { outcome: string }).outcome, "closed", "the finished run's id starts no wait");
+  assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "recording");
+  const [waiting] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runY);
   const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "waiting", "a check Bao did not recognize still waits on the open session");
   assert.equal(reply.instruction.includes(`run_id="${runY}"`), true);
@@ -888,10 +891,15 @@ test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a 
   const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runA);
   const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "closed");
-  assert.equal(reply.instruction, `${WAIT_RUN_ENDED} Run ${runA} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it. Report the ended wait to the owner and stop.`);
+  assert.equal(reply.instruction, `${RUN_ENDED} Run ${runA} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.`);
   assert.notEqual(reply.instruction, CURRENT_CHROME_ENDED);
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runA).content[0]!.text, "This wait ended. This session cannot continue.");
+  const close = await f.proxy.execute("close", [], undefined, false, undefined, {}, runA);
+  assert.equal((JSON.parse(close[0]!.stdout) as { instruction: string }).instruction, reply.instruction);
+  assert.equal(browserToolResult("close", close, undefined, runA).content[0]!.text, "This run ended. This session cannot continue.");
+  assert.equal(await f.proxy.finishTask({ outcome: "failed", reason: "chat A gave up" }, runA), undefined);
   assert.equal(f.proxy.hasSession(), true);
+  assert.equal(f.cdp.isOpen, true, "chat B's task tab and connection stay");
   assert.deepEqual(f.library.readRun(runB), saved, "the newer session's run is unchanged");
 });
 
@@ -900,7 +908,7 @@ test("a wait_for_owner that names the run whose Chrome ended returns the reconne
   await f.proxy.execute("open", [], "current");
   const runId = f.library.listRuns()[0]!.id;
   const before = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
-  await f.proxy.execute("wait_for_owner", ["1"]);
+  await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
   assert.ok(steps > before);
   f.cdp.close();
@@ -912,7 +920,7 @@ test("a wait_for_owner that names the run whose Chrome ended returns the reconne
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Your Chrome session ended. This session cannot continue.");
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
-  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
   await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
 });
 
@@ -920,9 +928,9 @@ test("a wait_for_owner that names the run whose task tab closed returns that clo
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   const runId = f.library.listRuns()[0]!.id;
-  await f.proxy.execute("wait_for_owner", ["1"]);
+  await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   f.state.taskGone = true;
-  const [closed] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  const [closed] = await f.proxy.execute("wait_for_owner", ["60000"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal((JSON.parse(closed!.stdout) as { instruction: string }).instruction, TASK_TAB_CLOSED);
   assert.equal(f.proxy.hasSession(), false);
   const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
@@ -933,7 +941,7 @@ test("a wait_for_owner that names the run whose task tab closed returns that clo
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Bao's task tab was closed. This session cannot continue.");
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
-  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
   await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
 });
 
@@ -962,11 +970,11 @@ for (const keepOpen of [false, true]) test(`a copied session whose waiting tab c
   const socket = await import("../../src/cdp-live/socket");
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
-  await f.proxy.execute("wait_for_owner", ["50"]);
+  await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner's handoff brings Bao's window forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   f.state.taskGone = true;
-  const [result] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  const [result] = await f.proxy.execute("wait_for_owner", ["60000"], undefined, false, undefined, {}, f.proxy.activeRunId);
   const receipt = JSON.parse(result!.stdout) as { outcome: string };
   assert.equal(receipt.outcome, "closed");
   assert.equal(f.proxy.hasSession(), true);
@@ -991,7 +999,7 @@ for (const [windowState, raise] of [["normal", ["minimized", "normal"]], ["minim
     t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
     f.state.windowState = windowState;
     await f.proxy.execute("open", [], "copy");
-    const [result] = await f.proxy.execute("wait_for_owner", ["50"]);
+    const [result] = await f.proxy.execute("wait_for_owner", ["50"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.deepEqual(f.state.windowStates, raise, "a window from the Dock lands on top; a zoomed one returns zoomed; a full-screen Space stays put");
     const { instruction } = JSON.parse(result!.stdout) as { instruction: string };
     assert.equal(instruction.includes("Bao brought this window to the front"), raise.length > 0);
@@ -1017,7 +1025,7 @@ test("finish_task during async window cleanup applies the same session's checked
     assert.equal(f.proxy.hasSession(), true);
     assert.equal(f.library.readRun(runId).status, "passed");
     assert.equal(f.library.readRun(runId).envelope, undefined);
-    const finishing = f.proxy.finishTask({ outcome: "failed", reason: "Checked result was unavailable" });
+    const finishing = f.proxy.finishTask({ outcome: "failed", reason: "Checked result was unavailable" }, f.proxy.activeRunId);
     release();
     assert.equal(await finishing, runId);
     assert.equal(f.library.readRun(runId).status, "failed");
@@ -1050,13 +1058,13 @@ test("disconnect during an owner wait closes task tabs before detaching", async 
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   // A 1 ms wait can expire before the first poll reaches the banner, so give that poll room to run.
-  await f.proxy.execute("wait_for_owner", ["200"]);
+  await f.proxy.execute("wait_for_owner", ["200"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.deepEqual(f.state.activations, [{ targetId: "task" }], "the owner wait brings the background task tab forward");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.timers.tick(1_800_000);
   assert.equal(f.proxy.hasSession(), true, "an owner handoff never expires");
   t.mock.timers.reset();
-  const waiting = f.proxy.execute("wait_for_owner", ["60000"]);
+  const waiting = f.proxy.execute("wait_for_owner", ["60000"], undefined, false, undefined, {}, f.proxy.activeRunId);
   await new Promise<void>(resolve => setImmediate(resolve));
   const ending = f.proxy.end();
   await waiting;
@@ -1070,12 +1078,12 @@ for (const ending of ["finish", "close"] as const) test(`cleanup failure on ${en
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   f.state.cleanupFails = true;
-  await assert.rejects(ending === "finish" ? f.proxy.finishTask({ outcome: "passed", reason: "Checked result" }) : f.proxy.execute("close"), /cleanup failed/);
+  await assert.rejects(ending === "finish" ? f.proxy.finishTask({ outcome: "passed", reason: "Checked result" }, f.proxy.activeRunId) : f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId), /cleanup failed/);
   assert.equal(f.proxy.hasSession(), false);
   const run = f.library.listRuns()[0]!;
   assert.equal(run.status, "passed");
   if (ending === "finish") assert.equal(run.envelope?.reason, "Checked result");
-  await f.proxy.finishTask({ outcome: "passed", reason: "No session" });
+  await f.proxy.finishTask({ outcome: "passed", reason: "No session" }, f.proxy.activeRunId);
   await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
 });
 
@@ -1084,7 +1092,7 @@ test("finish_task after a lost current session clears the browser-choice restric
   await f.proxy.execute("open", [], "current");
   f.cdp.close();
   while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
-  await f.proxy.finishTask({ outcome: "passed", reason: "Task ended" });
+  await f.proxy.finishTask({ outcome: "passed", reason: "Task ended" }, f.proxy.activeRunId);
   await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
 });
 
@@ -1108,7 +1116,7 @@ test("failed tracking of an agent-opened tab forwards commands without repeating
   assert.equal((await f.proxy.execute("tab", ["new"]))[0]!.exitCode, 0);
   assert.equal(f.state.tabs, 1);
   f.state.closeTargetFails = true;
-  await f.proxy.finishTask({ outcome: "passed", reason: "Checked result" });
+  await f.proxy.finishTask({ outcome: "passed", reason: "Checked result" }, f.proxy.activeRunId);
   assert.equal(f.state.closes, 1);
   assert.equal(f.proxy.hasSession(), false);
   assert.equal(f.library.listRuns()[0]!.status, "passed");
@@ -1150,7 +1158,7 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
     await assert.rejects(proxy.execute("open", [], "copy"), /copy startup reached/);
     assert.equal(copies, 1);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
-    await proxy.execute("close");
+    await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.equal((await proxy.execute("open"))[0]!.exitCode, 1, "after an explicit close, an open with no browser takes the default, running Chrome");
     assert.equal(fixtures.length, 4);
     assert.equal(lasting, 1);

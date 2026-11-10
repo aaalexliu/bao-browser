@@ -43,9 +43,15 @@ function mcp(env: NodeJS.ProcessEnv) {
     child.stdin.write(frameRpc({ jsonrpc: "2.0", id, method, params }, "json"));
   });
   const exited = new Promise<void>((resolve, reject) => child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`MCP exited ${code}: ${stderr}`))));
+  // Like an agent, the client sends back the run id from its latest agent_browser result.
+  let run: string | undefined;
   return {
     request,
-    call: (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args } }),
+    async call(command: string, args: string[] = []) {
+      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
+      run = result.content.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text)?.[1]).find(Boolean) ?? run;
+      return result;
+    },
     async close() { child.stdin.end(); await exited; },
     async stop() { child.kill("SIGTERM"); await exited; },
   };
@@ -139,8 +145,9 @@ test("Bao MCP and raw native agent-browser return the same output for the same l
       }
       const expected = await native(command, args);
       const output = [expected.stdout, expected.stderr].filter(Boolean);
-      const [sentence, ...content] = actual.content.map((item) => item.text);
+      const [sentence, run, ...content] = actual.content.map((item) => item.text);
       assert.match(sentence!, leads[command]!, `${command} starts with its step sentence`);
+      assert.match(run!, /^Run run-/, `${command} names its run after the sentence`);
       if (command === "close") assert.equal(content.pop(), "Not saved as a workflow: command-8 (scroll): it scrolled the page, which Bao cannot replay yet.");
       assert.deepEqual(command === "open" ? content.slice(0, -1) : content, output, command);
       if (command === "open") {
@@ -265,7 +272,7 @@ test("a throwaway marked profile opens headed in installed Google Chrome through
     const copy = await currentCopy(env.BAO_HOME!);
     const snapshot = await client.call("snapshot");
     assert.match(snapshot.content[0]!.text, /^Read /);
-    const text = snapshot.content[1]!.text;
+    const text = snapshot.content[2]!.text;
     assert.ok(text.includes(ACCOUNT_CHROME_MAC), text);
     assert.ok(text.includes(copy), text);
     assert.ok(!text.includes("--headless"), text);

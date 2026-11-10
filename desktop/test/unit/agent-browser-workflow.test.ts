@@ -90,7 +90,14 @@ async function fixture(ui = false) {
     pending.set(id, (result) => { clearTimeout(timer); resolve(result); });
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
   });
-  const call = (command: string, args: string[] = []) => request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}) } });
+  // Like an agent, the fixture sends back the run id from its latest agent_browser result.
+  let run: string | undefined;
+  const call = async (command: string, args: string[] = []) => {
+    const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}),
+      ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
+    run = result.structuredContent?.run_id ?? result.content.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean) ?? run;
+    return result;
+  };
   await request("initialize", ui ? { capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } } } : {});
   return {
     root, home, url, actions, call, request, library: new Library(home),
@@ -285,7 +292,8 @@ test("selecting the active native tab preserves workflow eligibility", { skip: !
     await passed(f, "open", [f.url]);
     const listed = await f.call("tab", ["list", "--json"]);
     assert.equal(listed.isError, false, text(listed));
-    const tabs = listed.content[1]!.text!;
+    assert.match(listed.content[1]!.text!, /^Run run-/);
+    const tabs = listed.content[2]!.text!;
     const data = JSON.parse(tabs) as { data: { tabs: { tabId: string; active: boolean }[] } };
     const active = data.data.tabs.find((tab) => tab.active);
     assert.ok(active, tabs);

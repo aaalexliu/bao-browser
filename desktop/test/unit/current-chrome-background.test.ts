@@ -91,7 +91,7 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
     { text: "clicked, typed: Ada", visibility: "visible", painting: true }, "focus emulation keeps the background task tab live");
     assert.deepEqual(await ownerState(), { visibility: "visible", events: [] }, "the owner's tab never left the front");
 
-    assert.equal((await proxy.execute("close"))[0]!.exitCode, 0);
+    assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
     const deadline = Date.now() + 2000;
     let pages: string[] = [];
     while (Date.now() < deadline) {

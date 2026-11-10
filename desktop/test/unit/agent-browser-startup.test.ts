@@ -69,7 +69,7 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
     // The native daemon's start with 20 restored tabs used to outlast a fixed tab read, so only the session's end bounds that first call.
     const clicked = await proxy.execute("click", ['[data-testid="go"]']);
     assert.equal(clicked[0]!.exitCode, 0, clicked[0]!.stdout + clicked[0]!.stderr);
-    await proxy.finishTask({ outcome: "passed", reason: "Clicked Go." });
+    await proxy.finishTask({ outcome: "passed", reason: "Clicked Go." }, proxy.activeRunId);
     assert.match(proxy.lastWorkflowOutcome ?? "", /^Saved workflow:/);
   } finally {
     proxy.disconnect();

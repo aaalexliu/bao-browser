@@ -25,7 +25,15 @@ test("Experian-shaped pass-through hands sign-in and bot walls to the owner and 
   const env = { ...laneChildEnv("hermetic", process.env), HOME: root, BAO_HOME: home, BAO_AGENT_BROWSER: binary, BAO_AGENT_BROWSER_PROFILE_ROOT: source };
   const client = McpClient.start(env);
   let owner: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
-  const command = (name: string, args: string[] = []) => client.call("agent_browser", { command: name, args, ...(name === "open" ? { browser: "copy" } : {}) });
+  // Like an agent, the test sends back the run id from its latest agent_browser result.
+  let run: string | undefined;
+  const command = async (name: string, args: string[] = []) => {
+    const result = await client.call("agent_browser", { command: name, args, ...(name === "open" ? { browser: "copy" } : {}),
+      ...(name === "wait_for_owner" || name === "close") && run ? { run_id: run } : {} });
+    const named = result.structuredContent?.run_id;
+    run = (typeof named === "string" ? named : /^Run (\S+)$/m.exec(result.text)?.[1]) ?? run;
+    return result;
+  };
   const outcome = (result: McpResult) => {
     assert.equal(result.isError, false, result.text);
     return result.structuredContent?.outcome;

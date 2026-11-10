@@ -232,7 +232,7 @@ test("one Running Chrome session makes one browser connection to Chrome, whateve
     const snapshot = await proxy.execute("snapshot");
     assert.match(snapshot[0]!.stdout, /Task page/);
     assert.equal(polls.length, pollsBefore, "a native command raises no sheet, so the helper does not look for one");
-    await proxy.execute("close");
+    await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.doesNotMatch(proxy.lastWorkflowOutcome ?? "", /could not be recorded/, "workflow capture reaches the page through Bao's connection");
     assert.equal(f.upgrades(), session, "each session asks Chrome once: Bao's own connection");
   }
