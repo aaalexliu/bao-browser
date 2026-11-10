@@ -115,5 +115,9 @@ export function diffView(before: string | undefined, after: string): string {
   const mark = { same: "  ", added: "+ ", removed: "- " } as const;
   const body = [...shown].sort((a, b) => a - b).map((at) => `${mark[ops[at]!.kind]}${ops[at]!.line.text}`);
   const view = `Changed since the last snapshot: ${added} ${added === 1 ? "line" : "lines"} added (+), ${removed} removed (-). Unchanged lines are left out except the ones that hold a change.\n${body.join("\n")}`;
-  return view.length < after.length ? view : full;
+  if (view.length < after.length) return view;
+  // A few changed lines stay a diff. The header can make that list longer than a tiny page, which is not "most of the page".
+  const size = Math.max(lines(before).length, lines(after).length);
+  if (added + removed > size / 2 && added + removed > 2) return full;
+  return view;
 }

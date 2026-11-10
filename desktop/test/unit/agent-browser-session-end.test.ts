@@ -53,6 +53,8 @@ if (!fs.existsSync(${JSON.stringify(teardown)}) && args.includes(${JSON.stringif
     process.exitCode = 1;
   });
   listed(4);
+} else if (args.includes('snapshot') && fs.existsSync(${JSON.stringify(path.join(root, "page.txt"))})) {
+  process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(root, "page.txt"))}, 'utf8'));
 } else process.stdout.write('native success\\n');
 `, { mode: 0o700 });
   const env: NodeJS.ProcessEnv = {
@@ -132,10 +134,12 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
   let run: string | undefined;
   return {
     request, send, pid: child.pid, diagnostics: () => stderr, get run() { return run; },
-    async call(command: string, args: string[] = []) {
+    async call(command: string, args: string[] = [], extra: Record<string, unknown> = {}) {
       const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}),
-        ...(run ? { run_id: run } : {}) } });
-      const named = result.content?.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean);
+        ...(run ? { run_id: run } : {}), ...extra } });
+      const structuredRun = result.structuredContent?.run_id;
+      const named = typeof structuredRun === "string" && structuredRun ? structuredRun
+        : result.content?.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean);
       if (named) run = named;
       return result;
     },
@@ -365,6 +369,10 @@ for (const keepOpen of [false, true]) {
       "text clients get words only, with the run id to continue and the browser Bao used");
     assert.equal(receipt.run_id, runId);
     assert.equal(receipt.status, "passed");
+    assert.equal(receipt.summary, result.content![0]!.text);
+    assert.equal("receipts" in receipt, false, "the model receipt omits each step's native output");
+    const saved = JSON.parse((await c.request("tools/call", { name: "get_run", arguments: { run_id: runId } })).content![0]!.text) as { receipts: { native?: unknown }[] };
+    assert.ok(saved.receipts.some((step) => step.native), "get_run still returns the saved receipt");
     assert.equal(f.library.readRun(runId).status, "passed");
     if (keepOpen) assert.ok(pidsForDataDir(copy).length);
     else {
@@ -768,4 +776,45 @@ test("keep-open finishes the run and the next session reclaims only that home's 
   assert.equal((await next.call("close")).isError, false, "explicit close is idempotent");
   await assert.rejects(access(freshCopy), /ENOENT/);
   await next.close();
+});
+
+test("MCP find and diff reach the agent result, and finish_task keeps the owner card while shortening the model receipt", { timeout: 60_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const page = "- banner\n  - button \"Open search\" [ref=e1]\n- main\n  - link \"Repo 0\" [ref=e10]\n";
+  const next = page.replace("Repo 0", "Repo 1");
+  await writeFile(path.join(f.home, "..", "page.txt"), page);
+  const c = f.start();
+  await c.request("initialize", { capabilities: { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } } });
+  assert.equal((await c.call("open", ["http://127.0.0.1/"])).isError, false);
+  const rejected = await c.call("click", ["@e1"], { find: { text: "x" } });
+  assert.equal(rejected.isError, true);
+  assert.match(rejected.content?.map((block) => block.text).join("\n") ?? "", /only accepted on snapshot/);
+  const found = await c.call("snapshot", [], { find: { text: "search", role: "button" } });
+  assert.equal(found.isError, false);
+  const foundText = found.content?.map((block) => block.text).join("\n") ?? "";
+  assert.match(foundText, /1 of 4 snapshot lines match text "search" and role button/);
+  assert.match(foundText, /button "Open search"/);
+  assert.doesNotMatch(foundText, /Repo 0/, "find does not return the rest of the native tree");
+  await writeFile(path.join(f.home, "..", "page.txt"), next);
+  const changed = await c.call("snapshot", [], { diff: true });
+  const changedText = changed.content?.map((block) => block.text).join("\n") ?? "";
+  assert.match(changedText, /1 line added \(\+\), 1 removed/);
+  assert.match(changedText, /\+ .*Repo 1/);
+  assert.doesNotMatch(changedText, /Open search/, "unchanged lines that do not hold the change stay out");
+  const runId = c.run!;
+  const recorded = f.library.readRun(runId).steps as { native?: { command?: string; results?: { stdout: string }[] } }[];
+  assert.equal(recorded.filter((step) => step.native?.command === "snapshot").at(-1)?.native?.results?.[0]?.stdout, next, "the run keeps the full native tree");
+  const finished = await c.request("tools/call", { name: "finish_task", arguments: { run_id: runId, outcome: "passed", reason: "Verified the task result." } }) as Result & {
+    _meta?: { baoToolCard?: { style: string; caption: string; finish?: { steps: number; reason: string } } };
+  };
+  assert.equal(finished.isError, false);
+  assert.equal(finished._meta?.baoToolCard?.style, "finish");
+  assert.equal(finished._meta?.baoToolCard?.caption, finished.content![0]!.text);
+  assert.equal(finished._meta?.baoToolCard?.finish?.reason, "Verified the task result.");
+  assert.equal(finished.structuredContent?.summary, finished.content![0]!.text);
+  assert.equal("receipts" in (finished.structuredContent ?? {}), false);
+  assert.equal(JSON.stringify(finished.structuredContent).includes("Repo 1"), false, "the model receipt does not repeat native output");
+  const full = JSON.parse((await c.request("tools/call", { name: "get_run", arguments: { run_id: runId } })).content![0]!.text) as { receipts: { native?: { results: { stdout: string }[] } }[] };
+  assert.equal(full.receipts.some((step) => step.native?.results.some((result) => result.stdout.includes("Repo 1"))), true, "get_run still returns the saved native output");
 });

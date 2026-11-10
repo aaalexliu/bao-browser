@@ -287,7 +287,7 @@ export function describeStep(facts: StepFacts): StepSummary {
       return done(parts, `${page?.url ? ` (${page.url})` : ""}: ${counts(current)}.`);
     }
     case "click": return done(["Clicked ", ...elementParts(element, args[0])], moved(facts), { mark: "Clicked" });
-    case "fill": return done(["Typed ", { value: args[1] ?? "" }, " into ", ...elementParts(element, args[0])], ".", { mark: "Typed here" });
+    case "fill": return done(["Typed ", { value: args[1] ?? "" }, " into ", ...elementParts(element, args[0])], moved(facts), { mark: "Typed here" });
     case "press": return done([`Pressed ${args[0] || "a key"}`], moved(facts));
     case "scroll": {
       const [direction, amount] = args;

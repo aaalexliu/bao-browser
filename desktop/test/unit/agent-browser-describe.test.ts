@@ -88,6 +88,8 @@ test("a click quotes the element's own name and names its item only when the pag
   assert.equal(shortName("McCabe Organic Coix Seed - Job's Tears 2 Lbs| High Protein and Fiber | USDA and CCOF Certified"), "McCabe Organic Coix Seed - Job's Tears 2 Lbs…");
   const moved = describeStep({ command: "click", args: ["@e2"], results: ok("✓ Done\n"), snapshot: list, page: { url: "https://shop.example/search", title: "Results" }, previousPage: page });
   assert.equal(moved.text, 'Clicked "Search subscriptions" (search box). Now on "Results" (https://shop.example/search).');
+  const typed = describeStep({ command: "fill", args: ["@e2", "tea"], results: ok("typed\n"), snapshot: list, page: { url: "https://shop.example/search", title: "Results" }, previousPage: page });
+  assert.equal(typed.text, 'Typed "tea" into "Search subscriptions" (search box). Now on "Results" (https://shop.example/search).');
 });
 
 test("a long agent value is cut on the card but kept whole in the text sentence", () => {
