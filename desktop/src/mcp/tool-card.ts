@@ -211,14 +211,11 @@ const MODEL_RECEIPT_KEYS = ["run_id", "outcome", "status", "reason", "link", "wo
  * Those blocks are the sentence, the run line, the workflow line, and the browser lines.
  * The card holds a FinishSummary. Only get_run keeps the full receipt.
  */
-function modelReceipt(sentence: string, receipt: Record<string, unknown>, browser: readonly string[], card?: BrowserToolCard): Record<string, unknown> {
+function modelReceipt(sentence: string, receipt: Record<string, unknown>, browser: readonly string[]): Record<string, unknown> {
   const short: Record<string, unknown> = { summary: sentence };
   for (const key of MODEL_RECEIPT_KEYS) {
     if (receipt[key] !== undefined) short[key] = receipt[key];
   }
-  const finish = card?.finish;
-  if (finish?.task) short.task = finish.task;
-  if (finish && finish.done.length) short.done = finish.done;
   if (browser.length) short.browser = browser;
   return short;
 }
@@ -230,7 +227,7 @@ export function finishToolResult(card: BrowserToolCard | undefined, receipt: Rec
     ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {
     content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...browser.map(textBlock), ...(ui && card ? [cardKey(card)] : [])],
-    structuredContent: modelReceipt(sentence, receipt, browser, card),
+    structuredContent: modelReceipt(sentence, receipt, browser),
     isError: false,
   };
 }

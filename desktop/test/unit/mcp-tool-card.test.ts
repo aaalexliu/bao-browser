@@ -640,17 +640,20 @@ test("an owner wait and finish_task carry the browser lines in structuredContent
   });
   assert.equal(JSON.stringify(fat.structuredContent).includes(native), false);
   assert.ok(JSON.stringify(fat.structuredContent).length < 400);
+  const done = Array.from({ length: 50 }, (_, index) => `item ${index} ${"x".repeat(180)}`);
   const card: BrowserToolCard = {
-    command: "finish_task", status: "complete", style: "finish", caption: "Passed: Verified. 2 steps.",
-    parts: ["Passed: Verified. 2 steps."], runId: "run-1", stepId: null, picture: { kind: "unavailable", reason: "No page picture." },
-    finish: { outcome: "passed", reason: "Verified.", task: "Add milk", done: ["Added milk"], steps: 9, pageLoads: 1, reads: 1, clicks: 0, typed: 1, failedSteps: 0 },
+    command: "finish_task", status: "complete", style: "finish",
+    caption: `Passed: Verified. Done: ${done.join("; ")}. 2 steps.`,
+    parts: ["Passed: Verified."], runId: "run-1", stepId: null, picture: { kind: "unavailable", reason: "No page picture." },
+    finish: { outcome: "passed", reason: "Verified.", task: "Add milk", done, steps: 9, pageLoads: 1, reads: 1, clicks: 0, typed: 1, failedSteps: 0 },
   };
   const fromCard = finishToolResult(card, { run_id: "run-1", status: "passed", task: "from the receipt", done: ["not this"], pageLeftOpen: true, receipts: [{ id: "command-1", status: "passed" }] }, false);
   assert.equal(fromCard.structuredContent.summary, card.caption);
-  assert.equal(fromCard.structuredContent.task, "Add milk");
-  assert.deepEqual(fromCard.structuredContent.done, ["Added milk"]);
+  assert.equal("task" in fromCard.structuredContent, false);
+  assert.equal("done" in fromCard.structuredContent, false);
   assert.equal("steps" in fromCard.structuredContent, false);
   assert.equal("pageLeftOpen" in fromCard.structuredContent, false);
+  assert.ok(JSON.stringify(fromCard.structuredContent).length < card.caption.length + 200, "the receipt does not repeat the done list");
   assert.equal(finished.content.at(-1)!.text, browser[0]);
   assert.equal("browser" in finishToolResult(undefined, { run_id: "run-1", status: "passed" }, false).structuredContent, false);
 });
