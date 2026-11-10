@@ -32,7 +32,7 @@ Pass `run_id` on every command except a new `open` while a session is open. Pass
 A plain `snapshot` returns the whole native tree, often 5,000 to 20,000 characters on a real site. Two snapshot options keep the result short. Bao still runs the full native snapshot and records it in the run; only the text the agent gets changes.
 
 - `find` takes `text`, `role`, or both. It returns only the lines whose accessible name or value contains `text` (any case) and whose role is `role`, each with its ref, the lines that hold it, and everything inside it, in page order. Refs and attributes are not searched. A miss says so in one line.
-- `diff: true` returns only the lines added (`+`) or removed (`-`) since the session's last snapshot with the same `args`, with the unchanged lines that hold them. With no earlier snapshot for those `args`, when most of the page changed, or when the changed lines are longer than the full tree, it returns the full tree with one line saying why. A few changed lines on a tiny page stay a diff, even when that list is not shorter than the page. An unchanged page returns one line.
+- `diff: true` returns only the lines added (`+`) or removed (`-`) since the session's last snapshot with the same `args`, with the unchanged lines that hold them. With no earlier snapshot for those `args`, when most of the page changed, when the changed part is too large to compare, or when the changed lines are longer than the full tree, it returns the full tree with one line saying why. A few changed lines on a tiny page stay a diff, even when that list is not shorter than the page. An unchanged page returns one line.
 
 ```json
 {"command":"snapshot","args":[],"find":{"text":"Sign in","role":"button"},"run_id":"run-..."}
