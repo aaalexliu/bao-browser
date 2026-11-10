@@ -5,17 +5,30 @@ export interface OwnerPage {
 
 export type OwnerWall = "login_wall" | "bot_wall";
 
+/** A redirect to a sign-in or check address. A title on the page the agent was already on is not one. */
+function addressWall(url: URL): OwnerWall | null {
+  const path = url.pathname;
+  if (/^\/(?:_Incapsula_Resource|_ips_check)(?:\/|$)/i.test(path)
+    || /^(?:newassets\.)?hcaptcha\.com$/i.test(url.hostname)
+    || /^(?:www\.)?(?:google\.com|recaptcha\.net)$/i.test(url.hostname) && /^\/recaptcha\/(?:api2|enterprise)\/(?:anchor|bframe)(?:\/|$)/i.test(path)) return "bot_wall";
+  if (/(?:^|\/)(?:login|signin|sign-in|log-in|verify|verification|2fa|mfa|otp)(?:\/|$)/i.test(path)) return "login_wall";
+  return null;
+}
+
 /** Metadata only. An unclear page must stay private until its URL or title changes. */
 export function ownerWall(page: OwnerPage): OwnerWall | null {
   let url: URL;
   try { url = new URL(page.url); } catch { return null; }
-  const path = url.pathname;
-  if (/^\/(?:_Incapsula_Resource|_ips_check)(?:\/|$)/i.test(path)
-    || /^(?:newassets\.)?hcaptcha\.com$/i.test(url.hostname)
-    || /^(?:www\.)?(?:google\.com|recaptcha\.net)$/i.test(url.hostname) && /^\/recaptcha\/(?:api2|enterprise)\/(?:anchor|bframe)(?:\/|$)/i.test(path)
-    || /\b(?:captcha|hcaptcha|recaptcha|verify (?:that )?you are (?:a )?human|not a robot|request unsuccessful|just a moment|checking your browser|pardon our interruption|imperva|incapsula)\b/i.test(page.title)) return "bot_wall";
-  if (/(?:^|\/)(?:login|signin|sign-in|log-in|verify|verification|2fa|mfa|otp)(?:\/|$)/i.test(path) || /\b(?:sign[ -]?in|log[ -]?in|verification code|one.time code|verify your (?:identity|account)|two.factor|security check)\b/i.test(page.title)) return "login_wall";
+  if (/\b(?:captcha|hcaptcha|recaptcha|verify (?:that )?you are (?:a )?human|not a robot|request unsuccessful|just a moment|checking your browser|pardon our interruption|imperva|incapsula)\b/i.test(page.title)) return "bot_wall";
+  const address = addressWall(url);
+  if (address) return address;
+  if (/\b(?:sign[ -]?in|log[ -]?in|verification code|one.time code|verify your (?:identity|account)|two.factor|security check)\b/i.test(page.title)) return "login_wall";
   return null;
+}
+
+/** The wall matched the address, not only the title. */
+export function ownerWallOnAddress(page: OwnerPage): boolean {
+  try { return addressWall(new URL(page.url)) !== null; } catch { return false; }
 }
 
 /** What the page asks the owner to do, read from its title first, then its address. */

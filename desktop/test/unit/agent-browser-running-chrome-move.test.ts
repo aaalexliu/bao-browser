@@ -106,6 +106,8 @@ async function harness(t: TestContext, initial: "works" | "refused") {
     const [title, snapshot] = request.url === "/times" ? ["The Best Pizza in New York City - The New York Times", known ? TIMES_ARTICLE : TIMES_CHECK]
       : request.url === "/account" ? ["Example", known ? ACCOUNT : SIGN_IN_FORM]
         : request.url === "/login" ? ["Sign in", SIGN_IN_FORM]
+        : request.url === "/moment" ? ["Just a moment...", NO_WALL]
+        : request.url === "/story" ? ["Sign in - Example", NO_WALL]
         : ["Article", NO_WALL];
     response.setHeader("content-type", "text/html");
     response.end(`<!doctype html><title>${title}</title><script type="text/plain" id="snapshot">${snapshot}</script>`);
@@ -179,7 +181,10 @@ ${LIST_TARGETS}
 `, { mode: 0o700 });
 
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
-  t.after(async () => {
+  let released = false;
+  const release = async () => {
+    if (released) return;
+    released = true;
     try { await proxy.close(); }
     finally {
       probe.close();
@@ -189,13 +194,14 @@ ${LIST_TARGETS}
       server.close();
       await rm(root, { recursive: true, force: true });
     }
-  });
+  };
+  t.after(release);
   const calls = async () => (await readFile(log, "utf8").catch(() => "")).trim().split("\n").filter(Boolean)
     .map((line) => JSON.parse(line) as { command: string; port: string; url: string });
   const pages = async () => (await probe.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos.filter((target) => target.type === "page");
   const ownerTabs = (await pages()).map((target) => target.targetId).sort();
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
-    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; } };
+    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; }, release };
 }
 
 const MOVED = `Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
@@ -368,8 +374,79 @@ test("a later wait on a dialog an earlier wait_for_owner started does not call i
   const [moved] = await h.proxy.execute("wait_for_owner", ["300"], undefined, false, undefined, {}, h.proxy.activeRunId);
   assert.equal(moved!.stdout, `\u2713 The Best Pizza in New York City - The New York Times\n  ${h.site}/times\n`);
   const step = savedSteps(h.home).at(-1)!;
-  assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome"), step.summary!.text);
+  assert.ok(step.summary!.text.startsWith("Bao's own browser hit a step that needs the owner on 127.0.0.1; continued in your running Chrome"), step.summary!.text);
   assert.ok(!step.summary!.text.includes("a sign-in page"), step.summary!.text);
+  assert.ok(!step.summary!.text.includes("a sign-in or verification prompt"), step.summary!.text);
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a URL-path wall reopens the page before it, and a title-only wall reopens its own URL", { timeout: 180_000 }, async (t) => {
+  const redirected = await harness(t, "works");
+  assert.equal((await redirected.proxy.execute("open", [`${redirected.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(redirected.baoDir, "/article", `${redirected.site}/restaurant`);
+  assert.equal((await redirected.proxy.execute("snapshot", [], undefined, false, undefined, {}, redirected.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const login = `http://localhost:${new URL(redirected.site).port}/login`;
+  await navigateBao(redirected.baoDir, "/restaurant", login);
+  const [pathMove] = await redirected.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, redirected.proxy.activeRunId);
+  assert.equal(pathMove!.stdout, `\u2713 Article\n  ${redirected.site}/restaurant\n`, "a sign-in address reopens the restaurant page, not the sign-in URL");
+  assert.ok(savedSteps(redirected.home).at(-1)!.summary!.text.startsWith("Bao's own browser hit a sign-in page on localhost"), savedSteps(redirected.home).at(-1)!.summary!.text);
+  await redirected.release();
+
+  const titled = await harness(t, "works");
+  assert.equal((await titled.proxy.execute("open", [`${titled.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(titled.baoDir, "/article", `${titled.site}/restaurant`);
+  assert.equal((await titled.proxy.execute("snapshot", [], undefined, false, undefined, {}, titled.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const moment = `http://localhost:${new URL(titled.site).port}/moment`;
+  await navigateBao(titled.baoDir, "/restaurant", moment);
+  const [check] = await titled.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, titled.proxy.activeRunId);
+  const checkReply = JSON.parse(check!.stdout) as { outcome: string; instruction: string };
+  assert.equal(checkReply.outcome, "halted", "the check page is still a wall in Running Chrome, so the owner clears it there");
+  assert.match(checkReply.instruction, /clear the check on localhost/);
+  const checkStep = savedSteps(titled.home).at(-1)!;
+  assert.deepEqual(checkStep.native.args, [moment], "Running Chrome opens the check page, not the restaurant page");
+  assert.ok(checkStep.summary!.text.startsWith("Bao's own browser hit a human check on localhost"), checkStep.summary!.text);
+  await titled.release();
+
+  const signed = await harness(t, "works");
+  assert.equal((await signed.proxy.execute("open", [`${signed.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(signed.baoDir, "/article", `${signed.site}/restaurant`);
+  assert.equal((await signed.proxy.execute("snapshot", [], undefined, false, undefined, {}, signed.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const story = `http://localhost:${new URL(signed.site).port}/story`;
+  await navigateBao(signed.baoDir, "/restaurant", story);
+  const [titleMove] = await signed.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, signed.proxy.activeRunId);
+  const titleReply = JSON.parse(titleMove!.stdout) as { outcome: string; instruction: string };
+  assert.equal(titleReply.outcome, "halted", "a Sign in title is still a wall on that URL");
+  assert.match(titleReply.instruction, /sign in to localhost/);
+  const titleStep = savedSteps(signed.home).at(-1)!;
+  assert.deepEqual(titleStep.native.args, [story], "Running Chrome opens that URL, not the page before it");
+  assert.ok(titleStep.summary!.text.startsWith("Bao's own browser hit a sign-in page on localhost"), titleStep.summary!.text);
+  assert.ok(await baoClosed(signed.baoDir));
+});
+
+test("wait_for_owner that reads a fresh sign-in URL reopens the page before it, not the sign-in URL", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/restaurant`);
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const login = `http://localhost:${new URL(h.site).port}/login`;
+  await navigateBao(h.baoDir, "/restaurant", login);
+  const [moved] = await h.proxy.execute("wait_for_owner", ["1000"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/restaurant\n`, "not the sign-in URL");
+  const text = savedSteps(h.home).at(-1)!.summary!.text;
+  assert.ok(text.startsWith("Bao's own browser hit a sign-in page on localhost"), text);
+  assert.ok(!text.includes("a step that needs the owner"), text);
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+test("a blank page does not become the page Running Chrome opens", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", "about:blank");
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "about:blank", `${h.site}/login`);
+  const [result] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(result!.stdout, `\u2713 Article\n  ${h.site}/article\n`, "the page before the blank popup, not about:blank and not the sign-in URL");
+  assert.ok(!result!.stdout.includes("about:blank"));
   assert.ok(await baoClosed(h.baoDir));
 });
 
