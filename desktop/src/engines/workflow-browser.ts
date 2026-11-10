@@ -217,7 +217,7 @@ async function openPlanned(options: WorkflowBrowserOptions, plan: BrowserPlan): 
   const launch = { home: options.home, site: options.site };
   const chrome = plan.route === "bao"
     ? await openBaoChromeForProxy({ ...launch, ...signInSource(plan), boundSites: purgeBoundSites(
-        options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT ?? chromeProfilesRoot(), options.directory,
+        workflowChromeRoot(options), options.directory,
         plan.profile ? path.join(plan.profile.root, plan.profile.directory) : undefined) })
     : await openCopiedChromeForProxy({ ...launch, sourceRoot: plan.profile.root, directory: plan.profile.directory, restoreTabs: false });
   try {
