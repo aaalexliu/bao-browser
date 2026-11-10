@@ -72,7 +72,7 @@ export function loginsScreen(login: LoginForm): string {
   const error = login.error ? `<div class="notice"><strong>Import</strong><div>${esc(login.error)}</div></div>` : "";
   return `<section><h2>Logins</h2>
     <p class="lede">Name a site, then import its login from your Chrome. Bao reads that site only, and only after this click. Values are not shown.</p>
-    <p class="hint">Google, YouTube, nytimes.com, and any site your Chrome holds a device-bound session for are not imported. They tie their sign-in to your Chrome, so Bao uses your running Chrome for them instead.</p>
+    <p class="hint">Google, YouTube, nytimes.com, and any site your Chrome holds a device-bound session for are not imported. They bind their sign-in to your Chrome, so Bao uses your running Chrome for them instead.</p>
     ${savedLogins(login.saved)}
     <div class="card">
       <label>Site <input id="login-site" value="${htmlEsc(login.site)}" placeholder="https://www.example.com/account"></label>

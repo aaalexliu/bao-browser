@@ -37,7 +37,7 @@ import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } fr
 import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
 import { boundRoute, defaultRoute, type RouteWhy } from "../engines/browser-pick";
 import { BOUND_REASON, boundSessionSites } from "../engines/bound-sign-in";
-import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, runningChromeRefusal, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
+import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
 import { cursorAccountHeal, cursorAccountModelLabel, readCursorAccount } from "../v1/cursor-account";
@@ -1200,8 +1200,6 @@ export async function startApp(opts: {
         }
         const refusal = replayRefusal(workflow.driver, { extensionLinked: Boolean(extensionLink?.connected()), pageEngine: library.settings().pageEngine });
         if (library.settings().pageEngine === "agent-browser" && refusal) return json(res, { error: refusal }, 409);
-        const fileRefusal = runningChromeRefusal(browser?.choice, workflow);
-        if (fileRefusal) return json(res, { error: fileRefusal }, 409);
         const args = await materializeFiles(withInputDefaults(workflow, given));
         const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         const started = body.guide
