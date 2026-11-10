@@ -111,10 +111,10 @@ export async function doctorChecks(app: string, probe: Probe): Promise<Check[]> 
   } else {
     checks.push({ level: "warn", name: "helper", detail: "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper." });
   }
-  const chrome = ["/Applications/Google Chrome.app", path.join(probe.home, "Applications", "Google Chrome.app")].find((dir) => existsSync(dir));
+  const chrome = probe.appDirs.map((dir) => path.join(dir, "Google Chrome.app")).find((dir) => existsSync(dir));
   checks.push(chrome
     ? { level: "ok", name: "chrome", detail: chrome }
-    : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. Running Chrome is the default and needs Google Chrome. A Bao profile or a copy does not need the helper." });
+    : { level: "warn", name: "chrome", detail: "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome." });
   if (probe.chromeRoot) {
     // The sign-in import, Chrome copies, and Running Chrome all read this folder. macOS 27 asks first.
     const access = chromeFolderAccess(probe.chromeRoot, probe.env);

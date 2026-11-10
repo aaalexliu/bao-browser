@@ -266,10 +266,10 @@ test("doctor warns that Running Chrome, the default, needs the helper when it is
   assert.equal(helper?.level, "warn");
   assert.equal(helper?.detail, "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper.");
   const chrome = checks.find((row) => row.name === "chrome");
-  assert.equal(chrome?.detail.includes("copies a Chrome profile by default"), false);
-  assert.equal(chrome?.detail.includes("copied-profile"), false);
-  if (chrome?.detail.startsWith("Google Chrome is not installed")) {
-    assert.equal(chrome.level, "warn");
-    assert.equal(chrome.detail, "Google Chrome is not installed. Running Chrome is the default and needs Google Chrome. A Bao profile or a copy does not need the helper.");
-  }
+  assert.equal(chrome?.level, "warn");
+  assert.equal(chrome?.detail, "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome.");
+  const installed = path.join(probe.appDirs[0], "Google Chrome.app");
+  mkdirSync(installed);
+  const found = (await doctorChecks(app, probe)).find((row) => row.name === "chrome");
+  assert.deepEqual(found, { level: "ok", name: "chrome", detail: installed });
 });
