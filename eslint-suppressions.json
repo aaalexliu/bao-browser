@@ -4,10 +4,10 @@
       "count": 2
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 9
+      "count": 8
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 2
+      "count": 1
     }
   },
   "desktop/src/app/server.ts": {
