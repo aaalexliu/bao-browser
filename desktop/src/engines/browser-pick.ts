@@ -34,10 +34,10 @@ export type BrowserPick = { why: RouteWhy } & (
 
 /** The route and Chrome profile for a new session or workflow run, settled before Bao opens anything. */
 export type BrowserPlan = { why: RouteWhy } & (
-  /** With `unread`, Bao imports no sign-ins and says why. */
-  | { route: "bao"; profile: ChosenProfile; unread?: string } | { route: "bao"; profile?: undefined; unread: string }
-  /** `from` is the named route a bound site left, so a running-Chrome failure can open that route again. */
-  | { route: "copy" | "current"; profile: ChosenProfile; from?: "bao" | "copy" } | { route: "extension" });
+  /** With `unread`, Bao imports no sign-ins and says why. `missed` is why running Chrome failed; the import still runs, and the line is separate from the saved pick. */
+  | { route: "bao"; profile: ChosenProfile; unread?: string; missed?: string } | { route: "bao"; profile?: undefined; unread: string }
+  /** `from` is the named route a bound site left, so a running-Chrome failure can open that route again. `missed` is why, on its own line. */
+  | { route: "copy" | "current"; profile: ChosenProfile; from?: "bao" | "copy"; missed?: string } | { route: "extension" });
 
 /**
  * The route a run takes. A run that named no browser uses running Chrome, except a workflow that moves files, which running
@@ -78,25 +78,37 @@ export function fallbackPlan(unread: string, profile?: ChosenProfile): Extract<B
   return profile ? { route: "bao", why: RUNNING_CHROME_FALLBACK, profile, unread } : { route: "bao", why: RUNNING_CHROME_FALLBACK, unread };
 }
 
-/** A running-Chrome open and its fallback both failed. The message names both routes and both reasons. */
+function failureText(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
+}
+
+/** Why running Chrome could not be used, for an unread pick and for the separate line on a named fallback. */
+function runningChromeMissed(error: unknown): string {
+  return `Bao could not use your running Chrome: ${failureText(error)}.`;
+}
+
+function planProfile(plan: BrowserPlan): { directory: string; root: string } | undefined {
+  if (plan.route === "extension" || !plan.profile) return undefined;
+  return { directory: plan.profile.directory, root: plan.profile.root };
+}
+
+/** A running-Chrome open and its fallback both failed. The message is the two reasons. The line names both routes, both reasons, and the Chrome app and profile, once. */
 export class RoutesFailed extends Error {
   readonly line: string;
   constructor(first: BrowserPlan, firstError: unknown, second: BrowserPlan, secondError: unknown) {
-    const text = (error: unknown) => (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
-    const label = (plan: BrowserPlan) => `${ROUTE_LABELS[plan.route]}, ${plan.why}`;
-    const line = `Browser: ${label(first)}, did not open: ${text(firstError)}. Browser: ${label(second)}, did not open: ${text(secondError)}.`;
-    super(line);
+    const detail = (plan: BrowserPlan, error: unknown) => `${failedPickLine(plan.route, plan.why, chromeApp(), planProfile(plan))} ${failureText(error)}.`;
+    super(`${failureText(firstError)}. ${failureText(secondError)}.`);
     this.name = "RoutesFailed";
-    this.line = line;
+    this.line = `${detail(first, firstError)} ${detail(second, secondError)}`;
   }
 }
 
 /** A bound reroute from a named Bao profile or copy falls back to that route. The default falls back to an unread Bao profile. */
-function namedBoundFallback(plan: BrowserPlan): BrowserPlan | undefined {
+function namedBoundFallback(plan: BrowserPlan, missed: string): BrowserPlan | undefined {
   if (plan.route !== "current" || plan.why !== BOUND_REASON || !plan.from) return undefined;
   return plan.from === "copy"
-    ? { route: "copy", why: RUNNING_CHROME_FALLBACK, profile: plan.profile }
-    : { route: "bao", why: RUNNING_CHROME_FALLBACK, profile: plan.profile };
+    ? { route: "copy", why: RUNNING_CHROME_FALLBACK, profile: plan.profile, missed }
+    : { route: "bao", why: RUNNING_CHROME_FALLBACK, profile: plan.profile, missed };
 }
 
 /** Opens the plan. When it is running Chrome that gives way and Bao cannot use it, opens the named route, or Bao's own profile. */
@@ -105,7 +117,8 @@ export async function openOrFallBack<T>(plan: BrowserPlan, open: (plan: BrowserP
   try { return await open(plan); }
   catch (error) {
     if (aborted()) throw error;
-    const next = namedBoundFallback(plan) ?? fallbackPlan(`Bao could not use your running Chrome: ${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")}.`, plan.profile);
+    const missed = runningChromeMissed(error);
+    const next = namedBoundFallback(plan, missed) ?? fallbackPlan(missed, plan.profile);
     try { return await open(next); }
     catch (fallbackError) {
       if (aborted()) throw fallbackError;

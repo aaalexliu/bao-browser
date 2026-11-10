@@ -3,7 +3,7 @@
 // that holds its session as one more device. Bao opens these sites in the owner's running Chrome and never copies their cookies.
 
 import path from "node:path";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { cookieMatchesHost, findCookieDb, withCookieDb } from "../login-import/read";
 
 export const BOUND_REASON = "this site ties its sign-in to your Chrome";
@@ -52,15 +52,6 @@ function safeProfileDirectory(directory: string): boolean {
   return Boolean(directory) && !directory.includes("/") && !directory.includes("\\") && !directory.includes("..");
 }
 
-/** The Chrome profile folder picked in Bao Settings, when this process has a Bao home. */
-export function settingsChromeProfile(home = process.env.BAO_HOME): string | undefined {
-  if (!home) return undefined;
-  try {
-    const saved = JSON.parse(readFileSync(path.join(home, "settings.json"), "utf8")) as { chromeProfile?: unknown };
-    return typeof saved.chromeProfile === "string" && saved.chromeProfile ? saved.chromeProfile : undefined;
-  } catch { return undefined; }
-}
-
 /**
  * Profile folders whose device-bound sessions count for a Bao-owned launch or a Login-site refusal.
  * A Settings pick wins. With none, the only profile wins. With several and none picked, every profile counts,
@@ -87,6 +78,13 @@ export function ownerBoundSites(chromeUserData: string | undefined, settingsDire
   for (const dir of ownerProfileDirs(chromeUserData, settingsDirectory)) {
     for (const site of boundSessionSites(dir)) sites.add(site);
   }
+  return [...sites];
+}
+
+/** The owner list, plus the profile this open imports from. Google and the Times are purged on their own. */
+export function purgeBoundSites(chromeUserData: string | undefined, settingsDirectory: string | undefined, importDir?: string): string[] {
+  const sites = new Set(ownerBoundSites(chromeUserData, settingsDirectory));
+  if (importDir) for (const site of boundSessionSites(importDir)) sites.add(site);
   return [...sites];
 }
 

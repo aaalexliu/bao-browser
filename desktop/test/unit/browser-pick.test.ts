@@ -237,23 +237,30 @@ test("a bound reroute falls back to the named route, and both failures name both
   const opened: BrowserPlan[] = [];
   const open = async (plan: BrowserPlan) => {
     opened.push(plan);
-    if (plan.route === "current") throw new Error("screen is locked");
+    if (plan.route === "current") throw new Error("screen is locked.");
     return plan.route;
   };
+  const missed = (plan: BrowserPlan | undefined) => "missed" in (plan ?? {}) ? (plan as { missed?: string }).missed : undefined;
   assert.equal(await openOrFallBack({ route: "current", why: BOUND_REASON, profile: onlyProfile, from: "bao" }, open), "bao");
   assert.equal(opened.at(-1)?.route, "bao");
   assert.equal("unread" in (opened.at(-1) ?? {}), false, "a named Bao profile keeps its sign-in import");
+  assert.equal(missed(opened.at(-1)), "Bao could not use your running Chrome: screen is locked.");
   assert.equal(await openOrFallBack({ route: "current", why: BOUND_REASON, profile: onlyProfile, from: "copy" }, open), "copy");
+  assert.equal(missed(opened.at(-1)), "Bao could not use your running Chrome: screen is locked.");
   assert.equal(await openOrFallBack({ route: "current", why: "the default", profile: onlyProfile }, open), "bao");
   const unread = opened.at(-1)!;
   assert.equal(unread.route, "bao");
-  assert.match("unread" in unread && unread.unread ? unread.unread : "", /Bao could not use your running Chrome/);
+  assert.equal("unread" in unread ? unread.unread : undefined, "Bao could not use your running Chrome: screen is locked.");
+  assert.equal(missed(unread), undefined, "an unread fallback keeps the reason on the pick, not a second line");
   await assert.rejects(openOrFallBack({ route: "current", why: BOUND_REASON, profile: onlyProfile, from: "bao" }, async (plan) => {
     throw new Error(plan.route === "current" ? "screen is locked" : "The Bao profile is already open");
   }), (error: unknown) => {
     assert.ok(error instanceof RoutesFailed);
-    assert.match(error.line, /Running Chrome over remote debugging, this site ties its sign-in to your Chrome, did not open: screen is locked/);
-    assert.match(error.line, /Bao profile, fallback when running Chrome could not be used, did not open: The Bao profile is already open/);
+    assert.notEqual(error.message, error.line);
+    assert.equal(error.message, "screen is locked. The Bao profile is already open.");
+    assert.match(error.line, /Running Chrome over remote debugging, this site ties its sign-in to your Chrome, did not open\. Chrome app: .+ Profile: "Default" in \/chrome\. screen is locked/);
+    assert.match(error.line, /Bao profile, fallback when running Chrome could not be used, did not open\. Chrome app: .+ Profile: "Default" in \/chrome\. The Bao profile is already open/);
+    assert.equal(error.line.indexOf("Browser: Running Chrome"), error.line.lastIndexOf("Browser: Running Chrome"));
     return true;
   });
 });

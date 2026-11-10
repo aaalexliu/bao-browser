@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao-profile";
+import * as bao from "../../src/engines/bao-profile";
+import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { BOUND_REASON, boundSessionSites, boundSite, deleteCookieRows, googleSignInCookie } from "../../src/engines/bound-sign-in";
 import { boundLoginSite } from "../../src/login-import/import-login";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
@@ -14,7 +16,7 @@ import { startApp } from "../../src/app/server";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { testWorkflow } from "../support/workflow";
 import { setCookiesOneAtATime } from "../../src/login-import/set-cookies";
-import { planWorkflowBrowser } from "../../src/engines/workflow-browser";
+import { openWorkflowBrowser, planWorkflowBrowser } from "../../src/engines/workflow-browser";
 import * as launches from "../../src/launch";
 import { withCookieDb } from "../../src/login-import/read";
 import { boundSessions, chromeProfiles } from "../support/chrome-profiles";
@@ -286,26 +288,53 @@ test("a bound site on a named route remembers that route, and the extension gate
 test("a Login site check with no profile uses the Settings profile, or every profile when none is picked", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-bound-login-"));
   const userData = path.join(root, "chrome");
-  const home = path.join(root, "home");
   writeLocalState(userData, [
     { directory: "Default", name: "Owner", email: "owner@example.test" },
     { directory: "Profile 2", name: "Other", email: "other@example.test" },
   ]);
   boundSessions(path.join(userData, "Default"), ["https://bound.example 1"]);
   boundSessions(path.join(userData, "Profile 2"), ["https://other.example 1"]);
-  await mkdir(home);
-  const previous = process.env.BAO_HOME;
-  process.env.BAO_HOME = home;
   try {
     assert.match(boundLoginSite("https://bound.example/", userData) ?? "", /bound\.example/);
     assert.match(boundLoginSite("https://other.example/", userData) ?? "", /other\.example/);
-    await writeFile(path.join(home, "settings.json"), JSON.stringify({ chromeProfile: "Default" }));
-    assert.match(boundLoginSite("https://bound.example/", userData) ?? "", /bound\.example/);
-    assert.equal(boundLoginSite("https://other.example/", userData), undefined);
+    assert.match(boundLoginSite("https://bound.example/", userData, undefined, "Default") ?? "", /bound\.example/);
+    assert.equal(boundLoginSite("https://other.example/", userData, undefined, "Default"), undefined);
+    assert.match(boundLoginSite("https://other.example/", userData, "Profile 2", "Default") ?? "", /other\.example/,
+      "a passed import profile is the one being imported, not the Settings profile");
     assert.match(boundLoginSite("https://www.nytimes.com/") ?? "", /www\.nytimes\.com/);
   } finally {
-    if (previous === undefined) delete process.env.BAO_HOME;
-    else process.env.BAO_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Bao profile open purges the owner list and the imported profile's device-bound sites", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-agent-bound-sites-"));
+  const sourceRoot = await chromeProfiles(path.join(root, "source"), {
+    Default: { name: "Owner" },
+    "Profile 2": { name: "Other" },
+  });
+  boundSessions(path.join(sourceRoot, "Default"), ["https://bound.example 1"]);
+  boundSessions(path.join(sourceRoot, "Profile 2"), ["https://other.example 1"]);
+  const seen: string[][] = [];
+  t.mock.method(bao, "openBaoChromeForProxy", async (options: { boundSites?: readonly string[] }) => {
+    seen.push([...(options.boundSites ?? [])].sort());
+    throw new Error("stop before Chrome");
+  });
+  const home = path.join(root, "home");
+  const open = (proxy: AgentBrowserProxy, profile: string) => proxy.execute("open", ["https://news.example/"], "bao", false, profile);
+  const agent = (settings?: string) => new AgentBrowserProxy({ home, sourceRoot, executable: process.execPath, ...settings ? { settingsProfile: () => settings } : {} });
+  try {
+    await assert.rejects(open(agent(), "Profile 2"), /stop before Chrome/);
+    assert.deepEqual(seen.at(-1), ["bound.example", "other.example"], "no Settings pick purges every profile, plus the import");
+    await assert.rejects(open(agent("Default"), "Profile 2"), /stop before Chrome/);
+    assert.deepEqual(seen.at(-1), ["bound.example", "other.example"], "the Settings profile joins the imported profile");
+    await assert.rejects(openWorkflowBrowser({ browser: "bao", home, site: "https://news.example/", sourceRoot, profile: "Profile 2" }), /stop before Chrome/);
+    assert.deepEqual(seen.at(-1), ["bound.example", "other.example"]);
+    await assert.rejects(openWorkflowBrowser({
+      browser: "bao", home, site: "https://news.example/", sourceRoot, directory: "Profile 2", profile: "Default",
+    }), /stop before Chrome/);
+    assert.deepEqual(seen.at(-1), ["bound.example", "other.example"], "a workflow passes the Settings directory and the import profile");
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

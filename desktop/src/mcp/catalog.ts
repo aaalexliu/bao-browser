@@ -596,6 +596,7 @@ async function replayInBrowser(
       throw error;
     });
     if (browser.pick) lines.push(pickLine(browser.pick));
+    if (browser.missed) lines.push(browser.missed);
     if (browser.kind === "owned" && browser.signIn) lines.push(...importLine(browser, browser.signIn));
   } else {
     const profile = path.join(library.root, "chrome-profile");

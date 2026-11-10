@@ -245,6 +245,8 @@ for (const { wall, page, before, after } of [
     `Browser: Running Chrome over remote debugging, fallback after a sign-in wall. Chrome app: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. User data: ${h.sourceRoot}. `
       + `Profile: "Default" (Owner) in ${h.sourceRoot}, the only profile. Bao's task tab opened in the background.`,
   ]);
+  await assert.rejects(h.proxy.execute("open", [`${h.site}${page}`], "bao"), /close the current session before choosing a different browser/);
+  assert.equal((await h.proxy.execute("open", [`${h.site}${page}`], "current"))[0]!.exitCode, 0);
   assert.equal(h.attaches(), 1);
   assert.ok(await baoClosed(h.baoDir), "Bao closes its own window");
 
@@ -408,6 +410,24 @@ test("an open that names no browser runs in the owner's running Chrome, and Bao 
   assert.deepEqual(h.proxy.pickLines, [`Browser: Running Chrome over remote debugging, the default. Chrome app: ${OWNER_CHROME}. User data: ${h.sourceRoot}. `
     + `Profile: "Default" (Owner) in ${h.sourceRoot}, the only profile. Bao's task tab opened in the background.`]);
   assert.deepEqual(h.launched(), [], "no Bao profile and no sign-in import");
+});
+
+test("when running Chrome cannot be used, a named Bao profile on a bound site says why on its own line", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "refused");
+  const why = "Bao could not use your running Chrome: Chrome is not open. Open Google Chrome, then try again.";
+  assert.equal((await h.proxy.execute("open", ["https://www.nytimes.com/"], "bao"))[0]!.exitCode, 0);
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Bao profile, fallback when running Chrome could not be used\./);
+  assert.equal(h.proxy.pickLines[1], why);
+  const saved = new Library(h.home).listRuns()[0]!.browser;
+  assert.equal(saved && "unread" in saved ? saved.unread : undefined, undefined);
+  assert.deepEqual(h.launched(), ["bao"]);
+});
+
+test("when running Chrome cannot be used, a named copy on a bound site says why on its own line", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "refused");
+  assert.equal((await h.proxy.execute("open", ["https://www.nytimes.com/"], "copy"))[0]!.exitCode, 0);
+  assert.match(h.proxy.pickLines[0]!, /^Browser: Chrome copy, fallback when running Chrome could not be used\./);
+  assert.equal(h.proxy.pickLines[1], "Bao could not use your running Chrome: Chrome is not open. Open Google Chrome, then try again.");
 });
 
 test("when running Chrome cannot be used, an open that names no browser runs in Bao's profile without a sign-in import and says why in one line", { timeout: 60_000 }, async (t) => {

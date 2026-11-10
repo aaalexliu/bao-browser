@@ -17,7 +17,7 @@ import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-c
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
 import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
-import { BOUND_REASON, boundSessionSites, boundSite } from "./bound-sign-in";
+import { BOUND_REASON, boundSite, purgeBoundSites } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
@@ -116,6 +116,7 @@ interface SessionData {
   ownerTouched?: number;
   /** Why a Bao-profile session could not move to the owner's running Chrome. Only an explicit wait_for_owner tries again. */
   moveError?: string;
+  missed?: string;
   /** Whether Bao brought the waiting window on top of the owner's apps for the latest handoff. */
   raised?: boolean;
   commandDone?: Promise<void>;
@@ -219,11 +220,12 @@ export class AgentBrowserProxy {
     const { session, command } = this.shown;
     const failed = this.moved ? [this.moved.line] : [];
     if (command !== "open") return [shortPickLine(session.pick), ...failed];
+    const whyMissed = session.missed ? [session.missed] : [];
     const from = session.pick.route === "bao" && session.pick.unread === undefined ? session.pick.profile?.directory : undefined;
-    if (!from) return [pickLine(session.pick), ...failed];
+    if (!from) return [pickLine(session.pick), ...whyMissed, ...failed];
     const missed = this.imports.some((report) => report.error || !report.found && !report.storage);
     const fallback = missed && !session.ownerWait && !session.moveError ? `If the site still asks for a sign-in, Bao moves this session to the owner's running Chrome over remote debugging on the same Chrome profile "${from}" by itself when it sees the wall or when you call wait_for_owner.` : "";
-    return [pickLine(session.pick), ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : [], ...failed];
+    return [pickLine(session.pick), ...whyMissed, ...this.imports.map((report) => signInLine(report, from)), ...fallback ? [fallback] : [], ...failed];
   }
   private currentEnded = false;
   private closedCurrent = false;
@@ -577,7 +579,8 @@ export class AgentBrowserProxy {
       }
       case "bao": {
         const detached = this.options.keepOpen?.() === true;
-        const boundSites = plan.profile ? boundSessionSites(path.join(plan.profile.root, plan.profile.directory)) : [];
+        const importDir = plan.profile ? path.join(plan.profile.root, plan.profile.directory) : undefined;
+        const boundSites = purgeBoundSites(this.options.sourceRoot ?? chromeProfilesRoot(), this.options.settingsProfile?.(), importDir);
         const opened = await behind(await openBaoChromeForProxy({ ...signInSource(plan), home: this.options.home, detached, site, boundSites }));
         return { kind: "copy", ...opened, pick: baoPick(plan, baoAgentProfileDir(this.options.home)) };
       }
@@ -592,12 +595,16 @@ export class AgentBrowserProxy {
   private async start(recording: AgentBrowserRun, plan: BrowserPlan, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     const abort = this.startAbort = new AbortController();
-    const browser = await openOrFallBack(plan, (next) => this.open(next, abort.signal, site), () => abort.signal.aborted);
+    let missed: string | undefined;
+    const browser = await openOrFallBack(plan, (next) => {
+      missed = "missed" in next ? next.missed : undefined;
+      return this.open(next, abort.signal, site);
+    }, () => abort.signal.aborted);
     try {
       const wired = await this.wire(browser);
       recording.pickBrowser(browser.pick);
       const session: Session = {
-        ...browser, ...wired, browser: openedChoice(browser.pick), executable, abort, recording, snapshots: new Map(),
+        ...browser, ...wired, browser: openedChoice(browser.pick), missed, executable, abort, recording, snapshots: new Map(),
         workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
           const active = await this.activePage(session);
           if (!active) throw new Error("no active Bao page metadata");
@@ -727,7 +734,7 @@ export class AgentBrowserProxy {
     }
     const old = { chrome: session.chrome, background: session.background, stateDir: session.stateDir };
     const waiting = !!session.ownerWait;
-    Object.assign(session, next, wired, { ownerWait: undefined, page: undefined });
+    Object.assign(session, next, wired, { browser: openedChoice(next.pick), missed: undefined, ownerWait: undefined, page: undefined });
     session.recording.pickBrowser(next.pick);
     if (waiting) session.recording.ownerWaiting(false);
     this.watch(session);
