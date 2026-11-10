@@ -272,10 +272,42 @@ function withoutCodexEnv(text: string): string {
   return applyEdits(text, edits);
 }
 
+function withoutCodexArgs(text: string): string {
+  const ast = parseTOML(text, { tomlVersion: "1.0" });
+  const edits: TextEdit[] = [];
+  const isArgs = (keys: string[]): boolean => keys.length === 3 && keys[0] === "mcp_servers" && keys[1] === "bao" && keys[2] === "args";
+  const collect = (items: AST.TOMLKeyValue[], prefix: string[], inline: boolean): void => {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      if (isArgs([...prefix, ...keyParts(item.key)])) {
+        const next = items[i + 1];
+        const previous = items[i - 1];
+        let start = item.range[0];
+        let end = item.range[1];
+        if (inline && !next && previous) start = previous.range[1];
+        else if (inline && next) end = next.range[0];
+        else if (!inline) {
+          const nl = text.indexOf("\n", end);
+          if (nl >= 0) end = nl + 1;
+        }
+        edits.push({ start, end, text: "" });
+      } else if (item.value.type === "TOMLInlineTable") {
+        collect(item.value.body, [...prefix, ...keyParts(item.key)], true);
+      }
+    }
+  };
+  for (const item of ast.body[0].body) {
+    if (item.type === "TOMLKeyValue") collect([item], [], false);
+    else collect(item.body, item.resolvedKey as string[], false);
+  }
+  return applyEdits(text, edits);
+}
+
 export function editChatgpt(text: string, launcher: string): { text: string; existing: boolean } {
   const original = getStaticTOMLValue(parseTOML(text, { tomlVersion: "1.0" }));
   const existing = object(original) && object(original.mcp_servers) && original.mcp_servers.bao !== undefined;
   text = withoutCodexEnv(text);
+  text = withoutCodexArgs(text);
   const ast = parseTOML(text, { tomlVersion: "1.0" });
   const data = getStaticTOMLValue(ast);
   if (!object(data) || (data.mcp_servers !== undefined && !object(data.mcp_servers))) throw new Error("mcp_servers must be a TOML table.");

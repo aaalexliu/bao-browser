@@ -29,7 +29,7 @@ export class CodexConfigError extends Error {
 export const CODEX_APPROVAL_MODE = "approve";
 
 export function codexOwnedSettings(command: string): Record<string, unknown> {
-  return { command, args: [], env: undefined, tool_timeout_sec: CODEX_TOOL_TIMEOUT_SEC, default_tools_approval_mode: CODEX_APPROVAL_MODE };
+  return { command, args: undefined, env: undefined, tool_timeout_sec: CODEX_TOOL_TIMEOUT_SEC, default_tools_approval_mode: CODEX_APPROVAL_MODE };
 }
 
 const OWNED = new Set(Object.keys(codexOwnedSettings("")));
