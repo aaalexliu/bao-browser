@@ -828,6 +828,7 @@ export class AgentBrowserProxy {
           want = info.targetId;
         }
       }
+      if (ceiling.aborted) throw new Error("cdp aborted Browser.getWindowForTarget");
       for (const targetId of fresh) session.seen.add(targetId);
     }
     if (!listed(want)) want = [...session.taskTabs].reverse().find((targetId) => listed(targetId)) ?? want;
