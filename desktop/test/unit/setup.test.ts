@@ -265,6 +265,10 @@ test("doctor warns that Running Chrome, the default, needs the helper when it is
   const helper = checks.find((row) => row.name === "helper");
   assert.equal(helper?.level, "warn");
   assert.equal(helper?.detail, "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper.");
+  mkdirSync(path.join(app, "Contents", "Resources", "BaoOSHelper.app"), { recursive: true });
+  const present = (await doctorChecks(app, probe)).find((row) => row.name === "helper");
+  assert.match(present?.detail ?? "", /Running Chrome \(browser=current\) is the default and uses it to press the Allow sheet, with an Accessibility grant\. Optional: the native Mac app driver \(bao mcp-ax\) and bao remote-debugging$/);
+  assert.doesNotMatch(present?.detail ?? "", /Optional: Running Chrome/);
   const chrome = checks.find((row) => row.name === "chrome");
   assert.equal(chrome?.level, "warn");
   assert.equal(chrome?.detail, "Google Chrome is not installed. Every agent_browser route starts installed Google Chrome. A Bao profile and a copy are not a way around a missing Chrome.");

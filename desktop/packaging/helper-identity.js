@@ -29,7 +29,7 @@ function acceptHelper(report, identity, certHash) {
   if (!report.exists) return { ok: false, reason: "helper is absent" };
   if (!report.isBundle) return { ok: false, reason: "helper must be the signed BaoOSHelper.app bundle" };
   // An ad-hoc build signs everything ad-hoc. macOS then keys a helper grant to one build, so it
-  // does not survive an update; the default copied-profile mode needs no grant.
+  // does not survive an update. Running Chrome, the default, uses that grant.
   if (identity === ADHOC) {
     if (!report.adhoc) return { ok: false, reason: "an ad-hoc build (BAO_SIGN_IDENTITY=-) needs an ad-hoc helper" };
     if (report.identifier !== BUNDLE_ID) return { ok: false, reason: "helper bundle id is not dev.bao.oshelper" };
