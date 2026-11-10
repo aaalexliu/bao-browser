@@ -16,6 +16,7 @@ import type { CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { pinTestBrowser } from "../../src/launch";
+import { stepSentence } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 
@@ -262,7 +263,8 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   assert.ok(f.targets.some(item => item.targetId === "owner"));
   await assert.rejects(f.proxy.execute("click", ["@e1"]), /Bao's task tab was closed/);
   await assert.rejects(f.proxy.execute("open", [MAPS]), /Bao's task tab was closed/);
-  await f.proxy.execute("close");
+  const closed = await f.proxy.execute("close");
+  assert.equal(stepSentence("close", closed, undefined, undefined, { current: f.proxy.currentChrome }), "Closed Bao's task tab in your Chrome.");
   assert.equal((await f.proxy.execute("open", [MAPS]))[0]!.exitCode, 0, "an explicit close clears the ended session, so the next open takes the default");
 });
 
