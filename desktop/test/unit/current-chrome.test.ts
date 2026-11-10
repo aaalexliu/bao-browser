@@ -13,7 +13,7 @@ import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import { browserToolResult, pageShotLine } from "../../src/mcp/tool-card";
+import { browserToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
 import { LAUNCH_SERVICES_RESTART, launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -751,6 +751,14 @@ for (const keepOpen of [false, true]) test(`idle backstop releases an owned sess
   assert.match(f.library.listRuns()[0]!.envelope!.reason!, /never finished the task, so Bao ended the session/);
 });
 
+const LEFT_OPEN = "Disconnected from your Chrome. Bao's task tab may still be open.";
+
+function assertLeftOpen(command: string, results: { stdout: string; stderr: string; exitCode: number }[], proxy: AgentBrowserProxy) {
+  const sentence = stepSentence(command, results, proxy.lastCommand, undefined, { current: proxy.currentChrome });
+  assert.equal(sentence, LEFT_OPEN);
+  assert.equal(browserToolResult(command, results, proxy.lastCommand, undefined, undefined, { current: proxy.currentChrome }).content[0]?.text, sentence);
+}
+
 for (const reset of ["finish", "close"] as const) test(`current idle expiry preserves browser choice until explicit ${reset}`, async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
@@ -772,8 +780,25 @@ for (const reset of ["finish", "close"] as const) test(`current idle expiry pres
   await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
   await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
   if (reset === "finish") await f.proxy.finishTask({ outcome: "failed", reason: "Task expired" });
-  else await f.proxy.execute("close");
+  else {
+    const closed = await f.proxy.execute("close");
+    assert.equal(f.state.closes, 0, "idle left the task tab open, and a later close does not close it");
+    assertLeftOpen("close", closed, f.proxy);
+  }
   await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+});
+
+for (const after of ["drop", "disconnect"] as const) test(`a later close after current Chrome ${after} does not claim the task tab closed`, async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  f.cdp.close();
+  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
+  assert.equal(f.state.closes, 0, "a dropped connection does not close the task tab");
+  if (after === "disconnect") f.proxy.disconnect();
+  const closed = await f.proxy.execute("close");
+  assert.equal(f.state.closes, 0);
+  assertLeftOpen("close", closed, f.proxy);
+  if (after === "drop") await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
 });
 
 for (const missing of ["task", "active-page"] as const) test(`closing the waiting current ${missing} releases the session for reconnect`, async (t) => {

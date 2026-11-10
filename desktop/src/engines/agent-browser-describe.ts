@@ -161,6 +161,7 @@ export function failureText(results: readonly AgentBrowserCommandResult[], error
 }
 
 export const CURRENT_CHROME_ENDED = "The owner's Chrome session ended. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
+export const CURRENT_CHROME_LEFT_OPEN = "Disconnected from your Chrome. Bao's task tab may still be open.";
 export const TASK_TAB_CLOSED = "Bao's task tab was closed. Reconnect with command=open and browser=current, or choose browser=bao explicitly to use Bao's lasting profile.";
 
 export interface OwnerReply { outcome: "halted" | "waiting" | "ready" | "closed"; instruction: string }
@@ -297,6 +298,8 @@ export function describeStep(facts: StepFacts): StepSummary {
     }
     case "screenshot": return done(page?.title ? ["Took a screenshot of ", { cite: page.title }] : ["Took a screenshot of the page"]);
     case "close": {
+      const leftOpen = facts.results.some((result) => result.exitCode === 0 && result.stdout.trim() === CURRENT_CHROME_LEFT_OPEN);
+      if (leftOpen) return { parts: [CURRENT_CHROME_LEFT_OPEN.replace(/\.$/, "")], text: CURRENT_CHROME_LEFT_OPEN };
       const closed = facts.current ? "Closed Bao's task tab in your Chrome" : "Closed the Bao browser window";
       return { parts: [closed], text: `${closed}.` };
     }
