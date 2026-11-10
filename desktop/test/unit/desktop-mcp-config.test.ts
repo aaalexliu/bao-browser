@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import fs = require("node:fs");
 import { getStaticTOMLValue, parseTOML } from "toml-eslint-parser";
+import { upsertCodexServer } from "../../src/app/codex-config";
 import { DesktopMcpInstaller, desktopMcpFile, editChatgpt, editClaude, type DesktopMcpClient } from "../../src/app/desktop-mcp-config";
 
 const launcher = "/Applications/Bao.app/Contents/MacOS/bao-mcp";
@@ -43,9 +44,20 @@ test("Claude rejects malformed, duplicate, non-object and remote entries without
 test("ChatGPT keeps comments, other servers, explicit tool rules, CRLF and unknown Bao settings", () => {
   const before = '# keep this\r\nmodel = "keep"\r\n[mcp_servers."bao"] # header\r\ncommand = "old" # preserve comment\r\nargs = [\r\n  "old"\r\n]\r\ndefault_tools_approval_mode = "approve"\r\ntool_timeout_sec = 180\r\n[mcp_servers.bao.tools.search]\r\napproval_mode = "prompt"\r\n# next server\r\n[mcp_servers.other]\r\ncommand = "keep"\r\n';
   const out = editChatgpt(before, launcher);
-  assert.equal(out.text, before.replace('"old"', JSON.stringify(launcher)).replace('[\r\n  "old"\r\n]', '[]').replace('"approve"', '"prompt"'));
+  assert.equal(out.text, before.replace('command = "old"', `command = ${JSON.stringify(launcher)}`).replace('args = [\r\n  "old"\r\n]\r\n', ''));
+  assert.match(out.text, /default_tools_approval_mode = "approve"/);
+  assert.match(out.text, /approval_mode = "prompt"/);
   assert.equal(editChatgpt(out.text, launcher).text, out.text);
   assert.equal(out.existing, true);
+});
+
+test("ChatGPT pre-approves Bao tools when the entry still says prompt, and keeps a per-tool rule", () => {
+  const before = '[mcp_servers.bao]\ncommand = "old"\ndefault_tools_approval_mode = "prompt"\n[mcp_servers.bao.tools.search]\napproval_mode = "prompt"\n';
+  const out = editChatgpt(before, launcher);
+  assert.match(out.text, /default_tools_approval_mode = "approve"/);
+  assert.doesNotMatch(out.text, /default_tools_approval_mode = "prompt"/);
+  assert.match(out.text, /\[mcp_servers\.bao\.tools\.search\]\napproval_mode = "prompt"/);
+  assert.equal(editChatgpt(out.text, launcher).text, out.text);
 });
 
 test("ChatGPT edits inline, dotted, quoted and implicit tables without duplicate servers", () => {
@@ -68,15 +80,53 @@ test("ChatGPT edits inline, dotted, quoted and implicit tables without duplicate
   ];
   for (const before of inputs) {
     const out = editChatgpt(before, launcher).text;
-    const parsed = getStaticTOMLValue(parseTOML(out, { tomlVersion: "1.0" })) as { mcp_servers: { bao: { command: string; args: unknown[]; default_tools_approval_mode: string; tool_timeout_sec: number; env?: unknown } } };
+    const parsed = getStaticTOMLValue(parseTOML(out, { tomlVersion: "1.0" })) as { mcp_servers: { bao: { command: string; default_tools_approval_mode: string; tool_timeout_sec: number; env?: unknown } } };
     assert.equal(parsed.mcp_servers.bao.command, launcher, before);
-    assert.deepEqual(parsed.mcp_servers.bao.args, [], before);
-    assert.equal(parsed.mcp_servers.bao.default_tools_approval_mode, "prompt", before);
+    assert.equal(Object.hasOwn(parsed.mcp_servers.bao, "args"), false, before);
+    assert.equal(parsed.mcp_servers.bao.default_tools_approval_mode, "approve", before);
     assert.equal(parsed.mcp_servers.bao.tool_timeout_sec, 180, before);
     assert.equal(parsed.mcp_servers.bao.env, undefined, before);
     assert.equal(editChatgpt(out, launcher).text, out, before);
     if (before.includes('other={command="keep"}')) assert.ok(out.includes('other={command="keep"}'));
   }
+});
+
+test("ChatGPT leaves a setup entry unchanged and removes a stale args key", () => {
+  const setup = upsertCodexServer('model = "keep"\n', launcher);
+  assert.equal(editChatgpt(setup, launcher).text, setup);
+  assert.equal(upsertCodexServer(setup, launcher), setup);
+  for (const argsLine of ['args = []\n', 'args = ["old"]\n']) {
+    const stale = setup.replace('default_tools_approval_mode = "approve"\n', `${argsLine}default_tools_approval_mode = "approve"\n`);
+    const removed = editChatgpt(stale, launcher).text;
+    assert.equal(removed, setup, argsLine);
+    assert.equal(upsertCodexServer(removed, launcher), removed, argsLine);
+  }
+  const f = fixture();
+  try {
+    plant(f.home, "chatgpt", upsertCodexServer('model = "keep"\n', process.execPath));
+    const preview = f.installer.preview("chatgpt");
+    assert.equal(preview.action, "unchanged");
+    assert.equal(preview.token, null);
+    assert.equal(preview.diff, "");
+  } finally { f.close(); }
+});
+
+test("ChatGPT removes an indented args line without moving the next key", () => {
+  for (const indent of ["  ", "\t"]) {
+    const line = `${indent}enabled = true`;
+    const note = `${indent}# keep this key`;
+    const before = `[mcp_servers.bao]\n${indent}command = "old"\n${indent}args = []\n${line}\n${note}\n`;
+    const out = editChatgpt(before, launcher).text;
+    assert.deepEqual(out.split("\n").filter((item) => item.includes("enabled")), [line], before);
+    assert.deepEqual(out.split("\n").filter((item) => item.includes("keep this key")), [note], before);
+  }
+  const f = fixture();
+  try {
+    const before = '[mcp_servers.bao]\n  command = "old"\n  args = []\n  enabled = true\n';
+    plant(f.home, "chatgpt", before);
+    const preview = f.installer.preview("chatgpt");
+    assert.doesNotMatch(preview.diff, /^[+-].*enabled/m);
+  } finally { f.close(); }
 });
 
 test("ChatGPT rejects malformed TOML, duplicate entries and incompatible types", () => {
