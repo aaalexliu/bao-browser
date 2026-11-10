@@ -204,14 +204,30 @@ export function textToolResult(results: readonly AgentBrowserCommandResult[], se
   };
 }
 
-/** finish_task: the sentence, the run line, the workflow outcome in words, and the session's browser line; the full receipt and that line as structuredContent. */
+const MODEL_RECEIPT_KEYS = ["run_id", "outcome", "status", "reason", "link", "workflow"] as const;
+
+/**
+ * What the model reads. Codex and Claude Code hand structuredContent back in place of the text blocks.
+ * Those blocks are the sentence, the run line, the workflow line, and the browser lines.
+ * The card holds a FinishSummary. Only get_run keeps the full receipt.
+ */
+function modelReceipt(sentence: string, receipt: Record<string, unknown>, browser: readonly string[]): Record<string, unknown> {
+  const short: Record<string, unknown> = { summary: sentence };
+  for (const key of MODEL_RECEIPT_KEYS) {
+    if (receipt[key] !== undefined) short[key] = receipt[key];
+  }
+  if (browser.length) short.browser = browser;
+  return short;
+}
+
+/** finish_task: the sentence, the run line, the workflow outcome in words, and the session's browser line. structuredContent is the short model receipt. */
 export function finishToolResult(card: BrowserToolCard | undefined, receipt: Record<string, unknown>, ui: boolean, browser: readonly string[] = []) {
   const sentence = card?.caption ?? (receipt.outcome === "no_session" && typeof receipt.reason === "string" ? receipt.reason : "No browser task was open.");
   const run = typeof receipt.run_id === "string"
     ? [textBlock([`Run ${receipt.run_id}`, receipt.status, receipt.link].filter((part) => typeof part === "string" && part.length > 0).join(" · "))] : [];
   return {
     content: [textBlock(sentence), ...run, ...(typeof receipt.workflow === "string" ? [textBlock(receipt.workflow)] : []), ...browser.map(textBlock), ...(ui && card ? [cardKey(card)] : [])],
-    structuredContent: { summary: sentence, ...receipt, ...browser.length ? { browser } : {} },
+    structuredContent: modelReceipt(sentence, receipt, browser),
     isError: false,
   };
 }

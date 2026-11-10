@@ -47,6 +47,38 @@ test("diff shows added and removed lines under the lines that hold them, and fal
 +     - button "Checkout" [ref=e8]`);
   const other = "- main\n  - heading \"Another page\" [level=1, ref=e20]\n  - link \"Back\" [ref=e21]\n";
   assert.equal(diffView(page, other), `Most of the page changed since the last snapshot, so this is the full snapshot.\n${other}`);
+  const tiny = "- main\n  - button \"Save\" [ref=e1]\n";
+  const edited = tiny.replace("Save", "Saved");
+  assert.equal(diffView(tiny, edited), `Changed since the last snapshot: 1 line added (+), 1 removed (-). Unchanged lines are left out except the ones that hold a change.
+  - main
++   - button "Saved" [ref=e1]
+-   - button "Save" [ref=e1]`);
+});
+
+test("a few edits on a small page stay a diff, and a longer nested diff returns the full tree", () => {
+  const cart = `- main
+  - heading "Cart" [level=1, ref=e1]
+  - list
+    - listitem "Tea 1"
+    - listitem "Milk 1"
+    - listitem "Bread 1"
+    - listitem "Eggs 1"
+  - text "Total $10"
+  - button "Checkout" [ref=e2]
+  - link "Home" [ref=e3]
+`;
+  const next = cart.replace("Tea 1", "Tea 2").replace("Milk 1", "Milk 2").replace("Total $10", "Total $12");
+  const edited = diffView(cart, next);
+  assert.match(edited, /^Changed since the last snapshot: 3 lines added \(\+\), 3 removed/);
+  assert.match(edited, /\+\s+- listitem "Tea 2"/);
+  assert.match(edited, /\+\s+- text "Total \$12"/);
+  assert.doesNotMatch(edited, /Most of the page changed/);
+  assert.equal(edited.includes(next), false, "three of ten lines is a diff, not the full tree");
+
+  const item = (price: number) => `    - listitem\n      - link "Item"\n        - generic\n          - text "$${price}"`;
+  const before = ["- main", "  - list", ...Array.from({ length: 200 }, () => item(10))].join("\n") + "\n";
+  const after = ["- main", "  - list", ...Array.from({ length: 200 }, () => item(11))].join("\n") + "\n";
+  assert.equal(diffView(before, after), `The changed lines are longer than the full snapshot, so this is the full snapshot.\n${after}`);
 });
 
 test("find and diff are snapshot options, one at a time, and the tool teaches both", () => {
