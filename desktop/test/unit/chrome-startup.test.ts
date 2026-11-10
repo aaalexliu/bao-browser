@@ -100,7 +100,63 @@ exec ${JSON.stringify(pinTestBrowser())} "$@"
   }
 });
 
-test("a debugging-port bind race fails without connecting to the other listener", { timeout: 25_000 }, async (t) => {
+test("a Chrome that listens on ::1 because 127.0.0.1 was taken is started again", { timeout: 60_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-startup-ipv6-retry-"));
+  const profile = path.join(root, "profile");
+  const first = path.join(root, "first");
+  const second = path.join(root, "second");
+  const wrapper = path.join(root, "chrome");
+  await writeFile(wrapper, `#!/bin/sh
+port=
+for arg in "$@"; do
+  case "$arg" in --remote-debugging-port=*) port=\${arg#--remote-debugging-port=} ;; esac
+done
+now=$(date +%s)
+if [ ! -f ${JSON.stringify(first)} ]; then
+  echo "$now" > ${JSON.stringify(first)}
+  printf '\\nDevTools listening on ws://[::1]:%s/devtools/browser/ipv6-id\\n' "$port" >&2
+  exec sleep 60
+fi
+echo "$now" > ${JSON.stringify(second)}
+exec ${JSON.stringify(pinTestBrowser())} "$@"
+`);
+  await chmod(wrapper, 0o755);
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true, executablePath: wrapper });
+  try {
+    const started = Number(await readFile(first, "utf8"));
+    const retried = Number(await readFile(second, "utf8"));
+    assert.ok(retried - started < 8, `the ::1 attempt was kept for ${retried - started}s`);
+    assert.notEqual((await readDevToolsActivePort(chrome.portFile)).browserPath, "/devtools/browser/ipv6-id");
+  } finally {
+    await chrome.close();
+    const deadline = Date.now() + 3000;
+    while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Chrome that cannot start its debugging server is started again without the startup wait", { timeout: 30_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-startup-devtools-down-"));
+  const profile = path.join(root, "profile");
+  const marker = path.join(root, "attempts");
+  const wrapper = path.join(root, "chrome");
+  await writeFile(wrapper, `#!/bin/sh
+echo x >> ${JSON.stringify(marker)}
+printf 'Cannot start http server for devtools.\\n' >&2
+exec sleep 60
+`);
+  await chmod(wrapper, 0o755);
+  const started = Date.now();
+  await assert.rejects(launchOwnedChromeEndpoint({ userDataDir: profile, headless: true, executablePath: wrapper }), /could not start its debugging server/);
+  assert.ok(Date.now() - started < 10_000, "a dead debugging server must not wait out the startup deadline");
+  assert.equal((await readFile(marker, "utf8")).trim().split("\n").length, 3);
+  const deadline = Date.now() + 3000;
+  while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(pidsForDataDir(profile), []);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("a debugging-port bind race fails without connecting to the other listener", { timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-startup-port-race-"));
   let requests = 0;
   const listener = createServer((_request, response) => { requests++; response.end("not our Chrome"); });
@@ -115,7 +171,7 @@ test("a debugging-port bind race fails without connecting to the other listener"
       address() { return address; },
       close(done: () => void) { done(); },
     } as unknown as net.Server));
-    await assert.rejects(launchOwnedChromeEndpoint({ userDataDir: root, headless: true }), /debugging port did not open|Chrome exited/);
+    await assert.rejects(launchOwnedChromeEndpoint({ userDataDir: root, headless: true }), /did not bind 127\.0\.0\.1:|could not start its debugging server|debugging port did not open|Chrome exited/);
     assert.equal(requests, 0);
   } finally {
     await new Promise<void>(resolve => listener.close(() => resolve()));

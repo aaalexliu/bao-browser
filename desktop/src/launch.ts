@@ -319,9 +319,13 @@ export function stopOwnedChrome(owner: OwnedChromeProcess): void {
 }
 
 /**
- * A direct Chrome that exits before its debugging port opens is started again.
- * The macOS open launcher is not: a retry there can leave a second window.
+ * A direct Chrome that exits, or that does not bind 127.0.0.1, is started again
+ * on a new port. The macOS open launcher is not: a retry there can leave a second window.
  */
+function retryDirectStartup(message: string): boolean {
+  return /Chrome exited before it opened a debugging port|Chrome could not start its debugging server|Chrome did not bind 127\.0\.0\.1:/.test(message);
+}
+
 async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
   const direct = guiChromeLaunchArgs(exe, [], "", childHome ?? userInfo().homedir, background) === undefined;
   const attempts = direct ? 3 : 1;
@@ -331,7 +335,7 @@ async function spawnOwnedChrome(exe: string, args: (port: number) => string[], u
       return await startOwnedChrome(exe, args, userDataDir, childHome, detached, background);
     } catch (error) {
       last = error instanceof Error ? error : new Error(String(error));
-      if (attempt === attempts || !/Chrome exited before it opened a debugging port/.test(last.message)) throw last;
+      if (attempt === attempts || !direct || !retryDirectStartup(last.message)) throw last;
       await delay(200);
     }
   }
@@ -356,9 +360,20 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
   let spawnError: Error | undefined;
   child.on("error", (error) => { spawnError = error; });
   const readEndpoint = (text: string) => {
-    const match = text.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)(\/devtools\/browser\/[\w-]+)\r?\n/);
-    if (match && Number(match[1]) === 9222) spawnError = new Error("Chrome bound remote-debugging-port 9222.");
-    else if (match && Number(match[1]) === port) browserPath = match[2]!;
+    // Chromium tries 127.0.0.1, then [::1]. A taken IPv4 port still prints a listening line, on ::1, and the process stays up.
+    const match = text.match(/DevTools listening on ws:\/\/(.+?):(\d+)(\/devtools\/browser\/[\w-]+)\r?\n/);
+    if (match) {
+      const host = match[1]!;
+      const announced = Number(match[2]);
+      if (announced === 9222) spawnError = new Error("Chrome bound remote-debugging-port 9222.");
+      else if (host !== "127.0.0.1" || announced !== port) spawnError = new Error(`Chrome did not bind 127.0.0.1:${port}`);
+      else {
+        browserPath = match[3]!;
+        spawnError = undefined;
+      }
+      return;
+    }
+    if (/Cannot start http server for devtools/.test(text)) spawnError = new Error("Chrome could not start its debugging server");
   };
   child.stderr?.on("data", (chunk: Buffer) => {
     output = (output + chunk.toString("utf8")).slice(-8192);
@@ -384,7 +399,8 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
       }
       await delay(50);
     }
-    throw new Error("Chrome debugging port did not open");
+    const detail = output.trim().slice(-400);
+    throw new Error(detail ? `Chrome debugging port did not open: ${detail}` : "Chrome debugging port did not open");
   } catch (error) {
     try {
       if (guiArgs) {
