@@ -21,7 +21,7 @@ import {
   type DecryptedCookie,
   type ProfileInfo,
 } from "./read";
-import { boundSessionSites, boundSite } from "../engines/bound-sign-in";
+import { boundInProfiles, boundSessionSites, ownerBoundSites, ownerProfileDirs, settingsChromeProfile } from "../engines/bound-sign-in";
 import { setCookiesOneAtATime, type CookieSetter } from "./set-cookies";
 import { siteHost, siteOrigin } from "./sites";
 import { clearIndexedDbLocks, copyIndexedDb, matchingIndexedDbOrigins, originsForSite, readLocalStorage, setLocalStorageItems, type StorageItem } from "./storage";
@@ -66,13 +66,20 @@ export function assertClick(click: ClickInput | undefined): asserts click is Imp
 }
 
 /**
- * Google, YouTube, nytimes.com, and a site the Chrome profile `directory` holds a device-bound session for tie their sign-in to the
- * owner's Chrome, so they are not Login sites. Returns the plain line that says so, or undefined for any other site.
+ * Google, YouTube, nytimes.com, and a site the owner's Chrome holds a device-bound session for tie their sign-in to that Chrome,
+ * so they are not Login sites. A passed profile directory is the one being imported. With none, the Settings profile counts, or
+ * every profile when none is picked. Returns the plain line that says so, or undefined for any other site.
  */
 export function boundLoginSite(site: string, chromeUserData?: string, directory?: string): string | undefined {
-  const profileDir = chromeUserData && directory && safeDirectory(directory) ? path.join(chromeUserData, directory) : undefined;
-  if (!boundSite(siteOrigin(site), profileDir)) return undefined;
+  const dirs = directory && chromeUserData && safeDirectory(directory)
+    ? [path.join(chromeUserData, directory)]
+    : ownerProfileDirs(chromeUserData, settingsChromeProfile());
+  if (!boundInProfiles(siteOrigin(site), dirs)) return undefined;
   return `The site ${siteHost(site)} ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.`;
+}
+
+function lastingBoundSites(chromeUserData?: string): string[] {
+  return ownerBoundSites(chromeUserData, settingsChromeProfile());
 }
 
 export async function previewChromeProfiles(opts: {
@@ -241,7 +248,7 @@ export async function importInOwnedChrome(opts: {
   const items = await readLocalStorage(profileDir, origins);
   const indexedDbOrigins = copyIndexedDb(profileDir, opts.baoProfile, origins);
   const headless = opts.headless ?? productHeadless();
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome", boundSites: lastingBoundSites(opts.chromeUserData) });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const cdp = await ctx.newCDPSession(page);
@@ -267,10 +274,11 @@ export async function probeOwnedProfile(opts: {
   baoProfile: string;
   config: Pick<SiteLoginConfig, "origin" | "probeUrl" | "signedInSelector" | "signedInText">;
   headless?: boolean;
+  chromeUserData?: string;
 }): Promise<{ signedIn: boolean; how: "selector" | "text" | "login-url" | "login-wall" }> {
   assertNotDailyChrome(opts.baoProfile);
   const headless = opts.headless ?? productHeadless();
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome", boundSites: lastingBoundSites(opts.chromeUserData) });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const obs = await observePage(page, opts.config.probeUrl || opts.config.origin, opts.config.signedInSelector, opts.config.signedInText);
@@ -283,10 +291,10 @@ export async function probeOwnedProfile(opts: {
   }
 }
 
-export async function openOwnedSignIn(opts: { baoProfile: string; url: string; headless: boolean }): Promise<{ close(): Promise<void>; url: string }> {
+export async function openOwnedSignIn(opts: { baoProfile: string; url: string; headless: boolean; chromeUserData?: string }): Promise<{ close(): Promise<void>; url: string }> {
   assertNotDailyChrome(opts.baoProfile);
   const headless = opts.headless || (process.platform !== "darwin" && !process.env.DISPLAY);
-  const ctx: BrowserContext = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome" });
+  const ctx: BrowserContext = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome", boundSites: lastingBoundSites(opts.chromeUserData) });
   const page = ctx.pages()[0] || await ctx.newPage();
   await page.goto(opts.url, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
   const shot = process.env.BAO_SIGNIN_SHOT;

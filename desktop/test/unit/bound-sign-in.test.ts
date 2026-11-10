@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { connectCdp } from "../../src/cdp-live/socket";
 import { baoAgentProfileDir, openBaoChromeForProxy } from "../../src/engines/bao-profile";
 import { BOUND_REASON, boundSessionSites, boundSite, deleteCookieRows, googleSignInCookie } from "../../src/engines/bound-sign-in";
+import { boundLoginSite } from "../../src/login-import/import-login";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
@@ -168,10 +169,15 @@ test("the app's Login sites refuse Google, YouTube, the Times, and a device-boun
       assert.deepEqual(await call("POST", "/api/login-import/sign-in", { site, consent: true }), { status: 400, error: line }, site);
       assert.deepEqual(await call("PUT", "/api/login-sites", { origin: site }), { status: 400, error: line }, site);
     }
-    assert.deepEqual(await call("POST", "/api/login-import", { site: "https://app.bound.example/", consent: true, profile: "Default" }), { status: 400,
-      error: "The site app.bound.example ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead." });
+    const boundLine = "The site app.bound.example ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.";
+    assert.deepEqual(await call("POST", "/api/login-import", { site: "https://app.bound.example/", consent: true, profile: "Default" }), { status: 400, error: boundLine });
+    assert.deepEqual(await call("POST", "/api/login-import/preview", { site: "https://app.bound.example/", consent: true }), { status: 400, error: boundLine }, "preview");
+    assert.deepEqual(await call("PUT", "/api/login-sites", { origin: "https://app.bound.example/" }), { status: 400, error: boundLine }, "put");
+    assert.deepEqual(await call("POST", "/api/login-import/sign-in", { site: "https://app.bound.example/", consent: true }), { status: 400, error: boundLine }, "sign-in");
     const listed = await (await fetch(`http://127.0.0.1:${app.port}/api/login-sites`)).json() as { sites: { origin: string }[] };
     assert.deepEqual(listed.sites, [], "no refused site is saved as a Login site");
+    await writeFile(path.join(root, "home", "login-sites.json"), JSON.stringify({ sites: [{ origin: "https://app.bound.example", probeUrl: "https://app.bound.example", signedInSelector: "", signedInText: "", botCookies: "skip", origins: [] }] }));
+    assert.deepEqual(await call("POST", "/api/login-sites/recheck", { origin: "https://app.bound.example" }), { status: 400, error: boundLine }, "recheck");
     assert.equal(existsSync(baoProfile), false, "no refused site started Bao's Chrome");
   } finally {
     await app.close();
@@ -256,6 +262,96 @@ test("an app run of a Times page on the Bao profile tries running Chrome, then f
       body: JSON.stringify({ id: "pizza", browser: "bao", args: {} }) });
     assert.deepEqual(tried, [sourceRoot], "the Times page goes to running Chrome even with the Bao profile picked");
     assert.deepEqual(launched, [baoProfile], "the fallback opens the app's own Bao profile, not the agent profile");
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a bound site on a named route remembers that route, and the extension gate sends it through the extension", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-bound-plan-"));
+  try {
+    const sourceRoot = await chromeProfiles(path.join(root, "source"));
+    const options = { home: path.join(root, "home"), sourceRoot, site: "https://www.nytimes.com/", browser: "bao" as const };
+    const plan = await planWorkflowBrowser(options);
+    assert.equal(plan.route, "current");
+    assert.equal("from" in plan ? plan.from : undefined, "bao");
+    const copy = await planWorkflowBrowser({ ...options, browser: "copy" });
+    assert.equal("from" in copy ? copy.from : undefined, "copy");
+    const extension = await planWorkflowBrowser({ ...options, extensionRoute: true });
+    assert.deepEqual({ route: extension.route, why: extension.why }, { route: "extension", why: BOUND_REASON });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a Login site check with no profile uses the Settings profile, or every profile when none is picked", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-bound-login-"));
+  const userData = path.join(root, "chrome");
+  const home = path.join(root, "home");
+  writeLocalState(userData, [
+    { directory: "Default", name: "Owner", email: "owner@example.test" },
+    { directory: "Profile 2", name: "Other", email: "other@example.test" },
+  ]);
+  boundSessions(path.join(userData, "Default"), ["https://bound.example 1"]);
+  boundSessions(path.join(userData, "Profile 2"), ["https://other.example 1"]);
+  await mkdir(home);
+  const previous = process.env.BAO_HOME;
+  process.env.BAO_HOME = home;
+  try {
+    assert.match(boundLoginSite("https://bound.example/", userData) ?? "", /bound\.example/);
+    assert.match(boundLoginSite("https://other.example/", userData) ?? "", /other\.example/);
+    await writeFile(path.join(home, "settings.json"), JSON.stringify({ chromeProfile: "Default" }));
+    assert.match(boundLoginSite("https://bound.example/", userData) ?? "", /bound\.example/);
+    assert.equal(boundLoginSite("https://other.example/", userData), undefined);
+    assert.match(boundLoginSite("https://www.nytimes.com/") ?? "", /www\.nytimes\.com/);
+  } finally {
+    if (previous === undefined) delete process.env.BAO_HOME;
+    else process.env.BAO_HOME = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a lasting profile launch drops a device-bound site's cookies when the caller names that site", { timeout: 60_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-bound-purge-"));
+  const userDataDir = path.join(root, "profile");
+  const offline = ["--host-resolver-rules=MAP * ~NOTFOUND"];
+  try {
+    const previous = await launches.launchOwnedChrome({ userDataDir, headless: true, appendArgs: offline });
+    try {
+      await previous.addCookies([
+        { name: "session", value: "bound", url: "https://bound.example" },
+        { name: "session", value: "keep", url: "https://news.example" },
+      ]);
+    } finally { await previous.close(); }
+    const next = await launches.launchOwnedChrome({ userDataDir, headless: true, appendArgs: offline, boundSites: ["bound.example"] });
+    try {
+      assert.deepEqual((await next.cookies()).map((cookie) => `${cookie.domain} ${cookie.name}`).sort(), ["news.example session"]);
+    } finally { await next.close(); }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the app passes the owner's device-bound sites into a lasting profile launch", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-app-bound-sites-"));
+  const home = path.join(root, "home");
+  const userData = path.join(root, "chrome");
+  writeLocalState(userData, [
+    { directory: "Default", name: "Owner", email: "owner@example.test" },
+    { directory: "Profile 2", name: "Other", email: "other@example.test" },
+  ]);
+  boundSessions(path.join(userData, "Default"), ["https://bound.example 1"]);
+  boundSessions(path.join(userData, "Profile 2"), ["https://other.example 1"]);
+  const seen: string[][] = [];
+  t.mock.method(launches, "launchOwnedChrome", async (options: { boundSites?: readonly string[] }) => {
+    seen.push([...(options.boundSites ?? [])]);
+    throw new Error("stop before Chrome");
+  });
+  const app = await startApp({ home, chromeUserData: userData, baoProfile: path.join(home, "chrome-profile") });
+  const ask = () => fetch(`http://127.0.0.1:${app.port}/api/site/query`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  try {
+    assert.equal((await ask()).status, 500);
+    assert.deepEqual(seen.at(-1)?.sort(), ["bound.example", "other.example"]);
+    app.library.updateSettings({ chromeProfile: "Default" });
+    assert.equal((await ask()).status, 500);
+    assert.deepEqual(seen.at(-1), ["bound.example"]);
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

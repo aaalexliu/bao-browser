@@ -3,7 +3,7 @@
 // that holds its session as one more device. Bao opens these sites in the owner's running Chrome and never copies their cookies.
 
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { cookieMatchesHost, findCookieDb, withCookieDb } from "../login-import/read";
 
 export const BOUND_REASON = "this site ties its sign-in to your Chrome";
@@ -44,6 +44,55 @@ export function boundSessionSites(profileDir: string): string[] {
 function onSite(host: string, sites: readonly string[]): boolean {
   const wanted = bare(host);
   return sites.some((site) => wanted === site || wanted.endsWith(`.${site}`));
+}
+
+const PROFILE_DIR = /^(Default|Profile \d+)$/;
+
+function safeProfileDirectory(directory: string): boolean {
+  return Boolean(directory) && !directory.includes("/") && !directory.includes("\\") && !directory.includes("..");
+}
+
+/** The Chrome profile folder picked in Bao Settings, when this process has a Bao home. */
+export function settingsChromeProfile(home = process.env.BAO_HOME): string | undefined {
+  if (!home) return undefined;
+  try {
+    const saved = JSON.parse(readFileSync(path.join(home, "settings.json"), "utf8")) as { chromeProfile?: unknown };
+    return typeof saved.chromeProfile === "string" && saved.chromeProfile ? saved.chromeProfile : undefined;
+  } catch { return undefined; }
+}
+
+/**
+ * Profile folders whose device-bound sessions count for a Bao-owned launch or a Login-site refusal.
+ * A Settings pick wins. With none, the only profile wins. With several and none picked, every profile counts,
+ * so a site bound in any of them is refused and purged.
+ */
+export function ownerProfileDirs(chromeUserData: string | undefined, settingsDirectory?: string): string[] {
+  if (!chromeUserData) return [];
+  if (settingsDirectory && safeProfileDirectory(settingsDirectory)) {
+    const picked = path.join(chromeUserData, settingsDirectory);
+    if (existsSync(picked)) return [picked];
+  }
+  let names: string[] = [];
+  try {
+    names = readdirSync(chromeUserData, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && PROFILE_DIR.test(entry.name))
+      .map((entry) => entry.name);
+  } catch { return []; }
+  return names.map((name) => path.join(chromeUserData, name));
+}
+
+/** Device-bound site hosts for those profiles. Google and the Times are not in this list; the purge drops them on its own. */
+export function ownerBoundSites(chromeUserData: string | undefined, settingsDirectory?: string): string[] {
+  const sites = new Set<string>();
+  for (const dir of ownerProfileDirs(chromeUserData, settingsDirectory)) {
+    for (const site of boundSessionSites(dir)) sites.add(site);
+  }
+  return [...sites];
+}
+
+/** True when the site is Google, the Times, or a device-bound site in any of the profiles. */
+export function boundInProfiles(url: string, profileDirs: readonly string[]): boolean {
+  return boundSite(url, undefined) || profileDirs.some((dir) => boundSite(url, dir));
 }
 
 /** The site's sign-in stays in the owner's Chrome: Google, the Times, or a site the Chrome profile holds a device-bound session for. */

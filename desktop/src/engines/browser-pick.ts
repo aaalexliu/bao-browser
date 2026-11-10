@@ -36,7 +36,8 @@ export type BrowserPick = { why: RouteWhy } & (
 export type BrowserPlan = { why: RouteWhy } & (
   /** With `unread`, Bao imports no sign-ins and says why. */
   | { route: "bao"; profile: ChosenProfile; unread?: string } | { route: "bao"; profile?: undefined; unread: string }
-  | { route: "copy" | "current"; profile: ChosenProfile } | { route: "extension" });
+  /** `from` is the named route a bound site left, so a running-Chrome failure can open that route again. */
+  | { route: "copy" | "current"; profile: ChosenProfile; from?: "bao" | "copy" } | { route: "extension" });
 
 /**
  * The route a run takes. A run that named no browser uses running Chrome, except a workflow that moves files, which running
@@ -55,6 +56,16 @@ export function boundRoute(route: string, site: string | undefined, profileDir: 
 }
 
 /**
+ * The plan for a bound site. The extension gate sends it through the Bao extension. Otherwise it opens in running Chrome, and a
+ * named Bao profile or copy is remembered so a failure there keeps that route.
+ */
+export function boundOpenPlan(route: "bao" | "copy" | "current", profile: ChosenProfile, extension: boolean): BrowserPlan {
+  if (extension) return { route: "extension", why: BOUND_REASON };
+  const from = route === "bao" || route === "copy" ? route : undefined;
+  return { route: "current", why: BOUND_REASON, profile, ...(from ? { from } : {}) };
+}
+
+/**
  * Running Chrome that the agent did not name gives way to Bao's own profile when Bao cannot use it: the default route, and a site
  * sent there because it ties its sign-in to the owner's Chrome.
  */
@@ -67,13 +78,39 @@ export function fallbackPlan(unread: string, profile?: ChosenProfile): Extract<B
   return profile ? { route: "bao", why: RUNNING_CHROME_FALLBACK, profile, unread } : { route: "bao", why: RUNNING_CHROME_FALLBACK, unread };
 }
 
-/** Opens the plan. When it is running Chrome that gives way and Bao cannot use it, opens Bao's own profile instead. */
+/** A running-Chrome open and its fallback both failed. The message names both routes and both reasons. */
+export class RoutesFailed extends Error {
+  readonly line: string;
+  constructor(first: BrowserPlan, firstError: unknown, second: BrowserPlan, secondError: unknown) {
+    const text = (error: unknown) => (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
+    const label = (plan: BrowserPlan) => `${ROUTE_LABELS[plan.route]}, ${plan.why}`;
+    const line = `Browser: ${label(first)}, did not open: ${text(firstError)}. Browser: ${label(second)}, did not open: ${text(secondError)}.`;
+    super(line);
+    this.name = "RoutesFailed";
+    this.line = line;
+  }
+}
+
+/** A bound reroute from a named Bao profile or copy falls back to that route. The default falls back to an unread Bao profile. */
+function namedBoundFallback(plan: BrowserPlan): BrowserPlan | undefined {
+  if (plan.route !== "current" || plan.why !== BOUND_REASON || !plan.from) return undefined;
+  return plan.from === "copy"
+    ? { route: "copy", why: RUNNING_CHROME_FALLBACK, profile: plan.profile }
+    : { route: "bao", why: RUNNING_CHROME_FALLBACK, profile: plan.profile };
+}
+
+/** Opens the plan. When it is running Chrome that gives way and Bao cannot use it, opens the named route, or Bao's own profile. */
 export async function openOrFallBack<T>(plan: BrowserPlan, open: (plan: BrowserPlan) => Promise<T>, aborted: () => boolean = () => false): Promise<T> {
   if (plan.route !== "current" || !fallsBack(plan.route, plan.why)) return open(plan);
   try { return await open(plan); }
   catch (error) {
     if (aborted()) throw error;
-    return open(fallbackPlan(`Bao could not use your running Chrome: ${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")}.`, plan.profile));
+    const next = namedBoundFallback(plan) ?? fallbackPlan(`Bao could not use your running Chrome: ${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")}.`, plan.profile);
+    try { return await open(next); }
+    catch (fallbackError) {
+      if (aborted()) throw fallbackError;
+      throw new RoutesFailed(plan, error, next, fallbackError);
+    }
   }
 }
 

@@ -7,7 +7,8 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { ChromeFolderDenied } from "../../src/chrome-access";
 import { baoAgentProfileDir } from "../../src/engines/bao-profile";
-import { chooseChromeProfile, ChromeProfileQuestion, pickLine, signInLine } from "../../src/engines/browser-pick";
+import { chooseChromeProfile, ChromeProfileQuestion, openOrFallBack, pickLine, RoutesFailed, signInLine, type BrowserPlan } from "../../src/engines/browser-pick";
+import { BOUND_REASON } from "../../src/engines/bound-sign-in";
 import { McpClient } from "../../src/eval/mcp-client";
 import { launchOwnedChrome, pidsForDataDir, pinTestBrowser, resolveNormalChrome } from "../../src/launch";
 import { openWorkflowBrowser, settingsProfileQuestion } from "../../src/engines/workflow-browser";
@@ -228,4 +229,31 @@ test("run_workflow names its route, Chrome profile, and sign-in import, and a si
   assert.equal(unnamed.status, "needs_signin", unnamed.reason);
   assert.equal(unnamed.browser?.[0], opened.replace("named by the agent", "the workflow moves files, which running Chrome cannot do yet"),
     "a run that names no browser and moves files uses Bao's profile instead of the default, running Chrome");
+});
+
+const onlyProfile = { directory: "Default", name: "Alex", email: "alex@example.test", root: "/chrome", why: "the only profile" as const };
+
+test("a bound reroute falls back to the named route, and both failures name both routes", async () => {
+  const opened: BrowserPlan[] = [];
+  const open = async (plan: BrowserPlan) => {
+    opened.push(plan);
+    if (plan.route === "current") throw new Error("screen is locked");
+    return plan.route;
+  };
+  assert.equal(await openOrFallBack({ route: "current", why: BOUND_REASON, profile: onlyProfile, from: "bao" }, open), "bao");
+  assert.equal(opened.at(-1)?.route, "bao");
+  assert.equal("unread" in (opened.at(-1) ?? {}), false, "a named Bao profile keeps its sign-in import");
+  assert.equal(await openOrFallBack({ route: "current", why: BOUND_REASON, profile: onlyProfile, from: "copy" }, open), "copy");
+  assert.equal(await openOrFallBack({ route: "current", why: "the default", profile: onlyProfile }, open), "bao");
+  const unread = opened.at(-1)!;
+  assert.equal(unread.route, "bao");
+  assert.match("unread" in unread && unread.unread ? unread.unread : "", /Bao could not use your running Chrome/);
+  await assert.rejects(openOrFallBack({ route: "current", why: BOUND_REASON, profile: onlyProfile, from: "bao" }, async (plan) => {
+    throw new Error(plan.route === "current" ? "screen is locked" : "The Bao profile is already open");
+  }), (error: unknown) => {
+    assert.ok(error instanceof RoutesFailed);
+    assert.match(error.line, /Running Chrome over remote debugging, this site ties its sign-in to your Chrome, did not open: screen is locked/);
+    assert.match(error.line, /Bao profile, fallback when running Chrome could not be used, did not open: The Bao profile is already open/);
+    return true;
+  });
 });

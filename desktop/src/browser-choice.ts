@@ -5,7 +5,7 @@ export const DEFAULT_BROWSER: BrowserChoice = "current";
 export const BROWSER_OPTIONS = {
   bao: {
     label: "Bao profile",
-    description: "Uses Bao's separate lasting agent Chrome profile, only when named. Imports the site's sign-in from the Chrome profile named by profile, or from the only one. Keeps sign-ins and site data between runs. App Login sites use another profile with a different keychain; sign-ins made in one do not appear in the other. No Mac permissions needed.",
+    description: "Uses Bao's separate lasting agent Chrome profile. An agent names it, a workflow that moves files uses it because running Chrome cannot do that yet, and an open that named no browser uses it when Bao cannot use running Chrome. Imports the site's sign-in from the Chrome profile named by profile, or from the only one, except on that running-Chrome fallback, which imports none. Keeps sign-ins and site data between runs. App Login sites use another profile with a different keychain; sign-ins made in one do not appear in the other. No Mac permissions needed.",
   },
   copy: {
     label: "Fresh Chrome copy",
@@ -33,7 +33,7 @@ export const APP_BROWSER_OPTIONS = {
 } as const;
 
 /** Why some sites open in the owner's running Chrome, in plain words. */
-export const BOUND_SITES_DESCRIPTION = "Google (google.com, its country sites, and youtube.com), nytimes.com, and any site your Chrome profile holds a device-bound session for open in your running Chrome, even when browser=bao or browser=copy is named, because these sites tie their sign-in to your Chrome: a copied Google sign-in signs you out everywhere, and the Times counts each copy as one more device. A workflow with a file step stays on the browser it named, and when Bao cannot use running Chrome these sites open in Bao's own profile (on a first open, unless macOS cannot start apps; then restart the Mac) or stay in the copy without their sign-in; the browser lines say so. Bao never copies their sign-in cookies into its profile or a copy.";
+export const BOUND_SITES_DESCRIPTION = "Google (google.com, its country sites, and youtube.com), nytimes.com, and any site your Chrome profile holds a device-bound session for open in your running Chrome, even when browser=bao or browser=copy is named, because these sites tie their sign-in to your Chrome: a copied Google sign-in signs you out everywhere, and the Times counts each copy as one more device. A workflow with a file step stays on the browser it named. When Bao cannot use running Chrome, an open that named no browser opens these sites in Bao's own profile with no sign-in import, unless macOS cannot start apps; then restart the Mac. An open that named browser=bao opens that profile and imports the other sites; an open that named browser=copy opens the copy. The browser lines name both routes when both fail. Bao never copies their sign-in cookies into its profile or a copy.";
 
 export const BROWSER_CHOICE_DESCRIPTION = `Browser choice: ${BROWSER_OPTIONS.current.label} (browser=current, default) - ${BROWSER_OPTIONS.current.description} ${BROWSER_OPTIONS.bao.label} (browser=bao) - ${BROWSER_OPTIONS.bao.description} ${BROWSER_OPTIONS.copy.label} (browser=copy) - ${BROWSER_OPTIONS.copy.description} ${BOUND_SITES_DESCRIPTION}`;
 

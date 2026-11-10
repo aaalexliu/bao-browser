@@ -16,8 +16,8 @@ import { AgentBrowserWorkflow } from "./agent-browser-workflow";
 import { chromeProfilesRoot, openCopiedChromeForProxy } from "./chrome-profile-copy";
 import { ChromeFolderDenied } from "../chrome-access";
 import { baoAgentProfileDir, openBaoChromeForProxy, type SignInImport } from "./bao-profile";
-import { baoPick, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
-import { BOUND_REASON, boundSite } from "./bound-sign-in";
+import { baoPick, boundOpenPlan, boundRoute, chromeApp, ChromeProfileQuestion, chooseChromeProfile, failedPickLine, fallbackPlan, fallsBack, openOrFallBack, pickLine, RoutesFailed, shortPickLine, signInLine, signInSource, type BrowserPick, type BrowserPlan, type RouteWhy } from "./browser-pick";
+import { BOUND_REASON, boundSessionSites, boundSite } from "./bound-sign-in";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerTask, ownerWaitTimeout, ownerWaitInstruction, type OwnerPage } from "../cdp-live/owner-wait";
 import { pageWall } from "../cdp-live/page-wall";
 import { BROWSER_CHOICES, DEFAULT_BROWSER } from "../browser-choice";
@@ -84,6 +84,11 @@ function webSite(value: string | undefined): string | undefined {
     const url = new URL(value.includes("://") || /^(about|file|data|chrome|javascript):/i.test(value) ? value : `https://${value}`);
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
   } catch { return undefined; }
+}
+
+/** The browser a later open is compared with: the route that actually opened. The extension counts as running Chrome. */
+function openedChoice(pick: BrowserPick): AgentBrowser {
+  return pick.route === "bao" || pick.route === "copy" ? pick.route : "current";
 }
 
 /** A command's move to the owner's running Chrome: the line that says so, and the new pick and opened page when it worked. */
@@ -281,7 +286,7 @@ export class AgentBrowserProxy {
     }
     if (browser !== undefined && this.session?.removing) await this.session.removing;
     if (this.session?.kind === "current" && this.session.chrome.isClosed()) await this.remove(this.session);
-    if (browser !== undefined && (this.session?.kind === "current" || this.starting)) throw new Error("choose the browser only on the first open of a session");
+    if (browser !== undefined && this.starting) throw new Error("choose the browser only on the first open of a session");
     if (this.session && browser !== undefined && browser !== this.session.browser) {
       throw new Error("close the current session before choosing a different browser");
     }
@@ -316,13 +321,14 @@ export class AgentBrowserProxy {
     if (step) this.latest = { runId: recording.id, step, steps: recording.steps };
     if (!this.session) {
       try {
-        const session = await (this.starting = this.start(recording, (browser as AgentBrowser | undefined) ?? DEFAULT_BROWSER, plan!, webSite(args[0])));
+        const session = await (this.starting = this.start(recording, plan!, webSite(args[0])));
         this.session = session;
         this.currentEnded = false;
         if ("signIn" in session.chrome && session.chrome.signIn) this.imported(session, session.chrome.signIn);
         this.watch(session);
       } catch (error) {
-        this.notOpened = failedPickLine(plan!.route, plan!.why, chromeApp(), plan!.route === "extension" ? undefined : plan!.profile);
+        this.notOpened = error instanceof RoutesFailed ? error.line
+          : failedPickLine(plan!.route, plan!.why, chromeApp(), plan!.route === "extension" ? undefined : plan!.profile);
         step!.failedToStart = true;
         await recording.complete(step!, [], this.options.home, async () => { throw error; }, error);
         recording.finish();
@@ -520,7 +526,9 @@ export class AgentBrowserProxy {
     const root = this.options.sourceRoot ?? chromeProfilesRoot();
     try {
       const profile = await chooseChromeProfile(root, named === undefined ? undefined : { directory: named, by: "agent" }, this.options.settingsProfile?.());
-      if (boundRoute(route, site, path.join(profile.root, profile.directory))) return { route: "current", why: BOUND_REASON, profile };
+      if (boundRoute(route, site, path.join(profile.root, profile.directory))) {
+        return boundOpenPlan(route, profile, this.options.extensionRoute?.() === true);
+      }
       return { route, why, profile };
     } catch (error) {
       // Bao's own profile works without Chrome's profiles. It opens with no sign-in import and says why. A named profile must exist.
@@ -569,7 +577,8 @@ export class AgentBrowserProxy {
       }
       case "bao": {
         const detached = this.options.keepOpen?.() === true;
-        const opened = await behind(await openBaoChromeForProxy({ ...signInSource(plan), home: this.options.home, detached, site }));
+        const boundSites = plan.profile ? boundSessionSites(path.join(plan.profile.root, plan.profile.directory)) : [];
+        const opened = await behind(await openBaoChromeForProxy({ ...signInSource(plan), home: this.options.home, detached, site, boundSites }));
         return { kind: "copy", ...opened, pick: baoPick(plan, baoAgentProfileDir(this.options.home)) };
       }
       case "copy": {
@@ -580,7 +589,7 @@ export class AgentBrowserProxy {
     }
   }
 
-  private async start(recording: AgentBrowserRun, route: AgentBrowser, plan: BrowserPlan, site?: string): Promise<Session> {
+  private async start(recording: AgentBrowserRun, plan: BrowserPlan, site?: string): Promise<Session> {
     const executable = agentBrowserExecutable(this.options.executable);
     const abort = this.startAbort = new AbortController();
     const browser = await openOrFallBack(plan, (next) => this.open(next, abort.signal, site), () => abort.signal.aborted);
@@ -588,7 +597,7 @@ export class AgentBrowserProxy {
       const wired = await this.wire(browser);
       recording.pickBrowser(browser.pick);
       const session: Session = {
-        ...browser, ...wired, browser: route, executable, abort, recording, snapshots: new Map(),
+        ...browser, ...wired, browser: openedChoice(browser.pick), executable, abort, recording, snapshots: new Map(),
         workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
           const active = await this.activePage(session);
           if (!active) throw new Error("no active Bao page metadata");
@@ -692,7 +701,7 @@ export class AgentBrowserProxy {
       session.moveError = (error instanceof Error ? error.message : String(error)).replace(/\.$/, "");
       const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile: profile.directory } : {} };
       const next = copy
-        ? `The page opens in the Chrome copy, without this site's sign-in. ${fallbackLine("you need that sign-in", profile?.directory, "agent_browser", [JSON.stringify({ command: "close" }), JSON.stringify(open)])}`
+        ? `The page stays in the Chrome copy, without this site's sign-in. To try your running Chrome yourself, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}.`
         : "The session stays in Bao's window; Bao tries again on the next wait_for_owner.";
       this.moved = { line: `${stopped}. Bao could not continue in your running Chrome over remote debugging: ${session.moveError}. ${next}` };
       return undefined;
