@@ -460,6 +460,32 @@ test("a failed open from another chat does not name the run it ended", { timeout
   assert.equal(f.library.listRuns().some((run) => run.status === "recording"), false);
 });
 
+test("finish_task for a run a newer task ended stays closed while that session is open", { timeout: 90_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const older = c.run!;
+  const opened = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", browser: "copy", args: ["http://127.0.0.1/"] } });
+  assert.equal(opened.isError, false, JSON.stringify(opened));
+  const newer = opened.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean)!;
+  assert.notEqual(newer, older);
+  const saved = f.library.readRun(newer);
+  const closed = `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
+  const late = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: "older chat", run_id: older } });
+  assert.equal(late.isError, false);
+  assert.deepEqual(late.content!.map((block) => block.text), [closed]);
+  assert.equal((late.structuredContent as { outcome: string; reason: string }).outcome, "no_session");
+  assert.equal((late.structuredContent as { reason: string }).reason, closed);
+  assert.deepEqual(f.library.readRun(newer), saved, "the newer session's run stays");
+  assert.equal(f.library.listRuns().find((run) => run.id === newer)?.status, "recording");
+  const still = await c.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot", args: [], run_id: newer } });
+  assert.equal(still.isError, false, JSON.stringify(still));
+  assert.equal(still.content!.some((block) => block.text === `Run ${newer}`), true, JSON.stringify(still.content));
+  assert.equal(still.content!.some((block) => block.text.includes(older)), false);
+});
+
 test("after the newer task finishes, the older chat's named commands stay closed", { timeout: 90_000 }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());

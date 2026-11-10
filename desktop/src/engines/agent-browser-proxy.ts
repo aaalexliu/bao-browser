@@ -568,7 +568,7 @@ export class AgentBrowserProxy {
     this.refusal = undefined;
     this.shown = undefined;
     const session = this.session;
-    if (!session && runId !== undefined && this.endedByNewer.has(runId)) {
+    if (runId !== undefined && this.endedByNewer.has(runId)) {
       this.refusal = { runId };
       return undefined;
     }
