@@ -13,7 +13,7 @@ export const BROWSER_OPTIONS = {
   },
   current: {
     label: "Running Chrome",
-    description: "The default. Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new task tab in a window of the Chrome profile named by profile, or of the only one. If Chrome is not open, Bao starts it. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording: the helper turns on Chrome's remote-debugging setting and presses Chrome's Allow prompt. Bao closes only its own task tabs and leaves Chrome open. If Bao cannot use your Chrome, for example without that Accessibility permission or with the screen locked, an open that named no browser runs in Bao's own profile, imports no new sign-ins, and says why.",
+    description: "The default. Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new task tab in a window of the Chrome profile named by profile, or of the only one. If Chrome is not open, Bao starts it, unless macOS cannot start apps; then restart the Mac. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording: the helper turns on Chrome's remote-debugging setting and presses Chrome's Allow prompt. Bao closes only its own task tabs and leaves Chrome open. If Bao cannot use your Chrome, for example without that Accessibility permission or with the screen locked, an open that named no browser runs in Bao's own profile, imports no new sign-ins, and says why, unless macOS cannot start apps; then restart the Mac.",
   },
 } as const satisfies Record<BrowserChoice, { label: string; description: string }>;
 
@@ -28,12 +28,12 @@ export const APP_BROWSER_OPTIONS = {
   },
   current: {
     label: BROWSER_OPTIONS.current.label,
-    description: "Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new tab in a window of the Chrome profile picked in Settings, or of the only one. If Chrome is not open, Bao starts it. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording. The run's tab closes when the run ends unless Keep window open is on; Bao leaves Chrome open.",
+    description: "Uses your own Google Chrome over remote debugging, with the sign-ins you already have, in a new tab in a window of the Chrome profile picked in Settings, or of the only one. If Chrome is not open, Bao starts it, unless macOS cannot start apps; then restart the Mac. Needs Bao's helper and its Accessibility permission, not Automation or Screen Recording. The run's tab closes when the run ends unless Keep window open is on; Bao leaves Chrome open.",
   },
 } as const;
 
 /** Why some sites open in the owner's running Chrome, in plain words. */
-export const BOUND_SITES_DESCRIPTION = "Google (google.com, its country sites, and youtube.com), nytimes.com, and any site your Chrome profile holds a device-bound session for open in your running Chrome, even when browser=bao or browser=copy is named, because these sites tie their sign-in to your Chrome: a copied Google sign-in signs you out everywhere, and the Times counts each copy as one more device. A workflow with a file step stays on the browser it named, and when Bao cannot use running Chrome these sites open in Bao's own profile or the copy without their sign-in; the browser lines say so. Bao never copies their sign-in cookies into its profile or a copy.";
+export const BOUND_SITES_DESCRIPTION = "Google (google.com, its country sites, and youtube.com), nytimes.com, and any site your Chrome profile holds a device-bound session for open in your running Chrome, even when browser=bao or browser=copy is named, because these sites tie their sign-in to your Chrome: a copied Google sign-in signs you out everywhere, and the Times counts each copy as one more device. A workflow with a file step stays on the browser it named, and when Bao cannot use running Chrome these sites open in Bao's own profile (on a first open, unless macOS cannot start apps; then restart the Mac) or stay in the copy without their sign-in; the browser lines say so. Bao never copies their sign-in cookies into its profile or a copy.";
 
 export const BROWSER_CHOICE_DESCRIPTION = `Browser choice: ${BROWSER_OPTIONS.current.label} (browser=current, default) - ${BROWSER_OPTIONS.current.description} ${BROWSER_OPTIONS.bao.label} (browser=bao) - ${BROWSER_OPTIONS.bao.description} ${BROWSER_OPTIONS.copy.label} (browser=copy) - ${BROWSER_OPTIONS.copy.description} ${BOUND_SITES_DESCRIPTION}`;
 
