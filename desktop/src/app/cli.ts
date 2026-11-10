@@ -44,6 +44,12 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(await remoteDebugging(rest)));
     return;
   }
+  // Sessions spawn this and join its endpoint. It is not a user command.
+  if (cmd === "chrome-hold") {
+    const { holdMain } = await import("../cdp-live/chrome-hold");
+    await holdMain(rest);
+    return;
+  }
   if (cmd === "import-login") {
     await importLogin(rest);
     return;
