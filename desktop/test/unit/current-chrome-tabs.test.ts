@@ -83,8 +83,7 @@ async function fixture(t: TestContext) {
   await new Promise<void>(resolve => endpoint.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise<void>(resolve => endpoint.close(() => resolve())));
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root,
-    endpoint: { port: (endpoint.address() as AddressInfo).port, browserPath: "/devtools/browser/fake" }, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: () => Promise<T>) => operation() }));
+    endpoint: { port: (endpoint.address() as AddressInfo).port, browserPath: "/devtools/browser/fake" }, cdp, closed: cdp.disconnected, isClosed: () => !cdp.isOpen, detach: () => cdp.close() }));
   t.mock.method(childProcess, "execFile", (_file: string, argv: string[], options: childProcess.ExecFileOptionsWithStringEncoding,
     callback: (error: childProcess.ExecFileException | null, stdout: string, stderr: string) => void) => {
     const at = argv.indexOf("--idle-timeout") + 2;

@@ -127,9 +127,11 @@ test("on the owner's Chrome the agent keeps its task tab when the owner opens a 
   const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
   const probe = await connectCdp(endpoint.port, endpoint.browserPath);
   t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
-  t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint, cdp, closed: cdp.disconnected,
-    isClosed: () => !cdp.isOpen, detach: () => cdp.close(),
-    withConsent: <T>(operation: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) => operation(signal ?? new AbortController().signal) }));
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
   const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "chrome"), executable: binary });
   try {
     await openOwnerTab(probe, `${base}/owner`);
