@@ -7,7 +7,7 @@ import { AGENT_CLOSED_ASK, AGENT_STEP_FAILED } from "../v1/stop-copy";
 import { RUN_SCHEMA_ID, stepTitle, type StepCaption } from "../v1/schema";
 import { Library, type StoredRun } from "../v1/store";
 import { shotFile, shotFormat, type ShotBox } from "../v1/shots";
-import { describeStep, landmarkKeys, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
+import { describeStep, landmarkKeys, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage, type StepSummary } from "./agent-browser-describe";
 import type { AgentBrowserCommandResult } from "./agent-browser-proxy";
 import type { BrowserPick } from "./browser-pick";
 import type { SignInImport } from "./bao-profile";
@@ -160,6 +160,8 @@ export class AgentBrowserRun {
       }
     }
     this.persist();
+    // The session already ended. A picture error would sit next to the closed result and hide the cause.
+    if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) return;
     if (privatePage) {
       step.afterShotError = "Owner input is private; no page screenshot or snapshot was taken.";
       this.persist();
