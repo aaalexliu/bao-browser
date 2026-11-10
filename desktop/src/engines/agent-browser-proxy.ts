@@ -9,7 +9,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, CURRENT_CHROME_LEFT_OPEN, newInRead, ownerReply, TASK_TAB_CLOSED, WAIT_RUN_ENDED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -252,6 +252,11 @@ export class AgentBrowserProxy {
   private endedLine: string | undefined;
   /** The latest result's line about an owner wait Bao ended. */
   get endedWait(): string | undefined { return this.endedLine; }
+  /** The line about each owner wait Bao ended, by run, for a wait_for_owner that still names that run. */
+  private endedWaits = new Map<string, string>();
+  private waitRun: string | undefined;
+  /** The run a refused wait_for_owner named, when that run is not Bao's open session. */
+  get otherRun(): string | undefined { return this.waitRun; }
   private moved: Moved | undefined;
 
   constructor(private readonly options: {
@@ -273,8 +278,9 @@ export class AgentBrowserProxy {
    * with the same args; the run still records the full native output.
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
-    snapshot: { find?: unknown; diff?: unknown } = {}): Promise<AgentBrowserCommandResult[]> {
+    snapshot: { find?: unknown; diff?: unknown } = {}, runId?: unknown): Promise<AgentBrowserCommandResult[]> {
     this.endedLine = undefined;
+    this.waitRun = undefined;
     this.latest = undefined;
     this.shown = undefined;
     this.notOpened = undefined;
@@ -293,6 +299,22 @@ export class AgentBrowserProxy {
     }
     if (profile !== undefined && (command !== "open" || typeof profile !== "string" || !profile.trim())) {
       throw new Error("profile is only accepted on open and must be a Chrome profile folder, such as Default or Profile 2");
+    }
+    if (runId !== undefined && (command !== "wait_for_owner" || typeof runId !== "string" || !runId.trim())) {
+      throw new Error("run_id is only accepted on wait_for_owner and must be the run id the halted or waiting result gave");
+    }
+    if (command === "wait_for_owner") {
+      if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
+      ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
+    }
+    // One MCP process serves every chat, so a wait for a run that is no longer the open session belongs to a chat whose task ended.
+    const waitFor = typeof runId === "string" ? runId.trim() : undefined;
+    if (waitFor !== undefined && waitFor !== this.session?.recording.id) {
+      this.waitRun = waitFor;
+      this.shown = undefined;
+      const ended = this.endedWaits.get(this.waitRun);
+      if (ended === this.endedLine) this.endedLine = undefined;
+      return [{ stdout: JSON.stringify({ outcome: "closed", instruction: `${WAIT_RUN_ENDED} ${ended ?? `Run ${this.waitRun} is not Bao's open browser session.`}` }), stderr: "", exitCode: 0 }];
     }
     const named = typeof profile === "string" ? profile.trim() : undefined;
     if (this.session && named !== undefined && this.session.pick.route !== "extension" && named !== this.session.pick.profile?.directory) {
@@ -326,10 +348,6 @@ export class AgentBrowserProxy {
       const session = this.session;
       if (command === "close") await this.remove(session);
       return this.ownerResult("closed", session);
-    }
-    if (command === "wait_for_owner") {
-      if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
-      ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
     }
     const continuing = !!this.session;
     // The route and profile are settled before any run record, so a question about the profile opens and records nothing.
@@ -785,12 +803,12 @@ export class AgentBrowserProxy {
     return connectCdp(endpoint.port, endpoint.browserPath, options);
   }
 
-  private ownerResult(kind: "halted" | "waiting" | "ready" | "closed", session?: Session): AgentBrowserCommandResult[] {
-    const current = session?.kind === "current";
+  private ownerResult(kind: "halted" | "waiting" | "ready" | "closed", session: Session): AgentBrowserCommandResult[] {
+    const current = session.kind === "current";
     const instruction = kind === "ready" ? "The page left the sign-in/check state. Take a fresh snapshot and continue in this same session. This is not proof of authentication."
       : kind === "closed" ? current ? CURRENT_CHROME_ENDED : "The owner closed the Bao window. Report that this session cannot continue."
-        : ownerWaitInstruction(current, session?.raised === true, session && ownerWaitPage(session));
-    return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${session ? this.fallback(session) : ""}` }), stderr: "", exitCode: 0 }];
+        : ownerWaitInstruction(current, session.raised === true, session.recording.id, ownerWaitPage(session));
+    return [{ stdout: JSON.stringify({ outcome: kind, instruction: `${instruction}${this.fallback(session)}` }), stderr: "", exitCode: 0 }];
   }
 
   /**
@@ -1258,6 +1276,7 @@ export class AgentBrowserProxy {
     const time = new Intl.DateTimeFormat("en-US", { ...new Date(since).toDateString() === new Date().toDateString() ? {} : { month: "short", day: "numeric" },
       hour: "numeric", minute: "2-digit" }).format(since);
     this.staleWait = `Bao ended an earlier owner wait from ${time} (run ${session.recording.id}); ${why}.`;
+    this.endedWaits.set(session.recording.id, this.staleWait);
     session.closing = true;
     await this.remove(session);
     if (this.session === session) this.session = undefined;

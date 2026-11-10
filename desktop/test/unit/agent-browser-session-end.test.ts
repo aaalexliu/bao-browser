@@ -434,6 +434,26 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
   });
 }
 
+test("a wait_for_owner whose run_id is not the open session names that run and leaves the open session alone", { timeout: 60_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const open = f.library.listRuns()[0]!;
+  const late = await c.request("tools/call", { name: "agent_browser", arguments: { command: "wait_for_owner", args: ["1"], run_id: "run-ended-chat" } });
+  assert.equal(late.isError, false);
+  const reply = late.structuredContent as { summary: string; outcome: string; instruction: string; browser?: string[] };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.summary, "This wait ended. This session cannot continue.");
+  assert.equal(reply.instruction, "This wait's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session.");
+  assert.equal(reply.browser, undefined, "the result does not name the open session's browser");
+  assert.deepEqual(late.content!.map((block) => block.text), [reply.summary, "Run run-ended-chat · closed", reply.instruction]);
+  assert.deepEqual(f.library.readRun(open.id), open, "the open session's run records nothing");
+  assert.equal((await c.call("snapshot")).isError, false, "the open session continues");
+  await c.close();
+});
+
 test("an untouched MCP client disconnect creates no recording run", { timeout: 30_000 }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
