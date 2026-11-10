@@ -97,22 +97,17 @@ export class AgentBrowserWorkflow {
   private blocked: { id: string; command: string } | undefined;
   private pending: { event: TrailEvent; before: Observation } | undefined;
 
-  constructor(private readonly home: string, runId: string, private readonly activePage: (signal?: AbortSignal) => Promise<BrowserPage>, private readonly abort?: AbortSignal) {
+  constructor(private readonly home: string, runId: string, private readonly activePage: () => Promise<BrowserPage>, private readonly abort?: AbortSignal) {
     this.workflowId = `wf-${runId.replace(/^run-/, "")}`;
   }
 
-  private beginCapture(): { signal: AbortSignal; stop: () => void } {
+  private async bounded<T>(body: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const ceiling = new AbortController();
     const timer = setTimeout(() => ceiling.abort(), CDP_PROGRESS_CEILING_MS);
     timer.unref();
     const signal = this.abort ? AbortSignal.any([this.abort, ceiling.signal]) : ceiling.signal;
-    return { signal, stop: () => clearTimeout(timer) };
-  }
-
-  private async bounded<T>(body: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    const capture = this.beginCapture();
-    try { return await body(capture.signal); }
-    finally { capture.stop(); }
+    try { return await body(signal); }
+    finally { clearTimeout(timer); }
   }
 
   unavailable(reason: string, step?: { id: string; command: string }): void {

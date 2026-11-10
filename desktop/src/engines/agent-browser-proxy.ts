@@ -593,7 +593,7 @@ export class AgentBrowserProxy {
           const tab = await openTaskTab(chrome, plan.profile.directory, signal);
           taskTabs.add(tab.targetId);
           // Focus emulation keeps a background tab painting, running timers, and taking input. It lasts while this session stays attached.
-          const { sessionId } = await chrome.cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, 5000);
+          const { sessionId } = await chrome.cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, { signal });
           await chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal });
           return { kind: "current", chrome, taskTabs, targetId: tab.targetId, seen: new Set(),
             pick: { route: "current", why, chrome: chrome.executable, userDataDir: chrome.root, profile: plan.profile, background: tab.background } };
@@ -631,8 +631,8 @@ export class AgentBrowserProxy {
       recording.pickBrowser(browser.pick);
       const session: Session = {
         ...browser, ...wired, browser: openedChoice(browser.pick), missed, executable, abort, recording, snapshots: new Map(),
-        workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async (signal) => {
-          const active = await this.activePage(session, signal);
+        workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
+          const active = await this.activePage(session);
           if (!active) throw new Error("no active Bao page metadata");
           const endpoint = session.kind === "current" ? session.chrome.endpoint : await readDevToolsActivePort(session.chrome.target.portFile);
           return { ...endpoint, targetId: active.targetId, targetIds: active.targetIds };
@@ -928,20 +928,20 @@ export class AgentBrowserProxy {
     return [{ stdout: JSON.stringify({ outcome: "closed", instruction: TASK_TAB_CLOSED }), stderr: "", exitCode: 0 }];
   }
 
-  private async activePage(session: Session, bound?: AbortSignal): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
+  private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
     const starting = !session.daemonStarted;
-    const own = bound ? undefined : new AbortController();
+    const own = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const arm = () => {
-      if (bound || timer || !own) return;
+      if (timer) return;
       timer = setTimeout(() => own.abort(), CDP_PROGRESS_CEILING_MS);
       timer.unref();
     };
     if (!starting) arm();
-    const signal = bound ?? AbortSignal.any([session.abort.signal, own!.signal]);
+    const signal = AbortSignal.any([session.abort.signal, own.signal]);
     let cdp: CdpSocket | undefined;
     try {
-      let tabs = await this.nativeTabs(session, starting ? undefined : signal);
+      let tabs = await this.nativeTabs(session, signal);
       arm();
       if (session.kind === "current" && !session.relay) {
         tabs = await this.keepTab(session, tabs, signal);

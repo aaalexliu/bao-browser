@@ -361,7 +361,7 @@ export class CdpSocket {
 /** How long a progress wait stays open after the last frame from the peer. */
 export const CDP_SILENCE_MS = 120_000;
 
-/** A capture or active-page read stops here even when the peer keeps answering pings. */
+/** A capture, active-page read, or shared-endpoint join stops here even when the peer keeps answering pings. */
 export const CDP_PROGRESS_CEILING_MS = 30_000;
 
 export interface ConnectOptions {
@@ -384,7 +384,7 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
   if (!browserPath.startsWith("/devtools/browser")) {
     return Promise.reject(new Error("refusing a non-browser debugging path"));
   }
-  const deadline = Date.now() + (opts.timeoutMs ?? CDP_SILENCE_MS);
+  const deadline = Date.now() + (opts.timeoutMs ?? 120_000);
   const retryUntil = Math.min(deadline, Date.now() + 2000);
   return (async () => {
     let last: unknown;
@@ -405,7 +405,6 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
 function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, signal?: AbortSignal): Promise<CdpSocket> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let timer: ReturnType<typeof setTimeout>;
     const fail = (err: Error) => {
       if (settled) return;
       settled = true;
@@ -419,7 +418,7 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
     const client = new CdpSocket(socket);
     let header = Buffer.alloc(0);
     let upgraded = false;
-    timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
+    const timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
     const onAbort = () => fail(new Error("cdp handshake aborted"));
     signal?.addEventListener("abort", onAbort, { once: true });
 
