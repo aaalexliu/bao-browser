@@ -9,7 +9,7 @@ import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
-import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processStopped, processesNaming } from "../launch";
+import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
 import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
@@ -135,24 +135,11 @@ export async function assertLaunchServicesReady(openProbe?: ProbeRun): Promise<v
   }
 }
 
-function commandStopped(token: string): boolean {
-  if (token.length < 12) return false;
-  try {
-    return processesNaming(token).some((row) => row.command.includes(token) && processStopped(row.pid));
-  } catch {
-    return false;
-  }
-}
-
 async function helperProbeStalled(stderr: string, token: string): Promise<boolean> {
-  const ran = () => existsSync(token);
-  if (ran()) return false;
-  if (commandStopped(token)) return true;
   if (!launchServicesStalled(stderr)) return false;
   const deadline = Date.now() + 1_000;
   for (;;) {
-    if (ran()) return false;
-    if (commandStopped(token)) return true;
+    if (existsSync(token)) return false;
     if (Date.now() >= deadline) return true;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }

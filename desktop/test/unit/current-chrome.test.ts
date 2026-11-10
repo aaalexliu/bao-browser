@@ -1102,36 +1102,3 @@ test("an open probe that already wrote its result is not a LaunchServices stall"
   }), true);
   assert.deepEqual(runs, ["open"], "Chrome still starts when the helper ran");
 });
-
-test("a stopped probe helper is a LaunchServices stall even without the open message", async () => {
-  const runs: string[] = [];
-  const owner = path.join(tmpdir(), "owner-chrome");
-  let probePid: number | undefined;
-  try {
-    await assert.rejects(currentChrome.startOwnerChrome(owner, owner, async () => { runs.push("open"); }, async () => {
-      await currentChrome.assertLaunchServicesReady(async (args) => {
-        const token = args[args.indexOf("--result") + 1];
-        if (!token) throw new Error("probe did not pass --result");
-        const child = childProcess.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", token], { stdio: "ignore" });
-        probePid = child.pid;
-        await new Promise<void>((resolve, reject) => {
-          child.once("error", reject);
-          child.once("spawn", () => resolve());
-        });
-        process.kill(child.pid!, "SIGSTOP");
-        const deadline = Date.now() + 2_000;
-        while (Date.now() < deadline) {
-          const stat = childProcess.spawnSync("ps", ["-o", "stat=", "-p", String(child.pid)], { encoding: "utf8" }).stdout.trim();
-          if (stat.startsWith("T")) return { stderr: "" };
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        throw new Error("stopped probe helper was not listed");
-      });
-    }), { message: LAUNCH_SERVICES_RESTART });
-    assert.deepEqual(runs, [], "Chrome is not opened");
-  } finally {
-    if (probePid !== undefined) {
-      try { process.kill(probePid, "SIGKILL"); } catch { /* the probe already killed it */ }
-    }
-  }
-});
