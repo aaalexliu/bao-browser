@@ -229,7 +229,7 @@ test("one Running Chrome session makes one browser connection to Chrome, whateve
     const opened = await proxy.execute("open", [page], "current", false, "Default");
     assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
     const pollsBefore = polls.length;
-    const snapshot = await proxy.execute("snapshot");
+    const snapshot = await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.match(snapshot[0]!.stdout, /Task page/);
     assert.equal(polls.length, pollsBefore, "a native command raises no sheet, so the helper does not look for one");
     await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);

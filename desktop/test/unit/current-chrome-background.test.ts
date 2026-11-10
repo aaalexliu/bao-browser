@@ -80,7 +80,7 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
     const opened = await proxy.execute("open", [`${base}/task`], "current");
     assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
     for (const [command, args] of [["fill", ["#q", "Ada"]], ["click", ["#b"]]] as const) {
-      const [result] = await proxy.execute(command, [...args]);
+      const [result] = await proxy.execute(command, [...args], undefined, false, undefined, {}, proxy.activeRunId);
       assert.equal(result!.exitCode, 0, result!.stderr);
     }
     const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
@@ -142,15 +142,15 @@ test("on the owner's Chrome the agent keeps its task tab when the owner opens a 
 
     await probe.send("Target.createTarget", { url: `${base}/owner?new` });
     for (const [command, args] of [["fill", ["#q", "Ada"]], ["click", ["#b"]]] as const) {
-      const [result] = await proxy.execute(command, [...args]);
+      const [result] = await proxy.execute(command, [...args], undefined, false, undefined, {}, proxy.activeRunId);
       assert.equal(result!.exitCode, 0, result!.stderr);
     }
     const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
     const task = targetInfos.find(target => target.url === `${base}/task`)!.targetId;
     assert.equal(await evaluate(probe, task, "out.textContent"), "clicked, typed: Ada", "the tab the owner opened did not take the agent");
 
-    assert.equal((await proxy.execute("click", ["#pop"]))[0]!.exitCode, 0);
-    const [read] = await proxy.execute("snapshot", []);
+    assert.equal((await proxy.execute("click", ["#pop"], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
+    const [read] = await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.match(read!.stdout, /Popup page/, "the agent follows the tab its click opened");
   } finally {
     await proxy.end();

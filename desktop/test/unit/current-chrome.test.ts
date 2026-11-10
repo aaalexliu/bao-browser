@@ -429,9 +429,9 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
   const proxy = new AgentBrowserProxy({ home, sourceRoot: path.join(root, "chrome"), executable, keepOpen: () => true });
   try {
     await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
-    await assert.rejects(proxy.execute("snapshot", [], "current"), /only accepted on open/);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 0);
-    await assert.rejects(proxy.execute("open", [], "copy"), /close the current session before choosing a different browser/);
+    await assert.rejects(proxy.execute("snapshot", [], "current", false, undefined, {}, proxy.activeRunId), /only accepted on open/);
+    assert.equal((await proxy.execute("open", [], "current", false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
+    await assert.rejects(proxy.execute("open", [], "copy", false, undefined, {}, proxy.activeRunId), /close the current session before choosing a different browser/);
     assert.deepEqual(sent.filter(call => call.method === "Target.createTarget").map(call => call.params),
       [{ url: "chrome://version", background: true, hidden: true }, { url: "about:blank", background: true }], "a hidden chrome://version tab names the default profile");
     assert.ok(sent.some(call => call.method === "Emulation.setFocusEmulationEnabled" && call.params?.enabled === true));
@@ -443,7 +443,7 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
     assert.equal(pages(afterOpen).find(target => target.targetId === binding.targetId)?.url, "data:text/html,<h1>Task</h1>");
     assert.ok(pages(afterOpen).every(target => target.attached === (target.targetId === binding.targetId)),
       "only Bao's focus-emulation session stays attached; recording detaches its per-page sessions");
-    assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
+    assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
     const probe = await connectCdp(endpoint.port, endpoint.browserPath);
     let destroyed!: () => void;
     const taskDestroyed = new Promise<void>(resolve => { destroyed = resolve; });
@@ -592,7 +592,7 @@ const TASK_TAB_PICTURE = "The active tab could not be pictured, so Bao kept a pi
 async function picturedStep(f: Awaited<ReturnType<typeof lifecycleFixture>>, command = "snapshot") {
   await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
   f.state.captures.length = 0;
-  await f.proxy.execute(command);
+  await f.proxy.execute(command, [], undefined, false, undefined, {}, f.proxy.activeRunId);
   const steps = f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[];
   return steps.at(-1)!;
 }
@@ -650,7 +650,7 @@ test("an active target that does not answer is pictured from a safe task tab", a
   f.state.activeTarget = "silent";
   f.state.failInfoAfter = 1;
   f.state.captures.length = 0;
-  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Target.getTargetInfo/);
   const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
   assert.equal(step.native.command, "snapshot");
   assert.ok(step.afterShot);
@@ -664,7 +664,7 @@ test("an active target that does not answer does not picture a sign-in task tab"
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
   Object.assign(f.state, { activeTarget: "silent", failInfoAfter: 1, captures: [], ...LOGIN_TASK });
-  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Target.getTargetInfo/);
   const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
   assertPrivatePicture(step, f.state.captures);
 });
@@ -675,7 +675,7 @@ test("a failed active-tab lookup stops the command", async (t) => {
   f.state.missActive = true;
   f.state.activeTarget = "silent";
   const before = f.state.commands.length;
-  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Target.getTargetInfo/);
   assert.equal(f.state.commands.slice(before).includes("snapshot"), false);
   assert.equal((f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!.native.command, "open");
 });
@@ -690,7 +690,7 @@ test("a failed active-tab lookup stops a copy command", async (t) => {
   f.state.missActive = true;
   f.state.activeTarget = "task";
   const before = f.state.commands.length;
-  await assert.rejects(f.proxy.execute("snapshot"), /Target.getTargetInfo/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Target.getTargetInfo/);
   assert.equal(f.state.commands.slice(before).includes("snapshot"), false);
 });
 
@@ -699,7 +699,7 @@ test("a task-tab fallback picture does not keep the active tab's box", async (t)
   f.state.activeTarget = "glic";
   await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
   f.state.captures.length = 0;
-  await f.proxy.execute("click", ["@e1"]);
+  await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
   assert.equal(step.beforeShot, undefined);
   assert.equal(step.target, undefined);
@@ -712,7 +712,7 @@ test("a picture of the active tab keeps the measured box", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", ["https://fixture.invalid/item"], "current");
   f.state.captures.length = 0;
-  await f.proxy.execute("click", ["@e1"]);
+  await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   const step = (f.library.readRun(f.library.listRuns()[0]!.id).steps as RecordedAgentBrowserCommand[]).at(-1)!;
   assert.ok(step.beforeShot);
   assert.deepEqual(step.target, { rect: { x: 12, y: 24, width: 36, height: 18 }, viewport: { width: 800, height: 600 } });
@@ -742,7 +742,7 @@ for (const keepOpen of [false, true]) test(`idle backstop releases an owned sess
   t.mock.method(socket, "connectCdp", async () => ({ ...f.cdp, close() {} }));
   await f.proxy.execute("open", [], "copy");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  await f.proxy.execute("snapshot");
+  await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   t.mock.timers.tick(599_999);
   assert.equal(f.proxy.hasSession(), true);
   t.mock.timers.tick(1);
@@ -765,9 +765,9 @@ for (const reset of ["finish", "close"] as const) test(`current idle expiry pres
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  await f.proxy.execute("snapshot");
+  await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   t.mock.timers.tick(599_999);
-  await f.proxy.execute("snapshot");
+  await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   t.mock.timers.tick(599_999);
   assert.equal(f.proxy.hasSession(), true);
   f.state.hold = true;
@@ -779,28 +779,28 @@ for (const reset of ["finish", "close"] as const) test(`current idle expiry pres
   assert.equal(f.state.closes, 0);
   assert.equal(f.state.closed, true);
   assert.equal(f.library.listRuns()[0]!.status, "failed");
-  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
-  await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /owner's Chrome session ended/);
+  await assert.rejects(f.proxy.execute("open", [], undefined, false, undefined, {}, f.proxy.activeRunId), /owner's Chrome session ended/);
   if (reset === "finish") await f.proxy.finishTask({ outcome: "failed", reason: "Task expired" }, f.proxy.activeRunId);
   else {
     const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal(f.state.closes, 0, "idle left the task tab open, and a later close does not close it");
     assertLeftOpen("close", closed, f.proxy);
   }
-  await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
 });
 
 for (const after of ["drop", "disconnect"] as const) test(`a later close after current Chrome ${after} does not claim the task tab closed`, async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   f.cdp.close();
-  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /owner's Chrome session ended/);
   assert.equal(f.state.closes, 0, "a dropped connection does not close the task tab");
   if (after === "disconnect") f.proxy.disconnect();
   const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.state.closes, 0);
   assertLeftOpen("close", closed, f.proxy);
-  if (after === "drop") await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+  if (after === "drop") await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
 });
 
 for (const missing of ["task", "active-page"] as const) test(`closing the waiting current ${missing} releases the session for reconnect`, async (t) => {
@@ -824,14 +824,14 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
     assert.equal(waited.status, "failed");
     assert.equal(waited.reason, "Bao's task tab was closed");
     assert.equal(waited.summary?.text, "Bao's task tab was closed. This session cannot continue.");
-    await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
+    await assert.rejects(f.proxy.execute("open", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao's task tab was closed/);
   } else {
     assert.equal(run.envelope?.reason, "session_closed");
     assert.equal(waited.status, "failed");
     assert.equal(waited.reason, "The session ended before you finished.");
-    await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
+    await assert.rejects(f.proxy.execute("open", [], undefined, false, undefined, {}, f.proxy.activeRunId), /owner's Chrome session ended/);
   }
-  await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
+  await assert.rejects(f.proxy.execute("open", [], "current", false, undefined, {}, f.proxy.activeRunId), /reconnect startup reached/);
 });
 
 async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
@@ -856,7 +856,7 @@ test("a first wait after finish_task waits on the new run only with the new run'
     endpoint: { port: await trapPort(), browserPath: "/browser" },
     cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
   }));
-  await f.proxy.execute("open", [], "current");
+  await f.proxy.execute("open", [], "current", false, undefined, {}, f.proxy.activeRunId);
   const runY = f.library.listRuns().find((run) => run.id !== runX)!.id;
   assert.notEqual(runY, runX);
   const [stale] = await f.proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, runX);
@@ -885,13 +885,13 @@ test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a 
     endpoint: { port: await trapPort(), browserPath: "/browser" },
     cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
   }));
-  await f.proxy.execute("open", ["https://fixture.invalid/other"], "current");
+  await f.proxy.execute("open", ["https://fixture.invalid/other"], "current", false, undefined, {}, f.proxy.activeRunId);
   const runB = f.library.listRuns().find((run) => run.id !== runA)!.id;
   const saved = f.library.readRun(runB);
   const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runA);
   const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "closed");
-  assert.equal(reply.instruction, `${RUN_ENDED} Run ${runA} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.`);
+  assert.equal(reply.instruction, `${RUN_ENDED} Run ${runA} is not Bao's open browser session. The browser now belongs to another task, so stop here.`);
   assert.notEqual(reply.instruction, CURRENT_CHROME_ENDED);
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runA).content[0]!.text, "This wait ended. This session cannot continue.");
   const close = await f.proxy.execute("close", [], undefined, false, undefined, {}, runA);
@@ -921,7 +921,7 @@ test("a wait_for_owner that names the run whose Chrome ended returns the reconne
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
   assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
-  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /owner's Chrome session ended/);
 });
 
 test("a wait_for_owner that names the run whose task tab closed returns that closed-tab instruction", async (t) => {
@@ -942,7 +942,7 @@ test("a wait_for_owner that names the run whose task tab closed returns that clo
   assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
   const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
   assert.equal((JSON.parse(other[0]!.stdout) as { instruction: string }).instruction, `${RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
-  await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
+  await assert.rejects(f.proxy.execute("open", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao's task tab was closed/);
 });
 
 test("a command during a handoff records none of its arguments after the task tab closes", async (t) => {
@@ -954,7 +954,7 @@ test("a command during a handoff records none of its arguments after the task ta
   const before = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
   const calls = f.state.commands.length;
   f.state.taskGone = true;
-  const [result] = await f.proxy.execute("fill", ["@e3", secret]);
+  const [result] = await f.proxy.execute("fill", ["@e3", secret], undefined, false, undefined, {}, f.proxy.activeRunId);
   const receipt = JSON.parse(result!.stdout) as { outcome: string };
   assert.equal(receipt.outcome, "halted");
   const steps = f.library.readRun(runId).steps as RecordedAgentBrowserCommand[];
@@ -1039,12 +1039,12 @@ test("idle backstop never interrupts an active agent command", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  await f.proxy.execute("snapshot");
+  await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   let release!: () => void;
   let started!: () => void;
   const pending = new Promise<void>(resolve => { started = resolve; });
   f.state.onSnapshot = (resume) => { release = resume; started(); };
-  const command = f.proxy.execute("snapshot");
+  const command = f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   await pending;
   t.mock.timers.tick(1_800_000);
   assert.equal(f.proxy.hasSession(), true);
@@ -1084,7 +1084,7 @@ for (const ending of ["finish", "close"] as const) test(`cleanup failure on ${en
   assert.equal(run.status, "passed");
   if (ending === "finish") assert.equal(run.envelope?.reason, "Checked result");
   await f.proxy.finishTask({ outcome: "passed", reason: "No session" }, f.proxy.activeRunId);
-  await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
 });
 
 test("finish_task after a lost current session clears the browser-choice restriction", async (t) => {
@@ -1093,7 +1093,7 @@ test("finish_task after a lost current session clears the browser-choice restric
   f.cdp.close();
   while (f.proxy.hasSession()) await new Promise<void>(resolve => setImmediate(resolve));
   await f.proxy.finishTask({ outcome: "passed", reason: "Task ended" }, f.proxy.activeRunId);
-  await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
 });
 
 test("failed task-tab setup closes its tab and detaches before any native command", async (t) => {
@@ -1110,10 +1110,10 @@ test("failed task-tab setup closes its tab and detaches before any native comman
 test("failed tracking of an agent-opened tab forwards commands without repeating setup and tolerates a vanished target", async (t) => {
   const f = await lifecycleFixture(t);
   assert.equal((await f.proxy.execute("open", [], "current"))[0]!.exitCode, 0);
-  await f.proxy.execute("snapshot");
+  await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.ok(f.state.commands.includes("open"));
   f.state.trackingFails = true;
-  assert.equal((await f.proxy.execute("tab", ["new"]))[0]!.exitCode, 0);
+  assert.equal((await f.proxy.execute("tab", ["new"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
   assert.equal(f.state.tabs, 1);
   f.state.closeTargetFails = true;
   await f.proxy.finishTask({ outcome: "passed", reason: "Checked result" }, f.proxy.activeRunId);
@@ -1146,20 +1146,20 @@ test("unexpected current disconnect requires a browser choice, unlike fresh or e
     await assert.rejects(fresh.execute("open", [], "bao"), /Bao startup reached/);
     assert.equal(lasting, 1);
     assert.equal(copies, 0);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+    assert.equal((await proxy.execute("open", [], "current", false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 1);
     fixtures[0]!.socket.close();
-    await assert.rejects(proxy.execute("snapshot"), /owner's Chrome session ended.*browser=current.*browser=bao/);
-    await assert.rejects(proxy.execute("open"), /owner's Chrome session ended/);
+    await assert.rejects(proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId), /owner's Chrome session ended.*browser=current.*browser=bao/);
+    await assert.rejects(proxy.execute("open", [], undefined, false, undefined, {}, proxy.activeRunId), /owner's Chrome session ended/);
     assert.equal(copies, 0);
     assert.equal(lasting, 1);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+    assert.equal((await proxy.execute("open", [], "current", false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 1);
     assert.equal(fixtures.length, 2);
     fixtures[1]!.socket.close();
-    await assert.rejects(proxy.execute("open", [], "copy"), /copy startup reached/);
+    await assert.rejects(proxy.execute("open", [], "copy", false, undefined, {}, proxy.activeRunId), /copy startup reached/);
     assert.equal(copies, 1);
-    assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 1);
+    assert.equal((await proxy.execute("open", [], "current", false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 1);
     await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId);
-    assert.equal((await proxy.execute("open"))[0]!.exitCode, 1, "after an explicit close, an open with no browser takes the default, running Chrome");
+    assert.equal((await proxy.execute("open", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 1, "after an explicit close, an open with no browser takes the default, running Chrome");
     assert.equal(fixtures.length, 4);
     assert.equal(lasting, 1);
     assert.equal(copies, 1);

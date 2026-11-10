@@ -134,7 +134,7 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     request, send, pid: child.pid, diagnostics: () => stderr, get run() { return run; },
     async call(command: string, args: string[] = []) {
       const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}),
-        ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
+        ...(run ? { run_id: run } : {}) } });
       const named = result.content?.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean);
       if (named) run = named;
       return result;
@@ -457,7 +457,7 @@ test("a wait_for_owner, close, or finish_task whose run_id is not the open sessi
   const reply = late.structuredContent as { summary: string; outcome: string; instruction: string; browser?: string[]; run_id?: string };
   assert.equal(reply.outcome, "closed");
   assert.equal(reply.summary, "This wait ended. This session cannot continue.");
-  const ended = "This run's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.";
+  const ended = "This run's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session. The browser now belongs to another task, so stop here.";
   assert.equal(reply.instruction, ended);
   assert.equal(reply.browser, undefined, "the result does not name the open session's browser");
   assert.equal(reply.run_id, "run-ended-chat");
@@ -500,7 +500,7 @@ for (const ending of ["queued-eof", "active-signal"] as const) {
     const openedText = opened.content?.map((block) => block.text).join("\n") ?? "";
     assert.equal(opened.isError, false, [openedText, c.diagnostics()].filter(Boolean).join("\n"));
     const copy = await f.copy();
-    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close", ...ending === "active-signal" ? { run_id: c.run } : {} } });
+    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close", run_id: c.run } });
     await f.pending();
     if (ending === "queued-eof") {
       c.send("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: c.run } });

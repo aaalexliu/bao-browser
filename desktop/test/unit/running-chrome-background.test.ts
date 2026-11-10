@@ -34,7 +34,7 @@ test("agent-browser drives a folded Bao tab in the owner's Chrome while he keeps
   const opened = await proxy.execute("open", [`${chrome.base}/task`], "current");
   assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
   for (const [command, args] of [["fill", ["#q", "Ada"]], ["click", ["#b"]], ["tab", ["new"]]] as const) {
-    const [result] = await proxy.execute(command, [...args]);
+    const [result] = await proxy.execute(command, [...args], undefined, false, undefined, {}, proxy.activeRunId);
     assert.equal(result!.exitCode, 0, result!.stderr);
   }
   const strip = await stripWhen(chrome, (s) => s.tabs.length === 3);

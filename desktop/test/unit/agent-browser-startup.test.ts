@@ -67,7 +67,7 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
         [...restored, `${base}/app`].sort(), "every restored tab stays on its own URL beside the agent's tab");
     } finally { cdp.close(); }
     // The native daemon's start with 20 restored tabs used to outlast a fixed tab read, so only the session's end bounds that first call.
-    const clicked = await proxy.execute("click", ['[data-testid="go"]']);
+    const clicked = await proxy.execute("click", ['[data-testid="go"]'], undefined, false, undefined, {}, proxy.activeRunId);
     assert.equal(clicked[0]!.exitCode, 0, clicked[0]!.stdout + clicked[0]!.stderr);
     await proxy.finishTask({ outcome: "passed", reason: "Clicked Go." }, proxy.activeRunId);
     assert.match(proxy.lastWorkflowOutcome ?? "", /^Saved workflow:/);
@@ -131,7 +131,7 @@ if (command === 'tab') {
     assert.equal(result[1]!.exitCode, 0, result[1]!.stderr);
     assert.ok(result[1]!.stdout.includes(`${base}/blocked`), "open returns the unrelated restored tab too");
     assert.ok(result[1]!.stdout.includes(`${base}/ready`));
-    const [listed] = await proxy.execute("tab", ["list", "--json"]);
+    const [listed] = await proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, proxy.activeRunId);
     const parsed = JSON.parse(listed!.stdout) as { data: { tabs: { url: string; targetId: string }[] } };
     const tabs = parsed.data.tabs;
     assert.equal(tabs.length, 3, "both restored tabs stay beside the agent's new tab");
