@@ -420,12 +420,18 @@ test("a Bao profile open purges the owner list and the imported profile's device
     assert.deepEqual(seen.at(-1), ["bound.example", "other.example"], "no Settings pick purges every profile, plus the import");
     await assert.rejects(open(agent("Default"), "Profile 2"), /stop before Chrome/);
     assert.deepEqual(seen.at(-1), ["bound.example", "other.example"], "the Settings profile joins the imported profile");
+    await assert.rejects(open(agent("Profile 2"), "Profile 2"), /stop before Chrome/);
+    assert.deepEqual(seen.at(-1), ["other.example"], "Settings Profile 2 does not purge Default when the import is that same profile");
     await assert.rejects(openWorkflowBrowser({ browser: "bao", home, site: "https://news.example/", sourceRoot, profile: "Profile 2" }), /stop before Chrome/);
     assert.deepEqual(seen.at(-1), ["bound.example", "other.example"]);
     await assert.rejects(openWorkflowBrowser({
       browser: "bao", home, site: "https://news.example/", sourceRoot, directory: "Profile 2", profile: "Default",
     }), /stop before Chrome/);
     assert.deepEqual(seen.at(-1), ["bound.example", "other.example"], "a workflow passes the Settings directory and the import profile");
+    await assert.rejects(openWorkflowBrowser({
+      browser: "bao", home, site: "https://news.example/", sourceRoot, directory: "Profile 2", profile: "Profile 2",
+    }), /stop before Chrome/);
+    assert.deepEqual(seen.at(-1), ["other.example"], "a workflow Settings pick of Profile 2 does not purge Default when the import is that same profile");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
