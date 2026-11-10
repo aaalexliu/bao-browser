@@ -866,7 +866,7 @@ test("an open with no run id ends the open run and starts its own, and the older
     const older = f.proxy.activeRunId!;
     const sent = (await f.calls()).length;
     const stale = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, "run-stale");
-    assert.equal(JSON.parse(stale[0]!.stdout).outcome, "closed");
+    assert.equal((JSON.parse(stale[0]!.stdout) as { outcome: string }).outcome, "closed");
     assert.match(stale[0]!.stdout, /The browser now belongs to another task, so stop here/);
     assert.equal((await f.calls()).length, sent, "a stale snapshot sends no native command");
     await assert.rejects(f.proxy.execute("click", ["@e1"]), /run_id is required on click while a browser session is open/);
@@ -877,7 +877,7 @@ test("an open with no run id ends the open run and starts its own, and the older
     assert.notEqual(newer, older);
     assert.equal(new Library(path.join(f.root, "home")).readRun(older).envelope?.reason, "A newer task opened, so Bao ended this session.");
     const refused = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, older);
-    assert.equal(JSON.parse(refused[0]!.stdout).outcome, "closed");
+    assert.equal((JSON.parse(refused[0]!.stdout) as { outcome: string }).outcome, "closed");
     assert.match(refused[0]!.stdout, new RegExp(`Run ${older} is not Bao's open browser session`));
     assert.equal(f.proxy.activeRunId, newer, "the older chat's next call does not take the new run");
     assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, newer))[0]!.stdout, "snapshot unchanged\n");
