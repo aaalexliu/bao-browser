@@ -46,7 +46,7 @@ The login-import live test decrypts only cookies written by the test browser. `c
 
 Browser evals pin the test browser too: `bao eval drivers`, `bao eval heldout`, `bao eval heldout capture`, and `bao eval nightly`. `bao eval heldout --judge` starts no browser. The separate `BAO_MCP_LIVE=1` pixel evaluator pins its browser; it is not the removed live-driver tool set.
 
-A Linux fixture pass does not prove macOS keychain relaunch. Product Chrome launches omit mock-keychain/password-store flags and default to headed on macOS. While `BAO_HEADED=0`, an owned launch stays headless even if the caller asked for a window, unless the process is in the live lane. A headed browser spawn outside that lane still fails. Tests must not remove the browser pin or use installed Chrome without an explicit authorization. Shutdown logs report browser close, child exit, and killed profile PIDs.
+A Linux fixture pass does not prove macOS keychain relaunch. Product Chrome launches omit mock-keychain/password-store flags and default to headed on macOS. While `BAO_HEADED=0`, or while `BAO_TEST_BROWSER` is set and `BAO_HEADED` is not `1`, an owned launch stays headless even if the caller asked for a window, unless the process is in the live lane. A test that builds a fresh env for `bao mcp` therefore stays headless. A headed browser spawn outside that lane still fails. Tests must not remove the browser pin or use installed Chrome without an explicit authorization. Shutdown logs report browser close, child exit, and killed profile PIDs.
 
 ## Camera and microphone isolation
 

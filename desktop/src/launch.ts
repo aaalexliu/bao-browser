@@ -88,10 +88,15 @@ export function productHeadless(env: NodeJS.ProcessEnv = process.env, platform: 
   return platform !== "darwin";
 }
 
-/** A test outside the live lane stays headless even when the caller asked for a window. */
+/**
+ * A test outside the live lane stays headless even when the caller asked for a window.
+ * A pinned test browser counts as a test, so a child given a fresh env without
+ * BAO_HEADED=0 stays headless too. BAO_HEADED=1 still asks for a window.
+ */
 export function ownedHeadless(requested: boolean | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
   const live = env.BAO_LANE === "live" || env.BAO_LIVE_TESTS === "1";
   if (!live && env.BAO_HEADED === "0") return true;
+  if (!live && testLaneBrowser(env) && env.BAO_HEADED !== "1") return true;
   return requested ?? true;
 }
 

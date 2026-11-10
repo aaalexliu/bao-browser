@@ -124,6 +124,14 @@ test("a hermetic lane stays headless when the caller asks for a window", () => {
   assert.equal(ownedHeadless(undefined, {}), true);
 });
 
+test("a child given a fresh env with only the test browser pinned stays headless", () => {
+  const pin = { BAO_TEST_BROWSER: "/tmp/chromium" };
+  assert.equal(ownedHeadless(false, pin), true);
+  assert.equal(ownedHeadless(false, { ...pin, BAO_HEADED: "1" }), false);
+  assert.equal(ownedHeadless(false, { ...pin, BAO_LANE: "live" }), false);
+  assert.equal(ownedHeadless(false, {}), false);
+});
+
 test("the lane points Bao at a fixture Chrome root, not the passwd home", () => {
   const pin = fakeChromium();
   const env = laneChildEnv("hermetic", {}, () => pin);
