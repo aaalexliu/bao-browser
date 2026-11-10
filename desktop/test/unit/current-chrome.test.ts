@@ -76,6 +76,9 @@ async function fixture(on = false) {
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "inspect", url: INSPECT_URL }, { targetId: "owner", url: "https://fixture.invalid/" }] };
       return {};
     },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}) {
+      return this.send(method, params);
+    },
   } as unknown as CdpSocket;
   const helper = {
     async permissions(prompt: boolean): Promise<AxHit> { assert.equal(prompt, false); return { ok: true, accessibility: state.accessibility }; },
@@ -411,6 +414,11 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
     sent.push({ method, params });
     return send(method, params, sessionId, timeoutMs);
   });
+  const sendUntilProgress = cdp.sendUntilProgress.bind(cdp);
+  t.mock.method(cdp, "sendUntilProgress", (method: string, params?: Record<string, unknown>, sessionId?: string, opts?: { silenceMs?: number; signal?: AbortSignal }) => {
+    sent.push({ method, params });
+    return sendUntilProgress(method, params, sessionId, opts);
+  });
   t.mock.method(currentChrome, "openCurrentChrome", async () => {
     const shared = await shareConnection(cdp);
     return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
@@ -538,6 +546,9 @@ async function lifecycleFixture(t: TestContext, keepOpen = false) {
         return { data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6S8AAAAASUVORK5CYII=" };
       }
       return {};
+    },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}, sessionId?: string) {
+      return this.send(method, params, sessionId);
     },
   } as unknown as CdpSocket;
   t.mock.method(currentChrome, "openCurrentChrome", async () => {

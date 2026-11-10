@@ -181,6 +181,7 @@ export class CdpSocket {
   private readonly calls = new Map<number, ClientCall>();
   private readonly listeners: { method: string; sessionId?: string; handler: Handler }[] = [];
   private readonly routes = new Map<string, CdpRoute>();
+  private readonly lifeWaiters = new Set<() => void>();
   private closed = false;
   private resolveDisconnected!: () => void;
   readonly disconnected = new Promise<void>((resolve) => { this.resolveDisconnected = resolve; });
@@ -219,6 +220,63 @@ export class CdpSocket {
     });
   }
 
+  /**
+   * Waits for the reply while the peer sends frames. Silence ends the wait.
+   * A deadline counted from the start does not.
+   */
+  sendUntilProgress<T>(method: string, params: Record<string, unknown> = {}, sessionId?: string, opts: { silenceMs?: number; signal?: AbortSignal } = {}): Promise<T> {
+    if (this.closed) return Promise.reject(new Error(`cdp closed before ${method}`));
+    const silenceMs = opts.silenceMs ?? CDP_SILENCE_MS;
+    const id = this.nextId++;
+    const message: Record<string, unknown> = { id, method, params };
+    if (sessionId) message.sessionId = sessionId;
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let ping: ReturnType<typeof setInterval> | undefined;
+      const stop = () => {
+        if (timer) clearTimeout(timer);
+        if (ping) clearInterval(ping);
+        this.lifeWaiters.delete(onLife);
+        opts.signal?.removeEventListener("abort", onAbort);
+      };
+      const fail = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        stop();
+        this.pending.delete(id);
+        reject(err);
+      };
+      const onAbort = () => fail(new Error(`cdp aborted ${method}`));
+      const arm = () => {
+        if (settled) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => fail(new Error(`cdp timeout ${method}`)), silenceMs);
+      };
+      const onLife = () => arm();
+      this.lifeWaiters.add(onLife);
+      opts.signal?.addEventListener("abort", onAbort, { once: true });
+      if (opts.signal?.aborted) {
+        fail(new Error(`cdp aborted ${method}`));
+        return;
+      }
+      this.pending.set(id, {
+        resolve: (value) => {
+          if (settled) return;
+          settled = true;
+          stop();
+          resolve(value as T);
+        },
+        reject: (err) => fail(err),
+      });
+      arm();
+      this.socket.write(clientFrame(1, Buffer.from(JSON.stringify(message))));
+      const every = Math.min(1_000, Math.max(50, Math.floor(silenceMs / 3)));
+      ping = setInterval(() => { if (!settled) this.ping(); }, every);
+      this.ping();
+    });
+  }
+
   on(method: string, sessionId: string | undefined, handler: Handler): void {
     this.listeners.push({ method, sessionId, handler });
   }
@@ -237,7 +295,17 @@ export class CdpSocket {
     this.socket.write(clientFrame(1, Buffer.from(JSON.stringify({ ...message, id }))));
   }
 
+  /** Any frame from the peer, including a pong, means the wait is still making progress. */
+  noteLife(): void {
+    for (const wake of this.lifeWaiters) wake();
+  }
+
+  private ping(): void {
+    if (!this.closed) this.socket.write(clientFrame(9, Buffer.alloc(0)));
+  }
+
   takeText(text: string): void {
+    this.noteLife();
     let msg: CdpMessage;
     try {
       msg = JSON.parse(text) as CdpMessage;
@@ -274,6 +342,7 @@ export class CdpSocket {
   }
 
   pong(payload?: Uint8Array): void {
+    this.noteLife();
     if (!this.closed) this.socket.write(clientFrame(10, Buffer.from(payload ?? new Uint8Array())));
   }
 
@@ -282,11 +351,18 @@ export class CdpSocket {
     this.closed = true;
     for (const waiter of this.pending.values()) waiter.reject(new Error("cdp closed"));
     this.pending.clear();
+    this.lifeWaiters.clear();
     this.calls.clear();
     this.socket.destroy();
     this.resolveDisconnected();
   }
 }
+
+/** How long a progress wait stays open after the last frame from the peer. */
+export const CDP_SILENCE_MS = 120_000;
+
+/** A capture or active-page read stops here even when the peer keeps answering pings. */
+export const CDP_PROGRESS_CEILING_MS = 30_000;
 
 export interface ConnectOptions {
   timeoutMs?: number;
@@ -308,7 +384,7 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
   if (!browserPath.startsWith("/devtools/browser")) {
     return Promise.reject(new Error("refusing a non-browser debugging path"));
   }
-  const deadline = Date.now() + (opts.timeoutMs ?? 120_000);
+  const deadline = Date.now() + (opts.timeoutMs ?? CDP_SILENCE_MS);
   const retryUntil = Math.min(deadline, Date.now() + 2000);
   return (async () => {
     let last: unknown;
@@ -329,6 +405,7 @@ export function connectCdp(port: number, browserPath: string, opts: ConnectOptio
 function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, signal?: AbortSignal): Promise<CdpSocket> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
     const fail = (err: Error) => {
       if (settled) return;
       settled = true;
@@ -342,7 +419,7 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
     const client = new CdpSocket(socket);
     let header = Buffer.alloc(0);
     let upgraded = false;
-    const timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
+    timer = setTimeout(() => fail(new Error("cdp handshake timed out")), timeoutMs);
     const onAbort = () => fail(new Error("cdp handshake aborted"));
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -386,6 +463,7 @@ function connectCdpOnce(port: number, browserPath: string, timeoutMs: number, si
         if (frame.opcode === 1 && frame.text) client.takeText(frame.text);
         else if (frame.opcode === 8) client.close();
         else if (frame.opcode === 9) client.pong(frame.payload || Buffer.alloc(0));
+        else if (frame.opcode === 10) client.noteLife();
       }
     }
 

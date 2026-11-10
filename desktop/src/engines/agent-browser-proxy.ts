@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
-import { connectCdp, type CdpSocket } from "../cdp-live/socket";
+import { CDP_PROGRESS_CEILING_MS, connectCdp, type CdpSocket } from "../cdp-live/socket";
 import { openCurrentChrome, openTaskTab, type CurrentChrome } from "../cdp-live/current-chrome";
 import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
@@ -592,7 +592,7 @@ export class AgentBrowserProxy {
           taskTabs.add(tab.targetId);
           // Focus emulation keeps a background tab painting, running timers, and taking input. It lasts while this session stays attached.
           const { sessionId } = await chrome.cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true }, undefined, 5000);
-          await chrome.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, 5000);
+          await chrome.cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId, { signal });
           return { kind: "current", chrome, taskTabs, targetId: tab.targetId, seen: new Set(),
             pick: { route: "current", why, chrome: chrome.executable, userDataDir: chrome.root, profile: plan.profile, background: tab.background } };
         } catch (error) {
@@ -629,12 +629,12 @@ export class AgentBrowserProxy {
       recording.pickBrowser(browser.pick);
       const session: Session = {
         ...browser, ...wired, browser: openedChoice(browser.pick), missed, executable, abort, recording, snapshots: new Map(),
-        workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async () => {
-          const active = await this.activePage(session);
+        workflow: new AgentBrowserWorkflow(this.options.home, recording.id, async (signal) => {
+          const active = await this.activePage(session, signal);
           if (!active) throw new Error("no active Bao page metadata");
           const endpoint = session.kind === "current" ? session.chrome.endpoint : await readDevToolsActivePort(session.chrome.target.portFile);
           return { ...endpoint, targetId: active.targetId, targetIds: active.targetIds };
-        }),
+        }, abort.signal),
       };
       return session;
     } catch (error) {
@@ -803,8 +803,8 @@ export class AgentBrowserProxy {
     return ` If the sign-in or check does not clear in ${bao ? "Bao's window" : "the Chrome copy"}, the fallback is the owner's running Chrome over remote debugging${profile ? ` on the same Chrome profile "${profile}"` : ""}. To take it, call agent_browser with ${JSON.stringify({ command: "close" })}, then with ${JSON.stringify(open)}. ${bao ? "Bao also tries it again on the next wait_for_owner." : "Bao does not switch on its own."}`;
   }
 
-  private async nativeTabs(session: Session): Promise<NativeTab[]> {
-    const tabs = await this.run(session, "tab", ["list", "--json"], 5000);
+  private async nativeTabs(session: Session, ceiling?: AbortSignal): Promise<NativeTab[]> {
+    const tabs = await this.run(session, "tab", ["list", "--json"], ceiling ? undefined : 5000, ceiling);
     if (tabs.exitCode !== 0) throw new Error(`Native tab list failed (exit ${tabs.exitCode}): ${tabs.stderr || tabs.stdout}`);
     return (JSON.parse(tabs.stdout) as { data?: { tabs?: NativeTab[] } }).data?.tabs ?? [];
   }
@@ -816,18 +816,19 @@ export class AgentBrowserProxy {
    * When the daemon is anywhere else, Bao switches it back to the agent's tab, or to Bao's newest task tab when that tab is gone.
    * When neither remains, the caller ends the session instead of acting on an owner tab.
    */
-  private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[]): Promise<NativeTab[]> {
+  private async keepTab(session: Session & DebuggingChrome, tabs: NativeTab[], ceiling: AbortSignal): Promise<NativeTab[]> {
     const listed = (targetId: string | undefined) => tabs.find((tab) => tab.targetId === targetId);
     const fresh = new Set(tabs.flatMap((tab) => tab.targetId && !session.seen.has(tab.targetId) ? [tab.targetId] : []));
     let want = session.targetId;
     if (fresh.size) {
-      const { targetInfos } = await session.chrome.cdp.send<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, 5000);
+      const { targetInfos } = await session.chrome.cdp.sendUntilProgress<{ targetInfos: ChromeTarget[] }>("Target.getTargets", {}, undefined, { signal: ceiling });
       for (const info of targetInfos) {
-        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info)) {
+        if (fresh.has(info.targetId) && info.openerId === want && await isChromeTab(session.chrome.cdp, info, ceiling)) {
           if (session.taskTabs.has(want)) session.taskTabs.add(info.targetId);
           want = info.targetId;
         }
       }
+      if (ceiling.aborted) throw new Error("cdp aborted Browser.getWindowForTarget");
       for (const targetId of fresh) session.seen.add(targetId);
     }
     if (!listed(want)) want = [...session.taskTabs].reverse().find((targetId) => listed(targetId)) ?? want;
@@ -835,9 +836,9 @@ export class AgentBrowserProxy {
     if (!tab?.tabId) return tabs;
     session.targetId = want;
     if (tab.active) return tabs;
-    const back = await this.run(session, "tab", [tab.tabId], 5000);
+    const back = await this.run(session, "tab", [tab.tabId], undefined, ceiling);
     if (back.exitCode !== 0) throw new Error(`Bao could not keep the agent in its tab ${tab.tabId}: ${back.stderr || back.stdout || `exit ${back.exitCode}`}`);
-    return this.nativeTabs(session);
+    return this.nativeTabs(session, ceiling);
   }
 
   /**
@@ -925,25 +926,40 @@ export class AgentBrowserProxy {
     return [{ stdout: JSON.stringify({ outcome: "closed", instruction: TASK_TAB_CLOSED }), stderr: "", exitCode: 0 }];
   }
 
-  private async activePage(session: Session): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
-    let tabs = await this.nativeTabs(session);
-    if (session.kind === "current" && !session.relay) {
-      tabs = await this.keepTab(session, tabs);
-      if (this.noTaskTabLeft(session, tabs) && await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
-    }
-    const active = tabs.find((tab) => tab.active);
-    if (!active?.targetId) return undefined;
-    // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
-    const signal = AbortSignal.any([session.abort.signal, AbortSignal.timeout(2000)]);
-    const cdp = await this.connectSession(session, { timeoutMs: 2000, signal });
+  private async activePage(session: Session, bound?: AbortSignal): Promise<{ targetId: string; targetIds: string[]; page: OwnerPage } | undefined> {
+    const starting = !session.daemonStarted;
+    const own = bound ? undefined : new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      if (bound || timer || !own) return;
+      timer = setTimeout(() => own.abort(), CDP_PROGRESS_CEILING_MS);
+      timer.unref();
+    };
+    if (!starting) arm();
+    const signal = bound ?? AbortSignal.any([session.abort.signal, own!.signal]);
+    let cdp: CdpSocket | undefined;
     try {
-      const { targetInfo } = await cdp.send<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, 2000);
+      let tabs = await this.nativeTabs(session, starting ? undefined : signal);
+      arm();
+      if (session.kind === "current" && !session.relay) {
+        tabs = await this.keepTab(session, tabs, signal);
+        if (this.noTaskTabLeft(session, tabs) && await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
+      }
+      const active = tabs.find((tab) => tab.active);
+      if (!active?.targetId) return undefined;
+      // Native tab titles can be URL-derived labels. Read the real title from Chrome, not that label.
+      cdp = await this.connectSession(session, { timeoutMs: CDP_PROGRESS_CEILING_MS, signal });
+      const { targetInfo } = await cdp.sendUntilProgress<{ targetInfo: { url: string; title: string } }>("Target.getTargetInfo", { targetId: active.targetId }, undefined, { signal });
       session.page = { url: targetInfo.url, title: targetInfo.title };
       return { targetId: active.targetId, targetIds: tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []), page: { url: targetInfo.url, title: targetInfo.title } };
     } catch (error) {
+      if (error instanceof TaskTabClosed) throw error;
       if (session.abort.signal.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
       throw new ActiveTargetMiss(error);
-    } finally { if (session.kind === "copy") cdp.close(); }
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (cdp && session.kind === "copy") cdp.close();
+    }
   }
 
   private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
@@ -1196,13 +1212,18 @@ export class AgentBrowserProxy {
     }
   }
 
-  private async run(session: Session, command: string, args: string[], readTimeoutMs?: number): Promise<AgentBrowserCommandResult> {
+  private async run(session: Session, command: string, args: string[], readTimeoutMs?: number, bound?: AbortSignal): Promise<AgentBrowserCommandResult> {
     if (this.disconnected) throw new Error("The agent disconnected.");
     // The session's first call starts the native daemon, which takes seconds on a copy that restores many tabs. Only the session's end bounds it.
-    if (!session.daemonStarted) readTimeoutMs = undefined;
+    if (!session.daemonStarted) {
+      readTimeoutMs = undefined;
+      bound = undefined;
+    }
     session.daemonStarted = true;
-    const execute = (command: string, args: string[], timeoutMs?: number) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
-      const childSignal = timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
+    const execute = (command: string, args: string[], timeoutMs?: number, ceiling?: AbortSignal) => new Promise<AgentBrowserCommandResult>((resolve, reject) => {
+      const childSignal = ceiling
+        ? AbortSignal.any([session.abort.signal, ceiling])
+        : timeoutMs === undefined ? session.abort.signal : AbortSignal.any([session.abort.signal, AbortSignal.timeout(timeoutMs)]);
       execFile(session.executable, [...session.flags, command, ...args], {
         cwd: session.stateDir, env: session.env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, signal: childSignal,
       }, (error, stdout, stderr) => {
@@ -1210,7 +1231,7 @@ export class AgentBrowserProxy {
         resolve({ stdout, stderr, exitCode: typeof error?.code === "number" ? error.code : 0 });
       });
     });
-    const result = await execute(command, args, readTimeoutMs);
+    const result = await execute(command, args, readTimeoutMs, bound);
     if (session.kind === "current" && !session.relay && opensTab(command, args) && result.exitCode === 0) {
       try {
         const tabs = await execute("tab", ["list", "--json"], 5000);

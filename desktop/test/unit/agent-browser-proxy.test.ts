@@ -18,6 +18,10 @@ import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browse
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
 
+function followSend(t: TestContext, cdp: sockets.CdpSocket): void {
+  t.mock.method(cdp, "sendUntilProgress", (method: string, params?: Record<string, unknown>, sessionId?: string) => cdp.send(method, params ?? {}, sessionId));
+}
+
 async function fixture(t: TestContext, keepOpen = false) {
   const root = await mkdtemp(path.join(tmpdir(), "bao-proxy-test-"));
   const sourceRoot = path.join(root, "source");
@@ -43,6 +47,7 @@ async function fixture(t: TestContext, keepOpen = false) {
   t.mock.method(sockets, "connectCdp", async () => {
     const cdp = new sockets.CdpSocket(new Socket());
     t.mock.method(cdp, "send", async (method: string) => method === "Target.getTargetInfo" ? { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } } : method === "Target.attachToTarget" ? { sessionId: "fixture" } : { data: png.toString("base64") });
+    followSend(t, cdp);
     return cdp;
   });
   const executable = path.join(root, "native");
@@ -123,6 +128,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
           }
           return {};
         });
+        followSend(t, cdp);
         return cdp;
       });
       await f.proxy.execute("snapshot");
@@ -164,6 +170,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
         if (method === "Target.getTargets") throw new Error("temporary target read failure");
         return { sessionId: "fixture" };
       });
+      followSend(t, cdp);
       return cdp;
     });
     const result = await f.proxy.execute("wait_for_owner", ["350"]);
@@ -210,6 +217,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes 
         }
         return { sessionId: "fixture", data: png.toString("base64") };
       });
+      followSend(t, cdp);
       return cdp;
     });
     const library = new Library(path.join(f.root, "home"));
@@ -650,6 +658,7 @@ test("recording write and screenshot failures do not change native command resul
       if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } };
       throw new Error("screenshot unavailable");
     });
+    followSend(t, cdp);
     return cdp;
   });
   try {
@@ -677,7 +686,7 @@ test("missing privacy metadata refuses page input before recording its arguments
   } finally { await f.close(); }
 });
 
-test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: 6000 }, async (t) => {
+test("a stalled recording CDP connection times out without failing the forwarded command", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   t.mock.method(sockets, "connectCdp", async () => {
     const socket = new Socket();
@@ -686,6 +695,7 @@ test("a stalled recording CDP connection times out without failing the forwarded
     const send = cdp.send.bind(cdp);
     t.mock.method(cdp, "send", (method: string, params: Record<string, unknown> = {}, sessionId?: string, timeoutMs?: number) => method === "Target.getTargetInfo"
       ? Promise.resolve({ targetInfo: { url: "http://127.0.0.1/", title: "Fixture" } }) : send(method, params, sessionId, timeoutMs));
+    followSend(t, cdp);
     return cdp;
   });
   try {
@@ -743,6 +753,7 @@ test("a copy that stops for sign-in names the Running Chrome fallback on the sam
         if (method === "Target.getTargets") return { targetInfos: [page] };
         return {};
       });
+      followSend(t, cdp);
       return cdp;
     });
     const [halted] = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
@@ -764,6 +775,9 @@ test("a copy that stops for sign-in names the Running Chrome fallback on the sam
         if (method === "Target.attachToTarget") return { sessionId: "task" };
         if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
         return {};
+      },
+      sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params?: Record<string, unknown>, sessionId?: string) {
+        return this.send(method, params ?? {}, sessionId);
       },
     } as unknown as sockets.CdpSocket;
     t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: f.sourceRoot,
@@ -788,6 +802,9 @@ function fakeOwnerChrome(t: TestContext, root: string) {
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "task" }] };
       return {};
     },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params?: Record<string, unknown>, sessionId?: string) {
+      return this.send(method, params ?? {}, sessionId);
+    },
   } as unknown as sockets.CdpSocket;
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root,
     endpoint: { port: await trapPort(), browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close() }));
@@ -806,6 +823,7 @@ test("a wall that clears before finish_task is not a fallback; every wait_for_ow
         if (method === "Target.getTargets") return { targetInfos: [page] };
         return { data: png.toString("base64") };
       });
+      followSend(t, cdp);
       return cdp;
     });
     const [halted] = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");

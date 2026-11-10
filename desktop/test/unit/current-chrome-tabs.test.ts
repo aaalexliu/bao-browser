@@ -42,7 +42,8 @@ async function fixture(t: TestContext) {
     /** Runs before a command, like the native daemon adopting a target it discovered. */
     before: undefined as (() => void) | undefined,
     /** Runs when a click lands, like a link that opens a new tab. */
-    clicked: undefined as (() => void) | undefined };
+    clicked: undefined as (() => void) | undefined,
+    windowCheck: undefined as ((targetId: string) => void) | undefined };
   // agent-browser's should_track_target lists page and webview targets, and skips chrome://, chrome-extension://, and devtools://.
   // It numbers them in the order it sees them. Before each command it takes in the targets Chrome reported since; without --pin-tab
   // it makes each new one current. A pinned daemon whose bound tab is gone marks no tab active (tab_gone).
@@ -72,6 +73,7 @@ async function fixture(t: TestContext) {
       if (method === "Target.getTargets") return { targetInfos: targets.map(({ inWindow: _inWindow, ...info }) => info) };
       if (method === "Target.getTargetInfo") return { targetInfo: target };
       if (method === "Browser.getWindowForTarget") {
+        daemon.windowCheck?.(String(params.targetId));
         if (!target?.inWindow) throw new Error("Browser window not found");
         return { windowId: 1 };
       }
@@ -79,6 +81,9 @@ async function fixture(t: TestContext) {
       if (method === "Target.attachToTarget") return { sessionId: "page" };
       if (method === "Page.captureScreenshot") return { data: "iVBORw0KGgo=" };
       return {};
+    },
+    sendUntilProgress(this: { send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<unknown> }, method: string, params: Record<string, unknown> = {}, sessionId?: string) {
+      return this.send(method, params, sessionId);
     },
   } as unknown as CdpSocket & { isOpen: boolean };
   // Bao's workflow recorder opens its own connection to the endpoint. A local port that drops every connection keeps it off any
@@ -221,6 +226,23 @@ test("a popup opened from an owner tab the agent switched to stays open and unma
   assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent still follows a popup its current tab opened");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }));
   assert.deepEqual(f.closed, ["task"], "Bao does not close a popup the owner's tab opened");
+});
+
+test("a popup check that hits the ceiling leaves the popup fresh, and the next call adopts it", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let stalled = false;
+  f.daemon.windowCheck = (targetId) => {
+    if (targetId !== "popup" || stalled) return;
+    stalled = true;
+    t.mock.timers.tick(30_000);
+    throw new Error("cdp aborted Browser.getWindowForTarget");
+  };
+  f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://accounts.example/sign-in", title: "Sign in", openerId: "task", inWindow: true });
+  await assert.rejects(f.proxy.execute("click", ["@e2"]), /cdp aborted Browser.getWindowForTarget/);
+  await f.proxy.execute("snapshot", ["-i"]);
+  assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the next check adopts the popup the aborted check did not mark seen");
 });
 
 test("a tab the agent's click opens with --new-tab becomes the agent's tab, and finish_task closes it with the task tab", async (t) => {

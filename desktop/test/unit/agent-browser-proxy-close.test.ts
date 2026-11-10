@@ -50,7 +50,8 @@ for (const { mode, force, deny } of [
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({
     pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: await trapPort(), browserPath: "/fixture" },
     cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
-      method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
+      method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {},
+      sendUntilProgress(this: { send: (method: string) => Promise<unknown> }, method: string) { return this.send(method); } },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
@@ -124,7 +125,8 @@ test("a close after the owner's Chrome ended still names the owner's Chrome", { 
   t.mock.method(currentChrome, "openCurrentChrome", async () => ({
     pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: path.join(root, "source"), endpoint: { port: await trapPort(), browserPath: "/fixture" },
     cdp: { get isOpen() { return !detached; }, send: async (method: string) =>
-      method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {} },
+      method === "Target.createTarget" ? { targetId: "task" } : method === "Target.getTargets" ? { targetInfos: [] } : {},
+      sendUntilProgress(this: { send: (method: string) => Promise<unknown> }, method: string) { return this.send(method); } },
     closed: new Promise<void>(resolve => { resolveClosed = resolve; }),
     isClosed: () => detached,
     detach: () => { detached = true; resolveClosed(); },
