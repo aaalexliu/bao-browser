@@ -108,6 +108,7 @@ async function harness(t: TestContext, initial: "works" | "refused") {
         : request.url === "/login" ? ["Sign in", SIGN_IN_FORM]
         : request.url === "/moment" ? ["Just a moment...", NO_WALL]
         : request.url === "/story" ? ["Sign in - Example", NO_WALL]
+        : request.url === "/authorize" ? ["Sign in to your account", NO_WALL]
         : ["Article", NO_WALL];
     response.setHeader("content-type", "text/html");
     response.end(`<!doctype html><title>${title}</title><script type="text/plain" id="snapshot">${snapshot}</script>`);
@@ -424,49 +425,21 @@ test("an open that lands on a same-host sign-in title reopens that open, not the
   assert.ok(await baoClosed(h.baoDir));
 });
 
-const AUTHORIZE = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=fixture&state=fixture&nonce=fixture";
-
-async function landOnAuthorize(baoDir: string, from: string): Promise<void> {
-  const endpoint = await readDevToolsActivePort(path.join(baoDir, "DevToolsActivePort"));
-  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
-  try {
-    const tab = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
-      .find((target) => target.type === "page" && target.url.endsWith(from));
-    if (!tab?.targetId) throw new Error(`no Bao tab ending in ${from}`);
-    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true });
-    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*login.microsoftonline.com*", requestStage: "Request" }] }, sessionId);
-    cdp.on("Fetch.requestPaused", sessionId, (params) => {
-      const requestId = params.requestId;
-      if (typeof requestId !== "string") return;
-      void cdp.send("Fetch.fulfillRequest", {
-        requestId,
-        responseCode: 200,
-        responseHeaders: [{ name: "content-type", value: "text/html" }],
-        body: Buffer.from("<!doctype html><title>Sign in to your account</title>").toString("base64"),
-      }, sessionId).catch(() => undefined);
-    });
-    await cdp.send("Page.enable", {}, sessionId);
-    const loaded = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("authorize page did not load")), 15_000);
-      cdp.on("Page.loadEventFired", sessionId, () => { clearTimeout(timer); resolve(); });
-    });
-    await cdp.send("Page.navigate", { url: AUTHORIZE }, sessionId);
-    await loaded;
-  } finally { cdp.close(); }
-}
-
 test("a sign-in title on another host reopens the page the agent was on", { timeout: 60_000 }, async (t) => {
   const h = await harness(t, "works");
   assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
   await navigateBao(h.baoDir, "/article", `${h.site}/restaurant`);
   assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout, NO_WALL);
-  await landOnAuthorize(h.baoDir, "/restaurant");
+  const authorize = `http://localhost:${new URL(h.site).port}/authorize`;
+  await navigateBao(h.baoDir, "/restaurant", authorize);
   const [moved] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
-  assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/restaurant\n`, "not the authorize URL");
+  assert.equal(moved!.stdout, `✓ Article
+  ${h.site}/restaurant
+`, "not the authorize URL");
   const step = savedSteps(h.home).at(-1)!;
   assert.deepEqual(step.native.args, [`${h.site}/restaurant`], "Running Chrome opens the page the agent was on");
-  assert.ok(!JSON.stringify(step.native.args).includes("microsoftonline"), JSON.stringify(step.native.args));
-  assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in page on login.microsoftonline.com"), step.summary!.text);
+  assert.ok(!JSON.stringify(step.native.args).includes("localhost"), JSON.stringify(step.native.args));
+  assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in page on localhost"), step.summary!.text);
   assert.ok(await baoClosed(h.baoDir));
 });
 
