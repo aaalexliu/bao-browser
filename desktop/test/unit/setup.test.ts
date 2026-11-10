@@ -257,3 +257,19 @@ test("doctor says whether Bao can read Chrome's folder and names the switch when
   } finally { chmodSync(chromeRoot, 0o700); }
   assert.equal(await doctorChecks(app, { ...probe, env, chromeRoot: path.join(probe.home, "absent") }).then((rows) => rows.find((row) => row.name === "chrome folder")), undefined);
 });
+
+test("doctor warns that Running Chrome, the default, needs the helper when it is missing", async (t) => {
+  const { probe, app, launcher } = lab(t);
+  writeFileSync(launcher, `#!/bin/sh\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'\nread line\nread line\nprintf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}'\n`);
+  const checks = await doctorChecks(app, probe);
+  const helper = checks.find((row) => row.name === "helper");
+  assert.equal(helper?.level, "warn");
+  assert.equal(helper?.detail, "not installed. Running Chrome is the default and needs the helper's Accessibility grant for the Allow press. A Bao profile or a copy does not need the helper.");
+  const chrome = checks.find((row) => row.name === "chrome");
+  assert.equal(chrome?.detail.includes("copies a Chrome profile by default"), false);
+  assert.equal(chrome?.detail.includes("copied-profile"), false);
+  if (chrome?.detail.startsWith("Google Chrome is not installed")) {
+    assert.equal(chrome.level, "warn");
+    assert.equal(chrome.detail, "Google Chrome is not installed. Running Chrome is the default and needs Google Chrome. A Bao profile or a copy does not need the helper.");
+  }
+});

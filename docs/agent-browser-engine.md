@@ -176,6 +176,7 @@ Device-bound sites, left on purpose:
 - With the extension as the running-Chrome route, a later open of a bound site in a Bao-profile or copy session still moves over remote debugging. There is no move into the extension relay.
 - With the extension as the running-Chrome route, a named Bao-profile open of Google or the Times becomes an unread Bao profile when macOS refuses the Chrome folder, before the extension gate.
 - Routing still uses the chosen Chrome profile only. A site bound only in another profile can open in the Bao profile. When that site is on the owner list, the sign-in import skips it and writes no cookies or storage. When Settings picks a profile, the gap above applies.
+- Live check of refusal, purge, and running-Chrome routing is pending the alex-m1 reboot.
 
 When the agent's task tab opens two popups before Bao looks, keepTab follows only one: the last fresh tab whose opener is the tab it is already on. Only that followed popup joins the task tabs, so tab lists mark it and finish closes it. The other popup stays open in the owner's Chrome and is not marked. A popup that the followed popup later opens is tracked. A follow-up should track every popup the task tab opened, not only the one the agent followed.
 
