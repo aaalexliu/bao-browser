@@ -200,7 +200,7 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", openerId: "task", inWindow: true });
   assert.equal((await f.proxy.execute("click", ["@e2"]))[0]!.stdout, "✓ Done on task\n");
   const listed = (await f.proxy.execute("tab", []))[0]!.stdout;
-  assert.equal(listed, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Vault - ${VAULT}\n→ [t7] (Bao task tab) Ceres - https://www.google.com/maps/place/Ceres\n`);
+  assert.equal(listed, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n→ [t7] (Bao task tab) Ceres - https://www.google.com/maps/place/Ceres\n`);
   f.daemon.clicked = () => f.targets.push({ targetId: "popup2", type: "page", url: "https://www.google.com/maps/place/Vesta", title: "Vesta", openerId: "popup", inWindow: true });
   await f.proxy.execute("click", ["@e3"]);
   assert.match((await f.proxy.execute("tab", []))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
