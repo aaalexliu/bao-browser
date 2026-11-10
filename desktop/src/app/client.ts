@@ -17,7 +17,7 @@ import { captureTrailOwnsSteps, livePageFromQuery, liveRunView, liveSessionView,
 import type { LiveSessionRecord } from "../cdp-live/live-record";
 import { emptyLogin, loginAct, loginsScreen, needsSignInHtml, preferredDirectory, syncPanel, type LoginForm, type SavedSite } from "./logins-view";
 import type { PublicImportResult, PublicPreview } from "../login-import/types";
-import { actBar, remoteBanner, commandItems, esc, healDetail, healInbox, healWorkflowName, importCard, consolePane, runConsoleLines, inputsPane, guidePanel, libraryTable, networkPane, liveStepList, captureView, captureStream, notices, paletteView, rail, shellList, recordBar, saveSheetView, runsWelcome, connectionError, runReceipt, receiptError, runWorkflowName, runAttention, shellAttentionCount, runWaitLeft, reviewItems, runViewer, runField, hostAccessPanel, tryResult, fixtureStartValue, productWindowTitle, teachHome, teachPanel, teachReview, trailPane, imageRef, versionsPanel, workflowDetail, workflowConflicts, workflowSidebarToggle, runDriverField, runHealField, type CommandItem, type HealView, type ImportPending, type RunSummary, type ShellState, type WorkflowSummary } from "./views";
+import { actBar, remoteBanner, commandItems, esc, healDetail, healInbox, healWorkflowName, importCard, consolePane, runConsoleLines, inputsPane, guidePanel, libraryTable, networkPane, liveStepList, captureView, captureStream, notices, paletteList, paletteView, rail, shellList, recordBar, saveSheetView, runsWelcome, connectionError, runReceipt, receiptError, runWorkflowName, runAttention, shellAttentionCount, runWaitLeft, reviewItems, runViewer, runField, hostAccessPanel, tryResult, fixtureStartValue, productWindowTitle, teachHome, teachPanel, teachReview, trailPane, imageRef, versionsPanel, workflowDetail, workflowConflicts, workflowSidebarToggle, runDriverField, runHealField, type CommandItem, type HealView, type ImportPending, type RunSummary, type ShellState, type WorkflowSummary } from "./views";
 
 let state: ShellState & {
   notices?: { id?: string; title?: string; body?: string; runId?: string; stepId?: string }[];
@@ -2445,13 +2445,49 @@ function filteredCommands(): CommandItem[] {
   return commandItems(state.workflows || []).filter((item) => !q || item.label.toLowerCase().includes(q));
 }
 
+let paletteHoldToken = 0;
+let releasePaletteHold: (() => void) | undefined;
+
+function claimPaletteInput(): void {
+  if (!paletteOpen) return;
+  const input = document.getElementById("palette-input");
+  if (input && document.activeElement !== input) input.focus();
+}
+
+// A modal close focuses the pre-dialog control, and that focus can be queued
+// until the close event's animation frame. Hold the palette input across that frame.
+function holdPaletteFocus(): void {
+  const token = ++paletteHoldToken;
+  if (!releasePaletteHold) {
+    const onFocus = (event: FocusEvent) => {
+      if (event.target instanceof Element && event.target.id === "palette-input") return;
+      claimPaletteInput();
+    };
+    document.addEventListener("focusin", onFocus, true);
+    releasePaletteHold = () => {
+      document.removeEventListener("focusin", onFocus, true);
+      releasePaletteHold = undefined;
+    };
+  }
+  claimPaletteInput();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (token !== paletteHoldToken) return;
+    releasePaletteHold?.();
+    claimPaletteInput();
+  }));
+}
+
 function openPalette(): void {
   const sidebar = document.getElementById("sidebar-dialog") as HTMLDialogElement;
-  if (sidebar.open) sidebar.close("palette");
+  if (sidebar.open) {
+    holdPaletteFocus();
+    sidebar.close("palette");
+  }
   paletteOpen = true;
   paletteQuery = "";
   paletteActive = 0;
   paintPalette();
+  claimPaletteInput();
 }
 
 function paintPalette(): void {
@@ -2462,10 +2498,14 @@ function paintPalette(): void {
     host.innerHTML = "";
     return;
   }
-  const had = document.activeElement?.id === "palette-input";
-  const pos = had ? (document.activeElement as HTMLInputElement).selectionStart : null;
-  host.innerHTML = paletteView(commandItems(state.workflows || []), paletteQuery, paletteActive);
-  const input = document.getElementById("palette-input") as HTMLInputElement | null;
+  const items = commandItems(state.workflows || []);
+  const current = host.querySelector<HTMLInputElement>("#palette-input");
+  const list = host.querySelector("#palette-list");
+  const had = current !== null && document.activeElement === current;
+  const pos = had && current ? current.selectionStart : null;
+  if (!current || !list) host.innerHTML = paletteView(items, paletteQuery, paletteActive);
+  else list.innerHTML = paletteList(items, paletteQuery, paletteActive);
+  const input = host.querySelector<HTMLInputElement>("#palette-input");
   if (input) input.oninput = () => {
     paletteQuery = input.value;
     paletteActive = 0;
@@ -2477,10 +2517,8 @@ function paintPalette(): void {
       runCommand(filteredCommands().find((item) => item.id === id));
     };
   });
-  if (input) {
-    input.focus();
-    if (pos != null) input.setSelectionRange(pos, pos);
-  }
+  if (input && document.activeElement !== input) input.focus();
+  if (had && input && pos != null) input.setSelectionRange(pos, pos);
 }
 
 function runCommand(item?: CommandItem): void {
@@ -2798,7 +2836,10 @@ const sidebarDialog = document.getElementById("sidebar-dialog") as HTMLDialogEle
 sidebarDialog.addEventListener("close", () => {
   if (sidebarDialog.open) return;
   document.getElementById("app")!.prepend(railEl());
-  if (paletteOpen || sidebarDialog.returnValue === "palette") return;
+  if (paletteOpen || sidebarDialog.returnValue === "palette") {
+    if (paletteOpen) holdPaletteFocus();
+    return;
+  }
   if (sidebarDialog.returnValue === "navigate") focusMain();
   else document.getElementById("sidebar-toggle")?.focus();
 });

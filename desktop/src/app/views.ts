@@ -2068,14 +2068,18 @@ export function commandItems(workflows: { id: string; name: string }[]): Command
   return [...screens, ...open, ...run];
 }
 
-export function paletteView(items: CommandItem[], query: string, active: number): string {
+export function paletteList(items: CommandItem[], query: string, active: number): string {
   const q = query.trim().toLowerCase();
   const shown = items.filter((item) => !q || item.label.toLowerCase().includes(q));
   const rows = shown.map((item, index) =>
     `<button type="button" class="hit ${index === active ? "on" : ""}" data-command="${esc(item.id)}">${esc(item.label)} <span class="quiet">${esc(item.hint || "")}</span></button>`).join("");
+  return rows || `<p class="quiet">No matches.</p>`;
+}
+
+export function paletteView(items: CommandItem[], query: string, active: number): string {
   return `<div class="panel" role="dialog" aria-label="Commands">
     <input id="palette-input" placeholder="Jump to a workflow or screen" value="${esc(query)}" aria-label="Command">
-    <div id="palette-list">${rows || `<p class="quiet">No matches.</p>`}</div>
+    <div id="palette-list">${paletteList(items, query, active)}</div>
   </div>`;
 }
 
