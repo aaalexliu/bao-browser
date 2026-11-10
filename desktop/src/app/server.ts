@@ -3050,7 +3050,7 @@ async function openReplay(
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`${triedPickLine(options)} ${message}`, { cause: error });
     });
-    const session = await openWorkflowBrowser(options, plan).catch((error: unknown) => { throw settingsProfileQuestion(error); });
+    const session = await openWorkflowBrowser(options, plan);
     replays.set(id, session);
     return session;
   }

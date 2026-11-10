@@ -104,13 +104,18 @@ export interface WorkflowBrowserOptions {
   fallback?: () => Promise<WorkflowBrowser>;
 }
 
+/** The Chrome folder a workflow run reads: the caller's root, then the fixture root, then Chrome's own folder. A pinned test browser with none of those is refused, so that run never reads the owner's Chrome. */
+function workflowChromeRoot(options: WorkflowBrowserOptions): string {
+  const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
+  if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
+  return sourceRoot ?? chromeProfilesRoot();
+}
+
 /** The route and Chrome profile for a saved workflow run, settled before Bao opens anything. */
 export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Promise<BrowserPlan> {
   const why = options.why ?? "named by the agent";
   if (options.browser === "current" && options.extensionRoute) return { route: "extension", why };
-  const sourceRoot = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
-  if (process.env.BAO_TEST_BROWSER && !sourceRoot) throw new Error("tests must supply a throwaway Chrome profile source");
-  const root = sourceRoot ?? chromeProfilesRoot();
+  const root = workflowChromeRoot(options);
   // Bao's own profile, and a run that did not name a route, work without Chrome's profiles: Bao's profile opens with no sign-in import.
   const fallback = fallsBack(options.browser, why);
   const source = options.browser === "bao" || fallback ? await baoSource(root, options.profile, options.directory)
@@ -126,15 +131,14 @@ export async function planWorkflowBrowser(options: WorkflowBrowserOptions): Prom
 
 /**
  * What Bao tried when choosing the profile failed before a plan existed. The folder is the one the agent named, or the Settings
- * pick. A missing root is not filled from the owner's Chrome.
+ * pick. The root is the one the planner uses. A pinned test browser with no supplied root does not name the owner's Chrome.
  */
 export function triedPickLine(options: WorkflowBrowserOptions): string {
   const why = options.why ?? "named by the agent";
-  const extension = options.browser === "current" && options.extensionRoute === true;
-  const route = extension ? "extension" : options.browser;
-  const root = options.sourceRoot ?? process.env.BAO_AGENT_BROWSER_PROFILE_ROOT;
   const directory = options.profile ?? options.directory;
-  return failedPickLine(route, why, chromeApp(), !extension && directory && root ? { directory, root } : undefined);
+  let root: string | undefined;
+  try { root = workflowChromeRoot(options); } catch { root = undefined; }
+  return failedPickLine(options.browser, why, chromeApp(), directory && root ? { directory, root } : undefined);
 }
 
 /**
