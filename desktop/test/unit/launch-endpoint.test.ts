@@ -147,7 +147,7 @@ test("retained reclaim lets Chrome save a cookie before sending signals", { time
     inspector = await connect(endpoint.port, endpoint.browserPath);
     await inspector.send("Storage.setCookies", { cookies: [{ name: "reclaim_probe", value: "saved", domain: "127.0.0.1", path: "/", expires: Math.floor(Date.now() / 1000) + 3600 }] });
     inspector.close();
-    chrome.keepOpen();
+    await chrome.keepOpen();
     delayClose = true;
     await closeRetainedChrome(userDataDir);
     await requestedClose;
@@ -175,7 +175,7 @@ test("a late close cannot kill the replacement of a retained browser", { timeout
   let cdp: sockets.CdpSocket | undefined;
   try {
     original = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
-    original.keepOpen();
+    await original.keepOpen();
     await closeRetainedChrome(userDataDir);
     replacement = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
     await original.close();
@@ -232,7 +232,7 @@ for (const mode of ["close", "retained-close", "failed-close", "disconnect", "pr
           ownedChild.kill("SIGTERM");
         } else {
           if (mode === "retained-close") {
-            chrome.keepOpen();
+            await chrome.keepOpen();
             assert.equal(cdp.isOpen, false);
             assert.ok(pidsForDataDir(userDataDir).length > 0);
           }

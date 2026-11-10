@@ -255,12 +255,12 @@ test("a workflow on Running Chrome runs in a grouped background tab, opens the g
   assert.equal(active(strip)?.id, chrome.ownerTabId);
 
   const prompts = ownerPrompts(session)!;
-  prompts.showAsk!({ kind: "confirm", workflowId: "wf", workflowName: "Save", stepId: "save", stepIndex: 1, stepCount: 1, label: "Save",
+  await prompts.showAsk!({ kind: "confirm", workflowId: "wf", workflowName: "Save", stepId: "save", stepIndex: 1, stepCount: 1, label: "Save",
     site: "127.0.0.1", windowName: "Task", instruction: "Press Save.", startedAt: 1, deadline: null, timeoutMs: 1000, runId: "run" });
   strip = await stripWhen(chrome, (s) => group(s)?.collapsed === false);
   assert.equal(group(strip)?.collapsed, false);
   assert.equal(active(strip)?.id, chrome.ownerTabId, "a handoff never switches the owner's tab");
-  prompts.clearConfirm!("run");
+  await prompts.clearConfirm!("run");
   assert.equal(group(await stripWhen(chrome, (s) => group(s)?.collapsed === true))?.collapsed, true);
 
   // The owner's own request to see the run brings its tab to the front.

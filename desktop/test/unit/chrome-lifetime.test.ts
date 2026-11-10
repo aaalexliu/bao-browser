@@ -46,8 +46,8 @@ test("retaining the endpoint keeps Chrome alive after its control socket disconn
     chrome = await launchOwnedChromeEndpoint({ userDataDir, headless: true });
     let closed = false;
     void chrome.closed.then(() => { closed = true; });
-    chrome.keepOpen();
-    chrome.keepOpen();
+    await chrome.keepOpen();
+    await chrome.keepOpen();
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(closed, false);
     assert.equal(chrome.isClosed(), false);
@@ -72,7 +72,7 @@ test("concurrent close callers share completion before and after shutdown", { ti
     const completion = chrome.close();
     assert.equal(chrome.isClosed(), true);
     assert.equal(chrome.close(), completion);
-    chrome.keepOpen();
+    await chrome.keepOpen();
     await completion;
     await chrome.closed;
     assert.equal(chrome.close(), completion);
