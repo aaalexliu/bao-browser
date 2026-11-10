@@ -14,7 +14,7 @@ import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { browserToolResult, pageShotLine } from "../../src/mcp/tool-card";
-import { launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
+import { LAUNCH_SERVICES_RESTART, launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { Library } from "../../src/v1/store";
@@ -1064,11 +1064,26 @@ test("a refused DevToolsActivePort read is reported as refused, not as a closed 
 test("Bao starts the owner's closed Chrome in the background as a new instance, and only on his own Chrome folder", async () => {
   const runs: { file: string; args: string[]; home?: string }[] = [];
   const run = async (file: string, args: string[], env: NodeJS.ProcessEnv) => { runs.push({ file, args, home: env.HOME }); };
+  const ready = async () => {};
   const owner = path.join(tmpdir(), "owner-chrome");
-  assert.equal(await currentChrome.startOwnerChrome(owner, owner, run), true);
+  assert.equal(await currentChrome.startOwnerChrome(owner, owner, run, ready), true);
   // open(1): -n opens a new instance even when one runs, -g keeps it in the background, -b names the app by bundle id.
   assert.deepEqual(runs, [{ file: "/usr/bin/open", args: ["-n", "-g", "-b", "com.google.Chrome"], home: userInfo().homedir }]);
-  assert.equal(await currentChrome.startOwnerChrome(path.join(tmpdir(), "bao-profile"), owner, run), false, "a Bao-owned folder never starts Chrome");
+  assert.equal(await currentChrome.startOwnerChrome(path.join(tmpdir(), "bao-profile"), owner, run, ready), false, "a Bao-owned folder never starts Chrome");
   assert.equal(runs.length, 1);
-  await assert.rejects(currentChrome.startOwnerChrome(owner, owner, async () => { throw new Error("exit 1"); }), { message: "Bao could not start Google Chrome: exit 1" });
+  await assert.rejects(currentChrome.startOwnerChrome(owner, owner, async () => { throw new Error("exit 1"); }, ready), { message: "Bao could not start Google Chrome: exit 1" });
+});
+
+test("a stalled LaunchServices probe does not open the owner's Chrome", async () => {
+  const runs: string[] = [];
+  const owner = path.join(tmpdir(), "owner-chrome");
+  const stalled = "Unable to block on application (GetProcessPID() returned 18446744073709551016)\n";
+  let probed: string[] | undefined;
+  await assert.rejects(currentChrome.startOwnerChrome(owner, owner, async () => { runs.push("open"); }, async () => {
+    await currentChrome.assertLaunchServicesReady(async (args) => { probed = args; return { stderr: stalled }; });
+  }), { message: LAUNCH_SERVICES_RESTART });
+  assert.deepEqual(runs, [], "Chrome is not opened");
+  assert.ok(probed?.includes("-W"), "the probe waits, so a stall is visible");
+  assert.ok(probed?.includes("screen-locked"));
+  assert.equal(probed?.includes("-b"), false, "the probe is not Chrome");
 });

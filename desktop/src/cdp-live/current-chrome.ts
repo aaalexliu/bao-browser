@@ -4,13 +4,13 @@
 
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { userInfo } from "node:os";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { ChromeFolderDenied, assertChromeReadable, chromeDenied } from "../chrome-access";
 import { chromeProfilesRoot } from "../engines/chrome-profile-copy";
-import { processesNaming } from "../launch";
-import { chromeHelper, CHROME_BUNDLE, INSPECT_URL, logAx, type ChromeAx } from "./ax";
+import { killCommandToken, LAUNCH_SERVICES_RESTART, launchServicesStalled, processesNaming } from "../launch";
+import { chromeHelper, CHROME_BUNDLE, helperBin, INSPECT_URL, logAx, type ChromeAx } from "./ax";
 import { REMOTE_CHECKBOX } from "./consent";
 import type { AxNode } from "../proxy/os-macos";
 import { listenPid, readDevToolsActivePort, type DevToolsEndpoint } from "./endpoint";
@@ -110,15 +110,76 @@ type RunFile = (file: string, args: string[], env: NodeJS.ProcessEnv) => Promise
 
 const runFile: RunFile = (file, args, env) => new Promise((resolve, reject) => execFile(file, args, { env }, (error) => error ? reject(error) : resolve()));
 
+type ProbeRun = (args: string[]) => Promise<{ stderr: string }>;
+
+/** `open` without `-W` exits 0 and prints nothing when LaunchServices stalls, so this asks `open -W` to start the signed helper first. The helper draws no window. A stall never reaches Chrome. */
+export async function assertLaunchServicesReady(openProbe?: ProbeRun): Promise<void> {
+  if (!openProbe && process.platform !== "darwin") return;
+  const app = helperBin();
+  if (!openProbe && !existsSync(app)) return;
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-ls-"));
+  const token = path.join(dir, "result.json");
+  const args = ["-n", "-W", "-g", "-a", app, "--args", "screen-locked", "--result", token];
+  try {
+    const result = await (openProbe ?? openHelperProbe)(args);
+    if (launchServicesStalled(result.stderr)) throw new Error(LAUNCH_SERVICES_RESTART);
+  } finally {
+    for (let i = 0; i < 10; i++) {
+      killCommandToken(token);
+      let left = false;
+      try { left = processesNaming(token).some((row) => row.command.includes(token)); } catch { left = false; }
+      if (!left) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function openHelperProbe(args: string[]): Promise<{ stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("/usr/bin/open", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve({ stderr });
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish();
+    }, 3_000);
+    const take = (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (launchServicesStalled(stderr)) {
+        child.kill("SIGKILL");
+        finish();
+      }
+    };
+    child.stderr?.on("data", take);
+    child.stdout?.on("data", take);
+    child.on("error", (error) => finish(error));
+    child.on("exit", () => finish());
+  });
+}
+
 /**
  * Starts the owner's Chrome app as he would, in the background, when `root` is his own Chrome user data; false otherwise, and off macOS unless `ownerRoot` is given. `-n`
  * starts his Chrome even while a Bao-owned Chrome of the same app runs, so LaunchServices never brings that window up instead.
  */
-export async function startOwnerChrome(root: string, ownerRoot?: string, run: RunFile = runFile): Promise<boolean> {
+export async function startOwnerChrome(root: string, ownerRoot?: string, run: RunFile = runFile, confirmLaunchServices: () => Promise<void> = assertLaunchServicesReady): Promise<boolean> {
   if (ownerRoot === undefined && process.platform !== "darwin") return false;
   if (path.resolve(root) !== path.resolve(ownerRoot ?? chromeProfilesRoot())) return false;
-  try { await run("/usr/bin/open", ["-n", "-g", "-b", CHROME_BUNDLE], { ...process.env, HOME: userInfo().homedir }); }
-  catch (error) { throw new Error(`Bao could not start Google Chrome: ${error instanceof Error ? error.message : String(error)}`); }
+  try {
+    await confirmLaunchServices();
+    await run("/usr/bin/open", ["-n", "-g", "-b", CHROME_BUNDLE], { ...process.env, HOME: userInfo().homedir });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === LAUNCH_SERVICES_RESTART) throw new Error(LAUNCH_SERVICES_RESTART);
+    throw new Error(`Bao could not start Google Chrome: ${message}`);
+  }
   return true;
 }
 

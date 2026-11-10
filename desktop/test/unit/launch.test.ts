@@ -5,7 +5,7 @@ import test from "node:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LAUNCH_SERVICES_RESTART, LINUX_CHROME, accountLaunchArgs, assertChromeProfileAvailable, assessOwnedCommand, browserPidFromLauncher, discardRestoredTabs, guiChromeBrowserPid, guiChromeLaunchArgs, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, resolveAccountChrome, resolveNormalChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -23,6 +23,55 @@ test("installed Mac Chrome launches as a new GUI app and waits for that instance
   assert.equal(guiChromeLaunchArgs(ACCOUNT_CHROME_MAC, args, stderr, "/Users/owner", false, { BAO_TEST_BROWSER: "/pinned/chromium" }, "darwin"), undefined);
   assert.equal(guiChromeLaunchArgs("/pinned/chromium", args, stderr, "/Users/owner", false, {}, "darwin"), undefined);
   assert.equal(guiChromeLaunchArgs(LINUX_CHROME, args, stderr, "/home/owner", false, {}, "linux"), undefined);
+});
+
+test("a stalled LaunchServices open fails with a restart message", () => {
+  const stalled = "Unable to block on application (GetProcessPID() returned 18446744073709551016)\n";
+  assert.equal(launchServicesStalled(stalled), true);
+  assert.equal(launchServicesStalled(""), false);
+  assert.equal(LAUNCH_SERVICES_RESTART, "macOS LaunchServices cannot start Google Chrome. Restart the Mac, then try again.");
+});
+
+test("a stopped Chrome for the owned profile is killed", async () => {
+  const profile = mkdtempSync(path.join(tmpdir(), "bao-ls-stall-"));
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "chrome", `--user-data-dir=${profile}`], { stdio: "ignore" });
+  try {
+    await once(child, "spawn");
+    process.kill(child.pid!, "SIGSTOP");
+    let listed: number[] = [];
+    for (let i = 0; i < 20 && !listed.includes(child.pid!); i++) {
+      listed = pidsForDataDir(profile);
+      if (!listed.includes(child.pid!)) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(listed.includes(child.pid!), "the stopped process is listed by its profile");
+    killStalledProfile(profile);
+    await once(child, "exit");
+    assert.equal(child.signalCode, "SIGKILL");
+    assert.deepEqual(pidsForDataDir(profile), []);
+  } finally {
+    try { process.kill(child.pid!, "SIGKILL"); } catch { /* already gone */ }
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("killCommandToken kills only the process that carries the token", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-ls-token-"));
+  const token = path.join(dir, "result.json");
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", token], { stdio: "ignore" });
+  const other = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "not-the-token"], { stdio: "ignore" });
+  try {
+    await Promise.all([once(child, "spawn"), once(other, "spawn")]);
+    process.kill(child.pid!, "SIGSTOP");
+    killCommandToken(token);
+    await once(child, "exit");
+    assert.equal(child.signalCode, "SIGKILL");
+    assert.equal(other.exitCode, null);
+    assert.equal(other.signalCode, null);
+  } finally {
+    try { process.kill(child.pid!, "SIGKILL"); } catch { /* already gone */ }
+    try { process.kill(other.pid!, "SIGKILL"); } catch { /* already gone */ }
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("background Mac Chrome launches without activating the app", () => {

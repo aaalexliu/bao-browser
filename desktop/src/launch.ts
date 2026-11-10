@@ -278,7 +278,34 @@ async function ownedDebugPort(): Promise<number> {
   return address.port === 9222 ? ownedDebugPort() : address.port;
 }
 
-/** LaunchServices gives Chrome the GUI login session; -W tracks the new instance. -g launches it without making it the front app. */
+/** open(1) prints this and exits 0 while the app stays stopped, after LaunchServices runs out of application serial numbers. */
+export const LAUNCH_SERVICES_RESTART = "macOS LaunchServices cannot start Google Chrome. Restart the Mac, then try again.";
+
+export function launchServicesStalled(text: string): boolean {
+  return text.includes("Unable to block on application");
+}
+
+/** SIGKILL a stopped launch. SIGTERM stays queued until something continues the process. */
+export function killStalledProfile(userDataDir: string): void {
+  let pids: number[] = [];
+  try { pids = pidsForDataDir(userDataDir); } catch { return; }
+  for (const pid of pids) {
+    try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+  }
+}
+
+/** Kill only a process whose command line contains this exact token. */
+export function killCommandToken(token: string): void {
+  if (token.length < 12) return;
+  let rows: ProcessRow[] = [];
+  try { rows = processesNaming(token); } catch { return; }
+  for (const row of rows) {
+    if (!row.command.includes(token)) continue;
+    try { process.kill(row.pid, "SIGKILL"); } catch { /* already gone */ }
+  }
+}
+
+/** LaunchServices gives Chrome the GUI login session, its Dock tile, and -g so it stays in the background. -W tracks the new instance. A direct spawn loses those. */
 export function guiChromeLaunchArgs(
   exe: string, args: string[], stderrFile: string, childHome: string, background: boolean,
   env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform,
@@ -385,6 +412,7 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
     while (Date.now() < deadline) {
       if (guiArgs && !browserPath && existsSync(stderrFile)) readEndpoint(readFileSync(stderrFile, "utf8"));
       if (spawnError) throw spawnError;
+      if (guiArgs && launchServicesStalled(output)) throw new Error(LAUNCH_SERVICES_RESTART);
       if (child.exitCode != null || child.signalCode != null) {
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
       }
@@ -403,8 +431,17 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
     const detail = output.trim().slice(-400);
     throw new Error(detail ? `Chrome debugging port did not open: ${detail}` : "Chrome debugging port did not open");
   } catch (error) {
+    const stalled = error instanceof Error && error.message === LAUNCH_SERVICES_RESTART;
     try {
-      if (guiArgs) {
+      if (stalled) {
+        for (let i = 0; i < 10; i++) {
+          killStalledProfile(userDataDir);
+          let left = false;
+          try { left = pidsForDataDir(userDataDir).length > 0; } catch { break; }
+          if (!left) break;
+          await delay(50);
+        }
+      } else if (guiArgs) {
         const pid = guiChromeBrowserPid(exe, userDataDir, processesNaming(userDataDir));
         if (pid) await releaseProfileProcesses({ kind: "gui", launcher: child, pid, executable: exe, userDataDir }, false);
       } else await releaseProfileProcesses({ kind: "direct", child, userDataDir }, false);
