@@ -336,7 +336,7 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
       async keepOpen() {
         if (!ownsProfile()) return;
         retain();
-        browser.keepOpen();
+        await browser.keepOpen();
       },
       /** The import for the site the session opened with. */
       signIn,

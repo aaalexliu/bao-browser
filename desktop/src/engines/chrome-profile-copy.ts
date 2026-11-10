@@ -251,7 +251,7 @@ export async function openCopiedChromeForProxy(options: {
     return {
       target: { kind: "bao", portFile: chrome.portFile }, targetId, closed: chrome.closed, close,
       isClosed: chrome.isClosed,
-      async keepOpen() { await copy.keepOpen(); chrome!.keepOpen(); },
+      async keepOpen() { await copy.keepOpen(); await chrome!.keepOpen(); },
       bytes: copy.bytes, copyMs: copy.copyMs,
     };
   } catch (error) { await close(); throw error; }

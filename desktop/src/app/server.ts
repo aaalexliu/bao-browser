@@ -2826,7 +2826,7 @@ function rememberHostGrant(
     },
   };
   library.saveRun(saved);
-  prompts?.showAsk?.(ask);
+  void prompts?.showAsk?.(ask);
   return {
     runId,
     id: runId,

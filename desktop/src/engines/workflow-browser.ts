@@ -2,7 +2,7 @@ import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import type { BrowserChoice } from "../browser-choice";
 import { ChromeFolderDenied } from "../chrome-access";
-import { navigateOwned, resolveNormalChrome } from "../launch";
+import { focusOwnedHandoff, navigateOwned, resolveNormalChrome, type OwnedChromeFocus } from "../launch";
 import { ownerWall } from "../cdp-live/owner-wait";
 import { readDevToolsActivePort } from "../cdp-live/endpoint";
 import { openCurrentChrome, openTaskTab } from "../cdp-live/current-chrome";
@@ -230,23 +230,75 @@ export function showWorkflowPage(browser: WorkflowBrowser): Promise<void> {
   return browser.kind === "current" ? browser.bringToFront() : browser.page.bringToFront();
 }
 
-/** On Running Chrome, a step that needs the owner shows him the held tab. */
-export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts): PersonPrompts | undefined {
-  if (browser.kind !== "current") return prompts;
-  const settle = () => { void browser.settle().catch(() => undefined); };
+function promptFailed(name: string, error: unknown): void {
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error(`bao owner prompt failed prompt=${name}: ${detail}`);
+}
+
+function settlePrompt(name: string, run: () => void | Promise<void> | undefined): void {
+  try {
+    const result = run();
+    if (result != null && typeof result.then === "function") void result.catch((error: unknown) => { promptFailed(name, error); });
+  } catch (error) {
+    promptFailed(name, error);
+  }
+}
+
+function queueHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): void {
+  void focusOwnedHandoff(profile, waiting, focus);
+}
+
+/** On Running Chrome, a step that needs the owner shows him the held tab. A Bao-owned prompt runs first. Focus work follows and cannot exit Bao. */
+export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts, focus?: OwnedChromeFocus): PersonPrompts | undefined {
+  if (browser.kind === "current") {
+    const settle = () => { void browser.settle().catch(() => undefined); };
+    return {
+      ...prompts,
+      showAsk(ask) {
+        void prompts?.showAsk?.(ask);
+        void browser.show().catch(() => undefined);
+      },
+      clearConfirm(runId) {
+        void prompts?.clearConfirm?.(runId);
+        settle();
+      },
+      clearLoginWait(runId) {
+        void prompts?.clearLoginWait?.(runId);
+        settle();
+      },
+    };
+  }
+  const profile = browser.profile;
+  const handoff = (waiting: boolean) => { queueHandoff(profile, waiting, focus); };
   return {
     ...prompts,
+    showConfirm(label) {
+      settlePrompt("showConfirm", () => prompts?.showConfirm?.(label));
+      handoff(true);
+    },
+    showLoginWait(label) {
+      settlePrompt("showLoginWait", () => prompts?.showLoginWait?.(label));
+      handoff(true);
+    },
     showAsk(ask) {
-      prompts?.showAsk?.(ask);
-      void browser.show().catch(() => undefined);
+      settlePrompt("showAsk", () => prompts?.showAsk?.(ask));
+      handoff(true);
+    },
+    pauseCapture() {
+      settlePrompt("pauseCapture", () => prompts?.pauseCapture?.());
+      handoff(true);
     },
     clearConfirm(runId) {
-      prompts?.clearConfirm?.(runId);
-      settle();
+      settlePrompt("clearConfirm", () => prompts?.clearConfirm?.(runId));
+      handoff(false);
     },
     clearLoginWait(runId) {
-      prompts?.clearLoginWait?.(runId);
-      settle();
+      settlePrompt("clearLoginWait", () => prompts?.clearLoginWait?.(runId));
+      handoff(false);
+    },
+    resumeCapture() {
+      settlePrompt("resumeCapture", () => prompts?.resumeCapture?.());
+      handoff(false);
     },
   };
 }

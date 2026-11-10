@@ -63,7 +63,7 @@ async function ownerProxy(t: TestContext) {
     return {
       target: { kind: "bao" as const, portFile: browser.portFile }, targetId, closed: browser.closed,
       bytes: copy.bytes, copyMs: copy.copyMs, isClosed: browser.isClosed,
-      keepOpen: async () => { await copy.keepOpen(); browser.keepOpen(); },
+      keepOpen: async () => { await copy.keepOpen(); await browser.keepOpen(); },
       close: async () => { await browser.close(); await copy.close(); },
     };
   });
