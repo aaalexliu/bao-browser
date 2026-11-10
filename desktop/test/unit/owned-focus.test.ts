@@ -55,8 +55,9 @@ test("an owner handoff calls the prompt first, then focus work, in call order", 
       showConfirm() { order.push("confirm"); },
       clearConfirm() { order.push("clear"); },
     }, focus);
-    await prompts!.showConfirm!("Apply");
-    await prompts!.clearConfirm!("run");
+    // An await yields, so queued focus work would start before the second prompt.
+    void prompts!.showConfirm!("Apply");
+    void prompts!.clearConfirm!("run");
     assert.deepEqual(order, ["confirm", "clear"]);
     await flush();
     assert.deepEqual(order, ["confirm", "clear", "present-start"]);
