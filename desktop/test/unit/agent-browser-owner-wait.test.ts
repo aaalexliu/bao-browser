@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import fsp, { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
@@ -274,6 +274,33 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
     assert.equal(library.readRun(third).status, "failed");
     assert.equal(library.listRuns().length, 4);
   } finally { await h.cleanup("copy"); }
+});
+
+test("a cleanup failure while an open ends a wait reports no earlier call's card or lines", { timeout: 60_000 }, async (t) => {
+  let fail = true;
+  const failed: string[] = [];
+  const remove = fsp.rm;
+  t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
+    if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
+    return remove(file, options);
+  });
+  const h = await ownerProxy(t);
+  const { fixture, proxy } = h;
+  try {
+    assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
+    const chatA = proxy.activeRunId!;
+    await assert.rejects(proxy.execute("open", [fixture.url("/")]), (error: Error) => error.message === `Bao could not clean up the browser session of run ${chatA}: fixture rm failed`);
+    assert.equal(proxy.lastCommand, undefined, "the error card is not chat A's halted step");
+    assert.deepEqual(proxy.pickLines, []);
+    assert.equal(proxy.ownerPage, undefined);
+    fail = false;
+    const opened = await proxy.execute("open", [fixture.url("/")], "copy");
+    assert.equal(opened[0]!.stdout, "Opened\n");
+    assert.match(proxy.endedWait ?? "", new RegExp(`\\(run ${chatA}\\); a new open starts a new task\\.$`), "the next result names the wait Bao ended");
+  } finally {
+    for (const dir of failed) await remove(dir, { recursive: true, force: true });
+    await h.cleanup("copy");
+  }
 });
 
 test("the owner-wait instruction names the page's ask and sends the owner to the browser the session drives", () => {

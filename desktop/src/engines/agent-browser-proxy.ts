@@ -274,16 +274,18 @@ export class AgentBrowserProxy {
    */
   async execute(command: unknown, args: unknown = [], browser?: unknown, visual = false, profile?: unknown,
     snapshot: { find?: unknown; diff?: unknown } = {}): Promise<AgentBrowserCommandResult[]> {
+    this.endedLine = undefined;
+    this.latest = undefined;
+    this.shown = undefined;
+    this.notOpened = undefined;
+    this.imports = [];
+    this.moved = undefined as Moved | undefined;
     if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
     else if (command === "open" && this.session?.ownerWait && !this.session.removing) await this.endOwnerWait(this.session, "a new open starts a new task");
     this.endedLine = this.staleWait;
     this.staleWait = undefined;
-    this.latest = undefined;
     this.workflowOutcome = undefined;
     this.shown = this.session && { session: this.session, command: String(command) };
-    this.notOpened = undefined;
-    this.imports = [];
-    this.moved = undefined as Moved | undefined;
     validateAgentBrowserCommand(command, args);
     const view = snapshotView(command, snapshot.find, snapshot.diff);
     if (browser !== undefined && (command !== "open" || !AGENT_BROWSERS.includes(browser as AgentBrowser))) {
