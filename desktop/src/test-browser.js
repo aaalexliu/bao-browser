@@ -9,7 +9,7 @@ const TEST_MEDIA_ARGS = Object.freeze([
 
 /** @param {import("playwright").LaunchOptions} [options] */
 function launchTestBrowser(options = {}) {
-  return chromium.launch({ ...options, args: [...(options.args ?? []), ...TEST_MEDIA_ARGS] });
+  return chromium.launch({ headless: true, ...options, args: [...(options.args ?? []), ...TEST_MEDIA_ARGS] });
 }
 
 /**
@@ -18,6 +18,7 @@ function launchTestBrowser(options = {}) {
  */
 function launchTestContext(userDataDir, options = {}) {
   return chromium.launchPersistentContext(userDataDir, {
+    headless: true,
     ...options,
     args: [...(options.args ?? []), ...TEST_MEDIA_ARGS],
   });

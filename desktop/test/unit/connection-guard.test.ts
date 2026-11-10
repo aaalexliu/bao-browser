@@ -1,33 +1,52 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { CONNECTION_GUARD, laneChildEnv } from "../runtime";
 
 // Loaded before the guard, so the guard wraps it. It stands in for the network and the disk:
-// a 9222 connection or a DevToolsActivePort read that gets past the guard is recorded, never made.
+// a 9222 connection or a read under the real Chrome folder that gets past the guard is recorded, never made.
 const FLOOR = `
 const fs = require("node:fs");
 const net = require("node:net");
+const os = require("node:os");
+const path = require("node:path");
+const home = os.userInfo().homedir;
+const roots = [
+  path.join(home, "Library", "Application Support", "Google"),
+  path.join(home, "Library", "Application Support", "Chromium"),
+  path.join(home, ".config", "google-chrome"),
+  path.join(home, ".config", "chromium"),
+];
+function owner(file) {
+  const resolved = path.resolve(String(file));
+  return roots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+}
 const connect = net.Socket.prototype.connect;
 net.Socket.prototype.connect = function (...args) {
   const first = Array.isArray(args[0]) ? args[0][0] : args[0];
   const port = Number(first && typeof first === "object" ? first.port : first);
-  if (port === 9222) {
+  if (port === 9200 + 22) {
     process.stdout.write("REACHED 9222\\n");
     process.nextTick(() => this.destroy(Object.assign(new Error("floor"), { code: "ECONNREFUSED" })));
     return this;
   }
   return connect.apply(this, args);
 };
-for (const [owner, name] of [[fs, "readFileSync"], [fs, "readFile"], [fs.promises, "readFile"]]) {
-  const read = owner[name];
-  owner[name] = function (file, ...rest) {
-    if (!String(file).endsWith("DevToolsActivePort")) return read.call(this, file, ...rest);
+for (const [ownerFs, name] of [[fs, "readFileSync"], [fs, "readFile"], [fs.promises, "readFile"], [fs, "readdirSync"], [fs, "readdir"], [fs.promises, "readdir"]]) {
+  const read = ownerFs[name];
+  ownerFs[name] = function (file, ...rest) {
+    if (!owner(file)) return read.call(this, file, ...rest);
     process.stdout.write("REACHED " + file + "\\n");
-    throw Object.assign(new Error("floor"), { code: "ENOENT" });
+    const error = Object.assign(new Error("floor"), { code: "ENOENT" });
+    const callback = rest[rest.length - 1];
+    if (typeof callback === "function") {
+      process.nextTick(() => callback(error));
+      return;
+    }
+    throw error;
   };
 }
 `;
@@ -60,6 +79,11 @@ const linux = path.join(home, ".config", "google-chrome", "DevToolsActivePort");
     readCallback: await settle(new Promise((resolve, reject) => fs.readFile(linux, (error) => error ? reject(error) : resolve()))),
     readSync: await settle(Promise.resolve().then(() => fs.readFileSync(daily))),
     spawn: await settle(Promise.resolve().then(() => require("node:child_process").execFile(process.execPath, ["-e", "", "--cdp", "ws://127.0.0.1:9222/devtools/browser/x"]))),
+    spawnSync: await settle(Promise.resolve().then(() => require("node:child_process").spawnSync("/bin/echo", ["--remote-debugging-port=9222"]))),
+    execFileSync: await settle(Promise.resolve().then(() => require("node:child_process").execFileSync("/bin/echo", ["9222"]))),
+    execSync: await settle(Promise.resolve().then(() => require("node:child_process").execSync("/bin/echo :9222"))),
+    readFolder: await settle(Promise.resolve().then(() => fs.readdirSync(path.dirname(daily)))),
+    readState: await settle(Promise.resolve().then(() => fs.readFileSync(path.join(path.dirname(daily), "Local State")))),
     own: await settle(fetch("http://127.0.0.1:" + port + "/").then((response) => response.text())),
   };
   own.close();
@@ -70,12 +94,14 @@ const linux = path.join(home, ".config", "google-chrome", "DevToolsActivePort");
 function runGuarded() {
   const dir = mkdtempSync(path.join(tmpdir(), "bao-connection-guard-"));
   const floor = path.join(dir, "floor.cjs");
+  const probe = path.join(dir, "probe.cjs");
   writeFileSync(floor, FLOOR);
+  writeFileSync(probe, PROBE);
   const env = { ...process.env, NODE_OPTIONS: `--require ${JSON.stringify(floor)} --require ${JSON.stringify(CONNECTION_GUARD)}` };
-  return spawnSync(process.execPath, ["-e", PROBE], { env, encoding: "utf8", timeout: 30_000 });
+  return spawnSync(process.execPath, [probe], { env, encoding: "utf8", timeout: 30_000 });
 }
 
-test("the guard refuses every route to the owner's Chrome port and its DevToolsActivePort, and fails the process", () => {
+test("the guard refuses every route to the owner's Chrome port and folder, and fails the process", () => {
   const result = runGuarded();
   assert.doesNotMatch(result.stdout, /REACHED/);
   const rows = JSON.parse(/^ROWS (.*)$/m.exec(result.stdout)?.[1] ?? "null") as Record<string, string>;
@@ -89,12 +115,63 @@ test("the guard refuses every route to the owner's Chrome port and its DevToolsA
     readCallback: "EOWNERCHROME",
     readSync: "EOWNERCHROME",
     spawn: "EOWNERCHROME",
+    spawnSync: "EOWNERCHROME",
+    execFileSync: "EOWNERCHROME",
+    execSync: "EOWNERCHROME",
+    readFolder: "EOWNERCHROME",
+    readState: "EOWNERCHROME",
     own: "ok",
   });
   assert.match(result.stderr, /connection-guard: a test tried to connect to 127\.0\.0\.1:9222/);
   assert.match(result.stderr, /connection-guard: a test tried to read .*DevToolsActivePort/);
   assert.match(result.stderr, /connection-guard: a test tried to start .* with ws:\/\/127\.0\.0\.1:9222\/devtools\/browser\/x/);
+  assert.match(result.stderr, /connection-guard: a test tried to start \/bin\/echo with --remote-debugging-port=9222/);
+  assert.match(result.stderr, /connection-guard: a test tried to start \/bin\/echo with 9222/);
+  assert.match(result.stderr, /connection-guard: a test tried to start a command with \/bin\/echo :9222/);
   assert.equal(result.status, 1, "a refusal fails the test process even when the caller swallows the error");
+});
+
+test("a node child with NODE_OPTIONS cleared still refuses the owner's Chrome port", () => {
+  const script = [
+    'const net = require("node:net");',
+    'if (!globalThis[Symbol.for("bao.connection-guard")]) { process.stdout.write("NO GUARD\\n"); process.exit(0); }',
+    "const port = 9200 + 22;",
+    "const socket = net.connect(port, \"127.0.0.1\");",
+    "socket.once(\"error\", (error) => { process.stdout.write((error.code || \"\") + \"\\n\"); process.exit(0); });",
+    "setTimeout(() => process.exit(2), 2000);",
+  ].join("\n");
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  const result = spawnSync(process.execPath, ["-e", script], { env, encoding: "utf8", timeout: 15_000 });
+  assert.equal(result.stdout.trim(), "EOWNERCHROME", result.stderr);
+});
+
+test("a headed browser fails outside the live lane and is allowed in it", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-headed-guard-"));
+  const chrome = path.join(dir, "chrome");
+  writeFileSync(chrome, "#!/bin/sh\nexit 0\n");
+  chmodSync(chrome, 0o755);
+  const probe = [
+    'const { spawnSync } = require("node:child_process");',
+    "const chrome = process.env.CHROME;",
+    "function once(args) {",
+    "  try {",
+    "    const result = spawnSync(chrome, args, { encoding: \"utf8\" });",
+    "    return String(result.status);",
+    "  } catch (error) {",
+    "    return error.code || error.message;",
+    "  }",
+    "}",
+    'process.stdout.write("headed " + once(["about:blank"]) + "\\n");',
+    'process.stdout.write("quiet " + once(["--headless=new", "about:blank"]) + "\\n");',
+  ].join("\n");
+  const base = { ...process.env, CHROME: chrome, NODE_OPTIONS: `--require ${JSON.stringify(CONNECTION_GUARD)}` };
+  const hermetic = spawnSync(process.execPath, ["-e", probe], { env: { ...base, BAO_LANE: "hermetic" }, encoding: "utf8", timeout: 15_000 });
+  assert.match(hermetic.stdout, /headed EOWNERCHROME/);
+  assert.match(hermetic.stdout, /quiet 0/, hermetic.stderr);
+  const live = spawnSync(process.execPath, ["-e", probe], { env: { ...base, BAO_LANE: "live" }, encoding: "utf8", timeout: 15_000 });
+  assert.match(live.stdout, /headed 0/, live.stderr);
+  assert.match(live.stdout, /quiet 0/, live.stderr);
 });
 
 test("both lanes preload the guard once and keep the caller's NODE_OPTIONS", () => {
