@@ -501,7 +501,7 @@ function namedRun(text) {
 async function agentCall(mcp, command, args, options = {}) {
   const params = { command, args: args || [] };
   if (options.browser) params.browser = options.browser;
-  if (mcp.runId && !(command === 'open' && options.newTask)) params.run_id = mcp.runId;
+  if (mcp.runId) params.run_id = mcp.runId;
   const result = await mcp.call('agent_browser', params, options.timeoutMs || (command === 'open' ? 120000 : 45000));
   const named = namedRun(result.text);
   if (named) mcp.runId = named;
@@ -509,8 +509,8 @@ async function agentCall(mcp, command, args, options = {}) {
   return result;
 }
 
-async function browserCall(mcp, command, args, browserName, timeoutMs, newTask = false) {
-  const result = await agentCall(mcp, command, args, { browser: browserName, timeoutMs, newTask });
+async function browserCall(mcp, command, args, browserName, timeoutMs) {
+  const result = await agentCall(mcp, command, args, { browser: browserName, timeoutMs });
   if (result.isError) throw new Error(`agent_browser ${command} failed`);
   return result;
 }
@@ -820,7 +820,7 @@ async function runClaude(options) {
     await capture(ui, options.output, 'bao-before');
     mcp = startInstalledMcp();
     await mcp.handshake();
-    const opened = await browserCall(mcp, 'open', [claudeChat], 'current', 120000, true);
+    const opened = await browserCall(mcp, 'open', [claudeChat], 'current', 120000);
     const tabId = await taskTabId(mcp, opened.text);
     lifecycle.taskTab = tabId || null;
     if (!tabId) throw new Error('Could not identify the Bao task tab on claude.ai. Stopped without closing another tab.');

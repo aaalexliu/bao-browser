@@ -13,7 +13,6 @@ import { launchOwnedChromeEndpoint, pinTestBrowser, pidsForDataDir } from "../..
 import { readDevToolsActivePort } from "../../src/cdp-live/endpoint";
 import { OWNER_WAIT_LIMIT_MS, ownerWall, ownerCanResume, ownerWaitInstruction, ownerWaitTimeout } from "../../src/cdp-live/owner-wait";
 import { Library } from "../../src/v1/store";
-import { NEWER_TASK_REASON } from "../../src/v1/stop-copy";
 import { startExperianFixture } from "../experian/fixture";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { LIST_TARGETS } from "../support/fake-agent-browser";
@@ -267,7 +266,7 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
     // A new chat's open during a fresh wait ends that wait and opens fresh; only wait_for_owner continues a wait.
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
     assert.match(proxy.endedWait ?? "", ended("a new open starts a new task"));
-    assert.equal(library.readRun(second).envelope?.reason, NEWER_TASK_REASON, "a newer open records the ended run as ended by a newer task");
+    assert.equal(library.readRun(second).envelope?.reason, "A newer task opened, so Bao ended this session.", "a newer open records the ended run as ended by a newer task");
     const third = proxy.activeRunId!;
     assert.notEqual(third, second);
 

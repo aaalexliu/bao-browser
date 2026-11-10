@@ -296,6 +296,7 @@ export class AgentBrowserProxy {
     this.notOpened = undefined;
     this.imports = [];
     this.moved = undefined as Moved | undefined;
+    this.workflowOutcome = undefined;
     const claimed = typeof runId === "string" ? runId.trim() : undefined;
     if (runId !== undefined && (typeof runId !== "string" || !claimed)) {
       this.refusal = {};
@@ -317,7 +318,11 @@ export class AgentBrowserProxy {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");
       ownerWaitTimeout(args[0] === undefined ? undefined : Number(args[0]));
     }
-    // Snapshot, click, and the rest change nothing unless they name the open run. A new open is the exception: the newest task wins.
+    // Snapshot, click, and the rest change nothing unless they name the open run. An open with no run_id starts a new task. An open that names a run a newer task ended does not.
+    if (claimed !== undefined && this.endedByNewer.has(claimed)) {
+      this.refusal = { runId: claimed };
+      return [{ stdout: JSON.stringify({ outcome: "closed", instruction: otherTaskClosed(claimed) }), stderr: "", exitCode: 0 }];
+    }
     if (foreign && command !== "open") {
       if (claimed === undefined) throw new Error(runIdNeeded(String(command)));
       return [{ stdout: JSON.stringify({ outcome: "closed", instruction: otherTaskClosed(claimed) }), stderr: "", exitCode: 0 }];
@@ -328,10 +333,6 @@ export class AgentBrowserProxy {
       else if (this.session?.removing) await this.session.removing;
       this.refusal = undefined;
     } else if (this.session && ownerWaitOver(this.session)) await this.endOwnerWait(this.session);
-    if (openRun === undefined && claimed !== undefined && this.endedByNewer.has(claimed)) {
-      this.refusal = { runId: claimed };
-      return [{ stdout: JSON.stringify({ outcome: "closed", instruction: otherTaskClosed(claimed) }), stderr: "", exitCode: 0 }];
-    }
     this.endedLine = this.staleWait;
     this.staleWait = undefined;
     this.workflowOutcome = undefined;

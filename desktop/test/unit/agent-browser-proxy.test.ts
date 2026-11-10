@@ -14,7 +14,6 @@ import * as profiles from "../../src/engines/chrome-profile-copy";
 import * as sockets from "../../src/cdp-live/socket";
 import { pageShotLine } from "../../src/mcp/tool-card";
 import { Library } from "../../src/v1/store";
-import { NEWER_TASK_REASON } from "../../src/v1/stop-copy";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64");
@@ -876,11 +875,36 @@ test("an open with no run id ends the open run and starts its own, and the older
     await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
     const newer = f.proxy.activeRunId!;
     assert.notEqual(newer, older);
-    assert.equal(new Library(path.join(f.root, "home")).readRun(older).envelope?.reason, NEWER_TASK_REASON);
+    assert.equal(new Library(path.join(f.root, "home")).readRun(older).envelope?.reason, "A newer task opened, so Bao ended this session.");
     const refused = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, older);
     assert.equal(JSON.parse(refused[0]!.stdout).outcome, "closed");
     assert.match(refused[0]!.stdout, new RegExp(`Run ${older} is not Bao's open browser session`));
     assert.equal(f.proxy.activeRunId, newer, "the older chat's next call does not take the new run");
+    assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, newer))[0]!.stdout, "snapshot unchanged\n");
+  } finally { await f.close(); }
+});
+
+test("an open that names a run a newer task ended leaves the open session alone", async (t) => {
+  const f = await fixture(t);
+  const library = new Library(path.join(f.root, "home"));
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const older = f.proxy.activeRunId!;
+    await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    const newer = f.proxy.activeRunId!;
+    assert.notEqual(newer, older);
+    const runs = library.listRuns().length;
+    const sent = (await f.calls()).length;
+    const opened = await f.proxy.execute("open", ["http://127.0.0.1/again"], "copy", false, undefined, {}, older);
+    const reply = JSON.parse(opened[0]!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "closed");
+    assert.equal(reply.instruction, `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`);
+    assert.equal(f.proxy.activeRunId, newer, "chat A's open does not take chat B's session");
+    assert.equal(f.proxy.hasSession(), true);
+    assert.equal(library.listRuns().length, runs, "naming the ended run starts no new run");
+    assert.equal((await f.calls()).length, sent, "naming the ended run sends no native command");
+    assert.equal(f.proxy.lastWorkflowOutcome, undefined);
+    assert.equal(library.readRun(older).envelope?.reason, "A newer task opened, so Bao ended this session.");
     assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, newer))[0]!.stdout, "snapshot unchanged\n");
   } finally { await f.close(); }
 });
@@ -897,6 +921,7 @@ test("after the newer task finishes, a command that names the ended run stays cl
     assert.notEqual(newer, older);
     assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "chat B finished" }, newer), newer);
     assert.equal(f.proxy.hasSession(), false);
+    assert.match(f.proxy.lastWorkflowOutcome ?? "", /^(Saved workflow: |Not saved as a workflow: )/);
     const runs = library.listRuns().length;
     const sent = (await f.calls()).length;
     const closed = closedFor(older);
@@ -905,6 +930,7 @@ test("after the newer task finishes, a command that names the ended run stays cl
       const reply = JSON.parse(result[0]!.stdout) as { outcome: string; instruction: string };
       assert.equal(reply.outcome, "closed", command);
       assert.equal(reply.instruction, closed, command);
+      assert.equal(f.proxy.lastWorkflowOutcome, undefined, command);
       assert.equal(f.proxy.hasSession(), false, command);
       assert.equal(f.proxy.refused?.runId, older, command);
     }

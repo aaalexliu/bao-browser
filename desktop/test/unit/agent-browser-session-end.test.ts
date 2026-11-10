@@ -471,7 +471,10 @@ test("after the newer task finishes, the older chat's named commands stay closed
   assert.equal(opened.isError, false, JSON.stringify(opened));
   const newer = opened.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean)!;
   assert.notEqual(newer, older);
-  assert.equal((await c.request("tools/call", { name: "finish_task", arguments: { run_id: newer, outcome: "passed", reason: "Chat B finished." } })).isError, false);
+  const finished = await c.request("tools/call", { name: "finish_task", arguments: { run_id: newer, outcome: "passed", reason: "Chat B finished." } });
+  assert.equal(finished.isError, false);
+  const workflow = (finished.structuredContent as { workflow?: string }).workflow;
+  assert.match(workflow ?? "", /^(Saved workflow: |Not saved as a workflow: )/);
   const closed = `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
   const runs = f.library.listRuns().length;
   for (const arguments_ of [
@@ -487,7 +490,9 @@ test("after the newer task finishes, the older chat's named commands stay closed
     assert.equal(reply.outcome, "closed", arguments_.command);
     assert.equal(reply.instruction, closed, arguments_.command);
     assert.equal(reply.run_id, older);
-    assert.equal(result.content!.some((block) => block.text.includes(newer)), false);
+    const sentence = arguments_.command === "wait_for_owner" ? "This wait ended. This session cannot continue." : "This run ended. This session cannot continue.";
+    assert.deepEqual(result.content!.map((block) => block.text), [sentence, `Run ${older} · closed`, closed], arguments_.command);
+    assert.equal(result.content!.some((block) => block.text === workflow || block.text.includes(newer)), false);
   }
   const late = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: "older chat", run_id: older } });
   assert.equal(late.isError, false);
