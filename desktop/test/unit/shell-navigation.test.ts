@@ -477,6 +477,20 @@ test("the palette takes focus from the modal sidebar without a queued close stea
     });
     const dialog = page.locator("#sidebar-dialog");
     const input = page.locator("#palette-input");
+    const settledPaletteFocus = async () => {
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const focus = await page.evaluate(() => {
+        const field = document.querySelector("#palette-input");
+        const sidebar = document.querySelector("#sidebar-dialog") as HTMLDialogElement | null;
+        return {
+          open: sidebar?.open === true,
+          focused: field !== null && document.activeElement === field,
+          active: document.activeElement?.id || document.activeElement?.tagName || "",
+        };
+      });
+      assert.equal(focus.open, false);
+      assert.equal(focus.focused, true, `queued sidebar close left focus on ${focus.active}`);
+    };
     const commands = [
       ["Settings", "settings", "#set-runs", "main"],
       [`Open ${workflow.name}`, `open-${workflow.id}`, "#workflow-detail", "main"],
@@ -491,8 +505,7 @@ test("the palette takes focus from the modal sidebar without a queued close stea
         assert.equal(await dialog.evaluate((element) => (element as HTMLDialogElement).open), true);
         await page.keyboard.press("ControlOrMeta+k");
         await page.waitForFunction(() => document.documentElement.dataset.sidebarCloseFocus === "palette-input");
-        assert.equal(await dialog.evaluate((element) => (element as HTMLDialogElement).open), false);
-        assert.equal(await input.evaluate((element) => element === document.activeElement), true);
+        await settledPaletteFocus();
         await page.keyboard.type(label);
         assert.equal(await input.inputValue(), label);
         const selected = page.locator("#palette-list button.on");
@@ -537,7 +550,7 @@ test("the palette takes focus from the modal sidebar without a queued close stea
       document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true }));
     });
     await page.waitForFunction(() => document.documentElement.dataset.sidebarCloseFocus === "palette-input");
-    assert.equal(await input.evaluate((element) => element === document.activeElement), true);
+    await settledPaletteFocus();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await page.evaluate(() => {
