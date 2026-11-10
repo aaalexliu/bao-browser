@@ -112,6 +112,56 @@ test("the owner's Chrome keeps its active tab while the agent works in a backgro
   }
 });
 
+test("on the owner's Chrome the agent keeps its task tab when the owner opens a tab, and follows a tab its own click opens", { skip: !binary, timeout: 60_000 }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-current-tabs-"));
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "text/html");
+    response.end(request.url === "/task" ? `${TASK}<a id=pop href=/popup target=_blank>Details</a>`
+      : request.url === "/popup" ? "<!doctype html><title>Details</title><h1>Popup page</h1>" : "<!doctype html><title>Owner</title><h1>Owner tab</h1>");
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  await chromeProfiles(path.join(root, "chrome"));
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: path.join(root, "chrome"), headless: true, args: ["--no-startup-window"] });
+  const endpoint = await readDevToolsActivePort(chrome.portFile);
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  const probe = await connectCdp(endpoint.port, endpoint.browserPath);
+  t.mock.method(profileCopy, "chromeProfilesRoot", () => root);
+  t.mock.method(currentChrome, "openCurrentChrome", async () => {
+    const shared = await shareConnection(cdp);
+    return { pid: 7, executable: pinTestBrowser(), root: path.join(root, "chrome"), endpoint: shared.endpoint, cdp, closed: cdp.disconnected,
+      isClosed: () => !cdp.isOpen, detach: () => { shared.close(); cdp.close(); } };
+  });
+  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: path.join(root, "chrome"), executable: binary });
+  try {
+    await openOwnerTab(probe, `${base}/owner`);
+    const opened = await proxy.execute("open", [`${base}/task`], "current");
+    assert.equal(opened[0]!.exitCode, 0, opened[0]!.stderr);
+    const lines = opened[1]!.stdout.trim().split("\n");
+    assert.deepEqual(lines.map(line => line.includes("(Bao task tab)")), lines.map(line => line.includes(`${base}/task`)), opened[1]!.stdout);
+
+    await probe.send("Target.createTarget", { url: `${base}/owner?new` });
+    for (const [command, args] of [["fill", ["#q", "Ada"]], ["click", ["#b"]]] as const) {
+      const [result] = await proxy.execute(command, [...args]);
+      assert.equal(result!.exitCode, 0, result!.stderr);
+    }
+    const { targetInfos } = await probe.send<{ targetInfos: { targetId: string; url: string }[] }>("Target.getTargets");
+    const task = targetInfos.find(target => target.url === `${base}/task`)!.targetId;
+    assert.equal(await evaluate(probe, task, "out.textContent"), "clicked, typed: Ada", "the tab the owner opened did not take the agent");
+
+    assert.equal((await proxy.execute("click", ["#pop"]))[0]!.exitCode, 0);
+    const [read] = await proxy.execute("snapshot", []);
+    assert.match(read!.stdout, /Popup page/, "the agent follows the tab its click opened");
+  } finally {
+    await proxy.end();
+    probe.close();
+    cdp.close();
+    await chrome.close();
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("replaying a workflow on the owner's Chrome works in a background tab and shows it only when it holds for the owner", { skip: replaySkip, timeout: 60_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-current-replay-"));
   const server = createServer((request, response) => {

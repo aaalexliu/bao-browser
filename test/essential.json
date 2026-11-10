@@ -92,9 +92,10 @@
   },
   "browser": {
     "kind": "desktop",
-    "reason": "Safety: pass-through sessions, browser grants, capture privacy, secret replay, human handoffs, and short snapshot find and diff results.",
+    "reason": "Safety: pass-through sessions, browser grants, capture privacy, secret replay, human handoffs, short snapshot find and diff results, and the owner's Chrome keeping the agent in its task tab and out of Chrome's own panels.",
     "tests": [
       "desktop/test/unit/mcp.test.ts",
+      "desktop/test/unit/current-chrome-tabs.test.ts",
       "desktop/test/unit/snapshot-view.test.ts",
       "desktop/test/unit/mcp-viewer-client.test.ts",
       "desktop/test/unit/mcp-viewer-design.test.ts",
