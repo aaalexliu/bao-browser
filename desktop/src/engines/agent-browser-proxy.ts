@@ -122,8 +122,6 @@ type Moved = { line: string; pick?: BrowserPick; site?: string };
 
 interface SessionData {
   browser: AgentBrowser;
-  /** The http(s) URL the latest open asked for. A fallback after the owner wait ends names this. */
-  site?: string;
   stateDir: string;
   executable: string;
   flags: string[];
@@ -459,7 +457,6 @@ export class AgentBrowserProxy {
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
-        if (site) session.site = site;
         if (continuing && site && this.bound(session, site)) {
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
@@ -812,11 +809,6 @@ export class AgentBrowserProxy {
     return httpPage(page?.url) ?? before;
   }
 
-  private reopenUrl(session: Session): string | undefined {
-    if (session.ownerWait && session.ownerWait !== "pending") return session.ownerWait.reopen;
-    return session.site ?? session.ownerPage?.url;
-  }
-
   /** The page Running Chrome should open, remembered with the wall so a later retry does not fall back to the latest open. */
   private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): { targetId: string; page: OwnerPage; reopen?: string } {
     return { targetId: active.targetId, page: active.page, reopen: this.pageToReopen(session, active.page, openedSite) };
@@ -916,7 +908,7 @@ export class AgentBrowserProxy {
   private fallback(session: Session): string {
     if (session.kind !== "copy" || session.pick.route === "extension") return "";
     if (session.pick.route === "bao" && session.moveError === undefined) return "";
-    const site = this.reopenUrl(session);
+    const site = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.reopen : undefined;
     const profile = session.pick.profile?.directory;
     const open = { command: "open", ...(site ? { args: [site] } : {}), browser: "current", ...profile ? { profile } : {} };
     const bao = session.pick.route === "bao";
@@ -1146,11 +1138,11 @@ export class AgentBrowserProxy {
   }
 
   private ownerClosed(session: Session): AgentBrowserCommandResult[] {
+    const result = this.ownerResult("closed", session);
     session.abort.abort();
-    session.ownerWait = undefined;
     session.workflow.unavailable("the owner wait did not finish");
     session.recording.finish("session_closed");
-    return this.ownerResult("closed", session);
+    return result;
   }
 
   private async waitForOwner(session: Session, deadline: number): Promise<AgentBrowserCommandResult[]> {
@@ -1191,10 +1183,11 @@ export class AgentBrowserProxy {
           if (ready && Date.now() - stableAt >= 750) {
             await this.ownerBanner(session, waiting.targetId, false);
             if (session.abort.signal.aborted || !cdp.isOpen) return this.ownerClosed(session);
+            const result = this.ownerResult("ready", session);
             session.ownerWait = undefined;
             session.page = { url: page.url, title: page.title };
             session.recording.ownerWaiting(false);
-            return this.ownerResult("ready", session);
+            return result;
           }
         } catch (error) {
           if (error instanceof TaskTabClosed) throw error;

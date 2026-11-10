@@ -810,6 +810,48 @@ function fakeOwnerChrome(t: TestContext, root: string) {
     endpoint: { port: await trapPort(), browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close() }));
 }
 
+test("a click stop names the page before the wall on the holding line and after the owner closes the window", async (t) => {
+  const f = await fixture(t);
+  try {
+    let page = { targetId: "ABC123", url: "http://127.0.0.1/article", title: "Article" };
+    let windowGone = false;
+    t.mock.method(sockets, "connectCdp", async () => {
+      const cdp = new sockets.CdpSocket(new Socket());
+      t.mock.method(cdp, "send", async (method: string) => {
+        if (method === "Target.getTargetInfo") return { targetInfo: page };
+        if (method === "Target.attachToTarget") return { sessionId: "fixture" };
+        if (method === "Target.getTargets") return { targetInfos: windowGone ? [] : [page] };
+        return { data: png.toString("base64") };
+      });
+      followSend(t, cdp);
+      return cdp;
+    });
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/article"], "copy"))[0]!.exitCode, 0);
+    page = { targetId: "ABC123", url: "http://127.0.0.1/menu", title: "Menu" };
+    assert.equal((await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+    page = { targetId: "ABC123", url: "http://127.0.0.1/login", title: "Sign in" };
+    const [halted] = await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId);
+    const holding = JSON.parse(halted!.stdout) as { outcome: string; instruction: string };
+    const menu = '"args":["http://127.0.0.1/menu"]';
+    assert.equal(holding.outcome, "halted");
+    assert.ok(holding.instruction.includes(menu), holding.instruction);
+    assert.ok(!holding.instruction.includes("/article"), holding.instruction);
+    assert.ok(!holding.instruction.includes("/login"), holding.instruction);
+    windowGone = true;
+    const [closed] = await f.proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, f.proxy.activeRunId);
+    const reply = JSON.parse(closed!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "closed");
+    assert.ok(reply.instruction.includes(menu), reply.instruction);
+    assert.ok(!reply.instruction.includes("/article"), reply.instruction);
+    assert.ok(!reply.instruction.includes("/login"), reply.instruction);
+    const [later] = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
+    const again = JSON.parse(later!.stdout) as { outcome: string; instruction: string };
+    assert.equal(again.outcome, "closed");
+    assert.ok(again.instruction.includes(menu), again.instruction);
+    assert.ok(!again.instruction.includes("/article"), again.instruction);
+  } finally { await f.close(); }
+});
+
 test("a wall that clears before finish_task is not a fallback; every wait_for_owner and later result names the fallback or the route", async (t) => {
   const f = await fixture(t);
   try {
