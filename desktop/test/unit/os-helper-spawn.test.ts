@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -86,6 +87,18 @@ test("a permissions report from a helper that did not disclaim fails closed", as
     const hit = await new MacOsHelper(disclaimed).exec(["permissions-ax"]);
     assert.equal(hit.accessibility, false);
     assert.equal(hit.parentExe, exe);
+    const realDir = path.join(root, "real");
+    await mkdir(realDir);
+    const linked = path.join(root, "linked");
+    await symlink(realDir, linked);
+    const linkedExe = path.join(linked, "BaoOSHelper");
+    await writeFile(linkedExe, "");
+    const resolved = realpathSync(linkedExe);
+    assert.notEqual(linkedExe, resolved);
+    const viaLink = await fakeHelperApp(path.join(root, "via-link"), `printf '%s\n' '${JSON.stringify({ ok: true, accessibility: true, exe: linkedExe, parentExe: resolved })}'`);
+    const linkedHit = await new MacOsHelper(viaLink).exec(["permissions-ax"]);
+    assert.equal(linkedHit.accessibility, true);
+    assert.equal(linkedHit.parentExe, resolved);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

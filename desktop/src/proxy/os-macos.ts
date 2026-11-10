@@ -2,7 +2,7 @@
 // They do not take a coordinate.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { OsTarget } from "../../../shared/types";
 
@@ -96,8 +96,16 @@ function helperError(message: string): Error {
   return new Error(message);
 }
 
+function canonical(file: string): string {
+  try {
+    return realpathSync(file);
+  } catch {
+    return file;
+  }
+}
+
 function accepted(command: string | undefined, hit: AxHit): AxHit {
-  if ((command === "permissions" || command === "permissions-ax") && !(hit.exe && hit.parentExe === hit.exe)) {
+  if ((command === "permissions" || command === "permissions-ax") && !(hit.exe && hit.parentExe && canonical(hit.exe) === canonical(hit.parentExe))) {
     throw new Error(HELPER_TOO_OLD);
   }
   return hit;
