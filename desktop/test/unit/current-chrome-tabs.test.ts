@@ -37,7 +37,7 @@ async function fixture(t: TestContext) {
     { targetId: "reader", type: "page", url: "chrome-untrusted://read-anything-side-panel.top-chrome/", title: "Reading mode", inWindow: false },
     { targetId: "search", type: "page", url: "https://www.google.com/search?q=pizza", title: "Search side panel", inWindow: false },
   ];
-  const daemon = { active: "", pinned: false, tabIds: new Map<string, string>(), commands: [] as { command: string; args: string[]; on: string }[],
+  const daemon = { active: "", pinned: false, holdClosedInChrome: false, tabIds: new Map<string, string>(), commands: [] as { command: string; args: string[]; on: string }[],
     /** Runs before a command, like the native daemon adopting a target it discovered. */
     before: undefined as (() => void) | undefined,
     /** Runs when a click lands, like a link that opens a new tab. */
@@ -105,8 +105,10 @@ async function fixture(t: TestContext) {
     else if (command === "tab" && args[0] === "close") {
       const tab = tabs.find(item => item.tabId === args[1]);
       if (!tab) { reply(`✗ Tab ${args[1]} not found`, 1); return new EventEmitter(); }
-      const index = targets.findIndex(item => item.targetId === tab.targetId);
-      if (index >= 0) targets.splice(index, 1);
+      if (!daemon.holdClosedInChrome) {
+        const index = targets.findIndex(item => item.targetId === tab.targetId);
+        if (index >= 0) targets.splice(index, 1);
+      }
       daemon.tabIds.delete(tab.targetId);
       if (daemon.active === tab.targetId) daemon.active = daemon.pinned ? "" : tracked()[0]?.targetId ?? "";
       reply("✓ Closed\n");
@@ -278,6 +280,22 @@ test("the agent's close of its last task tab reports that the tab was closed, no
   assert.ok(f.targets.some(item => item.targetId === "owner"));
   assert.deepEqual(f.closed, []);
   await assert.rejects(f.proxy.execute("snapshot"), /Bao's task tab was closed/);
+});
+
+test("the agent's close of its last task tab ends the session while Chrome still lists that tab", async (t) => {
+  const f = await fixture(t);
+  await f.proxy.execute("open", [MAPS], "current");
+  f.daemon.holdClosedInChrome = true;
+  const [ended] = await f.proxy.execute("tab", ["close", "t1"]);
+  assert.equal(ended!.exitCode, 0);
+  assert.equal(JSON.parse(ended!.stdout).outcome, "closed");
+  assert.match(ended!.stdout, /Bao's task tab was closed/);
+  assert.equal(f.proxy.hasSession(), false);
+  assert.ok(f.targets.some(item => item.targetId === "task"), "Chrome has not destroyed the closed tab yet");
+  assert.equal(f.closed.includes("task"), false);
+  const closedStep = (new Library(f.home).listRuns()[0]!.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.equal(closedStep.status, "passed");
+  assert.equal(closedStep.summary?.text, "Bao's task tab was closed. This session cannot continue.");
 });
 
 test("closing a tab the agent opened does not end the session while Bao's task tab remains", async (t) => {

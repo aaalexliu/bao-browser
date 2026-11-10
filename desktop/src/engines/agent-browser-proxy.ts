@@ -139,7 +139,7 @@ const opensTab = (command: string, args: readonly string[]) => (command === "tab
  * Bao's task tab, until the agent switches tabs or its tab opens one. A popup followed from a task tab joins `taskTabs`.
  * `seen` holds every target the native tab list has shown.
  */
-type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string> };
+type DebuggingChrome = { kind: "current"; relay?: undefined; chrome: CurrentChrome; taskTabs: Set<string>; targetId: string; seen: Set<string>; justClosed?: string };
 
 /** An opened browser, what it runs on and why, and on the owner's Chrome the task tab the native daemon binds to. */
 type Opened = { pick: BrowserPick } & (
@@ -846,6 +846,11 @@ export class AgentBrowserProxy {
     }
     const result = await this.run(session, command, args);
     if (result.exitCode !== 0) return result;
+    if (args[0] === "close" && named?.targetId && session.taskTabs.has(named.targetId)) {
+      session.taskTabs.delete(named.targetId);
+      session.justClosed = named.targetId;
+      if (session.targetId === named.targetId) session.targetId = [...session.taskTabs].at(-1) ?? "";
+    }
     if (!list) {
       const active = args[0] === "close" ? undefined : (await this.nativeTabs(session)).find((tab) => tab.active);
       if (active?.targetId) session.targetId = active.targetId;
@@ -874,6 +879,7 @@ export class AgentBrowserProxy {
   private noTaskTabLeft(session: Session, tabs: readonly { targetId?: string }[]): boolean {
     if (session.kind !== "current" || session.relay) return false;
     const listed = new Set(tabs.flatMap((tab) => tab.targetId ? [tab.targetId] : []));
+    if (session.justClosed) listed.delete(session.justClosed);
     if (listed.has(session.targetId)) return false;
     return ![...session.taskTabs].some((id) => listed.has(id));
   }
