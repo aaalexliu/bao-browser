@@ -287,6 +287,8 @@ function withoutCodexArgs(text: string): string {
         if (inline && !next && previous) start = previous.range[1];
         else if (inline && next) end = next.range[0];
         else if (!inline) {
+          const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+          if (/^[ \t]*$/.test(text.slice(lineStart, start))) start = lineStart;
           const nl = text.indexOf("\n", end);
           if (nl >= 0) end = nl + 1;
         }

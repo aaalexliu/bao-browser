@@ -111,6 +111,24 @@ test("ChatGPT leaves a setup entry unchanged and removes a stale args key", () =
   } finally { f.close(); }
 });
 
+test("ChatGPT removes an indented args line without moving the next key", () => {
+  for (const indent of ["  ", "\t"]) {
+    const line = `${indent}enabled = true`;
+    const note = `${indent}# keep this key`;
+    const before = `[mcp_servers.bao]\n${indent}command = "old"\n${indent}args = []\n${line}\n${note}\n`;
+    const out = editChatgpt(before, launcher).text;
+    assert.deepEqual(out.split("\n").filter((item) => item.includes("enabled")), [line], before);
+    assert.deepEqual(out.split("\n").filter((item) => item.includes("keep this key")), [note], before);
+  }
+  const f = fixture();
+  try {
+    const before = '[mcp_servers.bao]\n  command = "old"\n  args = []\n  enabled = true\n';
+    plant(f.home, "chatgpt", before);
+    const preview = f.installer.preview("chatgpt");
+    assert.doesNotMatch(preview.diff, /^[+-].*enabled/m);
+  } finally { f.close(); }
+});
+
 test("ChatGPT rejects malformed TOML, duplicate entries and incompatible types", () => {
   for (const text of ['x = [', '[mcp_servers.bao]\ncommand="a"\ncommand="b"', 'mcp_servers=1', 'mcp_servers.bao=1', '[[mcp_servers.bao]]\ncommand="a"', '[mcp_servers.bao]\nurl="https://example.test"']) {
     assert.throws(() => editChatgpt(text, launcher), text);
