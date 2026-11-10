@@ -254,6 +254,8 @@ export class AgentBrowserProxy {
   get endedWait(): string | undefined { return this.endedLine; }
   /** The line about each owner wait Bao ended, by run, for a wait_for_owner that still names that run. */
   private endedWaits = new Map<string, string>();
+  /** The reconnect instruction for a run whose owner's Chrome ended or whose task tab closed. */
+  private endedRuns = new Map<string, string>();
   private waitRun: string | undefined;
   /** The run a refused wait_for_owner named, when that run is not Bao's open session. */
   get otherRun(): string | undefined { return this.waitRun; }
@@ -314,7 +316,9 @@ export class AgentBrowserProxy {
       this.shown = undefined;
       const ended = this.endedWaits.get(this.waitRun);
       if (ended === this.endedLine) this.endedLine = undefined;
-      return [{ stdout: JSON.stringify({ outcome: "closed", instruction: `${WAIT_RUN_ENDED} ${ended ?? `Run ${this.waitRun} is not Bao's open browser session.`}` }), stderr: "", exitCode: 0 }];
+      const instruction = this.endedRuns.get(this.waitRun)
+        ?? `${WAIT_RUN_ENDED} ${ended ?? `Run ${this.waitRun} is not Bao's open browser session.`}`;
+      return [{ stdout: JSON.stringify({ outcome: "closed", instruction }), stderr: "", exitCode: 0 }];
     }
     const named = typeof profile === "string" ? profile.trim() : undefined;
     if (this.session && named !== undefined && this.session.pick.route !== "extension" && named !== this.session.pick.profile?.directory) {
@@ -546,6 +550,7 @@ export class AgentBrowserProxy {
       if (this.session === session) this.session = undefined;
       return runId;
     } finally {
+      this.endedRuns.delete(runId);
       this.currentEnded = false;
       this.taskTabEnded = false;
     }
@@ -937,6 +942,7 @@ export class AgentBrowserProxy {
   /** Ends this session because Bao's task tab was closed. The caller returns the closed result; cleanup runs after the command. */
   private endTaskTab(session: Session): AgentBrowserCommandResult[] {
     this.taskTabEnded = true;
+    this.endedRuns.set(session.recording.id, TASK_TAB_CLOSED);
     session.closing = true;
     session.outcome = { outcome: "failed", reason: "Bao's task tab was closed" };
     session.workflow.unavailable("Bao's task tab was closed before the task finished");
@@ -1333,7 +1339,10 @@ export class AgentBrowserProxy {
     clearTimeout(session.idleTimer);
     if (!session.removing) this.afterWall = session.kind === "copy" && !!session.ownerWait;
     try {
-      if (session.kind === "current" && !session.closing && !this.disconnected) this.currentEnded = true;
+      if (session.kind === "current" && !session.closing && !this.disconnected) {
+        this.currentEnded = true;
+        this.endedRuns.set(session.recording.id, CURRENT_CHROME_ENDED);
+      }
       await (session.removing ??= (async () => {
         session.abort.abort();
         await session.commandDone;

@@ -12,6 +12,7 @@ import { connectCdp, type CdpSocket } from "../../src/cdp-live/socket";
 import { INSPECT_URL } from "../../src/cdp-live/ax";
 import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
+import { CURRENT_CHROME_ENDED, TASK_TAB_CLOSED, WAIT_RUN_ENDED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { browserToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
 import { LAUNCH_SERVICES_RESTART, launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
@@ -830,6 +831,54 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
     await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
   }
   await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
+});
+
+async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (proxy.hasSession() && Date.now() < deadline) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(proxy.hasSession(), false);
+}
+
+test("a wait_for_owner that names the run whose Chrome ended returns the reconnect instruction", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runId = f.library.listRuns()[0]!.id;
+  const before = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  await f.proxy.execute("wait_for_owner", ["1"]);
+  const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  assert.ok(steps > before);
+  f.cdp.close();
+  await untilSessionEnds(f.proxy);
+  const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runId);
+  const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.instruction, CURRENT_CHROME_ENDED);
+  assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Your Chrome session ended. This session cannot continue.");
+  assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
+  const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
+  assert.equal(JSON.parse(other[0]!.stdout).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  await assert.rejects(f.proxy.execute("snapshot"), /owner's Chrome session ended/);
+});
+
+test("a wait_for_owner that names the run whose task tab closed returns that closed-tab instruction", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runId = f.library.listRuns()[0]!.id;
+  await f.proxy.execute("wait_for_owner", ["1"]);
+  f.state.taskGone = true;
+  const [closed] = await f.proxy.execute("wait_for_owner", ["60000"]);
+  assert.equal(JSON.parse(closed!.stdout).instruction, TASK_TAB_CLOSED);
+  assert.equal(f.proxy.hasSession(), false);
+  const steps = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runId);
+  const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.instruction, TASK_TAB_CLOSED);
+  assert.equal(browserToolResult("wait_for_owner", late, undefined, runId).content[0]!.text, "Bao's task tab was closed. This session cannot continue.");
+  assert.equal((f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length, steps, "the late wait records no step");
+  const other = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, "run-other-chat");
+  assert.equal(JSON.parse(other[0]!.stdout).instruction, `${WAIT_RUN_ENDED} Run run-other-chat is not Bao's open browser session.`);
+  await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
 });
 
 test("a command during a handoff records none of its arguments after the task tab closes", async (t) => {
