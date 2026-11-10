@@ -181,10 +181,7 @@ ${LIST_TARGETS}
 `, { mode: 0o700 });
 
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
-  let released = false;
-  const release = async () => {
-    if (released) return;
-    released = true;
+  t.after(async () => {
     try { await proxy.close(); }
     finally {
       probe.close();
@@ -194,14 +191,13 @@ ${LIST_TARGETS}
       server.close();
       await rm(root, { recursive: true, force: true });
     }
-  };
-  t.after(release);
+  });
   const calls = async () => (await readFile(log, "utf8").catch(() => "")).trim().split("\n").filter(Boolean)
     .map((line) => JSON.parse(line) as { command: string; port: string; url: string });
   const pages = async () => (await probe.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos.filter((target) => target.type === "page");
   const ownerTabs = (await pages()).map((target) => target.targetId).sort();
   return { proxy, site, home, sourceRoot, baoDir, endpoint, ownerTabs, calls, pages, attaches: () => attaches, launched: () => [...launched],
-    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; }, release };
+    allow: () => { attach = "works"; }, slow: (ms: number) => { delay = ms; } };
 }
 
 const MOVED = `Bao's own browser hit a sign-in or verification prompt on 127.0.0.1; continued in your running Chrome (Chrome profile "Default", Owner) over remote debugging. Take a fresh snapshot before acting.`;
@@ -380,47 +376,84 @@ test("a later wait on a dialog an earlier wait_for_owner started does not call i
   assert.ok(await baoClosed(h.baoDir));
 });
 
-test("a URL-path wall reopens the page before it, and a title-only wall reopens its own URL", { timeout: 180_000 }, async (t) => {
-  const redirected = await harness(t, "works");
-  assert.equal((await redirected.proxy.execute("open", [`${redirected.site}/article`], "bao"))[0]!.exitCode, 0);
-  await navigateBao(redirected.baoDir, "/article", `${redirected.site}/restaurant`);
-  assert.equal((await redirected.proxy.execute("snapshot", [], undefined, false, undefined, {}, redirected.proxy.activeRunId))[0]!.stdout, NO_WALL);
-  const login = `http://localhost:${new URL(redirected.site).port}/login`;
-  await navigateBao(redirected.baoDir, "/restaurant", login);
-  const [pathMove] = await redirected.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, redirected.proxy.activeRunId);
-  assert.equal(pathMove!.stdout, `\u2713 Article\n  ${redirected.site}/restaurant\n`, "a sign-in address reopens the restaurant page, not the sign-in URL");
-  assert.ok(savedSteps(redirected.home).at(-1)!.summary!.text.startsWith("Bao's own browser hit a sign-in page on localhost"), savedSteps(redirected.home).at(-1)!.summary!.text);
-  await redirected.release();
-
-  const titled = await harness(t, "works");
-  assert.equal((await titled.proxy.execute("open", [`${titled.site}/article`], "bao"))[0]!.exitCode, 0);
-  await navigateBao(titled.baoDir, "/article", `${titled.site}/restaurant`);
-  assert.equal((await titled.proxy.execute("snapshot", [], undefined, false, undefined, {}, titled.proxy.activeRunId))[0]!.stdout, NO_WALL);
-  const moment = `http://localhost:${new URL(titled.site).port}/moment`;
-  await navigateBao(titled.baoDir, "/restaurant", moment);
-  const [check] = await titled.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, titled.proxy.activeRunId);
+test("a title-only human check reopens its own URL", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/restaurant`);
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const moment = `http://localhost:${new URL(h.site).port}/moment`;
+  await navigateBao(h.baoDir, "/restaurant", moment);
+  const [check] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
   const checkReply = JSON.parse(check!.stdout) as { outcome: string; instruction: string };
   assert.equal(checkReply.outcome, "halted", "the check page is still a wall in Running Chrome, so the owner clears it there");
   assert.match(checkReply.instruction, /clear the check on localhost/);
-  const checkStep = savedSteps(titled.home).at(-1)!;
+  const checkStep = savedSteps(h.home).at(-1)!;
   assert.deepEqual(checkStep.native.args, [moment], "Running Chrome opens the check page, not the restaurant page");
   assert.ok(checkStep.summary!.text.startsWith("Bao's own browser hit a human check on localhost"), checkStep.summary!.text);
-  await titled.release();
+  assert.ok(await baoClosed(h.baoDir));
+});
 
-  const signed = await harness(t, "works");
-  assert.equal((await signed.proxy.execute("open", [`${signed.site}/article`], "bao"))[0]!.exitCode, 0);
-  await navigateBao(signed.baoDir, "/article", `${signed.site}/restaurant`);
-  assert.equal((await signed.proxy.execute("snapshot", [], undefined, false, undefined, {}, signed.proxy.activeRunId))[0]!.stdout, NO_WALL);
-  const story = `http://localhost:${new URL(signed.site).port}/story`;
-  await navigateBao(signed.baoDir, "/restaurant", story);
-  const [titleMove] = await signed.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, signed.proxy.activeRunId);
+test("a sign-in title on the same host reopens its own URL", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/restaurant`);
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  const story = `${h.site}/story`;
+  await navigateBao(h.baoDir, "/restaurant", story);
+  const [titleMove] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
   const titleReply = JSON.parse(titleMove!.stdout) as { outcome: string; instruction: string };
   assert.equal(titleReply.outcome, "halted", "a Sign in title is still a wall on that URL");
-  assert.match(titleReply.instruction, /sign in to localhost/);
-  const titleStep = savedSteps(signed.home).at(-1)!;
+  assert.match(titleReply.instruction, /sign in to 127\.0\.0\.1/);
+  const titleStep = savedSteps(h.home).at(-1)!;
   assert.deepEqual(titleStep.native.args, [story], "Running Chrome opens that URL, not the page before it");
-  assert.ok(titleStep.summary!.text.startsWith("Bao's own browser hit a sign-in page on localhost"), titleStep.summary!.text);
-  assert.ok(await baoClosed(signed.baoDir));
+  assert.ok(titleStep.summary!.text.startsWith("Bao's own browser hit a sign-in page on 127.0.0.1"), titleStep.summary!.text);
+  assert.ok(await baoClosed(h.baoDir));
+});
+
+const AUTHORIZE = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=fixture&state=fixture&nonce=fixture";
+
+async function landOnAuthorize(baoDir: string, from: string): Promise<void> {
+  const endpoint = await readDevToolsActivePort(path.join(baoDir, "DevToolsActivePort"));
+  const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
+  try {
+    const tab = (await cdp.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>("Target.getTargets")).targetInfos
+      .find((target) => target.type === "page" && target.url.endsWith(from));
+    if (!tab?.targetId) throw new Error(`no Bao tab ending in ${from}`);
+    const { sessionId } = await cdp.send<{ sessionId: string }>("Target.attachToTarget", { targetId: tab.targetId, flatten: true });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*login.microsoftonline.com*", requestStage: "Request" }] }, sessionId);
+    cdp.on("Fetch.requestPaused", sessionId, (params) => {
+      const requestId = params.requestId;
+      if (typeof requestId !== "string") return;
+      void cdp.send("Fetch.fulfillRequest", {
+        requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "content-type", value: "text/html" }],
+        body: Buffer.from("<!doctype html><title>Sign in to your account</title>").toString("base64"),
+      }, sessionId).catch(() => undefined);
+    });
+    await cdp.send("Page.enable", {}, sessionId);
+    const loaded = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("authorize page did not load")), 15_000);
+      cdp.on("Page.loadEventFired", sessionId, () => { clearTimeout(timer); resolve(); });
+    });
+    await cdp.send("Page.navigate", { url: AUTHORIZE }, sessionId);
+    await loaded;
+  } finally { cdp.close(); }
+}
+
+test("a sign-in title on another host reopens the page the agent was on", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "works");
+  assert.equal((await h.proxy.execute("open", [`${h.site}/article`], "bao"))[0]!.exitCode, 0);
+  await navigateBao(h.baoDir, "/article", `${h.site}/restaurant`);
+  assert.equal((await h.proxy.execute("snapshot", [], undefined, false, undefined, {}, h.proxy.activeRunId))[0]!.stdout, NO_WALL);
+  await landOnAuthorize(h.baoDir, "/restaurant");
+  const [moved] = await h.proxy.execute("click", ["@e5"], undefined, false, undefined, {}, h.proxy.activeRunId);
+  assert.equal(moved!.stdout, `\u2713 Article\n  ${h.site}/restaurant\n`, "not the authorize URL");
+  const step = savedSteps(h.home).at(-1)!;
+  assert.deepEqual(step.native.args, [`${h.site}/restaurant`], "Running Chrome opens the page the agent was on");
+  assert.ok(!JSON.stringify(step.native.args).includes("microsoftonline"), JSON.stringify(step.native.args));
+  assert.ok(step.summary!.text.startsWith("Bao's own browser hit a sign-in page on login.microsoftonline.com"), step.summary!.text);
+  assert.ok(await baoClosed(h.baoDir));
 });
 
 test("wait_for_owner that reads a fresh sign-in URL reopens the page before it, not the sign-in URL", { timeout: 60_000 }, async (t) => {

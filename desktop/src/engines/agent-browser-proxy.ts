@@ -106,6 +106,12 @@ function httpPage(url: string | undefined): string | undefined {
   return url && /^https?:\/\//.test(url) ? url : undefined;
 }
 
+function hostName(url: string | undefined): string | undefined {
+  const http = httpPage(url);
+  if (!http) return undefined;
+  try { return new URL(http).hostname; } catch { return undefined; }
+}
+
 /** The browser a later open is compared with: the route that actually opened. The extension counts as running Chrome. */
 function openedChoice(pick: BrowserPick): AgentBrowser {
   return pick.route === "bao" || pick.route === "copy" ? pick.route : "current";
@@ -116,8 +122,6 @@ type Moved = { line: string; pick?: BrowserPick; site?: string };
 
 interface SessionData {
   browser: AgentBrowser;
-  /** The site the latest open asked for. An open that lands on an address wall reopens this. */
-  site?: string;
   stateDir: string;
   executable: string;
   flags: string[];
@@ -125,11 +129,11 @@ interface SessionData {
   abort: AbortController;
   recording: AgentBrowserRun;
   workflow: AgentBrowserWorkflow;
-  /** `reopen` is the page to open in Running Chrome: the page before an address wall, this page's URL when only its title matched, or this page when the wall is drawn in it. */
-  ownerWait?: { targetId: string; page: OwnerPage; reopen: string } | "pending";
+  /** `reopen` is the http(s) page Running Chrome should open, when Bao knows one. */
+  ownerWait?: { targetId: string; page: OwnerPage; reopen?: string } | "pending";
   /** Chrome's own URL and title for the active tab, from the latest metadata read. */
   page?: OwnerPage;
-  /** The latest http(s) page whose URL and title are not a sign-in or check. An address wall reopens this, not the latest open. */
+  /** The latest http(s) page whose URL and title are not a sign-in or check. An address wall, or a sign-in title on another host, reopens this. */
   beforeWall?: OwnerPage;
   /** The latest sign-in or check page, kept for the owner-wait card. */
   ownerPage?: OwnerPage;
@@ -453,7 +457,6 @@ export class AgentBrowserProxy {
       this.latest = { runId: recording.id, step, steps: recording.steps };
       if (command === "open") {
         const site = webSite(args[0]);
-        if (site) session.site = site;
         if (continuing && site && this.bound(session, site)) {
           const opened = await this.moveAway(session, BOUND_REASON, site, true);
           if (opened) {
@@ -469,8 +472,7 @@ export class AgentBrowserProxy {
         const read = !wall && this.movable(session, true) ? await this.activePage(session).catch(() => undefined) : undefined;
         const stop = wall ?? (read ? this.stopped(session, read) : undefined);
         const page = stop?.page;
-        const opened = stop && await this.moveAway(session, page && ownerWall(page) ? this.wallWords(session) : "a step that needs the owner",
-          stop.reopen, true, page?.url);
+        const opened = stop && await this.moveAway(session, this.wallWords(session), stop.reopen, true, page?.url);
         if (opened) {
           results.push(...session.ownerWait ? this.ownerResult("halted", session) : [opened]);
           return results;
@@ -792,18 +794,24 @@ export class AgentBrowserProxy {
   }
 
   /**
-   * The http(s) page Running Chrome should open for this wait. An address wall reopens the page before it, or the page an
-   * open asked for. A title-only wall reopens its own URL. A pending wait does not fall back to the latest open.
+   * The http(s) page Running Chrome should open. An address wall, or a sign-in title on another host, reopens the page an
+   * open asked for, or the page before the wall. A check title, or a sign-in title on the same host, reopens its own URL.
    */
   private pageToReopen(session: Session, page: OwnerPage | undefined, openedSite?: string): string | undefined {
-    const address = !!page && ownerWallOnAddress(page);
-    if (openedSite && address) return openedSite;
-    if (address) return httpPage(session.beforeWall?.url) ?? httpPage(page?.url);
-    return httpPage(page?.url) ?? httpPage(session.beforeWall?.url);
+    const before = session.beforeWall?.url;
+    if (page && ownerWallOnAddress(page)) return openedSite ?? before ?? httpPage(page.url);
+    if (page && ownerWall(page) === "login_wall") {
+      const wallHost = hostName(page.url);
+      const openHost = hostName(openedSite);
+      if (openedSite && openHost && wallHost && openHost !== wallHost) return openedSite;
+      const beforeHost = hostName(before);
+      if (before && beforeHost && wallHost && beforeHost !== wallHost) return before;
+    }
+    return httpPage(page?.url) ?? before;
   }
 
   private reopenUrl(session: Session): string | undefined {
-    if (session.ownerWait && session.ownerWait !== "pending") return httpPage(session.ownerWait.reopen) ?? this.pageToReopen(session, session.ownerWait.page);
+    if (session.ownerWait && session.ownerWait !== "pending") return session.ownerWait.reopen;
     return this.pageToReopen(session, session.page);
   }
 
@@ -813,8 +821,8 @@ export class AgentBrowserProxy {
   }
 
   /** The page Running Chrome should open, remembered with the wall so a later retry does not fall back to the latest open. */
-  private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): { targetId: string; page: OwnerPage; reopen: string } {
-    return { targetId: active.targetId, page: active.page, reopen: this.pageToReopen(session, active.page, openedSite) ?? active.page.url };
+  private stopped(session: Session, active: { targetId: string; page: OwnerPage }, openedSite?: string): { targetId: string; page: OwnerPage; reopen?: string } {
+    return { targetId: active.targetId, page: active.page, reopen: this.pageToReopen(session, active.page, openedSite) };
   }
 
   private wallWords(session: Session): string {
@@ -828,8 +836,8 @@ export class AgentBrowserProxy {
   /**
    * A Bao-profile session that stopped at a wall continues in the owner's running Chrome over remote debugging, on the Chrome
    * profile its sign-in import read, in the same session and run. Bao opens the page before a sign-in or check address, the
-   * wall's own URL when only its title matched, or the page that holds an in-page dialog, then closes its own window. The line
-   * names the wall's host. When that does not work, the
+   * page before a sign-in title on another host, the wall's own URL for a check title or a same-host sign-in title, or the page
+   * that holds an in-page dialog, then closes its own window. The line names the wall's host. When that does not work, the
    * session stays in Bao's window and the line says why. Returns the open result in the new tab.
    */
   private async moveAway(session: Session, what: string, url: string | undefined, retry = false, nameUrl?: string): Promise<AgentBrowserCommandResult | undefined> {
@@ -837,7 +845,7 @@ export class AgentBrowserProxy {
     if (!this.movable(session, retry, bound) || session.kind !== "copy" || session.pick.route === "extension" || session.pick.route === "current") return undefined;
     const wall = session.ownerWait && session.ownerWait !== "pending" ? session.ownerWait.page : undefined;
     const site = url !== undefined ? httpPage(url) : httpPage(wall?.url) ?? httpPage(session.page?.url);
-    const named = nameUrl ?? site;
+    const named = httpPage(nameUrl) ?? site;
     let host = named ?? "this site";
     try { host = new URL(host).hostname; } catch {}
     const stopped = bound ? `Bao did not open ${host} in its own browser because ${BOUND_REASON}` : `Bao's own browser hit ${what} on ${host}`;
