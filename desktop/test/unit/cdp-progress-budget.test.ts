@@ -314,7 +314,7 @@ else process.stdout.write('ok');
     const [opened] = await proxy.execute("open", ["http://fixture.test/"], "current", false, "Default");
     assert.equal(opened!.exitCode, 0, opened!.stderr.slice(0, 200));
     hang = true;
-    const click = proxy.execute("click", ["#go"]);
+    const click = proxy.execute("click", ["#go"], undefined, false, undefined, {}, proxy.activeRunId);
     const settled = click.then(() => undefined, () => undefined);
     await stuck;
     const started = Date.now();

@@ -29,7 +29,7 @@ test("Experian-shaped pass-through hands sign-in and bot walls to the owner and 
   let run: string | undefined;
   const command = async (name: string, args: string[] = []) => {
     const result = await client.call("agent_browser", { command: name, args, ...(name === "open" ? { browser: "copy" } : {}),
-      ...(name === "wait_for_owner" || name === "close") && run ? { run_id: run } : {} });
+      ...(run ? { run_id: run } : {}) });
     const named = result.structuredContent?.run_id;
     run = (typeof named === "string" ? named : /^Run (\S+)$/m.exec(result.text)?.[1]) ?? run;
     return result;

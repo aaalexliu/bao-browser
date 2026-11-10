@@ -134,7 +134,7 @@ function client(env: NodeJS.ProcessEnv, agent: boolean, group: boolean) {
     request, send, pid: child.pid, diagnostics: () => stderr, get run() { return run; },
     async call(command: string, args: string[] = []) {
       const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}),
-        ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
+        ...(run ? { run_id: run } : {}) } });
       const named = result.content?.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean);
       if (named) run = named;
       return result;
@@ -445,6 +445,92 @@ for (const outcome of ["failed-task", "failed-command", "owner-wait"] as const) 
   });
 }
 
+test("a failed open from another chat does not name the run it ended", { timeout: 60_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const ended = c.run!;
+  const failed = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: ["http://127.0.0.1/"], browser: "copy", profile: "Profile 9" } });
+  assert.equal(failed.isError, true);
+  const text = failed.content!.map((block) => block.text).join("\n");
+  assert.match(text, /Chrome has no profile "Profile 9"/);
+  assert.equal(text.includes(ended), false, text);
+  assert.equal(f.library.listRuns().some((run) => run.status === "recording"), false);
+});
+
+test("finish_task for a run a newer task ended stays closed while that session is open", { timeout: 90_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const older = c.run!;
+  const opened = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", browser: "copy", args: ["http://127.0.0.1/"] } });
+  assert.equal(opened.isError, false, JSON.stringify(opened));
+  const newer = opened.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean)!;
+  assert.notEqual(newer, older);
+  const saved = f.library.readRun(newer);
+  const closed = `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
+  const late = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: "older chat", run_id: older } });
+  assert.equal(late.isError, false);
+  assert.deepEqual(late.content!.map((block) => block.text), [closed]);
+  assert.equal((late.structuredContent as { outcome: string; reason: string }).outcome, "no_session");
+  assert.equal((late.structuredContent as { reason: string }).reason, closed);
+  assert.deepEqual(f.library.readRun(newer), saved, "the newer session's run stays");
+  assert.equal(f.library.listRuns().find((run) => run.id === newer)?.status, "recording");
+  const still = await c.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot", args: [], run_id: newer } });
+  assert.equal(still.isError, false, JSON.stringify(still));
+  assert.equal(still.content!.some((block) => block.text === `Run ${newer}`), true, JSON.stringify(still.content));
+  assert.equal(still.content!.some((block) => block.text.includes(older)), false);
+});
+
+test("after the newer task finishes, the older chat's named commands stay closed", { timeout: 90_000 }, async (t) => {
+  const f = await fixture();
+  t.after(() => f.close());
+  const c = f.start();
+  await c.request("initialize");
+  assert.equal((await c.call("open")).isError, false);
+  const older = c.run!;
+  const opened = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", browser: "copy", args: ["http://127.0.0.1/"] } });
+  assert.equal(opened.isError, false, JSON.stringify(opened));
+  const newer = opened.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean)!;
+  assert.notEqual(newer, older);
+  const finished = await c.request("tools/call", { name: "finish_task", arguments: { run_id: newer, outcome: "passed", reason: "Chat B finished." } });
+  assert.equal(finished.isError, false);
+  const workflow = (finished.structuredContent as { workflow?: string }).workflow;
+  assert.match(workflow ?? "", /^(Saved workflow: |Not saved as a workflow: )/);
+  const closed = `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
+  const runs = f.library.listRuns().length;
+  for (const arguments_ of [
+    { command: "snapshot", args: [], run_id: older },
+    { command: "click", args: ["@e1"], run_id: older },
+    { command: "open", args: ["http://127.0.0.1/again"], browser: "copy", run_id: older },
+    { command: "wait_for_owner", args: ["40"], run_id: older },
+    { command: "close", run_id: older },
+  ]) {
+    const result = await c.request("tools/call", { name: "agent_browser", arguments: arguments_ });
+    assert.equal(result.isError, false, JSON.stringify(result));
+    const reply = result.structuredContent as { outcome?: string; instruction?: string; run_id?: string };
+    assert.equal(reply.outcome, "closed", arguments_.command);
+    assert.equal(reply.instruction, closed, arguments_.command);
+    assert.equal(reply.run_id, older);
+    const sentence = arguments_.command === "wait_for_owner" ? "This wait ended. This session cannot continue." : "This run ended. This session cannot continue.";
+    assert.deepEqual(result.content!.map((block) => block.text), [sentence, `Run ${older} · closed`, closed], arguments_.command);
+    assert.equal(result.content!.some((block) => block.text === workflow || block.text.includes(newer)), false);
+  }
+  const late = await c.request("tools/call", { name: "finish_task", arguments: { outcome: "failed", reason: "older chat", run_id: older } });
+  assert.equal(late.isError, false);
+  assert.deepEqual(late.content!.map((block) => block.text), [closed]);
+  assert.equal((late.structuredContent as { outcome: string }).outcome, "no_session");
+  assert.equal(f.library.listRuns().length, runs);
+  const fresh = await c.request("tools/call", { name: "agent_browser", arguments: { command: "open", browser: "copy" } });
+  assert.equal(fresh.isError, false, JSON.stringify(fresh));
+  const started = fresh.content!.map((block) => /^Run (\S+)/.exec(block.text)?.[1]).find(Boolean);
+  assert.ok(started && started !== older);
+});
+
 test("a wait_for_owner, close, or finish_task whose run_id is not the open session names that run and leaves the open session alone", { timeout: 60_000 }, async (t) => {
   const f = await fixture();
   t.after(() => f.close());
@@ -457,7 +543,7 @@ test("a wait_for_owner, close, or finish_task whose run_id is not the open sessi
   const reply = late.structuredContent as { summary: string; outcome: string; instruction: string; browser?: string[]; run_id?: string };
   assert.equal(reply.outcome, "closed");
   assert.equal(reply.summary, "This wait ended. This session cannot continue.");
-  const ended = "This run's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.";
+  const ended = "This run's browser session ended and cannot continue. Report that to the owner. Run run-ended-chat is not Bao's open browser session. The browser now belongs to another task, so stop here.";
   assert.equal(reply.instruction, ended);
   assert.equal(reply.browser, undefined, "the result does not name the open session's browser");
   assert.equal(reply.run_id, "run-ended-chat");
@@ -500,7 +586,7 @@ for (const ending of ["queued-eof", "active-signal"] as const) {
     const openedText = opened.content?.map((block) => block.text).join("\n") ?? "";
     assert.equal(opened.isError, false, [openedText, c.diagnostics()].filter(Boolean).join("\n"));
     const copy = await f.copy();
-    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close", ...ending === "active-signal" ? { run_id: c.run } : {} } });
+    c.send("tools/call", { name: "agent_browser", arguments: { command: ending === "queued-eof" ? "snapshot" : "close", run_id: c.run } });
     await f.pending();
     if (ending === "queued-eof") {
       c.send("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: c.run } });

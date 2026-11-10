@@ -131,7 +131,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
         followSend(t, cdp);
         return cdp;
       });
-      await f.proxy.execute("snapshot");
+      await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
     }
     const result = await f.proxy.execute("wait_for_owner", [ending === "explicit-close" ? "1" : "5000"], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal((JSON.parse(result[0]!.stdout) as { outcome: string }).outcome, ending === "explicit-close" ? "waiting" : "closed");
@@ -144,7 +144,7 @@ for (const ending of ["no-active", "missing-target", "disconnect", "abort-send",
     if (["no-active", "missing-target", "dead-socket"].includes(ending)) {
       const calls = await f.calls();
       for (const command of ["snapshot", "screenshot", "fill", "press", "scroll", "click", "tab", "open", "wait_for_owner"]) {
-        const next = await f.proxy.execute(command, [], undefined, false, undefined, {}, command === "wait_for_owner" ? saved.id : undefined);
+        const next = await f.proxy.execute(command, [], undefined, false, undefined, {}, saved.id);
         assert.equal((JSON.parse(next[0]!.stdout) as { outcome: string }).outcome, "closed");
       }
       assert.deepEqual(await f.calls(), calls);
@@ -185,7 +185,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait keeps it
     assert.deepEqual(step.native.screenshots, []);
     const calls = await f.calls();
     for (const command of ["snapshot", "screenshot", "fill", "click", "tab"]) {
-      const blocked = await f.proxy.execute(command);
+      const blocked = await f.proxy.execute(command, [], undefined, false, undefined, {}, f.proxy.activeRunId);
       assert.equal((JSON.parse(blocked[0]!.stdout) as { outcome: string }).outcome, "halted");
     }
     assert.deepEqual(await f.calls(), calls);
@@ -228,7 +228,7 @@ for (const failure of ["connect", "metadata", "poll"]) test(`owner wait resumes 
     assert.ok(polls > 1);
     assert.equal(library.readRun(id).status, "recording");
     assert.equal(library.readRun(id).envelope, undefined);
-    assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, "snapshot unchanged\n");
+    assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "snapshot unchanged\n");
     assert.equal(library.listRuns()[0]!.id, id);
   } finally { await f.close(); }
 });
@@ -242,7 +242,7 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
       { stdout: "t1 Synthetic - http://127.0.0.1/\n", stderr: "", exitCode: 0 },
     ]);
     const text = "spaces 'quotes' \"double\"\nline two";
-    assert.deepEqual(await f.proxy.execute("fill", ["@e2", text]), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
+    assert.deepEqual(await f.proxy.execute("fill", ["@e2", text], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
     const records = await f.calls();
     const filled = records.find((call) => call.args.includes("fill"))!;
     assert.deepEqual(filled.args.slice(-3), ["fill", "@e2", text]);
@@ -266,8 +266,8 @@ test("proxy forwards argv and native output, attaches to its marked copy, and re
     assert.deepEqual(await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
     await assert.rejects(access(copy), /ENOENT/);
     await assert.rejects(access(records[0]!.env.AGENT_BROWSER_SOCKET_DIR!), /ENOENT/);
-    await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
-    await f.proxy.execute("open", [], "copy");
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
+    await f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId);
     assert.notEqual(f.copy(), copy);
   } finally { await f.close(); }
 });
@@ -280,21 +280,21 @@ test("snapshot find and diff return short views while the run keeps the full nat
   try {
     await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
     await writeFile(path.join(f.root, "page.txt"), before);
-    await assert.rejects(f.proxy.execute("click", ["@e1"], undefined, false, undefined, { find: { text: "x" } }), /only accepted on snapshot/);
-    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, { find: {} }), /non-empty text, role, or both/);
-    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, { find: { text: "x" }, diff: true }), /find or diff, not both/);
+    await assert.rejects(f.proxy.execute("click", ["@e1"], undefined, false, undefined, { find: { text: "x" } }, f.proxy.activeRunId), /only accepted on snapshot/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, { find: {} }, f.proxy.activeRunId), /non-empty text, role, or both/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, { find: { text: "x" }, diff: true }, f.proxy.activeRunId), /find or diff, not both/);
 
-    const [found] = await f.proxy.execute("snapshot", [], undefined, false, undefined, { find: { text: "search", role: "button" } });
+    const [found] = await f.proxy.execute("snapshot", [], undefined, false, undefined, { find: { text: "search", role: "button" } }, f.proxy.activeRunId);
     assert.equal(found!.stdout, `1 of ${before.trimEnd().split("\n").length} snapshot lines match text "search" and role button. Each is shown with the lines that hold it and everything inside it.\n- banner\n  - button "Open search" [ref=e1]`);
     assert.equal(f.proxy.lastCommand!.step.native.results[0]!.stdout, before, "the run records the full native tree");
 
-    assert.match((await f.proxy.execute("snapshot", [], undefined, false, undefined, { diff: true }))[0]!.stdout, /^No change since the last snapshot/);
+    assert.match((await f.proxy.execute("snapshot", [], undefined, false, undefined, { diff: true }, f.proxy.activeRunId))[0]!.stdout, /^No change since the last snapshot/);
     await writeFile(path.join(f.root, "page.txt"), after);
-    const [changed] = await f.proxy.execute("snapshot", [], undefined, false, undefined, { diff: true });
+    const [changed] = await f.proxy.execute("snapshot", [], undefined, false, undefined, { diff: true }, f.proxy.activeRunId);
     assert.equal(changed!.stdout, "Changed since the last snapshot: 2 lines added (+), 0 removed (-). Unchanged lines are left out except the ones that hold a change.\n"
       + "  - main\n+   - dialog \"Search\"\n+     - combobox \"Search or jump to\" [ref=e3]");
-    assert.match((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, { diff: true }))[0]!.stdout, /^No earlier snapshot with these args in this session, so this is the full snapshot\.\n- banner/);
-    assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, after, "a plain snapshot stays the exact native output");
+    assert.match((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, { diff: true }, f.proxy.activeRunId))[0]!.stdout, /^No earlier snapshot with these args in this session, so this is the full snapshot\.\n- banner/);
+    assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, after, "a plain snapshot stays the exact native output");
   } finally { await f.close(); }
 });
 
@@ -392,8 +392,8 @@ test("proxy reports native errors unchanged and leaves the session usable", asyn
   const f = await fixture(t);
   try {
     await f.proxy.execute("open", [], "copy");
-    assert.deepEqual(await f.proxy.execute("click", ["fail"]), [{ stdout: "native failure output\n", stderr: "native error\n", exitCode: 1 }]);
-    assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.exitCode, 0);
+    assert.deepEqual(await f.proxy.execute("click", ["fail"], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "native failure output\n", stderr: "native error\n", exitCode: 1 }]);
+    assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
     assert.equal((await f.calls()).filter((call) => call.args.at(-2) === "click").length, 1);
   } finally { await f.close(); }
 });
@@ -414,7 +414,7 @@ for (const mode of ["native-error", "missing-native", "daemon-error"]) {
       }
       await assert.rejects(access(copy), /ENOENT/);
       await assert.rejects(access(stateDir), /ENOENT/);
-      await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+      await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
     } finally { await f.close(); }
   });
 }
@@ -446,7 +446,7 @@ for (const ending of ["close", "finish_task", "disconnect", "owner-close", "idle
     assert.equal(failed, true);
     assert.equal(new Library(path.join(f.root, "home")).readRun(runId).cleanupError, "copy deletion failed");
     if (ending === "disconnect") return;
-    const [opened] = await f.proxy.execute("open", [], "copy");
+    const [opened] = await f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId);
     assert.equal(opened!.exitCode, 0, "the failed cleanup does not answer later calls");
     assert.equal(opens, 2);
     assert.notEqual(f.proxy.activeRunId, runId);
@@ -476,7 +476,7 @@ for (const command of ["open", "click", "close"]) {
     const f = await fixture(t);
     try {
       if (command !== "open") await f.proxy.execute("open", [], "copy");
-      const outcome = f.proxy.execute(command, ["hang"], command === "open" ? "copy" : undefined, false, undefined, {}, command === "close" ? f.proxy.activeRunId : undefined).then(() => undefined, (error: unknown) => error);
+      const outcome = f.proxy.execute(command, ["hang"], command === "open" ? "copy" : undefined, false, undefined, {}, command === "open" ? undefined : f.proxy.activeRunId).then(() => undefined, (error: unknown) => error);
       await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
       const copy = f.copy();
       const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
@@ -489,7 +489,7 @@ for (const command of ["open", "click", "close"]) {
       await assert.rejects(access(copy), /ENOENT/);
       await assert.rejects(access(stateDir), /ENOENT/);
       assert.equal(f.closeCount(), 1);
-      await assert.rejects(f.proxy.execute("open", [], "copy"), /disconnected/);
+      await assert.rejects(f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId), /disconnected/);
       assert.equal(await readFile(path.join(f.sourceRoot, "Profile 2", "Preferences"), "utf8"), "{}");
     } finally { await f.close(); }
   });
@@ -507,7 +507,7 @@ test("Chrome closing during native close preserves its result and cleans up once
     assert.deepEqual(await outcome, [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
     assert.equal(f.closeCount(), 1);
     await assert.rejects(access(copy), /ENOENT/);
-    await f.proxy.execute("open", [], "copy");
+    await f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId);
     assert.notEqual(f.copy(), copy);
   } finally { await f.close(); }
 });
@@ -519,16 +519,16 @@ for (const duringCommand of [false, true]) {
       await f.proxy.execute("open", [], "copy");
       const copy = f.copy();
       const stateDir = (await f.calls())[0]!.env.AGENT_BROWSER_SOCKET_DIR!;
-      const outcome = duringCommand ? f.proxy.execute("click", ["hang"]).catch((error: unknown) => error) : undefined;
+      const outcome = duringCommand ? f.proxy.execute("click", ["hang"], undefined, false, undefined, {}, f.proxy.activeRunId).catch((error: unknown) => error) : undefined;
       if (duringCommand) await waitFor(async () => access(path.join(f.root, "command.pid")).then(() => true, () => false));
       f.closeWindow();
       await waitFor(async () => access(stateDir).then(() => false, () => true));
       if (outcome) assert.equal((await outcome as Error).name, "AbortError");
       await assert.rejects(access(copy), /ENOENT/);
       assert.equal(f.closeCount(), 1);
-      await f.proxy.execute("open", [], "copy");
+      await f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId);
       assert.notEqual(f.copy(), copy);
-      assert.equal((await f.proxy.execute("snapshot"))[0]!.stdout, "snapshot unchanged\n");
+      assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "snapshot unchanged\n");
       await f.proxy.close();
       assert.equal(f.closeCount(), 2);
     } finally { await f.close(); }
@@ -572,10 +572,10 @@ test("startup persists a pending open before copying and keeps its failure in on
     assert.equal(pageShotLine(step), undefined);
     await assert.rejects(access(path.join(library.root, "shots", "runs", saved.id)), /ENOENT/);
     await assert.rejects(access(path.join(f.root, "calls.jsonl")), /ENOENT/);
-    await assert.rejects(f.proxy.execute("snapshot"), /start agent-browser with open/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /start agent-browser with open/);
     assert.equal(library.listRuns().length, 1, "rejected commands do not create runs");
     t.mock.method(profiles, "openCopiedChromeForProxy", openChrome);
-    assert.equal((await f.proxy.execute("open", [], "copy"))[0]!.stdout, "open unchanged\n");
+    assert.equal((await f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "open unchanged\n");
     await f.proxy.close();
     assert.equal(library.listRuns().length, 2, "a fresh attempt has its own run");
     assert.deepEqual(library.readRun(saved.id), saved, "retry does not overwrite startup failure");
@@ -623,8 +623,8 @@ test("proxy saves raw commands, native errors, timing, screenshots, partial runs
     assert.equal(partial.pageEngine, "agent-browser");
     assert.equal(partial.modelCalls, undefined);
     const text = "ghp_syntheticsecretvalue";
-    const filled = await f.proxy.execute("fill", ["@e2", text]);
-    const failed = await f.proxy.execute("click", ["fail"]);
+    const filled = await f.proxy.execute("fill", ["@e2", text], undefined, false, undefined, {}, f.proxy.activeRunId);
+    const failed = await f.proxy.execute("click", ["fail"], undefined, false, undefined, {}, f.proxy.activeRunId);
     const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
     const saved = library.readRun(partial.id);
     assert.equal(saved.status, "failed");
@@ -639,7 +639,7 @@ test("proxy saves raw commands, native errors, timing, screenshots, partial runs
       else assert.deepEqual(await readFile(path.join(library.root, "shots", "runs", saved.id, step.afterShot!)), png);
     }
     assert.equal(library.list().workflows.length, 0, "recording does not create a workflow");
-    await f.proxy.execute("open", [], "copy");
+    await f.proxy.execute("open", [], "copy", false, undefined, {}, f.proxy.activeRunId);
     f.proxy.disconnect();
     await f.proxy.close();
     assert.equal(library.listRuns().length, 2);
@@ -666,7 +666,7 @@ test("recording write and screenshot failures do not change native command resul
       { stdout: "open unchanged\n", stderr: "", exitCode: 0 },
       { stdout: "t1 Synthetic - http://127.0.0.1/\n", stderr: "", exitCode: 0 },
     ]);
-    assert.deepEqual(await f.proxy.execute("fill", ["#password", "synthetic-password"]), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
+    assert.deepEqual(await f.proxy.execute("fill", ["#password", "synthetic-password"], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "fill unchanged\n", stderr: "", exitCode: 0 }]);
     assert.deepEqual(await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId), [{ stdout: "close unchanged\n", stderr: "", exitCode: 0 }]);
     assert.ok(warnings.some((text) => text.includes("run write")));
     assert.ok(warnings.some((text) => text.includes("page screenshot")));
@@ -679,7 +679,7 @@ test("missing privacy metadata refuses page input before recording its arguments
   try {
     await f.proxy.execute("open", [], "copy");
     t.mock.method(sockets, "connectCdp", async () => { throw new Error("privacy metadata unavailable"); });
-    await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"]), /privacy metadata unavailable/);
+    await assert.rejects(f.proxy.execute("fill", ["#password", "private-owner-value"], undefined, false, undefined, {}, f.proxy.activeRunId), /privacy metadata unavailable/);
     const calls = await f.calls();
     assert.equal(calls.some((call) => call.args.includes("fill")), false);
     assert.doesNotMatch(JSON.stringify(new Library(path.join(f.root, "home")).listRuns()), /private-owner-value/);
@@ -711,9 +711,9 @@ test("proxy rejects malformed commands and attempts to replace its fixed session
   try {
     await assert.rejects(f.proxy.execute("eval", ["1"]), /unknown/);
     await assert.rejects(f.proxy.execute("open", "http://127.0.0.1/"), /array of strings/);
-    await assert.rejects(f.proxy.execute("open", [null]), /array of strings/);
+    await assert.rejects(f.proxy.execute("open", [null], undefined, false, undefined, {}, f.proxy.activeRunId), /array of strings/);
     for (const arg of ["--session=other", "--cdp", "--profile", "--headed=false", "--args", "--idle-timeout=10", "--all", "-p"]) {
-      await assert.rejects(f.proxy.execute("open", [arg]), /Bao fixes/);
+      await assert.rejects(f.proxy.execute("open", [arg], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao fixes/);
     }
     await assert.rejects(readFile(path.join(f.root, "calls.jsonl")), /ENOENT/);
   } finally { await f.close(); }
@@ -726,15 +726,15 @@ test("several Chrome profiles and no named one open nothing and record no run; a
     const question = await f.proxy.execute("open", ["http://127.0.0.1/"], "copy").then(() => undefined, (error: unknown) => error);
     assert.ok(question instanceof ChromeProfileQuestion);
     assert.deepEqual(question.profiles.map((profile) => profile.directory), ["Default", "Profile 2"]);
-    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9"),
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9", {}, f.proxy.activeRunId),
       /Chrome has no profile "Profile 9" in .*\. Choose one of: "Default" \(Alex, alex@example\.test\); "Profile 2" \(Synthetic\)\./);
-    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, "Default"), /profile is only accepted on open/);
+    await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, "Default", {}, f.proxy.activeRunId), /profile is only accepted on open/);
     assert.equal(f.copy(), "", "no copy started");
     assert.deepEqual(new Library(path.join(f.root, "home")).listRuns(), [], "no run recorded");
     assert.equal(f.proxy.hasSession(), false);
-    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 2"))[0]!.exitCode, 0);
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 2", {}, f.proxy.activeRunId))[0]!.exitCode, 0);
     assert.match(f.proxy.pickLines[0]!, /^Browser: Chrome copy, named by the agent\. Chrome app: .+\. User data: .+, a copy of Chrome profile "Profile 2" \(Synthetic\) in .+, named by the agent\.$/);
-    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], undefined, false, "Default"), /close the current session before choosing a different Chrome profile/);
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], undefined, false, "Default", {}, f.proxy.activeRunId), /close the current session before choosing a different Chrome profile/);
     const run = new Library(path.join(f.root, "home")).listRuns()[0]!;
     assert.deepEqual(run.browser && { route: run.browser.route, why: run.browser.why, profile: run.browser.route === "extension" ? undefined : run.browser.profile?.directory },
       { route: "copy", why: "named by the agent", profile: "Profile 2" });
@@ -782,7 +782,7 @@ test("a copy that stops for sign-in names the Running Chrome fallback on the sam
     } as unknown as sockets.CdpSocket;
     t.mock.method(currentChrome, "openCurrentChrome", async () => ({ pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: f.sourceRoot,
       endpoint: { port: await trapPort(), browserPath: "/devtools/browser/owner" }, cdp: owner, closed: owner.disconnected, isClosed: () => detached, detach: () => owner.close() }));
-    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"))[0]!.exitCode, 0);
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2", {}, f.proxy.activeRunId))[0]!.exitCode, 0);
     assert.equal(f.proxy.pickLines[0], `Browser: Running Chrome over remote debugging, fallback after a sign-in wall. Chrome app: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. User data: ${f.sourceRoot}. Profile: "Profile 2" (Synthetic) in ${f.sourceRoot}, named by the agent. Bao's task tab opened in the background.`);
     const runs = new Library(path.join(f.root, "home")).listRuns();
     assert.deepEqual(runs.map((run) => run.browser?.why).sort(), ["fallback after a sign-in wall", "named by the agent"]);
@@ -834,13 +834,13 @@ test("a wall that clears before finish_task is not a fallback; every wait_for_ow
     assert.equal(reply.outcome, "ready");
     assert.ok(reply.instruction.endsWith('then with {"command":"open","args":["http://127.0.0.1/"],"browser":"current","profile":"Profile 2"}. Bao does not switch on its own.'), reply.instruction);
     assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
-    await f.proxy.execute("snapshot");
+    await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
     assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "signed in" }, f.proxy.activeRunId));
     assert.deepEqual(f.proxy.pickLines, ['Browser: Chrome copy, Chrome profile "Profile 2".']);
 
     fakeOwnerChrome(t, f.sourceRoot);
-    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2"))[0]!.exitCode, 0);
+    assert.equal((await f.proxy.execute("open", ["http://127.0.0.1/"], "current", false, "Profile 2", {}, f.proxy.activeRunId))[0]!.exitCode, 0);
     assert.match(f.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, named by the agent\. /);
   } finally { await f.close(); }
 });
@@ -853,8 +853,102 @@ test("an open that fails names the route, Chrome app, and profile folder Bao tri
     assert.equal(f.proxy.pickLines.length, 1);
     assert.match(f.proxy.pickLines[0]!, /^Browser: Running Chrome over remote debugging, named by the agent, did not open\. Chrome app: .+\. Profile: "Profile 2" in (.+)\.$/);
     assert.ok(f.proxy.pickLines[0]!.endsWith(`Profile: "Profile 2" in ${f.sourceRoot}.`));
-    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9"), /Chrome has no profile "Profile 9"/);
+    await assert.rejects(f.proxy.execute("open", ["http://127.0.0.1/"], "copy", false, "Profile 9", {}, f.proxy.activeRunId), /Chrome has no profile "Profile 9"/);
     assert.ok(f.proxy.pickLines[0]!.startsWith("Browser: Chrome copy, named by the agent, did not open. Chrome app: "), f.proxy.pickLines[0]);
     assert.ok(f.proxy.pickLines[0]!.endsWith(`Profile: "Profile 9" in ${f.sourceRoot}.`));
+  } finally { await f.close(); }
+});
+
+test("an open with no run id ends the open run and starts its own, and the older chat's later calls change nothing", async (t) => {
+  const f = await fixture(t);
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const older = f.proxy.activeRunId!;
+    const sent = (await f.calls()).length;
+    const stale = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, "run-stale");
+    assert.equal((JSON.parse(stale[0]!.stdout) as { outcome: string }).outcome, "closed");
+    assert.match(stale[0]!.stdout, /The browser now belongs to another task, so stop here/);
+    assert.equal((await f.calls()).length, sent, "a stale snapshot sends no native command");
+    await assert.rejects(f.proxy.execute("click", ["@e1"]), /run_id is required on click while a browser session is open/);
+    assert.equal(await f.proxy.finishTask({ outcome: "failed", reason: "older chat" }, "run-stale"), undefined);
+    assert.equal(f.proxy.activeRunId, older, "a stale finish_task leaves the open run");
+    await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    const newer = f.proxy.activeRunId!;
+    assert.notEqual(newer, older);
+    assert.equal(new Library(path.join(f.root, "home")).readRun(older).envelope?.reason, "A newer task opened, so Bao ended this session.");
+    const refused = await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, older);
+    assert.equal((JSON.parse(refused[0]!.stdout) as { outcome: string }).outcome, "closed");
+    assert.match(refused[0]!.stdout, new RegExp(`Run ${older} is not Bao's open browser session`));
+    assert.equal(f.proxy.activeRunId, newer, "the older chat's next call does not take the new run");
+    assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, newer))[0]!.stdout, "snapshot unchanged\n");
+  } finally { await f.close(); }
+});
+
+test("an open that names a run a newer task ended leaves the open session alone", async (t) => {
+  const f = await fixture(t);
+  const library = new Library(path.join(f.root, "home"));
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const older = f.proxy.activeRunId!;
+    await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    const newer = f.proxy.activeRunId!;
+    assert.notEqual(newer, older);
+    const runs = library.listRuns().length;
+    const sent = (await f.calls()).length;
+    const opened = await f.proxy.execute("open", ["http://127.0.0.1/again"], "copy", false, undefined, {}, older);
+    const reply = JSON.parse(opened[0]!.stdout) as { outcome: string; instruction: string };
+    assert.equal(reply.outcome, "closed");
+    assert.equal(reply.instruction, `This run's browser session ended and cannot continue. Report that to the owner. Run ${older} is not Bao's open browser session. The browser now belongs to another task, so stop here.`);
+    assert.equal(f.proxy.activeRunId, newer, "chat A's open does not take chat B's session");
+    assert.equal(f.proxy.hasSession(), true);
+    assert.equal(library.listRuns().length, runs, "naming the ended run starts no new run");
+    assert.equal((await f.calls()).length, sent, "naming the ended run sends no native command");
+    assert.equal(f.proxy.lastWorkflowOutcome, undefined);
+    assert.equal(library.readRun(older).envelope?.reason, "A newer task opened, so Bao ended this session.");
+    assert.equal((await f.proxy.execute("snapshot", [], undefined, false, undefined, {}, newer))[0]!.stdout, "snapshot unchanged\n");
+  } finally { await f.close(); }
+});
+
+test("after the newer task finishes, a command that names the ended run stays closed and changes nothing", async (t) => {
+  const f = await fixture(t);
+  const library = new Library(path.join(f.root, "home"));
+  const closedFor = (runId: string) => `This run's browser session ended and cannot continue. Report that to the owner. Run ${runId} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
+  try {
+    await f.proxy.execute("open", ["http://127.0.0.1/"], "copy");
+    const older = f.proxy.activeRunId!;
+    await f.proxy.execute("open", ["http://127.0.0.1/next"], "copy");
+    const newer = f.proxy.activeRunId!;
+    assert.notEqual(newer, older);
+    assert.equal(await f.proxy.finishTask({ outcome: "passed", reason: "chat B finished" }, newer), newer);
+    assert.equal(f.proxy.hasSession(), false);
+    assert.match(f.proxy.lastWorkflowOutcome ?? "", /^(Saved workflow: |Not saved as a workflow: )/);
+    const runs = library.listRuns().length;
+    const sent = (await f.calls()).length;
+    const closed = closedFor(older);
+    for (const [command, args] of [["snapshot", []], ["click", ["@e1"]], ["open", ["http://127.0.0.1/again"]], ["wait_for_owner", ["40"]], ["close", []]] as const) {
+      const result = await f.proxy.execute(command, [...args], undefined, false, undefined, {}, older);
+      const reply = JSON.parse(result[0]!.stdout) as { outcome: string; instruction: string };
+      assert.equal(reply.outcome, "closed", command);
+      assert.equal(reply.instruction, closed, command);
+      assert.equal(f.proxy.lastWorkflowOutcome, undefined, command);
+      assert.equal(f.proxy.hasSession(), false, command);
+      assert.equal(f.proxy.refused?.runId, older, command);
+    }
+    assert.equal(await f.proxy.finishTask({ outcome: "failed", reason: "older chat" }, older), undefined);
+    assert.equal(f.proxy.refused?.runId, older);
+    assert.equal(f.proxy.hasSession(), false);
+    assert.equal((await f.calls()).length, sent, "naming the ended run sends no native command");
+    assert.equal(library.listRuns().length, runs, "naming the ended run records no new run");
+    assert.equal(library.readRun(newer).envelope?.reason, "chat B finished");
+    const started = await f.proxy.execute("open", ["http://127.0.0.1/fresh"], "copy");
+    assert.equal(started[0]!.exitCode, 0);
+    const fresh = f.proxy.activeRunId!;
+    assert.notEqual(fresh, older);
+    assert.equal(f.proxy.hasSession(), true);
+    await f.proxy.finishTask({ outcome: "passed", reason: "fresh task" }, fresh);
+    const other = await f.proxy.execute("open", ["http://127.0.0.1/other"], "copy", false, undefined, {}, "run-not-ended-by-newer");
+    assert.equal(other[0]!.exitCode, 0);
+    assert.notEqual(f.proxy.activeRunId, older);
+    assert.notEqual(f.proxy.activeRunId, "run-not-ended-by-newer");
   } finally { await f.close(); }
 });

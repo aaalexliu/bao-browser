@@ -207,7 +207,7 @@ const bound = JSON.parse(fs.readFileSync('bao.target', 'utf8')).targetId;
   assert.equal(task.groupId, group(strip)!.id);
   assert.deepEqual(strip.tabs.filter((tab) => tab.groupId !== -1).map((tab) => tab.id), [task.id], "the group holds only the page Bao works on, no blank tab");
   assert.equal(active(strip)?.id, chrome.ownerTabId, "the owner keeps his tab while the agent opens its page");
-  assert.equal((await proxy.execute("snapshot"))[0]!.exitCode, 0);
+  assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0);
 
   // A handoff opens the group so the owner can see the task tab, and leaves his own tab active.
   await proxy.execute("wait_for_owner", ["200"], undefined, false, undefined, {}, proxy.activeRunId);

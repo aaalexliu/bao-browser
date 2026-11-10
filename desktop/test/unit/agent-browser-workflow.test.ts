@@ -94,7 +94,7 @@ async function fixture(ui = false) {
   let run: string | undefined;
   const call = async (command: string, args: string[] = []) => {
     const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "open" ? { browser: "copy" } : {}),
-      ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
+      ...(run ? { run_id: run } : {}) } });
     run = result.structuredContent?.run_id ?? result.content.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text ?? "")?.[1]).find(Boolean) ?? run;
     return result;
   };

@@ -48,8 +48,9 @@ function mcp(env: NodeJS.ProcessEnv) {
   return {
     request,
     async call(command: string, args: string[] = []) {
-      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(command === "wait_for_owner" || command === "close") && run ? { run_id: run } : {} } });
-      run = result.content.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text)?.[1]).find(Boolean) ?? run;
+      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...(run ? { run_id: run } : {}) } });
+      const named = result.content.map((block) => /^Run (\S+)(?: · \w+)?$/.exec(block.text)?.[1]).find(Boolean);
+      run = command === "close" && !result.isError ? undefined : named ?? run;
       return result;
     },
     async close() { child.stdin.end(); await exited; },

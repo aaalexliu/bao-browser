@@ -1,3 +1,4 @@
+import { LIST_TARGETS } from "../support/fake-agent-browser";
 import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -11,7 +12,7 @@ import { McpClient } from "../../src/eval/mcp-client";
 import { runWorkflow, withHeldPage } from "../../src/mcp/catalog";
 import type { LibraryIdentity } from "../../src/home";
 import { frameRpc } from "../../src/mcp/frame";
-import { launchOwnedChrome, pidsForDataDir } from "../../src/launch";
+import { launchOwnedChrome, pidsForDataDir, pinTestBrowser } from "../../src/launch";
 import { TOOL_NAMES, TOOLS } from "../../src/mcp/server";
 import { createMcpVersionCheck, McpVersionError } from "../../src/mcp/version";
 import { UI_EXTENSION, VIEWER_MIME, VIEWER_URI } from "../../src/mcp/viewer";
@@ -1120,6 +1121,96 @@ test("a held replay blocks update stops and supports resume and cancel after rep
     }
     await new Promise<void>((resolve) => fixture.close(() => resolve()));
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a bad browser value returns only that error and leaves the open session alone", { timeout: 120_000 }, async () => {
+  const page = createServer((_req, res) => {
+    res.setHeader("content-type", "text/html");
+    res.end("<!doctype html><h1 id=marker>CHAT_A_MARKER</h1>");
+  });
+  await new Promise<void>((resolve) => page.listen(0, "127.0.0.1", resolve));
+  const address = page.address();
+  assert.ok(address && typeof address !== "string");
+  const url = `http://127.0.0.1:${address.port}/a`;
+  pinTestBrowser();
+  const headed = process.env.BAO_HEADED;
+  const nativeEnv = process.env.BAO_AGENT_BROWSER;
+  process.env.BAO_HEADED = "0";
+  const native = path.join(tmpdir(), `bao-bad-browser-native-${process.pid}`);
+  writeFileSync(native, `#!${process.execPath}
+${LIST_TARGETS}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (args.includes('--json')) {
+  const endpoint = new URL(args[args.indexOf('--cdp') + 1]);
+  listTargets(endpoint.href).then((tabs) => {
+    process.stdout.write(JSON.stringify({ data: { tabs: tabs.filter((tab) => tab.type === 'page').map((tab) => ({ active: true, targetId: tab.id })) } }));
+  }).catch((error) => {
+    console.error(error && error.message ? error.message : String(error));
+    process.exitCode = 1;
+  });
+} else if (args.includes('snapshot')) process.stdout.write('- heading CHAT_A_MARKER [level=1, ref=e1]');
+else process.stdout.write('native success');
+`, { mode: 0o700 });
+  process.env.BAO_AGENT_BROWSER = native;
+  const mcp = startMcp("bao-mcp-bad-browser-");
+  const ui = startMcp("bao-mcp-bad-browser-ui-");
+  let run = "";
+  let uiRun = "";
+  try {
+    await initialize(mcp);
+    await ui.request("initialize", { protocolVersion: "2024-11-05", capabilities: { extensions: { [UI_EXTENSION]: { mimeTypes: [VIEWER_MIME] } } }, clientInfo: { name: "scripted", version: "0" } });
+    ui.child.stdin.write(frame({ jsonrpc: "2.0", method: "notifications/initialized" }));
+    const opened = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: [url], browser: "copy" } }, 60_000);
+    const openText = (opened.result?.content ?? []).map((block) => block.text ?? "").join("\n");
+    assert.equal(opened.result?.isError, false, openText);
+    run = openText.match(/Run (run-\S+)/)?.[1] ?? "";
+    assert.match(run, /^run-/);
+    const shot = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot", args: ["-s", "#marker"], run_id: run } }, 30_000);
+    const shotText = (shot.result?.content ?? []).map((block) => block.text ?? "").join("\n");
+    assert.equal(shot.result?.isError, false, shotText);
+    assert.match(shotText, /CHAT_A_MARKER/);
+    const uiOpen = await ui.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: [url], browser: "copy" } }, 60_000);
+    assert.equal(uiOpen.result?.isError, false);
+    uiRun = uiOpen.result?.structuredContent?.run_id ?? "";
+    assert.match(uiRun, /^run-/);
+    const bad = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: [url], browser: "chrome" } });
+    const badText = (bad.result?.content ?? []).map((block) => block.text ?? "").join("\n");
+    assert.equal(bad.result?.isError, true);
+    assert.equal(bad.result?.content?.length, 1);
+    assert.equal(badText, "Choose browser=current (default), browser=bao, or browser=copy.");
+    assert.equal(bad.result?.structuredContent, undefined);
+    const uiBad = await ui.request("tools/call", { name: "agent_browser", arguments: { command: "open", args: [url], browser: "chrome" } });
+    const uiBadText = (uiBad.result?.content ?? []).map((block) => block.text ?? "").join("\n");
+    assert.equal(uiBad.result?.isError, true);
+    assert.equal(uiBadText, "Choose browser=current (default), browser=bao, or browser=copy.");
+    assert.equal(uiBad.result?.structuredContent, undefined);
+    assert.equal(uiBad.result?.content?.length, 1);
+    const again = await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot", args: ["-s", "#marker"], run_id: run } }, 30_000);
+    const againText = (again.result?.content ?? []).map((block) => block.text ?? "").join("\n");
+    assert.equal(again.result?.isError, false, againText);
+    assert.match(againText, /CHAT_A_MARKER/);
+    assert.match(againText, new RegExp(run));
+    const uiAgain = await ui.request("tools/call", { name: "agent_browser", arguments: { command: "snapshot", args: ["-s", "#marker"], run_id: uiRun } }, 30_000);
+    assert.equal(uiAgain.result?.isError, false);
+    assert.equal(uiAgain.result?.structuredContent?.run_id, uiRun);
+  } finally {
+    if (headed === undefined) delete process.env.BAO_HEADED;
+    else process.env.BAO_HEADED = headed;
+    if (nativeEnv === undefined) delete process.env.BAO_AGENT_BROWSER;
+    else process.env.BAO_AGENT_BROWSER = nativeEnv;
+    rmSync(native, { force: true });
+    if (run) await mcp.request("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: run } }, 20_000).catch(() => undefined);
+    if (uiRun) await ui.request("tools/call", { name: "agent_browser", arguments: { command: "close", run_id: uiRun } }, 20_000).catch(() => undefined);
+    for (const child of [mcp, ui]) {
+      if (child.child.exitCode === null && child.child.signalCode === null) {
+        const exited = once(child.child, "exit");
+        child.child.kill();
+        await exited;
+      }
+    }
+    await new Promise<void>((resolve) => page.close(() => resolve()));
   }
 });
 

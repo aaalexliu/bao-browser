@@ -172,7 +172,7 @@ for (const { browser, check, bare } of [
     const importsBefore = importCalls.length;
     const before = await readFile(log, "utf8");
     for (const command of ["snapshot", "screenshot", "fill", "press", "tab"]) {
-      assert.equal(outcome(await proxy.execute(command, ["fixture-private-credential"])), "halted");
+      assert.equal(outcome(await proxy.execute(command, ["fixture-private-credential"], undefined, false, undefined, {}, proxy.activeRunId)), "halted");
     }
     assert.equal(await readFile(log, "utf8"), before, "no native commands while the owner types");
     assert.equal(importCalls.length, importsBefore, "owner input never triggers a login import");
@@ -193,7 +193,7 @@ for (const { browser, check, bare } of [
     assert.equal(outcome(await waiting), "ready");
     assert.equal(h.attaches, browser === "bao" ? 3 : 0, "every explicit wait_for_owner on a Bao profile tries the owner's running Chrome again");
     assert.equal(observer.contexts()[0]!.pages().filter((p) => !p.isClosed()).length, pages);
-    assert.equal((await proxy.execute("snapshot"))[0]!.stdout, "snapshot native output\n");
+    assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "snapshot native output\n");
     assert.equal(library.listRuns()[0]!.id, initial.id);
     assert.equal(library.listRuns()[0]!.status, "recording");
     const saved = await readFile(path.join(home, "runs", `${initial.id}.json`), "utf8");
@@ -203,14 +203,14 @@ for (const { browser, check, bare } of [
       assert.equal(step.native.screenshots.length, 0);
     }
     await page.goto(fixture.url("/owner/check"));
-    await proxy.execute("snapshot");
+    await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.equal(importCalls.length, importsBefore, "later walls never retry the original open");
     await page.evaluate(() => { document.body.innerHTML = "<h1>Dashboard</h1>"; });
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["30"], undefined, false, undefined, {}, proxy.activeRunId)), "waiting", "unchanged metadata stays private");
     await page.evaluate(() => { document.title = "Dashboard"; });
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["2000"], undefined, false, undefined, {}, proxy.activeRunId)), "ready", "same URL can leave a check when title changes");
     await page.goto(fixture.url("/owner/check"));
-    await proxy.execute("snapshot");
+    await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
     const closed = proxy.execute("wait_for_owner", ["5000"], undefined, false, undefined, {}, proxy.activeRunId);
     if (check === "captcha") await h.closeBrowser!();
     else await page.close();
@@ -244,7 +244,7 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
     assert.equal(proxy.activeRunId, first);
     // Shortly before the limit after the latest wait call, any other call re-arms the session's timer, which then ends the wait with no further call.
     offset += OWNER_WAIT_LIMIT_MS - 5000;
-    assert.equal(outcome(await proxy.execute("snapshot")), "halted");
+    assert.equal(outcome(await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId)), "halted");
     assert.equal(proxy.activeRunId, first);
     const deadline = now() + 30_000;
     while (proxy.hasSession() && now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -256,17 +256,17 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
     assert.match(proxy.endedWait ?? "", ended());
     const second = proxy.activeRunId!;
     assert.notEqual(second, first);
-    await proxy.execute("snapshot");
+    await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId);
     assert.equal(proxy.endedWait, undefined, "only the next result names the ended wait");
     const timedOut = await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, first);
     assert.equal(outcome(timedOut), "closed", "a chat that comes back to a wait the timer ended learns it ended");
-    assert.equal(instruction(timedOut), `This run's browser session ended and cannot continue. Report that to the owner. Run ${first} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.`);
+    assert.equal(instruction(timedOut), `This run's browser session ended and cannot continue. Report that to the owner. Run ${first} is not Bao's open browser session. The browser now belongs to another task, so stop here.`);
     assert.equal(proxy.activeRunId, second);
 
     // A new chat's open during a fresh wait ends that wait and opens fresh; only wait_for_owner continues a wait.
     assert.equal(outcome(await proxy.execute("open", [fixture.url("/owner/start?check=captcha")], "copy")), "halted");
     assert.match(proxy.endedWait ?? "", ended("a new open starts a new task"));
-    assert.equal(library.readRun(second).envelope?.reason, "session_closed");
+    assert.equal(library.readRun(second).envelope?.reason, "A newer task opened, so Bao ended this session.", "a newer open records the ended run as ended by a newer task");
     const third = proxy.activeRunId!;
     assert.notEqual(third, second);
 
@@ -313,7 +313,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
         assert.equal(await page.locator("#bao-owner-wait").count(), order === "chat B waits first" ? 1 : 0, `${what}: no banner on a page chat B is not waiting on`);
         assert.equal(page.isClosed(), false, `${what}: chat B's tab stays open`);
       };
-      const ended = `This run's browser session ended and cannot continue. Report that to the owner. Run ${chatA} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it; stop here.`;
+      const ended = `This run's browser session ended and cannot continue. Report that to the owner. Run ${chatA} is not Bao's open browser session. The browser now belongs to another task, so stop here.`;
       const late = await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, chatA);
       assert.equal(outcome(late), "closed");
       assert.equal(instruction(late), ended);
@@ -323,12 +323,22 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
       assert.equal(outcome(closed), "closed");
       assert.equal(instruction(closed), ended);
       await untouched("close");
+      const snapped = await proxy.execute("snapshot", [], undefined, false, undefined, {}, chatA);
+      assert.equal(outcome(snapped), "closed");
+      assert.equal(instruction(snapped), ended);
+      await untouched("snapshot");
+      const clicked = await proxy.execute("click", ["@e1"], undefined, false, undefined, {}, chatA);
+      assert.equal(outcome(clicked), "closed");
+      assert.equal(instruction(clicked), ended);
+      await untouched("click");
       assert.equal(await proxy.finishTask({ outcome: "failed", reason: "chat A gave up" }, chatA), undefined);
       assert.deepEqual(proxy.refused, { runId: chatA });
       await untouched("finish_task");
       for (const [what, call] of [
         ["wait_for_owner", () => proxy.execute("wait_for_owner", ["40"])],
         ["close", () => proxy.execute("close")],
+        ["snapshot", () => proxy.execute("snapshot")],
+        ["click", () => proxy.execute("click", ["@e1"])],
         ["finish_task", () => proxy.finishTask({ outcome: "failed", reason: "no run named" })],
       ] as const) {
         await assert.rejects(call(), new RegExp(`^Error: run_id is required on ${what} while a browser session is open\\. Send back the run id from this chat's latest agent_browser result; a chat whose results named no run has no session here\\.$`));
@@ -336,7 +346,7 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
         await untouched(`${what} without run_id`);
       }
       if (order === "chat B waits first") assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, chatB)), "waiting");
-      else assert.equal((await proxy.execute("snapshot"))[0]!.stdout, "snapshot native output\n", "chat B continues");
+      else assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "snapshot native output\n", "chat B continues");
       assert.equal(proxy.refused, undefined);
       assert.equal(await proxy.finishTask({ outcome: "passed", reason: "chat B finished" }, ` ${chatB}`.trim()), chatB, "chat B's own run id ends chat B's session");
       assert.equal(new Library(h.home).readRun(chatB).envelope?.reason, order === "chat B waits first" ? "session_closed" : "chat B finished");
@@ -344,13 +354,14 @@ test("a wait_for_owner, close, or finish_task that names a run a newer open ende
   });
 });
 
-test("a first wait_for_owner on a check Bao did not recognize sends back the open's run id, and run_id is only for wait_for_owner and close", { timeout: 60_000 }, async (t) => {
+test("a first wait_for_owner on a check Bao did not recognize sends back the open's run id, and a later command needs that run id", { timeout: 60_000 }, async (t) => {
   const h = await ownerProxy(t);
   const { fixture, proxy } = h;
   try {
     await proxy.execute("open", [fixture.url("/")], "copy");
     const run = proxy.activeRunId!;
-    await assert.rejects(proxy.execute("snapshot", [], undefined, false, undefined, {}, run), /run_id is only accepted on wait_for_owner and close/);
+    assert.equal((await proxy.execute("snapshot", [], undefined, false, undefined, {}, run))[0]!.stdout, "snapshot native output\n", "a snapshot that names the open run acts on it");
+    await assert.rejects(proxy.execute("click", ["@e1"]), /run_id is required on click while a browser session is open/);
     assert.equal(outcome(await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, run)), "waiting");
     assert.equal(proxy.activeRunId, run);
     assert.equal(proxy.ownerPage?.url, fixture.url("/"));

@@ -186,7 +186,7 @@ export function browserToolResult(command: string, results: AgentBrowserCommandR
   };
 }
 
-/** The line that names the run a text result acted on, which a later wait_for_owner, close, or finish_task sends back as run_id. */
+/** The line that names the run a text result acted on. The chat sends that id back as run_id on its next command. */
 export const runLine = (runId: string, outcome?: string) => outcome ? `Run ${runId} · ${outcome}` : `Run ${runId}`;
 
 /**

@@ -234,23 +234,23 @@ const endpoint=new URL(args[args.indexOf('--cdp')+1]);
       const { entries } = await inspector.send<{ entries: [string, string][] }>("DOMStorage.getDOMStorageItems", { storageId: { securityOrigin: site, isLocalStorage: true } }, sessionId);
       assert.deepEqual(entries, [["identity", "fixture-source-value"]], "hidden-tab seeding restores storage for the requested origin");
     } finally { inspector.close(); }
-    await proxy.execute("open", [site]);
+    await proxy.execute("open", [site], undefined, false, undefined, {}, proxy.activeRunId);
     assert.ok(reusedStorage > 0, "an ordinary page with the correct committed origin still gets reused");
     assert.equal(hiddenTabs, 1);
     const beforeReuse = reusedStorage;
     unverifiable = true;
-    assert.equal((await proxy.execute("open", [site]))[0]!.stdout, "Opened\n");
+    assert.equal((await proxy.execute("open", [site], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "Opened\n");
     assert.equal(reusedStorage, beforeReuse, "unverifiable frames never receive storage operations");
     assert.equal(hiddenTabs, 2);
     unverifiable = false;
     failSeeding = true;
     const beforeFailure = seedAttempts;
-    assert.equal((await proxy.execute("open", [site]))[0]!.stdout, "Opened\n", "a failed later seed cannot prevent native navigation");
+    assert.equal((await proxy.execute("open", [site], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "Opened\n", "a failed later seed cannot prevent native navigation");
     assert.ok(seedAttempts > beforeFailure);
-    const wall = await proxy.execute("open", [`${site}/login`]);
+    const wall = await proxy.execute("open", [`${site}/login`], undefined, false, undefined, {}, proxy.activeRunId);
     assert.equal((JSON.parse(wall[0]!.stdout) as { outcome: string }).outcome, "halted", "a failed wall seed reaches normal owner wait");
     await proxy.close();
-    assert.equal((await startup.execute("open", [site], "bao"))[0]!.stdout, "Opened\n", "a failed startup seed cannot prevent native navigation");
+    assert.equal((await startup.execute("open", [site], "bao", false, undefined, {}, startup.activeRunId))[0]!.stdout, "Opened\n", "a failed startup seed cannot prevent native navigation");
     const commands = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { command: string });
     assert.equal(commands.filter((entry) => entry.command === "open").length, 6);
     assert.ok(labels.some(([label]) => label === "Bao sign-in seed unavailable; continuing without import."));
@@ -493,13 +493,13 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
       return;
     }
     if (native) {
-      const copy = await proxy.execute("open", ["about:blank"]);
+      const copy = await proxy.execute("open", ["about:blank"], undefined, false, undefined, {}, proxy.activeRunId);
       assert.equal(copy[0]!.exitCode, 0, copy[0]!.stderr);
-      await assert.rejects(proxy.execute("open", [opened], "bao"), /close/i);
+      await assert.rejects(proxy.execute("open", [opened], "bao", false, undefined, {}, proxy.activeRunId), /close/i);
       await proxy.close();
       launchCount = 0;
     }
-    const results = await proxy.execute("open", [opened], "bao");
+    const results = await proxy.execute("open", [opened], "bao", false, undefined, {}, proxy.activeRunId);
     assert.equal(results[0]!.exitCode, 0, results[0]!.stderr);
     const commands = () => readFile(log, "utf8").then((text) => text.trim().split("\n").map((line) => JSON.parse(line) as { command: string }));
     if (!native) assert.equal((await commands()).filter((entry) => entry.command === "open").length, scenario === "stale SSO" || scenario === "newer anonymous wall" ? 2 : 1, JSON.stringify(results));
@@ -521,23 +521,23 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
       assert.equal((await cookies()).find((cookie) => cookie.name === "bao-only")?.value, "keep");
       if (!sso) assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
       if (scenario === "unavailable source") {
-        assert.equal((await proxy.execute("open", [opened]))[0]!.stdout, "Opened\n", "a source launch failure cannot block a later open");
+        assert.equal((await proxy.execute("open", [opened], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "Opened\n", "a source launch failure cannot block a later open");
         assert.equal(launchCount, 3);
         await writeFile(path.join(sourceRoot, "Local State"), "not valid JSON");
-        assert.equal((await proxy.execute("open", [opened]))[0]!.stdout, "Opened\n", "an unreadable source state cannot block a working Bao login");
+        assert.equal((await proxy.execute("open", [opened], undefined, false, undefined, {}, proxy.activeRunId))[0]!.stdout, "Opened\n", "an unreadable source state cannot block a working Bao login");
         assert.equal((await cookies()).find((cookie) => cookie.name === "session")?.value, "fresh");
         assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
-        const wall = await proxy.execute("open", [`${site}/login`]);
+        const wall = await proxy.execute("open", [`${site}/login`], undefined, false, undefined, {}, proxy.activeRunId);
         assert.equal((JSON.parse(wall[0]!.stdout) as { outcome: string }).outcome, "halted", "a failed wall snapshot falls through to owner wait");
         assert.equal(launchCount, 3, "wall handling reuses the failed open snapshot without another source launch");
       }
       if (scenario === "signed-out home") {
         assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
         await observer.send("Network.setCookie", { name: "session", value: "bao-renewed", url: site }, sessionId);
-        await proxy.execute("open", [opened]);
+        await proxy.execute("open", [opened], undefined, false, undefined, {}, proxy.activeRunId);
         assert.equal((await cookies()).find((cookie) => cookie.name === "session")?.value, "bao-renewed", "unflushed Bao renewals beat the older source snapshot");
         await writeSource("fresh-again");
-        await proxy.execute("open", [opened]);
+        await proxy.execute("open", [opened], undefined, false, undefined, {}, proxy.activeRunId);
         assert.equal((await cookies()).find((cookie) => cookie.name === "session")?.value, "fresh-again", "a later explicit open imports a newer daily session");
         assert.equal(await evaluate("localStorage.getItem('identity')"), "bao-account");
       }
@@ -556,7 +556,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({command,args})+'\\n');
 test("browser choice is explicit on open and rejects unknown values", async () => {
   const proxy = new AgentBrowserProxy({ home: "/unused" });
   await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
-  await assert.rejects(proxy.execute("snapshot", [], "bao"), /only accepted on open/);
+  await assert.rejects(proxy.execute("snapshot", [], "bao", false, undefined, {}, proxy.activeRunId), /only accepted on open/);
   const tool = TOOLS.find((item) => item.name === "agent_browser")!;
   assert.ok("browser" in tool.inputSchema.properties);
   assert.deepEqual(tool.inputSchema.properties.browser.enum, ["bao", "copy", "current"]);
@@ -628,8 +628,8 @@ if (args.includes('--json')) {
   assert.match(proxy.pickLines[0]!, /^Browser: Bao profile, fallback when running Chrome could not be used\. Chrome app: .+\. User data: .+agent-browser-profile\. Bao imports no sign-ins: /);
   assert.ok(proxy.pickLines[0]!.includes(`Bao imports no sign-ins: Bao could not read Chrome's profiles in ${sourceRoot}: `), proxy.pickLines[0]);
   await proxy.close();
-  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy"), /^Error: Bao could not read Chrome's profiles in /);
-  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "bao", false, "Default"), /^Error: Bao could not read Chrome's profiles in /);
+  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy", false, undefined, {}, proxy.activeRunId), /^Error: Bao could not read Chrome's profiles in /);
+  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "bao", false, "Default", {}, proxy.activeRunId), /^Error: Bao could not read Chrome's profiles in /);
 });
 
 test("with Chrome's folder refused, the Bao profile still opens and says why it imported nothing, and a copy stops", { timeout: 60_000 }, async (t) => {
@@ -659,5 +659,5 @@ if (args.includes('--json')) {
   const run = new Library(home).readRun(proxy.activeRunId!);
   assert.equal(run.browser?.route === "bao" ? run.browser.unread : undefined, refused);
   await proxy.close();
-  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy"), { message: refused });
+  await assert.rejects(proxy.execute("open", ["https://news.example.test/article"], "copy", false, undefined, {}, proxy.activeRunId), { message: refused });
 });

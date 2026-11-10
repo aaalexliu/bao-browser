@@ -148,55 +148,55 @@ test("Chrome's Gemini panel and side panels stay out of the agent's tab list, an
   assert.equal(f.daemon.pinned, true, "the native daemon stays on its bound tab");
   assert.equal(opened[1]!.stdout, `→ [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n`,
     "Bao's task tab and the owner's tabs are told apart; the Gemini panel and both side panels are gone; a real tab on the panel URL stays");
-  assert.equal((await f.proxy.execute("tab", []))[0]!.stdout, opened[1]!.stdout);
-  const json = JSON.parse((await f.proxy.execute("tab", ["list", "--json"]))[0]!.stdout) as { data: { tabs: { tabId: string; baoTaskTab?: boolean }[] } };
+  assert.equal((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, opened[1]!.stdout);
+  const json = JSON.parse((await f.proxy.execute("tab", ["list", "--json"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout) as { data: { tabs: { tabId: string; baoTaskTab?: boolean }[] } };
   assert.deepEqual(json.data.tabs.map(tab => [tab.tabId, tab.baoTaskTab ?? false]), [["t1", true], ["t2", false], ["t3", false]]);
 });
 
 test("when the native daemon makes the Gemini panel current mid-session, the next click and snapshot still land in the task tab", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  await f.proxy.execute("snapshot", ["-i"]);
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
   f.daemon.before = () => { f.daemon.active = "glic"; };
-  const [click] = await f.proxy.execute("click", ["@e56"]);
+  const [click] = await f.proxy.execute("click", ["@e56"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(click!.stdout, "✓ Done on task\n");
   assert.deepEqual(f.daemon.commands.filter(entry => entry.command === "click").map(entry => entry.on), ["task"]);
   assert.ok(f.daemon.commands.some(entry => entry.command === "tab" && entry.args[0] === "t1" && entry.on === "glic"), "Bao switched the daemon back to its task tab");
   f.daemon.before = () => { f.daemon.active = "search"; };
-  assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.stdout, "✓ Done on task\n");
+  assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
   assert.ok(f.daemon.commands.filter(entry => entry.command !== "tab").every(entry => entry.on === "task"), "no page command ran on a panel");
 });
 
 test("the agent cannot switch to or close Chrome's own panels, but can switch to the owner's tabs and stays there", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  await f.proxy.execute("tab", []);
+  await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   for (const args of [["t4"], ["close", "t4"], ["t6"]]) {
-    const [result] = await f.proxy.execute("tab", args);
+    const [result] = await f.proxy.execute("tab", args, undefined, false, undefined, {}, f.proxy.activeRunId);
     assert.equal(result!.exitCode, 1);
     assert.match(result!.stderr, /is not a tab in a Chrome window, such as the Gemini panel or a side panel\. Stay in Bao's task tab\./);
   }
   assert.ok(!f.daemon.commands.some(entry => entry.command === "tab" && ["t4", "t6"].includes(entry.args.at(-1)!)), "the refused calls never reached the daemon");
-  assert.equal((await f.proxy.execute("tab", ["t3"]))[0]!.exitCode, 0, "a real tab on the Gemini panel URL is still a tab");
+  assert.equal((await f.proxy.execute("tab", ["t3"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0, "a real tab on the Gemini panel URL is still a tab");
   assert.equal(f.daemon.active, "glic-tab");
-  assert.equal((await f.proxy.execute("tab", ["t2"]))[0]!.exitCode, 0);
-  await f.proxy.execute("click", ["@e1"]);
+  assert.equal((await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  await f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.daemon.commands.at(-1)!.on, "owner", "an explicit switch is not undone");
-  assert.equal((await f.proxy.execute("tab", []))[0]!.stdout, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n→ [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n`);
+  assert.equal((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n→ [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n`);
 });
 
 test("a tab Bao's task tab opens becomes the agent's tab, once", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
   f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", openerId: "task", inWindow: true });
-  assert.equal((await f.proxy.execute("click", ["@e2"]))[0]!.stdout, "✓ Done on task\n");
-  await f.proxy.execute("snapshot", ["-i"]);
+  assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent follows the tab its click opened");
-  assert.equal((await f.proxy.execute("tab", ["t1"]))[0]!.exitCode, 0);
-  await f.proxy.execute("snapshot", ["-i"]);
+  assert.equal((await f.proxy.execute("tab", ["t1"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.daemon.commands.at(-1)!.on, "task", "going back to the task tab is not undone by the earlier popup");
   f.targets.push({ targetId: "owner-new", type: "page", url: "https://example.com/", title: "Owner's new tab", inWindow: true });
-  await f.proxy.execute("snapshot", ["-i"]);
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.daemon.commands.at(-1)!.on, "task", "a tab the owner opens never takes the agent");
 });
 
@@ -204,12 +204,12 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
   f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", openerId: "task", inWindow: true });
-  assert.equal((await f.proxy.execute("click", ["@e2"]))[0]!.stdout, "✓ Done on task\n");
-  const listed = (await f.proxy.execute("tab", []))[0]!.stdout;
+  assert.equal((await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
+  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
   assert.equal(listed, `  [t1] (Bao task tab) Google Maps - ${MAPS}\n  [t2] Google Maps - ${MAPS}\n  [t3] Gemini - ${GLIC}\n→ [t7] (Bao task tab) Ceres - https://www.google.com/maps/place/Ceres\n`);
   f.daemon.clicked = () => f.targets.push({ targetId: "popup2", type: "page", url: "https://www.google.com/maps/place/Vesta", title: "Vesta", openerId: "popup", inWindow: true });
-  await f.proxy.execute("click", ["@e3"]);
-  assert.match((await f.proxy.execute("tab", []))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
+  await f.proxy.execute("click", ["@e3"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  assert.match((await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, /→ \[t8\] \(Bao task tab\) Vesta - https:\/\/www\.google\.com\/maps\/place\/Vesta\n/);
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["popup", "popup2", "task"], "Bao closes the followed popups and the task tab, not the owner's tabs");
 });
@@ -217,10 +217,10 @@ test("a popup the agent follows from its task tab is a Bao task tab, and finish_
 test("a popup opened from an owner tab the agent switched to stays open and unmarked", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  assert.equal((await f.proxy.execute("tab", ["t2"]))[0]!.exitCode, 0);
+  assert.equal((await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
   f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://example.com/from-owner", title: "From owner", openerId: "owner", inWindow: true });
-  await f.proxy.execute("click", ["@e2"]);
-  const listed = (await f.proxy.execute("tab", []))[0]!.stdout;
+  await f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId);
+  const listed = (await f.proxy.execute("tab", [], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout;
   assert.match(listed, /\[t7\] From owner - https:\/\/example\.com\/from-owner/);
   assert.doesNotMatch(listed, /\[t7\] \(Bao task tab\)/);
   assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the agent still follows a popup its current tab opened");
@@ -240,8 +240,8 @@ test("a popup check that hits the ceiling leaves the popup fresh, and the next c
     throw new Error("cdp aborted Browser.getWindowForTarget");
   };
   f.daemon.clicked = () => f.targets.push({ targetId: "popup", type: "page", url: "https://accounts.example/sign-in", title: "Sign in", openerId: "task", inWindow: true });
-  await assert.rejects(f.proxy.execute("click", ["@e2"]), /cdp aborted Browser.getWindowForTarget/);
-  await f.proxy.execute("snapshot", ["-i"]);
+  await assert.rejects(f.proxy.execute("click", ["@e2"], undefined, false, undefined, {}, f.proxy.activeRunId), /cdp aborted Browser.getWindowForTarget/);
+  await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(f.daemon.commands.at(-1)!.on, "popup", "the next check adopts the popup the aborted check did not mark seen");
 });
 
@@ -252,8 +252,8 @@ test("a tab the agent's click opens with --new-tab becomes the agent's tab, and 
     f.targets.push({ targetId: "opened", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", inWindow: true });
     f.daemon.active = "opened";
   };
-  assert.equal((await f.proxy.execute("click", ["@e5", "--new-tab"]))[0]!.exitCode, 0);
-  assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.stdout, "✓ Done on opened\n", "the agent stays in the tab it just opened");
+  assert.equal((await f.proxy.execute("click", ["@e5", "--new-tab"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on opened\n", "the agent stays in the tab it just opened");
   assert.ok(await f.proxy.finishTask({ outcome: "passed", reason: "fixture" }, f.proxy.activeRunId));
   assert.deepEqual([...f.closed].sort(), ["opened", "task"], "Bao closes both tabs it opened and none of the owner's");
 });
@@ -269,7 +269,7 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
   dropTab(f, "task");
-  const [ended] = await f.proxy.execute("snapshot", ["-i"]);
+  const [ended] = await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(ended!.exitCode, 0);
   const receipt = JSON.parse(ended!.stdout) as { outcome: string };
   assert.equal(receipt.outcome, "closed");
@@ -283,17 +283,17 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   assert.equal(missed.summary?.text, "Bao's task tab was closed. This session cannot continue.");
   assert.deepEqual(f.closed, [], "the owner's tabs stay open");
   assert.ok(f.targets.some(item => item.targetId === "owner"));
-  await assert.rejects(f.proxy.execute("click", ["@e1"]), /Bao's task tab was closed/);
-  await assert.rejects(f.proxy.execute("open", [MAPS]), /Bao's task tab was closed/);
+  await assert.rejects(f.proxy.execute("click", ["@e1"], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao's task tab was closed/);
+  await assert.rejects(f.proxy.execute("open", [MAPS], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao's task tab was closed/);
   const closed = await f.proxy.execute("close", [], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(stepSentence("close", closed, undefined, undefined, { current: f.proxy.currentChrome }), "Closed Bao's task tab in your Chrome.");
-  assert.equal((await f.proxy.execute("open", [MAPS]))[0]!.exitCode, 0, "an explicit close clears the ended session, so the next open takes the default");
+  assert.equal((await f.proxy.execute("open", [MAPS], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0, "an explicit close clears the ended session, so the next open takes the default");
 });
 
 test("the agent's close of its last task tab reports that the tab was closed, not a command failure", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  const [ended] = await f.proxy.execute("tab", ["close", "t1"]);
+  const [ended] = await f.proxy.execute("tab", ["close", "t1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(ended!.exitCode, 0);
   assert.match(ended!.stdout, /Bao's task tab was closed/);
   const closedStep = (new Library(f.home).listRuns()[0]!.steps as RecordedAgentBrowserCommand[]).at(-1)!;
@@ -304,14 +304,14 @@ test("the agent's close of its last task tab reports that the tab was closed, no
   assert.ok(!f.targets.some(item => item.targetId === "task"), "the close itself removed the task tab");
   assert.ok(f.targets.some(item => item.targetId === "owner"));
   assert.deepEqual(f.closed, []);
-  await assert.rejects(f.proxy.execute("snapshot"), /Bao's task tab was closed/);
+  await assert.rejects(f.proxy.execute("snapshot", [], undefined, false, undefined, {}, f.proxy.activeRunId), /Bao's task tab was closed/);
 });
 
 test("the agent's close of its last task tab ends the session while Chrome still lists that tab", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
   f.daemon.holdClosedInChrome = true;
-  const [ended] = await f.proxy.execute("tab", ["close", "t1"]);
+  const [ended] = await f.proxy.execute("tab", ["close", "t1"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(ended!.exitCode, 0);
   const receipt = JSON.parse(ended!.stdout) as { outcome: string };
   assert.equal(receipt.outcome, "closed");
@@ -331,19 +331,19 @@ test("closing a tab the agent opened does not end the session while Bao's task t
     f.targets.push({ targetId: "opened", type: "page", url: "https://www.google.com/maps/place/Ceres", title: "Ceres", inWindow: true });
     f.daemon.active = "opened";
   };
-  assert.equal((await f.proxy.execute("click", ["@e5", "--new-tab"]))[0]!.exitCode, 0);
-  const [closed] = await f.proxy.execute("tab", ["close", "t7"]);
+  assert.equal((await f.proxy.execute("click", ["@e5", "--new-tab"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
+  const [closed] = await f.proxy.execute("tab", ["close", "t7"], undefined, false, undefined, {}, f.proxy.activeRunId);
   assert.equal(closed!.exitCode, 0);
   assert.doesNotMatch(closed!.stdout, /task tab was closed/);
   assert.equal(f.proxy.hasSession(), true);
-  assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.stdout, "✓ Done on task\n");
+  assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on task\n");
 });
 
 test("an owner tab the agent switched to stays the session when the task tab closes", async (t) => {
   const f = await fixture(t);
   await f.proxy.execute("open", [MAPS], "current");
-  assert.equal((await f.proxy.execute("tab", ["t2"]))[0]!.exitCode, 0);
+  assert.equal((await f.proxy.execute("tab", ["t2"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.exitCode, 0);
   dropTab(f, "task");
-  assert.equal((await f.proxy.execute("snapshot", ["-i"]))[0]!.stdout, "✓ Done on owner\n");
+  assert.equal((await f.proxy.execute("snapshot", ["-i"], undefined, false, undefined, {}, f.proxy.activeRunId))[0]!.stdout, "✓ Done on owner\n");
   assert.equal(f.proxy.hasSession(), true);
 });

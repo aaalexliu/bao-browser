@@ -75,7 +75,7 @@ function client(env: NodeJS.ProcessEnv) {
     stderr: () => stderr,
     request,
     async browser(command: string, args: string[] = []) {
-      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...command === "open" ? { browser: "bao" } : {}, ...command === "close" ? { run_id: run } : {} } });
+      const result = await request("tools/call", { name: "agent_browser", arguments: { command, args, ...command === "open" ? { browser: "bao" } : {}, ...(run ? { run_id: run } : {}) } });
       run = result.content?.map((block) => /^Run (\S+)$/.exec(block.text)?.[1]).find(Boolean) ?? run;
       return result;
     },

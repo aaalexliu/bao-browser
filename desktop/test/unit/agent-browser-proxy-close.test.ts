@@ -199,8 +199,8 @@ if (command === 'tab' && args.includes('--json')) {
   const proxy = new AgentBrowserProxy({ home, sourceRoot, executable });
   try {
     await proxy.execute("open", [], "copy");
-    assert.equal((await proxy.execute("open", [], "copy"))[0]!.stdout, "native success\n");
-    await assert.rejects(proxy.execute("open", [], "current"), /close the current session before choosing a different browser/);
+    assert.equal((await proxy.execute("open", [], "copy", false, undefined, {}, proxy.activeRunId))[0]!.stdout, "native success\n");
+    await assert.rejects(proxy.execute("open", [], "current", false, undefined, {}, proxy.activeRunId), /close the current session before choosing a different browser/);
     const chrome = chromes[0]!;
     const endpoint = await readDevToolsActivePort(chrome.portFile);
     const cdp = await connectCdp(endpoint.port, endpoint.browserPath);
@@ -213,9 +213,9 @@ if (command === 'tab' && args.includes('--json')) {
     } finally { cdp.close(); }
     await deleting;
     assert.ok(new Library(home).listRuns().every(run => run.status === "passed"));
-    await assert.rejects(proxy.execute("open", [], "invalid"), /must be copy, bao, or current/);
+    await assert.rejects(proxy.execute("open", [], "invalid", false, undefined, {}, proxy.activeRunId), /must be copy, bao, or current/);
     let settled = false;
-    const switching = proxy.execute("open", [], "current").then(
+    const switching = proxy.execute("open", [], "current", false, undefined, {}, proxy.activeRunId).then(
       () => { settled = true; return undefined; },
       (error: unknown) => { settled = true; return error; },
     );
@@ -229,7 +229,7 @@ if (command === 'tab' && args.includes('--json')) {
     assert.equal(currentStarts, 1);
     assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0, "close after manual window close succeeds");
     assert.equal((await proxy.execute("close", [], undefined, false, undefined, {}, proxy.activeRunId))[0]!.exitCode, 0, "repeated close succeeds");
-    const reopened = await proxy.execute("open", [], "copy");
+    const reopened = await proxy.execute("open", [], "copy", false, undefined, {}, proxy.activeRunId);
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
     assert.notEqual(copies[0], copies[1]);
@@ -299,7 +299,7 @@ if (command === 'tab' && args.includes('--json')) {
     await assert.rejects(access(copy), /ENOENT/, "the stopped browser's copy is removed only after its processes exit");
     await assert.rejects(access(stateDir), /ENOENT/);
     assert.ok(new Library(home).listRuns().every((run) => run.status === "passed"));
-    const reopened = await proxy.execute("open", [], "copy");
+    const reopened = await proxy.execute("open", [], "copy", false, undefined, {}, proxy.activeRunId);
     assert.equal(reopened[0]!.stdout, "native success\n");
     assert.equal(chromes.length, 2);
     assert.notEqual(copies[0], copies[1]);
