@@ -316,7 +316,8 @@ export class AgentBrowserProxy {
       this.shown = undefined;
       const ended = this.endedWaits.get(this.waitRun);
       if (ended === this.endedLine) this.endedLine = undefined;
-      const instruction = this.endedRuns.get(this.waitRun)
+      const reconnect = this.session ? undefined : this.endedRuns.get(this.waitRun);
+      const instruction = reconnect
         ?? `${WAIT_RUN_ENDED} ${ended ?? `Run ${this.waitRun} is not Bao's open browser session.`}`;
       return [{ stdout: JSON.stringify({ outcome: "closed", instruction }), stderr: "", exitCode: 0 }];
     }

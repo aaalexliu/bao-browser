@@ -867,6 +867,33 @@ test("a first wait after finish_task still waits on the new run when run_id is l
   assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "needs_human");
 });
 
+test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a newer session", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runA = f.library.listRuns()[0]!.id;
+  f.cdp.close();
+  await untilSessionEnds(f.proxy);
+  f.state.closed = false;
+  let endChrome!: () => void;
+  const closed = new Promise<void>((resolve) => { endChrome = resolve; });
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: "/chrome",
+    endpoint: { port: await trapPort(), browserPath: "/browser" },
+    cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
+  }));
+  await f.proxy.execute("open", ["https://fixture.invalid/other"], "current");
+  const runB = f.library.listRuns().find((run) => run.id !== runA)!.id;
+  const saved = f.library.readRun(runB);
+  const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runA);
+  const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "closed");
+  assert.equal(reply.instruction, `${WAIT_RUN_ENDED} Run ${runA} is not Bao's open browser session.`);
+  assert.notEqual(reply.instruction, CURRENT_CHROME_ENDED);
+  assert.equal(browserToolResult("wait_for_owner", late, undefined, runA).content[0]!.text, "This wait ended. This session cannot continue.");
+  assert.equal(f.proxy.hasSession(), true);
+  assert.deepEqual(f.library.readRun(runB), saved, "the newer session's run is unchanged");
+});
+
 test("a wait_for_owner that names the run whose Chrome ended returns the reconnect instruction", async (t) => {
   const f = await lifecycleFixture(t);
   await f.proxy.execute("open", [], "current");
