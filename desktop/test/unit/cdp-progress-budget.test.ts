@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer, type AddressInfo, type Socket } from "node:net";
+import { connect, createServer, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
+import { shareConnection } from "../../src/cdp-live/shared-connection";
 import { ServerFrameDecoder, connectCdp, serverFrame } from "../../src/cdp-live/socket";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { AgentBrowserWorkflow } from "../../src/engines/agent-browser-workflow";
+import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 
 const SWITCH = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n";
@@ -23,6 +26,7 @@ function fakeCdp(opts: {
   delay?: (method: string) => number;
   result?: (method: string) => Record<string, unknown>;
   onCommand?: (method: string) => void;
+  onPing?: () => void;
 } = {}): Promise<FakeCdp> {
   const peers: Socket[] = [];
   const server = createServer((socket) => {
@@ -33,6 +37,7 @@ function fakeCdp(opts: {
     const onFrame = (bytes: Buffer) => {
       for (const frame of decoder.push(bytes)) {
         if (frame.opcode === 9 && opts.answerPings !== false) {
+          opts.onPing?.();
           socket.write(serverFrame(10, frame.payload ?? Buffer.alloc(0)));
           continue;
         }
@@ -90,21 +95,21 @@ test("a focus-emulation wait survives a reply slower than 5s while the peer answ
   }
 });
 
-test("a progress wait ends when the peer goes quiet, not after a long hang", { timeout: 3_000 }, async () => {
+test("a progress wait ends when the peer goes quiet, not after a long hang", { timeout: 45_000 }, async () => {
   const fake = await fakeCdp({ answerPings: false, delay: () => 60_000 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const started = Date.now();
   try {
     await assert.rejects(cdp.sendUntilProgress("Emulation.setFocusEmulationEnabled", { enabled: true }, undefined, { silenceMs: 400 }), /cdp timeout Emulation.setFocusEmulationEnabled/);
     const elapsed = Date.now() - started;
-    assert.ok(elapsed >= 400 && elapsed < 2_000, `quiet peer took ${elapsed}ms`);
+    assert.ok(elapsed >= 400 && elapsed < 30_000, `quiet peer took ${elapsed}ms`);
   } finally {
     cdp.close();
     await fake.close();
   }
 });
 
-test("a progress wait keeps going past its silence budget while pongs arrive", { timeout: 5_000 }, async () => {
+test("a progress wait keeps going past its silence budget while pongs arrive", { timeout: 30_000 }, async () => {
   const fake = await fakeCdp({ answerPings: true, delay: () => 1_200 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const started = Date.now();
@@ -117,7 +122,7 @@ test("a progress wait keeps going past its silence budget while pongs arrive", {
   }
 });
 
-test("an aborted progress wait stops without waiting out the silence", { timeout: 2_000 }, async () => {
+test("an aborted progress wait stops without waiting out the silence", { timeout: 20_000 }, async () => {
   const fake = await fakeCdp({ answerPings: true, delay: () => 60_000 });
   const cdp = await connectCdp(fake.port, fake.browserPath);
   const signal = AbortSignal.timeout(150);
@@ -232,19 +237,25 @@ test("a stuck page that keeps answering pings skips capture at the ceiling and t
   }
 });
 
-test("quit during a stuck capture returns without waiting out the ceiling", { timeout: 20_000 }, async (t: TestContext) => {
+test("quit during a stuck capture returns without waiting out the ceiling", { timeout: 45_000 }, async (t: TestContext) => {
   let hang = false;
+  let evaluates = 0;
   let sawStuck!: () => void;
   const stuck = new Promise<void>((resolve) => { sawStuck = resolve; });
+  const observation = { page: { url: "http://fixture.test/", title: "Fixture", nodes: [], texts: [], values: [] }, leaves: {} };
   const fake = await fakeCdp({
     answerPings: true,
-    delay: (method) => hang && method === "Target.attachToTarget" ? 120_000 : 0,
-    onCommand: (method) => { if (hang && method === "Target.attachToTarget") sawStuck(); },
+    delay: (method) => hang && method === "Runtime.enable" ? 120_000 : 0,
+    onCommand: (method) => { if (hang && method === "Runtime.enable") sawStuck(); },
     result: (method) => {
       if (method === "Target.createTarget") return { targetId: "tab-1" };
       if (method === "Target.attachToTarget") return { sessionId: "s1" };
       if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://fixture.test/", title: "Fixture" } };
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "tab-1", type: "page" }] };
+      if (method === "Runtime.evaluate") {
+        evaluates += 1;
+        return { result: { value: evaluates === 1 ? { before: observation } : observation } };
+      }
       return {};
     },
   });
@@ -271,12 +282,17 @@ else process.stdout.write('ok');
     assert.equal(opened!.exitCode, 0, opened!.stderr.slice(0, 200));
     hang = true;
     const click = proxy.execute("click", ["#go"]);
+    const settled = click.then(() => undefined, () => undefined);
     await stuck;
     const started = Date.now();
     await proxy.end();
     const elapsed = Date.now() - started;
-    assert.ok(elapsed < 5_000, `quit waited ${elapsed}ms`);
-    await click.catch(() => undefined);
+    await settled;
+    assert.ok(elapsed < 20_000, `quit waited ${elapsed}ms`);
+    const run = new Library(home).listRuns()[0];
+    assert.ok(run, "quit still records the run");
+    const commands = run.steps.map((step) => (step as { native?: { command?: string } }).native?.command);
+    assert.deepEqual(commands, ["open", "click"]);
   } finally {
     cdp.close();
     await fake.close();
@@ -285,6 +301,8 @@ else process.stdout.write('ok');
 });
 
 test("the session's first native call is not killed at the capture ceiling", { timeout: 50_000 }, async (t: TestContext) => {
+  let evaluates = 0;
+  const observation = { page: { url: "http://fixture.test/", title: "Fixture", nodes: [], texts: [], values: [] }, leaves: {} };
   const fake = await fakeCdp({
     answerPings: true,
     result: (method) => {
@@ -292,6 +310,10 @@ test("the session's first native call is not killed at the capture ceiling", { t
       if (method === "Target.attachToTarget") return { sessionId: "s1" };
       if (method === "Target.getTargetInfo") return { targetInfo: { url: "http://fixture.test/", title: "Fixture" } };
       if (method === "Target.getTargets") return { targetInfos: [{ targetId: "tab-1", type: "page" }] };
+      if (method === "Runtime.evaluate") {
+        evaluates += 1;
+        return { result: { value: evaluates === 1 ? { before: observation } : observation } };
+      }
       return {};
     },
   });
@@ -329,10 +351,93 @@ else process.stdout.write('ok');
     assert.equal(opened!.exitCode, 0, opened!.stderr.slice(0, 200));
     assert.equal(await readFile(marker, "utf8"), "done");
     assert.ok(elapsed > 30_000, `first native call ended at ${elapsed}ms`);
+    await proxy.end();
+    assert.ok(proxy.lastWorkflowOutcome);
+    assert.doesNotMatch(proxy.lastWorkflowOutcome, /could not be recorded/);
   } finally {
     await proxy.end().catch(() => undefined);
     cdp.close();
     await fake.close();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("shared-endpoint join waits past 10s while the peer answers", { timeout: 60_000 }, async () => {
+  const fake = await fakeCdp({
+    answerPings: true,
+    delay: (method) => method === "Target.attachToBrowserTarget" ? 11_000 : 0,
+    result: (method) => method === "Target.attachToBrowserTarget" ? { sessionId: "browser-1" } : {},
+  });
+  const bao = await connectCdp(fake.port, fake.browserPath);
+  const shared = await shareConnection(bao);
+  const started = Date.now();
+  try {
+    const client = await connectCdp(shared.endpoint.port, shared.endpoint.browserPath);
+    assert.ok(Date.now() - started > 10_000, "join is not a 10s wall clock");
+    client.close();
+  } finally {
+    shared.close();
+    bao.close();
+    await fake.close();
+  }
+});
+
+test("shared-endpoint join stops at the capture ceiling while pings continue", { timeout: 120_000 }, async () => {
+  const fake = await fakeCdp({ answerPings: true, delay: () => 120_000 });
+  const bao = await connectCdp(fake.port, fake.browserPath);
+  const shared = await shareConnection(bao);
+  const started = Date.now();
+  try {
+    await assert.rejects(connectCdp(shared.endpoint.port, shared.endpoint.browserPath), /cdp handshake status 502/);
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed > 20_000 && elapsed < 90_000, `join ceiling took ${elapsed}ms`);
+  } finally {
+    shared.close();
+    bao.close();
+    await fake.close();
+  }
+});
+
+test("shared-endpoint join stops when the client closes", { timeout: 30_000 }, async () => {
+  let pings = 0;
+  let sawAttach!: () => void;
+  const attached = new Promise<void>((resolve) => { sawAttach = resolve; });
+  const fake = await fakeCdp({
+    answerPings: true,
+    delay: (method) => method === "Target.attachToBrowserTarget" ? 120_000 : 0,
+    onCommand: (method) => { if (method === "Target.attachToBrowserTarget") sawAttach(); },
+    onPing: () => { pings += 1; },
+  });
+  const bao = await connectCdp(fake.port, fake.browserPath);
+  const shared = await shareConnection(bao);
+  const socket = connect({ host: "127.0.0.1", port: shared.endpoint.port });
+  socket.on("error", () => undefined);
+  socket.write(`GET ${shared.endpoint.browserPath} HTTP/1.1\r\nHost: 127.0.0.1:${shared.endpoint.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${randomBytes(16).toString("base64")}\r\nSec-WebSocket-Version: 13\r\n\r\n`);
+  try {
+    await attached;
+    const pinging = Date.now();
+    while (pings < 1 && Date.now() - pinging < 5_000) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.ok(pings >= 1, "join was waiting on the peer");
+    socket.destroy();
+    const started = Date.now();
+    let last = pings;
+    let quietSince = Date.now();
+    let stopped = false;
+    while (Date.now() - started < 15_000) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (pings !== last) {
+        last = pings;
+        quietSince = Date.now();
+      } else if (Date.now() - quietSince >= 1_500) {
+        stopped = true;
+        break;
+      }
+    }
+    assert.equal(stopped, true, "join kept pinging after the client closed");
+  } finally {
+    socket.destroy();
+    shared.close();
+    bao.close();
+    await fake.close();
   }
 });

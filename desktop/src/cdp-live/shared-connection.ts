@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { Duplex } from "node:stream";
 import type { DevToolsEndpoint } from "./endpoint";
-import { serverFrame, ServerFrameDecoder, type CdpMessage, type CdpSocket } from "./socket";
+import { CDP_PROGRESS_CEILING_MS, serverFrame, ServerFrameDecoder, type CdpMessage, type CdpSocket } from "./socket";
 
 const MAX_FRAME = 256 * 1024 * 1024;
 
@@ -23,11 +23,25 @@ export interface SharedConnection {
  */
 async function join(cdp: CdpSocket, client: Duplex, head: Buffer, key: string): Promise<void> {
   let browser: string;
+  const ceiling = new AbortController();
+  const timer = setTimeout(() => ceiling.abort(), CDP_PROGRESS_CEILING_MS);
+  timer.unref();
+  // A client that leaves sends FIN. That is "end" until this side finishes, so "close" alone holds the attach.
+  const onLeave = () => ceiling.abort();
+  client.on("close", onLeave);
+  client.on("end", onLeave);
+  client.on("error", onLeave);
+  if (client.destroyed) onLeave();
   try {
-    ({ sessionId: browser } = await cdp.send<{ sessionId: string }>("Target.attachToBrowserTarget", {}, undefined, 10_000));
+    ({ sessionId: browser } = await cdp.sendUntilProgress<{ sessionId: string }>("Target.attachToBrowserTarget", {}, undefined, { signal: ceiling.signal }));
   } catch {
-    client.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
+    if (!client.destroyed) client.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
     return;
+  } finally {
+    clearTimeout(timer);
+    client.off("close", onLeave);
+    client.off("end", onLeave);
+    client.off("error", onLeave);
   }
   const sessions = new Set<string>();
   let released = false;
