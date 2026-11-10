@@ -36,17 +36,17 @@ export interface FileProof {
 }
 
 export interface PersonPrompts {
-  showConfirm?(label: string): void;
-  clearConfirm?(runId: string): void;
-  showLoginWait?(label: string): void;
-  clearLoginWait?(runId: string): void;
-  showAsk?(ask: HumanAsk): void;
+  showConfirm?(label: string): void | Promise<void>;
+  clearConfirm?(runId: string): void | Promise<void>;
+  showLoginWait?(label: string): void | Promise<void>;
+  clearLoginWait?(runId: string): void | Promise<void>;
+  showAsk?(ask: HumanAsk): void | Promise<void>;
   shouldStop?(): boolean;
   loginContinued?(): boolean;
   ownerContinued?(): boolean;
   /** Drop UI trail events while a person has the page. */
-  pauseCapture?(): void;
-  resumeCapture?(): void;
+  pauseCapture?(): void | Promise<void>;
+  resumeCapture?(): void | Promise<void>;
 }
 
 export interface TraceLine {
@@ -564,20 +564,20 @@ export class BrowserDriver implements Driver {
   }
 
   showConfirm(label: string): void {
-    this.prompts?.showConfirm?.(label);
+    void this.prompts?.showConfirm?.(label);
   }
 
   clearConfirm(runId: string): void {
-    this.prompts?.clearConfirm?.(runId);
+    void this.prompts?.clearConfirm?.(runId);
     void this.clearStrip();
   }
 
   showLoginWait(label: string): void {
-    this.prompts?.showLoginWait?.(label);
+    void this.prompts?.showLoginWait?.(label);
   }
 
   clearLoginWait(runId: string): void {
-    this.prompts?.clearLoginWait?.(runId);
+    void this.prompts?.clearLoginWait?.(runId);
     void this.clearStrip();
   }
 
@@ -594,15 +594,15 @@ export class BrowserDriver implements Driver {
   }
 
   pauseCapture(): void {
-    this.prompts?.pauseCapture?.();
+    void this.prompts?.pauseCapture?.();
   }
 
   resumeCapture(): void {
-    this.prompts?.resumeCapture?.();
+    void this.prompts?.resumeCapture?.();
   }
 
   async showAsk(ask: HumanAsk): Promise<void> {
-    this.prompts?.showAsk?.(ask);
+    void this.prompts?.showAsk?.(ask);
     const text = ask.kind === "confirm"
       ? `needs you. You're in control. ${ask.instruction}`
       : ask.kind === "wall"

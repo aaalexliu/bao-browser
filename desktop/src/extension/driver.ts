@@ -221,7 +221,7 @@ export class ExtensionDriver implements Driver {
   }
 
   async showAsk(ask: HumanAsk): Promise<void> {
-    this.prompts?.showAsk?.(ask);
+    void this.prompts?.showAsk?.(ask);
     const text = ask.kind === "confirm"
       ? `needs you. You're in control. ${ask.instruction}`
       : ask.kind === "wall"
@@ -231,20 +231,20 @@ export class ExtensionDriver implements Driver {
   }
 
   showConfirm(label: string): void {
-    this.prompts?.showConfirm?.(label);
+    void this.prompts?.showConfirm?.(label);
   }
 
   async clearConfirm(runId: string): Promise<void> {
-    this.prompts?.clearConfirm?.(runId);
+    void this.prompts?.clearConfirm?.(runId);
     await this.cmd("clearAsk", {}).catch(() => undefined);
   }
 
   showLoginWait(label: string): void {
-    this.prompts?.showLoginWait?.(label);
+    void this.prompts?.showLoginWait?.(label);
   }
 
   async clearLoginWait(runId: string): Promise<void> {
-    this.prompts?.clearLoginWait?.(runId);
+    void this.prompts?.clearLoginWait?.(runId);
     await this.cmd("clearAsk", {}).catch(() => undefined);
   }
 
@@ -261,11 +261,11 @@ export class ExtensionDriver implements Driver {
   }
 
   pauseCapture(): void {
-    this.prompts?.pauseCapture?.();
+    void this.prompts?.pauseCapture?.();
   }
 
   resumeCapture(): void {
-    this.prompts?.resumeCapture?.();
+    void this.prompts?.resumeCapture?.();
   }
 
   async sleep(ms: number): Promise<void> {

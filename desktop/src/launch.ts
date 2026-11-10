@@ -1,7 +1,8 @@
 // Launch an owned browser. Never port 9222, never the daily profile.
-// Installed Mac Chrome is started by bao-spawn with the disclaim attribute,
-// then marked as not allowed to become frontmost. A direct launch is not
-// marked. If that mark cannot be confirmed, Chrome stays up and the miss is
+// Installed Mac Chrome is started by bao-spawn with the disclaim attribute.
+// A background launch is then marked as not allowed to become frontmost.
+// A foreground launch is asked to come forward. A direct launch is not marked.
+// If the background mark cannot be confirmed, Chrome stays up and the miss is
 // logged. The owner's Chrome stays on LaunchServices. Playwright's launcher
 // is only used when a caller asks for page.video(). Both test lanes and the
 // browser evals set BAO_TEST_BROWSER, and then every launch starts that
@@ -832,9 +833,9 @@ interface OwnedChromeProcessOptions {
   appendArgs?: string[];
   executablePath?: string;
   /**
-   * Chrome starts behind the owner's apps. "none" opens no window, "window" one blank window, and "restore" the saved windows.
-   * A window Chrome opens for itself at launch takes the front even when it cannot become the front app; restored windows do not. So for "window" Bao
-   * opens the window itself, in the background.
+   * When set, Chrome is marked not allowed to become frontmost. "none" opens no window, "window" one blank window, and "restore" the saved windows.
+   * A window Chrome opens for itself at launch takes the front even when it cannot become the front app, so for "window" Bao
+   * opens the window itself, in the background. A restored window can still come forward before that mark lands.
    */
   background?: "none" | "window" | "restore";
   /** Sites the source Chrome profile holds device-bound sessions for. Their cookies go before Chrome starts. */

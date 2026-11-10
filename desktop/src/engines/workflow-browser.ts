@@ -237,15 +237,15 @@ export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts, 
     return {
       ...prompts,
       showAsk(ask) {
-        prompts?.showAsk?.(ask);
+        void prompts?.showAsk?.(ask);
         void browser.show().catch(() => undefined);
       },
       clearConfirm(runId) {
-        prompts?.clearConfirm?.(runId);
+        void prompts?.clearConfirm?.(runId);
         settle();
       },
       clearLoginWait(runId) {
-        prompts?.clearLoginWait?.(runId);
+        void prompts?.clearLoginWait?.(runId);
         settle();
       },
     };
