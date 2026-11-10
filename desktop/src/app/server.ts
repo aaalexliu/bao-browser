@@ -2552,7 +2552,10 @@ export async function startApp(opts: {
       await remote.stop();
       relay?.close();
       await extensionLink?.close();
-      await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => err ? reject(err) : resolve());
+        server.closeAllConnections();
+      });
     },
   };
 }
@@ -3606,8 +3609,15 @@ function sendFile(res: ServerResponse, file: string, type: string): void {
 }
 
 function json(res: ServerResponse, body: unknown, status = 200): void {
-  res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify(body));
+  const payload = JSON.stringify(body);
+  if (res.destroyed || res.writableEnded || res.socket?.destroyed) return;
+  try {
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(payload);
+  } catch (err) {
+    if (res.destroyed || res.socket?.destroyed) return;
+    throw err;
+  }
 }
 
 interface LoginBody {

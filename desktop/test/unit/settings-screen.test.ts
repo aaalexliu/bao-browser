@@ -1,5 +1,7 @@
 import { testWorkflow } from "../support/workflow";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { closeSync, constants, openSync, writeSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -803,6 +805,43 @@ test("a clean focused number adopts external updates without writing back", { ti
     await app.close();
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("closing the app does not wait for a Chrome profiles read that never finishes", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-close-"));
+  const profiles = path.join(home, "profiles");
+  const previousAccount = process.env.BAO_HEAL_CURSOR_ACCOUNT;
+  process.env.BAO_HEAL_CURSOR_ACCOUNT = "0";
+  await mkdir(profiles);
+  const state = path.join(profiles, "Local State");
+  execFileSync("mkfifo", [state]);
+  const app = await startApp({ home: path.join(home, "library"), extensionHost: false, chromeProfilesRoot: profiles });
+  const pending = fetch(`http://127.0.0.1:${app.port}/api/chrome-profiles`).then((res) => res.status, () => 0);
+  let writer = -1;
+  try {
+    for (let i = 0; i < 50 && writer < 0; i++) {
+      try { writer = openSync(state, constants.O_WRONLY | constants.O_NONBLOCK); }
+      catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENXIO") throw err;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+    assert.ok(writer >= 0, "the profiles read never started");
+    const closed = await Promise.race([
+      app.close().then(() => "closed"),
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 2_000)),
+    ]);
+    assert.equal(closed, "closed");
+  } finally {
+    if (writer >= 0) {
+      writeSync(writer, "{}");
+      closeSync(writer);
+    }
+    await pending;
+    if (previousAccount === undefined) delete process.env.BAO_HEAL_CURSOR_ACCOUNT;
+    else process.env.BAO_HEAL_CURSOR_ACCOUNT = previousAccount;
     await rm(home, { recursive: true, force: true });
   }
 });
