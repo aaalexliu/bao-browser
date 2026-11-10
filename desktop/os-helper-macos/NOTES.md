@@ -199,7 +199,8 @@ A restored document with any other title still aborts without reading it.
 The untitled value `bao mac spike` was set and replayed.
 
 `open -W` can return before the helper writes `--result`, so the Node client
-polls that file.
+polled that file. The client no longer uses `open`; see "Started without
+LaunchServices" below.
 
 ## 2026-10-20, live model
 
@@ -291,3 +292,20 @@ check in the same function treats a command line containing `Google/Chrome`
 as the daily profile. The macOS Chrome binary path contains that string, so
 replacing the `/proc` read would still stop there. That function was not
 patched.
+
+## 2026-11-09, started without LaunchServices
+
+Bao used to start the helper with `open -n -W -g -a BaoOSHelper.app`. LaunchServices
+starts an app stopped and resumes it once it registers. On alex-m1 the 32-bit
+application serial number counter wrapped after about a million check-ins in 15
+days of uptime. After that, no LaunchServices launch was resumed. Each helper call
+left a stopped helper at `_dyld_start` under launchd, and `open -W` printed
+`GetProcessPID() returned -600` but still exited 0.
+
+The Node client now spawns `BaoOSHelper.app/Contents/MacOS/BaoOSHelper` directly,
+in its own process group. The helper respawns itself with
+`responsibility_spawnattrs_setdisclaim`, so TCC checks the helper's own grant,
+not its caller's. A fresh build signed with the existing identity at a temp path
+reported `accessibility: true` on that Mac while the counter was still wrapped.
+A timeout kills the whole group, so no helper outlives its call. The disclaimed
+child exits when its first process exits.

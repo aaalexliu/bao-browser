@@ -226,26 +226,27 @@ test("startup reports a missing checkbox without launching a read after the dead
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test("startup waits for loading controls and delayed LaunchServices result files", async (t) => {
+test("startup waits for loading controls through slow helper calls", async (t) => {
   const f = await fixture();
   let now = Date.now();
   t.mock.method(Date, "now", () => now);
   let reads = 0;
+  const spawned: { command: string; args: string[]; detached: boolean }[] = [];
   const writes: Promise<void>[] = [];
-  t.mock.method(childProcess, "spawn", (_command: string, args: string[]) => {
-    const child = new EventEmitter();
-    const result = args[args.indexOf("--result") + 1]!;
-    const command = args[args.indexOf("--args") + 1];
-    if (command === "checkbox-read") reads++;
-    const hit = command === "checkbox-set" ? { ok: true, found: true, pressed: true }
+  t.mock.method(childProcess, "spawn", (command: string, args: string[], options: { detached?: boolean }) => {
+    spawned.push({ command, args, detached: options.detached === true });
+    const child = Object.assign(new EventEmitter(), { pid: undefined, stdout: new EventEmitter(), stderr: new EventEmitter() });
+    if (args[0] === "checkbox-read") reads++;
+    const hit = args[0] === "checkbox-set" ? { ok: true, found: true, pressed: true }
       : { ok: true, found: reads > 1, value: "0" };
-    writes.push(new Promise<void>((resolve, reject) => {
+    writes.push(new Promise<void>((resolve) => {
       setTimeout(() => {
         now += 6000;
-        writeFile(result, JSON.stringify(hit)).then(resolve, reject);
+        child.stdout.emit("data", Buffer.from(JSON.stringify(hit)));
+        child.emit("close", 0);
+        resolve();
       }, 100);
     }));
-    queueMicrotask(() => child.emit("close", 0));
     return child;
   });
   const helper = new MacOsHelper(path.join(f.root, "FixtureHelper.app"));
@@ -259,6 +260,12 @@ test("startup waits for loading controls and delayed LaunchServices result files
   try {
     const chrome = await currentChrome.openCurrentChrome(f.options, f.deps);
     assert.equal(reads, 2);
+    assert.ok(spawned.length >= 3);
+    for (const call of spawned) {
+      assert.equal(call.command, path.join(f.root, "FixtureHelper.app", "Contents", "MacOS", "FixtureHelper"));
+      assert.equal(call.detached, true);
+      assert.equal(call.args.includes("--result"), false);
+    }
     assert.equal(f.state.on, true);
     assert.equal(f.state.connected, true);
     chrome.detach();
