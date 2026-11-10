@@ -219,7 +219,8 @@ export class AgentBrowserRun {
   ownerWaiting(waiting: boolean): void {
     this.run.status = waiting ? "needs_human" : "recording";
     if (waiting) {
-      this.ownerWaitAt ??= Math.max(0, this.run.steps.length - 1);
+      const last = this.run.steps.at(-1);
+      this.ownerWaitAt ??= last?.status === "pending" ? this.run.steps.length - 1 : this.run.steps.length;
       this.run.envelope = { status: "needs_human", run_id: this.run.id, reason: "owner_signin", ask: "Bao is waiting for you to sign in or clear the check in its browser window. The agent will continue here." };
     } else {
       this.ownerWaitAt = undefined;

@@ -129,6 +129,27 @@ test("a session that ends between owner waits marks only the last wait of that w
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("a wall found after a ready wait, before the next step, leaves that wait passed", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-wait-after-ready-"));
+  try {
+    const library = new Library(root);
+    const recorder = new AgentBrowserRun(root);
+    const noPage = async () => { throw new Error("no page"); };
+    const ready = recorder.begin("wait_for_owner", ["60000"]);
+    recorder.ownerWaiting(true);
+    await recorder.complete(ready, [{ stdout: JSON.stringify({ outcome: "ready" }), stderr: "", exitCode: 0 }], root, noPage, undefined, true);
+    recorder.ownerWaiting(false);
+    recorder.ownerWaiting(true);
+    recorder.finish("session_closed");
+    const saved = library.readRun(recorder.id);
+    const kept = (saved.steps as RecordedAgentBrowserCommand[]).find((step) => step.id === ready.id);
+    assert.equal(saved.status, "failed");
+    assert.equal(saved.envelope?.reason, "session_closed");
+    assert.equal(kept?.status, "passed");
+    assert.equal(kept?.reason, undefined);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("a failed atomic run replacement keeps the last readable partial run", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "bao-run-atomic-"));
   try {
