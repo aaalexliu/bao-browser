@@ -246,7 +246,7 @@ export class AgentBrowserProxy {
 
   constructor(private readonly options: {
     home: string; sourceRoot?: string; executable?: string; keepOpen?: () => boolean; hasHold?: () => boolean;
-    /** The Chrome profile folder picked in Bao Settings. On the agent path it is only marked when Bao asks for a profile. */
+    /** The Chrome profile folder picked in Bao Settings. On the agent path it is marked when Bao asks for a profile, and it chooses the owner's device-bound purge list on Bao-profile opens. */
     settingsProfile?: () => string | undefined;
     /** The gate for Running Chrome through the Bao extension. Off means remote debugging. */
     extensionRoute?: () => boolean;
