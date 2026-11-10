@@ -887,7 +887,7 @@ test("a wait for a Chrome-ended run does not tell that chat to reconnect onto a 
   const late = await f.proxy.execute("wait_for_owner", ["1"], undefined, false, undefined, {}, runA);
   const reply = JSON.parse(late[0]!.stdout) as { outcome: string; instruction: string };
   assert.equal(reply.outcome, "closed");
-  assert.equal(reply.instruction, `${WAIT_RUN_ENDED} Run ${runA} is not Bao's open browser session.`);
+  assert.equal(reply.instruction, `${WAIT_RUN_ENDED} Run ${runA} is not Bao's open browser session. The open browser session belongs to another task, so do not call close or finish_task for it. Report the ended wait to the owner and stop.`);
   assert.notEqual(reply.instruction, CURRENT_CHROME_ENDED);
   assert.equal(browserToolResult("wait_for_owner", late, undefined, runA).content[0]!.text, "This wait ended. This session cannot continue.");
   assert.equal(f.proxy.hasSession(), true);

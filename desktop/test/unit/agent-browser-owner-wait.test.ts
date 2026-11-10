@@ -260,7 +260,8 @@ test("an owner wait nobody continues ends by itself at its limit, and a later op
     assert.equal(proxy.endedWait, undefined, "only the next result names the ended wait");
     const timedOut = await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, first);
     assert.equal(outcome(timedOut), "closed", "a chat that comes back to a wait the timer ended learns it ended");
-    assert.match(instruction(timedOut).replace(/^This wait's browser session ended and cannot continue\. Report that to the owner\. /, ""), ended(first));
+    assert.match(instruction(timedOut).replace(/^This wait's browser session ended and cannot continue\. Report that to the owner\. /, "").replace(/ The open browser session belongs to another task, so do not call close or finish_task for it\. Report the ended wait to the owner and stop\.$/, ""), ended(first));
+    assert.match(instruction(timedOut), /The open browser session belongs to another task, so do not call close or finish_task for it\. Report the ended wait to the owner and stop\.$/);
     assert.equal(proxy.activeRunId, second);
 
     // A new chat's open during a fresh wait ends that wait and opens fresh; only wait_for_owner continues a wait.
@@ -304,7 +305,7 @@ test("a wait_for_owner that names a run a newer open ended returns closed and le
       const owner = proxy.ownerPage;
       const late = await proxy.execute("wait_for_owner", ["40"], undefined, false, undefined, {}, chatA);
       assert.equal(outcome(late), "closed");
-      assert.match(instruction(late), new RegExp(`^This wait's browser session ended and cannot continue\\. Report that to the owner\\. Bao ended an earlier owner wait from .+ \\(run ${chatA}\\); a new open starts a new task\\.$`));
+      assert.match(instruction(late), new RegExp(`^This wait's browser session ended and cannot continue\\. Report that to the owner\\. Bao ended an earlier owner wait from .+ \\(run ${chatA}\\); a new open starts a new task\\. The open browser session belongs to another task, so do not call close or finish_task for it\\. Report the ended wait to the owner and stop\\.$`));
       assert.equal(proxy.otherRun, chatA);
       assert.equal(proxy.lastCommand, undefined, "chat B's run records no step for chat A");
       assert.deepEqual(proxy.pickLines, [], "chat A's result does not name chat B's browser");

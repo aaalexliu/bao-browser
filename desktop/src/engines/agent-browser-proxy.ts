@@ -317,8 +317,11 @@ export class AgentBrowserProxy {
       const ended = this.endedWaits.get(this.waitRun);
       if (ended === this.endedLine) this.endedLine = undefined;
       const reconnect = this.session ? undefined : this.endedRuns.get(this.waitRun);
-      const instruction = reconnect
-        ?? `${WAIT_RUN_ENDED} ${ended ?? `Run ${this.waitRun} is not Bao's open browser session.`}`;
+      const detail = ended ?? `Run ${this.waitRun} is not Bao's open browser session.`;
+      const otherTask = this.session
+        ? " The open browser session belongs to another task, so do not call close or finish_task for it. Report the ended wait to the owner and stop."
+        : "";
+      const instruction = reconnect ?? `${WAIT_RUN_ENDED} ${detail}${otherTask}`;
       return [{ stdout: JSON.stringify({ outcome: "closed", instruction }), stderr: "", exitCode: 0 }];
     }
     const named = typeof profile === "string" ? profile.trim() : undefined;
