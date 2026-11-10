@@ -1,0 +1,35 @@
+name: Install Chromium system dependencies
+description: Restore cached apt debs for Playwright Chromium, install on a miss with a mirror retry, then save the debs.
+inputs:
+  version:
+    description: Playwright version used in the cache key
+    required: true
+  image:
+    description: Runner image id (ImageOS-ImageVersion) used in the cache key
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore system dependency downloads
+      id: system-packages
+      uses: actions/cache/restore@v4
+      with:
+        # Exclude apt's root-only lock and partial-download directory.
+        path: /tmp/bao-apt-archives/*.deb
+        # Exact key is one runner image. A prefix hit only seeds the apt cache.
+        key: playwright-debs-${{ runner.os }}-${{ runner.arch }}-${{ inputs.image }}-${{ inputs.version }}-v2
+        restore-keys: |
+          playwright-debs-${{ runner.os }}-${{ runner.arch }}-
+    - name: Install Chromium system dependencies
+      id: install
+      shell: bash
+      env:
+        APT_ARCHIVES: /tmp/bao-apt-archives
+        CACHE_HIT: ${{ steps.system-packages.outputs.cache-hit }}
+      run: bash "$GITHUB_ACTION_PATH/install.sh"
+    - name: Save system dependency downloads
+      if: steps.system-packages.outputs.cache-hit != 'true' && steps.install.outcome == 'success'
+      uses: actions/cache/save@v4
+      with:
+        path: /tmp/bao-apt-archives/*.deb
+        key: playwright-debs-${{ runner.os }}-${{ runner.arch }}-${{ inputs.image }}-${{ inputs.version }}-v2
