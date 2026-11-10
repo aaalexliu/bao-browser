@@ -420,8 +420,8 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
     output = (output + chunk.toString("utf8")).slice(-8192);
     if (!guiArgs && !browserPath) readEndpoint(output);
   });
-  let drained = false;
-  child.on("close", () => { drained = true; });
+  let drained = !guiArgs;
+  if (guiArgs) child.on("close", () => { drained = true; });
   let exitSeen = 0;
   try {
     const deadline = Date.now() + 15000;
@@ -430,10 +430,12 @@ async function startOwnedChrome(exe: string, args: (port: number) => string[], u
       if (spawnError) throw spawnError;
       if (guiArgs && ownedChromeStalled(output, userDataDir)) throw new Error(LAUNCH_SERVICES_RESTART);
       if (child.exitCode != null || child.signalCode != null) {
-        if (!exitSeen) exitSeen = Date.now();
-        if (!drained && Date.now() - exitSeen < 1_000) {
-          await delay(50);
-          continue;
+        if (guiArgs && !drained) {
+          if (!exitSeen) exitSeen = Date.now();
+          if (Date.now() - exitSeen < 1_000) {
+            await delay(50);
+            continue;
+          }
         }
         if (guiArgs && ownedChromeStalled(output, userDataDir)) throw new Error(LAUNCH_SERVICES_RESTART);
         throw new Error(`Chrome exited before it opened a debugging port (${child.exitCode ?? child.signalCode})${output ? `: ${output.trim()}` : ""}`);
