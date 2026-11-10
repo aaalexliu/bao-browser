@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as net from "node:net";
 import { createServer } from "node:http";
@@ -41,6 +41,61 @@ test("owned Chrome publishes its own nonzero debugging endpoint, replacing a sta
   } finally {
     await chrome.close();
     assert.deepEqual(pidsForDataDir(root), []);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a debugging connection refused while the port opens is retried", { timeout: 5_000 }, async () => {
+  const server = net.createServer((socket) => {
+    socket.once("data", () => {
+      socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  const opened = connectCdp(port, "/devtools/browser/retry", { timeoutMs: 4_000 });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => { server.off("error", reject); resolve(); });
+  });
+  try {
+    const cdp = await opened;
+    cdp.close();
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("a refused debugging connection still fails inside the caller's timeout", async () => {
+  const started = Date.now();
+  await assert.rejects(connectCdp(1, "/devtools/browser/closed", { timeoutMs: 400 }));
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 1500, `refused connection waited ${elapsed}ms`);
+});
+
+test("a Chrome that exits once before its debugging port opens is started again", { timeout: 60_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-startup-exit-retry-"));
+  const profile = path.join(root, "profile");
+  const marker = path.join(root, "exited");
+  const wrapper = path.join(root, "chrome");
+  await writeFile(wrapper, `#!/bin/sh
+if [ ! -f ${JSON.stringify(marker)} ]; then
+  echo 1 > ${JSON.stringify(marker)}
+  exit 1
+fi
+exec ${JSON.stringify(pinTestBrowser())} "$@"
+`);
+  await chmod(wrapper, 0o755);
+  const chrome = await launchOwnedChromeEndpoint({ userDataDir: profile, headless: true, executablePath: wrapper });
+  try {
+    assert.equal(await readFile(marker, "utf8"), "1\n");
+    assert.ok(pidsForDataDir(profile).length > 0);
+  } finally {
+    await chrome.close();
+    const deadline = Date.now() + 3000;
+    while (pidsForDataDir(profile).length && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     await rm(root, { recursive: true, force: true });
   }
 });
