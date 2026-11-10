@@ -312,11 +312,14 @@ async function proxyTool(args: Record<string, unknown>, ctx: Context) {
   let results: AgentBrowserCommandResult[] = [];
   let error: string | undefined;
   let browser: BrowserChoice | undefined;
+  let started = false;
   try {
     browser = args.browser === undefined ? undefined : browserChoice(args.browser);
+    started = true;
     results = await ctx.proxy.execute(args.command, args.args, browser, ctx.ui, args.profile, { find: args.find, diff: args.diff }, args.run_id);
   }
   catch (cause) {
+    if (!started) throw cause;
     if (cause instanceof ChromeProfileQuestion) {
       const asked = profileQuestionResult(cause, { command: "open", ...(Array.isArray(args.args) && args.args.length ? { args: args.args } : {}), ...(browser ? { browser } : {}) }, ctx.ui);
       const ended = ctx.proxy.endedWait;

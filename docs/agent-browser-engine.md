@@ -206,6 +206,8 @@ Pinned agent-browser 0.41.0 sends daemon stdout to null and drops its startup st
 
 Current-Chrome startup assumes a U.S. keyboard layout when the helper opens `chrome://inspect/#remote-debugging`. Other layouts can type the wrong omnibox text and perform a search in the owner's signed-in profile. The owner's Mac uses U.S. layout; the native fix is deferred. The remedy is `CGEventKeyboardSetUnicodeString` for text plus layout-resolved `cmd+t`. Firstmate owns that follow-up.
 
+A newer open that fails while cleaning up the run it just ended can name that run in the error. The ended run already refuses a later command that names it. The cleanup message still includes the run id.
+
 ## Evidence
 
 Each session creates one `kind: "capture"` run in the Library home Bao.app reads. See [Runs and Detailed evidence](v1.md#install-and-run) for the desktop controls that expose commands, screenshots, and native output. The capture receipt remains recording-only, with no replay or teaching actions; a separately saved workflow appears in Workflows. The capture omits Identity and Snapshot inspectors. Durable replay identities and observed effects live in the saved workflow's trail. Capture runs do not claim to count the outside agent's model calls or establish replay green status.
