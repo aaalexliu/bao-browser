@@ -230,7 +230,25 @@ export function showWorkflowPage(browser: WorkflowBrowser): Promise<void> {
   return browser.kind === "current" ? browser.bringToFront() : browser.page.bringToFront();
 }
 
-/** On Running Chrome, a step that needs the owner shows him the held tab. A Bao-owned Chrome may come forward, then the lock goes back on. */
+const handoffTails = new Map<string, Promise<void>>();
+
+function settlePrompt(run: () => void | Promise<void> | undefined): void {
+  try {
+    const result = run();
+    if (result != null && typeof result.then === "function") void result.catch(() => undefined);
+  } catch {
+    // A prompt failure must not reject an unhandled promise.
+  }
+}
+
+function queueHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): void {
+  const key = path.resolve(profile);
+  const prev = handoffTails.get(key) ?? Promise.resolve();
+  const next = prev.then(() => focusOwnedHandoff(profile, waiting, focus)).catch(() => undefined);
+  handoffTails.set(key, next);
+}
+
+/** On Running Chrome, a step that needs the owner shows him the held tab. A Bao-owned prompt runs first. Focus work follows and cannot exit Bao. */
 export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts, focus?: OwnedChromeFocus): PersonPrompts | undefined {
   if (browser.kind === "current") {
     const settle = () => { void browser.settle().catch(() => undefined); };
@@ -251,36 +269,36 @@ export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts, 
     };
   }
   const profile = browser.profile;
-  const handoff = (waiting: boolean) => focusOwnedHandoff(profile, waiting, focus).catch(() => undefined);
+  const handoff = (waiting: boolean) => { queueHandoff(profile, waiting, focus); };
   return {
     ...prompts,
-    async showConfirm(label) {
-      await handoff(true);
-      await prompts?.showConfirm?.(label);
+    showConfirm(label) {
+      settlePrompt(() => prompts?.showConfirm?.(label));
+      handoff(true);
     },
-    async showLoginWait(label) {
-      await handoff(true);
-      await prompts?.showLoginWait?.(label);
+    showLoginWait(label) {
+      settlePrompt(() => prompts?.showLoginWait?.(label));
+      handoff(true);
     },
-    async showAsk(ask) {
-      await handoff(true);
-      await prompts?.showAsk?.(ask);
+    showAsk(ask) {
+      settlePrompt(() => prompts?.showAsk?.(ask));
+      handoff(true);
     },
-    async pauseCapture() {
-      await handoff(true);
-      await prompts?.pauseCapture?.();
+    pauseCapture() {
+      settlePrompt(() => prompts?.pauseCapture?.());
+      handoff(true);
     },
-    async clearConfirm(runId) {
-      await handoff(false);
-      await prompts?.clearConfirm?.(runId);
+    clearConfirm(runId) {
+      settlePrompt(() => prompts?.clearConfirm?.(runId));
+      handoff(false);
     },
-    async clearLoginWait(runId) {
-      await handoff(false);
-      await prompts?.clearLoginWait?.(runId);
+    clearLoginWait(runId) {
+      settlePrompt(() => prompts?.clearLoginWait?.(runId));
+      handoff(false);
     },
-    async resumeCapture() {
-      await handoff(false);
-      await prompts?.resumeCapture?.();
+    resumeCapture() {
+      settlePrompt(() => prompts?.resumeCapture?.());
+      handoff(false);
     },
   };
 }

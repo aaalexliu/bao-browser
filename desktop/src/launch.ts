@@ -383,13 +383,21 @@ export async function presentOwnedChrome(pid: number): Promise<boolean> {
   return front.status === 0;
 }
 
-function focusPid(userDataDir: string): number | undefined {
-  if (process.platform !== "darwin" || testLaneBrowser()) return undefined;
-  try {
-    return guiChromeBrowserPid(ACCOUNT_CHROME_MAC, userDataDir, processesNaming(userDataDir));
-  } catch {
-    return undefined;
-  }
+type SpawnedDisclaim = { pid: number; behind: boolean };
+
+const spawnedDisclaim = new Map<string, SpawnedDisclaim>();
+
+/** A Chrome bao-spawn started. Handoff focus acts on this pid only, never on a Playwright Chrome that shares a profile path. */
+export function rememberDisclaimedChrome(userDataDir: string, pid: number, behind: boolean): void {
+  spawnedDisclaim.set(path.resolve(userDataDir), { pid, behind });
+}
+
+export function forgetDisclaimedChrome(userDataDir: string): void {
+  spawnedDisclaim.delete(path.resolve(userDataDir));
+}
+
+function spawnedDisclaimedChrome(userDataDir: string): SpawnedDisclaim | undefined {
+  return spawnedDisclaim.get(path.resolve(userDataDir));
 }
 
 function focusMiss(pid: number, userDataDir: string, what: "unlocked" | "forward" | "kept"): string {
@@ -408,18 +416,18 @@ export async function releaseKeptWindow(
   if (!await allow(owner.pid).catch(() => false)) log(focusMiss(owner.pid, owner.userDataDir, "kept"));
 }
 
-/** The installed Chrome for this profile, or nothing for a direct launch and the test lane. */
+/** The bao-spawn Chrome for this profile. A direct or Playwright launch is left alone. */
 export async function presentOwnedProfile(userDataDir: string): Promise<void> {
-  const pid = focusPid(userDataDir);
-  if (!pid) return;
-  if (!await presentOwnedChrome(pid).catch(() => false)) console.error(focusMiss(pid, userDataDir, "forward"));
+  const spawned = spawnedDisclaimedChrome(userDataDir);
+  if (!spawned) return;
+  if (!await presentOwnedChrome(spawned.pid).catch(() => false)) console.error(focusMiss(spawned.pid, userDataDir, "forward"));
 }
 
-/** Marks that same Chrome not allowed to become frontmost. A miss keeps it running. */
+/** Puts the background lock back on a Chrome Bao launched behind. A foreground window stays free. */
 export async function lockOwnedProfile(userDataDir: string): Promise<void> {
-  const pid = focusPid(userDataDir);
-  if (!pid) return;
-  if (!await lockChromeBehind(pid).catch(() => false)) console.error(focusMiss(pid, userDataDir, "unlocked"));
+  const spawned = spawnedDisclaimedChrome(userDataDir);
+  if (!spawned?.behind) return;
+  if (!await lockChromeBehind(spawned.pid).catch(() => false)) console.error(focusMiss(spawned.pid, userDataDir, "unlocked"));
 }
 
 export type OwnedChromeFocus = {
@@ -427,11 +435,13 @@ export type OwnedChromeFocus = {
   lock(profile: string): Promise<void>;
 };
 
-/** Before an owner handoff the window may come forward. When the handoff ends, the lock goes back on. */
+/** Before an owner handoff a bao-spawn Chrome may come forward. The lock returns only if Bao launched that Chrome behind. */
 export async function focusOwnedHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): Promise<void> {
+  const spawned = spawnedDisclaimedChrome(profile);
+  if (!spawned) return;
   const act = focus ?? { present: presentOwnedProfile, lock: lockOwnedProfile };
   if (waiting) await act.present(profile);
-  else await act.lock(profile);
+  else if (spawned.behind) await act.lock(profile);
 }
 
 const SPAWN_SOURCE = path.resolve(__dirname, "../../../packaging/macos/bao-spawn.c");
@@ -626,6 +636,7 @@ export async function startOwnedChrome(exe: string, args: (port: number) => stri
         if (lockWanted && locked && !await tryCall(lock, chromePid)) locked = false;
         if (lockWanted && !locked) log(focusMiss(chromePid, userDataDir, "unlocked"));
         else if (presentWanted && !await tryCall(present, chromePid)) log(focusMiss(chromePid, userDataDir, "forward"));
+        if (disclaim) rememberDisclaimedChrome(userDataDir, chromePid, lockWanted);
         return opened();
       }
       await delay(50);
@@ -1083,6 +1094,7 @@ export function formatShutdown(trace: ShutdownTrace): string {
 
 async function releaseProfileProcesses(owner: OwnedChromeProcess, browserCloseSent: boolean, ownedPids = new Set<number>()): Promise<{ childExit: number | null; signal: NodeJS.Signals | null; killedPids: number[] }> {
   const { userDataDir } = owner;
+  forgetDisclaimedChrome(userDataDir);
   const child = owner.kind === "direct" ? owner.child : owner.launcher;
   const remaining = () => {
     const pids = listedPids(userDataDir);
