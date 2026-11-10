@@ -783,8 +783,9 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
   if (missing === "task") {
     assert.equal(run.status, "failed");
     assert.equal(run.envelope?.reason, "Bao's task tab was closed");
+    assert.equal(waited.status, "failed");
+    assert.equal(waited.reason, "Bao's task tab was closed");
     assert.equal(waited.summary?.text, "Bao's task tab was closed. This session cannot continue.");
-    assert.notEqual(waited.reason, "The session ended before you finished.");
     await assert.rejects(f.proxy.execute("open"), /Bao's task tab was closed/);
   } else {
     assert.equal(run.envelope?.reason, "session_closed");
@@ -793,6 +794,23 @@ for (const missing of ["task", "active-page"] as const) test(`closing the waitin
     await assert.rejects(f.proxy.execute("open"), /owner's Chrome session ended/);
   }
   await assert.rejects(f.proxy.execute("open", [], "current"), /reconnect startup reached/);
+});
+
+test("a command during a handoff records none of its arguments after the task tab closes", async (t) => {
+  const f = await lifecycleFixture(t);
+  const secret = "fixture-private-password";
+  f.state.activeTarget = "login";
+  await f.proxy.execute("open", ["https://fixture.invalid/login"], "current");
+  const runId = f.library.listRuns()[0]!.id;
+  const before = (f.library.readRun(runId).steps as RecordedAgentBrowserCommand[]).length;
+  const calls = f.state.commands.length;
+  f.state.taskGone = true;
+  const [result] = await f.proxy.execute("fill", ["@e3", secret]);
+  assert.equal(JSON.parse(result!.stdout).outcome, "halted");
+  const steps = f.library.readRun(runId).steps as RecordedAgentBrowserCommand[];
+  assert.equal(steps.length, before);
+  assert.equal(steps.some((step) => step.native.args.includes(secret)), false);
+  assert.equal(f.state.commands.length, calls);
 });
 
 for (const keepOpen of [false, true]) test(`a copied session whose waiting tab closed still expires with keep-open=${keepOpen}`, async (t) => {

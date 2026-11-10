@@ -9,7 +9,7 @@ import { isChromeTab, type ChromeTarget } from "../cdp-live/chrome-tabs";
 import { openRunningChrome, type RunningChrome } from "../extension/running-chrome";
 import { resolveNormalChrome } from "../launch";
 import { AgentBrowserRun, type AgentBrowserTaskOutcome, type RecordedAgentBrowserCommand, type StepContext } from "./agent-browser-record";
-import { CURRENT_CHROME_ENDED, newInRead, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
+import { CURRENT_CHROME_ENDED, newInRead, ownerReply, TASK_TAB_CLOSED, type OwnerWaitPage } from "./agent-browser-describe";
 import { BROWSER_PICTURE_BYTES, type ShotBox } from "../v1/shots";
 import { agentBrowserExecutable } from "./agent-browser";
 import { AgentBrowserWorkflow } from "./agent-browser-workflow";
@@ -406,6 +406,7 @@ export class AgentBrowserProxy {
           await this.ownerBanner(session, read.targetId, true).catch(() => undefined);
         }
         results.push(...await this.waitForOwner(session, page ? Math.max(deadline, Date.now() + Math.min(timeout, 5000)) : deadline));
+        if (ownerReply(results)?.instruction === TASK_TAB_CLOSED) failure = new Error("Bao's task tab was closed");
         return results;
       }
       if ((command === "click" || command === "fill") && args[0]) {
@@ -446,9 +447,11 @@ export class AgentBrowserProxy {
       return results;
     } catch (error) {
       if (error instanceof TaskTabClosed) {
+        const agentClosedTab = command === "tab" && args[0] === "close" && results.some((result) => result.exitCode === 0);
         results.splice(0, results.length, ...this.endTaskTab(session));
         step ??= recording.begin(command as string, args);
         this.latest = { runId: recording.id, step, steps: recording.steps };
+        if (!agentClosedTab) failure = new Error("Bao's task tab was closed");
         return results;
       }
       failure = error;
@@ -922,10 +925,7 @@ export class AgentBrowserProxy {
   }
 
   private async detectOwnerWall(session: Session, openedSite?: string): Promise<void> {
-    if (session.ownerWait) {
-      if (await this.taskTabClosedInChrome(session)) throw new TaskTabClosed();
-      return;
-    }
+    if (session.ownerWait) return;
     let active = await this.activePage(session);
     if (!active) throw new Error("no active Bao page metadata");
     if (!ownerWall(active.page)) return;

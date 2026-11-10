@@ -14,7 +14,9 @@ import test, { type TestContext } from "node:test";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
 import type { CdpSocket } from "../../src/cdp-live/socket";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
+import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
 import { pinTestBrowser } from "../../src/launch";
+import { Library } from "../../src/v1/store";
 import { chromeProfiles, fakeTaskTab } from "../support/chrome-profiles";
 
 pinTestBrowser();
@@ -126,9 +128,10 @@ async function fixture(t: TestContext) {
   });
   const executable = path.join(root, "native");
   await writeFile(executable, "", { mode: 0o700 });
-  const proxy = new AgentBrowserProxy({ home: path.join(root, "home"), sourceRoot: root, executable });
+  const home = path.join(root, "home");
+  const proxy = new AgentBrowserProxy({ home, sourceRoot: root, executable });
   t.after(() => proxy.end());
-  return { proxy, targets, daemon, closed };
+  return { proxy, targets, daemon, closed, home };
 }
 
 test("Chrome's Gemini panel and side panels stay out of the agent's tab list, and Bao's task tab says so", async (t) => {
@@ -247,6 +250,11 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   assert.match(ended!.stdout, /Bao's task tab was closed/);
   assert.match(ended!.stdout, /browser=current/);
   assert.equal(f.proxy.hasSession(), false);
+  const missed = (new Library(f.home).listRuns()[0]!.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.equal(missed.native.command, "snapshot");
+  assert.equal(missed.status, "failed");
+  assert.equal(missed.reason, "Bao's task tab was closed");
+  assert.equal(missed.summary?.text, "Bao's task tab was closed. This session cannot continue.");
   assert.deepEqual(f.closed, [], "the owner's tabs stay open");
   assert.ok(f.targets.some(item => item.targetId === "owner"));
   await assert.rejects(f.proxy.execute("click", ["@e1"]), /Bao's task tab was closed/);
@@ -261,6 +269,10 @@ test("the agent's close of its last task tab reports that the tab was closed, no
   const [ended] = await f.proxy.execute("tab", ["close", "t1"]);
   assert.equal(ended!.exitCode, 0);
   assert.match(ended!.stdout, /Bao's task tab was closed/);
+  const closedStep = (new Library(f.home).listRuns()[0]!.steps as RecordedAgentBrowserCommand[]).at(-1)!;
+  assert.equal(closedStep.native.command, "tab");
+  assert.equal(closedStep.status, "passed");
+  assert.equal(closedStep.summary?.text, "Bao's task tab was closed. This session cannot continue.");
   assert.equal(f.proxy.hasSession(), false);
   assert.ok(!f.targets.some(item => item.targetId === "task"), "the close itself removed the task tab");
   assert.ok(f.targets.some(item => item.targetId === "owner"));
