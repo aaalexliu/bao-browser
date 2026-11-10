@@ -303,7 +303,7 @@ export class AgentBrowserProxy {
       throw new Error("profile is only accepted on open and must be a Chrome profile folder, such as Default or Profile 2");
     }
     if (runId !== undefined && (command !== "wait_for_owner" || typeof runId !== "string" || !runId.trim())) {
-      throw new Error("run_id is only accepted on wait_for_owner and must be the run id the halted or waiting result gave");
+      throw new Error("run_id is only accepted on wait_for_owner and must be the run id this session's halted or waiting result names");
     }
     if (command === "wait_for_owner") {
       if (args.length > 1) throw new Error("wait_for_owner accepts only an optional timeout in milliseconds");

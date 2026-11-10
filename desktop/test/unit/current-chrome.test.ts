@@ -14,7 +14,8 @@ import * as profileCopy from "../../src/engines/chrome-profile-copy";
 import * as baoProfile from "../../src/engines/bao-profile";
 import { CURRENT_CHROME_ENDED, TASK_TAB_CLOSED, WAIT_RUN_ENDED } from "../../src/engines/agent-browser-describe";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
-import { browserToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
+import { getRun } from "../../src/mcp/catalog";
+import { browserToolResult, finishToolResult, pageShotLine, stepSentence } from "../../src/mcp/tool-card";
 import { LAUNCH_SERVICES_RESTART, launchOwnedChromeEndpoint, pinTestBrowser } from "../../src/launch";
 import { MacOsHelper, type AxHit, type AxNode } from "../../src/proxy/os-macos";
 import type { RecordedAgentBrowserCommand } from "../../src/engines/agent-browser-record";
@@ -838,6 +839,33 @@ async function untilSessionEnds(proxy: AgentBrowserProxy): Promise<void> {
   while (proxy.hasSession() && Date.now() < deadline) await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(proxy.hasSession(), false);
 }
+
+test("a first wait after finish_task still waits on the new run when run_id is left out", async (t) => {
+  const f = await lifecycleFixture(t);
+  await f.proxy.execute("open", [], "current");
+  const runX = await f.proxy.finishTask({ outcome: "passed", reason: "Task finished." });
+  assert.ok(runX);
+  const finished = finishToolResult(undefined, getRun(f.library, runX), false);
+  assert.match(finished.content.map((block) => block.text).join("\n"), new RegExp(`Run ${runX} · passed`));
+  f.state.closed = false;
+  let endChrome!: () => void;
+  const closed = new Promise<void>((resolve) => { endChrome = resolve; });
+  t.mock.method(currentChrome, "openCurrentChrome", async () => ({
+    pid: 7, executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", root: "/chrome",
+    endpoint: { port: await trapPort(), browserPath: "/browser" },
+    cdp: f.cdp, closed, isClosed: () => !f.cdp.isOpen, detach: () => { f.cdp.close(); endChrome(); },
+  }));
+  await f.proxy.execute("open", [], "current");
+  const runY = f.library.listRuns().find((run) => run.id !== runX)!.id;
+  assert.notEqual(runY, runX);
+  const [waiting] = await f.proxy.execute("wait_for_owner", ["40"]);
+  const reply = JSON.parse(waiting!.stdout) as { outcome: string; instruction: string };
+  assert.equal(reply.outcome, "waiting", "a check Bao did not recognize still waits on the open session");
+  assert.equal(reply.instruction.includes(`run_id="${runY}"`), true);
+  assert.equal(reply.instruction.includes(`run_id="${runX}"`), false);
+  assert.equal(f.proxy.hasSession(), true);
+  assert.equal(f.library.listRuns().find((run) => run.id === runY)!.status, "needs_human");
+});
 
 test("a wait_for_owner that names the run whose Chrome ended returns the reconnect instruction", async (t) => {
   const f = await lifecycleFixture(t);
