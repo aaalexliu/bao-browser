@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { connect, createServer } from "node:net";
-import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, allowFrontArgs, askForwardArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, releaseKeptWindow, resolveAccountChrome, resolveNormalChrome, setOwnedFrontmost, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs } from "../../src/launch";
+import { ACCOUNT_CHROME_MAC, LINUX_CHROME, accountLaunchArgs, allowFrontArgs, askForwardArgs, assertChromeProfileAvailable, assessOwnedCommand, behindFrontArgs, browserPidFromLauncher, chromeSpawnerPath, discardRestoredTabs, disclaimedChrome, focusOwnedHandoff, forgetDisclaimedChrome, frontmostInfoArgs, guiChromeBrowserPid, killCommandToken, killStalledProfile, launchServicesStalled, ownedChromeLaunchArgs, pidsForDataDir, pinTestBrowser, readOwnedCommand, releaseKeptWindow, resolveAccountChrome, resolveNormalChrome, setOwnedFrontmost, startOwnedChrome, stopOwnedChrome, testLaneBrowser, testLaneKeychainArgs, testLaneMediaArgs, type OwnedChromeFocus } from "../../src/launch";
 
 const processes = require("node:child_process") as typeof import("node:child_process");
 const fixture = readFileSync(path.join(process.cwd(), "desktop/test/fixtures/ps-chrome-owned.txt"), "utf8");
@@ -106,6 +106,7 @@ function writeFakeSpawner(dir: string, mode: "ready" | "exit" | "fail"): string 
       "const announced = portArg ? portArg.slice('--remote-debugging-port='.length) : '';",
       "const child = spawn(process.execPath, ['-e', \"process.stderr.write('DevTools listening on ws://127.0.0.1:' + process.env.BAO_FAKE_PORT + '/devtools/browser/abc' + String.fromCharCode(10)); setInterval(() => {}, 1000);\"], { stdio: ['ignore', 'ignore', 'inherit'], env: { ...process.env, BAO_FAKE_PORT: announced } });",
       "fs.writeFileSync(__filename + '.pid', String(child.pid));",
+      "fs.writeFileSync(__filename + '.argv', process.argv.slice(1).join('\\n'));",
       "process.stdout.write(String(child.pid) + String.fromCharCode(10));",
       "child.on('exit', (code) => process.exit(code ?? 0));",
     );
@@ -143,6 +144,7 @@ test("a disclaimed launch returns the spawned pid and locks only that pid", { sk
     assert.equal(owner.pid, recorded);
     assert.ok(locked.length >= 1);
     assert.ok(locked.every((pid) => pid === recorded));
+    assert.equal(readFileSync(`${fake}.argv`, "utf8").split("\n").includes("--behind"), true);
     assert.ok(started.port !== 9222);
     assert.equal(readFileSync(path.join(profile, "DevToolsActivePort"), "utf8").split("\n")[0], String(started.port));
   } finally {
@@ -182,6 +184,7 @@ test("a foreground disclaimed launch does not lock the pid", { skip: process.pla
     owner = started.owner;
     const recorded = Number(readFileSync(`${fake}.pid`, "utf8"));
     assert.deepEqual(locked, []);
+    assert.equal(readFileSync(`${fake}.argv`, "utf8").includes("--behind"), false);
     assert.ok(presented.length >= 1);
     assert.ok(presented.every((pid) => pid === recorded));
     assert.match(lines.join("\n"), new RegExp(`bao chrome was not asked forward pid=${recorded}`));
@@ -285,6 +288,143 @@ test("a direct background launch never locks and still starts", async () => {
     assert.equal(owner.kind, "direct");
     assert.notEqual(started.port, 9222);
   } finally {
+    if (owner?.kind === "direct") owner.child.kill("SIGKILL");
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a later lock miss does not log stayed unlocked after an earlier read-back succeeded", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-relock-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeSpawner(dir, "ready");
+  const lines: string[] = [];
+  let calls = 0;
+  let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
+  try {
+    const started = await startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "--no-startup-window"],
+      profile,
+      undefined,
+      false,
+      true,
+      { env: {}, spawner: fake, lockBehind: () => ++calls === 1, log: (line) => lines.push(line) },
+    );
+    owner = started.owner;
+    assert.ok(calls >= 2);
+    assert.equal(lines.some((line) => line.includes("stayed unlocked")), false);
+  } finally {
+    forgetDisclaimedChrome(profile);
+    if (owner?.kind === "gui") {
+      try { process.kill(owner.pid, "SIGKILL"); } catch { /* already gone */ }
+      try { owner.launcher.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("bao-spawn --behind continues the child when the flag cannot be set", { skip: process.platform !== "darwin" }, async () => {
+  const binary = chromeSpawnerPath();
+  const child = spawn(binary, ["--behind", "/bin/sleep", "30"], { stdio: ["ignore", "pipe", "pipe"] });
+  let pid = 0;
+  try {
+    const line = await new Promise<string>((resolve, reject) => {
+      let buf = "";
+      const timer = setTimeout(() => reject(new Error("bao-spawn did not report a pid")), 5000);
+      child.stdout?.on("data", (chunk: Buffer) => {
+        buf += chunk.toString("utf8");
+        const nl = buf.indexOf("\n");
+        if (nl < 0) return;
+        clearTimeout(timer);
+        resolve(buf.slice(0, nl));
+      });
+      child.once("exit", () => { clearTimeout(timer); reject(new Error("bao-spawn exited before a pid")); });
+    });
+    pid = Number(line.trim().split(/\s+/)[0]);
+    const state = spawnSync("/bin/ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
+    assert.notEqual(state, "T");
+    assert.notEqual(state, "");
+  } finally {
+    if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+  }
+});
+
+function handoffRecorder(): { order: string[]; focus: OwnedChromeFocus } {
+  const order: string[] = [];
+  return {
+    order,
+    focus: {
+      async present() { order.push("present"); },
+      async lock() { order.push("lock"); },
+    },
+  };
+}
+
+test("a background launch records behind, and a foreground launch does not", { skip: process.platform !== "darwin" }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-handoff-wire-"));
+  const behindProfile = path.join(dir, "behind");
+  const frontProfile = path.join(dir, "front");
+  mkdirSync(behindProfile);
+  mkdirSync(frontProfile);
+  const fake = writeFakeSpawner(dir, "ready");
+  const owners: Array<Awaited<ReturnType<typeof startOwnedChrome>>["owner"]> = [];
+  try {
+    const behind = await startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${behindProfile}`, `--remote-debugging-port=${port}`, "--no-startup-window"],
+      behindProfile, undefined, false, true,
+      { env: {}, spawner: fake, lockBehind: () => true, present: () => false },
+    );
+    owners.push(behind.owner);
+    const behindFocus = handoffRecorder();
+    await focusOwnedHandoff(behindProfile, true, behindFocus.focus);
+    await focusOwnedHandoff(behindProfile, false, behindFocus.focus);
+    assert.deepEqual(behindFocus.order, ["present", "lock"]);
+    const front = await startOwnedChrome(
+      ACCOUNT_CHROME_MAC,
+      (port) => [`--user-data-dir=${frontProfile}`, `--remote-debugging-port=${port}`, "--no-startup-window"],
+      frontProfile, undefined, false, false,
+      { env: {}, spawner: fake, lockBehind: () => true, present: () => false },
+    );
+    owners.push(front.owner);
+    const frontFocus = handoffRecorder();
+    await focusOwnedHandoff(frontProfile, true, frontFocus.focus);
+    await focusOwnedHandoff(frontProfile, false, frontFocus.focus);
+    assert.deepEqual(frontFocus.order, ["present"]);
+  } finally {
+    forgetDisclaimedChrome(behindProfile);
+    forgetDisclaimedChrome(frontProfile);
+    for (const owner of owners) {
+      if (owner.kind !== "gui") continue;
+      try { process.kill(owner.pid, "SIGKILL"); } catch { /* already gone */ }
+      try { owner.launcher.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a direct launch is not a handoff target", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "bao-direct-handoff-"));
+  const profile = path.join(dir, "profile");
+  mkdirSync(profile);
+  const fake = writeFakeChrome(dir);
+  let owner: Awaited<ReturnType<typeof startOwnedChrome>>["owner"] | undefined;
+  try {
+    const started = await startOwnedChrome(
+      fake,
+      (port) => [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`],
+      profile, undefined, false, true,
+      { env: {}, lockBehind: () => false, present: () => false },
+    );
+    owner = started.owner;
+    const { order, focus } = handoffRecorder();
+    await focusOwnedHandoff(profile, true, focus);
+    await focusOwnedHandoff(profile, false, focus);
+    assert.deepEqual(order, []);
+  } finally {
+    forgetDisclaimedChrome(profile);
     if (owner?.kind === "direct") owner.child.kill("SIGKILL");
     rmSync(dir, { recursive: true, force: true });
   }
@@ -449,7 +589,23 @@ test("bao-spawn disclaims the child so it is responsible for itself", { skip: pr
     });
     const fields = line.trim().split(/\s+/);
     pid = Number(fields[0]);
-    assert.equal(fields[1], String(pid));
+    const probeDir = mkdtempSync(path.join(tmpdir(), "bao-responsible-probe-"));
+    const probe = path.join(probeDir, "probe");
+    writeFileSync(`${probe}.c`, [
+      "#include <stdio.h>",
+      "#include <stdlib.h>",
+      "extern pid_t responsibility_get_pid_responsible_for_pid(pid_t);",
+      "int main(int argc, char *argv[]) {",
+      "  printf(\"%d\\n\", responsibility_get_pid_responsible_for_pid(atoi(argv[1])));",
+      "  return 0;",
+      "}",
+    ].join("\n"));
+    const compiled = spawnSync("clang", ["-O2", "-o", probe, `${probe}.c`]);
+    assert.equal(compiled.status, 0, compiled.stderr?.toString());
+    const kernel = Number(spawnSync(probe, [String(pid)], { encoding: "utf8" }).stdout.trim());
+    rmSync(probeDir, { recursive: true, force: true });
+    assert.equal(kernel, pid);
+    assert.notEqual(kernel, child.pid);
   } finally {
     if (pid) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
     try { child.kill("SIGKILL"); } catch { /* already gone */ }

@@ -168,8 +168,8 @@ type OwnedChrome = Awaited<ReturnType<typeof openCopiedChromeForProxy>> | Awaite
 
 /**
  * macOS does not let a Chrome that Bao launched in the background make itself the front app, so Target.activateTarget only
- * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows. The
- * owner's app keeps the keyboard until he clicks the window. A zoomed window comes back zoomed. A full-screen window has its
+ * lifts its window behind the owner's. A window that comes back from the Dock comes back on top of every app's windows.
+ * Asking that window forward can take the keyboard. A zoomed window comes back zoomed. A full-screen window has its
  * own Space, so Bao leaves it. Returns whether the window came back on top.
  */
 async function windowOnTop(cdp: CdpSocket, targetId: string): Promise<boolean> {

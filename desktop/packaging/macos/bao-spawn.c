@@ -1,5 +1,8 @@
 /* posix_spawn a Bao-owned Chrome with responsibility disclaimed, print its pid, and wait.
  * Node cannot set the disclaim attribute. Chrome cannot respawn itself, so this waiter does it.
+ * `--behind` stops the child, sets the frontmost flag, and continues it before the pid line,
+ * so a restored window cannot come forward while Node is still reading that line.
+ * A failed flag does not fail the launch. The child is always continued.
  * The child's stdout goes to /dev/null so it cannot mix with the pid line or fill the pipe.
  * Its stderr stays inherited: that is the DevTools line. Signals sent to this waiter go on to the child.
  */
@@ -26,8 +29,29 @@ static void forward(int sig) {
   if (child_pid > 0) kill((pid_t)child_pid, sig);
 }
 
+static void lockBehind(pid_t pid) {
+  if (pid <= 1) return;
+  kill(pid, SIGSTOP);
+  char pidArg[32];
+  snprintf(pidArg, sizeof pidArg, "%d", (int)pid);
+  char *args[] = { "lsappinfo", "setinfo", "-app", pidArg, "kLSAllowedToBecomeFrontmostKey=false", NULL };
+  posix_spawn_file_actions_t quiet;
+  posix_spawn_file_actions_init(&quiet);
+  posix_spawn_file_actions_addopen(&quiet, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
+  posix_spawn_file_actions_addopen(&quiet, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+  pid_t tool = 0;
+  if (posix_spawn(&tool, "/usr/bin/lsappinfo", &quiet, NULL, args, environ) == 0) {
+    int toolStatus = 0;
+    while (waitpid(tool, &toolStatus, 0) < 0 && errno == EINTR) {}
+  }
+  posix_spawn_file_actions_destroy(&quiet);
+  kill(pid, SIGCONT);
+}
+
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
+  int behind = argc >= 3 && strcmp(argv[1], "--behind") == 0;
+  int exeAt = behind ? 2 : 1;
+  if (argc <= exeAt) {
     fprintf(stderr, "bao-spawn: missing executable\n");
     return 64;
   }
@@ -57,7 +81,7 @@ int main(int argc, char *argv[]) {
   posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
 
   pid_t pid = 0;
-  int spawned = disclaimed == 0 ? posix_spawn(&pid, argv[1], &actions, &attr, argv + 1, environ) : disclaimed;
+  int spawned = disclaimed == 0 ? posix_spawn(&pid, argv[exeAt], &actions, &attr, argv + exeAt, environ) : disclaimed;
   posix_spawn_file_actions_destroy(&actions);
   posix_spawnattr_destroy(&attr);
   if (disclaimed != 0 || spawned != 0) {
@@ -67,6 +91,7 @@ int main(int argc, char *argv[]) {
   }
   child_pid = pid;
   sigprocmask(SIG_SETMASK, &saved, NULL);
+  if (behind) lockBehind(pid);
   pid_t responsible = responsibility_get_pid_responsible_for_pid(pid);
   printf("%d %d\n", pid, responsible);
   fflush(stdout);

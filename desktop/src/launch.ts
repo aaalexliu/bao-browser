@@ -579,8 +579,10 @@ export async function startOwnedChrome(exe: string, args: (port: number) => stri
   const port = await ownedDebugPort();
   const chromeArgs = args(port);
   if (disclaim) assertChromeProfileAvailable(userDataDir);
+  const lockWanted = background && disclaim;
+  const presentWanted = !background && disclaim;
   const spawner = disclaim ? chromeSpawnerPath(hooks?.spawner) : undefined;
-  const child = spawn(spawner ?? exe, spawner ? [exe, ...chromeArgs] : chromeArgs, {
+  const child = spawn(spawner ?? exe, spawner ? [...(lockWanted ? ["--behind"] : []), exe, ...chromeArgs] : chromeArgs, {
     stdio: ["ignore", spawner ? "pipe" : "ignore", "pipe"],
     detached,
     env: childHome === undefined ? process.env : { ...process.env, HOME: childHome },
@@ -622,8 +624,6 @@ export async function startOwnedChrome(exe: string, args: (port: number) => stri
       else chromePid = pid;
     });
   }
-  const lockWanted = background && disclaim;
-  const presentWanted = !background && disclaim;
   const lock = hooks?.lockBehind ?? lockChromeBehind;
   const present = hooks?.present ?? presentOwnedChrome;
   const log = hooks?.log ?? ((line: string) => { console.error(line); });
@@ -660,7 +660,7 @@ export async function startOwnedChrome(exe: string, args: (port: number) => stri
       }
       if (browserPath && chromePid) {
         if (lockWanted && !locked) locked = await tryCall(lock, chromePid);
-        if (lockWanted && locked && !await tryCall(lock, chromePid)) locked = false;
+        else if (lockWanted && locked) await tryCall(lock, chromePid);
         if (lockWanted && !locked) log(focusMiss(chromePid, userDataDir, "unlocked"));
         else if (presentWanted && !await tryCall(present, chromePid)) log(focusMiss(chromePid, userDataDir, "forward"));
         if (disclaim) rememberDisclaimedChrome(userDataDir, chromePid, lockWanted);
@@ -873,7 +873,7 @@ interface OwnedChromeProcessOptions {
   /**
    * When set, Chrome is marked not allowed to become frontmost. "none" opens no window, "window" one blank window, and "restore" the saved windows.
    * A window Chrome opens for itself at launch takes the front even when it cannot become the front app, so for "window" Bao
-   * opens the window itself, in the background. A restored window can still come forward before that mark lands.
+   * opens the window itself, in the background. A background launch is stopped until bao-spawn sets that flag.
    */
   background?: "none" | "window" | "restore";
   /** Sites the source Chrome profile holds device-bound sessions for. Their cookies go before Chrome starts. */
