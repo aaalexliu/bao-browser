@@ -806,7 +806,8 @@ test("a command during a handoff records none of its arguments after the task ta
   const calls = f.state.commands.length;
   f.state.taskGone = true;
   const [result] = await f.proxy.execute("fill", ["@e3", secret]);
-  assert.equal(JSON.parse(result!.stdout).outcome, "halted");
+  const receipt = JSON.parse(result!.stdout) as { outcome: string };
+  assert.equal(receipt.outcome, "halted");
   const steps = f.library.readRun(runId).steps as RecordedAgentBrowserCommand[];
   assert.equal(steps.length, before);
   assert.equal(steps.some((step) => step.native.args.includes(secret)), false);

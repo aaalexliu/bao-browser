@@ -248,7 +248,8 @@ test("when the owner closes Bao's last task tab, the session ends and a new open
   dropTab(f, "task");
   const [ended] = await f.proxy.execute("snapshot", ["-i"]);
   assert.equal(ended!.exitCode, 0);
-  assert.equal(JSON.parse(ended!.stdout).outcome, "closed");
+  const receipt = JSON.parse(ended!.stdout) as { outcome: string };
+  assert.equal(receipt.outcome, "closed");
   assert.match(ended!.stdout, /Bao's task tab was closed/);
   assert.match(ended!.stdout, /browser=current/);
   assert.equal(f.proxy.hasSession(), false);
@@ -288,7 +289,8 @@ test("the agent's close of its last task tab ends the session while Chrome still
   f.daemon.holdClosedInChrome = true;
   const [ended] = await f.proxy.execute("tab", ["close", "t1"]);
   assert.equal(ended!.exitCode, 0);
-  assert.equal(JSON.parse(ended!.stdout).outcome, "closed");
+  const receipt = JSON.parse(ended!.stdout) as { outcome: string };
+  assert.equal(receipt.outcome, "closed");
   assert.match(ended!.stdout, /Bao's task tab was closed/);
   assert.equal(f.proxy.hasSession(), false);
   assert.ok(f.targets.some(item => item.targetId === "task"), "Chrome has not destroyed the closed tab yet");
