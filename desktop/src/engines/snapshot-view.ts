@@ -103,10 +103,11 @@ function lineDiff(before: Line[], after: Line[]): Op[] | undefined {
 /** What changed since the last snapshot with the same args: added and removed lines with the lines that hold them. */
 export function diffView(before: string | undefined, after: string): string {
   if (before === undefined) return `No earlier snapshot with these args in this session, so this is the full snapshot.\n${after}`;
-  if (before === after) return `No change since the last snapshot (${lines(after).length} lines).`;
-  const ops = lineDiff(lines(before), lines(after));
-  const full = `Most of the page changed since the last snapshot, so this is the full snapshot.\n${after}`;
-  if (!ops) return full;
+  const afterLines = lines(after);
+  if (before === after) return `No change since the last snapshot (${afterLines.length} lines).`;
+  const beforeLines = lines(before);
+  const ops = lineDiff(beforeLines, afterLines);
+  if (!ops) return `The changed part of the page is too large to compare, so this is the full snapshot.\n${after}`;
   const changed = ops.flatMap((op, at) => op.kind === "same" ? [] : [at]);
   // An added line sits under lines that are still there or also added; a removed line under lines that were there before.
   const shown = withParents(ops.map((op) => op.line), changed, (child, parent) => ops[parent]!.kind === "same" || ops[parent]!.kind === ops[child]!.kind);
@@ -114,10 +115,13 @@ export function diffView(before: string | undefined, after: string): string {
   const removed = ops.filter((op) => op.kind === "removed").length;
   const mark = { same: "  ", added: "+ ", removed: "- " } as const;
   const body = [...shown].sort((a, b) => a - b).map((at) => `${mark[ops[at]!.kind]}${ops[at]!.line.text}`);
-  const view = `Changed since the last snapshot: ${added} ${added === 1 ? "line" : "lines"} added (+), ${removed} removed (-). Unchanged lines are left out except the ones that hold a change.\n${body.join("\n")}`;
+  const header = `Changed since the last snapshot: ${added} ${added === 1 ? "line" : "lines"} added (+), ${removed} removed (-). Unchanged lines are left out except the ones that hold a change.`;
+  const view = `${header}\n${body.join("\n")}`;
   if (view.length < after.length) return view;
-  // A few changed lines stay a diff. The header can make that list longer than a tiny page, which is not "most of the page".
-  const size = Math.max(lines(before).length, lines(after).length);
-  if (added + removed > size / 2 && added + removed > 2) return full;
-  return view;
+  const changedLines = Math.max(added, removed);
+  const size = Math.max(beforeLines.length, afterLines.length);
+  if (changedLines > size / 2) return `Most of the page changed since the last snapshot, so this is the full snapshot.\n${after}`;
+  const headerBudget = header.length + 1;
+  if (view.length - after.length <= headerBudget || after.length <= headerBudget && changedLines <= 2) return view;
+  return `The changed lines are longer than the full snapshot, so this is the full snapshot.\n${after}`;
 }

@@ -77,7 +77,7 @@ const AGENT_BROWSER_TOOL = {
       find: { type: "object", description: "Only on snapshot. Return only the lines whose accessible name or value contains text (case-insensitive) and whose role is role, each with its ref, the lines that hold it, and everything inside it. Give text, role, or both.",
         properties: { text: { type: "string" }, role: { type: "string", description: "An accessibility role as the snapshot prints it, such as button, link, textbox, heading, or dialog." } }, additionalProperties: false },
       run_id: { type: "string", description: RUN_SCOPE },
-      diff: { type: "boolean", description: "Only on snapshot. Return only the lines added (+) or removed (-) since the last snapshot with the same args in this session, with the lines that hold them. The first such snapshot returns the full tree. When most of the page changed, the result is the full tree and says so. A few changed lines stay a diff." },
+      diff: { type: "boolean", description: "Only on snapshot. Return only the lines added (+) or removed (-) since the last snapshot with the same args in this session, with the lines that hold them. The first such snapshot returns the full tree. When most of the page changed, the changed part is too large to compare, or the changed lines are longer than the full tree, the result is the full tree and says why. A few changed lines on a tiny page stay a diff." },
     }, required: ["command"], additionalProperties: false,
   },
 } as const;
@@ -276,7 +276,7 @@ async function handle(msg: Rpc, ctx: Context): Promise<void> {
         let card;
         try { card = runId ? finishCardFor(ctx.library, runId) : undefined; }
         catch { card = undefined; }
-        result = { ...finishToolResult(card, withLibrary({ ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.identity), ctx.ui, ctx.proxy.pickLines),
+        result = { ...finishToolResult(card, { ...receipt, workflow: ctx.proxy.lastWorkflowOutcome }, ctx.ui, ctx.proxy.pickLines),
           ...(ctx.ui && card ? { _meta: { baoToolCard: card } } : {}) };
       }
       else {

@@ -55,6 +55,32 @@ test("diff shows added and removed lines under the lines that hold them, and fal
 -   - button "Save" [ref=e1]`);
 });
 
+test("a few edits on a small page stay a diff, and a longer nested diff returns the full tree", () => {
+  const cart = `- main
+  - heading "Cart" [level=1, ref=e1]
+  - list
+    - listitem "Tea 1"
+    - listitem "Milk 1"
+    - listitem "Bread 1"
+    - listitem "Eggs 1"
+  - text "Total $10"
+  - button "Checkout" [ref=e2]
+  - link "Home" [ref=e3]
+`;
+  const next = cart.replace("Tea 1", "Tea 2").replace("Milk 1", "Milk 2").replace("Total $10", "Total $12");
+  const edited = diffView(cart, next);
+  assert.match(edited, /^Changed since the last snapshot: 3 lines added \(\+\), 3 removed/);
+  assert.match(edited, /\+\s+- listitem "Tea 2"/);
+  assert.match(edited, /\+\s+- text "Total \$12"/);
+  assert.doesNotMatch(edited, /Most of the page changed/);
+  assert.equal(edited.includes(next), false, "three of ten lines is a diff, not the full tree");
+
+  const item = (price: number) => `    - listitem\n      - link "Item"\n        - generic\n          - text "$${price}"`;
+  const before = ["- main", "  - list", ...Array.from({ length: 200 }, () => item(10))].join("\n") + "\n";
+  const after = ["- main", "  - list", ...Array.from({ length: 200 }, () => item(11))].join("\n") + "\n";
+  assert.equal(diffView(before, after), `The changed lines are longer than the full snapshot, so this is the full snapshot.\n${after}`);
+});
+
 test("find and diff are snapshot options, one at a time, and the tool teaches both", () => {
   assert.equal(snapshotView("snapshot", undefined, undefined), undefined);
   assert.equal(snapshotView("click", undefined, false), undefined);

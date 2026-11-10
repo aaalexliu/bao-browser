@@ -629,16 +629,28 @@ test("an owner wait and finish_task carry the browser lines in structuredContent
   const native = "x".repeat(1000);
   const fat = finishToolResult(undefined, {
     run_id: "run-1", status: "passed", outcome: "ok", reason: "Verified.", link: "bao://receipt/run-1", workflow: "Not saved as a workflow: one step.",
+    task: "from the receipt", done: ["not this"], pageLeftOpen: true,
     receipts: [{ id: "command-1", status: "passed", native: { command: "snapshot", results: [{ stdout: native, stderr: native, exitCode: 0 }] } }],
     library: { active: { path: "~/Library/Bao" } }, resume_token: "secret-token",
   }, false, browser.slice(0, 1));
   assert.equal(fat.content[0]!.text, "No browser task was open.");
   assert.deepEqual(fat.structuredContent, {
     summary: "No browser task was open.", run_id: "run-1", outcome: "ok", status: "passed", reason: "Verified.",
-    link: "bao://receipt/run-1", workflow: "Not saved as a workflow: one step.", steps: 1, browser: browser.slice(0, 1),
+    link: "bao://receipt/run-1", workflow: "Not saved as a workflow: one step.", browser: browser.slice(0, 1),
   });
   assert.equal(JSON.stringify(fat.structuredContent).includes(native), false);
   assert.ok(JSON.stringify(fat.structuredContent).length < 400);
+  const card: BrowserToolCard = {
+    command: "finish_task", status: "complete", style: "finish", caption: "Passed: Verified. 2 steps.",
+    parts: ["Passed: Verified. 2 steps."], runId: "run-1", stepId: null, picture: { kind: "unavailable", reason: "No page picture." },
+    finish: { outcome: "passed", reason: "Verified.", task: "Add milk", done: ["Added milk"], steps: 9, pageLoads: 1, reads: 1, clicks: 0, typed: 1, failedSteps: 0 },
+  };
+  const fromCard = finishToolResult(card, { run_id: "run-1", status: "passed", task: "from the receipt", done: ["not this"], pageLeftOpen: true, receipts: [{ id: "command-1", status: "passed" }] }, false);
+  assert.equal(fromCard.structuredContent.summary, card.caption);
+  assert.equal(fromCard.structuredContent.task, "Add milk");
+  assert.deepEqual(fromCard.structuredContent.done, ["Added milk"]);
+  assert.equal("steps" in fromCard.structuredContent, false);
+  assert.equal("pageLeftOpen" in fromCard.structuredContent, false);
   assert.equal(finished.content.at(-1)!.text, browser[0]);
   assert.equal("browser" in finishToolResult(undefined, { run_id: "run-1", status: "passed" }, false).structuredContent, false);
 });

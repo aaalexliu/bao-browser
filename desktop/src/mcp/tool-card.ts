@@ -204,11 +204,12 @@ export function textToolResult(results: readonly AgentBrowserCommandResult[], se
   };
 }
 
-const MODEL_RECEIPT_KEYS = ["run_id", "outcome", "status", "reason", "link", "workflow", "task", "done", "pageLeftOpen"] as const;
+const MODEL_RECEIPT_KEYS = ["run_id", "outcome", "status", "reason", "link", "workflow"] as const;
 
 /**
  * What the model reads. Codex and Claude Code hand structuredContent back in place of the text blocks.
- * The owner card, the text blocks, and get_run keep the full receipt.
+ * Those blocks are the sentence, the run line, the workflow line, and the browser lines.
+ * The card holds a FinishSummary. Only get_run keeps the full receipt.
  */
 function modelReceipt(sentence: string, receipt: Record<string, unknown>, browser: readonly string[], card?: BrowserToolCard): Record<string, unknown> {
   const short: Record<string, unknown> = { summary: sentence };
@@ -218,8 +219,6 @@ function modelReceipt(sentence: string, receipt: Record<string, unknown>, browse
   const finish = card?.finish;
   if (finish?.task) short.task = finish.task;
   if (finish && finish.done.length) short.done = finish.done;
-  if (finish) short.steps = finish.steps;
-  else if (Array.isArray(receipt.receipts)) short.steps = receipt.receipts.length;
   if (browser.length) short.browser = browser;
   return short;
 }
