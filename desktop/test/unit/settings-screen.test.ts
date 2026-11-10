@@ -173,6 +173,102 @@ test("main-pane navigation shows a focus ring only for keyboard input", { timeou
   }
 });
 
+test("a settings load keeps the keyboard focus ring on the first control", { timeout: 60_000 }, async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "bao-settings-focus-refresh-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  t.mock.method(MacOsHelper.prototype, "exec", async () => ({ ok: false, accessibility: false }));
+  const app = await startApp({ home, extensionHost: false, chromeProfilesRoot: path.join(home, "profiles") });
+  const browser = await testChromium.launch({ executablePath: process.env.BAO_TEST_BROWSER, headless: true });
+  let releaseLogins = (): void => {};
+  let releaseHost = (): void => {};
+  const loginsHeld = new Promise<void>((resolve) => { releaseLogins = resolve; });
+  const hostHeld = new Promise<void>((resolve) => { releaseHost = resolve; });
+  const site = {
+    origin: "https://example.test",
+    probeUrl: "https://example.test/account",
+    signedInSelector: "",
+    signedInText: "",
+    botCookies: "skip",
+    origins: [],
+    signedIn: false,
+  };
+  try {
+    const page = await browser.newPage();
+    let loginBody: { sites: typeof site[] } | undefined;
+    await page.route("**/api/login-sites", async (route) => {
+      await loginsHeld;
+      if (loginBody) await route.fulfill({ json: loginBody });
+      else await route.continue();
+    });
+    await page.route("**/api/extension/host-access", async (route) => {
+      await hostHeld;
+      await route.continue();
+    });
+    await page.route("**/api/chrome-profiles", async (route) => {
+      await hostHeld;
+      await route.continue();
+    });
+    const readRing = () => page.evaluate(() => {
+      const node = document.getElementById("heal-auto");
+      const label = document.querySelector('label[for="heal-auto"]');
+      return {
+        focused: document.activeElement?.id ?? "",
+        ring: node?.matches(":focus-visible") === true,
+        outline: label ? getComputedStyle(label).outlineStyle : "",
+        element: document.activeElement?.outerHTML.slice(0, 120) ?? "",
+      };
+    });
+    async function openByKeyboard(): Promise<void> {
+      await page.keyboard.press("Tab");
+      const settings = page.locator('#rail [data-place="settings"]');
+      await settings.focus();
+      await page.keyboard.press("Enter");
+      await page.locator("#settings").waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "main");
+      await page.keyboard.press("Tab");
+      const ring = await readRing();
+      assert.deepEqual(
+        { focused: ring.focused, ring: ring.ring, outline: ring.outline },
+        { focused: "heal-auto", ring: true, outline: "solid" },
+        `Tab reached the first setting; focus was on ${ring.element}`,
+      );
+    }
+    await page.goto(`http://127.0.0.1:${app.port}`);
+    await openByKeyboard();
+    const pane = await page.locator("#settings").elementHandle();
+    const hostDone = Promise.all([
+      page.waitForResponse("**/api/extension/host-access"),
+      page.waitForResponse("**/api/chrome-profiles"),
+    ]);
+    releaseHost();
+    await hostDone;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.equal(await pane?.evaluate((node) => node.isConnected), true, "an unchanged host load rebuilt Settings and dropped the focused control");
+    loginBody = { sites: [site] };
+    const loginsDone = page.waitForResponse("**/api/login-sites");
+    releaseLogins();
+    await loginsDone;
+    await page.waitForFunction(() => document.body.textContent?.includes("example.test"));
+    const ring = await readRing();
+    assert.deepEqual(
+      { focused: ring.focused, ring: ring.ring, outline: ring.outline },
+      { focused: "heal-auto", ring: true, outline: "solid" },
+      `a login-list refresh kept the keyboard ring; focus was on ${ring.element}`,
+    );
+    await pane?.dispose();
+  } finally {
+    releaseLogins();
+    releaseHost();
+    for (const page of browser.contexts().flatMap((context) => context.pages())) await page.unrouteAll({ behavior: "wait" });
+    await browser.close();
+    await app.close();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("AI help saves each source and keeps API drafts across refreshes", { timeout: 60_000 }, async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "bao-settings-ai-"));
   const previousHome = process.env.HOME;

@@ -124,12 +124,16 @@ document.addEventListener("keydown", (event) => {
 let chromeProfiles: { directory: string; name: string; email: string }[] = [];
 
 async function loadHostAccess(): Promise<void> {
-  await Promise.all([
-    fetch("/api/extension/host-access").catch(() => undefined),
-    fetch("/api/chrome-profiles").then(async (response) => {
-      if (response.ok) chromeProfiles = (await response.json()).profiles || [];
-    }).catch(() => undefined),
+  const [host, profiles] = await Promise.all([
+    fetch("/api/extension/host-access").then(async (response) => response.ok ? response.json() as { hostAccess?: string } : undefined).catch(() => undefined),
+    fetch("/api/chrome-profiles").then(async (response) => response.ok ? response.json() as { profiles?: typeof chromeProfiles } : undefined).catch(() => undefined),
   ]);
+  const nextProfiles = profiles?.profiles || [];
+  const profilesSame = JSON.stringify(nextProfiles) === JSON.stringify(chromeProfiles);
+  const shownHost = state.settings?.hostAccess === "all" || state.settings?.hostAccess === "site" || state.settings?.hostAccess === "none" ? state.settings.hostAccess : "none";
+  const hostSame = host?.hostAccess === undefined || host.hostAccess === shownHost;
+  if (!profilesSame) chromeProfiles = nextProfiles;
+  if (profilesSame && hostSame) return;
   renderKey = "";
   await refresh();
 }
@@ -249,6 +253,7 @@ function render(focusDetail = true): void {
   const railHtml = rail(state, screen);
   const focused = document.activeElement as HTMLElement | null;
   const settingsFocus = screen === "settings" && focused?.closest("#settings") ? focused.id : "";
+  const settingsFocusVisible = Boolean(settingsFocus && focused?.matches(":focus-visible"));
   const captureFocus = screen === "capture" && focused?.closest("#capture-panel, .capture-controls") ? focused.id : "";
   const captureCaret = focused instanceof HTMLInputElement && captureFocus ? focused.selectionStart : null;
   const settingsDetails = screen === "settings" ? [...document.querySelectorAll<HTMLDetailsElement>("#settings details[id][open]")].map((details) => details.id) : [];
@@ -365,7 +370,9 @@ function render(focusDetail = true): void {
     if (input && edited) input.dataset.settingsEdited = "true";
   }
   bind();
-  if (settingsFocus && !focused?.isConnected) document.getElementById(settingsFocus)?.focus({ preventScroll: true });
+  if (settingsFocus && !focused?.isConnected) {
+    document.getElementById(settingsFocus)?.focus({ preventScroll: true, ...(settingsFocusVisible ? { focusVisible: true } : {}) });
+  }
   if (captureFocus && !focused?.isConnected) {
     const input = document.getElementById(captureFocus);
     input?.focus({ preventScroll: true });
@@ -2046,7 +2053,9 @@ function loginPayload(): Record<string, unknown> {
 
 async function loadSaved(): Promise<void> {
   const listed = await (await fetch("/api/login-sites")).json() as { sites?: SavedSite[] };
-  login.saved = listed.sites || [];
+  const saved = listed.sites || [];
+  if (JSON.stringify(saved) === JSON.stringify(login.saved)) return;
+  login.saved = saved;
   renderKey = "";
   render();
 }
