@@ -368,10 +368,21 @@ test("a first wait_for_owner on a check Bao did not recognize sends back the ope
   } finally { await h.cleanup("copy"); }
 });
 
+function traceStderr(t: TestContext): string[] {
+  const traced: string[] = [];
+  const write = process.stderr.write.bind(process.stderr);
+  t.mock.method(process.stderr, "write", ((chunk: string | Uint8Array, ...args: unknown[]) => {
+    traced.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
+    return write(chunk, ...(args as [BufferEncoding?]));
+  }) as typeof process.stderr.write);
+  return traced;
+}
+
 test("a cleanup failure while a newer open ends a wait names no ended run and still starts", { timeout: 60_000 }, async (t) => {
   let fail = true;
   const failed: string[] = [];
   const remove = fsp.rm;
+  const traced = traceStderr(t);
   t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
     if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
     return remove(file, options);
@@ -385,6 +396,8 @@ test("a cleanup failure while a newer open ends a wait names no ended run and st
     const opened = await proxy.execute("open", [fixture.url("/")], "copy");
     assert.equal(opened[0]!.stdout, "Opened\n");
     assert.equal(JSON.stringify(opened).includes(chatA), false, "chat B's open does not name the ended run");
+    assert.equal(JSON.stringify(opened).includes("fixture rm failed"), false, "chat B's open does not carry the cleanup error");
+    assert.equal(traced.includes(`Bao could not clean up the browser session of run ${chatA}: fixture rm failed\n`), true);
     assert.notEqual(proxy.activeRunId, chatA);
     assert.equal(proxy.hasSession(), true);
     assert.equal(proxy.ownerPage, undefined);
@@ -405,6 +418,7 @@ test("a cleanup failure while a newer open ends a wait past its limit still star
   let fail = true;
   const failed: string[] = [];
   const remove = fsp.rm;
+  const traced = traceStderr(t);
   t.mock.method(fsp, "rm", async (file: Parameters<typeof rm>[0], options: Parameters<typeof rm>[1]) => {
     if (fail && path.basename(String(file)).startsWith("bao-proxy-")) { failed.push(String(file)); throw new Error("fixture rm failed"); }
     return remove(file, options);
@@ -422,6 +436,8 @@ test("a cleanup failure while a newer open ends a wait past its limit still star
     const opened = await proxy.execute("open", [fixture.url("/")], "copy");
     assert.equal(opened[0]!.stdout, "Opened\n");
     assert.equal(JSON.stringify(opened).includes(chatA), false);
+    assert.equal(JSON.stringify(opened).includes("fixture rm failed"), false);
+    assert.equal(traced.includes(`Bao could not clean up the browser session of run ${chatA}: fixture rm failed\n`), true);
     assert.notEqual(proxy.activeRunId, chatA);
     assert.match(proxy.endedWait ?? "", /; nobody continued it for 30 minutes\.$/);
     assert.equal((proxy.endedWait ?? "").includes(chatA), false);
