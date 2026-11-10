@@ -93,6 +93,11 @@ export function boundInProfiles(url: string, profileDirs: readonly string[]): bo
   return boundSite(url, undefined) || profileDirs.some((dir) => boundSite(url, dir));
 }
 
+/** True when the site's host is in the device-bound host list, including a subdomain of one. */
+export function listedBoundSite(url: string, sites: readonly string[]): boolean {
+  try { return onSite(new URL(url).hostname, sites); } catch { return false; }
+}
+
 /** The site's sign-in stays in the owner's Chrome: Google, the Times, or a site the Chrome profile holds a device-bound session for. */
 export function boundSite(url: string, profileDir: string | undefined): boolean {
   let host: string;

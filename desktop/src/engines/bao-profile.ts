@@ -11,7 +11,7 @@ import { assertNotDailyChrome } from "../profile";
 import { cookieMatchesHost, findCookieDb, summarizeDb, summarySql, withCookieDb, type DecryptedCookie } from "../login-import/read";
 import { setCookiesOneAtATime } from "../login-import/set-cookies";
 import { copyIndexedDb, matchingIndexedDbOrigins, readLocalStorage, setLocalStorageItems, type StorageItem } from "../login-import/storage";
-import { boundCookie, boundSessionSites, boundSite, deleteCookieRows } from "./bound-sign-in";
+import { boundCookie, boundSessionSites, boundSite, deleteCookieRows, listedBoundSite } from "./bound-sign-in";
 
 interface LoginCookie extends DecryptedCookie { updated: bigint; signature: string }
 
@@ -272,7 +272,7 @@ export async function openBaoChromeForProxy(options: ({ sourceRoot: string; dire
       let login = snapshots.get(url.origin);
       if (!login) {
         const read = "unread" in options ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], error: options.unread })
-          : boundSite(site, sourceProfile) ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], bound: true })
+          : boundSite(site, sourceProfile) || listedBoundSite(site, boundSites) ? Promise.resolve<SourceLoginState>({ cookies: [], storage: [], bound: true })
             : readChromeLogin(options, site, destination);
         login = read.then((source) => ({ cookies: (source.cookies ?? []).filter((cookie) => cookieMatchesHost(cookie.hostKey, url.hostname)
             && !boundCookie(cookie.hostKey, cookie.name, boundSites)), storage: source.storage,

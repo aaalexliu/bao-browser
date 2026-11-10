@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,8 @@ import * as bao from "../../src/engines/bao-profile";
 import { AgentBrowserProxy } from "../../src/engines/agent-browser-proxy";
 import { BOUND_REASON, boundSessionSites, boundSite, deleteCookieRows, googleSignInCookie } from "../../src/engines/bound-sign-in";
 import { boundLoginSite } from "../../src/login-import/import-login";
+import { signInLine } from "../../src/engines/browser-pick";
+import { encodeStorageBytes, indexedDbIdentifier } from "../../src/login-import/storage";
 import { copyChromeProfile } from "../../src/engines/chrome-profile-copy";
 import { startApp } from "../../src/app/server";
 import * as currentChrome from "../../src/cdp-live/current-chrome";
@@ -301,8 +303,98 @@ test("a Login site check with no profile uses the Settings profile, or every pro
     assert.equal(boundLoginSite("https://other.example/", userData, undefined, "Default"), undefined);
     assert.match(boundLoginSite("https://other.example/", userData, "Profile 2", "Default") ?? "", /other\.example/,
       "a passed import profile is the one being imported, not the Settings profile");
+    assert.match(boundLoginSite("https://bound.example/", userData, "Profile 2") ?? "", /bound\.example/,
+      "a chosen profile plus the owner list, when no Settings profile is picked");
+    assert.match(boundLoginSite("https://bound.example/", userData, "Profile 2", "Default") ?? "", /bound\.example/,
+      "a chosen profile plus the Settings profile");
+    assert.equal(boundLoginSite("https://other.example/", userData, "Default", "Default"), undefined,
+      "a Settings pick does not add a profile it did not pick");
+    assert.equal(boundLoginSite("https://news.example/", userData, "Profile 2"), undefined);
     assert.match(boundLoginSite("https://www.nytimes.com/") ?? "", /www\.nytimes\.com/);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an import that names a clean profile refuses a site bound in another owner profile before any Chrome starts", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-import-bound-"));
+  const userData = path.join(root, "chrome");
+  const home = path.join(root, "home");
+  const baoProfile = path.join(home, "chrome-profile");
+  writeLocalState(userData, [
+    { directory: "Default", name: "Owner", email: "owner@example.test" },
+    { directory: "Profile 2", name: "Other", email: "other@example.test" },
+  ]);
+  boundSessions(path.join(userData, "Default"), ["https://bound.example 1"]);
+  boundSessions(path.join(userData, "Profile 2"), ["https://other.example 1"]);
+  const previous = process.env.BAO_CHROME_USER_DATA;
+  process.env.BAO_CHROME_USER_DATA = userData;
+  const line = "The site bound.example ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.";
+  const other = "The site other.example ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.";
+  const app = await startApp({ home, chromeUserData: userData, baoProfile, loginPlatform: "darwin",
+    loginKeys: { platform: "darwin", secretError: "prompt-missed" } });
+  const post = async (route: string, body: Record<string, unknown>) => {
+    const res = await fetch(`http://127.0.0.1:${app.port}${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return { status: res.status, body: await res.json() as { error?: string; id?: string; phase?: string } };
+  };
+  try {
+    assert.deepEqual(await post("/api/import-login", { from: "chrome", domain: "bound.example", profile: "Profile 2" }), { status: 400, body: { error: line } });
+    assert.deepEqual(await post("/api/login-import", { site: "https://bound.example/", consent: true, profile: "Profile 2" }), { status: 400, body: { error: line } });
+    await writeFile(path.join(home, "settings.json"), JSON.stringify({ chromeProfile: "Default" }));
+    const created = await post("/api/import-login", { from: "chrome", domain: "other.example" });
+    assert.equal(created.status, 200, "a site bound only outside the Settings profile is not refused until a profile is chosen");
+    assert.equal(created.body.phase, "confirm");
+    await post("/api/import-login/answer", { id: created.body.id, accept: true, profile: "Profile 2" });
+    const deadline = Date.now() + 3000;
+    let settled: { phase?: string; error?: string; audit?: { count?: number } } = {};
+    while (Date.now() < deadline) {
+      settled = await (await fetch(`http://127.0.0.1:${app.port}/api/import-login?id=${created.body.id}`)).json() as typeof settled;
+      if (settled.phase === "error" || settled.phase === "done") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(settled.phase, "error");
+    assert.equal(settled.error, other);
+    assert.equal(settled.audit?.count, 0, "a refused import wrote no cookies");
+    assert.equal(existsSync(baoProfile), false, "a refused import did not start Bao's Chrome");
+  } finally {
+    await app.close();
+    if (previous === undefined) delete process.env.BAO_CHROME_USER_DATA;
+    else process.env.BAO_CHROME_USER_DATA = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Bao profile import skips a site on the purge list and says it ties its sign-in to Chrome", { timeout: 60_000 }, async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "bao-import-label-"));
+  const sourceRoot = await chromeProfiles(path.join(root, "source"), {
+    Default: { name: "Owner" },
+    "Profile 2": { name: "Other" },
+  });
+  boundSessions(path.join(sourceRoot, "Default"), ["https://bound.example 1"]);
+  const origin = "https://bound.example";
+  const storageDir = path.join(sourceRoot, "Profile 2", "Local Storage");
+  await mkdir(storageDir, { recursive: true });
+  const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (file: string) => { exec(sql: string): void; prepare(sql: string): { run(...args: unknown[]): void }; close(): void } };
+  const db = new DatabaseSync(path.join(storageDir, "local.sqlite"));
+  db.exec("CREATE TABLE maps (row_id INTEGER PRIMARY KEY, storage_key BLOB)");
+  db.exec("CREATE TABLE map_entries (map_id INTEGER, key BLOB, value BLOB)");
+  db.prepare("INSERT INTO maps (row_id, storage_key) VALUES (?, ?)").run(1, Buffer.from(`${origin}\0`));
+  db.prepare("INSERT INTO map_entries (map_id, key, value) VALUES (?, ?, ?)").run(1, encodeStorageBytes("identity"), encodeStorageBytes("copied-account"));
+  db.close();
+  const idb = path.join(sourceRoot, "Profile 2", "IndexedDB", `${indexedDbIdentifier(origin)}.indexeddb.leveldb`);
+  await mkdir(idb, { recursive: true });
+  await writeFile(path.join(idb, "CURRENT"), "copied");
+  const home = path.join(root, "home");
+  let chrome: Awaited<ReturnType<typeof openBaoChromeForProxy>> | undefined;
+  try {
+    chrome = await openBaoChromeForProxy({ sourceRoot, directory: "Profile 2", home, site: `${origin}/`, boundSites: ["bound.example"] });
+    const skipped = `Sign-in import for ${origin} from Chrome profile "Profile 2": skipped, because this site ties its sign-in to your Chrome.`;
+    assert.deepEqual(chrome.signIn, { origin, found: 0, cookies: 0, storage: 0, bound: true });
+    assert.equal(signInLine(chrome.signIn!, "Profile 2"), skipped);
+    assert.equal(existsSync(path.join(baoAgentProfileDir(home), "Default", "IndexedDB")), false, "the import did not copy IndexedDB");
+    assert.deepEqual(await chrome.importLogin(`${origin}/account`), { origin, found: 0, cookies: 0, storage: 0, bound: true });
+  } finally {
+    await chrome?.close();
     await rm(root, { recursive: true, force: true });
   }
 });

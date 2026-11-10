@@ -67,13 +67,12 @@ export function assertClick(click: ClickInput | undefined): asserts click is Imp
 
 /**
  * Google, YouTube, nytimes.com, and a site the owner's Chrome holds a device-bound session for tie their sign-in to that Chrome,
- * so they are not Login sites. A passed profile directory is the one being imported. With none, `settingsDirectory` is the
- * Settings profile, or every profile when none is picked. Returns the plain line that says so, or undefined for any other site.
+ * so they are not Login sites. A passed profile is the one being imported, and it counts with the owner list: the Settings
+ * profile, or every profile when none is picked. Returns the plain line that says so, or undefined for any other site.
  */
 export function boundLoginSite(site: string, chromeUserData?: string, directory?: string, settingsDirectory?: string): string | undefined {
-  const dirs = directory && chromeUserData && safeDirectory(directory)
-    ? [path.join(chromeUserData, directory)]
-    : ownerProfileDirs(chromeUserData, settingsDirectory);
+  const named = directory && chromeUserData && safeDirectory(directory) ? [path.join(chromeUserData, directory)] : [];
+  const dirs = [...named, ...ownerProfileDirs(chromeUserData, settingsDirectory)];
   if (!boundInProfiles(siteOrigin(site), dirs)) return undefined;
   return `The site ${siteHost(site)} ties its sign-in to your Chrome, so Bao does not import it as a Login site. Bao opens it in your running Chrome instead.`;
 }
@@ -127,6 +126,7 @@ export async function importChromeLogin(opts: {
   observe?: (probeUrl: string) => Promise<ProbeObservation>;
   restoreStorage?: () => Promise<number | { count: number; keys?: string[]; databases?: string[] }>;
   indexedDbOrigins?: number;
+  boundSites?: readonly string[];
 }): Promise<PublicImportResult> {
   assertClick(opts.click);
   const origin = siteOrigin(opts.click.site);
@@ -158,7 +158,7 @@ export async function importChromeLogin(opts: {
     throw new Error("Import needs Bao's Chrome.");
   }
   const setter: CookieSetter = { setOne: opts.setOne };
-  const outcomes = await setCookiesOneAtATime(setter, loaded.cookies, boundSessionSites(resolveProfileDir(opts.chromeUserData, opts.profileDirectory)));
+  const outcomes = await setCookiesOneAtATime(setter, loaded.cookies, importBoundSites(opts.chromeUserData, opts.profileDirectory, opts.boundSites));
   let localStorageItems = 0;
   let localStorageNames: string[] = [];
   let indexedDbNames: string[] = [];
@@ -241,11 +241,12 @@ export async function importInOwnedChrome(opts: {
     return importChromeLogin(opts);
   }
   const profileDir = resolveProfileDir(opts.chromeUserData, opts.profileDirectory);
+  const bound = importBoundSites(opts.chromeUserData, opts.profileDirectory, opts.boundSites);
   const origins = originsForSite(opts.click.site, opts.config.origins ?? []);
   const items = await readLocalStorage(profileDir, origins);
   const indexedDbOrigins = copyIndexedDb(profileDir, opts.baoProfile, origins);
   const headless = opts.headless ?? productHeadless();
-  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome", boundSites: opts.boundSites });
+  const ctx = await launchOwnedChrome({ userDataDir: opts.baoProfile, headless, channel: "chrome", boundSites: bound });
   try {
     const page = ctx.pages()[0] || await ctx.newPage();
     const cdp = await ctx.newCDPSession(page);
@@ -253,6 +254,7 @@ export async function importInOwnedChrome(opts: {
       (cdp as { send(method: string, params?: Record<string, unknown>): Promise<unknown> }).send(method, params);
     return await importChromeLogin({
       ...opts,
+      boundSites: bound,
       indexedDbOrigins: indexedDbOrigins.length,
       restoreStorage: () => restoreLocalStorage(page, send, items),
       setOne: async (cookie) => {
@@ -393,6 +395,10 @@ export async function observePage(page: Page, probeUrl: string, selector: string
   const bodyText = text ? await page.locator("body").innerText().catch(() => "") : "";
   const hasPassword = await page.locator("input[type=password]").count().then((count) => count > 0).catch(() => false);
   return { finalUrl, selectorFound, bodyText, startedUrl: probeUrl, hasPassword };
+}
+
+function importBoundSites(chromeUserData: string, directory: string, boundSites: readonly string[] = []): string[] {
+  return [...new Set([...boundSites, ...boundSessionSites(resolveProfileDir(chromeUserData, directory))])];
 }
 
 function resolveProfileDir(userDataDir: string, directory: string): string {

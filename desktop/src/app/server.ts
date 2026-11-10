@@ -36,7 +36,7 @@ import { pageEngineName } from "../engines/agent-browser";
 import { chromeProfilesRoot as systemChromeProfilesRoot, listChromeProfiles } from "../engines/chrome-profile-copy";
 import { browserChoice, DEFAULT_BROWSER, type BrowserChoice } from "../browser-choice";
 import { defaultRoute, type RouteWhy } from "../engines/browser-pick";
-import { BOUND_REASON, boundInProfiles, boundSessionSites, ownerBoundSites, ownerProfileDirs } from "../engines/bound-sign-in";
+import { BOUND_REASON, boundInProfiles, ownerBoundSites, ownerProfileDirs, purgeBoundSites } from "../engines/bound-sign-in";
 import { navigateWorkflowBrowser, openWorkflowBrowser, ownerPrompts, releaseWorkflowBrowser, settingsProfileQuestion, showWorkflowPage, workflowMovesFiles, type WorkflowBrowser } from "../engines/workflow-browser";
 import { capabilityReport, type HelperStatus } from "../helper-capabilities";
 import { bundledHelperApp, MacOsHelper } from "../proxy/os-macos";
@@ -2425,6 +2425,15 @@ export async function startApp(opts: {
         pending.phase = "pick";
         return;
       }
+      const refused = boundLoginSite(`https://${pending.domain}/`, userData, choice.profile.directory, settingsDirectory());
+      if (refused) {
+        pending.phase = "error";
+        pending.error = refused;
+        const audit = { domain: pending.domain, count: 0, at: Date.now(), reason: refused, profile: choice.profile.directory };
+        writeImportAudit(opts.home, audit);
+        pending.audit = audit;
+        return;
+      }
       pending.phase = "running";
       const password = readChromeSafeStoragePassword();
       const loaded = await loadChromeSiteCookies({
@@ -2436,7 +2445,7 @@ export async function startApp(opts: {
       let count = loaded.cookies.length;
       const page = await sitePage();
       try {
-        count = await injectCookies(page, loaded.cookies, boundSessionSites(path.join(userData, choice.profile.directory)));
+        count = await injectCookies(page, loaded.cookies, purgeBoundSites(userData, settingsDirectory(), path.join(userData, choice.profile.directory)));
       } finally {
         for (const cookie of loaded.cookies) cookie.value = "";
       }
