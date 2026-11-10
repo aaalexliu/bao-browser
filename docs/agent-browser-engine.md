@@ -190,6 +190,8 @@ The handoff sends the window to the Dock and back even when the owner already wo
 
 A page that opens a new tab, such as a `target=_blank` link, can still bring Chrome forward: Chrome does that itself, not through the agent's commands. The installed Chrome on macOS does not come forward by itself until the owner first clicks its window. A handoff on a Chrome Bao launched behind asks it forward, then puts the lock back when the handoff ends. A foreground window stays free to come forward. The test browser is started directly and is not marked that way, so it always can.
 
+After keepOpen frees a window, a later handoff does not lock it again, which the lines that say every behind handoff puts the lock back leave out.
+
 PersonPrompts stays `void | Promise<void>`. Narrowing it back to `void` is left as a gap.
 
 The handoff unit tests seed the behind flag and do not start a Playwright Chrome. A launch-wiring test for those two paths is left as a gap.
