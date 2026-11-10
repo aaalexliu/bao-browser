@@ -421,7 +421,7 @@ const navigate = (targetId, to) => new Promise((resolve, reject) => {
     await assert.rejects(proxy.execute("open", [], "other"), /must be copy, bao, or current/);
     await assert.rejects(proxy.execute("snapshot", [], "current"), /only accepted on open/);
     assert.equal((await proxy.execute("open", [], "current"))[0]!.exitCode, 0);
-    await assert.rejects(proxy.execute("open", [], "copy"), /first open/);
+    await assert.rejects(proxy.execute("open", [], "copy"), /close the current session before choosing a different browser/);
     assert.deepEqual(sent.filter(call => call.method === "Target.createTarget").map(call => call.params),
       [{ url: "chrome://version", background: true, hidden: true }, { url: "about:blank", background: true }], "a hidden chrome://version tab names the default profile");
     assert.ok(sent.some(call => call.method === "Emulation.setFocusEmulationEnabled" && call.params?.enabled === true));
