@@ -230,22 +230,22 @@ export function showWorkflowPage(browser: WorkflowBrowser): Promise<void> {
   return browser.kind === "current" ? browser.bringToFront() : browser.page.bringToFront();
 }
 
-const handoffTails = new Map<string, Promise<void>>();
+function promptFailed(name: string, error: unknown): void {
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error(`bao owner prompt failed prompt=${name}: ${detail}`);
+}
 
-function settlePrompt(run: () => void | Promise<void> | undefined): void {
+function settlePrompt(name: string, run: () => void | Promise<void> | undefined): void {
   try {
     const result = run();
-    if (result != null && typeof result.then === "function") void result.catch(() => undefined);
-  } catch {
-    // A prompt failure must not reject an unhandled promise.
+    if (result != null && typeof result.then === "function") void result.catch((error: unknown) => { promptFailed(name, error); });
+  } catch (error) {
+    promptFailed(name, error);
   }
 }
 
 function queueHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): void {
-  const key = path.resolve(profile);
-  const prev = handoffTails.get(key) ?? Promise.resolve();
-  const next = prev.then(() => focusOwnedHandoff(profile, waiting, focus)).catch(() => undefined);
-  handoffTails.set(key, next);
+  void focusOwnedHandoff(profile, waiting, focus);
 }
 
 /** On Running Chrome, a step that needs the owner shows him the held tab. A Bao-owned prompt runs first. Focus work follows and cannot exit Bao. */
@@ -273,31 +273,31 @@ export function ownerPrompts(browser: WorkflowBrowser, prompts?: PersonPrompts, 
   return {
     ...prompts,
     showConfirm(label) {
-      settlePrompt(() => prompts?.showConfirm?.(label));
+      settlePrompt("showConfirm", () => prompts?.showConfirm?.(label));
       handoff(true);
     },
     showLoginWait(label) {
-      settlePrompt(() => prompts?.showLoginWait?.(label));
+      settlePrompt("showLoginWait", () => prompts?.showLoginWait?.(label));
       handoff(true);
     },
     showAsk(ask) {
-      settlePrompt(() => prompts?.showAsk?.(ask));
+      settlePrompt("showAsk", () => prompts?.showAsk?.(ask));
       handoff(true);
     },
     pauseCapture() {
-      settlePrompt(() => prompts?.pauseCapture?.());
+      settlePrompt("pauseCapture", () => prompts?.pauseCapture?.());
       handoff(true);
     },
     clearConfirm(runId) {
-      settlePrompt(() => prompts?.clearConfirm?.(runId));
+      settlePrompt("clearConfirm", () => prompts?.clearConfirm?.(runId));
       handoff(false);
     },
     clearLoginWait(runId) {
-      settlePrompt(() => prompts?.clearLoginWait?.(runId));
+      settlePrompt("clearLoginWait", () => prompts?.clearLoginWait?.(runId));
       handoff(false);
     },
     resumeCapture() {
-      settlePrompt(() => prompts?.resumeCapture?.());
+      settlePrompt("resumeCapture", () => prompts?.resumeCapture?.());
       handoff(false);
     },
   };

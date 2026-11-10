@@ -400,6 +400,23 @@ function spawnedDisclaimedChrome(userDataDir: string): SpawnedDisclaim | undefin
   return spawnedDisclaim.get(path.resolve(userDataDir));
 }
 
+const focusTails = new Map<string, Promise<void>>();
+
+function queueOwnedFocus(profile: string, work: () => Promise<void>): Promise<void> {
+  const key = path.resolve(profile);
+  const prev = focusTails.get(key) ?? Promise.resolve();
+  const run = prev.then(work).catch(() => undefined);
+  focusTails.set(key, run);
+  return run;
+}
+
+function markKeptWindowFree(userDataDir: string, pid: number): void {
+  const key = path.resolve(userDataDir);
+  const spawned = spawnedDisclaim.get(key);
+  if (spawned?.pid !== pid) return;
+  spawnedDisclaim.set(key, { pid, behind: false });
+}
+
 function focusMiss(pid: number, userDataDir: string, what: "unlocked" | "forward" | "kept"): string {
   if (what === "unlocked") return `bao chrome stayed unlocked pid=${pid} profile=${userDataDir}: background lock was not confirmed`;
   if (what === "forward") return `bao chrome was not asked forward pid=${pid} profile=${userDataDir}`;
@@ -407,13 +424,19 @@ function focusMiss(pid: number, userDataDir: string, what: "unlocked" | "forward
 }
 
 /** Lets a kept Chrome become frontmost. It does not ask the window to come forward. A direct launch was never locked. */
-export async function releaseKeptWindow(
+export function releaseKeptWindow(
   owner: { kind: "direct" } | { kind: "gui"; pid: number; userDataDir: string },
   allow: (pid: number) => Promise<boolean> = (pid) => setOwnedFrontmost(pid, true),
   log: (line: string) => void = (line) => { console.error(line); },
 ): Promise<void> {
-  if (owner.kind !== "gui") return;
-  if (!await allow(owner.pid).catch(() => false)) log(focusMiss(owner.pid, owner.userDataDir, "kept"));
+  if (owner.kind !== "gui") return Promise.resolve();
+  return queueOwnedFocus(owner.userDataDir, async () => {
+    if (!await allow(owner.pid).catch(() => false)) {
+      log(focusMiss(owner.pid, owner.userDataDir, "kept"));
+      return;
+    }
+    markKeptWindowFree(owner.userDataDir, owner.pid);
+  });
 }
 
 /** The bao-spawn Chrome for this profile. A direct or Playwright launch is left alone. */
@@ -436,7 +459,11 @@ export type OwnedChromeFocus = {
 };
 
 /** Before an owner handoff a bao-spawn Chrome may come forward. The lock returns only if Bao launched that Chrome behind. */
-export async function focusOwnedHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): Promise<void> {
+export function focusOwnedHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): Promise<void> {
+  return queueOwnedFocus(profile, () => applyOwnedHandoff(profile, waiting, focus));
+}
+
+async function applyOwnedHandoff(profile: string, waiting: boolean, focus?: OwnedChromeFocus): Promise<void> {
   const spawned = spawnedDisclaimedChrome(profile);
   if (!spawned) return;
   const act = focus ?? { present: presentOwnedProfile, lock: lockOwnedProfile };
@@ -517,13 +544,13 @@ function retryDirectStartup(message: string): boolean {
   return /Chrome exited before it opened a debugging port|Chrome could not start its debugging server|Chrome did not bind 127\.0\.0\.1:/.test(message);
 }
 
-async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
-  const direct = !disclaimedChrome(exe);
+async function spawnOwnedChrome(exe: string, args: (port: number) => string[], userDataDir: string, childHome?: string, detached = false, background = false, start?: OwnedChromeStartHooks): Promise<{ owner: OwnedChromeProcess; port: number }> {
+  const direct = !disclaimedChrome(exe, start?.env);
   const attempts = direct ? 3 : 1;
   let last: Error | undefined;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await startOwnedChrome(exe, args, userDataDir, childHome, detached, background);
+      return await startOwnedChrome(exe, args, userDataDir, childHome, detached, background, start);
     } catch (error) {
       last = error instanceof Error ? error : new Error(String(error));
       if (attempt === attempts || !direct || !retryDirectStartup(last.message)) throw last;
@@ -868,7 +895,7 @@ function prepareOwnedProfile(userDataDir: string, preserveRestoredTabs = false, 
   catch (error) { console.error(`Bao could not remove Google and Times sign-ins from its profile: ${error instanceof Error ? error.message : String(error)}`); }
 }
 
-async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = false): Promise<{ owner: OwnedChromeProcess; port: number }> {
+async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = false, start?: OwnedChromeStartHooks): Promise<{ owner: OwnedChromeProcess; port: number }> {
   prepareOwnedProfile(opts.userDataDir, opts.preserveRestoredTabs, opts.boundSites);
   const exe = opts.executablePath || resolveNormalChrome();
   const headless = ownedHeadless(opts.headless);
@@ -880,7 +907,7 @@ async function spawnNormalChrome(opts: OwnedChromeProcessOptions, detached = fal
     ...(opts.loadExtensions === false ? ["--disable-extensions"] : []),
     ...(headless ? ["--headless=new"] : []),
   ];
-  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome, detached, opts.background !== undefined);
+  return spawnOwnedChrome(exe, (port) => [...args, `--remote-debugging-port=${port}`], opts.userDataDir, opts.childHome, detached, opts.background !== undefined, start);
 }
 
 type OwnedEndpointState =
@@ -891,14 +918,14 @@ type OwnedEndpointState =
   | { phase: "settled"; completion: Promise<void> };
 
 /** Own the process and browser endpoint without attaching to page renderers. */
-export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions & { detached?: boolean }): Promise<{
+export async function launchOwnedChromeEndpoint(opts: OwnedChromeProcessOptions & { detached?: boolean; start?: OwnedChromeStartHooks }): Promise<{
   portFile: string;
   closed: Promise<void>;
   isClosed(): boolean;
   keepOpen(): Promise<void>;
   close(): Promise<void>;
 }> {
-  const { owner } = await spawnNormalChrome(opts, opts.detached === true);
+  const { owner } = await spawnNormalChrome(opts, opts.detached === true, opts.start);
   const portFile = path.join(opts.userDataDir, "DevToolsActivePort");
   const ownedPids = new Set(pidsForDataDir(opts.userDataDir));
   let cdp: CdpSocket | undefined;
