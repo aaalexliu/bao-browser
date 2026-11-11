@@ -81,7 +81,7 @@ test("a copy that restores 20 tabs opens a timer-heavy page in its own tab, keep
   }
 });
 
-// The 20-tab case can pass when the real daemon starts under 5 s. This case always sleeps past that old tab-read limit.
+// The 20-tab case can pass when the real daemon starts under 5 s. A first-call limit under 6 s, like the old 5 s tab read, fails this case. Restoring that 5 s limit fails it. The 30 s progress ceiling bounds the first read on its own, so removing only the daemonStarted clear does not fail it.
 const SLOW_NATIVE_MS = 6_000;
 
 test("a copy capture still saves as a workflow when the first native call sleeps past 5 seconds", { timeout: 60_000 }, async (t) => {
